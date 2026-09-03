@@ -794,6 +794,55 @@ unjudged. The Gemini finding is one arm at one effort tier; it says this specifi
 configuration disagreed sharply with its own numeric-slice score, not that Gemini models
 generally do.
 
+### The verification pass helps at medium effort, barely moves the needle at high effort — and the numeric slice would have overstated the high-effort regression (2026-09-03, #535)
+
+The 2026-08-09 finding above answered this question for `low` effort only ("no evidence of a
+recall gain that would justify 2× cost"). Two new arms, `gpt-luna-med-verify` and
+`gpt-luna-high-verify` (`benchmark.yaml`'s verify-pass sweep), fill in the two effort tiers that
+finding didn't cover, run against the noverify baselines already on record (`gpt-luna-med`/
+`gpt-luna-high`, run `2026-08-31-1645`) — no need to re-run those, only the two new verify arms
+were live calls.
+
+**Numeric-anchor slice first** (`score_index.py`, ~1/3 of key items, free and immediate): verify
+adds +5pts to facts recall at both tiers, but splits on `must_not_miss` — a +20pt jump at medium
+effort (42%→62%) against what looked like a real regression at high effort (74%→64%, −10pts).
+That asymmetry was surprising enough on its own to justify the judge pass below rather than
+trusting a scorer that only sees a third of the picture.
+
+**Judge pass**: four arms blinded per document (X/Y/Z/A3 — `build_packets.py`'s scheme for more
+than three), Sonnet, one subagent per document, six documents. Hand-check passed: X
+(`gpt-luna-high-verify`, unmasked after grading) was judged `ungrounded` on the pension order's
+"Chief Justice Morawetz" fact/signature-block items — confirmed directly against the vault's own
+`key_facts`, which mentions Morawetz exactly once, in a sentence that never says he made or
+signed the order; only the entity tag names him. Every judgment file independently verified
+complete against its packet (every item, every label, valid tier, non-empty note) before
+aggregating, not just accepted on the subagents' own self-report.
+
+| Arm | Judged facts | Judged must_not_miss | Cost/page |
+|---|---|---|---|
+| `gpt-luna-med` (noverify) | 45% (113/251) | 36% (45/126) | ~$0.0004 |
+| `gpt-luna-med-verify` | **52%** (130/251) | **52%** (65/126) | ~$0.0006 |
+| `gpt-luna-high` (noverify) | 64% (160/251) | **60%** (75/126) | ~$0.0007 |
+| `gpt-luna-high-verify` | **66%** (165/251) | 56% (71/126) | ~$0.0009 |
+
+**The judge pass confirms the shape the numeric slice showed, at a smaller magnitude on the
+regression.** At medium effort, verify is an unambiguous win: +7pts facts, +16pts
+`must_not_miss`, for 50% more cost per page. At high effort, verify's facts gain shrinks to
++2pts and `must_not_miss` drops 4pts (60%→56%) rather than the numeric slice's apparent 10-point
+drop — real, but smaller, and within the range a single run per arm can produce on its own
+(#581 found up to a 3× spread in facts extracted between independent samples of the *same*
+arm). **The numeric-only slice would have been directionally right but overstated the size of
+the high-effort regression by more than double** — exactly the failure mode RUNBOOK.md's judge
+step exists to catch, just this time on magnitude rather than on which arm wins.
+
+**Reading this together with the low-effort finding**: verification's value is effort-dependent,
+not a flat yes/no. It earns its cost cleanly at `medium`. At `high`, the model is already
+catching most of what verify would add, so the second pass mostly reconfirms rather than
+recovers — and on this run's numbers, spending it doesn't clearly pay for itself. Shipping
+`verify_extraction` on by default for the `low`/`high` tiers stays unjustified by this data;
+`medium` is the one tier where a case for turning it on could be made, and even there this is
+one run of each arm, not a settled number.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's

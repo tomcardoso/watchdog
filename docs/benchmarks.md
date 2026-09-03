@@ -70,9 +70,13 @@ A few things this benchmark doesn't cover yet:
   several of them already.
 - **Whether the verification pass earns its keep.** The optional second read
   (`verify_extraction`, see [Configuration](configuration.md#the-verification-pass)) reliably adds
-  facts; what has not been measured is how many of those facts are worth a reporter's attention
-  rather than restatements or trivia. Until that number exists, the pass stays off by default —
-  a recall gain that quietly fills your fact lists with noise is not an improvement.
+  facts, and effort turns out to matter more than expected: at `low` effort, the added facts were
+  mostly restatements rather than new material, and a judge pass found no recall gain worth 2x the
+  cost. At `medium` effort a judge pass found a real, sizeable recall gain for 50% more cost; at
+  `high` effort the gain narrows to nearly nothing, since the model is already catching most of
+  what a second pass would add (`benchmarks/FINDINGS.md`, 2026-09-03). The pass stays off by
+  default — this data makes a case for turning it on at `medium` specifically, not across the
+  board, and it's one run of each arm so far, not a settled number.
 - **Running this automatically.** Right now a maintainer runs the benchmark by hand when a new
   model or effort combination is worth checking. Wiring it into a scheduled or on-demand GitHub
   Actions run is a reasonable next step, once it's clear how often that's actually useful.
