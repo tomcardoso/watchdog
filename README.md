@@ -48,8 +48,8 @@ For a closer look at what happens to a single document — the OCR pipeline, the
 
 - macOS, Linux or Windows
 - [Obsidian](https://obsidian.md) — free
-- [Claude Code](https://claude.ai/download) — free to install, and required
-- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key
+- [Claude Code](https://claude.ai/download) — free to install, and required for asking questions of your vault; it also runs the ingest pipeline by default
+- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key, since Claude Code needs one either way. The ingest pipeline can be pointed at a different provider instead — OpenAI, Gemini, DeepSeek, or a local model — see [Configuration](https://github.com/tomcardoso/watchdog/blob/main/docs/configuration.md#model-backends); asking questions of the vault always runs on Claude
 - Python 3.10+, plus a few free system tools the [install guide](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md) covers
 
 A Pro subscription (US$20/month) is enough for most journalism work.
