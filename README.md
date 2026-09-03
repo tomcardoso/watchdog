@@ -42,6 +42,8 @@ your vault        linked notes in Obsidian; ask questions in Claude Code
 
 After ingest, you read the briefing, explore the vault in Obsidian, and ask questions inside Claude Code — `/watchdog-query Who are the directors of Shell Co Ltd?` — with every answer cited back to a page.
 
+For a closer look at what happens to a single document — the OCR decision, the sectioning, the model calls — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
+
 ## What you need
 
 - macOS, Linux or Windows
