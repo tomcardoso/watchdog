@@ -1,14 +1,14 @@
 # Watchdog
 
-**Document intelligence for investigative journalists — drop records in, find the connections.**
+**Document intelligence for journalists — drop records in, find connections.**
 
 [![PyPI](https://img.shields.io/pypi/v/watchdog-intel)](https://pypi.org/project/watchdog-intel/) [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
 
-Watchdog is a command-line tool for journalists who accumulate large sets of public records — court filings, corporate records, freedom-of-information responses, land registries. You drop documents into a folder. Watchdog reads every page, pulls out every person, company, address and relationship it finds, and builds them into a linked investigation vault you can search and question in plain English. Every extracted fact cites the document and page it came from.
+Watchdog is a command-line tool for journalists who accumulate large sets of public records — court filings, corporate records, freedom-of-information responses, land registries and so on. You drop documents into a folder, Watchdog reads every page, pulls out every person, company, address and relationship it finds, and builds them into a linked investigation vault you can search and question in plain English. Every extracted fact cites the document and page it came from.
 
-The vault lives in [Obsidian](https://obsidian.md), a free note-taking app, as ordinary files on your computer. The questions run in [Claude Code](https://claude.ai/download), Anthropic's AI assistant for the terminal.
+The vault lives in [Obsidian](https://obsidian.md), a free note-taking app, as ordinary files on your computer. The information-extraction work is carried by an LLM (be that Claude, ChatGPT, Gemini, DeepSeek, etc.). The questions run in [Claude Code](https://claude.ai/download), Anthropic's AI assistant for the terminal.
 
-> **Alpha.** The core pipeline works and has been tested on macOS with real investigation documents. It is not yet battle-hardened. Feedback and contributions are welcome.
+> **This project is still a work in progress.** The core pipeline works and has been tested on macOS with real investigation documents. It is not yet battle-hardened. Feedback and contributions are welcome.
 
 ## Public records only
 
@@ -18,9 +18,9 @@ Never use it with confidential source communications, leaked or unpublished mate
 
 ## What it does
 
-- **Reads almost anything.** PDFs (scanned or not), Word documents, spreadsheets, images, web pages, audio and video. Scanned documents are OCR'd automatically; a 400-page PDF is no problem.
+- **Reads almost anything.** PDFs (scanned or not), Word documents, spreadsheets, images, web pages, audio and video. Scanned documents are OCR'd automatically; a 500-page PDF is no problem.
 - **Extracts entities, not just text.** People, companies, addresses, relationships and dates become linked notes, with a page-level citation on every fact.
-- **Builds a timeline.** Datable events from every document are assembled into one chronological view of the investigation.
+- **Builds a timeline.** Date-bound events from every document are assembled into one chronological view of the investigation.
 - **Surfaces what you might miss.** Shared addresses, overlapping directors, an entity that keeps turning up, a new document that contradicts an old one. Contradictions are flagged — they are often stories in themselves.
 - **Applies specialist knowledge.** Built-in guides for dozens of document types teach it what an experienced investigative journalist looks for in corporate filings, court records, land registries and more.
 - **Leaves you in charge.** The vault is plain files you own and annotate. Facts the AI inferred rather than read are marked as such, and everything links back to the source page for verification.
@@ -40,19 +40,21 @@ watchdog          reads, OCRs and converts each document, sends the extracted
 your vault        linked notes in Obsidian; ask questions in Claude Code
 ```
 
-After ingest, you read the briefing, explore the vault in Obsidian, and ask questions inside Claude Code — `/watchdog-query Who are the directors of Shell Co Ltd?` — with every answer cited back to a page.
+After Watchdog has processed the documents you've given it, you read the briefing, explore the vault in Obsidian, and ask questions inside Claude Code — `/watchdog-query Who are the directors of Shell Co Ltd?` — with every answer cited back to a page.
 
-For a closer look at what happens to a single document — the OCR decision, the sectioning, the model calls — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
+For a closer look at what happens to a single document — the OCR pipeline, the information extraction process, the final summarization step — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
 
 ## What you need
 
 - macOS, Linux or Windows
 - [Obsidian](https://obsidian.md) — free
-- [Claude Code](https://claude.ai/download) — free to install, and required
-- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key
+- [Claude Code](https://claude.ai/download) — free to install, and required for asking questions of your vault
+- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key, since Claude Code needs one either way. The ingest pipeline can be pointed at a different provider instead — OpenAI, Gemini, DeepSeek, or a local model — see [Configuration](https://github.com/tomcardoso/watchdog/blob/main/docs/configuration.md#model-backends); asking questions of the vault always runs on Claude
 - Python 3.10+, plus a few free system tools the [install guide](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md) covers
 
-A Pro subscription (US$20/month) is enough for most journalism work.
+A Claude Pro subscription (US$20/month) is enough for most journalism work.
+
+Watchdog benchmarks its own model and effort defaults against real court and financial filings rather than picking one on reputation alone — see [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) for the full results. The current top recommendation for extraction is OpenAI's GPT-5.6 Luna, at roughly $1 per 1,000 pages; Claude stays the zero-setup default.
 
 ## Installation
 
