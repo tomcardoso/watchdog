@@ -566,7 +566,13 @@ def _setup_metered_ingestion(state: dict) -> None:
     to one model from that provider — the metered-ingestion path offered from `watchdog setup`
     when Claude is on a subscription (#325). Asks for the model once rather than once per stage,
     since the common case is the same model everywhere; `watchdog configure <key>` remains the
-    way to route an individual stage to something else afterward."""
+    way to route an individual stage to something else afterward.
+
+    Also applies each stage's generic schema-default effort level (classifier low, extractor
+    medium, finalizer high — the task's own shape, not a per-model tuned recommendation; see
+    D225) wherever the chosen model actually supports it, so effort doesn't silently stay unset
+    the way it used to. A model-specific tuned effort (e.g. Luna's benchmarked `high` for
+    extraction) is a `watchdog configure extractor_effort` step away, same as before."""
     extras = [p for p in _PROVIDERS if p != "anthropic"]
     items = [_PROVIDERS[p]["label"] for p in extras]
     result = pick(items, 0, title="Which service for ingestion?")
@@ -588,7 +594,8 @@ def _setup_metered_ingestion(state: dict) -> None:
         return
 
     from watchdog.cmd.base import CONFIG_FILE, WATCHDOG_HOME
-    from watchdog.cmd.setup import _pick_model_interactive
+    from watchdog.cmd.setup import _CONFIGURE_KEYS, _pick_model_interactive
+    from watchdog.model_client import effort_supported
     config: dict = {}
     if CONFIG_FILE.exists():
         config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
@@ -601,6 +608,12 @@ def _setup_metered_ingestion(state: dict) -> None:
         config["classifier_model"] = value
         config["extractor_model"] = value
         config["finalizer_model"] = value
+
+        model_id = value.removeprefix(f"{provider}:")
+        for key in ("classifier_effort", "extractor_effort", "finalizer_effort"):
+            default_effort = _CONFIGURE_KEYS[key]["default"]
+            if effort_supported(provider, model_id, default_effort):
+                config[key] = default_effort
 
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")

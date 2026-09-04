@@ -207,8 +207,33 @@ def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path,
     assert config["finalizer_model"].startswith("gemini:")
     # One pick, applied to every stage — not three independent choices.
     assert config["classifier_model"] == config["extractor_model"] == config["finalizer_model"]
+    # Every Gemini model accepts low/medium/high unconditionally, so the schema-default effort
+    # for each stage gets applied too — not the Luna-tuned combo, the generic per-task shape.
+    assert config["classifier_effort"] == "low"
+    assert config["extractor_effort"] == "medium"
+    assert config["finalizer_effort"] == "high"
     # Extraction no longer runs on the subscription session, so nothing tunes concurrency.
     assert "extract_concurrency" not in config
+
+
+def test_setup_metered_deepseek_leaves_effort_unset(home, tmp_path, monkeypatch):
+    """DeepSeek's base (non-thinking) ids accept no effort level at all — applying one would
+    make the very next ingest call error. The picker only offers base ids, so effort must stay
+    unset for a DeepSeek pick, unlike Gemini/OpenAI."""
+    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    # mode=subscription (1), route to metered (y), pick DeepSeek (2nd provider), then the first
+    # listed model.
+    _answers(monkeypatch, "1", "y", "2", "1")
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "ds-test-key-123456")
+    auth.setup_auth_interactive(interactive=True)
+
+    config = json.loads((tmp_path / "config.json").read_text())
+    assert config["classifier_model"].startswith("deepseek:")
+    assert config["extractor_model"].startswith("deepseek:")
+    assert config["finalizer_model"].startswith("deepseek:")
+    assert "classifier_effort" not in config
+    assert "extractor_effort" not in config
+    assert "finalizer_effort" not in config
 
 
 def test_setup_api_key_does_not_tune_concurrency(home, monkeypatch):
