@@ -54,7 +54,7 @@ For a closer look at what happens to a single document — the OCR pipeline, the
 
 A Claude Pro subscription (US$20/month) is enough for most journalism work.
 
-Watchdog benchmarks its own model and effort defaults against real court and financial filings rather than picking one on reputation alone — see [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) for the full results. The current top recommendation for extraction is OpenAI's GPT-5.6 Luna, at roughly $1 per 1,000 pages; Claude stays the zero-setup default.
+Watchdog benchmarks its own model and effort defaults against real court and financial filings rather than picking one on reputation alone — see [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) for the full results. The current top recommendation for extraction is OpenAI's GPT-5.6 Luna, at roughly $1 per 1,000 pages; Claude stays the zero-setup default. See [the install guide](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md#optional-using-gpt-56-luna-for-extraction) for how to set it up.
 
 ## Installation
 
