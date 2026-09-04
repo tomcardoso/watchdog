@@ -8,8 +8,6 @@ Watchdog is a command-line tool for journalists who accumulate large sets of pub
 
 The vault lives in [Obsidian](https://obsidian.md), a free note-taking app, as ordinary files on your computer. The information-extraction work is carried by an LLM (be that Claude, ChatGPT, Gemini, DeepSeek, etc.). The questions run in [Claude Code](https://claude.ai/download), Anthropic's AI assistant for the terminal.
 
-> **This project is still a work in progress.** The core pipeline works and has been tested on macOS with real investigation documents. It is not yet battle-hardened. Feedback and contributions are welcome.
-
 ## Public records only
 
 Watchdog is careful with your files. The originals never leave your computer, and all document conversion runs locally. But the extracted text of each document is sent to a cloud AI model for analysis, and there is no way to take that back. So Watchdog is only for documents that are public, or presumptively public.
