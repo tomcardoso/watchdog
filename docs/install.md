@@ -129,6 +129,21 @@ watchdog about
 
 You should see Watchdog's version number and project links. If you see `watchdog: command not found` instead, head to [Troubleshooting](troubleshooting.md#watchdog-command-not-found).
 
+## Optional: using GPT-5.6 Luna for extraction
+
+Claude on your existing subscription is the default and needs nothing extra — skip this section if that's enough for you. It stops being enough once you're feeding Watchdog real volume: subscription auth shares one Claude Code session's rate limit, and a run of even a handful of documents can trip it — one traced case hit it at just six documents ingested at once, and the run stalls waiting out the limit rather than failing outright. Routing extraction to a metered API key instead avoids that, and lets documents run many at a time rather than a few.
+
+Watchdog benchmarks its own model recommendations against real court and financial filings rather than picking one on reputation — see [Benchmarks](benchmarks.md) for the numbers and the reasoning behind them. The current pick for extraction is OpenAI's GPT-5.6 Luna, at roughly $1 per 1,000 pages. That's today's answer, not a permanent one — cheap models keep improving, and this recommendation will move as better ones come along.
+
+To set it up:
+
+1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys** in the left sidebar.
+2. Add a payment method under **Settings → Billing**. Unlike Claude's flat monthly subscription, OpenAI's API is pay-as-you-go with no free tier, so a card on file is required before a key can make any paid calls.
+3. Click **Create new secret key** and copy it — it's shown only once.
+4. Run `watchdog setup` (or, if you've already set up, `watchdog configure extractor_model`) and paste the key when it offers to route ingestion to a metered provider.
+
+See [Model backends](configuration.md#model-backends) for routing the other pipeline stages the same way, and [Controlling cost](configuration.md#controlling-cost) for the full cost picture.
+
 ## Optional: audio and video transcription
 
 Watchdog can transcribe audio and video files if you install support for it. This requires **ffmpeg** and adds roughly 2 GB of dependencies.
