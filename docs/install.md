@@ -140,13 +140,19 @@ To set it up:
 1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys** in the left sidebar.
 2. Add a payment method under **Settings → Billing**. Unlike Claude's flat monthly subscription, OpenAI's API is pay-as-you-go with no free tier, so a card on file is required before a key can make any paid calls.
 3. Click **Create new secret key** and copy it — it's shown only once.
-4. Run `watchdog setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick applies to all three ingest stages (classifier, extractor, finalizer). If you've already set up, or want to change the pick later, set each stage directly instead:
+4. Run `watchdog setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. It does not set the recommended effort levels, and neither does picking the models any other way — that always needs doing separately:
+
+   ```bash
+   watchdog configure classifier_effort low
+   watchdog configure extractor_effort high
+   watchdog configure finalizer_effort high
+   ```
+
+   If you'd rather skip `watchdog setup`'s wizard, or want to change the pick later, set the models directly too:
 
    ```bash
    watchdog configure classifier_model openai:gpt-5.6-luna
-   watchdog configure classifier_effort low
    watchdog configure extractor_model openai:gpt-5.6-luna
-   watchdog configure extractor_effort high
    watchdog configure finalizer_model openai:gpt-5.6-luna
    ```
 
