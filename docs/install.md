@@ -140,9 +140,26 @@ To set it up:
 1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys** in the left sidebar.
 2. Add a payment method under **Settings → Billing**. Unlike Claude's flat monthly subscription, OpenAI's API is pay-as-you-go with no free tier, so a card on file is required before a key can make any paid calls.
 3. Click **Create new secret key** and copy it — it's shown only once.
-4. Run `watchdog setup` (or, if you've already set up, `watchdog configure extractor_model`) and paste the key when it offers to route ingestion to a metered provider.
+4. Run `watchdog setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. By default, model effort levels for the classify/extract/finalize model steps are set to low/medium/high, respectively, but benchmarks have found that Luna extractions perform best with effort set to `high`. To do this, run the following command:
 
-See [Model backends](configuration.md#model-backends) for routing the other pipeline stages the same way, and [Controlling cost](configuration.md#controlling-cost) for the full cost picture.
+   ```bash
+   watchdog configure extractor_effort high
+   ```
+
+   If want to change your choice of model or effort level later, you can set the models directly by running `watchdog configure` and tweaking the configuration interactively, or by running the following commands:
+
+   ```bash
+   watchdog configure classifier_model openai:gpt-5.6-luna
+   watchdog configure classifier_effort low
+   watchdog configure extractor_model openai:gpt-5.6-luna
+   watchdog configure extractor_effort high
+   watchdog configure finalizer_model openai:gpt-5.6-luna
+   watchdog configure finalizer_effort high
+   ```
+
+   Every future `watchdog dig`/`watchdog bark` uses these until you change them again — no per-run flags needed. `watchdog configure` with no arguments shows every setting's current value, including these; `watchdog configure <key>` also works to route just one stage somewhere different, if you want a mix.
+
+See [Model backends](configuration.md#model-backends) for routing a stage to a different provider entirely, and [Controlling cost](configuration.md#controlling-cost) for the full cost picture.
 
 ## Optional: audio and video transcription
 
