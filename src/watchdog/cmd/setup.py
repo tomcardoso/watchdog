@@ -635,6 +635,11 @@ _CONFIGURE_KEYS = {
     },
 }
 
+# Column width for the `watchdog configure` key listing (both the plain listing and the wizard
+# menu) — derived from the longest key name so a future key can't silently break alignment the
+# way a hardcoded width did (section_token_threshold, finalizer_reconciliation_model, ...).
+_KEY_COL_WIDTH = max(len(k) for k in _CONFIGURE_KEYS)
+
 # Display grouping for the `watchdog configure` listing (presentation only — set/get is
 # unaffected). Each section owns an ordered list of keys; any key missing from every
 # section is still shown, under "Other", so a newly added key never silently disappears.
@@ -1148,7 +1153,7 @@ def _wizard_menu(config: dict, initial_sel: int = 0):
 
     Built on the shared `interactive.pick()` (raw-mode with a numbered fallback)."""
     def _label(k):
-        return f"{k:<22} {_display_value(k, config.get(k), config)}"
+        return f"{k:<{_KEY_COL_WIDTH}} {_display_value(k, config.get(k), config)}"
 
     items: list = []   # str (selectable key label) or interactive.Header
     keys: list = []    # keys, parallel to the selectable items in `items`
@@ -1214,8 +1219,8 @@ def cmd_configure(args) -> None:
 
         def _print_key(k):
             meta = _CONFIGURE_KEYS[k]
-            print(f"  {_DIM}{k:<26}{_RESET} {_display_value(k, config.get(k), config)}")
-            print(f"  {' ' * 26} {_DIM}{meta['short']}{_RESET}")
+            print(f"  {_DIM}{k:<{_KEY_COL_WIDTH}}{_RESET} {_display_value(k, config.get(k), config)}")
+            print(f"  {' ' * _KEY_COL_WIDTH} {_DIM}{meta['short']}{_RESET}")
             print()
 
         shown = set()
