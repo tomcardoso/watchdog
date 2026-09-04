@@ -562,9 +562,11 @@ def _maybe_restore_concurrency_from_subscription() -> bool:
 
 
 def _setup_metered_ingestion(state: dict) -> None:
-    """Pick a non-Claude provider, store its key, and set classifier/extractor/finalizer_model
-    to that provider's models — the metered-ingestion path offered from `watchdog setup` when
-    Claude is on a subscription (#325)."""
+    """Pick a non-Claude provider, store its key, and route classifier/extractor/finalizer_model
+    to one model from that provider — the metered-ingestion path offered from `watchdog setup`
+    when Claude is on a subscription (#325). Asks for the model once rather than once per stage,
+    since the common case is the same model everywhere; `watchdog configure <key>` remains the
+    way to route an individual stage to something else afterward."""
     extras = [p for p in _PROVIDERS if p != "anthropic"]
     items = [_PROVIDERS[p]["label"] for p in extras]
     result = pick(items, 0, title="Which service for ingestion?")
@@ -591,14 +593,14 @@ def _setup_metered_ingestion(state: dict) -> None:
     if CONFIG_FILE.exists():
         config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
 
-    print(f"\n  {_BOLD}Pick default models for ingestion{_RESET} "
-          f"{_DIM}(change anytime with watchdog configure){_RESET}")
-    for key, label in (("classifier_model", "Classifier"), ("extractor_model", "Extractor"),
-                       ("finalizer_model", "Finalizer")):
-        print(f"\n  {label}")
-        value = _pick_model_interactive(config.get(key), only_provider=provider)
-        if value:
-            config[key] = value
+    print(f"\n  {_BOLD}Pick a model for ingestion{_RESET} "
+          f"{_DIM}(used for classifying, extracting, and finalizing — route an individual stage"
+          f" elsewhere anytime with watchdog configure){_RESET}")
+    value = _pick_model_interactive(config.get("extractor_model"), only_provider=provider)
+    if value:
+        config["classifier_model"] = value
+        config["extractor_model"] = value
+        config["finalizer_model"] = value
 
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
