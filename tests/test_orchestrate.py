@@ -88,6 +88,34 @@ def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, 
     assert ok_index < warn_index
 
 
+def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
+    """The live region (and its pinned "Elapsed" row) used to close the instant extraction's
+    gather finished — before finalize (reconcile/commit/synthesize/briefing) even started, so a
+    long post-processing step went silent with nothing to show it wasn't a stall (live-run
+    regression). It must stay open until finalize is done, and close cleanly afterward."""
+    from watchdog.terminal import LiveRegion as _RealLiveRegion
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+    # Force the live region on even though pytest's captured stdout isn't a real TTY — the
+    # timer task and board teardown are gated on `_board.enabled`.
+    monkeypatch.setattr(orchestrate, "LiveRegion", lambda: _RealLiveRegion(enabled=True))
+
+    board_during_finalize = []
+    real_finalize = orchestrate.finalize
+
+    async def _spy_finalize(*a, **k):
+        board_during_finalize.append(orchestrate._board)
+        return await real_finalize(*a, **k)
+    monkeypatch.setattr(orchestrate, "finalize", _spy_finalize)
+
+    asyncio.run(orchestrate.run(vault))
+
+    assert board_during_finalize == [board_during_finalize[0]]   # finalize ran exactly once
+    assert board_during_finalize[0] is not None   # still open when finalize started
+    assert orchestrate._board is None             # closed once the whole run finished
+
+
 def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
     """A per-document START line is logged when extraction begins, ahead of its OK line —
     with concurrent extraction the completion-ordered log otherwise hides the staggered

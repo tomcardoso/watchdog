@@ -1,5 +1,7 @@
 """Tests for the Playwright/Chromium check in `watchdog setup` (#246)."""
 
+from pathlib import Path
+
 import watchdog.cmd.base as base
 import watchdog.setup_cmd as sc
 
@@ -54,6 +56,7 @@ def test_playwright_missing_declined_uv_install_prints_uv_hint(monkeypatch, caps
 def test_playwright_missing_accepted_installs_both(monkeypatch, capsys):
     monkeypatch.setattr("watchdog.pipeline.capture.render_available", lambda: False)
     monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    monkeypatch.setattr(sc, "_node_ca_bundle", lambda: None)
 
     calls = []
 
@@ -96,6 +99,110 @@ def test_playwright_pip_install_failure_warns_and_stops(monkeypatch, capsys):
     out = capsys.readouterr().out
     assert "could not install playwright" in out
     assert len(calls) == 1  # never attempted the chromium download after pip failed
+
+
+def test_playwright_install_sets_node_extra_ca_certs_when_missing(monkeypatch):
+    """Playwright's chromium download shells out to a bundled Node driver, which never consults
+    the OS trust store — under a TLS-inspecting corporate proxy (Netskope), the download fails
+    with SELF_SIGNED_CERT_IN_CHAIN even though the OS trusts the proxy's root CA. `NODE_EXTRA_CA_
+    CERTS` is Node's own escape hatch for this."""
+    monkeypatch.setattr("watchdog.pipeline.capture.render_available", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
+    monkeypatch.setattr(sc, "_node_ca_bundle", lambda: "/fake/ca-bundle.pem")
+
+    envs = []
+
+    class _Result:
+        def __init__(self, returncode):
+            self.returncode = returncode
+            self.stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        envs.append(kwargs.get("env"))
+        return _Result(0)
+
+    monkeypatch.setattr(sc.subprocess, "run", _fake_run)
+
+    sc._check_playwright()
+    assert envs[1]["NODE_EXTRA_CA_CERTS"] == "/fake/ca-bundle.pem"
+
+
+def test_playwright_install_respects_existing_node_extra_ca_certs(monkeypatch):
+    """If the user has already set NODE_EXTRA_CA_CERTS themselves, don't overwrite it — and
+    don't even bother building a bundle."""
+    monkeypatch.setattr("watchdog.pipeline.capture.render_available", lambda: False)
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    monkeypatch.setenv("NODE_EXTRA_CA_CERTS", "/already/set.pem")
+
+    def _boom():
+        raise AssertionError("should not build a bundle when NODE_EXTRA_CA_CERTS is already set")
+    monkeypatch.setattr(sc, "_node_ca_bundle", _boom)
+
+    envs = []
+
+    class _Result:
+        def __init__(self, returncode):
+            self.returncode = returncode
+            self.stderr = ""
+
+    def _fake_run(cmd, **kwargs):
+        envs.append(kwargs.get("env"))
+        return _Result(0)
+
+    monkeypatch.setattr(sc.subprocess, "run", _fake_run)
+
+    sc._check_playwright()
+    assert envs[1]["NODE_EXTRA_CA_CERTS"] == "/already/set.pem"
+
+
+def test_node_ca_bundle_returns_none_on_non_darwin(monkeypatch):
+    monkeypatch.setattr(sc.sys, "platform", "linux")
+    assert sc._node_ca_bundle() is None
+
+
+def test_node_ca_bundle_combines_keychain_exports_and_default_cafile(monkeypatch, tmp_path):
+    monkeypatch.setattr(sc.sys, "platform", "darwin")
+    monkeypatch.setattr(sc, "WATCHDOG_HOME", tmp_path)
+
+    class _Result:
+        def __init__(self, stdout):
+            self.returncode = 0
+            self.stdout = stdout
+
+    def _fake_run(cmd, **kwargs):
+        keychain = cmd[-1]
+        return _Result(f"-----BEGIN CERTIFICATE-----\n{keychain}\n-----END CERTIFICATE-----\n")
+    monkeypatch.setattr(sc.subprocess, "run", _fake_run)
+
+    default_cafile = tmp_path / "default-ca.pem"
+    default_cafile.write_text("-----BEGIN CERTIFICATE-----\ndefault-root\n-----END CERTIFICATE-----\n")
+    import ssl
+    monkeypatch.setattr(ssl, "get_default_verify_paths",
+                         lambda: type("P", (), {"cafile": str(default_cafile)})())
+
+    bundle = sc._node_ca_bundle()
+    assert bundle is not None
+    content = Path(bundle).read_text()
+    assert "System.keychain" in content
+    assert "SystemRootCertificates.keychain" in content
+    assert "default-root" in content
+
+
+def test_node_ca_bundle_returns_none_when_nothing_found(monkeypatch, tmp_path):
+    monkeypatch.setattr(sc.sys, "platform", "darwin")
+    monkeypatch.setattr(sc, "WATCHDOG_HOME", tmp_path)
+
+    class _Result:
+        returncode = 1
+        stdout = ""
+
+    monkeypatch.setattr(sc.subprocess, "run", lambda cmd, **kwargs: _Result())
+    import ssl
+    monkeypatch.setattr(ssl, "get_default_verify_paths",
+                         lambda: type("P", (), {"cafile": str(tmp_path / "missing.pem")})())
+
+    assert sc._node_ca_bundle() is None
 
 
 def test_detected_install_manager_pipx(monkeypatch):

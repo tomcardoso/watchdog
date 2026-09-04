@@ -576,9 +576,12 @@ def _document_occurrence_count(page_texts: dict[int, str], locator: str) -> int:
 def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     """Resolve every ``document.key_facts[].quote_locator`` into a full ``quote`` (#529), and
     verify any legacy ``quote`` (a pre-#529 extraction re-run through post-flight with no
-    locator). Mutates ``extraction`` in place; returns a WARN line per locator that couldn't be
-    resolved, per ambiguous (page-collided) match, per page-spanning match, and per corrected or
-    uncorrectable page citation.
+    locator). Mutates ``extraction`` in place; returns a WARN line only for an outcome that
+    actually needs a reader's attention — a locator that couldn't be resolved at all, or a page
+    citation left uncorrected because it's ambiguous. A page-spanning match, an ambiguous-but-
+    resolved match (used the first occurrence), and a confidently auto-corrected page citation
+    are routine self-resolution, not warnings — live runs on live documents showed these three
+    accounting for most of the warning volume with nothing for a reader to act on.
 
     Runs BEFORE `explode_key_facts` — the fan-out copies an already-resolved ``quote`` onto
     each entity's fanned-out evidence fragment, so it no longer walks
@@ -603,18 +606,9 @@ def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
                     f"(or adjacent pages) — flagged as unverified: {locator!r}"
                 )
             elif result.get("spans_pages"):
-                a_page, b_page = result["spans_pages"]
-                warnings.append(
-                    f"document.key_facts[{i}].quote_locator only resolved by joining pages "
-                    f"{a_page} and {b_page} — the source sentence crosses a page break, so no "
-                    f"single page fully contains it: {locator!r}"
-                )
+                pass  # resolved fine (joined two pages) — nothing for a reader to act on
             elif result.get("ambiguous"):
-                warnings.append(
-                    f"document.key_facts[{i}].quote_locator matched {result['occurrences']} times "
-                    f"on page {result.get('found_page', fact.get('page'))} — used the first match: "
-                    f"{locator!r}"
-                )
+                pass  # resolved fine (used the first of several matches) — no reader action
             elif result.get("found_page") is not None:
                 # A single match within the ±1 window — but not on the page the model cited
                 # (#560). Trusting `fact["page"]` to it needs more than "unique among the three
@@ -622,14 +616,7 @@ def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
                 # before correcting the citation a reporter will actually see, rather than just
                 # the quote text resolve_quote already resolves regardless.
                 if _document_occurrence_count(page_texts, locator) == 1:
-                    old_page = fact.get("page")
-                    fact["page"] = result["found_page"]
-                    warnings.append(
-                        f"document.key_facts[{i}].page corrected from {old_page} to "
-                        f"{result['found_page']} — quote_locator was cited to page {old_page} "
-                        f"but uniquely found (document-wide) on page {result['found_page']}: "
-                        f"{locator!r}"
-                    )
+                    fact["page"] = result["found_page"]  # confidently auto-corrected, no warning
                 else:
                     warnings.append(
                         f"document.key_facts[{i}].quote_locator was cited to page "

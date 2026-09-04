@@ -3,6 +3,8 @@ dependency since D223, though the runtime fallback below still degrades graceful
 
 import builtins
 import sys
+import threading
+import time
 import types
 import warnings
 
@@ -238,6 +240,39 @@ def test_load_gliner_installs_permanent_predict_time_filter(monkeypatch):
         warnings.warn_explicit("Sentence of length 999 has been truncated to 384", UserWarning,
                                "processor.py", 417, module="gliner.data_processing.processor")
     assert caught == []
+
+
+def test_load_gliner_singleton_is_thread_safe(monkeypatch):
+    """`harvest_entities` runs concurrently across documents via `asyncio.to_thread` (up to the
+    ingest pipeline's parallelism cap), so `_load_gliner`'s lazy-singleton check must be safe
+    against concurrent callers. Without a lock, two threads can both see `_gliner_model is None`
+    and both call `from_pretrained` — racing on the global `ssl` patch (one thread's `finally`
+    can unpatch it mid-download for the other) and on the load-time stderr/warnings suppression,
+    which is how HF Hub's unauthenticated-request notice and torch's jit.script warning leaked
+    through on a live run. The sleep inside the fake `from_pretrained` widens the race window so
+    this fails reliably without the lock."""
+    class _FakeGLiNER:
+        call_count = 0
+
+        @classmethod
+        def from_pretrained(cls, name):
+            cls.call_count += 1
+            time.sleep(0.05)
+            return object()
+
+    monkeypatch.setitem(sys.modules, "gliner", types.SimpleNamespace(GLiNER=_FakeGLiNER))
+    monkeypatch.setattr(harvest, "_gliner_model", None)
+
+    results = []
+    threads = [threading.Thread(target=lambda: results.append(harvest._load_gliner()))
+               for _ in range(5)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert _FakeGLiNER.call_count == 1
+    assert len({id(r) for r in results}) == 1
 
 
 # ── real-corpus regression fixtures (#361 benchmark misses) ────────────────────────────────

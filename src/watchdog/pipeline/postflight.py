@@ -67,7 +67,10 @@ def _parse_precise_date(raw: str) -> str | None:
     dropped rather than have this guess at what it means — this function returns None for those,
     and the caller's existing drop+warn behaviour is unchanged. Named-month forms only (see
     `_MONTHS`); returns None on no match or an invalid day-of-month (e.g. "February 30")."""
-    text = raw.strip()
+    # A trailing comma/period is punctuation carried over from the source sentence the date was
+    # lifted out of ("...on February 1, 2021, the applicant..."), not part of the date itself —
+    # stripping it is not a TRANSCRIBE, DON'T CORRECT violation the way guessing a value would be.
+    text = raw.strip().rstrip(",.")
     for rx, has_day in ((_MONTH_DAY_YEAR_RE, True), (_DAY_MONTH_YEAR_RE, True), (_MONTH_YEAR_RE, False)):
         m = rx.match(text)
         if not m:
