@@ -22,14 +22,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      # Mirrors ci.yml's test job: `--no-deps` keeps docling's heavy tree (torch, onnxruntime) out
-      # of the release gate; everything the tests actually import is listed explicitly below. Keep
-      # this list in sync with ci.yml's.
-      - name: Install package and dev dependencies
-        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic
-
-      - name: Run tests
-        run: pytest --timeout=60
+      - uses: ./.github/actions/run-tests
 
   build:
     needs: test
