@@ -192,8 +192,8 @@ def test_setup_subscription_declined_metered_leaves_custom_concurrency(home, mon
 def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path, monkeypatch):
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
     # mode=subscription (1), route to metered (y), pick Gemini (3rd provider), then pick the
-    # first listed model for each of the three ingest stages.
-    _answers(monkeypatch, "1", "y", "3", "1", "1", "1")
+    # first listed model once — applied to all three ingest stages.
+    _answers(monkeypatch, "1", "y", "3", "1")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-test-key-123456")
     auth.setup_auth_interactive(interactive=True)
 
@@ -205,6 +205,8 @@ def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path,
     assert config["classifier_model"].startswith("gemini:")
     assert config["extractor_model"].startswith("gemini:")
     assert config["finalizer_model"].startswith("gemini:")
+    # One pick, applied to every stage — not three independent choices.
+    assert config["classifier_model"] == config["extractor_model"] == config["finalizer_model"]
     # Extraction no longer runs on the subscription session, so nothing tunes concurrency.
     assert "extract_concurrency" not in config
 
