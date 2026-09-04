@@ -46,14 +46,4 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      # `--no-deps` keeps docling's heavy tree out of CI; everything the tests actually import is
-      # listed explicitly below. python-docx/python-pptx/openpyxl/Pillow/defusedxml are here so the
-      # file_metadata tests (#369) run rather than `importorskip` themselves into a silent pass —
-      # a skipped entity-bomb test is worth nothing. anthropic is here for the same reason (#563):
-      # test_model_client.py's rate-limit header capture tests are the first to call
-      # _api_complete_async against the real SDK's classes rather than bypassing it via _ABACKENDS.
-      - name: Install package and dev dependencies
-        run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic
-
-      - name: Run tests
-        run: pytest --timeout=60
+      - uses: ./.github/actions/run-tests
