@@ -235,6 +235,14 @@ def test_parse_precise_date_day_of_month_legal_phrasing():
     assert _parse_precise_date("1st day of February, 2021") == "2021-02-01"
 
 
+def test_parse_precise_date_tolerates_trailing_comma_from_source_sentence():
+    """A date lifted out of running prose ("...on February 1, 2021, the applicant...") can carry
+    the sentence's own trailing comma into the field — that's punctuation noise, not part of the
+    date, and shouldn't make an otherwise-precise date unparseable (live-run regression)."""
+    assert _parse_precise_date("February 1, 2021,") == "2021-02-01"
+    assert _parse_precise_date("May 2019.") == "2019-05"
+
+
 def test_parse_precise_date_rejects_ambiguous_or_invalid():
     assert _parse_precise_date("2020-2021") is None       # fiscal-year range, not a date
     assert _parse_precise_date("2018-2019") is None

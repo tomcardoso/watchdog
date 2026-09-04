@@ -11,6 +11,7 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 """
 
 import asyncio
+import contextlib
 import datetime
 import hashlib
 import json
@@ -2242,7 +2243,10 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     if leads_relpath:
         n = leads.total(leads_data)
         out["leads"] = leads_relpath
-        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} lead{'s' if n != 1 else ''} "
+        # No {_YELLOW}⚠{_RESET} here (unlike the watch-word alert above) — this is a routine
+        # pointer to a standing digest, not something wrong with this run, and styling it as a
+        # warning made it look like one more thing to fix rather than a file to go read.
+        _say(f"{_BOLD}{n}{_RESET} lead{'s' if n != 1 else ''} "
              f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
              f"{_CYAN}{leads_relpath}{_RESET}")
 
@@ -2276,7 +2280,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     if requests_relpath:
         n = len(requests.open_requests(vault))
         out["requests"] = requests_relpath
-        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} open document request"
+        # Same reasoning as the leads line above — a routine pointer, not a warning.
+        _say(f"{_BOLD}{n}{_RESET} open document request"
              f"{'s' if n != 1 else ''} {_DIM}(documents to go and get){_RESET} — "
              f"{_CYAN}{requests_relpath}{_RESET}")
     return out
@@ -2679,6 +2684,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # so it's a genuinely different flow — handled entirely by _run_batch (which also covers a
     # resumed pending batch even when `shas` is empty). Both branches converge on `results` /
     # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
+    timer_task = None   # only started on the non-batch path below; referenced again in the tail
     if extract_backend in model_client.BATCH_BACKENDS:
         # Same defense-in-depth posture as `_run_batch`'s own auth guard: `cmd_ingest` already
         # refuses this combination, but a programmatic caller that skips CLI validation (a
@@ -2857,18 +2863,13 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             with _board.capture_stderr():
                 await asyncio.gather(*tasks, return_exceptions=True)
         finally:
-            if timer_task is not None:
-                timer_task.cancel()
-                try:
-                    await timer_task
-                except asyncio.CancelledError:
-                    pass
             if handler_set:
                 loop.remove_signal_handler(signal.SIGINT)
-            # Close the live region: extraction is done, so post-processing (sequential) and the
-            # summary print plainly. _say falls back to plain printing once _board is None.
-            _board.stop()
-            _board = None
+            # The live region and its pinned "Elapsed" row stay open past this point — torn down
+            # in the shared tail below, once finalize() has also had a chance to run. Post-
+            # processing (reconcile/commit/synthesize/briefing) can take minutes with no
+            # per-document rows of its own; closing the region here made it go silent the moment
+            # extraction's gather finished, which read exactly like a stall.
 
         results = [t.result() for t in tasks if t.done() and not t.cancelled()]
         cancelled_flag = cancelled.is_set()
@@ -2900,11 +2901,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
             # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
-            # synthesized and briefed together with this run's documents.
-            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
-                                                    post_effort=post_effort, post_backend=post_backend,
-                                                    skip_briefing=skip_briefing,
-                                                    finalizer_overrides=finalizer_overrides)
+            # synthesized and briefed together with this run's documents. Wrapped in the same
+            # stderr capture as extraction (#419) — reconcile/synthesize can load the same
+            # stderr-noisy local models (e.g. GLiNER) while the live region is still open below.
+            with _board.capture_stderr() if _board is not None else contextlib.nullcontext():
+                summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
+                                                        post_effort=post_effort, post_backend=post_backend,
+                                                        skip_briefing=skip_briefing,
+                                                        finalizer_overrides=finalizer_overrides)
             # `results` was built before finalize's commit pass ran write_vault, so each item's
             # new/updated entity split was still unknown at the time (#403 phase 1) — sync it in
             # now from what the commit pass actually did, so a caller reading `summary["results"]`
@@ -2922,6 +2926,17 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             _say(f"{_YELLOW}Post-processing incomplete{_RESET}{_DIM} — {e}{_RESET}")
             _say(f"{_DIM}Your {summary['extracted']} extracted document"
                  f"{'s are' if summary['extracted'] != 1 else ' is'} saved.{_RESET}")
+    if _board is not None:
+        # Close the live region now that finalize (if any) has also run — see the comment at the
+        # extraction gather's own `finally` above for why this was moved out of there.
+        if timer_task is not None:
+            timer_task.cancel()
+            try:
+                await timer_task
+            except asyncio.CancelledError:
+                pass
+        _board.stop()
+        _board = None
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled_flag else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")

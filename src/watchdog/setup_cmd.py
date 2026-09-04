@@ -99,9 +99,14 @@ def _check_playwright() -> None:
         return
 
     print(f"  {_DIM}Downloading Chromium (one-time, ~150 MB)...{_RESET}")
+    env = os.environ.copy()
+    if "NODE_EXTRA_CA_CERTS" not in env:
+        bundle = _node_ca_bundle()
+        if bundle:
+            env["NODE_EXTRA_CA_CERTS"] = bundle
     result = subprocess.run(
         [sys.executable, "-m", "playwright", "install", "chromium"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, env=env,
     )
     if result.returncode == 0:
         _ok("Playwright + Chromium installed")
@@ -195,6 +200,49 @@ def _install_completion(shell: str, profile: Path | None, force: bool = False) -
     with open(profile, "a") as f:
         f.write(f"\n{good_line}\n")
     return str(profile)
+
+
+def _node_ca_bundle() -> str | None:
+    """Build a combined PEM bundle from the OS trust store, for `NODE_EXTRA_CA_CERTS`.
+
+    Playwright's `install` command shells out to a bundled Node.js driver to fetch Chromium.
+    Node ships its own root CA list and never consults the OS trust store, so on a machine
+    running a TLS-inspecting corporate proxy (e.g. Netskope) — whose root CA macOS trusts via
+    Keychain, but Node has never heard of — the download fails with SELF_SIGNED_CERT_IN_CHAIN
+    even though every other app on the machine is fine. `NODE_EXTRA_CA_CERTS` is Node's own
+    escape hatch for exactly this. macOS only: `security` (Keychain export) is macOS-specific,
+    and this is the environment the failure was reported on."""
+    if sys.platform != "darwin":
+        return None
+    import ssl
+
+    parts = []
+    for keychain in (
+        "/Library/Keychains/System.keychain",
+        "/System/Library/Keychains/SystemRootCertificates.keychain",
+    ):
+        try:
+            result = subprocess.run(
+                ["/usr/bin/security", "find-certificate", "-a", "-p", keychain],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                parts.append(result.stdout)
+        except Exception:
+            pass
+    default_cafile = ssl.get_default_verify_paths().cafile
+    if default_cafile and Path(default_cafile).exists():
+        parts.append(Path(default_cafile).read_text())
+    if not parts:
+        return None
+
+    bundle_path = WATCHDOG_HOME / "node-ca-bundle.pem"
+    try:
+        WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
+        bundle_path.write_text("\n".join(parts))
+        return str(bundle_path)
+    except Exception:
+        return None
 
 
 def _download_gliner_model():

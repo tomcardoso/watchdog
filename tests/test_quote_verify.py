@@ -465,14 +465,16 @@ def test_resolve_quotes_flags_unresolved_locator_and_warns():
     assert "key_facts[0]" in warnings[0]
 
 
-def test_resolve_quotes_warns_on_ambiguous_locator():
+def test_resolve_quotes_resolves_ambiguous_locator_without_warning():
+    """An ambiguous locator (matches more than once on the cited page) still resolves fine —
+    the first match is used — so this is routine self-resolution, not a warning: nothing was
+    lost, and there's no reader action to take."""
     extraction = {"document": {"key_facts": [
         {"fact": "x", "page": 3, "quote_locator": "Total revenue was strong"},
     ]}, "entities": []}
     pages = {3: "Total revenue was strong this quarter. Total revenue was strong again next year."}
     warnings = resolve_quotes(extraction, pages)
-    assert len(warnings) == 1
-    assert "matched 2 times on page 3" in warnings[0]
+    assert warnings == []
     assert extraction["document"]["key_facts"][0]["quote"] == "Total revenue was strong this quarter."
 
 
@@ -481,15 +483,15 @@ def test_resolve_quotes_corrects_page_when_locator_is_unique_document_wide():
     cited — used to be completely silent (#560): `fact["page"]` (what every downstream reader
     displays) kept the model's wrong citation even though the quote text itself was quietly
     recovered. When the locator is unique across the WHOLE document, not just within
-    `resolve_quote`'s ±1 window, it's safe to correct the citation itself, not just warn."""
+    `resolve_quote`'s ±1 window, it's safe to correct the citation itself — confidently, and
+    without a warning: the reader never sees the wrong page, so there's nothing to flag."""
     extraction = {"document": {"key_facts": [
         {"fact": "x", "page": 3, "quote_locator": "Total revenue for the year"},
     ]}, "entities": []}
     pages = {3: "Irrelevant content here.",
              4: "Total revenue for the year was strong. Next sentence."}
     warnings = resolve_quotes(extraction, pages)
-    assert len(warnings) == 1
-    assert "page corrected from 3 to 4" in warnings[0]
+    assert warnings == []
     fact = extraction["document"]["key_facts"][0]
     assert fact["quote_found_page"] == 4
     assert fact["page"] == 4   # corrected — the match is unique across the whole document
@@ -514,30 +516,30 @@ def test_resolve_quotes_does_not_correct_page_when_locator_recurs_elsewhere():
     assert fact["page"] == 3   # left as the model wrote it — not safe to trust as unique
 
 
-def test_resolve_quotes_warns_on_page_spanning_match():
+def test_resolve_quotes_resolves_page_spanning_match_without_warning():
+    """The quote still resolves fine by joining the two pages — a reader gets the correct quote,
+    so there's nothing here to act on."""
     extraction = {"document": {"key_facts": [
         {"fact": "x", "page": 2, "quote_locator": "shall be deemed to have withdrawn their application"},
     ]}, "entities": []}
     pages = {2: "Any applicant who does not respond shall be deemed to have withdrawn",
              3: "their application for a transfer of their commuted value."}
     warnings = resolve_quotes(extraction, pages)
-    assert len(warnings) == 1
-    assert "crosses a page break" in warnings[0]
+    assert warnings == []
     fact = extraction["document"]["key_facts"][0]
     assert fact["quote_spans_pages"] == [2, 3]
     assert fact["page"] == 2   # left as-is — no single page fully contains the quote
 
 
-def test_resolve_quotes_ambiguous_and_page_mismatch_warns_once_not_twice():
-    """When a match is both ambiguous AND on a different page than cited, the ambiguous warning
-    already names the found page — a second, separate page-mismatch warning would be redundant."""
+def test_resolve_quotes_ambiguous_and_page_mismatch_resolves_without_warning():
+    """A match that's both ambiguous AND on a different page than cited still resolves fine —
+    the first match is used — so, like the plain ambiguous case, this is not a warning."""
     extraction = {"document": {"key_facts": [
         {"fact": "x", "page": 3, "quote_locator": "Total revenue was strong"},
     ]}, "entities": []}
     pages = {4: "Total revenue was strong this quarter. Total revenue was strong again next year."}
     warnings = resolve_quotes(extraction, pages)
-    assert len(warnings) == 1
-    assert "matched 2 times on page 4" in warnings[0]
+    assert warnings == []
 
 
 def test_resolve_quotes_skips_facts_without_a_locator_or_quote():

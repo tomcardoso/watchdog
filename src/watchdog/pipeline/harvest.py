@@ -18,6 +18,7 @@ import contextlib
 import io
 import os
 import re
+import threading
 import warnings
 
 # ── deterministic patterns ────────────────────────────────────────────────────────────────
@@ -225,6 +226,7 @@ _GLINER_WINDOW_WORDS = 200
 _GLINER_WINDOW_OVERLAP = 50
 
 _gliner_model = None   # module-level singleton — loaded once per process
+_gliner_lock = threading.Lock()  # serializes the one-time load; see _load_gliner
 
 
 @contextlib.contextmanager
@@ -249,7 +251,18 @@ def _quiet_stderr():
 
 def _load_gliner():
     global _gliner_model
-    if _gliner_model is None:
+    if _gliner_model is not None:
+        return _gliner_model
+    # harvest_entities runs concurrently across documents via asyncio.to_thread, so without this
+    # lock two threads can both see `_gliner_model is None` and call `from_pretrained()` at once —
+    # racing on the global `ssl` module patch below (one thread's `finally` can unpatch it while
+    # the other's download is still in flight) and on the stderr suppression a few lines down,
+    # which is exactly how the HF Hub "unauthenticated requests" notice and torch's jit.script
+    # FutureWarning leaked past it once (#456 was about the separate predict()-time warning, not
+    # this load race).
+    with _gliner_lock:
+        if _gliner_model is not None:
+            return _gliner_model
         # Verify the model download via the OS trust store rather than certifi's bundled list —
         # same corporate-proxy fix as D122. `inject_into_ssl` patches the global `ssl` module,
         # so it's scoped to just this one-time load via `finally` (harmless no-op when cached).
