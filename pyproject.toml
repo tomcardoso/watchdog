@@ -6,14 +6,14 @@ build-backend = "hatchling.build"
 # Note: "watchdog" is taken on PyPI (filesystem events library).
 # Package name is "watchdog-intel"; the CLI command is still "watchdog".
 name = "watchdog-intel"
-version = "0.1.0"
+version = "1.0.0"
 description = "Investigative journalism document intelligence — drop records, find connections"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 keywords = ["journalism", "documents", "ocr", "investigative", "obsidian", "public-records"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Other Audience",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
