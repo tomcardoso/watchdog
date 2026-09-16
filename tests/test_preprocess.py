@@ -701,6 +701,20 @@ def test_no_force_ocr_flag_skips_detection_entirely(monkeypatch, tmp_path):
     assert "error" in result   # stopped at the converter, having skipped detection
 
 
+def test_build_converter_forces_cpu_accelerator():
+    """Docling's layout model (RT-DETR-v2) computes a position embedding in float64,
+    which PyTorch's MPS backend can't handle — AcceleratorDevice.AUTO picks MPS on
+    Apple Silicon and every PDF crashes at layout detection (#682). build_converter
+    must always pin the accelerator to CPU rather than leaving Docling's default."""
+    docling_pipeline_options = pytest.importorskip("docling.datamodel.pipeline_options")
+    docling_base_models = pytest.importorskip("docling.datamodel.base_models")
+
+    converter = preprocess.build_converter(force_ocr=False)
+    pdf_options = converter.format_to_options[docling_base_models.InputFormat.PDF]
+    assert (pdf_options.pipeline_options.accelerator_options.device
+            == docling_pipeline_options.AcceleratorDevice.CPU)
+
+
 # ── metadata: what the page-scoped decision reports (#605) ────────────────────
 
 def test_metadata_names_the_pages_when_ocr_was_page_scoped(monkeypatch, tmp_path):

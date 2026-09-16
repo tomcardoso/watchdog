@@ -393,7 +393,9 @@ def build_converter(force_ocr: bool):
       3. EasyOCR (OcrAutoOptions) — universal fallback, no system deps
     """
     from docling.document_converter import DocumentConverter, PdfFormatOption
-    from docling.datamodel.pipeline_options import PdfPipelineOptions, OcrAutoOptions
+    from docling.datamodel.pipeline_options import (
+        PdfPipelineOptions, OcrAutoOptions, AcceleratorOptions, AcceleratorDevice,
+    )
     from docling.datamodel.base_models import InputFormat
 
     engine    = _config_get("ocr_engine", "auto")
@@ -421,10 +423,16 @@ def build_converter(force_ocr: bool):
         else:  # auto or tesseract
             ocr_opts = _make_tesseract_opts(force_ocr)
 
+    # Force CPU: Docling's layout model (RT-DETR-v2) computes a position embedding in
+    # float64, which PyTorch's MPS backend cannot handle — on Apple Silicon, where
+    # torch.backends.mps.is_available() is True, AcceleratorDevice.AUTO picks MPS and
+    # every PDF crashes at layout detection (#682). CPU is the only device this model
+    # currently runs on without crashing; revisit once upstream fixes the MPS path.
     pipeline_options = PdfPipelineOptions(
         do_ocr=True,
         do_table_structure=do_tables,
         ocr_options=ocr_opts,
+        accelerator_options=AcceleratorOptions(device=AcceleratorDevice.CPU),
     )
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
