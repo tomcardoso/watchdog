@@ -832,5 +832,31 @@ def main() -> None:
     print(json.dumps(result, ensure_ascii=False))
 
 
+def _run_isolated_stdout() -> None:
+    """Runs main() with stdout captured, then writes only its last printed line to the real
+    stdout. `preprocess_one`/`_run_slice_subprocess` treat this subprocess's entire stdout as
+    one JSON payload — but docling-ibm-models' TableFormer defaults its own logger's stream to
+    sys.stdout (`docling_ibm_models/tableformer/settings.py`), so a table-structure warning
+    (e.g. "orphan pdf_cell recovered") interleaves with it and breaks that contract with
+    `json.loads`'s "Extra data" error, on an otherwise successful conversion. main()'s own
+    print(json.dumps(...)) is always its last output, so isolating stdout and keeping only the
+    final line recovers the real payload regardless of what any library wrote before it."""
+    import io
+    captured = io.StringIO()
+    real_stdout = sys.stdout
+    sys.stdout = captured
+    exit_code = 0
+    try:
+        main()
+    except SystemExit as e:
+        exit_code = e.code or 0
+    finally:
+        sys.stdout = real_stdout
+    output = captured.getvalue().strip()
+    if output:
+        real_stdout.write(output.rsplit("\n", 1)[-1] + "\n")
+    sys.exit(exit_code)
+
+
 if __name__ == "__main__":
-    main()
+    _run_isolated_stdout()

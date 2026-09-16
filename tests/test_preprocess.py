@@ -1,6 +1,7 @@
 """Tests for preprocess helpers that don't require Docling to be installed."""
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -96,6 +97,46 @@ def test_main_captures_file_metadata_from_original_path_not_a_temp_file(tmp_path
     result = json.loads(capsys.readouterr().out)
     assert seen_paths == [f.resolve()]
     assert result["file_metadata"] == {"author": "stand-in"}
+
+
+def test_run_isolated_stdout_discards_noise_ahead_of_the_json_line(monkeypatch, capsys):
+    """docling-ibm-models' TableFormer logger defaults its own stream to sys.stdout, so a
+    table-structure warning lands on the same channel as main()'s final print(json.dumps(...))
+    — exactly what preprocess_one/_run_slice_subprocess parse as the subprocess's entire
+    output. Real reproduction: a live table-bearing PDF failed chew with json.loads raising
+    "Extra data: line 1 column 5 (char 4)" — the digits of a log line's leading timestamp
+    parsed as a bare JSON number, then everything after it was "extra". _run_isolated_stdout
+    must keep only main()'s last printed line no matter what was printed before it."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    def noisy_main():
+        print("2026-09-16 17:25:49,550 MatchingPostProcessor WARNING  Orphan pdf_cell 70")
+        print(json.dumps({"pages": [{"page": 1, "markdown": "ok"}]}))
+
+    monkeypatch.setattr(preprocess_mod, "main", noisy_main)
+    with pytest.raises(SystemExit) as exc_info:
+        preprocess_mod._run_isolated_stdout()
+    assert exc_info.value.code == 0
+
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1   # exactly one line reaches the real stdout
+    assert json.loads(out) == {"pages": [{"page": 1, "markdown": "ok"}]}
+
+
+def test_run_isolated_stdout_preserves_exit_code_on_error(monkeypatch, capsys):
+    """An error result still exits non-zero (main()'s own contract) even though the JSON now
+    travels through the capture/replay path."""
+    import watchdog.pipeline.preprocess as preprocess_mod
+
+    def failing_main():
+        print(json.dumps({"error": "boom"}))
+        sys.exit(1)
+
+    monkeypatch.setattr(preprocess_mod, "main", failing_main)
+    with pytest.raises(SystemExit) as exc_info:
+        preprocess_mod._run_isolated_stdout()
+    assert exc_info.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {"error": "boom"}
 
 
 def test_process_direct_text_strict_raises_on_invalid_utf8(tmp_path):
