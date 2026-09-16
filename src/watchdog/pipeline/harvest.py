@@ -278,9 +278,15 @@ def _load_gliner():
         warnings.filterwarnings("ignore", category=UserWarning, module=r"gliner(\..*)?")
         truststore.inject_into_ssl()
         try:
-            from gliner import GLiNER
             with warnings.catch_warnings(), contextlib.redirect_stderr(io.StringIO()), _quiet_stderr():
                 warnings.simplefilter("ignore", UserWarning)
+                # The import itself, not just from_pretrained(), must be inside this block:
+                # importing gliner cascades into transformers/torch, and torch's own
+                # `torch.jit.script is not supported in Python 3.14+` FutureWarning fires as a
+                # side effect of that import — before from_pretrained() is ever called. Outside
+                # this block (as it was before), redirect_stderr/_quiet_stderr aren't active yet
+                # and the warning writes straight to the real terminal.
+                from gliner import GLiNER
                 _gliner_model = GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
         finally:
             truststore.extract_from_ssl()

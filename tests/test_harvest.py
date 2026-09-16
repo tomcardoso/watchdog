@@ -217,6 +217,39 @@ def test_load_gliner_suppresses_load_time_warnings_and_stderr(monkeypatch, capsy
     assert capsys.readouterr().err == ""
 
 
+def test_load_gliner_suppresses_output_written_during_the_import_itself(monkeypatch, capsys):
+    """`import gliner` cascades into transformers/torch, and torch's own `torch.jit.script is
+    not supported in Python 3.14+` FutureWarning fires as a side effect of that import — before
+    from_pretrained() is ever called. A live run leaked this warning to the real terminal
+    because the `from gliner import GLiNER` statement sat outside the redirect_stderr/
+    _quiet_stderr block that only wrapped from_pretrained(); the import itself must be inside
+    it too. Simulated with a plain stderr write from a fake `__import__` (rather than a real
+    `warnings.warn`) so this isn't confused by warnings.catch_warnings()'s own recording, which
+    would observe the warning object regardless of whether the surrounding redirect is active —
+    the thing that actually matters here is whether writes to stderr while `gliner` is being
+    imported reach the real terminal."""
+    real_import = builtins.__import__
+
+    class _FakeGLiNER:
+        @staticmethod
+        def from_pretrained(name):
+            return "fake-model"
+
+    def fake_import(name, *args, **kwargs):
+        if name == "gliner":
+            print("torch.jit.script is not supported in Python 3.14+", file=sys.stderr)
+            return types.SimpleNamespace(GLiNER=_FakeGLiNER)
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(harvest, "_gliner_model", None)
+
+    model = harvest._load_gliner()
+
+    assert model == "fake-model"
+    assert capsys.readouterr().err == ""
+
+
 def test_load_gliner_installs_permanent_predict_time_filter(monkeypatch):
     """Predict-time truncation warnings used to be suppressed via a `warnings.catch_warnings()`
     context scoped to each `harvest_entities` call — the stdlib documents that context manager as
