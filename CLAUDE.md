@@ -16,6 +16,24 @@ yours. If you need to isolate your own changes from unrelated ones already prese
 `git stash push -- <your paths>` (add `-u -- <paths>` to include new files). This applies even for
 a quick "let me test this in isolation" step — do that in a worktree, not by stashing in place.
 
+## Never name an investigation in anything public-facing
+
+This repo is public. Real investigation/project names (e.g. an investigation's slug or directory
+name) — and anything else that would identify who or what a specific user is investigating —
+must never appear in a commit message, PR title/body, issue, code comment,
+`DECISIONS.md`/`ARCHITECTURE.md` entry, or test name/docstring. Describe the source generically
+instead: "a live ingest run," "a document set from a live investigation," "a live-run regression."
+This holds even when a local working file (an ingest log, a scratch note) does name it — that's
+fine as the user's own local record, but nothing derived from it should carry the name into
+anything committed to this repo or posted to GitHub.
+
+If a name slips into a commit or PR before it's caught: fixing the file content and amending the
+commit is necessary but not sufficient on a **public** repo — a force-push removes the old commit
+from the branch and the PR's diff/commit list, but GitHub does not delete the dangling commit
+object itself, and it stays fetchable at its direct SHA URL indefinitely. Flag this limitation
+explicitly rather than reporting the redaction as complete; full removal requires the repo owner
+to contact GitHub Support and request the dangling commit be purged.
+
 ## Definition of done
 
 Check every non-trivial change against this list in one pass before calling it finished. Each item's full rule lives in the linked section — this checklist is the single source; the sections carry the detail, not a restatement of the obligation.
