@@ -252,6 +252,45 @@ def test_parse_precise_date_rejects_ambiguous_or_invalid():
     assert _parse_precise_date("February 30, 2020") is None   # no such day
 
 
+def test_parse_precise_date_dash_separated_day_month_year():
+    """A named-month day-month-year date separated by dashes rather than spaces — the same
+    precise, unambiguous shape the space form already handles, just a different source
+    punctuation style (live-run regression)."""
+    assert _parse_precise_date("27-Sep-2012") == "2012-09-27"
+    assert _parse_precise_date("06-Nov-2013") == "2013-11-06"
+    assert _parse_precise_date("08-July-2020") == "2020-07-08"
+
+
+def test_parse_precise_date_two_digit_year_expands_via_standard_pivot():
+    """A dash-separated date with a 2-digit year (the source itself omitted the century) fills
+    it in with the standard `strptime` `%y` pivot: 00-68 -> 20xx, 69-99 -> 19xx."""
+    assert _parse_precise_date("18-SEP-24") == "2024-09-18"
+    assert _parse_precise_date("28-OCT-24") == "2024-10-28"
+    assert _parse_precise_date("02-OCT-24") == "2024-10-02"
+    assert _parse_precise_date("15-Mar-70") == "1970-03-15"   # pivot: 69-99 -> 19xx
+
+
+def test_parse_precise_date_year_first_slash_converts_only_when_unambiguous():
+    """A year-first numeric date (YYYY/A/B) converts only when exactly one of the two trailing
+    tokens is >12 — that proves which one is the day with no assumption about the source's
+    day/month convention. When both are <=12 the order is genuinely ambiguous and must stay
+    dropped, even though every date in this batch happens to be day-last (live-run
+    regression — provably-unambiguous-only was the chosen scope)."""
+    assert _parse_precise_date("2019/08/16") == "2019-08-16"   # 16 > 12 -> day
+    assert _parse_precise_date("2007/01/26") == "2007-01-26"   # 26 > 12 -> day
+    assert _parse_precise_date("2022/09/20") == "2022-09-20"
+    assert _parse_precise_date("2024/07/15") == "2024-07-15"
+    # both trailing tokens <=12: genuinely ambiguous, stays dropped
+    assert _parse_precise_date("2020/07/08") is None
+    assert _parse_precise_date("2023/01/11") is None
+
+
+def test_parse_precise_date_non_year_first_slash_date_stays_ambiguous():
+    """A slash date that doesn't lead with a 4-digit year has no anchor to prove which trailing
+    token is the day — stays dropped regardless of token size (live-run regression)."""
+    assert _parse_precise_date("1/12/2010") is None
+
+
 def test_sanitize_dates_normalizes_precise_prose_date_without_warning():
     extraction = {"document": {"key_facts": [
         {"fact": "x", "date": "April 30, 2020", "entities": ["a"]},

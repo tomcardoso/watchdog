@@ -37,10 +37,13 @@ _DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
 
 # A *precise* non-ISO date — full day-month-year, or (deliberately, per the extraction prompt)
 # month-year when the source itself gave no day — spelled with a named month, so the word order
-# resolves the day/month ambiguity a numeric date (03/04/2020) can't. Deliberately does NOT
-# attempt to parse numeric or slash-separated dates ("2024/03", "03/04/2020"): those are
-# genuinely ambiguous (DD/MM vs MM/YY vs YY/MM) and guessing would silently substitute a value
-# the source didn't unambiguously state — exactly what TRANSCRIBE, DON'T CORRECT forbids.
+# resolves the day/month ambiguity a numeric date (03/04/2020) can't. Also handles a year-first
+# numeric date (2020/07/08) but only when one of the two trailing tokens is calendrically
+# impossible as a month (>12) — that forces which token is the day with no assumption about the
+# source's convention, unlike a bare "03/04/2020" (no year-first anchor) or a two-part "2024/03"
+# (only one trailing token, nothing to disambiguate it against). Guessing at a value the source
+# didn't unambiguously state is exactly what TRANSCRIBE, DON'T CORRECT forbids, so anything short
+# of that proof stays dropped.
 _MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
     "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
@@ -51,21 +54,37 @@ _ORDINAL_SUFFIX = r"(?:\s*(?:st|nd|rd|th))?"
 _MONTH_DAY_YEAR_RE = re.compile(
     rf"^(?P<month>[A-Za-z]+)\.?\s+(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?P<year>\d{{4}})$"
 )
+# Day/month separated by a space ("17th day of March, 2021") or a dash ("27-Sep-2012"); the year
+# may be 2 digits ("18-SEP-24") since the source omitting the century is the same "gave less
+# precision than ISO wants" case as the day-less month-year form below, not a stated-but-different
+# value — `_expand_two_digit_year` fills it in with the standard 00-68→20xx / 69-99→19xx pivot.
 _DAY_MONTH_YEAR_RE = re.compile(
-    rf"^(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX}\s+(?:day\s+of\s+)?(?P<month>[A-Za-z]+)\.?,?\s+(?P<year>\d{{4}})$"
+    rf"^(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX}[-\s]+(?:day\s+of\s+)?(?P<month>[A-Za-z]+)\.?,?[-\s]+"
+    rf"(?P<year>\d{{4}}|\d{{2}})$"
 )
 _MONTH_YEAR_RE = re.compile(r"^(?P<month>[A-Za-z]+)\.?,?\s+(?P<year>\d{4})$")
+_YEAR_FIRST_SLASH_RE = re.compile(r"^(?P<year>\d{4})/(?P<a>\d{1,2})/(?P<b>\d{1,2})$")
+
+
+def _expand_two_digit_year(year: int) -> int:
+    """Fill in the century for a 2-digit year using the standard `strptime` `%y` pivot
+    (00-68 -> 2000-2068, 69-99 -> 1969-1999). `year` is already 4 digits if the source gave
+    one; this is a no-op in that case."""
+    if year > 99:
+        return year
+    return year + (2000 if year <= 68 else 1900)
 
 
 def _parse_precise_date(raw: str) -> str | None:
     """Parse `raw` into ISO shape when — and only when — it is a *precise* date rather than an
     imprecise one the extractor was always going to hand back with less-than-day granularity
     (a bare year, a month-year, per extract_instructions.md's `date` field). A fully-qualified
-    date in ordinary prose ("April 30, 2020", "17th day of March, 2021") is precise, just not
-    ISO-shaped, and converting it loses nothing. A fiscal-year range ("2020-2021"), a quarter
-    ("Q1 2020"), or a bare numeric date is genuinely imprecise or ambiguous and must stay
-    dropped rather than have this guess at what it means — this function returns None for those,
-    and the caller's existing drop+warn behaviour is unchanged. Named-month forms only (see
+    date in ordinary prose ("April 30, 2020", "17th day of March, 2021", "2020/07/08" when one
+    trailing token proves the day) is precise, just not ISO-shaped, and converting it loses
+    nothing. A fiscal-year range ("2020-2021"), a quarter ("Q1 2020"), or a bare/genuinely
+    ambiguous numeric date is imprecise or ambiguous and must stay dropped rather than have this
+    guess at what it means — this function returns None for those, and the caller's existing
+    drop+warn behaviour is unchanged. Named-month forms plus the year-first-slash case only (see
     `_MONTHS`); returns None on no match or an invalid day-of-month (e.g. "February 30")."""
     # A trailing comma/period is punctuation carried over from the source sentence the date was
     # lifted out of ("...on February 1, 2021, the applicant..."), not part of the date itself —
@@ -78,7 +97,7 @@ def _parse_precise_date(raw: str) -> str | None:
         month = _MONTHS.get(m.group("month").lower())
         if month is None:
             continue
-        year = int(m.group("year"))
+        year = _expand_two_digit_year(int(m.group("year")))
         if not has_day:
             return f"{year:04d}-{month:02d}"
         day = int(m.group("day"))
@@ -87,6 +106,22 @@ def _parse_precise_date(raw: str) -> str | None:
         except ValueError:
             return None
         return f"{year:04d}-{month:02d}-{day:02d}"
+
+    m = _YEAR_FIRST_SLASH_RE.match(text)
+    if m:
+        year = int(m.group("year"))
+        a, b = int(m.group("a")), int(m.group("b"))
+        # Neither token can be a month if it's >12. Convert only when that forces exactly one
+        # reading (one token >12, the other <=12) — both <=12 leaves the order genuinely
+        # ambiguous, and both >12 makes neither token a valid month at all.
+        if (a > 12) != (b > 12):
+            day, month = (a, b) if a > 12 else (b, a)
+            try:
+                _date(year, month, day)
+            except ValueError:
+                return None
+            return f"{year:04d}-{month:02d}-{day:02d}"
+
     return None
 
 # Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
