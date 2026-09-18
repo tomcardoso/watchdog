@@ -368,13 +368,18 @@ def run(force: bool = False) -> None:
             _warn(f"GLiNER model download failed: {e}")
 
     # 8. Write config
+    # Merge into any existing config.json rather than replacing it outright — `--force` re-runs
+    # setup (e.g. after an upgrade) and must not silently drop settings from `watchdog configure`
+    # (classifier_model/extractor_model/finalizer_model, effort levels, OCR settings, ...).
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(
-        json.dumps(
-            {"projects_dir": str(projects_dir), "chunk_workers": "auto", "chew_workers": "auto"},
-            indent=2,
-        ) + "\n"
-    )
+    config = {}
+    if CONFIG_FILE.exists():
+        try:
+            config = json.loads(CONFIG_FILE.read_text())
+        except json.JSONDecodeError:
+            config = {}
+    config.update({"projects_dir": str(projects_dir), "chunk_workers": "auto", "chew_workers": "auto"})
+    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
 
     # 9. Authentication
     from watchdog.cmd.auth import setup_auth_interactive
