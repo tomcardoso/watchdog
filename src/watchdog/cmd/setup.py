@@ -761,6 +761,7 @@ def cmd_refresh_skills(args) -> None:
 
     settings_path = vault / ".claude" / "settings.json"
     added = []
+    read_scope_added = False
     if settings_path.exists():
         try:
             settings = _read_json(settings_path)
@@ -768,14 +769,20 @@ def cmd_refresh_skills(args) -> None:
             missing  = [p for p in _VAULT_PERMISSIONS if p not in existing]
             if missing:
                 settings.setdefault("permissions", {}).setdefault("allow", []).extend(missing)
-                settings_path.write_text(json.dumps(settings, indent=2) + "\n")
                 added = missing
+            if "blockReadsOutsideWorkingDirectories" not in settings.get("permissions", {}):
+                settings.setdefault("permissions", {})["blockReadsOutsideWorkingDirectories"] = True
+                read_scope_added = True
+            if added or read_scope_added:
+                settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError):
             pass
 
     print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
     if added:
         print(f"  {_GREEN}Permissions updated{_RESET}  {_DIM}added {len(added)} missing rule{'s' if len(added) != 1 else ''}{_RESET}")
+    if read_scope_added:
+        print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
     print()
 
 

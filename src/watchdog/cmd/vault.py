@@ -399,6 +399,14 @@ def cmd_new(args) -> None:
             {
                 "permissions": {
                     "allow": _VAULT_PERMISSIONS,
+                    # Read/Glob/Grep are unrestricted by default in Claude Code — no permission
+                    # prompt, any path the OS user can read — so without this, a session inside
+                    # one vault could silently read another vault, ~/.watchdog/credentials.json
+                    # (API keys), or anything else on the account. This confines them to the
+                    # vault the session was launched in (I6: source documents are adversarial by
+                    # assumption, so a prompt-injected one could otherwise direct an exfiltrating
+                    # read with no permission prompt to catch it).
+                    "blockReadsOutsideWorkingDirectories": True,
                 },
                 "hooks": {
                     # Load hot.md into context at the start of a session — and again
