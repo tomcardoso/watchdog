@@ -278,7 +278,7 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
                 relevance: str = "", max_bytes: int = _MAX_BYTES_DEFAULT,
                 obtained: str | None = None, fetcher=fetch,
                 wayback: tuple[str, str] | None = None,
-                retrieved_by: str = "research-mode") -> Path:
+                retrieved_by: str = "research-mode", browser_factory=None) -> Path:
     """Validate, fetch, sanitize, and write a source document + its `.yml` sidecar to
     `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection. HTML
     deposits first try a rendered Chromium capture (`pipeline/capture.py`, #200) — script-stripped,
@@ -287,14 +287,15 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
     records which path was taken (`rendered` / `plain`). When `wayback` (access_key, secret_key) is
     given, best-effort-archives the source to the Wayback Machine and records the snapshot URL in
     the sidecar (#201). `retrieved_by` records the acquisition path in the sidecar (`research-mode`
-    vs `fetch`)."""
+    vs `fetch`). `browser_factory` (from `capture.browser_session()`) lets `deposit_many` share one
+    Chromium instance across a batch instead of `capture.try_render` launching its own per call."""
     obtained = obtained or date.today().isoformat()
     body, content_type, final_url = fetcher(url, max_bytes=max_bytes)
     ext = extension_for(content_type, final_url)
     capture_mode = ""
     if ext in _HTML_EXTS:
         from watchdog.pipeline import capture
-        rendered = capture.try_render(final_url, max_bytes=max_bytes)
+        rendered = capture.try_render(final_url, max_bytes=max_bytes, browser_factory=browser_factory)
         if rendered is not None:
             body = rendered
             capture_mode = "rendered"
@@ -338,21 +339,33 @@ def parse_worklist(text: str) -> list[dict]:
 
 def deposit_many(vault: Path, entries: list[dict], *, max_bytes: int = _MAX_BYTES_DEFAULT,
                  fetcher=fetch, wayback: tuple[str, str] | None = None,
-                 retrieved_by: str = "research-mode") -> list[Deposit]:
+                 retrieved_by: str = "research-mode", on_progress=None) -> list[Deposit]:
     """Deposit every entry, continuing past individual failures so one bad URL can't lose the
     rest of the list. Idempotent: re-pulling overwrites same-named deposits. `wayback` credentials,
     when given, archive each source to the Wayback Machine (#201). `retrieved_by` records the
-    acquisition path (`research-mode` vs `fetch`) in each sidecar."""
+    acquisition path (`research-mode` vs `fetch`) in each sidecar. `on_progress(index, total, url)`,
+    when given, is called just before each entry starts — the caller's hook for printing a line per
+    source, since a batch otherwise runs silently until the whole thing finishes.
+
+    Every HTML entry in the batch shares one Chromium instance (`capture.browser_session()`) rather
+    than each relaunching its own — relaunching per URL was slow and silent, and repeated
+    launch/teardown within one run could leave Playwright's driver mid-shutdown when the batch
+    ended, printing a spurious asyncio warning after results were already reported."""
+    from watchdog.pipeline import capture
+
     results = []
-    for e in entries:
-        try:
-            path = deposit_one(vault, e["url"], title=e.get("title", ""),
-                               source_type=e.get("source_type", ""), relevance=e.get("relevance", ""),
-                               max_bytes=max_bytes, fetcher=fetcher, wayback=wayback,
-                               retrieved_by=retrieved_by)
-            results.append(Deposit(e["url"], path))
-        except ResearchError as ex:
-            results.append(Deposit(e["url"], None, str(ex)))
+    with capture.browser_session() as browser_factory:
+        for i, e in enumerate(entries, 1):
+            if on_progress:
+                on_progress(i, len(entries), e["url"])
+            try:
+                path = deposit_one(vault, e["url"], title=e.get("title", ""),
+                                   source_type=e.get("source_type", ""), relevance=e.get("relevance", ""),
+                                   max_bytes=max_bytes, fetcher=fetcher, wayback=wayback,
+                                   retrieved_by=retrieved_by, browser_factory=browser_factory)
+                results.append(Deposit(e["url"], path))
+            except ResearchError as ex:
+                results.append(Deposit(e["url"], None, str(ex)))
     return results
 
 

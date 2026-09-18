@@ -93,6 +93,13 @@ def _report_deposits(results: list, *, wayback, requeued_failures: bool) -> int:
     return len(deposited)
 
 
+def _print_progress(i: int, total: int, url: str) -> None:
+    """`research.deposit_many`'s `on_progress` hook — a line per source as it starts, so a batch
+    (each entry can take a few seconds, longer with a rendered capture) isn't silent until it's
+    entirely done."""
+    print(f"  {_DIM}[{i}/{total}]{_RESET} {url}")
+
+
 def _run_download(vault: Path, source_file: Path | None = None) -> int:
     """Download every queued source into `_INCOMING/`, continuing past failures. Returns the number
     deposited. With no `source_file`, consumes the durable worklist — downloaded rows drop out;
@@ -101,7 +108,7 @@ def _run_download(vault: Path, source_file: Path | None = None) -> int:
     text = source_file.read_text(encoding="utf-8") if source_file else research.read_queue_text(vault)
     entries = research.parse_worklist(text) if text else []
     wayback = _wayback_creds()
-    results = research.deposit_many(vault, entries, wayback=wayback)
+    results = research.deposit_many(vault, entries, wayback=wayback, on_progress=_print_progress)
     if source_file is None:
         failed_urls = {r.url for r in results if not r.path}
         research.retain_pending(vault, [e for e in entries if e["url"] in failed_urls])
@@ -236,7 +243,8 @@ def cmd_fetch(args) -> None:
             sys.exit("Error: no URLs to fetch")
 
     wayback = _wayback_creds()
-    results = research.deposit_many(vault, entries, wayback=wayback, retrieved_by="fetch")
+    results = research.deposit_many(vault, entries, wayback=wayback, retrieved_by="fetch",
+                                    on_progress=_print_progress)
     count = _report_deposits(results, wayback=wayback, requeued_failures=False)
     if count:
         print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
