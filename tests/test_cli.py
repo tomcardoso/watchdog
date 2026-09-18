@@ -1674,6 +1674,42 @@ def test_setup_writes_auto_for_worker_keys(tmp_path, monkeypatch):
     assert config["projects_dir"] == str(investigations)
 
 
+def test_setup_force_preserves_existing_config_keys(tmp_path, monkeypatch):
+    """`watchdog setup --force` re-runs setup (e.g. after an upgrade) and must merge into
+    config.json, not replace it — otherwise it silently drops `watchdog configure` settings
+    like classifier_model/extractor_model/finalizer_model."""
+    import watchdog.setup_cmd as sc
+
+    home = tmp_path / ".watchdog"
+    home.mkdir()
+    monkeypatch.setattr(sc, "WATCHDOG_HOME", home)
+    monkeypatch.setattr(sc, "CONFIG_FILE",   home / "config.json")
+
+    (home / "config.json").write_text(json.dumps({
+        "projects_dir": str(tmp_path / "OldInvestigations"),
+        "chunk_workers": "auto",
+        "chew_workers": "auto",
+        "classifier_model": "haiku",
+        "extractor_model": "openai:gpt-5.6-luna",
+        "finalizer_model": "openai:gpt-5.6-luna",
+    }) + "\n")
+
+    investigations = tmp_path / "Investigations"
+    investigations.mkdir()
+    monkeypatch.setattr(sc, "_check_deps",       lambda: [])
+    monkeypatch.setattr(sc, "_ask_projects_dir", lambda: investigations)
+    monkeypatch.setattr(sc, "_detect_shell",     lambda: (None, None))
+    monkeypatch.setattr(sc, "_check_playwright", lambda: None)
+
+    sc.run(force=True)
+
+    config = json.loads((home / "config.json").read_text())
+    assert config["projects_dir"] == str(investigations)
+    assert config["classifier_model"] == "haiku"
+    assert config["extractor_model"] == "openai:gpt-5.6-luna"
+    assert config["finalizer_model"] == "openai:gpt-5.6-luna"
+
+
 # ── cmd_unlock ────────────────────────────────────────────────────────────────
 
 def _make_vault_with_lock(configured, timestamp_str):
