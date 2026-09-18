@@ -50,17 +50,17 @@ _PROVIDERS: dict[str, dict] = {
         "prefix": "sk-ant-",
     },
     "openai": {
-        "label":  "OpenAI — Chat Completions",
+        "label":  "OpenAI",
         "env":    "OPENAI_API_KEY",
         "prefix": "sk-",
     },
     "deepseek": {
-        "label":  "DeepSeek — Chat Completions",
+        "label":  "DeepSeek",
         "env":    "DEEPSEEK_API_KEY",
         "prefix": "sk-",
     },
     "gemini": {
-        "label":  "Google Gemini — Chat Completions",
+        "label":  "Google Gemini",
         "env":    "GEMINI_API_KEY",
         "prefix": None,  # Google key formats vary (AI Studio, Vertex AI, ...) — no reliable fixed prefix
     },
@@ -457,21 +457,31 @@ def _ask_anthropic_mode() -> str | None:
 
 
 def setup_auth_interactive(interactive: bool | None = None) -> None:
-    """Interactive auth setup for `watchdog setup`. Claude stays the default for both the
-    interactive investigation commands and ingestion — zero extra setup for a Claude-only user
-    (D222). Sets up Claude access first (subscription or API key), then on a subscription warns
-    that ingesting more than a few documents can be token-heavy for a Pro plan's session limits
-    and offers to route ingestion elsewhere instead — a cheaper metered API (Luna named first, as
-    the benchmark-recommended one) or a local/self-hosted model (#380) — walking through picking
-    that provider's models for the three ingest stages if so (#325). Persists the choice; skips
-    cleanly off a terminal. `interactive` is overridable for testing."""
+    """Interactive auth setup for `watchdog setup`, in three steps that no longer nest one
+    provider's setup inside another's (#690 design pass — the old flow gated everything behind
+    a Claude subscription/API-key choice, with other providers only reachable as an "escape
+    hatch" from it, which read as assuming Claude even for someone who never intended to use it
+    for ingestion):
+
+    1. Claude Code access (subscription or API key) — not a preference, a hard requirement: the
+       interactive investigation commands run inside Claude Code, on Claude, always. Nothing
+       about ingestion is mentioned here.
+    2. Ingestion provider — a flat, equal-weight pick that includes Claude as one option among
+       the rest (`_choose_ingestion_provider`), not a default with everything else framed as an
+       alternative. Picking Claude while on subscription auth surfaces the token/session-limit
+       cost as a consequence of that specific combination, not as a gate everyone passes through.
+    3. Other providers, optional — add a key for a provider you're not routing ingestion to,
+       just to have on hand for a later `watchdog configure` stage override.
+
+    Persists each choice as it's made; skips cleanly off a terminal. `interactive` is overridable
+    for testing."""
     if interactive is None:
         interactive = sys.stdin.isatty()
 
     print()
-    print(f"  {_BOLD}Set up model access{_RESET}")
-    print(f"  {_DIM}Watchdog needs Claude Code to run — it powers the interactive investigation{_RESET}")
-    print(f"  {_DIM}commands and is the default for ingestion too.{_RESET}")
+    print(f"  {_BOLD}Claude Code access{_RESET}")
+    print(f"  {_DIM}Claude Code powers Watchdog's interactive investigation session — how{_RESET}")
+    print(f"  {_DIM}should it sign in?{_RESET}")
 
     if not interactive:
         print(f"  {_DIM}Non-interactive — set this later with{_RESET} {_CYAN}watchdog auth{_RESET}{_DIM}.{_RESET}")
@@ -489,23 +499,10 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
         return
 
     state = _load_state()
-    printed = _apply_anthropic_choice(state, choice, show_detection=False)
+    _apply_anthropic_choice(state, choice, show_detection=False)
 
-    if choice == "1":  # subscription
-        lead = "\n" if printed else ""
-        print(f"{lead}  {_YELLOW}Note:{_RESET} {_DIM}ingesting more than a few documents can be token-heavy for a "
-              f"Pro subscription's session limits. See{_RESET}")
-        print(f"  {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") for cheaper "
-              f"alternatives — OpenAI's GPT-5.6 Luna benchmarked best on real filings (see{_RESET} "
-              f"{_CYAN}docs/benchmarks.md{_RESET}{_DIM}), or DeepSeek, Gemini, OpenRouter, "
-              f"or a local/self-hosted model.{_RESET}")
-        if confirm("\n  Route ingestion to another provider instead of your subscription?", default=False):
-            _setup_metered_ingestion(state)
-        else:
-            _maybe_tune_concurrency_for_subscription()
-    else:
-        _maybe_restore_concurrency_from_subscription()
-        _offer_extra_providers(state)
+    _choose_ingestion_provider(state)
+    _offer_extra_providers(state)
 
     print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog configure{_RESET} "
           f"{_DIM}(extractor_model, finalizer_model, extractor_effort, …).{_RESET}")
@@ -561,25 +558,67 @@ def _maybe_restore_concurrency_from_subscription() -> bool:
     return True
 
 
-def _setup_metered_ingestion(state: dict) -> None:
-    """Pick a non-Claude provider, store its key, and route classifier/extractor/finalizer_model
-    to one model from that provider — the metered-ingestion path offered from `watchdog setup`
-    when Claude is on a subscription (#325). Asks for the model once rather than once per stage,
-    since the common case is the same model everywhere; `watchdog configure <key>` remains the
-    way to route an individual stage to something else afterward.
+def _choose_ingestion_provider(state: dict) -> None:
+    """Step 2 of `watchdog setup`'s auth flow (#690 design pass): which provider handles
+    ingestion (classifier/extractor/finalizer_model), asked as a flat, equal-weight pick that
+    includes Claude alongside every other provider — not a default the rest are framed as an
+    escape hatch from. Independent of the Claude Code access step above: picking Claude here
+    while that step chose subscription auth is what triggers the token/session-limit cost note
+    and the concurrency auto-tune, as a consequence of that specific combination rather than a
+    gate everyone sees regardless of what they actually want."""
+    print(f"\n  {_BOLD}Ingestion{_RESET}")
+    print(f"  {_DIM}Which provider should handle ingestion — classifying, extracting, and{_RESET}")
+    print(f"  {_DIM}synthesizing documents (watchdog dig/watchdog bark)? Independent of the{_RESET}")
+    print(f"  {_DIM}login above; pick whichever you actually want to use.{_RESET}")
+
+    extras = [p for p in _PROVIDERS if p != "anthropic"]
+    items = ["Claude"] + [_PROVIDERS[p]["label"].split(" — ")[0] for p in extras]
+    result = pick(items, 0, title="Ingestion provider?")
+    if result is CANCELLED:
+        return
+    if result == 0:
+        _route_ingestion_to_claude(state)
+        return
+    _route_ingestion_to_provider(state, extras[result - 1])
+
+
+def _route_ingestion_to_claude(state: dict) -> None:
+    """Claude picked for ingestion in `_choose_ingestion_provider`. Nothing to configure — the
+    default classifier/extractor/finalizer_model values already point at bare Claude tiers — but
+    on subscription auth this is the one combination worth a heads-up: ingesting more than a few
+    documents that way can burn through a Pro plan's session limits fast (issue #400), so it also
+    triggers the same concurrency auto-tune `_maybe_tune_concurrency_for_subscription` applies
+    from `watchdog auth`'s later mode switch (#493)."""
+    mode = state.get("mode")
+    print(f"\n  {_GREEN}✓{_RESET}  Ingestion set to Claude, via your {_BOLD}{mode}{_RESET} login.")
+    if mode == "subscription":
+        print(f"  {_YELLOW}Note:{_RESET} {_DIM}ingesting more than a few documents this way can burn through "
+              f"session limits fast. See{_RESET} {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") "
+              f"for cheaper alternatives — OpenAI's GPT-5.6 Luna benchmarked best on real filings (see{_RESET} "
+              f"{_CYAN}docs/benchmarks.md{_RESET}{_DIM}) — or switch anytime with{_RESET} "
+              f"{_CYAN}watchdog configure extractor_model{_RESET}{_DIM}.{_RESET}")
+        _maybe_tune_concurrency_for_subscription()
+    else:
+        # Claude ingestion under api-key mode is metered, not subscription-bound, so any stale
+        # auto-tune from a prior subscription run needs undoing here too — not just when
+        # ingestion routes away from Claude entirely (_route_ingestion_to_provider's own call).
+        _maybe_restore_concurrency_from_subscription()
+
+
+def _route_ingestion_to_provider(state: dict, provider: str) -> None:
+    """A non-Claude provider picked for ingestion in `_choose_ingestion_provider`: store its key
+    (or base URL, for local/self-hosted and OpenRouter — #380), then route
+    classifier/extractor/finalizer_model to one model from it. Asks for the model once rather
+    than once per stage, since the common case is the same model everywhere; `watchdog configure
+    <key>` remains the way to route an individual stage to something else afterward.
 
     Also applies each stage's generic schema-default effort level (classifier low, extractor
     medium, finalizer high — the task's own shape, not a per-model tuned recommendation; see
-    D225) wherever the chosen model actually supports it, so effort doesn't silently stay unset
-    the way it used to. A model-specific tuned effort (e.g. Luna's benchmarked `high` for
-    extraction) is a `watchdog configure extractor_effort` step away, same as before."""
-    extras = [p for p in _PROVIDERS if p != "anthropic"]
-    items = [_PROVIDERS[p]["label"] for p in extras]
-    result = pick(items, 0, title="Which service for ingestion?")
-    if result is CANCELLED:
-        return
-    provider = extras[result]
+    D225) wherever the chosen model actually supports it. A model-specific tuned effort (e.g.
+    Luna's benchmarked `high` for extraction) is a `watchdog configure extractor_effort` step
+    away, same as before."""
     meta = _PROVIDERS[provider]
+    label = meta["label"].split(" — ")[0]
 
     print()
     if meta.get("base_url_key") and not get_base_url(provider):
@@ -589,7 +628,7 @@ def _setup_metered_ingestion(state: dict) -> None:
     if not provider_requires_key(provider):
         pass   # e.g. local — most self-hosted runners need no key at all
     elif os.environ.get(meta["env"]) or state["keys"].get(provider):
-        print(f"  {_GREEN}✓{_RESET}  {meta['label']} key already available.")
+        print(f"  {_GREEN}✓{_RESET}  {label} key already available.")
     elif not prompt_and_store_key(provider, state):
         return
 
@@ -619,30 +658,40 @@ def _setup_metered_ingestion(state: dict) -> None:
     CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
     os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
     print(f"\n  {_GREEN}✓{_RESET}  Ingestion routed to {_BOLD}{provider}{_RESET}.")
+    _maybe_restore_concurrency_from_subscription()
 
 
 def _offer_extra_providers(state: dict) -> None:
-    """Optionally configure additional providers during setup — a key for the OpenAI-compatible
-    ones, or a base URL (and, for OpenRouter, a key) for local/self-hosted (#380).
+    """Step 3 of `watchdog setup`'s auth flow: optionally add a key for a provider you're not
+    routing ingestion to right now, just to have on hand for a later `watchdog configure` stage
+    override. A repeatable pick-one-then-loop, not a march through every provider in turn asking
+    yes/no one at a time — the old shape meant a user who wanted just one provider still had to
+    sit through prompts for every other one, including a base-URL prompt for local/OpenRouter
+    they had no interest in (#690 design pass).
 
-    Skippable and provider-neutral — Watchdog still runs on Claude by default; these just let a
-    user route a stage to another provider later via a `backend:model` config value."""
+    Runs after `_choose_ingestion_provider` regardless of what that step picked — including
+    Claude — since this is about keys to have on hand, not about ingestion routing."""
     extras = [p for p in _PROVIDERS if p != "anthropic"]
-    if not extras:
+    if not any(not provider_ready(p) for p in extras):
         return
-    labels = ", ".join(_PROVIDERS[p]["label"].split(" — ")[0] for p in extras)
-    print(f"\n  {_BOLD}Other model providers?{_RESET} {_DIM}(optional — {labels}){_RESET}")
-    print(f"  {_DIM}Route a stage to a cheaper, alternative, or local/self-hosted provider. Skip to stay on Claude.{_RESET}")
-    for p in extras:
-        if provider_ready(p):
-            continue                                   # already available
-        if not confirm(f"  Configure {_PROVIDERS[p]['label']}?", default=False):
-            continue
-        meta = _PROVIDERS[p]
-        if meta.get("base_url_key") and not get_base_url(p):
-            prompt_and_store_base_url(p)
-        if provider_requires_key(p) and not (os.environ.get(meta["env"]) or state["keys"].get(p)):
-            prompt_and_store_key(p, state)
+
+    print(f"\n  {_BOLD}Other providers?{_RESET} {_DIM}(optional — add a key to have on hand for later){_RESET}")
+    while True:
+        remaining = [p for p in extras if not provider_ready(p)]
+        if not remaining:
+            return
+        items = [_PROVIDERS[p]["label"].split(" — ")[0] for p in remaining] + ["Done"]
+        result = pick(items, len(remaining), title="Add a provider key?")
+        if result is CANCELLED or result == len(remaining):
+            return
+
+        provider = remaining[result]
+        meta = _PROVIDERS[provider]
+        print(f"\n  {_BOLD}{meta['label'].split(' — ')[0]}{_RESET}")
+        if meta.get("base_url_key") and not get_base_url(provider):
+            prompt_and_store_base_url(provider)
+        if provider_requires_key(provider) and not (os.environ.get(meta["env"]) or state["keys"].get(provider)):
+            prompt_and_store_key(provider, state)
 
 
 def _choose_provider_interactive() -> str | None:
