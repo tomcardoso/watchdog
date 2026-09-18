@@ -247,6 +247,19 @@ def test_deposit_many_continues_past_failures(tmp_path):
     assert len(list((vault / "_INCOMING").glob("*.html"))) == 2
 
 
+def test_deposit_many_calls_on_progress_before_each_entry(tmp_path):
+    vault = tmp_path / "v"
+
+    def _fetch(url, **kwargs):
+        return b"hello", "text/plain", url
+
+    entries = [{"url": "https://a.com"}, {"url": "https://b.com"}]
+    seen = []
+    research.deposit_many(vault, entries, fetcher=_fetch,
+                          on_progress=lambda i, total, url: seen.append((i, total, url)))
+    assert seen == [(1, 2, "https://a.com"), (2, 2, "https://b.com")]
+
+
 # ── Durable worklist store (#196) ──────────────────────────────────────────────
 
 def test_pending_count_and_queue_path(tmp_path):

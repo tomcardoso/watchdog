@@ -143,6 +143,77 @@ def test_render_available_false_when_chromium_binary_missing(monkeypatch, tmp_pa
     assert capture.render_available() is False
 
 
+# ── browser_session: one shared, lazily-launched Chromium per batch ───────────
+
+class _FakeBrowser:
+    def close(self):
+        pass
+
+
+class _FakeChromium:
+    def __init__(self, launches):
+        self._launches = launches
+
+    def launch(self):
+        b = _FakeBrowser()
+        self._launches.append(b)
+        return b
+
+
+class _FakePlaywrightCM:
+    def __init__(self, launches):
+        self._launches = launches
+
+    def __enter__(self):
+        class _P:
+            pass
+        p = _P()
+        p.chromium = _FakeChromium(self._launches)
+        return p
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_browser_session_never_starts_playwright_when_get_is_unused(monkeypatch):
+    pytest.importorskip("playwright")
+
+    def _boom():
+        raise AssertionError("sync_playwright() must not run when get() is never called")
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", _boom)
+
+    with capture.browser_session() as get:
+        pass  # never call get() — mirrors a batch with no HTML entries, or try_render mocked out
+    assert get is not None
+
+
+def test_browser_session_get_launches_once_and_is_reused(monkeypatch):
+    pytest.importorskip("playwright")
+    launches = []
+    monkeypatch.setattr("playwright.sync_api.sync_playwright", lambda: _FakePlaywrightCM(launches))
+
+    with capture.browser_session() as get:
+        b1 = get()
+        b2 = get()
+    assert b1 is b2
+    assert len(launches) == 1
+
+
+def test_try_render_passes_the_factorys_browser_through(monkeypatch):
+    pytest.importorskip("playwright")
+    sentinel = object()
+    seen = []
+
+    def _fake_render_capture(url, *, max_bytes, timeout=30, host_check=None, browser=None):
+        seen.append(browser)
+        return b"<html>ok</html>"
+    monkeypatch.setattr(capture, "render_capture", _fake_render_capture)
+
+    result = capture.try_render("https://e.com/x", max_bytes=100, browser_factory=lambda: sentinel)
+    assert seen == [sentinel]
+    assert result == b"<html>ok</html>"
+
+
 def test_report_deposits_tips_install_when_html_saved_without_renderer(monkeypatch, capsys, tmp_path):
     from watchdog.cmd import research as cmd_research
     monkeypatch.setattr(cmd_research.capture, "render_available", lambda: False)
