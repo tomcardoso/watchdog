@@ -124,13 +124,15 @@ def test_logged_in_false_when_neither_present(tmp_path, monkeypatch):
 # ── setup picker (`watchdog setup`) ───────────────────────────────────────────
 
 def test_setup_picks_subscription(home, monkeypatch):
-    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    # mode=subscription (1); ingestion→Claude (1); no extra provider keys (Done=6).
+    _answers(monkeypatch, "1", "1", "6")
     auth.setup_auth_interactive(interactive=True)
     assert auth._load_state()["mode"] == "subscription"
 
 
 def test_setup_picks_api_key_and_stores(home, monkeypatch):
-    monkeypatch.setattr("builtins.input", lambda *a: "2")
+    # mode=api-key (2); ingestion→Claude (1); no extra provider keys (Done=6).
+    _answers(monkeypatch, "2", "1", "6")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
@@ -144,46 +146,43 @@ def test_setup_noninteractive_leaves_unconfigured(home):
 
 
 def test_setup_offers_extra_provider_keys(home, monkeypatch):
-    # mode=api-key (2), then add an OpenAI key (y), skip DeepSeek (n), skip Gemini (n).
-    # (Subscription mode now offers the dedicated metered-ingestion wizard instead — see
-    # test_setup_subscription_declines_metered_ingestion / test_setup_subscription_routes_
-    # ingestion_to_metered_provider below.)
-    # Extras are offered in _PROVIDERS order: OpenAI (y), DeepSeek (n), Gemini (n),
-    # Local (n), OpenRouter (n).
-    _answers(monkeypatch, "2", "y", "n", "n", "n", "n")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-setup-123456")
+    # mode=api-key (2); ingestion→Claude (1) to keep the ingestion-routing model picker out of
+    # scope for this test; add an OpenAI key (1 — first remaining provider), then stop (Done=5).
+    _answers(monkeypatch, "2", "1", "1", "5")
+    keys = iter(["sk-ant-setupkey-123456", "sk-openai-setup-123456"])
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: next(keys))
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
     assert state["mode"] == "api-key"
     assert state["keys"]["openai"] == "sk-openai-setup-123456"
-    assert "deepseek" not in state["keys"]       # declined
+    assert "deepseek" not in state["keys"]       # never picked
 
 
-def test_setup_subscription_declines_metered_ingestion(home, monkeypatch):
-    # mode=subscription (1), then decline routing ingestion to a metered service (n).
-    _answers(monkeypatch, "1", "n")
+def test_setup_subscription_ingestion_to_claude_stores_no_extra_keys(home, monkeypatch):
+    # mode=subscription (1); ingestion→Claude (1); no extra provider keys (Done=6).
+    _answers(monkeypatch, "1", "1", "6")
     auth.setup_auth_interactive(interactive=True)
     state = auth._load_state()
     assert state["mode"] == "subscription"
     assert state["keys"] == {}
 
 
-def test_setup_subscription_declined_metered_tunes_concurrency(home, monkeypatch, capsys):
-    # Staying on the subscription for ingestion (issue #400) auto-tunes extract_concurrency
-    # down from the built-in default of 5, since concurrent extractions on that path share
-    # one Claude Code session's rate limit.
-    _answers(monkeypatch, "1", "n")
+def test_setup_subscription_ingestion_to_claude_tunes_concurrency(home, monkeypatch, capsys):
+    # Picking Claude for ingestion (issue #400) while on subscription auth auto-tunes
+    # extract_concurrency down from the built-in default of 5, since concurrent extractions on
+    # that path share one Claude Code session's rate limit.
+    _answers(monkeypatch, "1", "1", "6")
     auth.setup_auth_interactive(interactive=True)
     config = json.loads(base.CONFIG_FILE.read_text())
     assert config["extract_concurrency"] == 3
     assert "Detected Claude subscription auth" in capsys.readouterr().out
 
 
-def test_setup_subscription_declined_metered_leaves_custom_concurrency(home, monkeypatch):
+def test_setup_subscription_ingestion_to_claude_leaves_custom_concurrency(home, monkeypatch):
     # A concurrency value the user already set (via `watchdog configure`, or a prior
     # auto-tune) is a deliberate choice — the auto-tune must not silently overwrite it.
     base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
-    _answers(monkeypatch, "1", "n")
+    _answers(monkeypatch, "1", "1", "6")
     auth.setup_auth_interactive(interactive=True)
     config = json.loads(base.CONFIG_FILE.read_text())
     assert config["extract_concurrency"] == 8
@@ -191,9 +190,9 @@ def test_setup_subscription_declined_metered_leaves_custom_concurrency(home, mon
 
 def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path, monkeypatch):
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # mode=subscription (1), route to metered (y), pick Gemini (3rd provider), then pick the
-    # first listed model once — applied to all three ingest stages.
-    _answers(monkeypatch, "1", "y", "3", "1")
+    # mode=subscription (1); ingestion→Gemini (4 — Claude, OpenAI, DeepSeek, then Gemini), pick
+    # the first listed model (1) — applied to all three ingest stages; no extra keys (Done=5).
+    _answers(monkeypatch, "1", "4", "1", "5")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-test-key-123456")
     auth.setup_auth_interactive(interactive=True)
 
@@ -212,7 +211,7 @@ def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path,
     assert config["classifier_effort"] == "low"
     assert config["extractor_effort"] == "medium"
     assert config["finalizer_effort"] == "high"
-    # Extraction no longer runs on the subscription session, so nothing tunes concurrency.
+    # Ingestion didn't stay on Claude, so nothing tunes concurrency.
     assert "extract_concurrency" not in config
 
 
@@ -221,9 +220,9 @@ def test_setup_metered_deepseek_leaves_effort_unset(home, tmp_path, monkeypatch)
     make the very next ingest call error. The picker only offers base ids, so effort must stay
     unset for a DeepSeek pick, unlike Gemini/OpenAI."""
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # mode=subscription (1), route to metered (y), pick DeepSeek (2nd provider), then the first
-    # listed model.
-    _answers(monkeypatch, "1", "y", "2", "1")
+    # mode=subscription (1); ingestion→DeepSeek (3 — Claude, OpenAI, then DeepSeek), pick the
+    # first listed model (1); no extra keys (Done=5).
+    _answers(monkeypatch, "1", "3", "1", "5")
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "ds-test-key-123456")
     auth.setup_auth_interactive(interactive=True)
 
@@ -238,23 +237,46 @@ def test_setup_metered_deepseek_leaves_effort_unset(home, tmp_path, monkeypatch)
 
 def test_setup_api_key_does_not_tune_concurrency(home, monkeypatch):
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    # mode=api-key (2), then decline all five extra-provider offers.
-    _answers(monkeypatch, "2", "n", "n", "n", "n", "n")
+    # mode=api-key (2); ingestion→Claude (1); no extra provider keys (Done=6).
+    _answers(monkeypatch, "2", "1", "6")
     auth.setup_auth_interactive(interactive=True)
     config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
     assert "extract_concurrency" not in config
 
 
 def test_setup_api_key_restores_stale_subscription_tune(home, monkeypatch, capsys):
-    # #493 follow-up — re-running `watchdog setup` and picking api-key this time must not leave
-    # a stale auto-tuned extract_concurrency=3 from a prior subscription run capping a metered key.
+    # #493 follow-up — re-running `watchdog setup`, picking api-key this time, and keeping
+    # ingestion on Claude (still metered under api-key mode) must not leave a stale auto-tuned
+    # extract_concurrency=3 from a prior subscription run capping it.
     base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 3}))
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    _answers(monkeypatch, "2", "n", "n", "n", "n", "n")
+    _answers(monkeypatch, "2", "1", "6")
     auth.setup_auth_interactive(interactive=True)
     config = json.loads(base.CONFIG_FILE.read_text())
     assert "extract_concurrency" not in config
     assert "reset to the metered default" in capsys.readouterr().out
+
+
+def test_setup_ingestion_provider_list_is_flat_and_claude_neutral(home, monkeypatch, capsys):
+    # #690 design pass: Claude is one item in the same flat ingestion-provider list as every
+    # other provider on one screen, not a default the rest are offered as an escape hatch from.
+    _answers(monkeypatch, "1", "1", "6")
+    auth.setup_auth_interactive(interactive=True)
+    out = capsys.readouterr().out
+    assert "Ingestion provider?" in out
+    for label in ("Claude", "OpenAI", "DeepSeek", "Google Gemini", "Local / self-hosted", "OpenRouter"):
+        assert label in out
+
+
+def test_setup_ingestion_to_claude_under_api_key_has_no_subscription_note(home, monkeypatch, capsys):
+    # The token/session-limit note is specific to the Claude-for-ingestion + subscription-auth
+    # combination — it shouldn't appear when Claude's access mode is already metered.
+    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
+    _answers(monkeypatch, "2", "1", "6")
+    auth.setup_auth_interactive(interactive=True)
+    out = capsys.readouterr().out
+    assert "Ingestion set to Claude, via your api-key login." in out
+    assert "burn through session limits" not in out
 
 
 # ── `watchdog auth` (bare) — status + interactive wizard ─────────────────────

@@ -1246,14 +1246,17 @@ completed purge, and the CLI hint says so.
     `local_context_window` config override before falling back to a conservative default (D139)
     rather than guessing from the substring table. Auth is resolved by `cmd/auth.py` (see #119,
     D37, D93, D139).
-  - **Setup philosophy (D95):** Claude Code is required — it runs the interactive investigation
-    skills below and is the ingestion default — but ingestion specifically can be routed to a
-    cheaper metered provider instead, since it is the token-heavy stage. `watchdog setup`'s auth
-    step surfaces this choice directly (offering to walk through picking a provider and a model
-    for each of the three ingest stages when the user is on a subscription), and `watchdog
-    auth`'s status display is split into a "Claude Code" section and an "Ingestion" section
-    (showing, per stage, which provider it resolves to and whether that provider is ready)
-    rather than favouring Claude's own settings.
+  - **Setup philosophy (D95, revised D235):** Claude Code is required — it runs the interactive
+    investigation skills below — but which provider handles ingestion is a separate, equal-weight
+    choice, not a default the rest are framed as an alternative to. `watchdog setup`'s auth step
+    asks the two questions independently: how Claude Code itself signs in (subscription or API
+    key, with no mention of ingestion), then which provider handles ingestion — Claude is one
+    flat-list option alongside OpenAI/DeepSeek/Gemini/local/OpenRouter; picking a non-Claude one
+    walks through its key and a model for all three ingest stages, and picking Claude while on
+    subscription auth surfaces the token/session-limit cost as a consequence of that combination
+    rather than a gate in front of the other options. `watchdog auth`'s status display is split
+    into a "Claude Code" section and an "Ingestion" section (showing, per stage, which provider it
+    resolves to and whether that provider is ready) rather than favouring Claude's own settings.
 - **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
   `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
   `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python
