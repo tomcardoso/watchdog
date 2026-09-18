@@ -90,34 +90,27 @@ _VAULT_PERMISSIONS = [
     # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
     # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of
     # `watchdog research` (in the terminal, ungated), never from the skill (#186, D45).
+    # File-permission checks only match Edit(path) rules — Write(path) rules are never matched
+    # (Claude Code warns on every Write(...) entry below as dead; Edit(path) covers every
+    # file-editing tool, Write included). Only Edit(...) entries remain below; the pairing
+    # comments describe what each path is for, not a Write/Edit split.
     # internal vault state
-    "Write(.watchdog/tmp/**)",
     "Edit(.watchdog/tmp/**)",
     # durable web-research worklist (#196) — the skill writes queued URLs here (not tmp/, which
     # setup sweeps), so a crashed session's queue survives.
-    "Write(.watchdog/research/**)",
     "Edit(.watchdog/research/**)",
-    "Write(.watchdog/registry/**)",
     "Edit(.watchdog/registry/**)",
-    "Write(.watchdog/timeline/**)",
     "Edit(.watchdog/timeline/**)",
     # session-authored pages (compounding queries → wiki threads)
-    "Write(queries/**)",
     "Edit(queries/**)",
-    "Write(wiki/**)",
     "Edit(wiki/**)",
     # post-ingest output files
-    "Write(briefings/**)",
-    "Write(entities/**)",
+    "Edit(briefings/**)",
     "Edit(entities/**)",
-    "Write(documents/**)",
     "Edit(documents/**)",
-    "Write(morgue/**)",
-    "Write(hot.md)",
+    "Edit(morgue/**)",
     "Edit(hot.md)",
-    "Write(log.md)",
     "Edit(log.md)",
-    "Write(context.md)",
     "Edit(context.md)",
     "Edit(.obsidian/graph.json)",
 ]

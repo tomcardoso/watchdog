@@ -401,6 +401,37 @@ def test_refresh_skills_backfills_read_scope_setting(configured):
     assert refreshed["permissions"]["blockReadsOutsideWorkingDirectories"] is True
 
 
+def test_cmd_new_never_writes_dead_write_permission_rules(configured):
+    """Claude Code only matches Edit(path) rules for file-permission checks — Write(path)
+    rules are never matched (and print a startup warning). New vaults must not carry any."""
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    settings = json.loads(
+        (configured / "city-hall-probe" / ".claude" / "settings.json").read_text()
+    )
+    allow = settings["permissions"]["allow"]
+    assert not any(p.startswith("Write(") for p in allow)
+    assert "Edit(briefings/**)" in allow
+    assert "Edit(morgue/**)" in allow
+
+
+def test_refresh_skills_removes_dead_write_permission_rules(configured):
+    """A vault created before this fix carries dead Write(...) rules that Claude Code warns
+    about every session — refresh-skills must strip them, not just add new Edit(...) ones."""
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    vault = configured / "city-hall-probe"
+    settings_path = vault / ".claude" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    settings["permissions"]["allow"].append("Write(briefings/**)")
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+
+    refreshed = json.loads(settings_path.read_text())
+    allow = refreshed["permissions"]["allow"]
+    assert not any(p.startswith("Write(") for p in allow)
+    assert "Edit(briefings/**)" in allow
+
+
 def test_cmd_new_registers_project(configured, wdg_home):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())
