@@ -725,7 +725,6 @@ def _print_banner() -> None:
             ("archive",    "Archive a completed investigation"),
             ("unarchive",  "Restore an archived investigation"),
             ("rename",     "Rename an investigation"),
-            ("move",       "Move vault to a new path"),
             ("delete",     "Remove an investigation from registry"),
         ]),
         ("Document processing", [
@@ -735,20 +734,16 @@ def _print_banner() -> None:
             ("bark",             "Complete post-ingest — reconciliation, synthesis, briefing"),
             ("context",          "Seed investigation context from _CONTEXT/"),
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
-            ("log",              "Show ingest history"),
-            ("timeline",         "Rebuild timeline.md from canonical timeline files"),
         ]),
         ("Investigate", [
             ("search",     "Semantic search across ingested documents"),
             ("leads",      "Surface investigative leads from the entity graph"),
-            ("merge-entities", "Merge a duplicate entity into another"),
             ("watchlist",  "Sweep the whole vault against watchlist.md"),
             ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
         ]),
         ("Info", [
             ("list",       "List all investigations"),
             ("status",     "Show detailed status"),
-            ("export",     "Export the knowledge graph (Neo4j / Gephi / Cypher)"),
             ("usage",      "Per-call token/cost/latency breakdown for ingest runs"),
             ("doctor",     "Check for missing or broken vaults"),
         ]),
