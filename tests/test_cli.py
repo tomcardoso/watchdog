@@ -374,6 +374,64 @@ def test_cmd_new_session_start_hook_loads_hot_md(configured):
     assert "UserPromptSubmit" in settings["hooks"]
 
 
+def test_cmd_new_blocks_reads_outside_vault(configured):
+    """Read/Glob/Grep are unrestricted by default in Claude Code — no confinement to the
+    vault without this setting, so a session could otherwise silently read another vault or
+    ~/.watchdog/credentials.json."""
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    settings = json.loads(
+        (configured / "city-hall-probe" / ".claude" / "settings.json").read_text()
+    )
+    assert settings["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+
+
+def test_refresh_skills_backfills_read_scope_setting(configured):
+    """A vault created before blockReadsOutsideWorkingDirectories existed must pick it up
+    from `watchdog refresh-skills`, not just new vaults."""
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    vault = configured / "city-hall-probe"
+    settings_path = vault / ".claude" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    del settings["permissions"]["blockReadsOutsideWorkingDirectories"]
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+
+    refreshed = json.loads(settings_path.read_text())
+    assert refreshed["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+
+
+def test_cmd_new_never_writes_dead_write_permission_rules(configured):
+    """Claude Code only matches Edit(path) rules for file-permission checks — Write(path)
+    rules are never matched (and print a startup warning). New vaults must not carry any."""
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    settings = json.loads(
+        (configured / "city-hall-probe" / ".claude" / "settings.json").read_text()
+    )
+    allow = settings["permissions"]["allow"]
+    assert not any(p.startswith("Write(") for p in allow)
+    assert "Edit(briefings/**)" in allow
+    assert "Edit(morgue/**)" in allow
+
+
+def test_refresh_skills_removes_dead_write_permission_rules(configured):
+    """A vault created before this fix carries dead Write(...) rules that Claude Code warns
+    about every session — refresh-skills must strip them, not just add new Edit(...) ones."""
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    vault = configured / "city-hall-probe"
+    settings_path = vault / ".claude" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    settings["permissions"]["allow"].append("Write(briefings/**)")
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+
+    refreshed = json.loads(settings_path.read_text())
+    allow = refreshed["permissions"]["allow"]
+    assert not any(p.startswith("Write(") for p in allow)
+    assert "Edit(briefings/**)" in allow
+
+
 def test_cmd_new_registers_project(configured, wdg_home):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())

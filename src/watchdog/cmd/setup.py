@@ -761,21 +761,47 @@ def cmd_refresh_skills(args) -> None:
 
     settings_path = vault / ".claude" / "settings.json"
     added = []
+    removed = []
+    read_scope_added = False
     if settings_path.exists():
         try:
             settings = _read_json(settings_path)
-            existing = set(settings.get("permissions", {}).get("allow", []))
-            missing  = [p for p in _VAULT_PERMISSIONS if p not in existing]
+            perms = settings.setdefault("permissions", {})
+            allow = perms.get("allow", [])
+            existing = set(allow)
+
+            # Write(path) allow rules are never matched by Claude Code's file-permission
+            # checks — only Edit(path) rules are, and they cover every file-editing tool
+            # (Write included) — so any Write(...) entry here is dead weight that also
+            # prints a startup warning every session. Strip them unconditionally.
+            removed = [p for p in allow if p.startswith("Write(")]
+            if removed:
+                allow = [p for p in allow if not p.startswith("Write(")]
+
+            missing = [p for p in _VAULT_PERMISSIONS if p not in existing]
             if missing:
-                settings.setdefault("permissions", {}).setdefault("allow", []).extend(missing)
-                settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+                allow.extend(missing)
                 added = missing
+
+            if removed or added:
+                perms["allow"] = allow
+
+            if "blockReadsOutsideWorkingDirectories" not in perms:
+                perms["blockReadsOutsideWorkingDirectories"] = True
+                read_scope_added = True
+
+            if removed or added or read_scope_added:
+                settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError):
             pass
 
     print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
     if added:
         print(f"  {_GREEN}Permissions updated{_RESET}  {_DIM}added {len(added)} missing rule{'s' if len(added) != 1 else ''}{_RESET}")
+    if removed:
+        print(f"  {_GREEN}Permissions cleaned up{_RESET}  {_DIM}removed {len(removed)} dead Write(...) rule{'s' if len(removed) != 1 else ''} (Claude Code only matches Edit(...) now){_RESET}")
+    if read_scope_added:
+        print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
     print()
 
 
