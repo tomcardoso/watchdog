@@ -393,11 +393,18 @@ def test_opus_5_pricing_matches_opus_4_8():
     assert mc._PRICING["claude-opus-5"] == mc._PRICING["claude-opus-4-8"]
 
 
+def test_sonnet_5_5_matches_sonnet_5_pricing_and_effort():
+    assert mc._PRICING["claude-sonnet-5-5"] == mc._PRICING["claude-sonnet-5"]
+    assert mc._effort_levels("anthropic", "claude-sonnet-5-5") == \
+        {"low", "medium", "high", "xhigh", "max"}
+
+
 @pytest.mark.parametrize("model_id,needs_thinking_param", [
     ("claude-sonnet-4-6", True),
     ("claude-opus-4-8", True),
     ("claude-sonnet-5", False),    # ships on by default — no param needed
     ("claude-opus-5", False),      # ships on by default — no param needed
+    ("claude-sonnet-5-5", False),  # ships on by default — no param needed
     ("claude-haiku-4-5", False),   # no thinking control at all
     ("gpt-5", False),              # non-Claude — never consulted
     ("not-a-real-model", False),   # uncatalogued — correctness-safe default
@@ -411,6 +418,7 @@ def test_catalog_needs_thinking_param(model_id, needs_thinking_param):
     ("claude-opus-4-8", True),     # thinking sent explicitly (#635)
     ("claude-sonnet-5", True),     # thinking on by default
     ("claude-opus-5", True),       # thinking on by default
+    ("claude-sonnet-5-5", True),   # thinking on by default
     ("claude-haiku-4-5", False),   # no thinking control at all
     ("gpt-5.6-luna", True),        # OpenAI reasoning model
     ("gpt-5.4-nano", True),        # OpenAI reasoning model
@@ -465,7 +473,7 @@ def test_claude_sonnet_rejects_xhigh(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="xhigh"):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="xhigh")
+        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-4.6", effort="xhigh")
 
 
 def test_claude_sonnet_accepts_max(api_key_auth, monkeypatch):
@@ -696,10 +704,12 @@ def test_context_window_ignores_backend_for_hosted_models():
 # one returned byte-identical counts on the corpus — which is what the paired rows below assert.
 # Only an UNCATALOGUED id falls through to 1.0 now.
 @pytest.mark.parametrize("model, ratio", [
-    ("sonnet", 0.93),            # old Claude tokenizer (Sonnet 4.6)
+    ("sonnet", 1.28),            # default tier is Sonnet 5.5 — new Claude tokenizer (D236)
+    ("sonnet-4.6", 0.93),        # old Claude tokenizer (Sonnet 4.6)
     ("haiku", 0.93),             # old Claude tokenizer — same value, same tokenizer
-    (None, 0.93),                # default tier (sonnet)
+    (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
     ("sonnet-5", 1.28),          # new Claude tokenizer
+    ("sonnet-5.5", 1.28),        # same tokenizer family, copied not measured
     ("opus", 1.28),              # new Claude tokenizer (Opus 4.8) — same value
     ("gemini-3.7-flash", 0.91),  # Gemini tokenizer
     ("gemini-3.1-pro-preview", 0.91),
@@ -1846,13 +1856,12 @@ def test_batch_cost_none_for_unknown_model():
 
 
 @pytest.mark.parametrize("tier, expected", [
-    ("haiku", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-4-6"),
+    ("haiku", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-5-5"),
     ("opus", "claude-opus-4-8"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
-    # Sonnet 5 tier-alias groundwork (#361/#509, D165): `sonnet-4.6` is the new explicit,
-    # version-pinned alias to the same id `sonnet` already resolves to; `sonnet-5` selects the
-    # new Claude Sonnet 5 entry. Bare `sonnet` must keep resolving to 4.6 — regression check that
-    # adding the new tier didn't silently move the default.
+    # Bare `sonnet` moved from 4.6 to 5.5 (D236); `sonnet-4.6` and `sonnet-5` stay selectable
+    # by name so benchmark arms and pinned configs keep their meaning.
     ("sonnet-4.6", "claude-sonnet-4-6"), ("sonnet-5", "claude-sonnet-5"),
+    ("sonnet-5.5", "claude-sonnet-5-5"),
 ])
 def test_resolve_model_id(tier, expected):
     assert mc.resolve_model_id(tier) == expected

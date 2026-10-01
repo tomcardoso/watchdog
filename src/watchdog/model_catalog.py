@@ -20,7 +20,7 @@ _CATALOG = _load()
 _MODELS = {m["id"]: m for m in _CATALOG["models"]}
 
 # Tier name -> API model id. `tier` in the YAML is either a scalar (one alias) or a list (a model
-# with more than one selectable name, e.g. Sonnet 4.6's `[sonnet, sonnet-4.6]`) — normalize both
+# with more than one selectable name, e.g. Sonnet 5.5's `[sonnet, sonnet-5.5]`) — normalize both
 # shapes to a list of aliases before building the lookup.
 def _tier_aliases(entry: dict) -> list[str]:
     tier = entry.get("tier")
@@ -153,7 +153,7 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
 # Claude tiers that ship extended thinking on by default (no `thinking` catalog flag needed —
 # see that field's own comment in model_catalog.yaml). Kept private: catalog_has_reasoning is
 # the only thing that should need this list.
-_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "opus-5"}
+_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "sonnet-5.5", "opus-5"}
 
 
 def catalog_has_reasoning(model_id: str) -> bool:

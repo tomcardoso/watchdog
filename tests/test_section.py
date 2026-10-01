@@ -219,9 +219,9 @@ def test_model_defaults_scale_with_context_window():
     # tokenizer_ratio (#617). Claude's 200K window gives the historical 120K/60K before that
     # division; Sonnet 4.6's measured 0.93 widens it to 129,032/64,516, since chars/4 turns out to
     # over-estimate for Claude's old tokenizer on real chewed documents.
-    assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
-    assert section.model_defaults("sonnet") == (129_032, 64_516)
-    assert section.model_defaults(None) == (129_032, 64_516)              # default tier
+    assert section.model_defaults("sonnet-4.6") == (int(120_000 / 0.93), int(60_000 / 0.93))
+    assert section.model_defaults("sonnet-4.6") == (129_032, 64_516)
+    assert section.model_defaults(None) == (93_750, 46_875)              # default tier
     assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)   # 1M window / 0.81
     # `gpt-5-mini` is NOT in the catalog (the real ids are gpt-5.4-mini etc.), so it declares no
     # ratio and its window fractions pass through undivided — the uncorrected control.
@@ -230,7 +230,7 @@ def test_model_defaults_scale_with_context_window():
 
 def test_section_token_threshold_model_aware(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
-    assert section.section_token_threshold("sonnet") == 129_032    # 120K / 0.93 (#617)
+    assert section.section_token_threshold("sonnet-4.6") == 129_032    # 120K / 0.93 (#617)
     assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
 
 
@@ -245,7 +245,7 @@ def test_section_token_threshold_auto_uses_model_default(monkeypatch):
     # The 'auto' sentinel (or an unset key) falls back to the model-aware default.
     monkeypatch.setattr(section, "_config_get",
                         lambda k, d: "auto" if k == "section_token_threshold" else d)
-    assert section.section_token_threshold("sonnet") == 129_032    # 120K / 0.93 (#617)
+    assert section.section_token_threshold("sonnet-4.6") == 129_032    # 120K / 0.93 (#617)
     assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
 
 
@@ -327,7 +327,7 @@ def test_model_defaults_unclamped_for_flat_priced_models():
     assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
     assert section.model_defaults("gemini-3.7-flash", backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (740_740, 370_370)
-    assert section.model_defaults("sonnet") == (129_032, 64_516)
+    assert section.model_defaults("sonnet-4.6") == (129_032, 64_516)
 
 
 def test_long_context_clamp_binds_the_threshold_not_just_the_budget():
@@ -428,7 +428,7 @@ def test_model_defaults_widen_for_over_estimating_tokenizers():
     # tokenizer except Claude 4.7+ measures below 1.0, meaning chars/4 over-estimates it, so its
     # budget widens rather than shrinks. Safe because _THRESHOLD_FRACTION leaves 40% of the window
     # unused regardless.
-    assert section.model_defaults("sonnet") == (int(120_000 / 0.93), int(60_000 / 0.93))
+    assert section.model_defaults("sonnet-4.6") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("haiku") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)     # 0.81
     # gpt-5.4-mini rather than gpt-5.4: same 0.80 ratio, but no pricing boundary to clamp against,
@@ -448,6 +448,6 @@ def test_run_sections_earlier_on_new_tokenizer_claude_model(tmp_path, monkeypatc
     # 100_000 est tokens: under Sonnet 4.6's 120K threshold, over Sonnet 5's ~92.3K one.
     pages = [{"page": n, "markdown": "x" * 4000} for n in range(1, 101)]
     _write_queue(vault, "doc1", pages, 100)
-    assert section.run(vault, "doc1", model="sonnet")["sectioned"] is False
+    assert section.run(vault, "doc1", model="sonnet-4.6")["sectioned"] is False
     assert section.run(vault, "doc1", model="sonnet-5")["sectioned"] is True
 

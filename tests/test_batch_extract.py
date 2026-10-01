@@ -161,7 +161,7 @@ def test_submit_builds_one_request_per_doc_and_persists_state(tmp_path, monkeypa
     assert batch_id == "batch_abc"
     reqs = fake.create_calls[0]
     assert [r["custom_id"] for r in reqs] == ["sha1", "sha2"]
-    assert reqs[0]["params"]["model"] == "claude-sonnet-4-6"   # tier resolved to a real id
+    assert reqs[0]["params"]["model"] == "claude-sonnet-5-5"   # tier resolved to a real id
     assert reqs[0]["params"]["messages"][0]["content"] == [{"type": "text", "text": "p1"}]
     assert "output_config" in reqs[0]["params"]
 
@@ -171,7 +171,7 @@ def test_submit_builds_one_request_per_doc_and_persists_state(tmp_path, monkeypa
     # One batch may mix skills (D144) — the mapping is persisted per sha, since collection
     # runs in a later process that has no other way to rebuild each document's prompt.
     assert state["skills"] == {"sha1": "annual-report", "sha2": "bankruptcy"}
-    assert state["model"] == "claude-sonnet-4-6"
+    assert state["model"] == "claude-sonnet-5-5"
     # Same reasoning as `skills` above, for the whole-prompt token estimate (#617): the prompt is
     # gone by collection time, so the estimate the tokenizer calibration needs is stashed here.
     assert state["est_prompt_tokens"] == be.est_prompt_tokens(docs)
@@ -206,7 +206,7 @@ def test_submit_sends_thinking_for_a_model_that_defaults_off(tmp_path, monkeypat
     fake = FakeBatches()
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
-    asyncio.run(be.submit(vault, docs, model="sonnet", effort=None,
+    asyncio.run(be.submit(vault, docs, model="sonnet-4.6", effort=None,
                           skills={"sha1": "s"}, api_key="sk-x"))
     assert fake.create_calls[0][0]["params"]["thinking"] == model_client._THINKING_ADAPTIVE
 
