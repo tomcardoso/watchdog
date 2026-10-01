@@ -476,7 +476,7 @@ Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` 
 measured against corpus-v1, D198, #617) — correcting the chars/4 `est_tokens` heuristic, which was
 calibrated against Claude's old tokenizer and mis-states every other one. Four tokenizers cover
 all fifteen catalogued models: 0.93 (Claude through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8,
-Sonnet 5), 0.91 (Gemini), 0.80 (GPT-5.x), 0.81 (DeepSeek V4) — an uncatalogued id resolves to 1.0.
+Sonnet 5, Sonnet 5.5), 0.91 (Gemini), 0.80 (GPT-5.x), 0.81 (DeepSeek V4) — an uncatalogued id resolves to 1.0.
 *Widening* (ratio < 1.0) is the common case and is safe on its own: the threshold fraction already
 reserves 40% of the window regardless.
 **One clamp sits between the window fraction and that division: `long_context_threshold`** (D202,

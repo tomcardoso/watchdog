@@ -1208,6 +1208,15 @@ def test_pick_model_interactive_claude_tier(monkeypatch):
     assert _setup._pick_model_interactive(None) == "sonnet"
 
 
+def test_pick_model_interactive_lists_each_claude_model_once(monkeypatch, capsys):
+    """Sonnet 4.6 has two aliases (`sonnet`, `sonnet-4.6`); the picker must show it once."""
+    monkeypatch.setattr("builtins.input", lambda *a: "1")
+    _setup._pick_model_interactive(None)
+    out = capsys.readouterr().out
+    assert out.count("Claude Sonnet 4.6") == 1
+    assert out.count("Claude Sonnet 5.5") == 1
+
+
 def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a: "1")
     value = _setup._pick_model_interactive(None, only_provider="gemini")
@@ -1462,12 +1471,12 @@ def test_configure_section_threshold_accepts_auto(wdg_home):
 
 def test_display_value_section_auto_shows_resolved_number():
     # 'auto' (or unset) renders the concrete value it resolves to for the configured model.
-    # 129032 is sonnet's 120K window fraction over its measured 0.93 tokenizer_ratio (#617).
+    # 93750 is sonnet's 120K window fraction over its 1.28 tokenizer_ratio (#617).
     out = _setup._display_value("section_token_threshold", "auto", {"extractor_model": "sonnet"})
-    assert "auto" in out and "129032" in out and "sonnet" in out
+    assert "auto" in out and "93750" in out and "sonnet" in out
     # Unset (None) behaves the same as explicit 'auto', for the same underlying model.
     out_unset = _setup._display_value("section_token_threshold", None, {"extractor_model": "sonnet"})
-    assert "auto" in out_unset and "129032" in out_unset
+    assert "auto" in out_unset and "93750" in out_unset
 
 
 def test_display_value_section_auto_resolves_the_real_pipeline_default_when_extractor_model_unset():
@@ -1487,7 +1496,7 @@ def test_auto_resolved_hint_plain_claude_unchanged():
     # bare-tier format — no ", medium" suffix even though sonnet nominally supports effort.
     out = _setup._auto_resolved_hint("section_token_threshold", {"extractor_model": "sonnet"})
     assert out.count("(") == 1
-    assert "129032 — sonnet)" in out
+    assert "93750 — sonnet)" in out
     assert "medium" not in out
 
 
@@ -1496,12 +1505,12 @@ def test_auto_resolved_hint_explicit_claude_backend_unchanged():
     # backend (model_client.CLAUDE_BACKENDS) — backend/effort don't move the number for any of
     # them, so the hint stays in the plain bare-tier format rather than naming a backend that
     # turns out to be inert, matching the plain "sonnet" case above. This test is about the
-    # backend/effort suffix, not the tokenizer_ratio correction — 129032 is just whatever the
+    # backend/effort suffix, not the tokenizer_ratio correction — 93750 is just whatever the
     # plain "sonnet" case resolves to, and the assertion is that a backend prefix doesn't move it.
     out = _setup._auto_resolved_hint(
         "section_token_threshold", {"extractor_model": "claude-api:sonnet"})
     assert out.count("(") == 1
-    assert "129032 — sonnet)" in out
+    assert "93750 — sonnet)" in out
     assert "claude-api" not in out
     assert "medium" not in out
 
@@ -1545,13 +1554,13 @@ def test_auto_resolved_hint_gemini_uses_catalogued_window_and_ratio():
 
 def test_auto_resolved_hint_section_token_budget_key():
     # The other key (section_token_budget) resolves the budget half of the (threshold, budget)
-    # pair, not the threshold — plain Claude is where the two differ (129032 vs 64516, the 120K/60K
-    # window fractions over sonnet's measured 0.93 ratio), proving the key selects the right
+    # pair, not the threshold — plain Claude is where the two differ (93750 vs 46875, the 120K/60K
+    # window fractions over sonnet's 1.28 ratio), proving the key selects the right
     # element of model_defaults's return.
     threshold_out = _setup._auto_resolved_hint("section_token_threshold", {"extractor_model": "sonnet"})
     budget_out = _setup._auto_resolved_hint("section_token_budget", {"extractor_model": "sonnet"})
-    assert "129032" in threshold_out
-    assert "64516" in budget_out
+    assert "93750" in threshold_out
+    assert "46875" in budget_out
     # Backend labelling applies to the budget key too, same as the threshold key.
     out = _setup._auto_resolved_hint(
         "section_token_budget", {"extractor_model": "openai:gpt-5-mini"})

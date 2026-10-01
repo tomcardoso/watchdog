@@ -620,7 +620,7 @@ def test_stamp_document_records_extraction_provenance():
     orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="general-records",
                                 skill_text="SKILL BODY", extract_model="sonnet", extract_effort="low")
     d = ext["document"]
-    assert d["extract_model"] == "claude-sonnet-4-6"   # resolved from the tier name
+    assert d["extract_model"] == "claude-sonnet-5-5"   # resolved from the tier name
     assert d["extract_effort"] == "low"
     assert d["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
 
@@ -2470,13 +2470,13 @@ def test_record_skill_provenance_is_persisted(tmp_path, monkeypatch):
     entry = next(iter(docs.values()))
     assert entry["record_skill"] == "general-records"
     assert entry["record_skill_hash"] == expected_hash
-    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_model"] == "claude-sonnet-5-5"
     assert entry["extract_effort"] is None
 
     note = next((vault / "documents").glob("*.md")).read_text(encoding="utf-8")
     assert "record_skill: general-records" in note
     assert f"record_skill_hash: {expected_hash}" in note
-    assert "extract_model: claude-sonnet-4-6" in note
+    assert "extract_model: claude-sonnet-5-5" in note
 
 
 def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):

@@ -2,9 +2,9 @@
 # CLI/usage logging (falls back to the raw id if a model or an old, no-longer-catalogued id has
 # none — see model_catalog.py's display_name). `tier` (Claude only) is the short name(s) that
 # `--model`/config accept in place of the raw id — a scalar (haiku, opus) for a model with one
-# name, or a list of aliases when it has more than one (Sonnet 4.6's `[sonnet, sonnet-4.6]`: bare
-# `sonnet` keeps resolving to 4.6 as the default, `sonnet-4.6` is the explicit, version-pinned
-# alias to the same id — see D165) — the only place that mapping lives. `cache_write`/`cache_read` (Claude) vs `cached_input`
+# name, or a list of aliases when it has more than one (Sonnet 5.5's `[sonnet, sonnet-5.5]`: bare
+# `sonnet` is the default, `sonnet-5.5` the explicit, version-pinned alias to the same id; Sonnet
+# 4.6 is now reachable only as `sonnet-4.6` — see D165, D236) — the only place that mapping lives. `cache_write`/`cache_read` (Claude) vs `cached_input`
 # (everyone else) reflect the two providers' different cache-pricing shapes — see
 # model_client.py's _api_cost / _openai_cost for how each is applied. An OpenAI model may ALSO
 # carry `cache_write` (#586, D195): the GPT-5.6 family and later bill cache writes at 1.25x the
@@ -200,10 +200,30 @@ models:
     context_window: 200_000
     max_output_tokens: 64_000
     tokenizer_ratio: 0.93     # measured #617, corpus-v1 2026-08-15 (old Claude tokenizer)
+  # Claude Sonnet 5.5 — the bare `sonnet` default (alongside the explicit `sonnet-5.5` pin), moved
+  # here from 4.6 on 2026-10-01 (D236). Listed second so the picker's Claude order stays haiku,
+  # sonnet, opus. Pricing is $2 / $10 per MTok, cache read $0.20 (platform.claude.com model table,
+  # fetched 2026-10-01), 128K output, all five effort levels. Context window pinned to 200K per
+  # D89. Ships with adaptive thinking on by default, so no `thinking` field (D206).
+  # `tokenizer_ratio` is COPIED from the Sonnet 5 family value, unmeasured for this id — see the
+  # CLAUDE.md Standing Follow-ups.
+  - id: claude-sonnet-5-5
+    name: Claude Sonnet 5.5
+    provider: anthropic
+    tier: [sonnet, sonnet-5.5]
+    input: 2.0e-6
+    output: 10.0e-6
+    cache_write: 2.5e-6
+    cache_read: 0.20e-6
+    context_window: 200_000
+    max_output_tokens: 128_000
+    max_output_tokens_batch: 300_000
+    effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 1.28     # copied from Sonnet 5 family, unconfirmed for this id (D206)
   - id: claude-sonnet-4-6
     name: Claude Sonnet 4.6
     provider: anthropic
-    tier: [sonnet, sonnet-4.6]
+    tier: sonnet-4.6
     input: 3.0e-6
     output: 15.0e-6
     cache_write: 3.75e-6
@@ -228,8 +248,8 @@ models:
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.28     # measured #617, corpus-v1 2026-08-15 (new Claude tokenizer; was 1.3)
     thinking: true            # off by default on this model — see the field comment above (D206)
-  # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; bare `sonnet`
-  # keeps resolving to 4.6 above, `sonnet-5` is the only way to select this entry. Pricing below is
+  # Claude Sonnet 5 (#361/#509 benchmark groundwork, D165) — additive alongside 4.6; `sonnet-5` is
+  # the only way to select this entry (bare `sonnet` was 4.6 when this was written, 5.5 since D236). Pricing below is
   # the INTRODUCTORY rate, in effect through 2026-08-31 (source: platform.claude.com/docs/en/
   # about-claude/pricing, fetched 2026-08-03). Standard rate takes effect 2026-09-01 and is
   # identical to Sonnet 4.6's current pricing ($3.0e-6 / $15.0e-6 / $3.75e-6 / $0.30e-6) — a human

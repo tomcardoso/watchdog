@@ -1062,8 +1062,15 @@ def _pick_model_interactive(current: str | None = None, *, only_provider: str | 
         models = [m for m in _OPENAI_PRICING if prefix and m.startswith(prefix)]
         groups = [(None, only_provider, models)]
     else:
+        # A model with several aliases (Sonnet 5.5's `sonnet`/`sonnet-5.5`) must list once: keep
+        # the first alias per model id, which is the bare tier name.
+        claude_tiers, seen_ids = [], set()
+        for tier, model_id in _MODEL_IDS.items():
+            if model_id not in seen_ids:
+                seen_ids.add(model_id)
+                claude_tiers.append(tier)
         groups = [
-            ("Claude", None, list(_MODEL_IDS)),
+            ("Claude", None, claude_tiers),
             ("OpenAI", "openai", [m for m in _OPENAI_PRICING if m.startswith("gpt-")]),
             ("DeepSeek", "deepseek", [m for m in _OPENAI_PRICING if m.startswith("deepseek-")]),
             ("Gemini", "gemini", [m for m in _OPENAI_PRICING if m.startswith("gemini-")]),
