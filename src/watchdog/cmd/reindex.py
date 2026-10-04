@@ -129,7 +129,7 @@ def cmd_reindex(args) -> None:
             n_skipped += 1
             continue
         context = _doc_context(sha, doc, entities_reg)
-        count = embed.add_document(vault, filename, pages, context=context)
+        count = embed.add_document(vault, filename, pages, context=context, sha256=sha)
         fulltext.add_document(vault, filename, sha, pages, morgue_path=morgue_path or "")
         n_docs += 1
         n_passages += count

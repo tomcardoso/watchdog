@@ -1097,9 +1097,10 @@ failing the whole scan — the same tolerance `watchdog doctor` already applies.
 
 ```
 entities/<type>/<id>.md     entity notes (<type> ∈ the closed vocabulary, D105)
-documents/<slug>.md         document notes
+documents/<slug>.md         document notes (slug gains -<sha6> when another document
+                            already owns it — a shared filename never overwrites, D241)
 morgue/<entity>/<type>/…     original source files + a sibling <name>.md of the
-                            Docling full text, filed by subject (D26)
+                            Docling full text, filed by subject (D26); same -<sha6> rule
 timeline.md                 rendered global timeline
 briefings/<date>.md         per-ingest briefings
 requests.md                 open document requests — documents to go and get (D111)

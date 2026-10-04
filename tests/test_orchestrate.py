@@ -662,6 +662,16 @@ def test_sidecar_skill_resolves_known_name():
     assert resolved is not None and Path(resolved).stem == "bankruptcy"
 
 
+def test_sidecar_skill_never_resolves_a_file_path(tmp_path, capsys):
+    """A sidecar is untrusted input (D121): a path in `skill:` must not load that file into the
+    prompt — `~/.watchdog/credentials.json` would otherwise be sent to the model (D241)."""
+    secret = tmp_path / "credentials.json"
+    secret.write_text('{"keys": {"anthropic": "sk-secret"}}')
+    assert orchestrate._sidecar_skill(f"skill: {secret}\n", filename="doc.pdf") is None
+    assert orchestrate._sidecar_skill("skill: ../records/bankruptcy\n", filename="doc.pdf") is None
+    assert "file path" in capsys.readouterr().out
+
+
 def test_sidecar_skill_absent_or_malformed():
     assert orchestrate._sidecar_skill(None, filename="missing.pdf") is None
     assert orchestrate._sidecar_skill("just a string, not a map\n", filename="bad.pdf") is None

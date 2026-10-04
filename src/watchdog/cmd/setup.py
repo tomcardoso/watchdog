@@ -2,7 +2,6 @@
 
 import json
 import os
-import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -17,7 +16,7 @@ from watchdog.cmd.base import (
     _find_project,
     load_projects,
 )
-from watchdog.pipeline.json_io import _read_json
+from watchdog.pipeline.json_io import _read_json, write_private_json
 
 
 _CONFIGURE_KEYS = {
@@ -918,10 +917,9 @@ class _ConfigError(Exception):
 
 def _persist(config: dict) -> None:
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
-    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)  # 0600 — mirrors auth._save_state (#304);
-    # config.json holds the archive.org S3 wayback_secret_key in plaintext, so this is
-    # unconditional on every persist to correct an existing loose-permission file too.
+    # config.json holds the archive.org S3 wayback_secret_key in plaintext, so it is written
+    # owner-only on every persist, which also corrects an existing loose-permission file (#304).
+    write_private_json(CONFIG_FILE, config)
 
 
 def _auto_resolved_hint(key: str, config: dict) -> str:
