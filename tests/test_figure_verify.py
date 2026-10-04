@@ -106,7 +106,7 @@ def test_trailing_decimal_zero_normalizes_to_match():
     assert verify_figures(extraction, pages) == []
 
 
-# ── the derived-sum failure class (#363 / Tributary finding) ────────────────
+# ── the derived-sum failure class (#363, from a live-run review) ────────────────
 
 def test_derived_sum_not_traceable_to_page_is_flagged():
     extraction = _fact("$430,000 across two transfers.")

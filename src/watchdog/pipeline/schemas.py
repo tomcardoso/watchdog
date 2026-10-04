@@ -22,14 +22,10 @@ def _obj(properties: dict, required: list[str]) -> dict:
     }
 
 
-# The unified fact primitive (#140). Each material fact is emitted once and rendered into
-# multiple views deterministically: the document note's key-facts list, plus — via its optional
-# dimensions — the entity notes (`entities`: which entities the fact is about) and the timeline
-# (`date`: the date of the occurrence, set only when the fact IS a datable event). This replaces
-# the former separate per-entity `evidence_fragments` and `timeline_events`, which postflight now
-# reconstructs from these tags. `quote_locator` is the first several words of the source sentence,
-# which Python resolves against the page text into a full `quote` at post-flight (#529,
-# `quote_verify.resolve_quotes`) — the model is never asked to retype the sentence itself.
+# The fact primitive (D26). Each material fact is emitted once and rendered deterministically into
+# the document note, the entity notes (`entities`) and the timeline (`date`, set only when the fact
+# is a datable occurrence). `quote_locator` is the opening words of a source sentence, which
+# post-flight expands into the full `quote` from the page text (D170).
 _KEY_FACT = _obj(
     {
         "fact": {"type": "string"},
@@ -79,14 +75,9 @@ _ROLE = _obj(
     ["relationship", "target_id"],
 )
 
-# The graph layer (#140): entity identity + relationships. What a document *says* about an
-# entity (claims, dated events) is not carried here — it lives in the document's `key_facts`,
-# tagged by entity id, and postflight reconstructs the per-entity views.
-#
-# Extraction is a pure function of the document (#381/D118): it names the entities *this*
-# document mentions and nothing else. It carries no `match_id` (entity resolution against the
-# vault is the finalizer's job — see RECONCILE) and no `contradictions` (a conflict needs two
-# claims side by side, which no single extraction call can see).
+# The graph layer (D26): entity identity and relationships. What a document says about an entity
+# lives in `key_facts`, tagged by entity id. Extraction names only the entities this document
+# mentions (D118): no vault matching and no contradictions, which need the whole batch.
 _ENTITY = _obj(
     {
         "id": {"type": "string"},
@@ -100,19 +91,10 @@ _ENTITY = _obj(
     ["id", "name", "type"],
 )
 
-# sha256/filename/original_path/page_count, source/obtained, file_metadata, and (on EXTRACTION,
-# below, and on SECTION) morgue_document_type used to sit in these schemas too, as optional properties — the
-# model never fills any of them (orchestrate._stamp_document sets every one unconditionally,
-# after the model call returns, straight from pf/sha/document_type — never reading a pre-existing
-# value first), so they were pure dead weight from the model's perspective. They were kept
-# "so the stamped dict validates" against this same schema, but nothing actually re-validates
-# the stamped dict afterward — jsonschema validation only ever runs on the model's raw response,
-# before stamping (model_client.acomplete_json / batch_extract.collect). Claude's strict
-# structured-output mode counts every optional property toward a hard complexity limit
-# ("Schemas contains too many optional parameters (28)... limit: 24") and nullable-typed ones
-# disproportionately so — corpus-v1's dense 70-page document hit exactly this, 400ing every
-# claude-api extraction outright. Dropping these seven dead properties is a genuine schema
-# correction, not just a workaround: they were never part of the model's actual contract.
+# Fields `orchestrate._stamp_document` sets after the call (sha256, filename, page count,
+# provenance, file metadata, morgue document type) are not in the schemas: the model never fills
+# them, validation runs only on the raw response, and Claude's strict structured-output mode caps
+# the number of optional properties — a dense document once exceeded it.
 _DOCUMENT = _obj(
     {
         "title": {"type": "string"},
@@ -166,21 +148,11 @@ _SECTION_DOCUMENT_PROPS = {
     "summary": _NULLABLE_STR,
 }
 
-# One page-range section's partial contribution. Looser than EXTRACTION: only section 1
-# fills document metadata + morgue fields; merge.run assembles the whole. `document.key_facts`
-# stays required on every section regardless (#496) — title/document_type/summary are the only
-# fields genuinely section-1-only. Before this, `document` carried no `required` at all, so a
-# model under low reasoning effort could (and, on gemini-flash, reliably did) omit key_facts
-# entirely — schema-valid, silent, and invisible to postflight since every section still
-# reported entities normally. `document` itself is now required at the top level too, so a
-# later section can't skip the object altogether to dodge the inner requirement.
-#
-# `entities` is deliberately NOT required, unlike `document`/`key_facts` above (#490 follow-up):
-# it has been required since the very first Python-orchestrator commit, not from a documented
-# silent-omission incident the way key_facts was (#496) — and on gpt-nano it hard-failed a whole
-# document with `"'entities' is a required property"` when a section genuinely named no new
-# entities. merge.merge_extractions already reads it as `sec.get("entities", [])`, so an omitted
-# key was always handled safely downstream; only the schema was stricter than the code needed.
+# One page-range section's partial contribution; merge.merge_extractions assembles the whole. Only
+# section 1 supplies document metadata and the morgue field. `document` and `document.key_facts`
+# are required on every section, so a model can't silently omit a section's facts. `entities` is
+# not required: a section may genuinely name no new entities, and the merge reads it with a
+# default.
 SECTION = _obj(
     {
         # `entities` before `document`, mirroring EXTRACTION (#651) — same decode-order
@@ -248,20 +220,13 @@ SYNTHESIS = _obj(
     ["entity_syntheses"],
 )
 
-# Post-ingest reconciliation (#381/D118) — the two jobs extraction is structurally unable to do,
-# because both need a view extraction never has: the whole entity set, after every document has
-# landed.
+# Reconciliation (D118): the two jobs that need the whole entity set.
 #
-#   `merges`         — entity resolution. Python has already blocked the field down to plausible
-#                      candidate PAIRS (reconcile.candidate_pairs — same canonical type, token
-#                      subset or Jaccard overlap); the model only confirms or rejects each. It
-#                      answers by pair `index`, so it never re-types an id and cannot invent one.
-#   `contradictions` — two conflicting claims about one entity, each grounded in a value, a
-#                      source document, and a page. Deliberately structured, not model-authored
-#                      markdown: these fields are exactly `contradiction.run`'s arguments, so the
-#                      callout is rendered and filed by the same deterministic writer the manual
-#                      `watchdog contradiction` command uses (D81's escape hatch), and a bad
-#                      document reference fails validation instead of landing in a note.
+#   `merges`         — entity resolution over Python-blocked candidate pairs; the model confirms or
+#                      rejects each by pair `index`, so it can't invent an id.
+#   `contradictions` — structured fields that are exactly `contradiction.run`'s arguments, so the
+#                      callout is written by the deterministic writer (D81) and a bad document
+#                      reference fails validation instead of landing in a note.
 RECONCILE = _obj(
     {
         "merges": {

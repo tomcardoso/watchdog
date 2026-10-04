@@ -1,35 +1,12 @@
-"""
-Watchdog pre-flight — packages everything the model needs to extract a document.
+"""Pre-flight: package what the model needs to extract one document.
 
-Reads the queue file and returns a single JSON blob: the page text plus the document's own
-processing facts. The orchestrator sends this output to the model, which does extraction
-reasoning and returns the extraction JSON; the orchestrator then calls post-flight.
+Reads the queue file and returns the page text and the document's processing facts. It reads no
+entity state, so extraction is a pure function of the document (D118); its one registry read is
+the set of document types already in use, which the extractor may reuse.
 
-**Pre-flight reads no vault state** (#381/D118). It used to snapshot the entity registry at the
-moment each document's extraction began and hand it to the extractor as EXISTING_ENTITIES /
-EXISTING_TIMELINE — for entity dedup and the contradiction check. That made extraction a
-function of *ingest order and concurrency wave* rather than of the document: documents in the
-same wave could not see each other at all, and a document could only ever be checked against the
-documents ahead of it. Both jobs moved to the finalizer (`pipeline/reconcile.py`), which is the
-only stage that sees the whole entity set, so extraction is now a pure function of the document.
-`known_document_types` is the one registry read that remains — it steers the document_type
-vocabulary and is order-insensitive by nature (a growing set of strings to reuse from, which
-changes nothing about what the document says).
-
-**Two independent "already done" questions (#403 phase 1).** Extraction now stages its output as
-a durable artifact (`.watchdog/extracted/<sha>.json`, written by `postflight.run`) instead of
-writing straight to the vault; a separate commit pass at finalize-start replays `write_vault` over
-whatever hasn't been committed yet. That splits what used to be one flag into two, each answering
-a different question and consulted at a different point in the pipeline:
-
-  - **Has this document been extracted?** — `already_staged`, true when the extraction artifact
-    exists. The orchestrator checks this *before* spending a classify/extract call: no artifact,
-    no reason to pay for one again. This check is deliberately sha-only — re-extracting under a
-    different model/effort/skill needs `--force` (#424, out of scope here).
-  - **Has this document been committed to the vault?** — `already_extracted`, true when its sha
-    is a key in `registry/documents.json`. This is the pre-existing flag and keeps its pre-existing
-    meaning; it answers "is there anything left to do for this document at all."
-"""
+It also answers two separate "already done" questions (D126): `already_staged` (an extraction
+artifact exists in `.watchdog/extracted/`, so no classify/extract call is needed) and
+`already_extracted` (the sha is committed in `registry/documents.json`, so nothing is left to do)."""
 
 import json
 from pathlib import Path

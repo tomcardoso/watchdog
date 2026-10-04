@@ -1,21 +1,10 @@
 #!/usr/bin/env python3
-"""
-Build the entity-synthesis bundle and bulk-apply synthesized prose.
+"""Build the entity-synthesis bundle and apply the synthesized prose (D26, D129, D238).
 
-Phase-1 cost reduction (issue #87/#80 follow-up, superseded by #140/D26's
-recurrence-gated synthesis): instead of one model call per multi-mention entity —
-each re-reading its fragment file and note, paying startup + preamble cache-write
-overhead — Python gathers every entity that recurs project-wide (``appears_in``
-count in the registry meets ``min_docs``, not this batch's mention count) into a
-single bundle for one post-ingest model call, then bulk-applies the returned prose
-deterministically. Called from `orchestrate.py` as library functions
-(`build_bundle` / `apply_bundle`); there is no standalone `watchdog` subcommand.
-
-#403 phase 4: `build_bundle` reads the staged extraction corpus directly
-(``.watchdog/extracted/<sha>.json``) for the shas in the current batch, instead of a
-per-entity fragment file + queue that `write_vault` used to maintain as a side effect
-of every document write. The `entity-fragments/` mechanism is retired.
-"""
+Gathers every entity touched this batch whose `appears_in` reaches `min_docs` across the vault,
+rebuilding each one's per-document fragments from the staged extractions
+(``.watchdog/extracted/<sha>.json``), for chunked synthesis calls. `apply_bundle` writes the
+returned Summary/Analysis deterministically. Library functions only, called from `orchestrate`."""
 
 import json
 import sys

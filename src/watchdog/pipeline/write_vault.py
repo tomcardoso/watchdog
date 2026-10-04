@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""
-Atomically write all vault artifacts for a single ingested document.
+"""Write every vault artifact for one staged extraction: the deterministic writer the finalize
+commit pass replays (D126, I7).
 
-Consumes an extraction JSON blob produced by Claude and handles every vault
-write so Claude's per-file work is: read text → output JSON → done.
-
-Usage:
-    watchdog-write-vault --extraction .watchdog/tmp/extraction.json [--vault .]
-
-Extraction JSON schema (as consumed here — i.e. AFTER postflight.explode_key_facts has fanned the
-unified `key_facts` out into per-entity `evidence_fragments` / `timeline_events`, #140). The model
-itself emits only `key_facts` (with `date` / `entities` tags) plus the entity graph; it no longer
-emits per-entity summaries, fragments, or timeline events:
+Extraction JSON as consumed here, after `postflight.explode_key_facts` has fanned `key_facts` out
+into per-entity `evidence_fragments`/`timeline_events` (D26). The model itself emits only
+`key_facts` and the entity graph:
 {
   "document": {
     "sha256": str, "filename": str, "original_path": str,
@@ -26,8 +19,6 @@ emits per-entity summaries, fragments, or timeline events:
   "entities": [
     {
       "id": str, "name": str, "type": str, "aliases": [],
-      // summary is no longer emitted by the model — synthesized post-ingest, with a provisional
-      // one-liner from the entity's top tagged fact in the meantime.
       "evidence_fragments": [          // reconstructed by postflight from facts tagged to this id
         {"claim": str, "page": int|null, "basis": "stated"|"inferred", "quote": str|null}
       ],
@@ -51,8 +42,7 @@ emits per-entity summaries, fragments, or timeline events:
   ],
   "morgue_entity_id": str,
   "morgue_document_type": str
-}
-"""
+}"""
 
 import hashlib
 import json
@@ -222,31 +212,13 @@ class NameIndex:
 
 def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict,
                           name_index: NameIndex | None = None) -> dict[str, str]:
-    """
-    Remap incoming entities that name an existing entity under a different slug.
+    """Remap incoming entities that name an existing entity under a different slug.
 
-    Documents extract in parallel from a pre-flight snapshot taken at launch, so two
-    documents referencing the same real-world entity can coin different ids (e.g.
-    'ernst-and-young-inc' vs 'ernst-young-inc'). Any incoming *new* entity whose normalized
-    (name, type) matches an existing one is remapped to that existing id, routing it through
-    the merge path instead of creating a duplicate.
-
-    The type half of the key is canonicalized (#335) so a real-world entity labelled with
-    drifting near-synonyms across documents (``company`` vs ``financialinstitution``) still
-    reconciles instead of forking into a second folder — see entity_type.canonical_type.
-
-    As of #403 phase 2 this is no longer called per-document inside write_vault's registry
-    lock; it is driven by `orchestrate._batch_exact_fold`, a deterministic pre-commit pass over
-    every staged extraction in a batch, sorted-sha order (D126), against a throwaway in-memory
-    registry copy that accumulates as the pass walks the batch. The original cross-worker-race
-    rationale for reconciling inside the lock no longer applies — the batch pass runs serially,
-    before any commit. The function itself is unchanged and still used, just called from there.
-
-    Returns the id remap applied (old id -> surviving id), so the caller can also rewrite any
-    other field that names an entity id by the same convention but lives outside this function's
-    view — ``morgue_entity_id`` and ``document.key_facts[].entities`` (#513) — rather than only
-    the fields (``entities[].id``, ``roles[].target_id``) reconciled here.
-    """
+    An incoming new entity whose normalized (name, canonical type) matches an existing one takes the
+    existing id, so it merges instead of duplicating (e.g. 'ernst-and-young-inc' and
+    'ernst-young-inc'). Called by `orchestrate._batch_exact_fold`, the pre-commit pass over the
+    staged batch (D127). Returns the remap (old id -> surviving id) so the caller can rewrite other
+    fields that name entity ids — `morgue_entity_id`, `document.key_facts[].entities`."""
     norm_index = name_index if name_index is not None else NameIndex(entities_reg)
 
     remap: dict[str, str] = {}
@@ -484,21 +456,13 @@ def _write_json_atomic(path: Path, data) -> None:
 
 
 class RegistryBatch:
-    """Hold the registries in memory across a commit pass, writing them every `flush_every`
-    documents instead of after each one (#696).
+    """Hold the registries in memory across a commit pass and persist them every `flush_every`
+    documents (D239), instead of re-reading and rewriting every registry file per document.
 
-    `run()` used to read and rewrite all of `entities.json`, `documents.json`, `registry.json` and
-    the manifest for every document, so a commit pass's I/O grew with the square of the batch —
-    on thousands of documents, hours spent re-serializing registries tens of megabytes long. Inside
-    a batch, `run()` reads the in-memory copies and leaves persisting to `flush`.
-
-    The registry persist stays the commit point (D67): a document only counts as committed once a
-    flush has written it, and the caller's `after_flush` callbacks — the queue-file unlink — run
-    only after that. A crash between flushes leaves the unflushed documents uncommitted with their
-    queue files in place, and the next finalize replays them; every write `run()` makes before the
-    persist (notes, morgue, indexes) is already replace-not-append for exactly that case. The
-    registry lock is held for the whole batch, since `run()` no longer re-reads the registry under
-    it for each document."""
+    The persist is still the commit point (D67): a document counts as committed only after a flush
+    writes it, and `after_flush` callbacks (removing its queue file) run only then. A crash between
+    flushes leaves those documents uncommitted and replayable; everything `run()` writes before the
+    persist is replace-not-append. The registry lock is held for the whole batch."""
 
     def __init__(self, vault_path: Path, flush_every: int = 50):
         self.vault_path = vault_path

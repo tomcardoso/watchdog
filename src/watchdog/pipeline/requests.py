@@ -1,9 +1,7 @@
-"""Document-request ledger (#365).
+"""Document-request ledger (D111, D159).
 
-A document request is a concrete, known-to-exist artifact to go acquire (a document type, the
-specific thing, why it matters, often where to get it) — distinct from an open-ended
-investigative lead. Splitting it out follows §I1: the model authors the content
-(``type``/``what``/``why_it_matters``/``likely_source``); Python stamps the id and provenance.
+A document request is a concrete document to go and get: its type, what it is, why it matters and
+where it is likely held. The model writes those fields; Python stamps the id and provenance (I1).
 
 Ledger at ``.watchdog/registry/requests.json``::
 
@@ -13,14 +11,9 @@ Ledger at ``.watchdog/registry/requests.json``::
         "added": "<iso>"
     }}}
 
-Entries are content-keyed and deduped on the normalized ``what`` text — see `record` for the
-mechanism. That only catches identical wording; a paraphrase of the same real document lands as
-a separate entry, caught by a later model-judged dedup pass (``orchestrate._post_ingest``, #416,
-D159). Resolution is otherwise manual (a ticked checkbox or ``watchdog resolve``, never
-auto-closed), and a resolved/rendered request is never re-fed into any other model prompt — the
-dedup pass is D111's one narrow, bounded exception. ``write_requests`` renders the still-open
-entries to the vault-root ``requests.md`` (a current-state view, overwritten each ingest, not an
-event log)."""
+Entries are keyed on the normalized ``what`` text, so identical wording converges; paraphrases
+are folded by the finalize-time dedup call. Resolution is manual (a ticked box or
+``watchdog resolve``). ``write_requests`` renders open entries to ``requests.md``."""
 
 import datetime
 import json

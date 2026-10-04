@@ -62,25 +62,12 @@ from watchdog import config as user_config
 
 DEFAULT_TIER = "sonnet"
 
-# The output-token envelope sent to the provider on the wire (#598): a single per-model number
-# derived from the catalogued `max_output_tokens` cap, rather than a hand-picked per-task base
-# plus a bolted-on per-provider reasoning reserve (see `_output_envelope`/`_wire_max_tokens`
-# below for the rationale). `_OUTPUT_HEADROOM` leaves margin under the provider's own documented
-# ceiling — it applies to every cap below, including the fallbacks, since margin against a cap we
-# inferred rather than read is if anything more warranted, not less.
-#
-# An uncatalogued id (a raw id typed past the CLI's tier validation, or a local/OpenRouter model
-# with no catalog entry) is resolved in two more steps before giving up. First
-# `max_output_tokens_fallback`, which extends the per-family flats the catalog already documents
-# (GPT-5.x's 128,000, Gemini's 65,536, DeepSeek V4's 384,000) to ids not listed yet — the normal
-# state of affairs a few months after this catalog was last updated. That table is load-bearing
-# rather than a nicety: for a *reasoning* model the chain-of-thought and the visible answer share
-# this one budget, and `pipeline/section.py` inverts the resulting ceiling into an *input* budget,
-# so a too-small cap doesn't merely truncate — it collapses the section budget and shreds a
-# document into many tiny sections, each re-paying the full prompt overhead (#598).
-# Only then `_DEFAULT_MAX_OUTPUT_TOKENS`, for a model matching no known family at all: we have no
-# idea what a self-hosted model's real cap is, and it could sit far below a frontier model's, so
-# this stays at the historical hand-picked figure rather than guessing upward.
+# The output-token envelope sent on the wire (D197): one per-model number from the catalogued
+# `max_output_tokens`, less `_OUTPUT_HEADROOM`. An uncatalogued id falls back first to
+# `max_output_tokens_fallback` (per-family caps: GPT-5.x 128,000, Gemini 65,536, DeepSeek V4
+# 384,000), which matters for reasoning models whose thinking shares this budget, then to
+# `_DEFAULT_MAX_OUTPUT_TOKENS` for a model matching no family — kept conservative, since a
+# self-hosted model's real cap may be far lower.
 _OUTPUT_HEADROOM = 0.10
 _DEFAULT_MAX_OUTPUT_TOKENS = 16_000   # unknown-family model: the historical hand-picked value
 
@@ -97,18 +84,10 @@ def _output_envelope(model_id: str) -> int:
     return int(cap * (1 - _OUTPUT_HEADROOM))
 
 
-# Input length at/above which a model bills at a higher rate, less the same 10% headroom
-# `_OUTPUT_HEADROOM` takes off `max_output_tokens` — for the same reason, and it is deliberately
-# the same figure rather than a second tunable. The headroom absorbs two unknowns at once: the
-# catalogued boundaries are read off vendor prose ("roughly double above ~272K") rather than a
-# cited rate card, and every call carries prompt scaffolding — schema, extraction instructions,
-# record skill, carry-forward entities, harvested candidates — on top of the document text that
-# `section.py` sizes. The archive's smallest real input on a metered backend is 7,707-8,773 tokens,
-# which is a *floor*: carry-forward and harvested candidates both grow with document length, and
-# the field that would measure the real figure per call (`est_prompt_tokens`, #617) is on zero
-# archived records because no run has happened since it landed. 10% of 272,000 is 27,200 tokens of
-# slack, comfortably over that floor and the only thing standing between a long document and a 2x
-# bill (#555, D202).
+# Input length at which a model starts billing at a higher rate, less the same 10% headroom as the
+# output cap (D202). The headroom covers boundaries read from vendor prose rather than rate cards,
+# and the prompt scaffolding (schema, instructions, skill, carry-forward, candidates) that rides on
+# top of the document text sectioning sizes.
 _LONG_CONTEXT_HEADROOM = _OUTPUT_HEADROOM
 
 
@@ -263,35 +242,13 @@ def context_window(model: str | None, backend: str | None = None) -> int:
 
 def tokenizer_ratio(model: str | None, backend: str | None = None,
                     vault: Path | None = None) -> float:
-    """Actual-tokens-per-estimated-token multiplier for a stage's model, for provider-aware
-    sectioning (#574, remeasured #617). `pipeline/section.py`'s chars/4 `est_tokens` heuristic was
-    calibrated against Claude's *old* tokenizer, so on a model whose tokenizer differs it
-    mis-counts a document's real token footprint; `section.model_defaults` divides its
-    window-derived threshold/budget by this ratio so sectioning respects the model's real context
-    window rather than the heuristic's count.
+    """Real tokens per chars/4 estimated token for a stage's model (D180, D198).
 
-    Every catalogued value is now measured against corpus-v1 rather than quoted from a vendor
-    (#617, D198) — `benchmarks/tokenizer_ratio.py`, via each provider's free token counter where
-    one exists (Anthropic, Gemini) and a billed differential probe where none does (OpenAI,
-    DeepSeek). Four tokenizers cover all fifteen catalogued models: 0.93 Claude through Sonnet
-    4.6, 1.28 Claude 4.7+ (Opus 4.8, Sonnet 5 — the vendor's "~30% more" measured at ~37% on our
-    text), 0.91 Gemini, 0.80 GPT-5.x, 0.81 DeepSeek V4. All but Claude 4.7+ sit below 1.0, i.e.
-    chars/4 over-estimates most real tokenizers on this corpus.
-
-    1.0 (no correction) only for a model with no catalog entry to declare one — an id shipped
-    after this catalog was last updated, a self-hosted/OpenRouter model an operator named
-    themselves — and for `backend == "local"` for the same reason.
-
-    `vault` (#606 Part B), when given, prefers this vault's own empirically-measured ratio —
-    `pipeline.ingest_setup._model_tokenizer_calibration`, computed from real est/actual token
-    pairs already recorded per model in this vault's usage history — over the catalog constant,
-    since a vault's own documents are better evidence for its own sectioning than a benchmark
-    corpus is. Falls back to the catalog value when `vault` is None or the vault doesn't yet have
-    enough matching history to calibrate from (a cold-start model, a vault whose history all
-    predates #617's `est_prompt_tokens` field, or any caller with no vault context, e.g.
-    `watchdog configure`'s preview). Imported locally (not at module level) to avoid a circular
-    import — `ingest_setup` already imports `pipeline.section`, which needs to reach this
-    function."""
+    Sectioning divides its window-derived threshold and budget by this, so it respects the model's
+    real context window. Catalogue values are measured against corpus-v1
+    (`benchmarks/tokenizer_ratio.py`); an uncatalogued id, or `backend == "local"`, gets 1.0. When
+    `vault` is given, this vault's own measured ratio (`ingest_setup._model_tokenizer_calibration`)
+    is preferred once it has enough history (D190). Imported locally to avoid a circular import."""
     if backend == "local":
         return 1.0
     model_id = resolve_model_id(model or DEFAULT_TIER)
@@ -304,18 +261,12 @@ def tokenizer_ratio(model: str | None, backend: str | None = None,
 
 
 class ModelError(RuntimeError):
-    """The model could not return schema-valid JSON, or the chosen backend can't run.
+    """The model could not return schema-valid JSON, or the backend can't run.
 
-    `usage`/`cost_usd`/`attempts`/`model`/`backend`/`auth_mode` (D125) are set only when the
-    failure happened after at least one attempt actually called the model, so real spend on a
-    failed call isn't lost; a backend/transport exception raised before any usage exists leaves
-    these None. `truncated` (#540) is a structured signal for an authoritative max-token cut, so
-    a caller can act on it (e.g. a section re-split) instead of matching on `last_err`'s
-    message text, which is free to change (#547 already changed one). `starved` (#558) narrows
-    `truncated` further: reasoning consumed the output budget rather than the answer itself
-    overflowing — a caller needs to tell the two apart, since re-splitting the input fixes
-    truncation but does nothing for starvation (a smaller input gets the same reasoning
-    envelope)."""
+    `usage`, `cost_usd`, `attempts`, `model`, `backend` and `auth_mode` are set when at least one
+    attempt reached the model, so failed spend is still recorded (D125). `truncated` marks an
+    authoritative max-token cut; `starved` narrows it to reasoning having used the output budget —
+    re-splitting the input fixes the first but not the second."""
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
@@ -600,21 +551,13 @@ def _prompt_cache_key(prompt: str | list[dict]) -> str | None:
 
 
 def _openai_cache_blocks(prompt: str | list[dict]) -> list[dict] | None:
-    """The user message's `content` as OpenAI text parts, with an explicit
-    `prompt_cache_breakpoint` on the block that ends the cacheable prefix (D195) — or None when
-    this prompt has no breakpoint to mark and should be sent flattened, exactly as before.
+    """The user message as OpenAI text parts, with `prompt_cache_breakpoint` on the block that ends the
+    cacheable prefix (D195), or None when there is no breakpoint and the prompt goes flattened.
 
-    Only for GPT-5.6+, which places its one implicit breakpoint at the very end of the whole
-    prompt (`_openai_complete_async` sends it as a single user message) — so an unmarked request
-    can only ever hit on a byte-identical whole-prompt repeat, never the run-stable
-    instructions+skill head (D195 has the measured evidence: 440 `gpt-5.6-luna` calls, zero
-    partial hits). Marks the FIRST breakpoint only, same reasoning as `_prompt_cache_key`; the
-    verify pass's second breakpoint is deliberately left unmarked, since extract/verify diverge
-    before it regardless (D181), and marking it would pay a 1.25x write for nothing.
-
-    The `"\\n"` appended to every block but the last replaces the separator
-    `_flatten_prompt`'s `"\\n".join` used to provide, so the rendered prompt stays
-    byte-identical to the flattened form — this changes only the request's cache metadata."""
+    GPT-5.6+ only: that family's implicit breakpoint sits at the end of the whole prompt, so without
+    a marker only a byte-identical repeat would hit. Marks the first breakpoint only; the verify
+    pass's second one diverges from extraction anyway (D181), and marking it would pay a write for
+    nothing. The "\\n" between blocks keeps the text byte-identical to the flattened form."""
     if not isinstance(prompt, list):
         return None
     marked = None
@@ -845,24 +788,18 @@ def _anthropic_client(anthropic_mod, api_key: str):
 async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
                               effort: str | None = None, prefix: str | None = None) -> dict:
-    """Raw Claude Messages API backend with structured outputs. `prompt` may be a plain string
-    or a list of Anthropic content blocks with a `cache_control` breakpoint (A1) — the Messages
-    API's `content` field accepts either shape natively.
+    """Claude Messages API backend with structured output. `prompt` may be a string or content blocks
+    carrying a `cache_control` breakpoint.
 
-    `prefix` (#343): a truncated call's partial output is prefilled as the assistant turn and
-    continued. `format` enforcement drops on a continuation (constrained decoding can't resume
-    mid-object; the shared shell validates the concatenation instead), and `thinking` drops too
-    (#635, D206) since Anthropic rejects prefilling while thinking is on — only the initial
-    attempt reasons, the resume-a-truncation retry doesn't. `finish_reason` mirrors `stop_reason`
-    so the shell can tell a max-token cut from a natural stop.
+    `prefix` continues a truncated response by prefilling it as the assistant turn; structured-output
+    enforcement and `thinking` are dropped on that call (constrained decoding can't resume
+    mid-object, and Anthropic rejects prefill with thinking on), and the shell validates the joined
+    result. `finish_reason` mirrors `stop_reason`.
 
-    Streams rather than calling `.create()` (#598): the Anthropic SDK refuses a *non-streaming*
-    request once `max_tokens > 21,333` (`Anthropic._calculate_nonstreaming_timeout`, anthropic
-    0.116.0) — well below the catalogued envelope now sent (115,200 on Sonnet 4.6). Overriding
-    the client's timeout instead would defeat the point: a non-streaming call holds one silent
-    connection open for the whole generation, which a TLS-inspecting corporate proxy will drop —
-    streaming keeps bytes flowing so the connection stays alive. **Do not revert to `.create()`
-    without re-deriving `max_tokens` back under 21,333.**"""
+    Uses streaming: the SDK refuses a non-streaming request once `max_tokens` exceeds about 21,333,
+    well under the catalogued envelope, and a long silent non-streaming connection is what
+    TLS-inspecting proxies drop. Don't switch back to `.create()` without bringing `max_tokens` under
+    that limit."""
     import anthropic
 
     messages = [{"role": "user", "content": prompt}]
@@ -1062,22 +999,12 @@ _TRANSIENT_BACKOFF_S = 2.0
 
 
 def _openai_response_format(base_url: str, schema: dict) -> dict:
-    """The `response_format` for an OpenAI-compatible request — real `json_schema` structured
-    output where it's safe, portable `json_object` mode elsewhere (D98/D151, issue #479).
+    """The `response_format` for an OpenAI-compatible request (D98, D151, D139).
 
-    Gemini's OpenAI-compat endpoint honours `json_schema` with genuine wire-level enforcement,
-    and its own schema engine treats `required` as an optional list rather than demanding every
-    property (ai.google.dev/gemini-api/docs/structured-output) — matching schemas.py's
-    omit-optional-fields design (e.g. `_KEY_FACT`'s `required` is just `["fact"]`) with no
-    rewrite needed. OpenAI's own Structured Outputs mode is real too, but only in `strict` form,
-    which demands every property be listed in `required` (nullable unions standing in for
-    "optional") — directly conflicting with that same design, so it gets a mechanically-derived
-    `_to_strict_schema` variant instead of the schema as-authored (D151) — repeated live gpt-nano
-    failures under the weaker `json_object` mode (issue #490) made D98's original prompt-only
-    tradeoff no longer worth it for OpenAI specifically. DeepSeek's JSON Output docs
-    (api-docs.deepseek.com/guides/json_mode) document only `json_object` — no schema field at
-    all, so it (and `local`/`openrouter`, D139 — no capability table for an arbitrary model)
-    keep the schema-in-prompt path."""
+    Gemini gets `json_schema` with the schema as authored (its engine accepts optional fields).
+    OpenAI gets strict `json_schema` against `_to_strict_schema`'s derived variant, since strict mode
+    requires every property. DeepSeek, `local` and `openrouter` get `json_object` with the schema in
+    the prompt: DeepSeek's JSON mode takes no schema, and the other two route to arbitrary models."""
     if "generativelanguage.googleapis.com" in base_url:
         return {"type": "json_schema", "json_schema": {"name": "watchdog_response", "schema": schema}}
     if base_url.rstrip("/") == _OPENAI_BASE["openai"]:
@@ -1091,24 +1018,14 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
                                  api_key: str | None, max_tokens: int,
                                  effort: str | None = None, prefix: str | None = None,
                                  *, base_url: str) -> dict:
-    """OpenAI-compatible Chat Completions backend — OpenAI, DeepSeek, Gemini (via its
-    OpenAI-compatibility endpoint), and any other service speaking the same wire format
-    (selected by `base_url`).
+    """OpenAI-compatible Chat Completions backend (OpenAI, DeepSeek, Gemini, local, OpenRouter — chosen
+    by `base_url`).
 
-    Structured output goes via `_openai_response_format` (real `json_schema` enforcement on
-    Gemini; portable JSON-object mode + schema-in-prompt elsewhere, D98), then validated locally
-    as a safety net either way. `effort` arrives already resolved to the provider's native value
-    and is sent as `reasoning_effort` (#125). No provider-agnostic cache_control equivalent
-    exists here (A1 is Claude-only), so a content-block prompt is flattened, but the first
-    breakpoint's position is still reused to derive `prompt_cache_key` (D181) for the real
-    OpenAI endpoint.
-
-    DeepSeek's optional `-thinking` model-id marker is stripped and translated to its explicit
-    thinking toggle (default off, #320). `prefix` (#343): only DeepSeek's chat-prefix-completion
-    beta continues a truncated response (partial output appended as an assistant turn with
-    `prefix: true`, structured-output enforcement dropped); OpenAI/Gemini return a *new*
-    assistant message instead and never prefill (`supports_continuation=False`). `finish_reason`
-    lets the shell distinguish a max-token cut (`length`) from a natural stop."""
+    Structured output via `_openai_response_format`, validated locally either way. `effort` arrives
+    resolved and is sent as `reasoning_effort`. Content-block prompts are flattened, with cache hints
+    where the provider supports them (`_openai_cache_blocks`, `prompt_cache_key`). DeepSeek's
+    `-thinking` id suffix becomes its thinking toggle. `prefix` continues a truncated response — only
+    DeepSeek supports it. `finish_reason` distinguishes a max-token cut from a natural stop."""
     import ssl
 
     import httpx
@@ -1397,18 +1314,12 @@ def _merge_usage(a: dict | None, b: dict | None) -> dict | None:
 
 
 def _wire_max_tokens(backend: str, model_id: str) -> int:
-    """The `max_tokens` ceiling sent to the provider on the wire for `backend`/`model_id` — task-
-    and effort-independent (#598).
+    """The `max_tokens` sent on the wire for `backend`/`model_id`: the catalogued output cap under
+    headroom, independent of task and effort (D197).
 
-    A runaway guard, not a reservation: billing is on actual output, so there's no cost to
-    sending the model's real catalogued envelope on every call. This replaced a hardcoded
-    per-task base (16,000) plus bolted-on per-provider reasoning "reserves" (#337/#354/#541),
-    which existed only because every provider draws reasoning tokens from the SAME output budget
-    as the visible answer — a ceiling sized for the visible JSON alone starves reasoning the
-    moment it grows. Deriving the ceiling from the real catalogued cap removes that starvation
-    mode at its root instead of patching it per provider. `pipeline/section.py`'s input-side
-    sizing no longer consults this function at all (D202) — this envelope is now purely a
-    runaway guard on the wire, not an input-budget input."""
+    A runaway guard, not a reservation — billing is on actual output. Using the model's real cap
+    means reasoning tokens, which share the output budget, can't starve the visible answer.
+    Sectioning does not consult it (D202)."""
     if backend == "deepseek":
         # `-thinking` is a Watchdog-only routing marker (D88), not a real catalog id — strip it
         # before consulting the catalog, the same normalization `_openai_complete_async` already

@@ -1,24 +1,16 @@
-"""Web research capture (#186) — the deterministic egress gate for /watchdog-research.
+"""Web research capture — the deterministic egress gate for /watchdog-research (D45, I5).
 
-The interactive research skill curates URLs; this module is the single writer that turns a
-URL into a sanitized source document under `_INCOMING/`, so web findings flow through the
-normal chew → ingest pipeline (preserving dedup, provenance, and registry bookkeeping) and
-never reach the vault as a direct note. Two properties make this safe and durable:
+The research skill curates URLs; this module turns each into a sanitized file under `_INCOMING/`,
+so web findings go through chew and dig like any other document.
 
-- **Fetching happens here, in Python, so URL validation runs *before* the network call** — the
-  real SSRF guard (reject non-http(s) schemes and hosts that resolve to private/loopback/
-  link-local space, re-checked on every redirect hop). The fetched body is sanitized before it
-  becomes vault content, since fetched web text is an injection surface: HTML gets a rendered,
-  script-stripped Chromium capture when Playwright is available (`pipeline/capture.py`, #200), or
-  else an nh3-cleaned plain fetch.
-- **Each deposit is written synchronously the instant it is captured**, so a long research
-  session that runs out of tokens never loses what it already pulled; `deposit_many` re-pulls a
-  durable worklist idempotently (deposit filenames are a stable hash of the URL).
+- **URLs are validated before any connection**: http/https only, and no host that resolves to
+  private, loopback or link-local space, re-checked on every redirect. Fetched HTML is sanitized
+  — a rendered, script-stripped capture when Playwright is installed (`pipeline/capture.py`),
+  otherwise an nh3-cleaned fetch.
+- **Each deposit is written as soon as it is fetched**, and file names are a stable hash of the
+  URL, so `deposit_many` can re-run a worklist safely.
 
-Provenance rides the existing `.yml` sidecar convention (`pipeline.sidecar`): `source`/`obtained`
-are stamped deterministically at ingest and the filtered sidecar reaches the extractor as `notes`
-context, then is re-written into the morgue. See ARCHITECTURE §15 and DECISIONS D45, D121.
-"""
+Provenance goes in the `.yml` sidecar (`pipeline.sidecar`, D121)."""
 
 from __future__ import annotations
 

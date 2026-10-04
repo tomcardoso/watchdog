@@ -204,26 +204,11 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
                         post_backend, post_model, classify_effort=None, extract_effort=None,
                         post_effort=None, finalizer_overrides=None, concurrency=None,
                         is_dig=False) -> str:
-    """Which model runs each ingest stage — printed alongside the cost estimate before an
-    ingest starts, so a run under a non-default provider (#325) is obvious up front instead of
-    the older generic 'Using the configured provider(s).' notice. Stage names are padded to a
-    common width so the model values line up in a column (#411). Classify gained an effort knob
-    (D221) since some models it can be routed to (e.g. the benchmark-recommended
-    openai:gpt-5.6-luna) actually support it; D36's "no knob" is still true of Haiku, the
-    classifier's default, which rejects the parameter outright — `classify_effort` simply
-    no-ops there like the others do on an effortless model.
+    """The model each stage will run on, printed before a run starts.
 
-    `finalizer_overrides` (#433) adds one extra row per post-ingest stage whose resolved
-    model/backend differs from the aggregate finalizer row — an unoverridden stage (the common
-    case) stays folded into the single "finalizer" line rather than repeating it four times.
-
-    `concurrency` (#456), when given, is the raw `--concurrency` value the user explicitly
-    passed — omitted (None) when a run falls back to the config/default value, so this row
-    only appears when it actually reflects a deliberate choice rather than a fixed default.
-
-    `is_dig` (#456) drops the finalizer row(s) entirely: `watchdog dig` always stops before
-    finalization in the same run (unlike the bare guided walk or the deprecated `ingest`, both of
-    which finalize inline), so which model would run it is irrelevant noise on this run's summary."""
+    One row per stage, padded into a column. `finalizer_overrides` adds a row for each post-ingest
+    stage that differs from the finalizer; `concurrency` adds a row only when `--concurrency` was
+    passed; `is_dig` drops the finalizer rows, since `dig` doesn't finalize."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
     stages = [("classifier", classify_backend, classify_model, classify_effort),
@@ -1250,16 +1235,12 @@ def exit_code_for(result) -> int:
 
 
 def cmd_extract(args, *, non_interactive: bool = False) -> dict | None:
-    """`watchdog dig` (#425, renamed from `extract` in #441/D138) — classify + extract queued
-    documents, staging the artifacts, and stop before finalize. A thin wrapper around
-    `cmd_ingest` with finalization forced off: inherits the estimate path, cost preview, skill
-    pinning, `--wait`, the lock/summary machinery, and the "run watchdog bark next" closing
-    message for free.
+    """`watchdog dig` — classify and extract queued documents, stage the results, and stop before
+    finalize (D138). A wrapper around `cmd_ingest` with finalization off, so it shares the estimate,
+    cost preview, skill pinning, `--wait` and lock handling.
 
-    `non_interactive` (#494) is for programmatic callers (run_benchmark.py) that have no human to
-    answer a prompt: it fails loud (`sys.exit`) instead of blocking on the pending-finalization
-    merge/discard pick, and skips the quarantined-documents requeue offer instead of blocking on
-    that confirm."""
+    `non_interactive` is for programmatic callers (run_benchmark.py): it skips the offer to requeue
+    quarantined documents instead of waiting on a prompt."""
     args.no_finalize = True
     return cmd_ingest(args, non_interactive=non_interactive)
 

@@ -1,22 +1,10 @@
-"""Deterministic quote resolution against the morgue text (#267, #529).
+"""Deterministic quote resolution against the page text (D75, D170).
 
-D22 deferred checking that a captured ``key_facts[].quote`` actually appears on its cited
-page to the model-graded #106 evaluator, since the Docling text was discarded after
-extraction. Post-D26 the page text is already in hand at post-flight time (read here from
-the chew-time queue descriptor, the same source `write_vault` uses to write the morgue
-markdown) — so this became a deterministic substring/fuzzy match, not a model call.
-
-#529/D170 went a step further: the model no longer emits the quote at all, only a short
-``quote_locator`` (the first several words of the source sentence). ``resolve_quote`` finds
-that locator in the real page text and expands it into the full sentence in Python, so the
-rendered quote is source text by construction rather than a model retyping checked after the
-fact. ``verify_quote`` (substring/fuzzy match against a model-supplied ``quote``) is kept only
-for the legacy path: an extraction staged before this change, re-run through post-flight by
-`watchdog bark` with no ``quote_locator`` on its key_facts.
-
-Annotation only, never a gate (same posture as the D32 coverage warning): a locator that can't
-be resolved is flagged in the rendered note and logged as a WARN, but never blocks the document.
-"""
+The model emits only a short ``quote_locator`` — the first several words of a source sentence.
+``resolve_quote`` finds it in the cited page's text (from the chew-time queue file) and expands it
+to the full sentence in Python, so a rendered quote is source text by construction.
+``verify_quote`` checks a model-supplied ``quote`` and exists only for extractions staged before
+locators. Annotation only, never a gate: an unresolved locator is flagged in the note and logged."""
 
 import html.entities as html_entities
 import re
@@ -227,25 +215,14 @@ def _elided_match(norm_text: str, parts: list[str]) -> bool:
 
 
 def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> dict:
-    """Check ``quote`` against its cited page, then the page ±1 (OCR noise, page-marker
-    drift), and report the outcome.
+    """Check a model-supplied ``quote`` against its cited page, then the pages either side (OCR noise,
+    page-marker drift). Only for extractions staged before quote locators; a locator is resolved by
+    `resolve_quote` instead. An elided quote (both ends kept, middle cut with an ellipsis) verifies
+    when its kept parts appear in order and close together (D204).
 
-    Legacy path only (#529): a `quote_locator`-carrying fact is resolved by `resolve_quote`
-    instead. This is kept for a pre-#529 extraction staged before the change and re-run through
-    post-flight by `watchdog bark`.
-
-    Handles an **elided** quote — one where the model kept both ends and cut the middle with
-    an ellipsis (#630). Those used to fail categorically: measured over the archived benchmark
-    extractions, elided quotes verified at 0.9% against 92.7% for the rest, and the rejected
-    ones were accurate quotations of real provisions.
-
-    Returns ``{"verified": None}`` when there's nothing to check (no page cited, or the
-    page text isn't available at all — e.g. a `watchdog bark` re-run with no chew-time
-    queue descriptor on disk); ``{"verified": True}`` on an exact substring match;
-    ``{"verified": True, "found_page": N}`` when only a normalized match was found, and on
-    a different page than cited; ``{"verified": False}`` when page text *is* available but
-    no match was found anywhere searched.
-    """
+    Returns ``{"verified": None}`` when there is nothing to check (no page, or no page text);
+    ``{"verified": True}`` on an exact match; ``{"verified": True, "found_page": N}`` for a normalized
+    match on a different page; ``{"verified": False}`` when page text exists but nothing matched."""
     quote = quote.strip()
     if not quote or page is None or not page_texts:
         return {"verified": None}

@@ -1,1485 +1,497 @@
 # Watchdog — Architecture
 
-This document records how the preprocessing and ingestion pipeline is built and,
-more importantly, **why** — the architectural decisions and their tradeoffs. It is
-the reference for understanding the system as a whole and for evaluating future
-changes against the choices already made.
-
-> **Keep this current.** Any change that alters the pipeline's structure, the
-> division of labour between deterministic code and the model, the vault/registry
-> layout, or one of the **Invariants** (§15) must update this file in the same change;
-> the dated rationale for a specific decision is appended to [DECISIONS.md](DECISIONS.md).
-> See [CLAUDE.md](CLAUDE.md).
+How the pipeline is built, and the rules that govern it (§15). This file describes the current
+state; the dated rationale for each decision is in [DECISIONS.md](DECISIONS.md), cited here as
+`Dn`. Keep it current: a change to the pipeline's structure, the code/model split, the
+vault/registry layout or an invariant updates this file in the same change (see
+[CLAUDE.md](CLAUDE.md)).
 
 ---
 
 ## 1. Design principles
 
-These run through every decision below.
-
-- **Local-first.** Preprocessing (OCR, layout, near-duplicate detection,
-  classification inputs) runs entirely on the user's machine. Documents never leave it
-  during chew. The search index — embeddings, BM25, and the cross-encoder reranker — is
-  also fully local (built at ingest, see §11), so it costs no API tokens either. The only
-  network calls are the Claude API during the ingest (extraction/synthesis) phase.
-- **Deterministic code writes; the model decides.** Anything that can be done
-  reliably and cheaply in Python — file writing, merging, sorting, deduplication,
-  registry bookkeeping — is done in Python. The model is reserved for judgement:
-  reading documents, extracting entities, classifying, synthesizing prose. This
-  keeps token cost down and makes the vital bookkeeping reproducible and testable.
-- **Cost-consciousness.** Token spend is treated as a budget. Work is pushed to the
-  cheapest layer that can do it correctly, and model work is bounded (gated,
-  fanned out, fed pre-digested inputs) rather than open-ended.
-- **Model only for reasoning.** A Python orchestrator (`pipeline/orchestrate.py`) runs the
-  ingest loop and calls the model only for judgement — classify, extract, synthesize,
-  dedup timeline collisions, brief. Dispatch, file I/O, pre/post-flight, registry writes,
-  and the synthesis bundle are deterministic Python. Each document's text lives only in
-  its own extraction call, never in a long-lived context.
-- **Parallel, with serialized writes.** Documents are extracted concurrently
-  (semaphore-bounded); all registry and note writes funnel through a single serialized,
-  lock-guarded path (`write_vault`), so concurrency is safe without the model reasoning
-  about it.
-- **Two runtimes, one boundary — Claude Code is required.** Watchdog runs in two places, and
-  the line between them is a governing constraint. The **document pipeline** (`watchdog chew` /
-  `ingest`) is a terminal program whose bounded reasoning calls go through a provider-agnostic
-  `model_client`: Claude by default, but offloadable to OpenAI/DeepSeek/Gemini per stage (D37,
-  D94) because a single-shot, schema-bound extraction call tolerates a cheaper model. The **investigation**
-  (`/watchdog-query`, `-surface`, `-wiki`, `-context`, `-health`, `-research`) runs *inside Claude
-  Code* as agentic, multi-turn, user-in-the-loop sessions — and is deliberately **not** offloadable:
-  Claude Code is a hard requirement, and these stay on Claude. The split tracks capability, not
-  preference — open-ended exploration that asks the user questions and follows links across the
-  vault is where model and harness quality are hardest to substitute. The practical rule this
-  sets: "make it backend-portable" applies only to pipeline steps; collapsing an interactive
-  command into the single-shot pipeline pattern to gain portability would forfeit the iteration
-  that makes it useful (see D18 for the one move that *was* worth it — ingest, which is batch,
-  not interactive).
+- **Local-first.** Chew (text extraction, OCR, near-duplicate detection) and the search indexes
+  run on the user's machine and cost no API tokens. Network calls are the configured model
+  provider's API during `dig`/`bark`, plus the opt-in web research, capture and Wayback features
+  (§14).
+- **Deterministic code writes; the model decides.** File writing, merging, sorting, dedup and
+  registry bookkeeping are Python. The model is used only for judgement: classifying, extracting,
+  reconciling, synthesizing prose, writing the briefing.
+- **Cost is a budget.** Work goes to the cheapest layer that can do it correctly; model work is
+  gated, bounded and fed pre-digested input.
+- **Parallel extraction, serial writes.** Documents extract concurrently; every vault write
+  happens in one serial commit pass (I7).
+- **Two runtimes.** The document pipeline (`chew`, `dig`, `bark`) is a terminal program whose
+  single-shot, schema-bound calls go through a provider-agnostic `model_client`, so each stage can
+  run on Claude, OpenAI, DeepSeek, Gemini, OpenRouter or a local model (D37, D94, D139). The
+  investigation layer (`/watchdog-query`, `-surface`, `-wiki`, `-entity`, `-context`, `-health`,
+  `-research`) runs inside Claude Code as interactive sessions and is not portable: Claude Code is
+  a hard requirement. "Make it backend-portable" applies to pipeline steps only (D18).
 
 ---
 
 ## 2. Pipeline overview
 
 ```
-_INCOMING/ ──▶ chew ──▶ .watchdog/queue/<sha>.json ──▶ ingest ──▶ vault notes + registry
- (raw docs)   (local)        (extracted text)        (Python; model    (entities, documents,
-                                                       for reasoning)    timeline, briefings)
+_INCOMING/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watchdog/extracted/<sha>.json ─▶ bark ─▶ vault
+ (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
 ```
 
-Two human-invoked phases, with a clean handoff via the queue:
+1. **Chew** (`watchdog chew`) — local, no model. Text/OCR, large-PDF chunking, near-duplicate
+   fingerprinting. One queue JSON per document.
+2. **Dig** (`watchdog dig`) — the orchestrator (`pipeline/orchestrate.py`) classifies and extracts
+   each queued document concurrently and stages the validated result. Touches no vault state.
+3. **Bark** (`watchdog bark`) — resolves the staged batch (exact-name fold, entity reconciliation),
+   commits it to the vault in one serial pass, then runs post-ingest: contradictions, entity
+   synthesis, timeline dedup, the briefing.
 
-1. **Chew** (`watchdog chew`) — local, no model. OCR/layout extraction, large-PDF
-   chunking, near-duplicate fingerprinting. Writes one queue JSON per document.
-2. **Ingest** (`watchdog dig` + `watchdog bark` — or bare `watchdog`, or the deprecated
-   `watchdog ingest`, #441/D138) — a **Python orchestrator** (`pipeline/orchestrate.py`)
-   that runs the whole pipeline in-process and calls the model (via `model_client`) **only
-   for the reasoning steps**: classify, extract, reconcile entities + contradictions,
-   synthesize entity prose, dedup colliding timeline events, write the briefing. Everything
-   mechanical — dispatch, pre/post-flight,
-   registry writes, timeline staging, the synthesis bundle, near-dup — is deterministic
-   Python. Documents are extracted concurrently (semaphore-bounded); a failed document is
-   logged and set aside (`_failed/`) without sinking the batch.
+Bare `watchdog` walks through all three; `watchdog ingest` (deprecated, D138) runs dig and bark
+together. A failed document is set aside in `queue/_failed/` without sinking the batch.
 
 ---
 
 ## 3. Chew (preprocessing)
 
-**Code:** `pipeline/preprocess.py` (single file), `pipeline/preprocess_batch.py`
-(batch orchestration), `pipeline/near_dup.py`.
+**Code:** `pipeline/preprocess.py`, `pipeline/preprocess_batch.py`, `pipeline/near_dup.py`,
+`pipeline/sidecar.py`, `pipeline/file_metadata.py`.
 
-- **Text/layout extraction.** Direct text where the PDF has it; otherwise Docling
-  with OCR. Output is per-page markdown.
-- **Page-scoped OCR (D192).** Every page of a PDF is scored — not a sample — by the
-  three-signal ensemble (character ratio, word shape, font CMap; 2 of 3 must agree, D189).
-  A page is force-OCR'd when it has no text layer or a garbled one; the rest keep theirs.
-  Pages are then grouped **by verdict, not contiguity** into at most two classes, each split
-  at `chunk_size`, converted in parallel subprocesses and spliced back by page number. A
-  document whose pages all agree yields one class of contiguous pages — the existing
-  chunking, unchanged, and small uniform PDFs still take a single in-process conversion.
-  Slices are told the parent's verdict (`--force-ocr` / `--no-force-ocr`) rather than
-  re-deriving one from a pypdf-rewritten slice. `metadata.ocr_used` and
-  `garbled_detected` stay document-wide booleans; `metadata.ocr_pages` names the pages
-  when, and only when, OCR was page-scoped.
-- **Skip exact duplicates before OCR (D27).** Before the worker pool, each file's sha256 is
-  checked against the document registry (already ingested), the pending queue (already chewed this
-  round), and the shas seen earlier in the same batch. A match is moved to `_INCOMING/_SKIPPED/`
-  with a warning rather than re-OCR'd and re-queued — so re-dropping a file you already have costs
-  one hash, not another OCR pass (and re-ingestion was already a no-op, see §5). Exact bytes only;
-  a near-duplicate has a different sha and is handled by the MinHash check below.
-- **Large documents.** PDFs above a threshold are split into chunks (default 40
-  pages, `chunk_size`), processed in parallel subprocesses, and reassembled in
-  order with page numbers preserved.
-- **Near-duplicate detection.** Each document's text is shingled into word 3-grams
-  (`shingle_size`) and reduced to a MinHash signature; the candidate is compared
-  against every prior document's signature by estimated Jaccard similarity. Matches
-  at or above `dup_threshold` (default 0.85) are flagged for journalist review at
-  ingest — never auto-discarded. The signature is stored in `documents.json` so
-  future documents compare against it. "Every prior document" means three populations (#696):
-  committed documents, documents chewed earlier but still in the queue, and documents staged
-  earlier in the same chew — held in one `preprocess_batch.NearDupIndex` matrix built once per chew
-  and compared with one vectorized pass per document, so a near-duplicate dropped in alongside its
-  original is flagged instead of only one arriving in a later drop.
-- **Output.** Per document: `.watchdog/queue/<sha256>.json` (filename, sha256,
-  page count, per-page markdown, `near_dup`, MinHash signature). The original is
-  moved to `.watchdog/staging/<sha256>/`.
-- **Sidecar filtering (`pipeline/sidecar.py`, D121).** A document's `.yml` sidecar, if
-  present, is read here — the only place it's ever read off disk — filtered to an allowlist
-  of known keys (`source`, `obtained`, `notes`, `skill`, plus the fields `pipeline/research.py`
-  writes), each value length-capped, and the clean result embedded as the queue JSON's
-  `sidecar` field; the original `.yml` is then deleted. Every later reader (classify, extract,
-  the per-document skill pin, the morgue write) takes the sidecar from there, never from
-  `_INCOMING/` again — the source file and its provenance travel as one unit from this point
-  on. If chew instead fails or finds no text, the sidecar moves with the source into
-  `_INCOMING/_FAILED/` or `_INCOMING/_SKIPPED/` unfiltered, since nothing has consumed it yet.
-- **Embedded file metadata (`pipeline/file_metadata.py`, #369).** Alongside the text,
-  `preprocess.main()` captures the file's own embedded metadata — PDF DocumentInfo,
-  Office core properties, image EXIF, audio/video container tags via `ffprobe` (gated on
-  its presence, `{}` when absent) — always read from the **original** source path, never a
-  Ghostscript-cleaned or chunk temp file (Ghostscript strips DocumentInfo). Normalized to a
-  small flat allowlist (`author`, `created`, `modified`, `producer`, `gps`, …), every value
-  coerced to `str` and capped at 200 characters — the same untrusted-content posture already
-  applied to the `.yml` sidecar, since a malicious XMP/EXIF payload could otherwise inject
-  text into the extraction prompt. Written to the queue file as a top-level `file_metadata`
-  key, a sibling of (never nested inside) the `metadata` key above: `metadata` is
-  *processing* facts the pipeline asserts about how the file was read; `file_metadata` is
-  *file-intrinsic* claims the file makes about itself, forgeable and often
-  machine-generated. Never raises — a corrupt file or unsupported suffix yields `{}`.
-
-Chew is fully local and writes no model-derived fields — `document_type` is left
-`None` here (see §6).
+- **Text.** Direct text where the file has it; Docling with OCR otherwise. Output is per-page
+  markdown.
+- **Page-scoped OCR (D189, D192).** Every PDF page is scored by three signals (character ratio,
+  word shape, font CMap; two must agree). Pages without a usable text layer are force-OCR'd; the
+  rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
+  (default 40), converted in parallel subprocesses and spliced back by page number.
+- **Exact duplicates are skipped before OCR (D27)** — sha256 against the registry, the queue and
+  the current batch. A match goes to `_INCOMING/_SKIPPED/`.
+- **Near-duplicates (D10).** Word shingles (`shingle_size`) reduced to a MinHash signature,
+  compared against committed, queued and same-batch documents in one vectorized index
+  (`NearDupIndex`). Matches at or above `dup_threshold` (0.85) are flagged, never discarded. The
+  signature is stored in `documents.json`.
+- **Sidecars (D121).** A document's `.yml` sidecar is read only here: filtered to an allowlist,
+  values length-capped, embedded in the queue JSON, and the file deleted. Every later reader takes
+  it from the queue JSON.
+- **Embedded file metadata.** PDF DocumentInfo, Office properties, EXIF and container tags are
+  read from the original file, normalized to a small allowlist and capped at 200 characters
+  (untrusted input, I6). Stored as `file_metadata`, separate from `metadata` (how the pipeline
+  read the file).
+- **Output.** `.watchdog/queue/<sha>.json` (filename, page count, per-page markdown, near-dup
+  result, signature, sidecar, metadata); the original moves to `.watchdog/staging/<sha>/`.
 
 ---
 
-## 4. Ingest setup & locking
+## 4. Run setup, locking and estimates
 
-**Code:** `pipeline/ingest_setup.py`, `cmd/ingest.py`.
+**Code:** `pipeline/ingest_setup.py`, `pipeline/locks.py`, `cmd/ingest.py`.
 
-An ingest run (`cmd_ingest`, shared by `watchdog ingest`, `watchdog dig`, and the bare
-guided walk) resolves auth (`auth.resolve_auth`; errors to `watchdog setup` if
-unconfigured), acquires a run lock (`.watchdog/registry/.ingest-lock`, stale after 30
-minutes), scans the queue, and clears any leftover post-ingest inputs from a prior run
-(per-doc results and scratchpads — §8).
-It then runs the Python orchestrator in-process (`asyncio.run(orchestrate.run(...))`) and
-releases the lock in a `finally`. Models, concurrency, and classification come from
-`watchdog configure` (`classifier_model`, `extractor_model`, `finalizer_model`,
-`extractor_effort`, `finalizer_effort`, `extract_concurrency`, `classify_pages`,
-`default_skill`) or per-run flags.
+A run resolves auth, takes the run lock, scans the queue, and runs `orchestrate.run` in-process.
+Models, efforts, concurrency and classification come from `watchdog configure` or per-run flags;
+their defaults live in `watchdog/defaults.py`.
 
-**Pre-flight cost estimate (D72).** Before the confirm prompt, `ingest_setup.cost_estimate`
-multiplies the queue's own `est_tokens` (already computed per file by `scan_queue` for the
-sectioning threshold, and calibrated — D135 — against this vault's own extraction history before
-the multiply) by this vault's $/token ratio from its last 3 `usage-<ts>.json` runs (D50,
-D86), presented as a range (min/max across those runs) rather than one averaged figure. Subscription
-auth (`claude-agent-sdk`) never gets a dollar figure — there's no real billing to project, only a
-session-limit fraction token counts can't estimate honestly — but it still gets the calibrated
-token count. `watchdog ingest --estimate` and `watchdog dig --estimate` print the same estimate
-and exit before the lock is touched.
-
-**Tokens-in calibration (D135).** The queue's `est_tokens` is a flat chars/4 heuristic
-(`section.est_tokens_from_pages`); `ingest_setup._tokens_calibration` scales the displayed
-`--estimate` by the actual/estimated ratio from a vault's last 3 extraction runs, falling back to
-the raw heuristic with no history. Scoped to the *displayed* estimate only — `section.py`'s
-sectioning threshold (what actually gets sent to the model) is untouched, and this is a different,
-run-level quantity from `_model_tokenizer_calibration`'s per-prompt one (§13). Not
-tokenizer-scoped (D180, #574): the ratio only stays accurate while the extractor doesn't cross one
-of the four catalogued tokenizer families between that history and the run being estimated — a
-known, documented gap (D198, #617).
-
-**`watchdog bark --estimate` (D135).** Prices the batch already staged in `.watchdog/tmp/`
-(`result_<sha>.json` + `notes_<sha>.md`, chars/4) rather than a queue — `ingest_setup.
-finalize_cost_estimate`. Its $/token ratio can't reuse `cost_estimate`'s own history: a `run()`
-ingest's finalize tail shares its single usage file with extraction, which would badly misprice a
-lone finalize. Only usage-`<ts>.json` files where every call falls in `orchestrate.FINALIZE_TASKS`
-qualify — true only for a *standalone* `watchdog bark`, which #403 phase 4's staged-corpus
-read (D129) is what makes estimable at all: before that, the finalizer's inputs were smeared
-across the retired `entity-fragments/` mechanism, not sitting in one place to measure.
-
-**`--estimate-all` (D143).** Extends either estimate across every catalog model
-(`ingest_setup.cost_estimate_all_models`/`finalize_cost_estimate_all_models`), not just the
-configured stage's own. A catalog model has no $/token run history of its own, so this prices
-`est_tokens` against each model's published list rate instead, projecting the output side from
-this vault's own recent output:input token ratio applied uniformly. Every catalog model is shown
-regardless of the vault's own auth mode — a list-price comparison, not a projection of what this
-vault would be billed — and each row scales `est_tokens` by that model's own `tokenizer_ratio`
-(D180/D198) so the same text isn't priced as if it produced the same token count everywhere.
-
-**Lock acquisition is atomic** (`pipeline/locks.py`, D66). All three run locks — the ingest
-lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken with
-`os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old
-check-then-write left a race window). A lock provably older than 30 minutes is taken over; one
-whose `started_at` is missing or unparseable is left in place for `watchdog unlock` rather than
-deleted regardless of age. While a run is active, `locks.heartbeat` re-stamps its lock's `started_at` every five
-minutes from a daemon thread (#696) — extraction, finalize and chew over thousands of documents all
-outlast the 30-minute window — and is joined before the holder releases, so a beat never recreates a
-released lock; a crashed run stops beating, so its lock still goes stale on schedule.
-
-A second, finer lock (`.watchdog/registry/.write-lock`) serializes the actual registry/note
-writes so the concurrent document workers write safely. Uses `flock` on macOS/Linux
-(blocks indefinitely) and `msvcrt.locking` on Windows (bounded retries, ~10s, then raises)
-— see D69.
-
-**Rate-limit stop-and-resume, and `--wait` (D71).** A `model_client.RateLimitError` (session-wide,
-not a per-document failure — see §5) stops the batch cleanly: in-flight documents finish or are
-cancelled, their queue files are left in place, and `orchestrate.run` returns without raising.
-Re-running `watchdog dig` (or `watchdog ingest`) picks up exactly where it left off (the queue re-scan plus the
-`already_extracted` registry check are enough — no extra resume state is needed). `--wait` makes
-that re-run automatic: `cmd_ingest` loops on `orchestrate.run`, and on a rate-limited summary
-sleeps until `RateLimitError.resets_at` (plus a buffer; a fixed fallback when the backend didn't
-report one — only `claude-agent-sdk` does) before looping again, until the queue drains and
-finalize completes. The sleep is chunked under the 30-minute staleness window, refreshing the held
-lock's `started_at` after each chunk, so a wait that outlasts it doesn't make a live run look
-abandoned. Opt-in only — without the flag, a rate limit stops the batch exactly as before. The
-loop's only exit condition is a rate limit *during extraction*; with `watchdog dig` (§5)
-finalize never runs at all, so `--wait` simply stops once the queue drains, same as normal.
-
-`cmd_ingest` also accepts an internal `max_rate_limit_waits` (D178, #559) — no user-facing flag or
-`configure` key, resolved only via `getattr(args, ...)` like `no_finalize`. `None` (the only value
-a real `--wait` run ever has) preserves the unbounded behaviour above exactly; a bound caps how
-many waits the loop takes before giving up and returning with `rate_limited: True` still set, so a
-caller that can't tolerate an open-ended stall — `benchmarks/run_benchmark.py`, which needs a
-rate-limited arm to surface as a partial result rather than stall a sweep — gets a hard stop.
-
-**Rate-limit observability (D184, #563).** `RateLimitError` also carries the provider's own
-rate-limit response headers (`rate_limit` — `limit_tokens`/`remaining_tokens`/`reset_tokens`,
-captured directly off the 429 response) when the backend sends them; every successful call's
-usage record carries the same fields when present. The extraction stop message reports the run's
-own observed tokens/min over a trailing 60-second window (`orchestrate._recent_token_rate`)
-alongside the provider's last-seen remaining/limit, so the "lower `extract_concurrency`"
-advice (§5, `docs/troubleshooting.md`) arrives with the number that justifies it rather than a
-guess. D184 also settled the premise that motivated this work: OpenAI counts prompt-cache-hit
-tokens toward its TPM limit, so the verify pass's OpenAI prompt-cache fix (D181/#577) bought cost
-savings but no rate-limit headroom.
-
-**Admission control (D185, #563).** A new document's dispatch is held back (`orchestrate._admit`,
-gating before the concurrency semaphore so a slot isn't held idle) when the run's recent
-tokens/min, plus every *other* in-flight document's reservation (`_run.admission_reserved`), plus this
-document's own estimate, would exceed a budget — the `extract_token_budget` override if set, else
-the most recent `rate_limit.limit_tokens` reported this run, else ungated (pre-#563 behaviour).
-
-The reservation dict is load-bearing, not an optimization: `run()` dispatches every queued
-document at once, and asyncio runs each one's synchronous prefix — including its first `_admit`
-check — in the same event-loop tick, before any of them has completed a real call, so checking
-recorded usage alone would let an entire over-budget burst through simultaneously. `_guarded` sets
-`_run.admission_reserved[sha]` before calling `_admit` and clears it in a `finally`, so a later
-document in the same burst sees an earlier one's reservation the moment its own turn comes; see
-D185 for the full race analysis. Force-admits past a fixed wait cap so a fully-reserved run can't
-stall forever, and never engages for `claude-agent-sdk` (its rate-limit detection reads a CLI
-transcript, not HTTP headers, so `rate_limit` is never populated) — `extract_token_budget` is that
-path's only lever there.
+- **Locks (D66, D69).** The ingest, finalize and chew locks are created with `O_CREAT|O_EXCL`. A
+  lock older than 30 minutes (`STALE_SECONDS`) is taken over; one with an unreadable timestamp is
+  left for `watchdog unlock`. A running holder re-stamps its lock every five minutes from a daemon
+  thread, so a long run never looks stale. A finer `.write-lock` (`flock`/`msvcrt`) serializes
+  registry writes.
+- **Estimates (D72, D135, D143).** `--estimate` multiplies the queue's token estimate (chars/4,
+  calibrated against this vault's past runs) by this vault's recent $/token, as a range. `bark
+  --estimate` prices the staged batch from standalone-finalize history. `--estimate-all` prices
+  every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
+  gets token counts, never dollars.
+- **Rate limits (D71, D184).** A `RateLimitError` stops the batch cleanly; unfinished documents
+  stay queued and the next `dig` resumes. `--wait` sleeps until the reported reset and loops,
+  refreshing the lock. The stop message reports the run's observed tokens/min and the provider's
+  last reported remaining/limit.
+- **Admission control (D185).** A document is held before dispatch when recent tokens/min, plus
+  every in-flight document's reservation (`_run.admission_reserved`), plus its own estimate would
+  exceed the budget (`extract_token_budget`, else the provider's reported limit, else ungated).
+  Reservations are set before the check because every document is dispatched in the same
+  event-loop tick. A waiting document is force-admitted after a cap. Not engaged on
+  `claude-agent-sdk`, which reports no limit.
+- **Auth failures (D242).** A provider auth or billing error stops the run with exit code 1
+  instead of quarantining every document.
 
 ---
 
-## 5. Ingest (extraction)
+## 5. Extraction (`dig`)
 
-**Code:** `pipeline/orchestrate.py` (the loop), `model_client.py` (the model adapter),
-`model_catalog.py` + `model_catalog.yaml` (the model/pricing catalog — see D142),
-`pipeline/prompts.py` + `pipeline/schemas.py` (task prompt builders + JSON contracts;
-the instruction prose lives in editable templates under `prompts/*.md` — see D28),
-`pipeline/preflight.py`, `pipeline/postflight.py`, `pipeline/write_vault.py`.
+**Code:** `pipeline/orchestrate.py`, `model_client.py`, `model_catalog.py` + `model_catalog.yaml`
+(D142), `pipeline/prompts.py` + `prompts/*.md` (D28), `pipeline/schemas.py`,
+`pipeline/preflight.py`, `pipeline/postflight.py`.
 
-`orchestrate.run` scans the queue and extracts documents concurrently, bounded by an
-`asyncio.Semaphore(extract_concurrency)`. Per document (`_extract_document`):
+`run()` reads each queued document's pre-flight once to size it (page text is dropped and re-read
+at extraction, and the registry is parsed once for the queue, D248), then extracts documents
+concurrently under `extract_concurrency`. Run state lives in one `_RunState` object. Per document:
 
-1. **Pre-flight** (`preflight.run`, a function call) — packages the page text and the document's
-   processing facts. **It reads no vault entity state (D118):** extraction is a pure function of
-   the document, so pre-flight no longer snapshots the entity registry or builds candidate/timeline
-   digests. Its one registry read is `known_document_types` (§6), an order-insensitive set of
-   type strings the extractor may reuse. Entity resolution and the contradiction check that
-   digest used to feed both moved to the finalizer (§8.5).
-2. **Classify** — one cheap model call (`model_client.acomplete_json`, `classifier_model`,
-   default haiku; `classifier_effort` exists as a knob too, D221, but no-ops on Haiku) over the
-   document's first `classify_pages` pages, the document's `.yml`
-   provenance sidecar when present, and the generated in-memory skill index, returning the
-   closest domain-skill filename (§6). Python reads that one skill and injects it into the
-   extraction prompt. **Skipped entirely when a skill is pinned** for the run (`--skill` /
-   `default_skill`) — that one skill is used for every
-   document, saving a model call per doc on known-homogeneous batches.
-3. **Extract** — one model call against the `EXTRACTION` schema. The model emits two layers
-   (D26): a **fact layer** — `document.key_facts`, each a single material fact written once,
-   carrying an optional `date` (when the fact *is* a datable occurrence), an optional
-   `entities` list (the ids the fact is about), and an optional `quote_locator` — the first
-   several words of a source sentence worth quoting, not the sentence itself (D170); and a
-   **graph layer** — the entities *this document* names, with aliases and roles. It carries **no
-   `match_id` and no contradictions** (D118): resolving entities against the vault and comparing
-   claims across documents both need a whole-vault view extraction doesn't have, so both moved to
-   the finalizer (§8.5). It no longer restates the document as per-entity summaries, evidence
-   fragments, or timeline events, nor pads `key_facts` to a fixed count — the full Docling text
-   is retained in the morgue (§3, §12), so extraction indexes it rather than reproducing it. An
-   optional `document_requests` array names concrete, obtainable artifacts the document refers
-   to (a cited transcript, an enabling regulation) — omitted when there are none; see D111.
-   Schema validation + a same-model retry live in `model_client` (no automatic tier
-   escalation — see D20); the orchestrator adds one post-flight repair retry. When chew
-   captured embedded file metadata (§3, #369), `prompts.build_extract_prompt`/
-   `build_section_prompt` render it as a volatile `FILE_METADATA` block — data, not
-   instructions, stating the trust caveat (forgeable, often machine-generated) plus the
-   `ocr_used`/`source_type` processing facts, so the model can judge whether a creation date
-   plausibly describes the original or just a scan/template. A model with no private reasoning
-   channel (`model_catalog.catalog_has_reasoning`, resolved once from the catalog per model —
-   D206, D208) also gets `prompts/extract_scaffold.md` appended: an explicit plan/evidence-triage/
-   consistency-pass scaffold written into a new optional `document.plan` scratch field, ordered
-   ahead of `key_facts` in the schema so it fills first — nothing downstream reads it. A model
-   with a private channel (Claude `thinking`, an OpenAI reasoning model) gets the base prompt
-   unchanged.
-4. **Verify** *(optional, off by default — `verify_extraction` / `--verify`, D172)* — one
-   second, cheap model call over the *same* document (or, on a sectioned document, the same
-   section), asking only what material fact is on the page and absent from the fact list just
-   produced. Its prompt is the extraction call's own content blocks plus one appended block
-   (`prompts.build_verify_prompt`) — on the Anthropic backend (`claude-api`), so the re-read hits
-   the prefix cache the extraction call wrote rather than paying full price for the document
-   twice. On OpenAI-compatible backends this can't happen regardless: each call's structured-
-   output schema is serialized as its own prefix ahead of the system message, so extraction and
-   verification never share a prefix there even before the document text is reached (D181, #562).
-   It runs on `extractor_model` at `verifier_effort` (default `low`), since a cache belongs to one
-   model and output tokens are where this pass's cost lives. What it returns is merged **in code**
-   (`pipeline/verify.merge_candidates`), never by a second model call: candidates are sanitized
-   (entity tags filtered to ids the extraction actually produced, page coerced, basis bounded)
-   and near-duplicates of existing facts suppressed by token-set overlap, with a carve-out for a
-   candidate carrying a figure the matched fact lacks. The call is section-scoped but the
-   duplicate check is **document**-scoped: earlier sections' facts are threaded in as a comparison
-   reference, since section ranges overlap and the ledger being protected is the document's
-   (D199). Survivors are appended to
-   `document.key_facts` tagged `added_by: "verify"` and go through post-flight like any other
-   fact — there is no second class of fact downstream. A failed verification call is logged and
-   the extraction proceeds unchanged. Not available on a batch backend (`claude-batch`/
-   `openai-batch`, D52/D169): their results arrive hours later, in another process, with no live
-   extraction to verify and no prompt cache left to read.
-5. **Post-flight** (`postflight.run`, a function call) — validates the JSON, **resolves** each
-   `key_facts[].quote_locator` against the cited page's text from the chew-time queue
-   descriptor into a full `quote` (`quote_verify.resolve_quotes`, D75, D170, D177) — correcting
-   the fact's own `page` when the locator resolves, unambiguously, to exactly one page other
-   than the one cited AND is unique across the whole document (D177); joining two adjacent
-   pages' text as a fallback when a sentence is split by a page break — **checks each stated
-   fact's numeric figures** against the cited page's text (`figure_verify.verify_figures`,
-   D112), annotating the fact with any figure found nowhere in the document or found only on
-   another page so the vault shows it, not just the ingest log (D200) — then **explodes**
-   the unified key_facts into the per-entity `evidence_fragments` + `timeline_events` that the
-   writers consume (`explode_key_facts`, D26) — carrying the resolved `quote` and those figure
-   annotations along with each fragment, **flags a file-metadata date mismatch** —
-   `document.file_metadata.created` postdating `date_of_document` by a year or more
-   (`file_metadata.check_date_mismatch`, #369), deterministic and suppressed whenever
-   `ocr_used` is true, since a scan's creation date describes the scan, not the original —
-   stages raw timeline NDJSON (`timeline.stage_timeline_events`, into `.watchdog/timeline/`,
-   not the vault proper — a pure function of this extraction, needing no committed registry
-   state) — and, in place of writing to the vault directly, **stages the validated extraction**
-   as a durable artifact at `.watchdog/extracted/<sha>.json` (#403 phase 1, D126). The artifact is
-   never cleaned up on success — it doubles as an audit record and is what makes a document's
-   extraction durable and reusable rather than transient pipeline state. **`write_vault.run()`
-   is not called here any more** — see the commit pass below.
+1. **Pre-flight** — page text, processing facts, and `known_document_types`. It reads no entity
+   state: extraction is a pure function of the document (D118).
+2. **Classify** — one cheap call over the first `classify_pages` pages, the sidecar and the
+   in-memory skill index, returning a record skill (§6). Skipped when a skill is pinned. An unknown
+   answer falls back to `general-records`.
+3. **Extract** — one call against `EXTRACTION`. Two layers (D26): a fact layer
+   (`document.key_facts`, each fact written once, with optional `date`, `entities` and a short
+   `quote_locator`, D170) and a graph layer (the entities this document names, with aliases and
+   roles). No vault matching and no contradictions — those need the whole batch (§8.5). Optional
+   `document_requests` name obtainable documents the text cites (D111). Embedded file metadata is
+   rendered as a data block. A model without a private reasoning channel also gets a scratch
+   `document.plan` field, filled before `key_facts` (D208).
+4. **Verify** (optional, `verify_extraction`/`--verify`, D172) — a second, cheap call over the
+   same text asking what material fact is missing. On `claude-api` it re-reads the extraction
+   call's prompt cache, so it runs on `extractor_model` at `verifier_effort`. Candidates are merged
+   in code (`verify.merge_candidates`): sanitized, and suppressed when they near-duplicate an
+   existing fact anywhere in the document (D199). Survivors are ordinary facts tagged
+   `added_by: "verify"` in the staged JSON. Not available on batch backends.
+5. **Post-flight** — validates the JSON; resolves each `quote_locator` to the full sentence on the
+   cited page, correcting `page` when the locator resolves uniquely elsewhere (D75, D177); checks
+   each fact's figures against the page text and annotates figures found nowhere or only on
+   another page (D112, D200); explodes `key_facts` into per-entity fragments and timeline events
+   (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
+   OCR'd scans); stages raw timeline NDJSON; and writes the validated extraction to
+   `.watchdog/extracted/<sha>.json` (D126). That artifact is kept as an audit record.
 
-**Commit pass (`orchestrate._commit_pending`, #403 phase 1, D126).** At the top of
-`orchestrate.finalize` — before any post-ingest model call, and covering all three ways finalize
-runs (the tail of an ingest run — `watchdog ingest`, or `watchdog dig` + `watchdog bark` — a
-standalone `watchdog bark`, and a resumed run after a
-rate-limit stop) — every `.watchdog/extracted/<sha>.json` whose sha is not yet a key in
-`registry/documents.json` is committed by replaying the unmodified `write_vault.run()` over it, in
-**sorted sha order**. Sorting is what makes this deterministic (§7 of the phase 1 spec; see
-`tests/test_golden_vault.py`): under concurrent extraction, documents still race to produce their
-staged artifact, but the write that used to leak completion order into `appears_in`/fragment
-ordering no longer happens at extraction time at all — every ordering-sensitive write now happens
-serially, in a fixed order, at commit. The queue file survives until this point (moved out of
-`_finish_extraction`, #403 phase 1): `write_vault._write_morgue_markdown` and the corpus indexer
-both still need to read it, and it is unlinked immediately after a successful commit.
+**Two "already done" questions (D126).** `already_staged` (an artifact exists: skip
+classify/extract) and `already_extracted` (the sha is committed: nothing to do).
 
-`write_vault` is the single deterministic writer: it collapses each
-entity's model-invented `type` onto a closed six-value vocabulary (`entity_type.canonical_type`,
-D105) — so a drifting near-synonym (`company` vs `financialinstitution`) can't fork one real-world
-entity across two folders — then merges each document's entities into the registry, writes entity
-and document notes, updates the registry files, and moves the source file to the morgue — all
-inside the write lock. The cross-worker slug reconciliation it used to do per-document (near-duplicate
-ids coined by concurrent workers) now runs once up front, over the whole staged batch, in the
-pre-commit fold below (#403 phase 2, D127); `write_vault` replays already-folded entities. The
-**registry persist is the commit point**: the registries are written last, atomically
-(temp-then-rename), and the rebuilt-from-source search indexes (embed/FTS) are (re)written *after*
-that commit, keyed for idempotent replay (upsert by note_path), so a repair retry after a mid-write
-crash converges instead of doubling (D67). Registry merges are themselves idempotent (sha-guarded),
-and the entity note's `## Analysis` block is keyed by the source document and replaced, not appended.
-**Within the commit pass the registries are held in memory** (`write_vault.RegistryBatch`, D239): the
-pass takes the registry lock once and `write_vault.run` reads and edits the batch's copies. A pass of
-up to 50 documents (`orchestrate._PER_DOCUMENT_FLUSH_MAX`) still persists them after every document,
-as before; a larger one persists every 50 documents and at the end, rather than re-reading and
-rewriting every registry file per document (which made a pass's I/O quadratic in batch size). The persist is still the commit
-point — a document's queue file is removed only after the flush that wrote its registry entries, so a
-crash between flushes leaves those documents uncommitted and replayable — and a document whose write
-fails mid-way is rolled back in memory (`RegistryBatch.begin`/`rollback`, snapshotting only the entries
-it can touch) so the next flush cannot persist half of it. The pre-commit exact-name fold likewise keeps
-one incrementally-updated `write_vault.NameIndex` instead of rebuilding the name index per document.
+**`--force` (D131).** `dig --force` re-extracts staged documents, overwriting the artifact. To
+regenerate a committed document, `watchdog ingest --force <doc>` re-chews it from the morgue,
+re-extracts it, lists the notes it will replace and confirms (default Cancel) before passing it to
+finalize as `force_shas`.
 
-**Finalize is a pre-commit resolution pipeline (#403 phases 2–4).** The commit pass does not run in
-isolation: `orchestrate.finalize` resolves the batch *before* it writes, so `write_vault` commits
-already-settled state exactly once. The order is **exact-name fold → entity-merge reconciliation →
-commit → post-ingest**:
+**Large documents (D89, D196, D202).** A document over `section_token_threshold` is split into
+overlapping page-range sections, packed greedily by per-page token estimates, extracted one at a
+time with a carry-forward block (entity map plus the previous section's observations), and merged
+(`merge.merge_extractions`). Threshold and budget default to 0.6 and 0.3 of the extractor's context
+window, clamped below any long-context pricing tier (`long_context_threshold`, in real tokens),
+then divided by the model's `tokenizer_ratio` (catalogue value, or the vault's own calibration,
+D180, D190, D198). Each section's result is checkpointed (D157) so a retry replays finished
+sections. A sectioned document's `document.summary` is composed afterwards by one small
+extractor-tier call over the merged facts (`_compose_digest`), with a deterministic fallback;
+whole documents write it inline.
 
-1. **Exact-name fold** (`_batch_exact_fold`, §5 above, D127) — deterministic, no model call.
-2. **Entity-merge reconciliation** (`_reconcile_pre_commit` → `reconcile.apply_merges`, §8.5, D128) —
-   the one model call that resolves token-variant duplicates. It runs over the staged batch, so a
-   same-batch duplicate is folded as a cheap staged-id rewrite rather than post-commit note surgery.
-3. **Commit** (`_commit_pending`) — the write, described above.
-4. **Post-ingest** (`_post_ingest`, §8/§8.5/§9) — contradictions (which need the committed documents
-   registry to validate slugs), gated entity synthesis, timeline reconciliation, the briefing.
+**Output caps and truncation (D19, D104, D197).** The wire `max_tokens` is one per-model envelope
+(`_wire_max_tokens`: the catalogue's `max_output_tokens` under 10% headroom). A max-token stop is
+read from the provider's stop reason and never accepted. `claude-api` and DeepSeek continue a
+truncated response by prefilling it (same model, same effort — not escalation, I4). A rejected
+whole-document extraction is force-sectioned and retried; the worst case is a loud quarantine.
 
-Because reconciliation precedes the commit, a reconcile model failure **defers the whole batch**:
-nothing commits, every staged artifact stays pending, and a later `watchdog bark` retries the
-sequence from the fold. This keeps the batch atomic — committing half-reconciled state would strand
-duplicates a retry could never revisit (D128, I7).
+**Prompt caching (D51, D181, D195).** Prompts are built as content blocks: stable instructions,
+then the skill (with the cache breakpoint), then per-document data. `claude-api` sends the blocks
+as-is; GPT-5.6+ on OpenAI gets explicit cache breakpoints; other OpenAI models get a
+`prompt_cache_key`. Everything else receives flattened text.
 
-**Two independent "already done" questions (D126).** `preflight.run` answers both, deliberately
-not overloaded onto one flag: `already_staged` (the extraction artifact exists — skip the
-classify/extract call entirely, sha-only, whatever model/effort/skill produced it) and
-`already_extracted` (the sha is in `registry/documents.json` — nothing left to do at all, its
-pre-existing meaning). A document can be staged without being committed (between extraction and
-the next finalize); it cannot be committed without being staged.
+**Candidate harvest (D123, D223).** Before the prompt is built, `pipeline/harvest.py` collects
+money, figures, percentages, dates and court file numbers by regex, plus names from the local
+GLiNER model, into a per-page checklist the prompt includes.
 
-**`--force` bypasses both checks for a full re-ingest, not just extract-only (D131, #424).**
-`orchestrate._extract_document`/`_finish_batch_item`/`_submit_batch` skip the `already_staged`/
-`already_extracted` short-circuit when `force=True`, overwriting the staged artifact under
-whatever model/effort/skill this run is using. `watchdog dig --force` stops there — nothing
-committed is touched, so no confirmation is needed. `watchdog ingest --force` goes further:
-`cmd_ingest` runs extraction with finalize held off (the same skip-finalize path `dig` uses),
-then — only if any force-re-extracted document is already a key in `registry/documents.json` —
-warns which vault notes are about to be replaced and confirms, defaulting to **Cancel** (unlike
-the routine ingest confirm, this replaces existing work). On confirm, those shas are passed to
-`orchestrate.finalize` as `force_shas`, which `_pending_commits` folds into the commit-pass set
-even though they are already committed, so `_commit_extracted` replays `write_vault.run` over them
-again — the same replace-not-append note write a repair retry of an already-committed document
-already relied on (D126), just deliberately triggered instead of accidental. On cancel, the
-re-staged extraction is left pending for a later plain `watchdog bark`.
-
-**Re-queueing an already-committed document from the morgue (D131).** `watchdog ingest --force
-<document>` names one or more committed documents (a sha256, an unambiguous sha256 prefix, or a
-filename) to re-extract, not just whatever the queue already holds. A committed document's
-original does not survive at `.watchdog/staging/<sha>/` — the commit pass moves it out of staging
-into the morgue and prunes the emptied staging directory — so its durable, sha-stable location is
-`registry/documents.json[sha]["morgue_path"]`. `cmd/ingest._resolve_force_selectors` resolves each
-selector against that registry (a no-match selector is a clear error, never a silent no-op), and
-`_requeue_forced_selectors` re-chews the morgue file through the real chew pipeline
-(`preprocess_batch.run_ingest`), bypassing `_filter_already_seen`'s dedup check and excluding the
-document from its own near-duplicate comparison — both bypasses scoped to that one sha, both
-otherwise-legitimate checks that would misfire only because this document is being deliberately
-re-processed rather than seen for the first time. The re-chew leaves the file in `staging/<sha>/`,
-same as any freshly-chewed document, so the recommit that follows moves it back to the morgue
-exactly as it would for a document ingested for the first time. `watchdog dig --force` takes
-no document names — a re-queued-then-extracted document would sit staged with no plain `watchdog
-bark` able to recommit it (its sha is already a registry key, and finalize's own
-`_pending_commits` excludes those without `force_shas`), so the selector is deliberately `ingest`-only.
-
-**Large documents — sectioned extraction.** Code: `pipeline/section.py`,
-`pipeline/merge.py`. A document over `section_token_threshold` is split by `section.run`
-into overlapping page-range sections, extracted **one at a time in reading order** with a
-carry-forward block in each section's prompt, then combined by `merge.merge_extractions`
-into a single extraction JSON that goes through the same post-flight / `write_vault` path.
-Pages are packed into those sections **greedily against their own estimated token counts**
-(`section.plan_ranges`, D196, #596) — walk the pages in order, close a section when the next page
-would exceed the budget — rather than cutting uniform page ranges sized from the document's
-average density, which overshoots the budget on dense stretches and under-fills on sparse ones.
-The overlap between consecutive sections is accounted the same way: whole trailing pages replayed
-up to `section_overlap_tokens`. A page denser than the whole budget stands alone (page boundaries
-are the smallest unit a section can cut on), and every section still advances at least one page.
-The threshold and per-section budget are **provider-aware** (D89, #321): rather than fixed
-numbers they default to fractions (0.6 / 0.3) of the extraction model's context window
-(`model_client.context_window` — Claude 200K, DeepSeek V4 1M, Gemini 2.5 1M, etc.), so a large-window model
-reads far more of a document per call before sectioning. A 200K Claude window reproduces the
-historical 120K/60K defaults exactly; the two config keys default to the `auto` sentinel and
-accept an explicit `section_token_threshold`/`section_token_budget` integer as an advanced
-escape hatch (a pinned integer does not rescale when the extraction model changes).
-**The output ceiling does not enter into sectioning** (D202, #555). `effort` is not a parameter
-of `model_defaults`/`section_token_threshold`/`section.run`.
-The wire `max_tokens` is one per-model envelope (`model_client._wire_max_tokens`, D197, #598) —
-the catalogued `max_output_tokens` cap under a 10% headroom, task- and effort-independent, with an
-uncatalogued id resolving through a documented per-family cap (`max_output_tokens_fallback`, shaped
-like `context_window_fallback`) before a conservative default — and sectioning never consults it. Truncation is handled where it is observable instead: the
-bounded re-split (D183, #540) and the starvation retry (#558).
-Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574;
-measured against corpus-v1, D198, #617) — correcting the chars/4 `est_tokens` heuristic, which was
-calibrated against Claude's old tokenizer and mis-states every other one. Four tokenizers cover
-all fifteen catalogued models: 0.93 (Claude through Sonnet 4.6), 1.28 (Claude 4.7+: Opus 4.8,
-Sonnet 5, Sonnet 5.5), 0.91 (Gemini), 0.80 (GPT-5.x), 0.81 (DeepSeek V4) — an uncatalogued id resolves to 1.0.
-*Widening* (ratio < 1.0) is the common case and is safe on its own: the threshold fraction already
-reserves 40% of the window regardless.
-**One clamp sits between the window fraction and that division: `long_context_threshold`** (D202,
-#555), the catalogued real-token input length at which a model starts billing at a higher rate —
-~272K on the large-window GPT-5.x models, 200K on Gemini 3.1 Pro, absent on the eleven that price
-flat. `model_client.long_context_input_cap` returns it under the same 10% headroom
-`_OUTPUT_HEADROOM` takes off `max_output_tokens`, and *both* the threshold and the budget are
-clamped to it — the threshold because it is what decides whether a document is sectioned at all,
-so leaving it open would send an oversized document past the boundary in one whole-document call.
-The clamp is applied in **real** tokens, before the ratio division, since that is the unit a
-provider meters; clamping the est-token result afterwards would let a sub-1.0 ratio divide it back
-up past the boundary (D198). It is also what
-keeps `--estimate-all` truthful, since the cost model prices every model at one flat rate per
-length. **Length is not the only axis a rate can vary on: `price_periods`** (D217) declares UTC
-windows in which a model's rates are multiplied — DeepSeek doubles every rate during its peak
-hours, and no clamp can dodge a boundary made of clock time the way `long_context_threshold`
-dodges one made of input length. `model_catalog.price_multiplier` resolves the multiplier in force
-at a given moment; `_api_cost`/`_openai_cost` apply it when a call is billed, so an archived cost
-records the rate that actually applied and is never re-priced later, and the pre-flight estimates
-apply it for the moment they are asked and label the row when it isn't the cheap one.
-When a `vault` is in scope (the real ingest path — `section.run` passes its own `vault` through
-automatically), `tokenizer_ratio` instead prefers an empirically-derived ratio from that vault's
-own usage history, pooled per model/backend from real per-call estimate-vs-actual token pairs
-(`ingest_setup._model_tokenizer_calibration`, D190, #606), falling back to the catalog value until
-a model has accumulated enough matching calls to calibrate from. That calibration divides by
-`est_prompt_tokens` — the whole rendered prompt's chars/4 estimate, recorded on every call by
-`orchestrate._call_model` — not the document-only `est_input_tokens` it originally used, which
-made it measure prompt overhead as though it were tokenization (D198). `watchdog configure`'s
-preview (`cmd/setup.py:_auto_resolved_hint`) has no vault context and always shows the
-catalog-based number, by design.
-The carry-forward is a deduplicated entity-id → name/type map accumulated across every
-section seen so far (rebuilt fresh each section, one line per entity, not a running
-concatenation) plus only the immediately preceding section's `observations` text; and,
-like whole-document extraction, it includes the investigation brief (D49).
-Each section's result is checkpointed to `.watchdog/tmp/section_ex_{sha}_{index}.json` as
-soon as that section's call succeeds (D157, #498), so a rate limit, a Ctrl-C, or a post-flight
-rejection doesn't discard already-paid-for sections — a retry replays a checkpointed prefix
-whose section metadata still matches the freshly recomputed plan, and only extracts what's
-missing. Checkpoints are cleared once post-flight succeeds; the automatic-failure path
-(`orchestrate._fail`) deliberately preserves them (`abort.run(..., keep_section_checkpoints=True)`)
-so the next `watchdog dig` can resume.
-
-**Whole-document digest (`document.summary`, #279).** No section call ever sees the whole
-document, so no section emits `document.summary` any more. Immediately after
-`merge.merge_extractions` (and before `_stamp_document`), one small model call
-(`orchestrate._compose_digest`, on the **extractor tier** — the same `extract_model`/backend that
-read the sections, not the finalizer tier) composes the digest from the merged `key_facts` plus
-the same context a whole-document extractor is handed short of the raw text itself — filename,
-title, document_type, page_count, the domain skill, the investigation brief, and the sidecar
-(the merged `key_facts` stand in for the text). A failed or empty response falls back to
-`_stitch_digest`, a deterministic orientation line plus the first few facts as plain
-sentences — degraded but valid, never worth a retry loop. Non-sectioned documents compose
-the same field **inline**, in the single whole-document extraction call (rewritten field
-spec in `extract_instructions.md`) — zero extra model calls, full-text grounding. Both paths
-thus write `document.summary` at the extractor tier; they differ only in grounding — full text
-inline vs. the merged `key_facts` post-merge — because no single call can hold a sectioned doc.
-
-**Prompt caching (`claude-api` and OpenAI GPT-5.6+).** `build_extract_prompt`/
-`build_section_prompt`/`build_digest_prompt` return a list of Anthropic content blocks instead of
-one string: a stable block (instructions + brief, constant for the whole run), a skill block
-(constant per document type, carrying the `cache_control` breakpoint), then a volatile block
-(per-document data, never cached). Every call sharing a skill within a run re-pays only the
-cache-read rate for the stable+skill prefix instead of full price.
-
-Two backends honour that breakpoint on the wire, by different mechanisms. `_api_complete_async`
-(the metered-key Claude backend) sends the blocks as-is, at the 0.1× cache-read rate. On the real
-OpenAI endpoint, a model the catalog marks `cache_breakpoints: true` — the GPT-5.6 family and
-later — gets the same blocks re-rendered as OpenAI text parts with `prompt_cache_breakpoint` on
-the first breakpoint's block, plus `prompt_cache_options: {"mode": "explicit"}`
-(`model_client._openai_cache_blocks`, D195/#586). That family places one implicit breakpoint at
-the latest user message and does *not* fall back to the longest matching unmarked prefix before
-it, so an unmarked request — the whole prompt being one user message — can only hit on a
-byte-identical whole-prompt repeat. Explicit mode also stops the implicit breakpoint from writing
-the document text at the family's 1.25× write rate for a cache nothing reads back; that write rate
-is priced from the catalog's `cache_write` field, and the count comes back as
-`prompt_tokens_details.cache_write_tokens`.
-
-Everything else flattens to plain text (`model_client._flatten_prompt`). `claude-agent-sdk`
-exposes no cache knob (D51). Earlier OpenAI families need no breakpoint — their longest-prefix
-fallback is still in effect — but they do get a `prompt_cache_key`
-(`model_client._prompt_cache_key`, D181/#562) derived from the position of the first
-`cache_control` breakpoint, as does GPT-5.6+; it is a routing hint OpenAI's docs say is required
-for reliable matching on newer families, not a `cache_control`-equivalent guarantee. Gemini's own
-implicit cache, confirmed separately (D183), keys on exact-request identity rather than
-shared-prefix identity — the flattened design has no lever to pull there even in principle.
-`cache_read_input_tokens`/`cache_write_tokens` are surfaced in the usage telemetry (§12) to verify
-hits.
-
-**Candidate harvest (Tier 0, #361/D123).** Benchmark hand-scoring found extraction misses
-"buried" facts — a lone sentence after a table, a table row, a one-line disclosure — even on
-strong models, almost always anchored by a money figure, date, percentage, proper noun, or
-court file number. Before the prompt is built, `pipeline/harvest.py` regex-harvests
-deterministic candidates (money, bare table figures, percentages, dates including French
-month names, court file numbers) from the same page-marked text, plus person/org/location
-names from the local GLiNER model (`harvest_entities`, mandatory dependency since D223 but still
-import-guarded — any model failure degrades to no entity candidates, never an ingest failure).
-Candidates are deduped per page, capped at 3 page-occurrences each (running headers/footers),
-and capped at 80 per page by kind priority, then rendered into a compact per-page checklist
-(`format_checklist`) that `build_extract_prompt`/`build_section_prompt` inject as a volatile
-block, turning recall ("notice it") into verification ("here it is — is it material?").
-
-**Output truncation — never accept a partial extraction (#343).** Sectioning is gated on
-*input* size, but a moderate-input, entity-dense document can overrun the model's *output*
-`max_tokens` ceiling and truncate the JSON mid-object. Three layers guarantee no truncated
-extraction is ever accepted. **(1) Detection (universal).** `acomplete_json` reads the
-backend's `finish_reason`/`stop_reason` authoritatively — a max-token cut (`length`,
-`max_tokens`) is never inferred from a parse failure — so a truncated-but-parseable response
-is rejected rather than silently stored. **(2) Pagination (recovery).** For backends that can
-continue a partial response by prefilling it as the assistant turn — claude-api (assistant
-prefill) and deepseek (chat-prefix-completion beta) — `_complete_with_pagination` re-issues the
-call with the partial output prefilled and concatenates the halves until a natural stop (guarded
-by `_MAX_CONTINUATIONS`). Continuation is **not** escalation (I4): same model, same effort, just
-finishing one response; the closing brace makes completeness true by construction. **(3)
-Proactive sizing.** openai and gemini return a *new* message rather than continuing, so they
-can't paginate — instead the output-ceiling-aware sectioning threshold (above) sizes the first
-call to fit, and the agent-SDK backend has no client-enforced cap at all. **Reactive backstop.**
-If any whole-document extraction is still rejected (truncation or otherwise), the orchestrator
-force-sections the document (`section.run(force_budget=…)`, capped at half so it yields ≥2
-sections) and retries on the bounded-output sectioned path — now for single-page documents too
-(their text splits into character windows), not just multi-page ones. Worst case is a loud
-quarantine, never silent data loss. See D104, D19.
-
-**Failure handling.** The model adapter raises if it can't get schema-valid JSON; a doc
-whose extraction or post-flight fails (after the output-overrun fallback, for multi-page
-docs) is logged to `.watchdog/registry/ingest.log` and
-cleaned via `abort.run` (`pipeline/abort.py`) — staging/section temp removed, queue file
-moved to `.watchdog/queue/_failed/`, registry untouched. One bad document never sinks the
-batch; move the queue file back from `_failed/` to retry.
-
-**Extract-only (`watchdog dig`, #384/#425, renamed from `extract` in #441/D138).**
-`orchestrate.run(..., skip_finalize=True)`
-returns as soon as extraction finishes, at the single point (shared by the concurrent
-per-document loop and the claude-batch collect path, §5) that would otherwise call `finalize` —
-post-ingest (§8, §8.5, §9) never runs, and nothing is cleared, so `has_pending_finalization(vault)`
-stays True on exactly what a normal interrupted run would leave behind. The CLI exposes this as
-its own command, `watchdog dig` (`cmd_extract` forces `no_finalize` and delegates to
-`cmd_ingest`), rather than a flag on `ingest`. That lets a later `watchdog bark
---finalizer-model <model>` run against a fixed extraction, including against several copies of the
-vault to compare finalizer candidates without re-paying extraction's cost each time. Re-running
-`bark` idempotently over a batch it has already completed is explicitly out of scope; run it
-once per vault (or vault copy).
+**Failure.** A document whose extraction or post-flight fails is logged to `ingest.log` and moved
+to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
+`watchdog requeue` puts failed documents back.
 
 ---
 
-## 6. Document classification
+## 6. Classification
 
-**Decision:** classification is a **dedicated, cheap model call the orchestrator makes
-before extraction** (`_classify`, on the haiku tier) — not an embedding pre-pass, and no
-longer folded into the extractor.
+A dedicated cheap call before extraction (`classifier_model`, default haiku) picks one record
+skill from the in-memory index (`skills_catalog.build_index()`); Python injects that skill into the
+extraction prompt.
 
-- **Mechanism.** The orchestrator sends a text excerpt + the skill index (built in memory from
-  the global catalog, `skills_catalog.build_index()`) to a cheap model call that returns the
-  skill filename; Python then reads that one skill (from the global catalog) and injects it
-  into the extraction prompt. Accurate, cheap, and it keeps the extraction prompt lean (only
-  the relevant skill, not the index). An earlier embedding-based pre-pass was register-mismatched
-  and noisy across ~35 adjacent skills (issue #95).
-- **Pinning.** `--skill` / `default_skill` skips this call entirely and uses one skill
-  for the whole run (see §5, D21). A document's own `.yml` sidecar can also carry a
-  `skill:` field pinning *that document alone* — read deterministically in Python
-  (`_sidecar_skill`, parsing the queue JSON's already-filtered `sidecar` text, D121), never
-  sent through the model, so it never crosses the data/instruction line the provenance fields
-  below hold (D120). It takes priority over a run-wide pin, so one ingest queue can mix skills
-  without a second `chew`/`ingest` pass per skill. Falls back to classification (with a
-  warning) if the named skill isn't in the catalog and isn't a file path.
-- **Provenance-aware.** The classifier also sees the document's sidecar (source + collection
-  note), filtered to an allowlist at chew time (D121) and carried in the queue JSON, when
-  present — so a document whose type is ambiguous from its text alone — a bare form, a scanned
-  table — can be routed by where it came from, not text alone. The sidecar is context, not a
-  command: the classify prompt marks it as data and the constrained schema (a skill filename)
-  bounds the blast radius; the document text governs on disagreement. See D84.
-- **Universal red flags live in `extract_instructions.md`, not the matched skill (D114).**
-  Type-agnostic patterns — document integrity, what's missing, backdating/timeline
-  anomalies, self-reported-vs-verified — apply to every record, so they sit in the
-  always-loaded extraction instructions rather than being restated per skill or reachable
-  only through the `general-records` fallback. A matched skill adds its type-specific flags
-  *on top of* that standing set; `general-records` keeps only its orient-yourself framing
-  for genuinely unknown documents and points to the standing list rather than duplicating it.
-- **Tradeoff.** `document_type` is `null` in the queue between chew and ingest; it is
-  populated at ingest. Accepted — nothing downstream needs it earlier.
-- **Sections.** A sectioned document (§5) is classified once, on its full-text excerpt,
-  before sectioning; every section's prompt carries the same domain skill.
-- **Note.** The fastembed model is still used for the **search index** (§11); only
-  the classifier was removed.
+- **Pinning.** `--skill`/`default_skill` skip classification for the run. A sidecar's `skill:` line
+  pins one document and wins over a run-wide pin (D120); it resolves by catalogue name only (D241).
+- **Provenance-aware (D84).** The classifier sees the sidecar as data, bounded by a schema that only
+  admits a skill name.
+- **Universal red flags (D114)** live in `extract_instructions.md`; a skill adds type-specific ones.
+- A sectioned document is classified once, before sectioning.
 
 ---
 
-## 7. Entity notes: structured vs. synthesized
+## 7. Entity notes
 
-An entity note has two fundamentally different kinds of content, treated
-differently:
-
-| Section | Kind | Treatment |
+| Section | Kind | Written by |
 |---|---|---|
-| `## Summary` | synthesized prose | model — provisional one-liner from the entity's top tagged fact, then bundled synthesis once 2+ mentions (D26) |
-| `## Analysis` | tagged-fact claims → synthesized prose | deterministic claims (key_facts tagged to the entity, exploded per D26) for single-mention; model-synthesized prose once 2+ mentions |
-| `## Contradictions` | cited callouts | deterministic — append-only, deduped, audit-managed |
-| `## Timeline` | structured events | deterministic — the entity's dated tagged facts, merged, sorted by **event** date |
-| `## Relationships` | structured roles | deterministic — merged |
-| `## Notes` | journalist annotations | never touched by the pipeline |
+| `## Summary` | prose | bundled synthesis, once an entity is in 2+ documents (§8) |
+| `## Analysis` | tagged-fact claims, then prose | deterministic claims; synthesized prose once 2+ documents |
+| `## Contradictions` | cited callouts | reconciliation (§8.5); append-only, deduped |
+| `## Timeline` | dated events | deterministic, sorted by event date |
+| `## Relationships` | roles | deterministic merge |
+| `## Notes` | journalist annotations | never touched |
 
-**Decision:** structured/relational content (Timeline, Relationships, Contradictions)
-is accumulated deterministically; prose (Summary, Analysis) is synthesized by the
-model.
-
-- **Why the split.** Timeline and Relationships are facts with a natural key and
-  order; mechanical merge/sort is correct and free. Prose is a cross-source judgement
-  that only the model can do well.
-- **Why Contradictions are their own cited section** (not folded into Analysis prose,
-  not made chronological). They are verifiable claims with citations. The finalizer's
-  reconciliation pass (§8.5, D118) is the sole detector — it compares each recurring
-  entity's claims across documents once, after all extraction, since a conflict needs
-  both claims in view; nothing removes a callout afterward. Sorting them by date would make them a worse
-  Timeline keyed on the *document/provenance* date rather than the *event* date — the
-  wrong axis. So they stay a discrete, append-only, deduped log that the prose
-  synthesis never disturbs.
+Structured content is merged deterministically; prose is synthesized. Contradictions stay a
+discrete cited log rather than prose or a timeline (sorting them by document date would be the
+wrong axis).
 
 ---
 
-## 8. Entity synthesis: carryforward + gated synthesis
+## 8. Entity synthesis
 
-> **Post-ingest runs in the Python orchestrator.** Entity prose synthesis (this section)
-> and timeline reconciliation + briefing (§9) happen in `orchestrate._post_ingest`, each a
-> single deterministic-Python step wrapped around one model call (D16–D18).
+**Code:** `pipeline/synthesis_bundle.py`, `pipeline/finalize_entity.py`.
 
-Synthesizing an entity's prose across all its documents on every ingest would be
-expensive, and synthesizing nothing would let a later document's summary clobber an
-earlier, richer one. The gate is **project-wide recurrence** (D26): an entity
-earns a synthesized summary once it appears in **2+ documents across the whole
-investigation**, otherwise it stays a deterministic stub.
-
-| Entity's project-wide reach | Treatment | Cost |
-|---|---|---|
-| In **1 document** total | deterministic stub — facts in `## Analysis`, relationships; **no Summary section** | free |
-| In **2+ documents** total (`appears_in ≥ 2`) | **bundled synthesis** — short model-written Summary (1–3 paragraphs) | bounded |
-
-- **Recurrence is the signal, counted across the project — not the batch.** `synthesis_bundle.build_bundle`
-  gates on the registry entity's `appears_in` length, so a registering agent or a law firm that
-  surfaces in a second document *in a later batch, years apart* is promoted the moment its
-  `appears_in` crosses 2. Only entities *touched this run* are candidates — an untouched entity has
-  nothing new to reconcile. "Touched this run" is read from the batch's staged extractions: the
-  entities named across the current batch's `.watchdog/extracted/<sha>.json` files (#403 phase 4,
-  D129), the shas taken from the run's `result_*.json` set.
-- **No summary for single-document entities, and no inline revision.** Under D26 the extractor emits
-  no per-entity summary, so extraction never revises one inline. A one-document entity simply has no Summary section —
-  its facts live in `## Analysis` and its connections in `## Relationships`, which is all an
-  incidental actor needs. Summaries are only ever written by bundled synthesis, so a single new
-  document can never silently overwrite an established one.
-- **Association needs no special code.** An incidental entity tied to an important one — the
-  paralegal who filed for a tracked party — is captured for free: it gets a stub note whose
-  `## Relationships` records the link (and the reverse link lands on the tracked party's note). If
-  it keeps reappearing, its own `appears_in` promotes it to synthesis.
-- **No recency bias.** The synthesis prompt instructs the model to weight the full body of
-  evidence: an entity established across many documents is *not* redefined by a new passing
-  mention — a minor new reference is folded in without reshaping a settled account.
-- **Gated synthesis mechanics.** In `_post_ingest` (after the commit pass), `build_bundle(vault, shas)`
-  reads the batch's staged extractions (`.watchdog/extracted/<sha>.json`) and, for each entity, rebuilds
-  a compact **fragment** on demand — the entity's slice of the exploded extraction (its tagged-fact
-  claims with any quotes, its roles) plus document attribution, one block per document it appears in.
-  The fragment is a pure function of data the extractor already produced, so it is derived here rather
-  than stored: `write_vault` no longer maintains the per-entity fragment files it once did (#403 phase 4,
-  D129). `build_bundle` selects the recurring entities, packs each one's fragments + current prose into
-  one compact bundle; model calls synthesize them in size-bounded chunks (`chunking.pack`, at most
-  `_SYNTHESIS_MAX_ENTITIES` = 25 per call, D238), and `synthesis_bundle.apply_bundle` bulk-writes
-  the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
-- **Batch scope comes from the result set, not the pending-commit set.** `_post_ingest` passes
-  `build_bundle` the shas of the run's `result_*.json` files, deliberately not `_pending_commits`. On a
-  resume after a synthesis rate-limit the documents are already committed (so `_pending_commits` is empty),
-  but their `result_*.json` persist, and a re-run must still re-synthesize that batch (D129).
-- **Why the fragment is derived, not extractor-written prose.** Having the extractor narrate per-entity
-  notes would add token cost to the expensive parallel phase. The extraction JSON already contains
-  everything a fragment needs, so synthesis reconstructs it for free at finalize.
-- **Known limitation.** Synthesis reconciles this batch's staged claims with the entity note's *carried
-  prose*, not a fresh re-read of every source document. The deep, on-demand `/watchdog-entity`
-  pass (`pipeline/write_entity.py`, which also re-synthesizes the Timeline) remains the tool for a
-  full rebuild of a central figure from all its sources.
-
-Bundled synthesis writes **only** Summary and Analysis; Contradictions,
-Timeline, Relationships, and Notes are preserved untouched. `apply_bundle` skips
-any entity the model omits or returns with an empty summary, so its carried-forward
-prose stays in place.
+An entity earns a synthesized Summary once its `appears_in` reaches 2 documents, counted across the
+whole vault (D26). Only entities named in this batch are candidates; the batch is the run's
+`result_*.json` set, so a resumed run still re-synthesizes it (D129). `build_bundle` rebuilds each
+entity's per-document fragments from the staged extractions, and the model rewrites Summary and
+Analysis in calls of at most 25 entities (D238). Synthesis never touches Contradictions, Timeline,
+Relationships or Notes; an entity the model omits keeps its prose. The prompt weights the whole
+body of evidence, so one passing mention doesn't redefine an established entity.
+`/watchdog-entity` (`write_entity.py`) is the on-demand full rebuild from every source.
 
 ---
 
-## 8.5. Reconciliation: entity resolution & contradiction detection
+## 8.5. Reconciliation
 
-**Code:** `pipeline/reconcile.py`. The merge half is driven from `orchestrate._reconcile_pre_commit`
-(before the commit pass); the contradiction half is applied from `_post_ingest` (after it). Both come
-from **one** model call (`post_model`).
+**Code:** `pipeline/reconcile.py`, `pipeline/chunking.py`, `pipeline/merge_entities.py`.
 
-The two jobs stateless extraction (§5, D118) can't do, because both need every document's claims
-side by side: **entity resolution** (the same real-world thing extracted under two ids) and
-**contradiction detection** (two documents disagreeing about one entity). One reconcile call answers
-both; where each is *applied* differs by what it needs (#403 phase 3, D128). **Entity merges apply
-before the commit pass**, over the staged batch — so a same-batch duplicate is folded while it is
-still staged JSON, a cheap id rewrite instead of post-commit note surgery, and the merge that would
-change what synthesis summarizes has already happened. **Contradictions apply after commit**, because
-`contradiction.run` validates both document slugs against `registry/documents.json`, which only holds
-this batch's documents once committed. Being post-extraction, the call is concurrency-immune,
-order-immune, and near-constant in cost (one call per ingest).
+One reconcile call (split into context-bounded chunks when large, D237) does two jobs that need
+every document's claims side by side:
 
-- **Entity resolution is two-tier.** The exact-name fold (`_batch_exact_fold`, §5, D127) already collapses
-  *exact* normalized-name duplicates across the staged batch before reconciliation runs. This pass handles
-  the *token-variant* judgement calls that fold deliberately won't auto-merge ("Laurentian University"
-  vs "…of Sudbury"). `reconcile.build_bundle(vault, shas)` reconstructs the candidate input from the staged
-  batch and the registry (no longer from written notes or a fragment queue). To keep it from being an
-  every-entity-against-every-other call that eventually won't fit a context window, `reconcile.candidate_pairs`
-  **blocks** the field deterministically: a pair is sent only if it shares a canonical type, scores ≥
-  `_JACCARD_MIN` (0.5) on some pair of its known names (a strict token-subset scores 1.0, as do identical
-  token sets — a word-order or stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs
-  "Tom Cardoso"), and involves at least one entity touched this run — ranked by overlap and capped at
-  `_MAX_PAIRS` (2,000 — a runaway guard on call count, reported when it cuts, D237). Candidates are found through an inverted index on (canonical type, name token),
-  probing only each name's rarest tokens (a Jaccard prefix filter plus a rarest-token index for subsets),
-  so the work tracks the pairs that actually share a token rather than touched × registry (#696); the
-  emitted pairs are identical to a full walk's. The model confirms or rejects each pair by index and names the surviving id;
-  `reconcile.apply_merges` applies each merge by a **taxonomy of what is already committed** (D128): a
-  batch-only loser is a staged-id rewrite (no stub, backup, or provenance — it never existed as committed
-  state); two committed sides get the full `merge_entities.run` surgery (§10); and when exactly one side is
-  committed, the committed side always survives. Merges chain, following a just-merged id to its survivor,
-  and the flattened remap is carried forward so a contradiction naming a folded-away id still lands on the
-  survivor. **The bundle is split into size-bounded calls** (`reconcile.chunk_bundle`, `pipeline/chunking.py`,
-  D237): pairs then entities are packed in order into chunks of at most a quarter of the reconciliation
-  model's context window (clamped and tokenizer-corrected as sectioning is), each chunk numbering its own
-  pairs from 0; `merge_chunk_results` maps every answer back to bundle-wide pair indices before the one
-  `apply_merges`. A bundle that fits is still exactly one call. Splitting loses nothing, since contradiction
-  detection only compares claims within one entity and each candidate pair is judged independently. An
-  entity whose ledger alone exceeds a chunk has its oldest claims trimmed (the tail holds this batch's).
-  Any failed chunk defers the whole batch exactly as the single call did. Each call's size (entity/pair
-  counts and KB) is reported live and in `watchdog usage`'s per-call detail.
-- **Contradiction detection** reads each recurring entity's (`appears_in ≥ 2`, the D26 gate) `##
-  Analysis` claim ledger — already source-attributed by document — and the model returns structured
-  `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile.apply_contradictions`
-  files each through `contradiction.run` (D81), the same deterministic writer the manual `watchdog
-  contradiction` command uses, which validates both document slugs — so a hallucinated reference is a
-  skipped item and a warning, never a fabricated citation. The flags feed the briefing's
-  "Contradictions flagged" count (§9).
+- **Entity resolution.** The exact-name fold (`_batch_exact_fold`, D127) has already merged exact
+  normalized-name duplicates in the staged batch. `candidate_pairs` blocks the rest: same canonical
+  type, name-token Jaccard ≥ 0.5 (subsets score 1.0), at least one side touched this run, found
+  through an inverted index on rare tokens and capped at 2,000 pairs. The model confirms or rejects
+  each pair; `apply_merges` applies them by what is already committed (D128): a staged-only loser
+  is an id rewrite, two committed sides get `merge_entities.run`, and a committed side always
+  survives. Merges apply **before** the commit pass.
+- **Contradiction detection.** For each entity in 2+ documents, the model compares its
+  source-attributed claims and returns structured conflicts. `apply_contradictions` files each
+  through `contradiction.run`, which validates both document slugs (D81). Applied **after** commit,
+  because it needs the committed documents registry. Basis does not gate a contradiction (D214).
 
-I1 holds: the model answers only *which* pairs are the same and *which* claims conflict; every
-write is deterministic code. Failure recovery, though, is no longer symmetric between the two halves
-(#403 phase 3, D128). Because merges now apply *before* the commit pass, a reconcile model failure
-(rate limit) **defers the whole batch**: nothing commits, every staged artifact stays pending, and a
-re-run of `watchdog bark` retries fold → reconcile → commit — committing half-reconciled state
-would strand duplicates a later retry could never revisit (I7). The contradiction half, applied
-post-commit, stays enrichment-only: the documents are already saved, so a failure there just leaves
-the callouts unwritten for a later `finalize` to add.
+A reconcile failure defers the whole batch: nothing commits, and the next `bark` retries (I7). A
+contradiction failure after commit only leaves those callouts for a later run.
 
 ---
 
-## 9. Timeline reconciliation & briefing
+## 9. Finalize (`bark`)
 
-**Code:** `pipeline/orchestrate.py` (`_post_ingest`), `pipeline/timeline.py`.
-**Files:** `.watchdog/timeline/`, `briefings/`, `hot.md`, `log.md`.
+**Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
+`pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Each document's extraction stages its events to **raw** per-document files
-`{date}_{sha7}.ndjson` (`timeline.stage_timeline_events`, called from post-flight) — the events
-being the document's **dated** `key_facts` (D26) — write-only and lock-free, since each filename
-is unique. Each record carries `source_sha256`, `page`, and the fact's `entity_ids`, so the
-rendered timeline can attribute every event to its source document and the entities it concerns (D59). This global timeline is still separate from an entity's own `## Timeline` section (§7):
-the entity registry's `timeline_events` is populated independently, straight off the same
-`key_facts`, by post-flight, and its per-entity dedup stays mechanical (D58). All merge/dedup and
-the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
+Order: **exact-name fold → reconciliation merges → commit → post-ingest.**
 
-- `timeline.collisions(vault)` promotes a date with no prior canonical and a single raw to
-  **canonical** `{date}.ndjson` (deleting the raw) and returns the collisions where a canonical
-  already existed. A date with no canonical but raws from several documents of the same batch is a
-  collision too (D240): the first raw is promoted and the rest are returned against it, so
-  same-batch restatements are deduped exactly as cross-batch ones are. The orchestrator sends each
-  collision's events to one model call, up to `_TIMELINE_DEDUP_CONCURRENCY` (5) dates at a time
-  (`timeline-dedup`), which returns `groups` (each survivor + the pure-restatement indices that
-  fold into it). A date with more than `_DEDUP_MAX_ITEMS` (200) events is sorted by text and sent
-  in windows of that size; the same bound applies to timeline-precision months and request dedup
-  (D248). `_select_kept` applies the decision — keeping the authoritative originals and
-  **unioning each group's `entity_ids`** onto the survivor, so an event's entity attribution
-  survives a cross-document collapse regardless of which restatement won (D59). On a **successful**
-  dedup it writes the deduped set back to the canonical and consumes the collision's raws; on a
-  **failed** dedup call it leaves the canonical and its raws untouched so the next ingest retries
-  cleanly — never writing the canonical+raw union back, which would bake in duplicate rows that
-  compound on every later run (D65). It then calls `timeline.cmd_rebuild_timeline` to render
-  `timeline.md`;
+**Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
+`documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
+so the vault doesn't depend on completion order. `write_vault` canonicalizes entity types to a
+closed six-value vocabulary (D105), merges entities, writes entity and document notes, defangs
+model- and document-supplied text so it can't forge a wikilink (D241), moves the source to the
+morgue, and updates the registries. Registries are held in memory for the pass
+(`RegistryBatch`) and persisted atomically — after every document for passes up to 50, every 50
+otherwise; a document's queue file is removed only after the flush that recorded it. A
+mid-document failure rolls that document back in memory. Search indexes are written after the
+registry, keyed for idempotent replay (D67).
 
-- **Cross-precision reconciliation (D63).** Date-keyed buckets never compare a month-precision
-  event (`2026-03`) against the specific day it restates (`2026-03-12`). After the exact-date dedup,
-  `timeline.month_precision_groups` finds each month holding **both** precisions and one
-  `timeline-precision` model call per such month matches each coarse event to the day it restates;
-  `timeline.apply_precision_matches` drops the matched coarse event, keeps the precise date, and
-  unions its `entity_ids` onto the survivor. Gated on a month mixing precisions, so most ingests make
-  zero extra calls. The pass can only remove a coarse restatement — never a precise event — so it
-  cannot collapse two distinct days; bare-year (`YYYY`) events are left unreconciled by design;
+**Post-ingest:**
 
-**One renderer (D59).** `timeline.cmd_rebuild_timeline` is the *single* code path that writes
-`timeline.md` — reading the cross-document-deduped canonical NDJSON and resolving `source_sha256`
-→ document link (+ `page`) and `entity_ids` → entity links, year-grouped. Every command that
-touches the vault routes through it: `_post_ingest` (batch ingest), `watchdog merge-entities`,
-`write_entity`, and the standalone `watchdog timeline`. `write_vault` no longer renders the global
-timeline (it has no deduped data mid-batch), so the file's shape no longer depends on which
-command last ran. `merge-entities` additionally remaps the losing entity id → survivor inside the
-NDJSON records (`_remap_timeline_ndjson`), keeping the timeline's entity links correct after a
-merge — deterministic, no model call, parallel to its registry surgery (§I1);
-- builds a briefing prompt from the compact per-doc results — which now carry each
-  document's `key_facts` (projected to fact + date, the briefing's source for figures and
-  chronology) alongside near-dup alerts and contradiction flags — plus the per-document
-  scratchpads, now slimmed to forward-looking leads only (D33) — condensed in steps when the batch is
-  too large for one call (`_fit_briefing_inputs`: key facts capped at 5, then 1, then none, then a tally
-  by document type; the prompt then tells the model its view is partial, D238); makes one model call
-  (`briefing`), and `_write_briefing` writes the structured prose into `briefings/<ts>.md`,
-  `hot.md`, and a `log.md` entry — first resolving any item that's an exact match against the
-  registry manifest from an entity id to its display name, since not every backend reliably
-  avoids echoing ids in prose (D107).
+- **Contradictions** (§8.5), then **entity synthesis** (§8).
+- **Timeline.** Each document stages raw `{date}_{sha7}.ndjson` files; `timeline.collisions`
+  promotes uncontested dates and returns dates with events from several documents (including
+  several from one batch, D240). Each colliding date gets one dedup call (five dates at a time, at
+  most 200 events per call, D248); `_select_kept` keeps the originals and unions entity ids onto
+  each survivor (D59). A failed call leaves the date untouched for the next run (D65). Months
+  mixing month- and day-precision events get a precision pass that can only fold a coarse event
+  into a day (D63). `cmd_rebuild_timeline` is the single renderer of `timeline.md`.
+- **Briefing.** One call over compact per-document results (key facts, entity names, near-dup
+  alerts, contradiction flags) and the scratchpads, condensed in steps when the batch is large
+  (D238). `_write_briefing` writes `briefings/<ts>.md` (a counter suffix on collision), `hot.md`
+  and a `log.md` entry. `--skip-briefing` skips the call and those three files (D134).
+- **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
+  `resolutions.json` holds acknowledgments so handled items don't resurface (D68). Document
+  requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
+  paraphrases, and `requests.md` is re-rendered (D111, D159).
+- `watchdog contradiction-add` lets a journalist promote a candidate contradiction found by
+  `/watchdog-surface`, through the same deterministic writer (D82).
 
-An ingest run (`watchdog dig`, or the deprecated `watchdog ingest`) prints the per-document summary;
-the briefing/hot/log files are the durable record a fresh session reads.
-
-**`--skip-briefing` (D134, #410).** A flag on `ingest` and `bark`, not a separate command —
-plumbed as `skip_briefing` through `orchestrate.run`/`orchestrate.finalize` → `_post_ingest`,
-which skips only the `briefing` model call; reconciliation, synthesis, and the timeline steps
-above still run. Since `_write_briefing` is what writes `hot.md` and the run's `log.md` entry,
-both are skipped along with `briefings/<ts>.md` — the leads/watchlist/requests sweeps below don't
-depend on it and still run. Recorded as `briefing_skipped` (not `briefing_error`), so the caller
-doesn't treat an intentional skip as a failed run needing a later `watchdog bark`. The bare
-`watchdog` guided walk (`cmd_guided`) takes the same flag at the top level of the CLI parser —
-it rides along on the `args` Namespace `_offer_ingest` passes straight into `cmd_ingest`, so it
-needs no separate plumbing of its own.
-
-**Deterministic sweeps + resolution overlay (D68).** Two model-free, whole-vault passes run
-alongside the briefing and are also available on demand: the lead sweep (`pipeline/leads.py`,
-`watchdog leads`) reads the entity registry for named-but-unprofiled / isolated / contradiction /
-inferred signals, and the watch-word scan (`pipeline/watchlist.py`, `watchdog watchlist`) greps
-the morgue full text for `watchlist.md` terms. Both write dated `briefings/` files. Because they
-regenerate from scratch every run they used to re-surface handled items; `pipeline/resolutions.py`
-is the shared acknowledgment overlay that fixes that. Its `.watchdog/registry/resolutions.json`
-keys acknowledged items on stable ids (`lead:<signal>:<id>`, `contradiction:<callout-hash>`,
-`alert:<sha7>:<term-hash>`); the report generators (and the entity-note writer, for contradiction
-callouts) drop resolved ids from the active list. The store is populated by `watchdog resolve`,
-by `- [x]` checkbox sync from the briefing files (`<!--wid:<id>-->` markers), and undone by
-`watchdog unresolve`; `merge-entities` remaps lead ids onto the survivor (§I1, D54).
-
-**Document requests (`pipeline/requests.py`, D111, D158, D159).** A **document request** is a
-concrete artifact to acquire — a document type, the specific thing, why it matters, and often
-where to get it — distinct from a lead's open-ended thread. The model emits `document_requests`
-on `EXTRACTION`/`SECTION` (moved out of `scratchpad`/`observations`, never duplicated); Python
-stamps each into `.watchdog/registry/requests.json` with an id (`request:<hash>`, content-keyed
-on the normalized `what` text vault-wide rather than per source document) and provenance (§I1),
-inside `write_vault`'s registry lock. A second document citing the same artifact under the same
-wording converges onto the existing entry and is appended to its `sources` list rather than
-spawning a duplicate — but that only catches identical wording; a paraphrase of the same real
-document still lands as a separate entry, since the exact-match check is deterministic Python
-with no judgement. `orchestrate._post_ingest`'s document-request dedup pass closes that gap: when
-a run adds a new open request and more than one is open, a model call judges which currently-open
-requests name the same real-world document (§I1's usual split — the model answers only *which*
-entries are the same, `requests.merge_duplicates` performs the fold, carrying the loser's
-`sources` and any prior resolution onto the survivor via `resolutions.remap_rid`). This is a
-narrow, bounded exception to D111's "never re-fed into a model prompt": the *content* of open
-requests is shown to a model again, but solely to judge sameness among requests themselves — not
-as context for generating new prose or reopening extraction. `write_requests` renders the
-still-open entries to the vault-root `requests.md` (overwrite, current-state, same
-`<!--wid:...-->` checkbox convention as leads/alerts, "Referenced in" listing every citing
-document) and `sync_from_briefings` reads it alongside the briefing files. Resolution is
-otherwise manual only — no fuzzy auto-close triggered by a newly-ingested document.
-
-**Promoting a surface-found contradiction (`watchdog contradiction-add`, D82, D83).**
-`/watchdog-surface` reports cross-document contradictions as labelled *candidates* rather than
-writing callouts into pipeline-owned entity notes (D81). When the journalist explicitly confirms
-promotion, `/watchdog-surface` invokes the deterministic command (`cmd/contradiction.py` →
-`pipeline/contradiction.py`) which writes the callout — in the exact `[!contradiction]` shape
-extraction emits — into the entity's `## Contradictions` ledger and re-renders the note through
-`build_entity_note`, applying the same resolved-contradiction overlay the ingest writer does. So
-the promoted callout is content-keyed like any pipeline-emitted one and `watchdog`
-`resolve`/`unresolve` act on it unchanged. It validates the entity id and both document slugs, is
-a no-op if the callout is already present, and makes no model call — the journalist stays the gate
-(explicit confirmation), the pipeline stays the sole writer (§I1, §I5). The command is internal
-and hidden from top-level `watchdog -h`.
+A batch is always finalized, never discarded (D242); `bark` with nothing pending reports so.
 
 ---
 
 ## 10. Near-duplicate detection
 
-See §3. MinHash-over-shingles, computed at chew time, surfaced as `near_dup` on the
-queue JSON and flagged in the ingest briefing. Detection only — the journalist
-decides whether near-duplicates are the same document.
+See §3. Detection only: the journalist decides whether two documents are the same. The dashboard
+lists them as "Possible duplicate documents".
 
 ---
 
-## 11. Search index
+## 11. Search
 
-**Code:** `pipeline/embed.py`. **Files:** `<vault>/.embeddings/`.
+**Code:** `pipeline/embed.py`, `pipeline/fulltext.py`, `cmd/reindex.py`.
 
-A local fastembed semantic index (`embed_model`, default `bge-small-en-v1.5`), one
-`.npy` + `.json` per document and per note. Re-ingesting a document or note overwrites
-only its own files. Indexing is deterministic and entirely on-machine — no API, no
-metered call (I2).
-
-**Built at ingest, not chew (D43).** Notes are embedded by `write_vault` as they're
-written; corpus passages are embedded by `write_vault` too, right after the document note,
-so the index is wholly an ingest product. Embedding moved off chew because each passage is
-stored with a **contextual prefix** — the document's title, type, and the entities it names
-— and those only exist after extraction. The prefix is prepended to the window before
-embedding and kept alongside it for the sparse leg, anchoring a passage that lacks the
-document's who/what to its document (Anthropic contextual-retrieval); the stored/cited
-`text` stays the clean window.
-
-**Passages, not pages (D38).** Each page is split into overlapping word *windows*
-(`_WINDOW_SIZE` words, `_WINDOW_OVERLAP` shared with the neighbour) and one vector is
-stored per window, tagged with its page. A whole page averages many topics into one
-vector and dilutes a short query; a window is a passage-level unit, and the matched
-window *is* the citable span (no separate highlighting step). Windows never cross a page
-boundary, so every passage carries an exact page citation.
-
-**Two streams, queried separately.** Corpus passages (what a *source* says) and notes
-(what we *concluded*) live side by side but are ranked independently: `search(...,
-scope=)` selects `corpus` / `notes` / `all`, and `watchdog search` shows them as two
-sections so synthesized prose never dilutes source-passage ranking.
-
-**Hybrid corpus retrieval (D43).** The corpus stream is ranked by a three-stage pipeline:
-a dense cosine ranking and a sparse **BM25** ranking are fused with reciprocal-rank fusion
-(`_RRF_K`), then the fused candidate pool (`_RERANK_POOL`) is reordered by a local
-**cross-encoder reranker** (`rerank_model`, default `bge-reranker-base`; warmed by
-`watchdog setup`, else downloaded on first search; disable with `rerank_model = none` or
-`--no-rerank`). BM25 recovers the exact tokens
-embeddings blur — case numbers, dollar amounts, statute cites, names — and the reranker is
-the single biggest precision lever. If the reranker can't load, search degrades to the fusion
-order. The notes stream stays pure cosine.
-
-**Search cache (`embed._CorpusIndex`, #696).** Every `watchdog search` is a fresh process, and
-each one used to re-read every per-file index entry, re-tokenize every passage and score BM25 in
-a Python loop — 20–30 seconds a query at 200,000 passages (about 5,000 ten-page documents). The
-stacked vectors, the metadata and a BM25 inverted index over the corpus passages are now written to
-`.embeddings/_cache/` (`.npy`/`.npz`/JSON — never pickle, since a vault can come from someone
-else) and reused while a fingerprint of every per-file entry's name, size and mtime still matches;
-`add_document`/`add_note` also drop the fingerprint outright, for filesystems with coarse
-timestamps. A repeat query then loads three files and scores with numpy (about 1.3 s on the same
-synthetic index). Rankings are unchanged: same tokenizer, corpus and formula, summed per query term
-rather than per passage. The per-file entries stay the source of truth — the cache is derived,
-rebuilt on the first search after any change, and `watchdog reindex` wipes it with the rest of
-`.embeddings/`.
-
-**Query handling.** Short queries are embedded with the bge instruction prefix
-(asymmetric retrieval — passages get no prefix); a query supports Semantra-style
-`+`/`-` arithmetic (`_parse_query` → sum of positive minus negative phrase vectors);
-`min_score` (CLI `--threshold`) drops weak hits on the **cosine** score (each result's
-`score` stays the cosine even when fusion + rerank set the order). Cosine has no universal
-cutoff — a strong conceptual match sits ≈ 0.5–0.65 for the default model, so the threshold
-is advisory and corpus-tuned, not a fixed gate.
-
-**Rebuilding without re-ingest (`watchdog reindex`, D53).** Code: `cmd/reindex.py`. Since
-`documents.json`/`entities.json` already hold everything the D43 contextual prefix needs,
-and the morgue `<stem>.md` sibling (D26) holds the full page-marked text, the index can be
-rebuilt from disk alone — no OCR, no model call. `reindex` wipes `.embeddings/` and replays
-`embed.add_document`/`add_note` for every registry entry, reconstructing pages from the
-morgue text's `<!-- PAGE N -->` markers and each document's mentioned-entities list from
-`appears_in`. This is the documented way to change `embed_model` after ingest — its vectors
-are persisted, so switching models means every one is stale. `rerank_model` needs no
-reindex: the cross-encoder only runs inside `search` at query time (`_get_reranker`) and
-nothing about it is persisted, so a change takes effect on the next `watchdog search`. A
-pre-D26 document with no morgue text on disk is skipped (its note still reindexes) rather
-than failing the whole run.
-
-**Full-text (exact-term) lane, complementary to the above (D57, issue #109).** Code:
-`pipeline/fulltext.py`. **Files:** `<vault>/.fulltext/index.db`. A local SQLite FTS5 index
-(`unicode61` tokenizer, no stemming) over the same raw source text (morgue pages) plus every
-generated note the pipeline writes — entity, document, timeline, briefing, hot cache, and
-run log. Where the embedding index above answers "what's most relevant," this answers
-"every place this exact term or phrase appears" — the recall lane for a name, case number,
-or other token that never got promoted into a synthesized note. Query syntax is
-deliberately not raw FTS5 MATCH grammar: a quoted substring is a phrase match, bare words
-are ANDed, and every token is escaped (`build_match`) so punctuation in a name (O'Brien,
-AT&T) can't be misread as query syntax. One row per corpus page (carrying its page number
-and morgue path, so a hit links straight to `morgue_path#page=N`) and one row per note
-(keyed by note path), each replaced — not duplicated — on re-indexing via delete-then-insert.
-`watchdog search` runs this as a third, unscored "Exact matches" section alongside the
-existing corpus/notes sections, reusing the same snippet-windowing and term-highlighting the
-semantic sections already use rather than FTS5's own `snippet()`. Built at ingest (the same
-call sites that call `embed.add_document`/`add_note` also call the `fulltext` equivalents,
-best-effort — a failure warns but never fails the ingest run) and rebuilt in full by
-`watchdog reindex` alongside `.embeddings/`.
-
-**Batch search (D57, issue #110): `watchdog search --batch <file>`.** Reads one term per
-line (blank lines and `#`-comments skipped) and reports hits per term instead of ranking a
-single query — the "does any of these N names from a leaked roster/sanctions list/donor
-list appear anywhere" workflow. Combines two lanes per term: manifest name/alias substring
-matches (the existing `manifest.json` lookup) and full-text hits (`fulltext.search`).
-Deliberately skips the semantic/embedding lane — a batch is routinely hundreds of terms, and
-embedding + cross-encoder rerank per term doesn't scale the way an in-process SQLite query
-does. A flag on `search`, not a new command: one command a journalist needs to remember,
-with `--batch` switching it from ranking a query to reporting per-term hits.
-
-**Cross-vault search (D72, issue #272): `watchdog search --everywhere`.** A deliberately
-small stepping stone toward a global entity registry (#67) — "have I seen this name in
-*any* of my vaults?" answered today over existing per-vault indexes, with no shared
-registry and no cross-vault entity resolution. Drops the single-project scope and instead
-iterates every registered, non-archived project in `projects.json`, running the same
-manifest-substring and full-text lanes as `--batch` (semantic/rerank skipped for the same
-scaling reason: N vaults × embedding + rerank doesn't scale the way in-process SQLite
-queries do) per vault, then reports hits grouped by investigation name. Composes with
-`--batch` (a term list checked across every vault, not just one). A vault whose registered
-path is missing or not a Watchdog vault (`_check_project_health`) is skipped rather than
-failing the whole scan — the same tolerance `watchdog doctor` already applies.
+- **Semantic index (D38, D43).** Local fastembed vectors (`embed_model`) for overlapping word
+  windows of each page — each window is a citable passage — plus one per note. Built at commit,
+  with a contextual prefix (title, type, entities) prepended before embedding. Index files are
+  keyed by document sha (D241).
+- **Hybrid ranking.** Corpus passages: dense cosine and BM25 fused by reciprocal rank, then
+  reranked by a local cross-encoder (`rerank_model`; `none` or `--no-rerank` disables it). Notes:
+  cosine only, shown as a separate section. A derived cache (`.embeddings/_cache/`, numpy only,
+  fingerprinted on file names/sizes/mtimes) makes repeat queries fast.
+- **Full-text lane (D57).** SQLite FTS5 over morgue pages and every generated note: every exact
+  occurrence, unscored. `--batch` checks a term list (manifest names plus full text, no semantic
+  lane); `--everywhere` runs the same lanes across every registered vault (D72). A failed
+  full-text lookup is reported as "not checked", never as no hits.
+- **`watchdog reindex` (D53)** rebuilds both indexes from the registry and morgue text, with no OCR
+  or model calls — the way to change `embed_model`.
 
 ---
 
 ## 12. Vault & registry layout
 
-**Vault (the investigation folder):**
-
 ```
-entities/<type>/<id>.md     entity notes (<type> ∈ the closed vocabulary, D105)
-documents/<slug>.md         document notes (slug gains -<sha6> when another document
-                            already owns it — a shared filename never overwrites, D241)
-morgue/<entity>/<type>/…     original source files + a sibling <name>.md of the
-                            Docling full text, filed by subject (D26); same -<sha6> rule
-timeline.md                 rendered global timeline
-briefings/<date>.md         per-ingest briefings
-requests.md                 open document requests — documents to go and get (D111)
-context.md / hot.md / log.md investigation context, hot cache, run log
-index.md / dashboard.base    landing page + native Obsidian Bases dashboard (D42)
-.embeddings/                semantic search index
-.fulltext/index.db          full-text (exact-term) search index (D57)
-.obsidian/graph.json        graph colours per entity type
-.watchdog/                  pipeline state (below)
-```
-
-**`.watchdog/` (pipeline state):**
-
-```
-queue/<sha>.json            chewed documents awaiting ingest — survives until the commit pass
-                            (#403 phase 1), not deleted at extraction time
-staging/<sha>/              chewed originals
-extracted/<sha>.json        durable, validated extraction output (#403 phase 1, D126) — staged by
-                            post-flight, committed to the vault by finalize's commit pass, never
-                            cleaned up on success (doubles as an audit record)
-timeline/                   raw + canonical NDJSON event files
-tmp/                        scratch (wdg_* temp; per-run post-ingest inputs: result_<sha>.json,
-                            notes_<sha>.md, synthesis-result.json — cleared on a clean finalize)
-registry/
-  entities.json             full entity records (roles, events, appears_in)
-  documents.json            per-document metadata + MinHash signatures + embedded
-                            file_metadata (author/producer/created/…, #369)
-  registry.json             counts + last-updated
-  manifest.json             lightweight id→{name,type,aliases,note_path} lookup
-  resolutions.json          acknowledged leads/alerts/contradictions/requests overlay (D68, D111)
-  requests.json             document-request ledger — id/provenance stamped by Python (D111)
-  ingest.log                append-only ingest log (START/OK/WARN/FAILED per doc, D102)
-  usage/usage-<ts>.json     per-run model-call token/cost/latency telemetry (D50, D86, D102);
-                            `totals.est_input_tokens` (D135), present only when the run actually
-                            extracted documents, is the naive chars/4 estimate for them — the
-                            input tokens-in calibration compares against `totals.input_tokens`.
-                            Every call recorded here is also written to a global, cross-vault
-                            SQLite store at `~/.watchdog/telemetry.db` (`telemetry_db.py`, D193) —
-                            additive, not a replacement; the JSON files above stay authoritative.
-                            Off with `telemetry false`; `delete --purge` drops a vault's rows (D247)
-  usage/usage-<ts>.partial.jsonl  in-progress run's calls, one JSON line per completed call —
-                            folded into a real usage-<ts>.json and removed at the *next* run's
-                            start if the run that wrote it never reached a clean exit (D132)
-  batch-pending.json        pending claude-batch/openai-batch extraction state (D52/D169) — incl.
-                            the per-sha skill map a later collection pass rebuilds prompts from
-                            (D144) and which provider (`backend`) to resume against
-  .ingest-lock / .write-lock  run lock / write serialization
-backups/<ts>-<operation>/   pre-mutation snapshots for irreversible operations (D71)
-ingest-state.json           present while a run is in progress; stale ⇒ interrupted ingest, resume with `watchdog dig`
+entities/<type>/<id>.md      entity notes; <type> is the closed vocabulary (D105)
+documents/<slug>.md          document notes (slug gains -<sha6> when another document owns it, D241)
+morgue/<entity>/<type>/…     originals + a <name>.md full-text sibling (D26); same -<sha6> rule
+timeline.md                  rendered global timeline
+briefings/                   briefings, leads, alerts, research memos
+requests.md                  open document requests
+context.md / hot.md / log.md investigation context, session cache, run log
+index.md / dashboard.base    landing page and Obsidian Bases dashboard (D42)
+queries/ wiki/               session-written findings and threads
+.embeddings/ .fulltext/      search indexes
+.claude/                     Claude Code settings and /watchdog-* commands (D245)
+.watchdog/
+  queue/<sha>.json           chewed documents; removed after commit
+  staging/<sha>/             chewed originals
+  extracted/<sha>.json       staged, validated extractions (kept as an audit record)
+  timeline/                  raw and canonical NDJSON events
+  tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
+  research/                  research worklist (§14)
+  backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, a fresh run's wipe of leftovers)
+  ingest-state.json          present while a run is in progress
+  registry/
+    entities.json documents.json registry.json manifest.json
+    resolutions.json requests.json batch-pending.json
+    ingest.log               per-document START/OK/WARN/FAILED lines
+    usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
+    .ingest-lock .write-lock
 ```
 
-**Why a manifest separate from `entities.json`.** Pre-flight needs only a small
-lookup (names/aliases → id/note_path) for candidate matching; reading the full
-registry for every document would be wasteful. The manifest is the cheap index.
+Every model call is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
+filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` removes a vault's rows
+(D247).
 
-**Merging duplicate entities (`watchdog merge-entities <keep-id> <merge-id>`, D54).**
-Code: `pipeline/merge_entities.py`, `cmd/merge_entities.py`. Fixes what ingest-time
-reconciliation (`_reconcile_entity_ids`, above) can't: the same real-world entity
-extracted under two ids across *separate* ingests, not just slug drift within one batch.
-`merge()` unions the losing entity's data onto the survivor and remaps every registry
-reference to it; `run()` layers the note-level work on top (Analysis concatenation,
-redirect stub, third-party note regeneration) — see D54 for the full mechanics. Must be
-run from inside the vault it mutates (no model calls, no project-name lookup needed).
-`run()` keeps only one prose `## Summary`, flagging `summary_dropped` when both entities
-had one so the CLI can nudge a `/watchdog-entity <keep-id>` refresh (#313); the
-merged-away entity's stale search-index entries are cleaned up by a later `watchdog
-reindex` (D53), not by this command itself.
+**Session boundaries (D245).** A vault's Claude Code settings pre-authorize writes only to the
+session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/tmp/`,
+`.watchdog/research/`) and a few deterministic commands. `refresh-skills` updates commands,
+permissions, the prompt hook and dashboard views in existing vaults.
 
-**Pre-mutation snapshots (`pipeline/backup.py`, D71).** `merge-entities`, ingest's
-`discard` choice (§4), and `delete --purge` all mutate or delete the registry with no
-undo. `snapshot(vault, operation, paths)` copies whichever of `paths` currently exist
-into `.watchdog/backups/<ts>-<operation>/`, preserving each path's position relative to
-the vault, before the caller's own writes/deletes happen — a no-op (no directory
-created) when nothing in `paths` exists yet, so an ordinary run that never touches the
-irreversible branch leaves nothing behind. Backups are pruned to the 5 most recent
-(name-sorted, since the timestamp prefix makes lexical order chronological). Each
-call site backs up only what it's about to destroy: `merge-entities` snapshots
-`entities.json`, `manifest.json`, both entity notes, and any third-party note about to
-be regenerated; ingest's discard snapshots `result_*.json` and
-`notes_*.md`; `delete --purge` snapshots the registry files only (backing up the whole
-vault would defeat the purpose of purge) — and since that snapshot lives inside the
-vault being deleted, it is a hedge against a partial failure, not a way to undo a
-completed purge, and the CLI hint says so.
+**Merging entities (D54).** `watchdog merge-entities <keep> <merge>` unions the losing entity onto
+the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
+what it changes. It keeps one Summary and suggests `/watchdog-entity` when both had one.
 
 ---
 
-## 13. Models & skills
+## 13. Models, backends and skills
 
-- **Models** (configurable via `watchdog configure`): `extractor_model` (default sonnet;
-  extraction, whole-doc + section) and `finalizer_model` (default haiku; post-ingest
-  synthesis + timeline + briefing, §8–§9); classification runs on haiku. Benchmark testing
-  against real court-and-financial filings found OpenAI's GPT-5.6 Luna stronger for extraction
-  and classification (D221; see `docs/benchmarks.md`), recommended in the docs rather than
-  shipped as the default — it needs its own OpenAI key even on a plain Claude subscription,
-  and only the extractor side is actually benchmarked (D222). `extract_concurrency`
-  (default 5) bounds parallel extraction. Each is overridable per run via the matching flag
-  on `watchdog dig` (`--extractor-model` / `--concurrency`) or `watchdog bark`
-  (`--finalizer-model`) — or on `watchdog ingest`, which takes both.
-  `finalizer_model` is itself an aggregate over four `_call_model` task names — `reconcile`,
-  `entity-synthesis`, `timeline-dedup`/`timeline-precision`, and `briefing` — each independently
-  overridable via `finalizer_reconciliation_model`/`finalizer_synthesis_model`/
-  `finalizer_timeline_model`/`finalizer_briefing_model` (config keys, or the matching
-  `--finalizer-<stage>-model` flag on `watchdog bark`/`watchdog ingest`; D137/#433).
-  `orchestrate.finalize`'s `finalizer_overrides` dict carries the resolved
-  `<stage>_model`/`<stage>_backend` pairs; an absent key falls back to
-  `post_model`/`post_backend` (`dict.get`'s own default), so a stage deliberately resolved to
-  `None` backend — "route by auth mode" — is never confused with an unset override.
-- **Reasoning effort** (per-stage): `extractor_effort` and `finalizer_effort` (`low`/`medium`/
-  `high`) tune how many thinking tokens each stage spends; thinking bills as output, so a
-  lower effort is the per-run cost lever (D36). `extractor_effort` defaults to `medium` —
-  the corpus-v1 benchmark found it ties `high` on recall at meaningfully lower cost (D140),
-  for Sonnet, the shipped default model; if you switch to the recommended Luna, use `high`
-  instead — its own recall climbs with effort on that corpus, unlike Sonnet's (D221/D222).
-  `finalizer_effort` still defaults to `high` ≡ the model default (unbenchmarked; entity
-  reconciliation is judgement-heavy cross-document reasoning, a different quality/cost
-  shape than extraction). `classifier_effort` (default `low`, D221) is new: classify never had
-  an applied effort default before, since Haiku, its default model, rejects the parameter
-  outright — the knob exists now because some models it can be routed to (the recommended
-  Luna) actually support it, and no-ops cleanly on Haiku like the others do on an effortless
-  model. `verifier_effort` (default `low`) is the third original stage: the optional
-  verification pass (§5, D172) runs on `extractor_model` — deliberately not independently
-  configurable, since its whole cost case is re-reading the document out of the cache the
-  extraction call wrote, and a cache belongs to one model — so effort is the only knob it has,
-  and low is where it is meant to live. `model_client` maps a configured effort to each backend's native
-  control (`output_config.effort` / `ClaudeAgentOptions.effort`) and drops it on Haiku-tier
-  stages (classify, by default; any Haiku model), which reject `effort`. Overridable per run via
-  `--extractor-effort` / `--finalizer-effort` / `--classifier-effort`. **`effort` alone doesn't
-  engage reasoning on every Claude model:** `thinking` and `effort` are independent Anthropic
-  controls, so `model_catalog.yaml`'s `thinking: true` flag (Sonnet 4.6/Opus 4.8, the two
-  off-by-default tiers) makes `model_client.py` send it explicitly alongside `effort` — dropped
-  again on a continuation retry, same shape as the structured-output-enforcement drop on that
-  path (D206).
-- **Model client** (`model_client.py`): the orchestrator's single entry to the model. Routes
-  each task to a backend by auth mode and per-task policy, validates the JSON, retries on the
-  same model on failure, and reports cost/latency.
-  - **Backends:** `claude-agent-sdk` (subscription login or API key — the only backend that
-    works on a subscription; it passes **both** `allowed_tools=[]` and `tools=[]`, since only
-    the latter keeps the built-in Claude Code tool suite out of the request — ~11.2K tokens per
-    call otherwise, D145), `claude-api` (raw Messages + structured outputs, called via the
-    Anthropic SDK's streaming helper rather than a single non-streaming request — required once
-    `max_tokens` exceeds the SDK's own ~21,333 non-streaming-timeout guard, which the
-    catalog-derived envelope now routinely does, D197), or the OpenAI-compatible
-    `openai`/`deepseek`/`gemini`/`local`/`openrouter` backends (Chat Completions over httpx, one
-    provider each via base URL; D37, D94, D139). Backend registration metadata (provider, base
-    URL, continuation/max-tokens support, batch-only) lives in one `_BACKEND_META` registry
-    keyed by backend name, so a new backend is one entry, not several parallel tables.
-  - **Model catalog:** every model's id, pricing (including any time-of-day `price_periods`
-    schedule, D217), context window, reasoning-model flag, and pretty display name is
-    single-sourced in a hand-editable `model_catalog.yaml`, loaded by the dependency-free
-    `model_catalog.py` (D142) — both `model_client.py` and `cmd/base.py` (the `watchdog
-    context`/`_launch_claude` path) read from it, so there's no second, silently divergent copy
-    of a model id.
-  - **Structured-output enforcement** differs by provider on the OpenAI-compatible path. Gemini
-    gets a real `json_schema` response format using `schemas.py`'s schema as-authored (its schema
-    engine tolerates the same omit-optional-fields design unmodified). OpenAI also gets a real,
-    wire-enforced `json_schema` request (`strict: true`), but against a schema mechanically
-    derived by `model_client._to_strict_schema` — OpenAI's strict mode demands every property
-    appear in `required`, so the derived variant forces that and widens each newly-required
-    scalar property to a nullable union; `_denormalize_strict_json`/`_strip_none` then strip
-    those nulls back out of the response before it reaches the shared validate/prune path, so
-    `schemas.py`'s actual (non-strict) schema and every downstream reader's omitted-vs-null
-    handling need no OpenAI-specific carve-out (D151, issue #479). DeepSeek, local, and
-    OpenRouter stay on portable `json_object` + schema-in-prompt (D98) — DeepSeek's JSON mode
-    has no schema field to send, and local/OpenRouter route to an arbitrary model with no
-    capability table to consult (D139).
-  - **Provider abstraction (effort + auth):** the abstract `effort` intent (`low`/`medium`/
-    `high`/`xhigh`/`max`) is checked against `model_catalog.yaml`'s per-model `effort_levels`
-    field — the single source of truth for which levels a given model actually accepts, since
-    coverage is per-model, not per-provider (Sonnet 4.6 takes `max` but not `xhigh`; Opus 4.8
-    takes both) — and `_resolve_effort` maps a supported level onto each provider's native
-    control (Claude `output_config.effort`, with `high` omitted as the model's own default;
-    OpenAI/Gemini `reasoning_effort`; DeepSeek none — its thinking mode is a separate on/off
-    carried in the model id via a `-thinking` suffix, default off, D88). An uncatalogued id
-    falls back to a conservative provider-wide default (an OpenAI reasoning model:
-    low/medium/high only; Gemini: low/medium/high unconditionally; everything else: none), and
-    any unsupported request fails loud with `ModelError` rather than being silently dropped or
-    sent as a request the API would reject (D161, issue #518 — superseding the earlier
-    per-provider `_EFFORT_POLICY` design D37 first shipped). `_resolve_backend_auth` resolves
-    the key per backend — Claude backends via the subscription/api-key mode, others via their
-    own stored key (set interactively via `watchdog auth`) independent of the Claude mode —
-    plus, for `local`/`openrouter`, a **user-supplied base URL** (`watchdog configure
-    local_base_url`/`openrouter_base_url`, or their env-var overrides) rather than the fixed URL
-    the other three OpenAI-compatible backends bind at import time, and no API key requirement
-    for `local` specifically (most self-hosted runners don't check for one, D139). A self-hosted
-    model's id carries no vendor namespace to infer a context window from the way hosted
-    models' do, so `context_window` takes an explicit `backend` and, for `local`, consults a
-    `local_context_window` config override before falling back to a conservative default (D139)
-    rather than guessing from the substring table. Auth is resolved by `cmd/auth.py` (see #119,
-    D37, D93, D139).
-  - **Setup philosophy (D95, revised D235):** Claude Code is required — it runs the interactive
-    investigation skills below — but which provider handles ingestion is a separate, equal-weight
-    choice, not a default the rest are framed as an alternative to. `watchdog setup`'s auth step
-    asks the two questions independently: how Claude Code itself signs in (subscription or API
-    key, with no mention of ingestion), then which provider handles ingestion — Claude is one
-    flat-list option alongside OpenAI/DeepSeek/Gemini/local/OpenRouter; picking a non-Claude one
-    walks through its key and a model for all three ingest stages, and picking Claude while on
-    subscription auth surfaces the token/session-limit cost as a consequence of that combination
-    rather than a gate in front of the other options. `watchdog auth`'s status display is split
-    into a "Claude Code" section and an "Ingestion" section (showing, per stage, which provider it
-    resolves to and whether that provider is ready) rather than favouring Claude's own settings.
-- **Claude Code skills** (in-vault, run interactively — *not* part of ingest):
-  `watchdog-context`, `watchdog-entity`, `watchdog-query`, `watchdog-surface`,
-  `watchdog-wiki`, `watchdog-health`, `watchdog-research` (§14). Ingest is the Python
-  orchestrator (§5); it uses no Claude Code skill. `watchdog-query` reads the manifest/notes
-  first but can shell out to `watchdog search --json` as a **semantic lane** for
-  conceptual/passage-level questions (§11, D44). It also narrows by **facet** (entity type,
-  document type, date range) before reading notes, driven entirely off metadata already
-  captured at ingest — manifest `type`, document-note `document_type`/`date_of_document`
-  frontmatter, and `timeline.md`'s year grouping — no new index (#111).
-- **`claude-batch`/`openai-batch` — bulk extraction via a provider's Batch API**
-  (`pipeline/batch_extract.py`, D52/D169): a fundamentally different flow from the other
-  backends — submit-many/poll/collect over minutes-to-24h rather than one call per document —
-  so neither is in `model_client._ABACKENDS` and neither is ever dispatched through
-  `acomplete_json`; `orchestrate._run_batch` handles both entirely, called from `run` instead
-  of the concurrent per-document loop, dispatching to the right provider by the persisted
-  state's `backend` field. Both need only that provider's own API key — Anthropic's needs
-  `api-key` auth mode specifically (not available on a Claude subscription); OpenAI has no
-  subscription mode in this codebase, so `openai-batch` just needs a stored OpenAI key. Neither
-  requires a pinned skill (D144): each document resolves its own through the shared
-  `_resolve_skill` helper — sidecar pin → run-wide pin → one classify call, D120's precedence,
-  the same implementation the synchronous path uses — before the batch is assembled, so a
-  mixed-type drop batches fine. The skill lives inside each request's own prompt blocks, which
-  each Batches API treats independently, so one submission carries several skills; requests are
-  sorted by skill label so adjacent same-skill ones still share the cached prefix — on Anthropic
-  via `cache_control`, on OpenAI's Batch API via the same `prompt_cache_key` the live path sends
-  (`batch_extract._openai_request_body`, D181/#562). The per-sha skill map is
-  persisted in `batch-pending.json`, since collection runs in a later process. Classification
-  itself is not batched — it stays one cheap synchronous call per document, the cost
-  deliberately accepted to remove the pre-sort-by-type requirement. Documents needing
-  **sectioned** extraction fall back to that same provider's single-call backend (`claude-api`
-  or `openai`) — a section's carry-forward depends on the previous section's result, so it
-  can't be an independent batch request either way. `watchdog dig` submits and exits rather
-  than blocking; state persists to `.watchdog/registry/batch-pending.json` (one batch in flight
-  per vault, mirroring `has_pending_finalization`'s precedent), and a *later* `watchdog
-  dig` invocation checks it — collecting and writing to the vault if `ended`, or reporting
-  progress and exiting if still processing. 50% off every token on both providers; Anthropic's
-  additionally stacks with the A1 prompt caching above (batch requests use the 1-hour cache
-  TTL, since a batch routinely outlives the default 5-minute window). Mechanically, the two
-  APIs differ enough to be genuinely separate implementations behind one dispatcher: Anthropic
-  takes inline requests via the `anthropic` SDK, OpenAI takes a JSONL file uploaded to
-  `/v1/files` and referenced by `/v1/batches`, spoken over raw httpx (no new SDK dependency,
-  matching D37's choice for the live OpenAI-compatible path).
-- **Domain (record) skills are global** (`watchdog.skills_catalog`, see D21): the
-  package's `src/watchdog/skills/records/` plus the user's `~/.watchdog/skills/records/`
-  (a user skill overrides a package skill of the same name). The ingest orchestrator
-  reads them directly from there — nothing is copied into a vault — so they're always
-  current with no refresh step. New skills are added by dropping a file (in the package,
-  or the user dir). The classification index is **built in memory** from the catalog
-  (`build_index()`), so it never drifts (supersedes D12); each skill's index line comes
-  from its `description:` frontmatter, falling back to the first intro sentence.
-  `watchdog show-skills` lists them / opens the GitHub folder; `--skill` / `default_skill`
-  pin one (a catalog name or a file path).
+- **Stages.** `classifier_model` (haiku), `extractor_model` (sonnet), `finalizer_model` (haiku) —
+  the finalizer split into reconciliation, synthesis, timeline and briefing overrides (D137).
+  Efforts: `classifier_effort` (low), `extractor_effort` (medium, D140), `finalizer_effort` (high),
+  `verifier_effort` (low). Defaults are in `watchdog/defaults.py`; per-run flags override. GPT-5.6
+  Luna is the documented recommendation for extraction (D221, D222).
+- **Effort and thinking (D36, D161, D206).** A requested effort is checked against the catalogue's
+  per-model `effort_levels` and mapped to each provider's control; an unsupported level fails
+  loudly. Models flagged `thinking: true` get Anthropic's `thinking` parameter explicitly.
+- **Backends.** `claude-agent-sdk` (the only subscription path; tools disabled, D145),
+  `claude-api` (streaming Messages with structured output), and the OpenAI-compatible `openai`,
+  `deepseek`, `gemini`, `local` and `openrouter`, registered in one `_BACKEND_META` table. Gemini
+  and OpenAI get wire-enforced JSON schemas (OpenAI's derived to strict form, D151); the others get
+  JSON mode plus the schema in the prompt (D98). `local`/`openrouter` take a configured base URL;
+  `local` takes an optional `local_context_window` (D139). A failed call retries on the same model
+  and effort (I4). Auth and billing failures raise `ProviderAuthError` (D242).
+- **Catalogue (D142, D217).** `model_catalog.yaml` single-sources ids, pricing (including
+  time-of-day `price_periods`), context windows, output caps, tokenizer ratios and capability flags.
+- **Batch backends (D52, D144, D169).** `claude-batch` and `openai-batch` submit the whole queue to
+  the provider's Batch API at half price; `dig` submits and exits, and a later `dig` collects
+  (`batch-pending.json`, one batch per vault). Each document resolves its own skill first.
+  Sectioned documents fall back to the provider's live backend.
+- **Setup (D95, D235).** How Claude Code signs in and which provider handles ingestion are asked
+  separately.
+- **Record skills (D21).** Global: the package's `skills/records/` plus `~/.watchdog/skills/records/`
+  (user skills override by name). Read directly, never copied into a vault.
+- **Claude Code commands.** `/watchdog-context`, `-entity`, `-query`, `-surface`, `-wiki`, `-health`,
+  `-research`, copied into each vault by `new`/`refresh-skills`. `/watchdog-query` can call
+  `watchdog search --json` as a semantic lane (D44).
 
-**Data sent per call.** Every ingest model call is enumerated below — what it sends to
-the cloud, what it deliberately withholds, and how often it fires. This is the concrete
-backing for I2 (local-first preprocessing): chew makes none of these calls, and
-everything below runs only during an ingest run (`watchdog ingest`, or `watchdog dig`/`watchdog bark`).
-The one exception to "the cloud": a stage routed to the `local` backend (D139) sends this same
-"Sent to the model" content to a model server on the operator's own machine or network instead —
-nothing in that stage's column leaves the building. Every other backend, Claude included, sends
-it to that provider's servers.
+**Data sent per call.** Chew makes none of these calls. A stage on the `local` backend sends the
+same content to the user's own model server; every other backend sends it to that provider.
 
-| Call | Runs | Sent to the model | Withheld |
+| Call | Runs | Sent | Withheld |
 |---|---|---|---|
-| **classify** (§6) | once per document; skipped entirely if a skill is pinned (run-wide `--skill`/`default_skill`, or that document's own sidecar `skill:` field) | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
-| **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | **all vault entity state** — extraction is a pure function of the document (D118); original-file metadata (EXIF, PDF author fields — stripped at chew, §3) |
-| **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
-| **reconcile** (§8.5) | once per run if any entity was touched — split into several size-bounded calls on a large batch (D237) | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
-| **entity-synthesis** (§8) | once per run, in size-bounded chunks of at most 25 entities (D238), only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
-| **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
-| **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |
-| **briefing** (§9) | once per run, over the whole batch — input condensed when it would not fit one call (D238) | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
+| classify | once per document, unless a skill is pinned | first `classify_pages` pages, skill index, sidecar | the rest of the document; vault data |
+| extract | once per document, or per section | page/section text, skill, brief, sidecar, known document types, file metadata | all vault entity state (D118) |
+| verify | once per document or section, when enabled | the extraction prompt plus its facts | vault data |
+| digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
+| reconcile | once per run (chunked when large) | candidate pairs; each recurring entity's attributed claims and roles | raw text |
+| entity-synthesis | per 25 recurring entities touched this run | each entity's current prose and fact fragments | timeline, relationships, contradictions |
+| timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
+| timeline-precision | per month mixing precisions | that month's events | other months |
+| request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
+| briefing | once per run | brief, compact per-document results, alerts, contradiction flags, scratchpads | raw text; full notes |
 
 ---
 
-## 14. Web research mode (investigation layer)
+## 14. Web research
 
-**Code:** `pipeline/research.py` (the egress gate + the durable worklist store), `cmd/research.py`
-(`watchdog research` launcher + post-flight download; `watchdog fetch` bulk downloader; the internal
-`research-fetch` recovery and `research-seen` re-fetch-avoidance commands). **Skill:**
-`skills/watchdog-research.md`.
+**Code:** `pipeline/research.py`, `pipeline/capture.py`, `cmd/research.py`.
+**Skill:** `skills/watchdog-research.md`.
 
-A bounded, agentic web-research session that **queues findings for `_INCOMING/`** so they flow
-through the normal `chew → ingest` pipeline — it never writes vault notes directly. `watchdog
-research` explains the mode, takes a question (or prompts for one), and opens Claude Code on
-`/watchdog-research` (launched via `subprocess`, not `execvp`, so control returns afterward). The
-skill seeds from the vault's open state (`manifest.json`, `watchdog leads`, health gaps,
-`context.md`), proposes a mission, confirms scope + an effort tier (quick / standard / deep), then
-researches in rounds — reading the web selectively to follow leads, checking in between rounds —
-recording each kept source in a **links file** (`.watchdog/research/queue.tsv`: `url ⇥ title ⇥
-source_type ⇥ relevance`). When the session ends, `watchdog research` downloads the queued sources
-(after a confirm) and stops at `_INCOMING/`, leaving `chew`/`ingest` to the journalist.
+`watchdog research` opens a Claude Code session on `/watchdog-research`, which proposes a mission,
+researches in rounds and appends kept sources to `.watchdog/research/queue.tsv`. When the session
+ends, Python downloads the queued URLs into `_INCOMING/` (after a confirm); chew and dig remain the
+journalist's step (I5).
 
-- **The skill curates URLs; Python downloads them.** Splitting *curation* (model) from *fetching*
-  (deterministic Python) is the core of the design. The skill never downloads a source — it only
-  reads the web (WebSearch/WebFetch) and appends to the links file. The download is a deterministic
-  **post-flight** of `watchdog research`: `pipeline/research.py` validates each URL *before* the
-  network call (http/https only; host must not resolve to private/loopback/link-local space — the
-  SSRF guard, re-checked on every redirect hop), fetches with a body-size cap (20 MiB), strips
-  `<script>`/`<iframe>`, defangs wikilink/frontmatter-delimiter injection in sidecar values, and
-  writes the source + `.yml` sidecar. It runs in the terminal (ungated), never folded into `chew`
-  (which stays local-first/no-network, I2).
-- **Faithful artifact + existing provenance plumbing.** A finding is downloaded as the original
-  artifact (HTML → Docling, or any Docling-supported type by Content-Type), not a model-summarized
-  capture. Provenance rides the existing `.yml` sidecar (§5, §12): `source`/`obtained` are stamped
-  deterministically at ingest, and `retrieved_by: research-mode`, a `source_type` reliability tag,
-  and per-doc `relevance` reach the extractor as notes and travel to the morgue.
-- **Two-tier HTML capture (#200).** After the urllib fetch above (kept for type-detection and
-  provenance), an HTML deposit gets a second, richer capture: `pipeline/capture.py` renders the
-  page in headless Chromium — so static styling/images *and* client-rendered SPAs are captured as
-  they actually appear, not as the empty shell a `<script>`-stripped fetch would save. The SSRF
-  guard is re-applied to **every subresource request** the rendered page makes (`context.route`
-  interception, not just the top-level URL; service workers are blocked and WebSockets mocked,
-  since neither passes through the route handler), and the saved snapshot is a single self-contained
-  `.html`: every `script`/`iframe`/event-handler/`javascript:` surface is stripped from the live
-  DOM, images/fonts/stylesheets are inlined as data URIs (or neutered to `data:,` when uncaptured),
-  and a `default-src 'none'` CSP meta tag is pinned as the first `<head>` child so the file can't
-  phone home even if opened directly. Playwright is an **optional dependency**
-  (`watchdog-intel[web]`, plus a one-time `playwright install chromium`): when it isn't installed or
-  a render fails for any reason, `deposit_one` falls back to the plain fetch, sanitized by `nh3`
-  (D61). The sidecar's `capture: rendered|plain` field records which path a deposit took.
-- **Per-doc rationale → sidecar; batch rationale → memo.** The connective tissue of a research round
-  (what gap it targeted, what was pulled, what's still open) is written to a
-  `briefings/research-<date>.md` memo as forward-looking leads — **never** `context.md`, which is the
-  human-anchored orientation layer and must not be machine-seeded with unverified web inference.
-- **Durability — a URL mirrors a PDF's stages (#196).** The worklist is the one URL-specific piece of
-  state, so it lives under `.watchdog/research/` (durable), not `.watchdog/tmp/` (which `setup` sweeps):
-  a session that crashes before its post-flight never loses what it queued, and **bare `watchdog`,
-  `watchdog chew`, and `watchdog status` all warn** when URLs are queued-but-not-downloaded. Past that
-  point a URL is tracked exactly as a pending PDF is — by filesystem presence: a downloaded URL is an
-  `_INCOMING/` file, an ingested one is a `documents.json` entry with `source`. A download pass consumes
-  the worklist, retaining only rows that *failed* to fetch (at-least-once, so a transient failure is
-  never silently dropped); there is **no separate "done" ledger**. `watchdog research` offers to
-  download a leftover queue on its next run, and `research-fetch` re-pulls on demand; downloads are
-  idempotent (deposit names are a stable hash of the URL).
-- **Re-fetch avoidance (#196).** So a recurring investigation doesn't re-pull sources it already has,
-  the skill runs `watchdog research-seen` at seed time and skips any URL it returns — unless the
-  journalist asks to re-check a source. The "seen" set is **derived, not stored**: the union of every
-  `documents.json` `source` (ingested) and every in-flight `_INCOMING/**.yml` `source` (downloaded, not
-  yet ingested) — mirroring how `chew` dedups against the registry (D27).
-- **Optional Wayback archiving (#201).** When `wayback_save` is on and archive.org S3 keys are set
-  (both via `watchdog configure`), the download step also submits each source to the Wayback Machine's
-  Save Page Now and records the snapshot URL in the sidecar's `archived:` field — a citable public
-  copy that outlives the original. Off by default, gated on the keys, and strictly best-effort:
-  `save_to_wayback` catches every error and returns `None`, so archiving never blocks or fails a
-  local deposit (which remains the source of record for ingest).
-- **`watchdog fetch` — the non-agentic front door (#197).** When you already have a list of links,
-  `watchdog fetch <url… | file>` downloads them straight into `_INCOMING/` with no research session.
-  It is a thin CLI wrapper over the same `deposit_many` egress path (validation, size cap,
-  sanitization, `.yml` sidecar, optional Wayback) — deliberately decoupled from the fetching internals
-  so the downloader can be swapped without touching the command. Unlike the research post-flight it
-  does not touch the durable worklist; its input is the explicit list you hand it.
-- **Bounds are advisory.** `research_max_rounds` / `research_max_fetches` (and the effort tiers) are
-  a budget the interactive skill self-limits to; only the egress hygiene is hard-enforced in Python.
-- **Web access is scoped to the skill.** `WebSearch` and `WebFetch` (the skill's only outbound
-  reach, for *reading*) are pre-approved only by the `watchdog-research` skill's `allowed-tools`
-  frontmatter — granted while the skill is active, *not* added to the vault-wide `_VAULT_PERMISSIONS`.
-  Archival downloading is a terminal post-flight, never granted to the skill — so a vault of sensitive
-  source material carries no standing outbound-fetch permission.
+- **The skill curates; Python fetches.** `research.py` validates each URL before connecting
+  (http/https, no private or loopback addresses, re-checked on every redirect), caps the body at
+  20 MiB, sanitizes HTML, and writes the file with a `.yml` sidecar carrying provenance
+  (`retrieved_by`, `source_type`, `relevance`).
+- **Rendered capture (D61).** With the optional `[web]` extra, HTML is rendered in headless
+  Chromium with the same address check on every subresource, then saved as one self-contained file
+  with scripts stripped, assets inlined and a `default-src 'none'` CSP. Without it, the plain fetch
+  is sanitized with `nh3`.
+- **Durability.** The worklist survives a crashed session; `watchdog`, `chew` and `status` warn when
+  URLs are queued but not downloaded, and `research-fetch` finishes the download. Failed rows are
+  retained. `research-seen` returns already-captured URLs so a recurring investigation doesn't
+  re-fetch them.
+- **Wayback (optional).** With `wayback_save` and keys set, each source is also submitted to Save
+  Page Now; failures never block a download.
+- **`watchdog fetch`** downloads a given list of links through the same path, without a session.
+- Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
+  advisory; only the egress checks are enforced. Web tools are granted by the skill's own
+  `allowed-tools`, not the vault-wide permissions.
 
-See D45, D46, D47, D48, D61.
+See D45–D48.
 
 ---
 
 ## 15. Invariants
 
-These are the **governing rules of the pipeline** — the canonical statement of each principle. They are always true; violating one needs a *new, numbered decision* that supersedes the invariant, not just a code change. Read them first. The dated history of how each was established and refined lives in [DECISIONS.md](DECISIONS.md); where a decision operates within an invariant, *this* section is the authority on the principle and the decision entry records the specific change, rationale, and tradeoff.
+The governing rules. Changing one needs a new numbered decision that supersedes it. Mechanically
+checkable parts are guarded by named tests in `tests/test_invariants.py`; prompt-relied parts are
+noted as such.
 
-Mechanically-checkable postconditions are guarded by named tests in `tests/test_invariants.py` (#349), one per invariant (or checkable part). Parts flagged below as prompt-relied — e.g. I1's summary grounding — are deliberately unguarded, since there's nothing mechanical for a test to assert.
-
-- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python (document identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, never paid for in model output — and the model is not asked to restate as prose what it already emitted structurally. Carve-out: `document.summary` (#279) is a bounded, deliberate exception — a whole-document digest synthesized from `key_facts`, capped at three paragraphs and grounded (every claim in it must also exist in `key_facts`). That grounding is a **prompt instruction, not a verified postcondition** — unlike quote resolution, no code checks the digest against `key_facts`, so a hallucinated claim would not be caught. *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
-- **I2 — Local-first preprocessing.** The *source documents you were given* never leave the machine, and chew costs no API tokens. This is a boundary on **source-doc egress**, not a vow of web abstinence — the investigation layer runs as agentic Claude Code sessions and web research (§14, I5) is allowed, since anything on the open web is already public. *History: D1, D45.*
-- **I3 — Skills and prompt templates are global package resources** — read directly, never copied per-vault — and prompt templates live in their own directory so they never leak into the classifier index. *History: D21, D28.*
-- **I4 — Configured model and effort only; no automatic escalation.** Each stage's model *and* its reasoning effort are explicit knobs with stable defaults; a failed call retries on the *same* model at the *same* effort — the pipeline never silently bumps either to recover. Response pagination (D104) is not an exception: continuing a truncated response prefills the same model's partial output at the same effort to finish one reply, changing neither knob. `finalizer_model` is itself an aggregate over four sub-stages (reconciliation, synthesis, timeline, briefing) each independently overridable (D137) — the "stage" this invariant guards is the finest-grained one actually configured, aggregate or per-stage. The optional verification pass (§5, D172) is the one stage whose *model* is deliberately not a knob: it always runs on `extractor_model`, because on the Anthropic backend it exists to re-read a document out of the prefix cache the extraction call just wrote and a cache belongs to one model — pinning it elsewhere would silently cost the thing the pass is for. (On OpenAI-compatible backends that prefix can never be shared regardless, D181/#562 — the rule itself still stands, since pinning to one model is also just the simpler, uniform default.) Its effort is a knob (`verifier_effort`) like every other stage's. *History: D20, D36, D104, D137, D172, D181, D221, D222.*
-- **I5 — Research output re-enters through `_INCOMING/`, never as a direct vault write.** Web research deposits findings as documents that flow through `chew → ingest`, keeping the deterministic pipeline the single writer (dedup, provenance, registry bookkeeping). Per-doc rationale rides the `.yml` sidecar; batch rationale goes to a `briefings/research-<date>.md` memo — never `context.md`. *History: D45, D46.*
-- **I6 — Anything parsed out of a source document is untrusted input.** Source documents are adversarial by assumption — they arrive from leaks, FOI releases, and hostile parties. Content read *from* a document (its embedded metadata, its XML parts) is data to be defanged before use — never a directive, and never a payload the parser can be exploded by: XML goes through `defusedxml`, never the stdlib `xml.etree` (which expands internal entities, making a crafted `.docx` a billion-laughs bomb); metadata values are allowlisted and length-capped before they can reach a prompt; a reader that fails degrades to an empty dict rather than taking chew down. *History: D78, D110, D154.*
-- **I7 — The vault mutates only at the finalize commit.** Extraction is a pure function of a document: it stages a durable `.watchdog/extracted/<sha>.json` and touches no committed vault state. Every write to that state — entity and document notes, the morgue, the registries, the timeline and search indexes — happens in one serial, sha-sorted commit pass at the top of `finalize` (`_commit_pending` replaying `write_vault.run`), after the pre-commit resolution steps (exact-name fold, entity-merge reconciliation) have run over the staged batch. Nothing before that pass writes a vault path, which is what makes the batch atomic: a reconcile failure leaves it wholly uncommitted and retriable, and `watchdog dig` (extraction with finalize held off) leaves the vault untouched by construction, not by convention. Investigation sessions never hand-edit pipeline-owned files either: the vault's settings pre-authorize writes only to the session's own pages, and a session changes pipeline state only through deterministic commands (`write-entity`, `contradiction-add`, `watchlist-add`) that take the registry lock like the commit pass does. *History: D126, D127, D128, D129, D245.*
-- **I8 — Transcribe source values as printed; never correct them against plausibility.** Dates, dollar figures, case/file numbers, and proper-name spellings are extracted exactly as they appear in the document, even when they look wrong — an implausible or internally inconsistent value (a backdated affidavit, a total that doesn't sum) is itself evidence, and a silent "correction" toward the plausible value erases it. Where a transcribed value looks inconsistent, the extractor records the inconsistency in the fact's own text rather than resolving it. This is a prompt instruction (`extract_instructions.md`'s "TRANSCRIBE, DON'T CORRECT" paragraph), not a verified postcondition — like I1's `document.summary` carve-out, nothing in postflight checks a fact's transcribed date/figure/name against the source to catch a quiet substitution; a second verification pass doesn't help either, since it is as prone to the same plausibility correction as the first extraction. D177's `fact["page"]` correction does not fall under this invariant: `page` is not source content the document states, but the model's own citation about where it read something — independently, deterministically checkable against real page text, unlike a transcribed date or figure post-flight has no ground truth to verify against. *History: D167, D177.*
-- **I9 — Styling is a terminal affordance, never part of the output.** Anything written for a machine consumer — `--json` output, or any command's output once redirected off a real terminal — carries no escape bytes; a script or a Claude Code session reading it should never have to strip decoration to get at the content. Diagnostics (warnings, errors) go to stderr in every output mode, including `--json`, so they reach the user without corrupting stdout's contract. *History: D174.*
-
-### Decision log
-
-The dated, numbered history of specific decisions (D1, D2, …) — the rationale weighed and the tradeoff accepted for each — lives in its own file, [DECISIONS.md](DECISIONS.md), to keep this document focused on the current structure. Read it when you need the *why* behind a past decision; append new decisions there (ascending order, newest last).
-
+- **I1 — Deterministic code writes; the model only reasons.** Anything derivable in Python
+  (identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, and the model
+  is not asked to restate as prose what it emitted structurally. Exception: `document.summary`, a
+  bounded digest grounded in `key_facts` — a prompt instruction, not a checked postcondition.
+  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
+- **I2 — Local-first preprocessing.** Source documents never leave the machine during chew, and
+  chew costs no API tokens. This bounds source-document egress; web research is allowed (§14).
+  *History: D1, D45.*
+- **I3 — Skills and prompt templates are global package resources**, read directly and never
+  copied per vault; prompt templates never appear in the classifier index. *History: D21, D28.*
+- **I4 — Configured model and effort only; no automatic escalation.** A failed call retries on
+  the same model at the same effort. Continuing a truncated response is not escalation. The
+  verification pass's model is fixed to `extractor_model` (it reads that model's cache); its effort
+  is configurable. *History: D20, D36, D104, D137, D172, D181, D221, D222.*
+- **I5 — Research output re-enters through `_INCOMING/`,** never as a direct vault write.
+  *History: D45, D46.*
+- **I6 — Anything parsed out of a source document is untrusted input.** XML goes through
+  `defusedxml`, never the stdlib parsers; metadata is allowlisted and length-capped; a failing
+  reader yields `{}`; document text in a note is defanged. *History: D78, D110, D154, D241.*
+- **I7 — The vault mutates only at the finalize commit.** Extraction stages
+  `.watchdog/extracted/<sha>.json` and touches no committed state. Every vault write happens in the
+  serial, sha-sorted commit pass, after the pre-commit fold and merges — so a reconcile failure
+  leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
+  Investigation sessions don't hand-edit pipeline-owned files; they change pipeline state only
+  through deterministic commands that take the registry lock. *History: D126–D129, D245.*
+- **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
+  extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
+  corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
+  `page` citation, D177, is not covered: a citation is checkable.) *History: D167, D177.*
+- **I9 — Styling is a terminal affordance.** `--json` output, and any output off a real terminal,
+  carries no escape bytes; diagnostics go to stderr in every mode. *History: D174.*

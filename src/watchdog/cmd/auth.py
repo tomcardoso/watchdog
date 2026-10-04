@@ -30,19 +30,11 @@ from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.interactive import CANCELLED, confirm, pick
 from watchdog.pipeline.json_io import _read_json, _read_json_or, write_private_json
 
-# Providers whose keys watchdog manages. `anthropic` covers both the Claude
-# Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY. The
-# OpenAI-compatible providers (#125) each carry their own key, used by the
-# matching `model_client` backend independent of the Claude auth mode.
-#
-# `local` and `openrouter` (#380) additionally carry a **user-supplied base URL**
-# (`base_url_key`/`base_url_env`; `default_base_url` when the provider has a fixed
-# endpoint) rather than the fixed base URLs `model_client._OPENAI_BASE` hard-codes for
-# openai/deepseek/gemini — every mainstream local runner (Ollama, LM Studio, llama.cpp's
-# server, vLLM) and OpenRouter itself speak the same OpenAI-compatible wire format, so the
-# only two things that vary are the endpoint and whether a key is needed. `requires_key`
-# (default True when absent) marks `local` as the one provider that can run with no key at
-# all — most local runners don't check for one.
+# Providers whose keys watchdog manages. `anthropic` covers both Claude backends (one
+# ANTHROPIC_API_KEY); each OpenAI-compatible provider has its own key, independent of the Claude
+# auth mode. `local` and `openrouter` also take a user-supplied base URL (`base_url_key`/
+# `base_url_env`, `default_base_url` where there is one), and `requires_key: False` lets `local`
+# run without a key, since most local runners don't check for one (D139).
 _PROVIDERS: dict[str, dict] = {
     "anthropic": {
         "label":  "Anthropic — Claude API / Agent SDK",

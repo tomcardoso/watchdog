@@ -1,29 +1,14 @@
-"""Global, cross-vault telemetry store for per-call model usage (issue #611).
+"""Global, cross-vault store of per-call model usage (D193, D247).
 
-`pipeline.orchestrate._record_usage` already writes a rich per-call record to each vault's own
-`.watchdog/registry/usage/usage-<ts>.json` — this module is an additive sink for the same data,
-in one SQLite database shared across every vault, so a question like "what's actual median output
-tokens for extract-section at high effort on gpt-5.6" can be answered with one query instead of
-globbing and parsing every vault's usage files by hand. The JSON files stay authoritative for
-`watchdog usage` and everything else that already reads them (D50, D86, D102, D132) — nothing here
-changes their format or how they're written.
+The same records `orchestrate._record_usage` writes to each vault's usage files, in one SQLite
+database, so a question across vaults or models is one query. The per-vault JSON files stay
+authoritative for `watchdog usage`. A row adds the vault path and name, any benchmark arm, a hash
+of the prompt sent, the codebase version and the run's config snapshot. Raw responses are not
+stored. A write failure never breaks a run: the caller logs it.
 
-Beyond what the JSON record already carries, a row adds: which vault it came from (`vault_path`/
-`vault_name`, since the store is global, not per-vault), which benchmark arm produced it if any
-(`benchmark_arm_id`, None for an ordinary ingest run), a hash of the prompt actually sent
-(`prompt_hash`, sha256 — catches config-driven prompt variation, not just template edits), the
-codebase version that produced it (`codebase_version`, `watchdog.__version__`), and a snapshot of
-the config values in effect for the run (`config_json`).
-
-Raw provider responses are deliberately not captured here — see DECISIONS.md's entry for this
-change. A write failure here must never break an ingest run: `record_call` swallows every error
-and logs a WARN via the caller's own `_log`, the same best-effort posture `_record_usage` already
-takes toward every other side channel.
-
-The store is on by default and turned off with `watchdog configure telemetry false`, which stops
-new rows being written; `watchdog delete --purge` removes a vault's rows along with the vault.
-Rows hold vault paths and document filenames, so the file is as sensitive as the vaults it
-describes."""
+On by default; `watchdog configure telemetry false` stops new rows, and `watchdog delete --purge`
+removes a vault's rows. Rows hold vault paths and document filenames, so the file is as sensitive
+as the vaults it describes."""
 
 import json
 import sqlite3

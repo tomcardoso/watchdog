@@ -994,14 +994,10 @@ def _persist(config: dict) -> None:
 
 
 def _auto_resolved_hint(key: str, config: dict) -> str:
-    """Render 'auto' for a model-aware section budget along with the concrete value it currently
-    resolves to, e.g. 'auto (129032 — sonnet)' for plain Claude, 'auto (150000 —
-    openai:gpt-5-mini)' for a non-Claude backend — the resolved number depends on the backend too
-    (D190), so a bare model name would be misleading. No effort suffix: sectioning no longer
-    varies with `extractor_effort` (D202). No calibrated tokenizer ratio either — `watchdog
-    configure` is vault-independent, so there's no usage history to calibrate against here (#574
-    follow-up); this preview always reflects the static catalog ratio, and only a real ingest run
-    (with vault context) benefits from the calibrated one."""
+    """Render an 'auto' section setting with the value it currently resolves to, e.g.
+    'auto (129032 — sonnet)' or 'auto (150000 — openai:gpt-5-mini)'; the number depends on the
+    backend as well as the model (D190). Uses the catalogue tokenizer ratio, since `configure` has
+    no vault history to calibrate from."""
     from watchdog import model_client
     from watchdog.pipeline import section
     raw = config.get("extractor_model") or _CONFIGURE_KEYS["extractor_model"]["default"]

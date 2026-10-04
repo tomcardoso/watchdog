@@ -1,29 +1,15 @@
-"""Deterministic lead sweep (#155, slice 1; #221 added the fourth signal).
+"""Deterministic lead sweep: a registry-only pass that surfaces leads without a model call.
 
-A whole-vault, registry-only pass that surfaces investigative leads without a model call —
-the cheap, on-brand complement to the model-driven `/watchdog-surface`. Four signals, all
-read straight from `.watchdog/registry/entities.json`:
+Four signals, read from `.watchdog/registry/entities.json`:
 
-  * **Named but never profiled** — a relationship `target_id` that no entity record exists
-    for. The extractor named (say) a company as the target of a "Director" role but never
-    profiled it, so it has page-cited mentions yet no note of its own. A lead: go find records.
-  * **Mentioned often but unconnected** — an entity that appears in several documents
-    (`appears_in` ≥ `_ISOLATED_MIN_DOCS`) yet carries no relationships at all. Why does this
-    name keep recurring in isolation?
-  * **Unresolved contradictions** — an entity carrying contradiction flags recorded at ingest,
-    listed so they don't sit unreviewed.
-  * **Facts to verify** — an entity carrying a `roles`/`timeline_events` entry the pipeline
-    can't vouch for: either `basis: inferred`, the model's own declaration (D34: "a lead to
-    verify, not a finding"), or `figures_unverified`, `figure_verify`'s deterministic finding
-    that a figure appears nowhere in the source document (D215). Surfaces the pipeline's own
-    verify-me markers so they reach the report a journalist actually reads instead of sitting
-    unread in a note body.
+  * **Named but never profiled** — a relationship target with no entity record.
+  * **Mentioned often but unconnected** — in `_ISOLATED_MIN_DOCS`+ documents, with no relationships.
+  * **Unresolved contradictions** — entities carrying contradiction flags.
+  * **Facts to verify** — roles or events marked `basis: inferred`, or carrying a figure
+    `figure_verify` couldn't find in the source (D215).
 
-`scan` loads the registry and returns the four lists; `write_leads` snapshots them to
-`briefings/leads-<date>.md` (overwrite, not append — it is current-state, not an event log).
-The model-driven whole-vault pieces (cross-document contradiction re-check, stale/superseded
-claims) are deliberately out of scope here — see DECISIONS D40 and #155.
-"""
+`scan` returns the four lists; `write_leads` writes them to `briefings/leads-<date>.md`,
+overwriting (current state, not a log). See D40."""
 
 import datetime
 import re

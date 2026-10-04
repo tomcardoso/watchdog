@@ -1,18 +1,11 @@
-"""Batch API integration for bulk whole-document extraction (#214, #530).
+"""Batch API extraction: submit every whole-document extraction in one provider batch (D52, D169).
 
-Batch mode submits every whole-document (non-sectioned) extraction request in one provider batch
-— 50% off token usage, stacking with prompt caching (#213) — at the cost of asynchronous
-completion (typically under an hour, up to 24h). `orchestrate._run_batch` is the sole caller;
-this module only knows the batch's own lifecycle (state, submit, status, collect), never the
-vault, matching the preflight/postflight separation of concerns.
-
-Two providers are wired behind `backend` (`submit`/`status`/`collect`'s dispatch): Anthropic's
-Message Batches API (`claude-batch`, #214) and OpenAI's Batch API (`openai-batch`, #530, JSONL
-over raw httpx, D37) — different enough shapes to be two real implementations, not a thin
-wrapper. State is a single `.watchdog/registry/batch-pending.json` per vault (only one batch in
-flight at a time), durable across interruption like the research URL worklist (D46); it records
-which `backend` submitted it so a later `watchdog dig` resumes against the right provider
-(state from before this field existed defaults to `claude-batch` on read)."""
+Half price, stacking with prompt caching, at the cost of asynchronous completion (usually under
+an hour, up to 24). `orchestrate._run_batch` is the only caller; this module knows the batch's
+lifecycle (submit, status, collect) and never the vault. Two providers sit behind `backend`:
+Anthropic's Message Batches (`claude-batch`) and OpenAI's Batch API (`openai-batch`, JSONL over
+httpx). State is one `.watchdog/registry/batch-pending.json` per vault, recording which backend
+submitted it so a later `watchdog dig` resumes against the right provider."""
 
 import datetime
 import json
@@ -103,14 +96,10 @@ async def collect(batch_id: str, api_key: str, model_id: str, backend: str = "cl
 
 async def _anthropic_submit(vault: Path, docs: list[dict], *, model: str, effort: str | None,
                             skills: dict[str, str], api_key: str, backend: str) -> str:
-    """`model`/`effort` follow the same tier-resolution and abstract-intent mapping (D36) a
-    single call would use; this is the same request shape `_api_complete_async` builds, just
-    submitted as a batch. `skills` maps each sha to the record-skill label its prompt was built
-    with (D144) and must be persisted, since one batch may mix skills but collection runs in a
-    later process with no prompt left to inspect. Sends `thinking` per request on the same gate
-    the live and agent-sdk paths use (#635, D206) — this path was the one left off that gate
-    until #643, so a thinking-default-off model extracted via `claude-batch` never actually
-    reasoned even after #635 shipped."""
+    """Submit a Message Batch. `model`/`effort` resolve exactly as a live `claude-api` call would, with
+    the same request shape, including `thinking` where the catalogue requires it (D206). `skills`
+    maps each sha to its record skill and is persisted (D144): one batch may mix skills, and
+    collection runs in a later process."""
     model_id = model_client.resolve_model_id(model)
     effort_arg = model_client._resolve_effort("anthropic", model_id, effort)
     output_config = {"format": {"type": "json_schema", "schema": schemas.EXTRACTION}}

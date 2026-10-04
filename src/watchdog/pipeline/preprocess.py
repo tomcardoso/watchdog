@@ -598,30 +598,14 @@ def _markdown_pages(doc) -> list[dict]:
 
 
 def pdf_ocr_plan(path: Path, total_pages: int) -> tuple[list[int], list[int]]:
-    """Return (force_pages, garbled_pages) as 0-indexed page numbers.
+    """Return (force_pages, garbled_pages) as 0-indexed page numbers (D192).
 
-    Two levels of combination, kept distinct (#597): is_page_garbled() combines
-    several independent signals into a verdict for one page; this function
-    turns those per-page verdicts into a plan for the document. Before #605 it
-    collapsed them into two document-wide booleans, so one sampled page decided
-    for all of them; now the resolution survives.
-
-    A page is forced when it has **no text layer** or when the text layer it
-    does have reads garbled. Both end in OCR but for opposite reasons, and only
-    the second is reported as `garbled_detected`.
-
-    Forcing a page with no text layer is free insurance rather than a cost:
-    force_full_page_ocr is destructive strictly in proportion to how good the
-    existing text layer was (Docling discards the programmatic cells outright,
-    see D192), so on a page that has none there is nothing to destroy. It buys
-    cover for the case Docling's own OCR drops on the floor — a page whose
-    content is under its `bitmap_area_threshold` (5% of the page), e.g. text
-    drawn as vector paths, or a mostly-blank page carrying one small scanned
-    annotation like an initialled change or a margin note.
-
-    If the text layer can't be read at all, every page is forced: that is the
-    same verdict the document-wide `empty` path reached before #605.
-    """
+    `is_page_garbled()` turns several signals into one page's verdict; this turns the per-page
+    verdicts into the document's plan. A page is forced when it has no text layer, or when its text
+    layer reads garbled; only the second counts as `garbled_detected`. Forcing a page with no text
+    layer costs nothing — Docling's full-page OCR only destroys an existing text layer — and catches
+    content Docling's own OCR skips (text drawn as vector paths, a small scanned annotation). If the
+    text layer can't be read at all, every page is forced."""
     samples = pdf_page_samples(path)
     if len(samples) != total_pages:
         return list(range(total_pages)), []
