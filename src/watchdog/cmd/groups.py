@@ -43,7 +43,7 @@ FLAGS: dict[tuple[str, str], str] = {
 }
 
 _GROUP_HELP = {
-    "projects": ("Create, list and manage investigations", {
+    "projects": ("List and manage investigations", {
         "list": "List investigations (--all includes archived ones)",
         "register": "Register an existing vault folder",
         "status": "Show detailed status for one investigation, or all",
@@ -55,7 +55,7 @@ _GROUP_HELP = {
         "delete": "Remove an investigation from the list (files stay on disk)",
         "log": "Show an investigation's ingest log",
     }),
-    "settings": ("Models, keys, setup, health checks and skills", {
+    "settings": ("Models, keys, health checks and skills", {
         "configure": "View or change a setting (also: watchdog settings <key> <value>)",
         "auth": "Show and change how Watchdog signs in to model providers",
         "doctor": "Check for missing or broken vaults",
@@ -73,7 +73,6 @@ MOVED: dict[str, str] = {
     **{orig: f"{cmd} {verb}" for cmd, verbs in VERBS.items() for verb, orig in verbs.items()},
     **{orig: f"{cmd} {flag}" for (cmd, flag), orig in FLAGS.items()},
     "configure": "settings",
-    "leads": "review leads",
     "obsidian": "open",
 }
 
@@ -82,6 +81,7 @@ MAINTENANCE = [
     ("dig", "Extract chewed documents (step 2 of add)"),
     ("bark", "Finish a batch: reconciliation, synthesis, briefing (step 3 of add)"),
     ("requeue", "Put failed documents back in the queue without running them"),
+    ("leads", "Print the full lead sweep (`watchdog review leads` steps through it)"),
     ("timeline", "Rebuild timeline.md"),
     ("reindex", "Rebuild the search index"),
     ("usage", "Token, cost and timing breakdown for past runs"),
@@ -104,16 +104,40 @@ def rewrite(argv: list[str]) -> list[str]:
             return argv
         if head == "settings":
             return ["configure", *rest]          # `settings`, `settings <key> [value]`
-        if not rest:
-            return [next(iter(verbs.values()))]
+        if not rest or rest[0].startswith("-"):
+            return [next(iter(verbs.values())), *rest]   # `projects`, `projects --all`
         return argv                               # unknown verb: let the group parser explain
     if head in VERBS and rest and rest[0] in VERBS[head]:
         return [VERBS[head][rest[0]], *rest[1:]]
-    for flag in rest:
-        target = FLAGS.get((head, flag))
-        if target:
-            return [target, *[a for a in rest if a != flag]]
+    for (cmd, flag), target in FLAGS.items():
+        if head == cmd and flag in rest:
+            return [target, *_flag_args(cmd, flag, [a for a in rest if a != flag])]
     return argv
+
+
+def _flag_args(cmd: str, flag: str, args: list[str]) -> list[str]:
+    """The arguments a flag-routed command keeps. `add --watch` and `ask --context` run commands
+    that take only an investigation name (and, for `context`, `--model`), so anything else is an
+    error here rather than being passed on to mean something different."""
+    usage = {"--watch": "watchdog add --watch [name]",
+             "--context": "watchdog ask --context [name] [--model M]"}[flag]
+    out, positional, i = [], 0, 0
+    while i < len(args):
+        a = args[i]
+        if flag == "--context" and a in ("--project", "-p", "--model") and i + 1 < len(args):
+            if a == "--model":
+                out += [a, args[i + 1]]
+            else:
+                out.append(args[i + 1])
+                positional += 1
+            i += 2
+            continue
+        if a.startswith("-") or positional:
+            sys.exit(f"Error: {usage} takes only an investigation name — got '{a}'.")
+        out.append(a)
+        positional += 1
+        i += 1
+    return out
 
 
 def pointer(typed: str) -> str | None:

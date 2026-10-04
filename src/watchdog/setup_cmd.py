@@ -156,7 +156,7 @@ def _ask_auto_approve(current: float | None = None) -> float | None:
     print(f"  {_DIM}Before sending documents to a model, Watchdog pauses to show the estimated cost "
           f"and asks you{_RESET}")
     print(f"  {_DIM}to confirm they are public records. You can skip that pause for runs estimated "
-          f"under a{_RESET}")
+          f"at or under a{_RESET}")
     print(f"  {_DIM}dollar limit — only do this if you already check that what you add is public "
           f"record.{_RESET}")
     print(f"  {_DIM}On a Claude subscription a run has no per-run price, so every run counts as "
@@ -182,7 +182,7 @@ def _ask_auto_approve(current: float | None = None) -> float | None:
             value = float(raw.lstrip("$"))
         except ValueError:
             value = -1.0
-        if value > 0:
+        if 0 < value < float("inf"):          # also rejects "nan", which compares false
             return value
         print(f"  {_YELLOW}Enter an amount above zero, such as 5 or 2.50.{_RESET}")
 

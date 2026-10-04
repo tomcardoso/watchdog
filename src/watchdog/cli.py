@@ -259,12 +259,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_ask = sub.add_parser("ask", help="Open a Claude Code session to ask questions about the vault")
     p_ask.add_argument("question", nargs="*", help="A first question (omit to open the session ready for one)")
     p_ask.add_argument("--project", "-p", metavar="NAME", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_ask.add_argument("--context", action="store_true",
+                       help="Read _CONTEXT/ and seed context.md instead (runs `watchdog context`)")
     p_ask.add_argument("--model", choices=list(_MODEL_IDS), default=None,
                        help="Claude model for the session (default: Claude Code's own setting)")
     p_ask.set_defaults(func=cmd_ask)
 
     p_review = sub.add_parser("review", help="Step through contradictions, leads, watch-list hits and duplicates")
-    p_review.add_argument("kind", nargs="?", choices=_REVIEW_KINDS, help="Review only this kind")
+    p_review.add_argument("kind", nargs="?", choices=_REVIEW_KINDS, help="Review only this kind").completer = (
+        lambda **kw: [*_REVIEW_KINDS, *groups.VERBS["review"]])
     p_review.set_defaults(func=cmd_review)
 
     p_resolve = sub.add_parser("resolve", help="Acknowledge leads/alerts/contradictions so they stop re-surfacing")
@@ -282,7 +285,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_reindex.set_defaults(func=cmd_reindex)
 
     p_research = sub.add_parser("research", help="Open Claude Code to research open questions on the web")
-    p_research.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_research.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = (
+        lambda **kw: [*groups.VERBS["research"], *_project_completer(**kw)])
     p_research.add_argument("--question", "-q", help="Research question to seed (omit to be prompted)")
     p_research.add_argument("--model", choices=list(_MODEL_IDS), default="sonnet",
                             help="Model for the research session (default: sonnet)")
@@ -337,7 +341,8 @@ def build_parser() -> argparse.ArgumentParser:
         p_group = sub.add_parser(group, help=desc)
         p_group.add_argument("verb", nargs="?", help="One of: " + ", ".join(verbs)).completer = (
             lambda verbs=verbs, **kw: list(verbs))
-        p_group.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+        p_group.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS).completer = (
+            _project_completer if group == "projects" else (lambda **kw: list(_CONFIGURE_KEYS)))
         p_group.set_defaults(func=groups.cmd_group)
 
     p_delete = sub.add_parser("delete", help="Remove an investigation from registry")
@@ -406,7 +411,7 @@ def build_parser() -> argparse.ArgumentParser:
                             f"(default: {defaults.EXTRACTOR_MODEL})")
         p.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
                        help=f"Model for document classification — {_model_help}; overrides watchdog "
-                            f"configure (default: {defaults.CLASSIFIER_MODEL})")
+                            f"settings (default: {defaults.CLASSIFIER_MODEL})")
         p.add_argument("--extractor-effort", choices=_effort_choices, default=None,
                        dest="extractor_effort",
                        help="Reasoning effort for extraction — lower spends fewer tokens; "
@@ -426,7 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
                             "model. Overrides watchdog settings (default: off).")
         g.add_argument("--no-verify", action="store_false", default=None, dest="verify",
                        help="Skip the second-read verification pass even when watchdog "
-                            "configure turns it on.")
+                            "settings turns it on.")
         p.add_argument("--concurrency", type=_positive_int, default=None, metavar="N",
                        help="Documents extracted in parallel — overrides watchdog settings "
                             f"(default: {defaults.EXTRACT_CONCURRENCY})")
@@ -488,6 +493,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="First put documents that failed extraction back in the queue")
     _add_extract_flags(p_add, "add")
     _add_finalize_flags(p_add)
+    p_add.add_argument("--watch", action="store_true",
+                       help="Watch _INCOMING/ and chew files as they arrive (runs `watchdog watch`)")
     p_add.set_defaults(func=cmd_add)
 
     p_ingest = sub.add_parser("ingest", help="[deprecated] Extract and finalize queued documents in one run — "
@@ -560,7 +567,8 @@ def main() -> None:
         if topic == "maintenance":
             groups.print_maintenance()
             return
-        sys.argv = [sys.argv[0], topic, "--help"]
+        group = next((g for g, verbs in groups.GROUPS.items() if topic in verbs), None)
+        sys.argv = [sys.argv[0], *([group] if group else []), *sys.argv[2:], "--help"]
 
     # The grouped surface (D254): `watchdog projects rename …` runs `rename`, and so on.
     if len(sys.argv) >= 2 and sys.argv[1] in groups.GROUPS and (

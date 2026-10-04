@@ -93,7 +93,7 @@ Setup checks that qpdf and Ghostscript are installed, enables tab completion in 
 
 Switching OCR engines (`watchdog settings ocr_engine tesseract`) works the same way: Watchdog installs the faster Tesseract binding for you automatically, provided the system Tesseract headers from the platform install steps above are already in place.
 
-Along the way it asks three questions:
+Along the way it asks four questions:
 
 1. **Where to store your investigation projects.** Press Return to accept the default (`~/Investigations`), or type a different path.
 2. **Whether to install the optional capture browser** for full page snapshots (an extra ~150 MB). The default is no; see [Full page snapshots](#optional-full-page-snapshots) below.
@@ -103,7 +103,7 @@ If you choose the subscription, setup also warns that ingesting more than a few 
 
 If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. `watchdog settings auth` applies the same tune-down if you switch to subscription auth later, and undoes it automatically if you later switch back to an API key — no need to raise it back by hand unless you set your own value.
 
-4. **Whether to auto-approve small runs.** Before sending documents to a model, Watchdog normally pauses to show the estimated cost and asks you to confirm they are public records. Setup asks whether to skip that pause for runs estimated under a dollar limit. The default is no, so every run asks. If you say yes, it asks for the limit: press Return to accept the recommended $5, or type another amount. Say yes only if you already check that what you add is public record. On a Claude subscription a run has no per-run price, so with auto-approve on, every run goes ahead without the pause. See [Controlling cost](configuration.md#controlling-cost) to change it later.
+4. **Whether to auto-approve small runs.** Before sending documents to a model, Watchdog normally pauses to show the estimated cost and asks you to confirm they are public records. Setup asks whether to skip that pause for runs estimated at or under a dollar limit. On first setup the default is no, so every run asks; re-running setup with a limit already set defaults to keeping it. If you say yes, it asks for the limit: press Return to accept the recommended $5, or type another amount. Say yes only if you already check that what you add is public record. On a Claude subscription a run has no per-run price, so with auto-approve on, every run goes ahead without the pause. See [Controlling cost](configuration.md#controlling-cost) to change it later.
 
 When setup finishes, reload your shell so tab completion takes effect:
 

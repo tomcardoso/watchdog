@@ -38,9 +38,9 @@ def test_a_typed_limit(tty, monkeypatch, typed, expected):
 
 
 def test_invalid_amounts_ask_again(tty, monkeypatch, capsys):
-    _answers(monkeypatch, True, "five", "0", "-3", "3")
+    _answers(monkeypatch, True, "five", "0", "-3", "inf", "nan", "3")
     assert sc._ask_auto_approve() == 3.0
-    assert capsys.readouterr().out.count("above zero") == 3
+    assert capsys.readouterr().out.count("above zero") == 5
 
 
 def test_rerun_offers_the_current_limit(tty, monkeypatch):
@@ -84,3 +84,19 @@ def test_setup_saves_the_limit(tmp_path, monkeypatch):
 def test_setup_rerun_can_turn_it_off(tmp_path, monkeypatch):
     config, seen = _run_setup(tmp_path, monkeypatch, {"auto_approve_usd": 8}, None)
     assert "auto_approve_usd" not in config and seen == [8.0]
+
+
+def test_setup_off_a_terminal_keeps_an_existing_limit(tmp_path, monkeypatch):
+    home = tmp_path / ".watchdog"
+    home.mkdir()
+    monkeypatch.setattr(sc, "WATCHDOG_HOME", home)
+    monkeypatch.setattr(sc, "CONFIG_FILE", home / "config.json")
+    (home / "config.json").write_text(json.dumps({"auto_approve_usd": 4}))
+    monkeypatch.setattr(sc, "_check_deps", lambda: [])
+    monkeypatch.setattr(sc, "_ask_projects_dir", lambda: tmp_path)
+    monkeypatch.setattr(sc, "_detect_shell", lambda: (None, None))
+    monkeypatch.setattr(sc, "_check_playwright", lambda: None)
+    monkeypatch.setattr("watchdog.cmd.auth.setup_auth_interactive", lambda: None)
+    monkeypatch.setattr(sc.sys.stdin, "isatty", lambda: False)
+    sc.run(force=True)
+    assert json.loads((home / "config.json").read_text())["auto_approve_usd"] == 4.0

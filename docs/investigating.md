@@ -106,6 +106,8 @@ Work through the open leads one at a time:
 watchdog review leads
 ```
 
+To print the whole sweep instead, as it appears in the briefing file, run `watchdog leads`.
+
 Running `watchdog` on its own inside the vault shows how many leads are open, alongside contradictions, watch-list hits and possible duplicate documents. `watchdog review` walks through them one at a time — see [Resolving items](#resolving-items).
 
 ## Document requests

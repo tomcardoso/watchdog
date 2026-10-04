@@ -432,7 +432,7 @@ def cmd_new(args) -> None:
 
 
 def cmd_obsidian(args) -> None:
-    info = _registered_project(args.name, "obsidian")
+    info = _registered_project(args.name, "open")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -767,7 +767,7 @@ def cmd_unarchive(args) -> None:
 
 
 def cmd_log(args) -> None:
-    info = _registered_project(args.name, "log")
+    info = _registered_project(args.name, "projects log")
     vault = Path(info["path"])
     log_path = vault / "log.md"
 
@@ -820,7 +820,7 @@ def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
 
 
 def cmd_watch(args) -> None:
-    info = _registered_project(args.name, "watch")
+    info = _registered_project(args.name, "add --watch")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
