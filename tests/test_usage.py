@@ -464,7 +464,7 @@ def test_cmd_usage_omits_auth_for_non_claude_backends(tmp_path, monkeypatch, cap
     api-key, so tagging it would be noise."""
     vault = _build_vault(tmp_path, runs={
         "usage-2026-01-01T00-00-00": [
-            _call(task="extract", model="deepseek-v4-flash", backend="deepseek"),
+            _call(task="extract", model="deepseek-flash", backend="deepseek"),
         ],
     })
     monkeypatch.chdir(vault)

@@ -104,7 +104,7 @@ def _resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tu
 
     Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
     `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
-    `openai:gpt-5-mini` / `deepseek:deepseek-v4-flash` (a raw provider model id). Carrying both in
+    `openai:gpt-5-mini` / `deepseek:deepseek-flash` (a raw provider model id). Carrying both in
     one value means a stage can never be half-configured."""
     from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
     raw = flag_val or config_val or default
@@ -114,9 +114,9 @@ def _resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tu
     if backend is None or backend in CLAUDE_BACKENDS:
         if model not in _MODEL_IDS:
             sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku, "
-                     f"or a backend:model form like deepseek:deepseek-v4-flash")
+                     f"or a backend:model form like deepseek:deepseek-flash")
     elif not model:
-        sample = "deepseek-v4-flash" if backend == "deepseek" else "gpt-5-mini"
+        sample = "deepseek-flash" if backend == "deepseek" else "gpt-5-mini"
         sys.exit(f"Error: backend '{backend}' needs a model id, e.g. {backend}:{sample}")
     return backend, model
 
@@ -437,7 +437,7 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dic
     high = (est or {}).get("cost_high")
     subscription = bool((est or {}).get("subscription"))
     if limit is not None and (subscription or (high is not None and high <= limit)):
-        # Within the auto-approve budget (D249): the user settled the question when they set the
+        # Within the auto-approve budget (D251): the user settled the question when they set the
         # limit, so the run goes ahead with the same one-line notice --skip-warning prints. A
         # subscription has no per-run price, so it is always within the limit.
         cost = "no per-run charge on your subscription" if subscription else f"estimated ${high:.2f} at most"
@@ -1430,7 +1430,7 @@ def _expand_paths(paths: list[str]) -> list[Path]:
 
 def cmd_add(args) -> dict | None:
     """`watchdog add [files or folders…]` — take documents all the way into the vault in one
-    command: copy them into `_INCOMING/`, chew, extract and finalize (D249).
+    command: copy them into `_INCOMING/`, chew, extract and finalize (D251).
 
     It stops only for the public-records acknowledgement (skipped within `auto_approve_usd`) and
     for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it

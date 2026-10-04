@@ -274,6 +274,8 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("anthropic", "claude-sonnet-4-6", "max", "max"),
     ("anthropic", "claude-opus-4-8", "max", "max"),
     ("anthropic", "claude-opus-4-8", "xhigh", "xhigh"),
+    ("anthropic", "claude-opus-5-5", "xhigh", "xhigh"),
+    ("anthropic", "claude-opus-5-5", "max", "max"),
     # Sonnet 5 (#361/#509, D165) accepts xhigh unlike Sonnet 4.6 — additive catalog entry, not a
     # tier-wide capability change.
     ("anthropic", "claude-sonnet-5", "xhigh", "xhigh"),
@@ -290,12 +292,12 @@ def test_deepseek_effort_levels_reach_the_thinking_ids_only():
     The `-thinking` marker is a Watchdog routing convention, not a catalog id, so the levels have
     to survive stripping it — and the plain id has to report none, since a request pinning
     `{"thinking": {"type": "disabled"}}` has nothing for a level to tune."""
-    assert mc._effort_levels("deepseek", "deepseek-v4-flash-thinking") == {"low", "high", "max"}
+    assert mc._effort_levels("deepseek", "deepseek-flash-thinking") == {"low", "high", "max"}
     assert mc._effort_levels("deepseek", "deepseek-v4-pro-thinking") == {"low", "high", "max"}
-    assert mc._effort_levels("deepseek", "deepseek-v4-flash") == set()
+    assert mc._effort_levels("deepseek", "deepseek-flash") == set()
     assert mc._resolve_effort("deepseek", "deepseek-v4-pro-thinking", "max") == "max"
     with pytest.raises(mc.ModelError, match="low"):
-        mc._resolve_effort("deepseek", "deepseek-v4-flash", "low")
+        mc._resolve_effort("deepseek", "deepseek-flash", "low")
 
 
 def test_deepseek_omits_the_alias_effort_levels():
@@ -303,9 +305,9 @@ def test_deepseek_omits_the_alias_effort_levels():
     (api-docs.deepseek.com/guides/thinking_mode). They are left out so asking for one fails loudly
     instead of running a duplicate of `high` under another name — and so `cmd/ingest.py`'s
     implicit `medium` extractor default keeps being skipped on DeepSeek, as it always was."""
-    levels = mc._effort_levels("deepseek", "deepseek-v4-flash-thinking")
+    levels = mc._effort_levels("deepseek", "deepseek-flash-thinking")
     assert "medium" not in levels and "xhigh" not in levels
-    assert not mc.effort_supported("deepseek", "deepseek-v4-flash-thinking", "medium")
+    assert not mc.effort_supported("deepseek", "deepseek-flash-thinking", "medium")
 
 
 # ── time-of-day pricing (D217) ─────────────────────────────────────────────────────────────────
@@ -327,7 +329,7 @@ def test_price_multiplier_follows_the_declared_windows(hhmm, expected):
     from watchdog.model_catalog import price_multiplier
     hh, mm = (int(p) for p in hhmm.split(":"))
     at = datetime(2026, 8, 20, hh, mm, tzinfo=timezone.utc)
-    assert price_multiplier("deepseek-v4-flash", at) == expected
+    assert price_multiplier("deepseek-flash", at) == expected
     assert price_multiplier("deepseek-v4-pro", at) == expected
     assert price_multiplier("claude-sonnet-4-6", at) == 1.0     # flat-priced model, any hour
     assert price_multiplier("not-a-real-model", at) == 1.0      # uncatalogued: never guess a surcharge
@@ -341,11 +343,11 @@ def test_price_multiplier_converts_an_aware_datetime_to_utc():
     from watchdog.model_catalog import price_multiplier
     eastern = timezone(timedelta(hours=-4))
     # 22:00 EDT is 02:00 UTC — peak, though its local hour sits in neither window.
-    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=eastern)) == 2.0
-    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 22, 0, tzinfo=timezone.utc)) == 1.0
+    assert price_multiplier("deepseek-flash", datetime(2026, 8, 20, 22, 0, tzinfo=eastern)) == 2.0
+    assert price_multiplier("deepseek-flash", datetime(2026, 8, 20, 22, 0, tzinfo=timezone.utc)) == 1.0
     # 09:00 EDT is 13:00 UTC — off-peak, though its local hour sits inside the second window.
-    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=eastern)) == 1.0
-    assert price_multiplier("deepseek-v4-flash", datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)) == 2.0
+    assert price_multiplier("deepseek-flash", datetime(2026, 8, 20, 9, 0, tzinfo=eastern)) == 1.0
+    assert price_multiplier("deepseek-flash", datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)) == 2.0
 
 
 def test_price_multiplier_window_wraps_midnight():
@@ -357,7 +359,62 @@ def test_price_multiplier_window_wraps_midnight():
     assert not model_catalog._in_window(time(12, 0), time(22, 0), time(2, 0))
     assert not model_catalog._in_window(time(9, 0), time(9, 0), time(9, 0))   # empty span
     at = datetime(2026, 8, 20, 23, 30, tzinfo=timezone.utc)
-    assert model_catalog.price_multiplier("deepseek-v4-flash", at) == 1.0
+    assert model_catalog.price_multiplier("deepseek-flash", at) == 1.0
+
+
+def test_price_multiplier_peak_is_monday_to_friday_only():
+    """DeepSeek's peak is Mon-Fri (UTC), so the same clock hour is off-peak on a weekend (D250)."""
+    from datetime import datetime, timezone
+
+    from watchdog.model_catalog import price_multiplier
+    for model in ("deepseek-flash", "deepseek-v4-pro"):
+        assert price_multiplier(model, datetime(2026, 10, 5, 2, 0, tzinfo=timezone.utc)) == 2.0   # Monday
+        assert price_multiplier(model, datetime(2026, 10, 9, 7, 0, tzinfo=timezone.utc)) == 2.0   # Friday
+        assert price_multiplier(model, datetime(2026, 10, 10, 2, 0, tzinfo=timezone.utc)) == 1.0  # Saturday
+        assert price_multiplier(model, datetime(2026, 10, 11, 7, 0, tzinfo=timezone.utc)) == 1.0  # Sunday
+
+
+def test_legacy_deepseek_id_resolves_to_the_current_flash_entry():
+    """DeepSeek retired `deepseek-v4-flash` and serves it as V4.1 Flash at the Flash price, so a
+    config still naming it must keep pricing, windows and capabilities — not read as uncatalogued."""
+    from datetime import datetime, timezone
+
+    from watchdog import model_catalog
+    legacy, current = "deepseek-v4-flash", "deepseek-flash"
+    assert model_catalog.canonical_id(legacy) == current
+    assert model_catalog.canonical_id(current) == current
+    assert model_catalog.canonical_id("deepseek-v4-pro") == "deepseek-v4-pro"     # untouched
+    assert model_catalog.display_name(legacy) == "DeepSeek V4.1 Flash"
+    assert model_catalog.catalog_effort_levels(legacy) == model_catalog.catalog_effort_levels(current)
+    assert model_catalog.catalog_tokenizer_ratio(legacy) == 0.81
+    peak = datetime(2026, 10, 5, 2, 0, tzinfo=timezone.utc)
+    assert model_catalog.price_multiplier(legacy, peak) == 2.0
+    usage = {"prompt_tokens": 1000, "completion_tokens": 1000}
+    assert mc._openai_cost(legacy, usage) == mc._openai_cost(current, usage) is not None
+
+
+def test_deepseek_flash_matches_the_vendor_price_page():
+    """Off-peak rates from api-docs.deepseek.com/quick_start/pricing (fetched 2026-10-04)."""
+    assert mc._OPENAI_PRICING["deepseek-flash"] == (0.15e-6, 0.60e-6, 0.003e-6, 0.0)
+    assert mc._OPENAI_PRICING["deepseek-v4-pro"] == (0.66e-6, 1.98e-6, 0.022e-6, 0.0)
+    assert "deepseek-v4-flash" not in mc._OPENAI_PRICING     # the retired id is an alias, not a row
+
+
+def test_gpt_6_luna_matches_the_vendor_price_page():
+    """developers.openai.com/api/docs/models/gpt-6-luna (fetched 2026-10-04). Cache write is 1.25x
+    input, and the 272K long-context boundary applies to the whole request."""
+    assert mc._OPENAI_PRICING["gpt-6-luna"] == (0.10e-6, 0.50e-6, 0.01e-6, 0.125e-6)
+    assert mc.catalog_cache_breakpoints("gpt-6-luna") is True
+    assert mc.catalog_long_context_threshold("gpt-6-luna") == 272_000
+    assert mc.catalog_max_output_tokens("gpt-6-luna") == 128_000
+    assert mc.catalog_is_reasoning("gpt-6-luna") is True
+    assert mc._effort_levels("openai", "gpt-6-luna") == {"low", "medium", "high", "xhigh", "max"}
+
+
+def test_deprecated_models_are_not_catalogued():
+    """Models a vendor has formally deprecated are removed rather than kept (D249)."""
+    from watchdog import model_catalog
+    assert model_catalog.catalog_context_window("gpt-5.4-nano") is None
 
 
 def test_openai_cost_doubles_inside_a_peak_window(monkeypatch):
@@ -366,9 +423,9 @@ def test_openai_cost_doubles_inside_a_peak_window(monkeypatch):
     usage = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000,
              "prompt_cache_hit_tokens": 500_000}
     monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 1.0)
-    off_peak = mc._openai_cost("deepseek-v4-flash", usage)
+    off_peak = mc._openai_cost("deepseek-flash", usage)
     monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 2.0)
-    assert mc._openai_cost("deepseek-v4-flash", usage) == pytest.approx(2 * off_peak)
+    assert mc._openai_cost("deepseek-flash", usage) == pytest.approx(2 * off_peak)
 
 
 def test_api_cost_applies_the_multiplier_too(monkeypatch):
@@ -384,9 +441,20 @@ def test_api_cost_applies_the_multiplier_too(monkeypatch):
 
 # ── Opus 5 catalog entry (#635) — additive alongside Opus 4.8, same pattern as Sonnet 5 ────────
 
-def test_opus_5_tier_resolves():
+def test_opus_tiers_resolve():
     assert mc.resolve_model_id("opus-5") == "claude-opus-5"
-    assert mc.resolve_model_id("opus") == "claude-opus-4-8"   # bare `opus` still means 4.8
+    assert mc.resolve_model_id("opus") == "claude-opus-5-5"   # bare `opus` means 5.5 since D249
+    assert mc.resolve_model_id("opus-5.5") == "claude-opus-5-5"
+    assert mc.resolve_model_id("opus-4.8") == "claude-opus-4-8"   # 4.8 kept reachable by name
+
+
+def test_opus_5_5_catalog_entry_matches_the_vendor_figures():
+    """Anthropic's published Opus 5.5 numbers (platform.claude.com, fetched 2026-10-04). The cache
+    read is 0.05x input — not the 0.1x every other Claude entry uses — so it is pinned here."""
+    assert mc._PRICING["claude-opus-5-5"] == (4.0e-6, 20.0e-6, 5.0e-6, 0.20e-6)
+    assert mc._effort_levels("anthropic", "claude-opus-5-5") == {"low", "medium", "high", "xhigh", "max"}
+    assert mc.catalog_max_output_tokens("claude-opus-5-5") == 128_000
+    assert mc.catalog_needs_thinking_param("claude-opus-5-5") is False   # thinking is always on
 
 
 def test_opus_5_effort_levels_match_opus_4_8():
@@ -410,6 +478,7 @@ def test_sonnet_5_5_matches_sonnet_5_pricing_and_effort():
     ("claude-opus-4-8", True),
     ("claude-sonnet-5", False),    # ships on by default — no param needed
     ("claude-opus-5", False),      # ships on by default — no param needed
+    ("claude-opus-5-5", False),    # always on, cannot be disabled — no param needed
     ("claude-sonnet-5-5", False),  # ships on by default — no param needed
     ("claude-haiku-4-5", False),   # no thinking control at all
     ("gpt-5", False),              # non-Claude — never consulted
@@ -424,11 +493,12 @@ def test_catalog_needs_thinking_param(model_id, needs_thinking_param):
     ("claude-opus-4-8", True),     # thinking sent explicitly (#635)
     ("claude-sonnet-5", True),     # thinking on by default
     ("claude-opus-5", True),       # thinking on by default
+    ("claude-opus-5-5", True),     # thinking always on
     ("claude-sonnet-5-5", True),   # thinking on by default
     ("claude-haiku-4-5", False),   # no thinking control at all
     ("gpt-5.6-luna", True),        # OpenAI reasoning model
-    ("gpt-5.4-nano", True),        # OpenAI reasoning model
-    ("deepseek-v4-flash", False),  # no reasoning field in the catalog
+    ("gpt-6-luna", True),        # OpenAI reasoning model
+    ("deepseek-flash", False),  # no reasoning field in the catalog
     ("gemini-3.7-flash", False),   # no reasoning field in the catalog
     ("not-a-real-model", False),   # uncatalogued — never assume a channel that isn't confirmed
 ])
@@ -531,8 +601,8 @@ def test_deepseek_rejects_xhigh(monkeypatch):
     ("opus", 200_000),
     ("haiku", 200_000),
     (None, 200_000),                            # default tier (sonnet)
-    ("deepseek-v4-flash", 1_000_000),
-    ("deepseek-v4-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
+    ("deepseek-flash", 1_000_000),
+    ("deepseek-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
     ("deepseek-v4-pro", 1_000_000),
     ("deepseek-chat", 128_000),                 # legacy id → deepseek fallback, not v4
     ("gemini-2.5-flash", 1_000_000),
@@ -699,7 +769,7 @@ def test_context_window_local_config_override(tmp_path, monkeypatch):
 
 def test_context_window_ignores_backend_for_hosted_models():
     # backend=None (or any non-"local" backend) keeps the substring-table behaviour untouched.
-    assert mc.context_window("deepseek-v4-flash", "deepseek") == 1_000_000
+    assert mc.context_window("deepseek-flash", "deepseek") == 1_000_000
 
 
 # ── tokenizer ratio (#574, remeasured against corpus-v1 in #617) ────────────────
@@ -715,13 +785,13 @@ def test_context_window_ignores_backend_for_hosted_models():
     (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
     ("sonnet-5", 1.28),          # new Claude tokenizer
     ("sonnet-5.5", 1.28),        # same tokenizer family, copied not measured
-    ("opus", 1.28),              # new Claude tokenizer (Opus 4.8) — same value
+    ("opus", 1.28),              # new Claude tokenizer (Opus 5.5, copied) — same value
     ("gemini-3.7-flash", 0.91),  # Gemini tokenizer
     ("gemini-3.1-pro-preview", 0.91),
-    ("gpt-5.4-nano", 0.80),      # GPT-5.x tokenizer — measured by billed probe (#617)
+    ("gpt-6-luna", 0.80),      # GPT-5.x tokenizer — copied, unmeasured for GPT-6 (D249)
     ("gpt-5.5", 0.80),           # same family, same value
     ("gpt-5.6-luna", 0.80),
-    ("deepseek-v4-flash", 0.81),  # DeepSeek V4 tokenizer
+    ("deepseek-flash", 0.81),  # DeepSeek V4 tokenizer
     ("deepseek-v4-pro", 0.81),
     ("gpt-5-mini", 1.0),         # uncatalogued id → no correction
     ("gemini-2.5-flash", 1.0),   # deliberately not catalogued (#583/D182) → no declared ratio
@@ -801,7 +871,7 @@ def test_fallback_table_is_matched_most_specific_first():
         earlier = markers[:i]
         assert not any(e in marker for e in earlier), (
             f"{marker!r} is shadowed by an earlier, broader row {earlier!r}")
-    assert fallback_max_output_tokens("deepseek-v4-flash") == 384_000
+    assert fallback_max_output_tokens("deepseek-flash") == 384_000
     assert fallback_max_output_tokens("mistral-large") is None
 
 
@@ -832,10 +902,10 @@ def _off_peak(monkeypatch):
 
 def test_openai_cost(monkeypatch):
     _off_peak(monkeypatch)
-    assert mc._openai_cost("deepseek-v4-flash",
-                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.22)
+    assert mc._openai_cost("deepseek-flash",
+                           {"prompt_tokens": 1_000_000, "completion_tokens": 0}) == pytest.approx(0.15)
     assert mc._openai_cost("unknown-model", {"prompt_tokens": 100}) is None
-    assert mc._openai_cost("deepseek-v4-flash", None) is None
+    assert mc._openai_cost("deepseek-flash", None) is None
 
 
 def test_openai_cost_prices_openai_models():
@@ -850,11 +920,13 @@ def test_openai_cost_prices_openai_models():
     ("gpt-5.4", 2.5, 15.0),
     ("gpt-5.6-terra", 2.0, 12.0),
     ("gpt-5.6-luna", 0.20, 1.20),
+    ("gpt-6-luna", 0.10, 0.50),
 ])
 def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, price_out):
     """Per-model price sentinel (#555). gpt-5.6-terra shipped carrying gpt-5.4's rates (2.50/15.00
     rather than 2.00/12.00), over-stating every Terra cost by 25% — a copy-paste when the row was
-    added, invisible because nothing asserted a per-model price. Verified 2026-08-16 against
+    added, invisible because nothing asserted a per-model price. Verified 2026-08-16 (and
+    `gpt-6-luna`, plus every other row here, again on 2026-10-04) against
     developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
     deliberately, not discover the drift through a cost report."""
     assert mc._openai_cost(model_id, {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
@@ -864,14 +936,14 @@ def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, 
 def test_openai_cost_deepseek_cache_hit(monkeypatch):
     # DeepSeek reports prompt_tokens = hit + miss; the hit portion is priced at the cheap rate.
     _off_peak(monkeypatch)
-    cost = mc._openai_cost("deepseek-v4-flash",
+    cost = mc._openai_cost("deepseek-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 0,
                             "prompt_cache_hit_tokens": 900_000, "prompt_cache_miss_tokens": 100_000})
-    assert cost == pytest.approx(100_000 * 0.22e-6 + 900_000 * 0.007e-6)
+    assert cost == pytest.approx(100_000 * 0.15e-6 + 900_000 * 0.003e-6)
 
 
 @pytest.mark.parametrize("model_id, price_in, price_out", [
-    ("deepseek-v4-flash", 0.22, 0.66),
+    ("deepseek-flash", 0.15, 0.60),
     ("deepseek-v4-pro", 0.66, 1.98),
     ("gemini-3.7-flash", 0.75, 3.75),
     ("gemini-3.5-flash-lite", 0.30, 2.50),
@@ -880,7 +952,8 @@ def test_openai_cost_deepseek_cache_hit(monkeypatch):
 def test_deepseek_and_gemini_prices_match_the_published_rate_card(model_id, price_in, price_out,
                                                                   monkeypatch):
     """Per-model price sentinel, the DeepSeek/Gemini half of the OpenAI table above. Verified
-    2026-08-20 against api-docs.deepseek.com/quick_start/pricing (DeepSeek's OFF-PEAK column —
+    2026-10-04 (Flash repriced when DeepSeek moved it to V4.1) against
+    api-docs.deepseek.com/quick_start/pricing (DeepSeek's OFF-PEAK column —
     peak is 2x, applied by `price_multiplier`, which is why this pins it) and
     ai.google.dev/gemini-api/docs/pricing. The DeepSeek rows in particular sat 1.6x-4.7x under the
     real rate for four days after DeepSeek raised them, with nothing in the suite to notice."""
@@ -1060,7 +1133,7 @@ def test_non_gemini_backends_keep_their_reported_usage(monkeypatch):
     # everywhere would invent tokens.
     usage = {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 200}
     _fake_usage_response(monkeypatch, usage)
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert out["usage"] == usage
 
@@ -1104,7 +1177,7 @@ def test_openai_backend_captures_rate_limit_headers_on_success(monkeypatch):
     _fake_openai_resp(monkeypatch, headers={"x-ratelimit-limit-tokens": "150000",
                                             "x-ratelimit-remaining-tokens": "149800",
                                             "x-ratelimit-reset-tokens": "6m0s"})
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert out["rate_limit"] == {"limit_tokens": 150000, "remaining_tokens": 149800,
                                  "reset_tokens": "6m0s"}
@@ -1112,7 +1185,7 @@ def test_openai_backend_captures_rate_limit_headers_on_success(monkeypatch):
 
 def test_openai_backend_rate_limit_none_when_headers_absent(monkeypatch):
     _fake_openai_resp(monkeypatch)
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert out["rate_limit"] is None
 
@@ -1123,7 +1196,7 @@ def test_openai_429_carries_rate_limit_headers_on_the_exception(monkeypatch):
                               "x-ratelimit-remaining-tokens": "0",
                               "x-ratelimit-reset-tokens": "12s"})
     with pytest.raises(mc.RateLimitError) as exc_info:
-        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+        asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                               base_url="https://api.deepseek.com"))
     assert exc_info.value.rate_limit == {"limit_tokens": 150000, "remaining_tokens": 0,
                                          "reset_tokens": "12s"}
@@ -1151,7 +1224,7 @@ def test_openai_backend_request_shape(monkeypatch):
             return FakeResp()
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
-    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA,
+    out = asyncio.run(mc._openai_complete_async("prompt", "deepseek-flash", SCHEMA,
                                                 "sk-ds", 8000, "high",
                                                 base_url="https://api.deepseek.com"))
     assert out["text"] == '{"name": "Acme"}'
@@ -1160,7 +1233,7 @@ def test_openai_backend_request_shape(monkeypatch):
     assert captured["body"]["reasoning_effort"] == "high"
     assert captured["body"]["response_format"] == {"type": "json_object"}
     assert "JSON" in captured["body"]["messages"][1]["content"]   # required for json_object mode
-    assert out["cost_usd"] == pytest.approx(10 * 0.22e-6 + 5 * 0.66e-6)
+    assert out["cost_usd"] == pytest.approx(10 * 0.15e-6 + 5 * 0.60e-6)
 
 
 def test_openai_backend_verifies_via_os_trust_store(monkeypatch):
@@ -1187,14 +1260,14 @@ def test_openai_backend_verifies_via_os_trust_store(monkeypatch):
         async def post(self, url, headers=None, json=None): return FakeResp()
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
-    asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    asyncio.run(mc._openai_complete_async("prompt", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                           base_url="https://api.deepseek.com"))
     assert isinstance(client_kwargs["verify"], truststore.SSLContext)
 
 
 def test_split_deepseek_thinking():
-    assert mc._split_deepseek_thinking("deepseek-v4-flash") == ("deepseek-v4-flash", False)
-    assert mc._split_deepseek_thinking("deepseek-v4-flash-thinking") == ("deepseek-v4-flash", True)
+    assert mc._split_deepseek_thinking("deepseek-flash") == ("deepseek-flash", False)
+    assert mc._split_deepseek_thinking("deepseek-flash-thinking") == ("deepseek-flash", True)
     assert mc._split_deepseek_thinking("deepseek-v4-pro-thinking") == ("deepseek-v4-pro", True)
 
 
@@ -1227,20 +1300,20 @@ def test_deepseek_thinking_toggle(monkeypatch):
     _off_peak(monkeypatch)
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert captured["body"]["thinking"] == {"type": "disabled"}
-    assert captured["body"]["model"] == "deepseek-v4-flash"        # marker not present
-    assert out["cost_usd"] == pytest.approx(10 * 0.22e-6 + 5 * 0.66e-6)
+    assert captured["body"]["model"] == "deepseek-flash"        # marker not present
+    assert out["cost_usd"] == pytest.approx(10 * 0.15e-6 + 5 * 0.60e-6)
 
     # `-thinking` marker → thinking enabled; the bare id is used for the request + cost lookup.
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash-thinking", SCHEMA,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash-thinking", SCHEMA,
                                                 "sk-ds", 8000, base_url="https://api.deepseek.com"))
     assert captured["body"]["thinking"] == {"type": "enabled"}
-    assert captured["body"]["model"] == "deepseek-v4-flash"        # stripped before the request
-    assert out["cost_usd"] == pytest.approx(10 * 0.22e-6 + 5 * 0.66e-6)   # priced on the bare id
+    assert captured["body"]["model"] == "deepseek-flash"        # stripped before the request
+    assert out["cost_usd"] == pytest.approx(10 * 0.15e-6 + 5 * 0.60e-6)   # priced on the bare id
 
 
 def test_openai_backend_no_thinking_param(monkeypatch):
@@ -1287,7 +1360,7 @@ def test_deepseek_uses_max_tokens(monkeypatch):
     # DeepSeek speaks the classic wire format regardless of thinking mode → max_tokens.
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                           base_url="https://api.deepseek.com"))
     assert captured["body"]["max_tokens"] == 8000
     assert "max_completion_tokens" not in captured["body"]
@@ -1372,7 +1445,7 @@ def test_openai_uses_strict_json_schema_mode(monkeypatch):
 def test_deepseek_stays_on_json_object_mode(monkeypatch):
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    asyncio.run(mc._openai_complete_async("prompt", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    asyncio.run(mc._openai_complete_async("prompt", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                           base_url="https://api.deepseek.com"))
     assert captured["body"]["response_format"] == {"type": "json_object"}
 
@@ -1853,11 +1926,13 @@ def test_batch_cost_none_for_unknown_model():
 
 @pytest.mark.parametrize("tier, expected", [
     ("haiku", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-5-5"),
-    ("opus", "claude-opus-4-8"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
+    ("opus", "claude-opus-5-5"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
     # Bare `sonnet` moved from 4.6 to 5.5 (D236); `sonnet-4.6` and `sonnet-5` stay selectable
     # by name so benchmark arms and pinned configs keep their meaning.
     ("sonnet-4.6", "claude-sonnet-4-6"), ("sonnet-5", "claude-sonnet-5"),
     ("sonnet-5.5", "claude-sonnet-5-5"),
+    # Bare `opus` moved from 4.8 to 5.5 (D249); `opus-4.8` and `opus-5` stay selectable by name.
+    ("opus-4.8", "claude-opus-4-8"), ("opus-5", "claude-opus-5"), ("opus-5.5", "claude-opus-5-5"),
 ])
 def test_resolve_model_id(tier, expected):
     assert mc.resolve_model_id(tier) == expected
@@ -2153,7 +2228,7 @@ def test_deepseek_paginates(deepseek_key, monkeypatch):
     be = PagingBackend(('{"na', "length"), ('me": "Acme"}', "stop"))
     monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
     r = complete_json(task="extract", prompt="p", schema=SCHEMA, backend="deepseek",
-                         model="deepseek-v4-flash")
+                         model="deepseek-flash")
     assert r.parsed == {"name": "Acme"}
     assert be.calls[1]["prefix"] == '{"na'
 
@@ -2457,8 +2532,8 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     ("claude-api", "claude-sonnet-4-6"),
     ("claude-api", "claude-haiku-4-5"),
     ("claude-api", "claude-opus-4-8"),
-    ("deepseek", "deepseek-v4-flash"),
-    ("deepseek", "deepseek-v4-flash-thinking"),   # -thinking marker doesn't change the envelope
+    ("deepseek", "deepseek-flash"),
+    ("deepseek", "deepseek-flash-thinking"),   # -thinking marker doesn't change the envelope
     ("openai", "gpt-5.4"),
     ("gemini", "gemini-3.7-flash"),
 ])
@@ -2498,7 +2573,7 @@ def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
 @pytest.mark.parametrize("backend, model", [
     ("claude-api", "sonnet"),           # continuation backend — pagination grows past the cap
     ("claude-agent-sdk", "sonnet"),     # no enforced output ceiling
-    ("deepseek", "deepseek-v4-flash-thinking"),
+    ("deepseek", "deepseek-flash-thinking"),
     (None, None),                       # unresolved → routes to a Claude backend
 ])
 @pytest.mark.parametrize("backend, model", [
@@ -2560,7 +2635,7 @@ def test_openai_backend_retries_transient_5xx(monkeypatch):
     # Two 502s then a 200 → the call succeeds after backing off twice (#354).
     posts = _fake_httpx_sequence(monkeypatch, [502, 502, 200])
     delays = _no_sleep(monkeypatch)
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert out["text"] == '{"name": "Acme"}'
     assert len(posts) == 3
@@ -2573,7 +2648,7 @@ def test_openai_backend_gives_up_after_bounded_5xx_retries(monkeypatch):
     posts = _fake_httpx_sequence(monkeypatch, [502], bodies={502: "upstream down"})
     _no_sleep(monkeypatch)
     with pytest.raises(mc.ModelError, match="HTTP 502: upstream down"):
-        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+        asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                               base_url="https://api.deepseek.com"))
     assert len(posts) == mc._TRANSIENT_RETRIES + 1
 
@@ -2584,7 +2659,7 @@ def test_openai_backend_never_retries_429(monkeypatch):
     posts = _fake_httpx_sequence(monkeypatch, [429])
     delays = _no_sleep(monkeypatch)
     with pytest.raises(mc.RateLimitError):
-        asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+        asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                               base_url="https://api.deepseek.com"))
     assert len(posts) == 1
     assert delays == []
@@ -2632,7 +2707,7 @@ def test_openai_backend_retries_transport_errors(monkeypatch):
 
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     _no_sleep(monkeypatch)
-    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-flash", SCHEMA, "sk-ds", 8000,
                                                 base_url="https://api.deepseek.com"))
     assert len(calls) == 2 and '"Acme"' in out["text"]
 

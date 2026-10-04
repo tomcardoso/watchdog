@@ -776,8 +776,8 @@ def test_cost_estimate_all_models_projects_every_catalog_model(tmp_path, monkeyp
     # each scaled by that model's own tokenizer_ratio (0.81 for DeepSeek V4 — see the dedicated
     # ratio test below; this one is about the projection).
     by_id = {r["id"]: r["cost"] for r in rows}
-    ds = next(m for m in catalog if m["id"] == "deepseek-v4-flash")
-    assert by_id["deepseek-v4-flash"] == pytest.approx(
+    ds = next(m for m in catalog if m["id"] == "deepseek-flash")
+    assert by_id["deepseek-flash"] == pytest.approx(
         2000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
@@ -795,8 +795,8 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path, m
     # DeepSeek V4's measured 0.81 tokenizer_ratio.
     by_id = {r["id"]: r["cost"] for r in rows}
     from watchdog.model_catalog import all_models
-    ds = next(m for m in all_models() if m["id"] == "deepseek-v4-flash")
-    assert by_id["deepseek-v4-flash"] == pytest.approx(
+    ds = next(m for m in all_models() if m["id"] == "deepseek-flash")
+    assert by_id["deepseek-flash"] == pytest.approx(
         1000 * 0.81 * ds["input"] + 1000 * 0.81 * ds["output"])
 
 
@@ -824,8 +824,8 @@ def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path
     assert by_id["claude-sonnet-5"] == pytest.approx(projected("claude-sonnet-5", 1.28))
     assert by_id["claude-sonnet-4-6"] == pytest.approx(projected("claude-sonnet-4-6", 0.93))
     assert by_id["gemini-3.7-flash"] == pytest.approx(projected("gemini-3.7-flash", 0.91))
-    assert by_id["gpt-5.4-nano"] == pytest.approx(projected("gpt-5.4-nano", 0.80))
-    assert by_id["deepseek-v4-flash"] == pytest.approx(projected("deepseek-v4-flash", 0.81))
+    assert by_id["gpt-6-luna"] == pytest.approx(projected("gpt-6-luna", 0.80))
+    assert by_id["deepseek-flash"] == pytest.approx(projected("deepseek-flash", 0.81))
 
 
 def test_cost_estimate_all_models_prices_a_scheduled_model_at_the_current_rate(tmp_path,
@@ -843,9 +843,9 @@ def test_cost_estimate_all_models_prices_a_scheduled_model_at_the_current_rate(t
                         lambda model_id, *_a, **_k: 2.0 if model_id.startswith("deepseek") else 1.0)
     peak = {r["id"]: r for r in cost_estimate_all_models(vault, est_tokens=2000)}
 
-    assert peak["deepseek-v4-flash"]["cost"] == pytest.approx(
-        2 * off_peak["deepseek-v4-flash"]["cost"])
-    assert peak["deepseek-v4-flash"]["price_multiplier"] == 2.0
+    assert peak["deepseek-flash"]["cost"] == pytest.approx(
+        2 * off_peak["deepseek-flash"]["cost"])
+    assert peak["deepseek-flash"]["price_multiplier"] == 2.0
     assert peak["claude-sonnet-4-6"]["cost"] == pytest.approx(
         off_peak["claude-sonnet-4-6"]["cost"])          # a flat-priced model never moves
     assert peak["claude-sonnet-4-6"]["price_multiplier"] == 1.0
