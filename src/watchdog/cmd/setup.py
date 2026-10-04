@@ -137,8 +137,9 @@ _CONFIGURE_KEYS = {
         "short": "Pin a record skill for every ingested document, skipping classification (default: unset)",
         "help": (
             "When every document in a vault is the same type, set this to a record-skill name\n"
-            "  (a file in the vault's records dir, minus .md) to skip per-document classification\n"
-            "  and use that one skill for all of them. Leave unset to classify each document.\n"
+            "  (see `watchdog show-skills`) or a path to your own skill file, to skip per-document\n"
+            "  classification and use that one skill for all of them. Leave unset to classify\n"
+            "  each document.\n"
             "  Override for one run with: watchdog dig --skill NAME (or --skill to pick one)."
         ),
         "type": "string",
@@ -849,8 +850,13 @@ def _migrate_vault_views(vault: Path) -> list[str]:
         new = (text.replace('file.inFolder("entities/company")', 'file.inFolder("entities/organization")')
                    .replace("    name: Companies\n", "    name: Organizations\n"))
         if new != text:
-            base.write_text(new, encoding="utf-8")
             changes.append("dashboard.base — Companies view now reads entities/organization")
+        renamed = new.replace("    name: Possible duplicates\n", "    name: Possible duplicate documents\n")
+        if renamed != new:
+            changes.append('dashboard.base — "Possible duplicates" renamed "Possible duplicate documents"')
+            new = renamed
+        if new != text:
+            base.write_text(new, encoding="utf-8")
     graph = vault / ".obsidian" / "graph.json"
     if graph.exists():
         try:

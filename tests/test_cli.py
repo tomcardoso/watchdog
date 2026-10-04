@@ -325,7 +325,8 @@ def test_refresh_skills_migrates_old_dashboard_graph_and_prompt_hook(configured)
     vault = configured / "old-vault"
     base = vault / "dashboard.base"
     base.write_text(base.read_text().replace('entities/organization', 'entities/company')
-                    .replace("name: Organizations", "name: Companies"))
+                    .replace("name: Organizations", "name: Companies")
+                    .replace("name: Possible duplicate documents", "name: Possible duplicates"))
     graph = vault / ".obsidian" / "graph.json"
     graph.write_text(json.dumps({"colorGroups": [{"query": "path:entities/company", "color": {}}]}))
     settings_path = vault / ".claude" / "settings.json"
@@ -335,6 +336,7 @@ def test_refresh_skills_migrates_old_dashboard_graph_and_prompt_hook(configured)
     settings_path.write_text(json.dumps(settings))
     cli.cmd_refresh_skills(args(name="Old Vault"))
     assert 'entities/organization' in base.read_text() and "name: Organizations" in base.read_text()
+    assert "name: Possible duplicate documents" in base.read_text()
     assert json.loads(graph.read_text())["colorGroups"][0]["query"] == "path:entities/organization"
     hook = json.loads(settings_path.read_text())["hooks"]["UserPromptSubmit"][0]["hooks"][0]
     assert hook["command"] == _PROMPT_HOOK_COMMAND

@@ -20,8 +20,9 @@ These run through every decision below.
 - **Local-first.** Preprocessing (OCR, layout, near-duplicate detection,
   classification inputs) runs entirely on the user's machine. Documents never leave it
   during chew. The search index — embeddings, BM25, and the cross-encoder reranker — is
-  also fully local (built at ingest, see §11), so it costs no API tokens either. The only
-  network calls are the Claude API during the ingest (extraction/synthesis) phase.
+  also fully local (built at ingest, see §11), so it costs no API tokens either. Network
+  calls are the configured model provider's API during `dig`/`bark`, plus the opt-in web
+  research, capture and Wayback features (§14).
 - **Deterministic code writes; the model decides.** Anything that can be done
   reliably and cheaply in Python — file writing, merging, sorting, deduplication,
   registry bookkeeping — is done in Python. The model is reserved for judgement:
