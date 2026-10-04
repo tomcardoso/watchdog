@@ -261,6 +261,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D252** — `watchdog review` steps through open items one at a time; near-duplicates are stamped and resolvable
 - **D253** — `watchdog ask` opens an interactive Claude Code session, not a one-shot answer
 - **D254** — `--help` shows eight commands; old names stay as the stable interface for scripts and skills
+- **D255** — Setup asks about auto-approve; the answer defaults to no, the limit to $5
 
 </details>
 
@@ -2381,3 +2382,7 @@ Asking a question meant opening Claude Code in the vault by hand and typing a sl
 ### D254 — `--help` shows eight commands; old names stay as the stable interface for scripts and skills
 
 The CLI had grown to more than 40 top-level commands at one level, most of them named for pipeline internals. `watchdog --help` now shows eight, grouped by task: `add`, `ask`, `search`, `review`, `open`, `research`, `projects` and `settings`. `watchdog help maintenance` lists the stage and repair commands. Grouped forms (`watchdog projects rename`, `watchdog settings auth`, `watchdog review resolve`, `watchdog add --watch`) are rewritten to the original command before argparse runs, so no implementation, flag or test moved. Original names keep working with no end date, because the vault's slash commands and its Bash permission allowlist call them (`watchdog leads`, `watchdog contradiction-add`, …) and existing vaults carry those files. Typed at a terminal, an original name prints a one-line pointer to its new home; piped or called from a session, it prints nothing extra. `watchdog open` now opens Obsidian, which is what people use it for, and `--folder` keeps the file-browser behaviour. Printed hints and the docs use the grouped names, and "finalize" in messages became "finish". The tradeoff: there are two names for most commands, every doc example changed, and anyone who relied on `watchdog open` opening the file browser now gets Obsidian.
+
+### D255 — Setup asks about auto-approve; the answer defaults to no, the limit to $5
+
+D251 made `auto_approve_usd` a setting nobody would find without reading the configuration page. Setup now explains the public-records pause and asks whether to skip it for runs under a dollar limit. If yes, it asks for the limit, recommending $5. The yes/no answer still defaults to no, because the pause is the only check that what is sent to a model is public record; a user has to opt in. Re-running setup offers the current limit. Off a terminal, setup leaves the setting as it is. The tradeoff: setup has one more question, and a suggested number can read as an endorsement. On a subscription, saying yes skips the pause on every run, which the prompt says.
