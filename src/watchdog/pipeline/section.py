@@ -32,6 +32,8 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
+
 # Overlap between consecutive sections, as a fraction of the section budget (#490's overlap
 # finding) — this used to be a fixed 4,000-token absolute value, calibrated against Claude's
 # historical 60,000-token default budget (6.7%). On a backend with a small output-derived budget
@@ -309,7 +311,7 @@ def main() -> None:
     if len(sys.argv) < 2:
         sys.exit("Usage: watchdog section-plan <sha256>")
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     result = run(vault, sys.argv[1])
     if "error" in result:

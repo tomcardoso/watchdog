@@ -17,6 +17,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog import defaults
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
@@ -347,7 +348,8 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
     return result
 
 
-def run(vault: Path, extractor_model: str = "sonnet", finalizer_model: str = "sonnet",
+def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
+        finalizer_model: str = defaults.FINALIZER_MODEL,
         wipe_pending: bool = True, force_lock: bool = False) -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict.
 

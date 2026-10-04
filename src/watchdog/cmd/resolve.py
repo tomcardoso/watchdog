@@ -15,13 +15,14 @@ ways to acknowledge, all landing in the same store:
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.pipeline import resolutions
 
 
 def _vault() -> Path:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     return vault
 

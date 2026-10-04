@@ -31,6 +31,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.pipeline.write_vault import (
     _extract_notes_section,
     _extract_analysis,
@@ -113,7 +114,7 @@ def main() -> None:
 
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
-    if not (vault_path / ".watchdog").is_dir():
+    if not is_vault(vault_path):
         sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
     if not str(extraction_path).startswith(str(vault_path) + "/"):
         sys.exit(f"Error: --extraction path must be inside the vault directory ({vault_path})")

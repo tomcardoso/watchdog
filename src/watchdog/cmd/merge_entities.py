@@ -13,6 +13,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog import interactive
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _YELLOW, _RESET
 from watchdog.pipeline import merge_entities as _merge_entities
@@ -31,7 +32,7 @@ def _entity_preview(eid: str, entry: dict) -> str:
 
 def cmd_merge_entities(args) -> None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
     entities_path = vault / ".watchdog" / "registry" / "entities.json"

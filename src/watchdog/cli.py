@@ -4,7 +4,8 @@ import argparse
 import subprocess  # noqa — kept for test monkeypatching via watchdog.cli.subprocess
 import sys         # noqa — kept for test monkeypatching via watchdog.cli.sys
 
-from watchdog import interactive
+from watchdog import defaults, interactive
+from watchdog.model_catalog import _MODEL_IDS
 from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
@@ -12,7 +13,6 @@ from watchdog.cmd.base import (
     _ALIASES,
     _DEPRECATED_ALIASES,
     _BOLD,
-    _CMD_HELP,
     _CYAN,
     _DIM,
     _GREEN,
@@ -123,75 +123,27 @@ def _cmd_rebuild_timeline(args) -> None:
         main_rebuild()
 
 
-def main() -> None:
-    if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
-        cmd_about(None)
-        return
+def _subparsers(parser: argparse.ArgumentParser) -> dict:
+    """Subcommand name → its parser."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            return action.choices
+    return {}
 
-    if len(sys.argv) >= 2 and sys.argv[1] in ("-h", "--help"):
-        _print_banner()
-        return
 
-    if len(sys.argv) >= 3 and sys.argv[2] in ("-h", "--help"):
-        cmd = _ALIASES.get(sys.argv[1], _DEPRECATED_ALIASES.get(sys.argv[1], sys.argv[1]))
-        if cmd in _CMD_HELP:
-            _print_cmd_help(cmd)
-            return
+def _subcommand_help(parser: argparse.ArgumentParser, name: str) -> str | None:
+    """The one-line `help=` a subcommand was registered with."""
+    for action in parser._actions:
+        if isinstance(action, argparse._SubParsersAction):
+            for choice in action._choices_actions:
+                if choice.dest == name:
+                    return choice.help
+    return None
 
-    if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
-        sys.argv[1] = _ALIASES[sys.argv[1]]
 
-    # `extract`/`finalize` → `dig`/`bark` (#441, D138): kept working during a deprecation
-    # window rather than removed outright, but unlike a plain `_ALIASES` entry, this warns —
-    # the point is for people to actually move onto the new name.
-    if len(sys.argv) >= 2 and sys.argv[1] in _DEPRECATED_ALIASES:
-        old, new = sys.argv[1], _DEPRECATED_ALIASES[sys.argv[1]]
-        print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog {old}{_RESET}{_DIM} is deprecated — "
-              f"use {_RESET}{_CYAN}watchdog {new}{_RESET}{_DIM} instead.{_RESET}")
-        sys.argv[1] = new
-
-    if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
-        import importlib
-        module_path, prog_name = _PIPELINE_COMMANDS[sys.argv[1]]
-        sys.argv = [prog_name] + sys.argv[2:]
-        importlib.import_module(module_path).main()
-        return
-
-    # Internal pipeline commands — dispatched before argparse so they never
-    # appear in tab completion
-    _INTERNAL_CMDS = {
-        "entity-index", "queue-status",
-        "is-duplicate",
-        "timeline-collisions", "research-fetch", "research-seen", "watchlist-add",
-    }
-    if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
-        cmd = sys.argv[1]
-        _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
-        if cmd == "entity-index":
-            _p.add_argument("project", nargs="?")
-            cmd_entity_index(_p.parse_args(sys.argv[2:]))
-        elif cmd == "queue-status":
-            _p.add_argument("project", nargs="?")
-            cmd_queue_status(_p.parse_args(sys.argv[2:]))
-        elif cmd == "is-duplicate":
-            _p.add_argument("sha256")
-            _p.add_argument("project", nargs="?")
-            cmd_is_duplicate(_p.parse_args(sys.argv[2:]))
-        elif cmd == "timeline-collisions":
-            from watchdog.pipeline.timeline import main_collisions
-            main_collisions()
-        elif cmd == "research-fetch":
-            _p.add_argument("project", nargs="?")
-            _p.add_argument("--file")
-            cmd_research_fetch(_p.parse_args(sys.argv[2:]))
-        elif cmd == "research-seen":
-            _p.add_argument("project", nargs="?")
-            cmd_research_seen(_p.parse_args(sys.argv[2:]))
-        elif cmd == "watchlist-add":
-            _p.add_argument("terms", nargs="+")
-            cmd_watchlist_add(_p.parse_args(sys.argv[2:]))
-        return
-
+def build_parser() -> argparse.ArgumentParser:
+    """The full `watchdog` argument parser. Built once per invocation — `main()` also reads it to
+    render per-command help, so the help can never list a flag the parser doesn't have."""
     parser = argparse.ArgumentParser(
         prog="watchdog",
         description="Investigative journalism document intelligence tool",
@@ -247,7 +199,7 @@ def main() -> None:
     p_search = sub.add_parser("search", help="Search ingested documents (semantic + exact-match)")
     p_search.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_search.add_argument("query", nargs="?", help="Search query (supports +/- phrases and \"quoted phrases\")")
-    p_search.add_argument("--top", dest="top_n", type=int, default=5, metavar="N",
+    p_search.add_argument("--top", dest="top_n", type=_positive_int, default=5, metavar="N",
                           help="Number of results to return per section (default: 5)")
     p_search.add_argument("--threshold", type=float, default=None, metavar="S",
                           help="Hide results scoring below S (0.0–1.0)")
@@ -325,7 +277,8 @@ def main() -> None:
     p_research = sub.add_parser("research", help="Open Claude Code to research open questions on the web")
     p_research.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_research.add_argument("--question", "-q", help="Research question to seed (omit to be prompted)")
-    p_research.add_argument("--model", help="Model to use (sonnet/opus/haiku, default: sonnet)")
+    p_research.add_argument("--model", choices=list(_MODEL_IDS), default="sonnet",
+                            help="Model for the research session (default: sonnet)")
     p_research.set_defaults(func=cmd_research)
 
     p_watchlist = sub.add_parser("watchlist", help="Sweep the whole vault against watchlist.md (deterministic, no model)")
@@ -345,6 +298,7 @@ def main() -> None:
     p_unlock.set_defaults(func=cmd_unlock)
 
     p_requeue = sub.add_parser("requeue", help="Move documents from queue/_failed/ back into the queue for re-ingest")
+    p_requeue.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_requeue.set_defaults(func=cmd_requeue)
 
     p_configure = sub.add_parser("configure", help="View or change configuration")
@@ -355,10 +309,10 @@ def main() -> None:
     p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
     p_chew.add_argument("file", nargs="?", default=None,
                         help="Specific file to chew (omit to chew all of _INCOMING/)")
-    p_chew.add_argument("--chew-workers", type=int, default=None, metavar="N",
+    p_chew.add_argument("--chew-workers", type=_positive_int, default=None, metavar="N",
                         dest="chew_workers",
                         help="Parallel file workers (see chew_workers in watchdog configure)")
-    p_chew.add_argument("--chunk-workers", type=int, default=None, metavar="N",
+    p_chew.add_argument("--chunk-workers", type=_positive_int, default=None, metavar="N",
                         dest="chunk_workers",
                         help="Parallel chunk workers per file (see chunk_workers in watchdog configure)")
     p_chew.set_defaults(func=cmd_chew)
@@ -392,7 +346,7 @@ def main() -> None:
 
     p_log = sub.add_parser("log", help="Show ingest history for an investigation")
     p_log.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project directory)").completer = _project_completer
-    p_log.add_argument("--lines", type=int, default=None, metavar="N",
+    p_log.add_argument("--lines", type=_positive_int, default=None, metavar="N",
                        help="Number of lines to show (default: all)")
     p_log.set_defaults(func=cmd_log)
 
@@ -414,15 +368,14 @@ def main() -> None:
     p_describe.add_argument("text", nargs="?", help="New description text (omit to be prompted)")
     p_describe.set_defaults(func=cmd_describe)
 
-    _model_choices = ["sonnet", "opus", "haiku"]
+    _model_choices = list(_MODEL_IDS)
     _effort_choices = ["low", "medium", "high", "xhigh", "max"]
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
                    "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash, "
-                   "gemini:gemini-3.5-flash-lite, local:llama-3.3-70b, "
+                   "gemini:gemini-3.5-flash-lite, local:qwen3:32b, "
                    "openrouter:anthropic/claude-3.5-sonnet)")
     # Per-stage finalizer model overrides (issue #433): each routes just that post-ingest stage
-    # to a different model than --finalizer-model, falling back to it when unset. Shared between
-    # `ingest` and `finalize`, which both run post-ingest.
+    # to a different model than --finalizer-model, falling back to it when unset.
     _finalizer_stage_help = {
         "reconciliation": "merging duplicate entities and flagging contradictions between documents",
         "synthesis": "synthesizing prose for multi-mention entities",
@@ -430,19 +383,26 @@ def main() -> None:
         "briefing": "writing the briefing",
     }
 
-    def _add_finalizer_stage_flags(p) -> None:
-        for stage, what in _finalizer_stage_help.items():
-            p.add_argument(f"--finalizer-{stage}-model", default=None,
-                           dest=f"finalizer_{stage}_model", metavar="MODEL",
-                           help=f"Model for {what} only, overriding --finalizer-model for just "
-                                f"this stage — {_model_help}; falls back to --finalizer-model "
-                                f"(or finalizer_model) when unset")
-
-    def _add_verify_flag(p) -> None:
+    def _add_extract_flags(p, rerun: str) -> None:
+        """Flags shared by `dig` and the deprecated `ingest` — everything up to and including
+        extraction. `rerun` is the command a --wait help line tells you to re-run."""
+        p.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
+                       help=f"Model for extraction — {_model_help}; overrides watchdog configure "
+                            f"(default: {defaults.EXTRACTOR_MODEL})")
+        p.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
+                       help=f"Model for document classification — {_model_help}; overrides watchdog "
+                            f"configure (default: {defaults.CLASSIFIER_MODEL})")
+        p.add_argument("--extractor-effort", choices=_effort_choices, default=None,
+                       dest="extractor_effort",
+                       help="Reasoning effort for extraction — lower spends fewer tokens; "
+                            "xhigh/max need a supporting model, OpenAI or Claude — "
+                            f"overrides watchdog configure (default: {defaults.EXTRACTOR_EFFORT})")
+        p.add_argument("--classifier-effort", choices=_effort_choices, default=None,
+                       dest="classifier_effort",
+                       help="Reasoning effort for document classification — "
+                            f"overrides watchdog configure (default: {defaults.CLASSIFIER_EFFORT})")
         # Three states, not two: --verify and --no-verify are explicit answers that beat the
         # `verify_extraction` config key, and the default None means "whatever configure says".
-        # Same shape the model/effort flags use, expressed with a paired store_true/store_false
-        # since there is nothing to type after it.
         g = p.add_mutually_exclusive_group()
         g.add_argument("--verify", action="store_true", default=None, dest="verify",
                        help="After extracting each document, re-read it with a cheap second "
@@ -452,56 +412,63 @@ def main() -> None:
         g.add_argument("--no-verify", action="store_false", default=None, dest="verify",
                        help="Skip the second-read verification pass even when watchdog "
                             "configure turns it on.")
+        p.add_argument("--concurrency", type=_positive_int, default=None, metavar="N",
+                       help="Documents extracted in parallel — overrides watchdog configure "
+                            f"(default: {defaults.EXTRACT_CONCURRENCY})")
+        p.add_argument("--classify-pages", type=_positive_int, default=None, dest="classify_pages",
+                       metavar="N",
+                       help="Pages shown to the document classifier — overrides watchdog configure "
+                            f"(default: {defaults.CLASSIFY_PAGES})")
+        p.add_argument("--skill", nargs="?", const=_PICK_SKILL, default=None, dest="skill",
+                       metavar="NAME",
+                       help="Pin a record skill for every document, skipping classification. "
+                            "Pass a skill name or a path to a skill file, or use --skill with no "
+                            "value to pick interactively.")
+        p.add_argument("--wait", action="store_true", default=False,
+                       help="On a rate limit, sleep until it resets and resume automatically "
+                            f"instead of stopping for you to re-run {rerun}. Not with a "
+                            "batch-mode extractor model (claude-batch/openai-batch).")
+        p.add_argument("--estimate", action="store_true",
+                       help="Print a token/cost estimate for the queue and exit — no lock, no "
+                            "confirm, no extraction")
+        p.add_argument("--estimate-all", action="store_true", dest="estimate_all",
+                       help="Like --estimate, but also project the cost across every model in "
+                            "the catalog, cheapest first — for comparing providers before "
+                            "choosing one")
+        p.add_argument("--skip-warning", action="store_true", default=False, dest="skip_warning",
+                       help="Skip the 'Public records only' acknowledgement pause — for "
+                            "repeated or scripted runs on a corpus already vetted as public. "
+                            "Still prints a one-line notice that documents were sent to the model.")
 
-    p_ingest = sub.add_parser("ingest", help="Extract queued documents (runs the Python pipeline)")
-    p_ingest.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
-                          help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
-    p_ingest.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
-                          help=f"Model for the post-ingest step — reconciling duplicate entities, "
-                               f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
-                               f"overrides watchdog configure (default: haiku)")
-    p_ingest.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
-                          help=f"Model for document classification — {_model_help}; overrides watchdog configure (default: haiku)")
-    p_ingest.add_argument("--extractor-effort", choices=_effort_choices, default=None,
-                          dest="extractor_effort",
-                          help="Reasoning effort for extraction — lower spends fewer tokens; "
-                               "xhigh/max need a supporting model, OpenAI or Claude — "
-                               "overrides watchdog configure (default: medium)")
-    p_ingest.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
-                          dest="finalizer_effort",
-                          help="Reasoning effort for the post-ingest step — entity reconciliation, "
-                               "contradiction flagging, synthesis, timeline, briefing — "
-                               "xhigh/max need a supporting model, OpenAI or Claude — "
-                               "overrides watchdog configure (default: high)")
-    p_ingest.add_argument("--classifier-effort", choices=_effort_choices, default=None,
-                          dest="classifier_effort",
-                          help="Reasoning effort for document classification — "
-                               "overrides watchdog configure (default: low)")
-    _add_finalizer_stage_flags(p_ingest)
-    _add_verify_flag(p_ingest)
-    p_ingest.add_argument("--concurrency", type=int, default=None,
-                          help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
-    p_ingest.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
-                          help="Pages shown to the document classifier — overrides watchdog configure (default: 5)")
+    def _add_finalize_flags(p) -> None:
+        """Flags shared by `bark` and the deprecated `ingest` — the post-ingest step."""
+        p.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
+                       help=f"Model for the post-ingest step — reconciling duplicate entities, "
+                            f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
+                            f"overrides watchdog configure (default: {defaults.FINALIZER_MODEL})")
+        p.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
+                       dest="finalizer_effort",
+                       help="Reasoning effort for the post-ingest step — entity reconciliation, "
+                            "contradiction flagging, synthesis, timeline, briefing — "
+                            "xhigh/max need a supporting model, OpenAI or Claude — "
+                            "overrides watchdog configure (default: high)")
+        for stage, what in _finalizer_stage_help.items():
+            p.add_argument(f"--finalizer-{stage}-model", default=None,
+                           dest=f"finalizer_{stage}_model", metavar="MODEL",
+                           help=f"Model for {what} only, overriding --finalizer-model for just "
+                                f"this stage; falls back to --finalizer-model (or "
+                                f"finalizer_model) when unset")
+        p.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
+                       help="Run entity reconciliation, synthesis, and the timeline rebuild, "
+                            "but skip the briefing model call — useful for bulk backfills or "
+                            "re-ingests where the briefing isn't worth the cost every time.")
+
     from watchdog.cmd.ingest import _PICK_SKILL
-    p_ingest.add_argument("--skill", nargs="?", const=_PICK_SKILL, default=None, dest="skill",
-                          metavar="NAME",
-                          help="Pin a record skill for every document, skipping classification. "
-                               "Pass a skill name, or use --skill with no value to pick interactively.")
-    p_ingest.add_argument("--wait", action="store_true", default=False,
-                          help="On a rate limit, sleep until it resets and resume automatically "
-                               "instead of stopping for you to re-run ingest. Not with a "
-                               "batch-mode extractor model (claude-batch/openai-batch).")
-    p_ingest.add_argument("--estimate", action="store_true",
-                          help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
-    p_ingest.add_argument("--estimate-all", action="store_true", dest="estimate_all",
-                          help="Like --estimate, but also project the cost across every model in "
-                               "the catalog, cheapest first — for comparing providers before "
-                               "choosing one")
-    p_ingest.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
-                          help="Run entity reconciliation, synthesis, and the timeline rebuild, "
-                               "but skip the briefing model call — useful for bulk backfills or "
-                               "re-ingests where the briefing isn't worth the cost every time.")
+
+    p_ingest = sub.add_parser("ingest", help="[deprecated] Extract and finalize queued documents in one run — "
+                                             "use `watchdog`, or `watchdog dig` then `watchdog bark`")
+    _add_extract_flags(p_ingest, "ingest")
+    _add_finalize_flags(p_ingest)
     p_ingest.add_argument("--force", nargs="*", default=None, dest="force", metavar="DOC",
                           help="Re-extract even when a cached extraction already exists — costs "
                                "full extraction spend on every document. Warns before overwriting "
@@ -509,45 +476,10 @@ def main() -> None:
                                "one or more committed documents (sha256, an unambiguous sha256 "
                                "prefix, or filename) to re-queue and re-extract them too, e.g. "
                                "--force report.pdf 9f2c1a.")
-    p_ingest.add_argument("--skip-warning", action="store_true", default=False, dest="skip_warning",
-                          help="Skip the 'Public records only' acknowledgement pause — for "
-                               "repeated or scripted runs on a corpus already vetted as public. "
-                               "Still prints a one-line notice that documents were sent to the model.")
     p_ingest.set_defaults(func=cmd_ingest)
 
     p_extract = sub.add_parser("dig", help="Classify and extract queued documents; stop before finalize (run watchdog bark next)")
-    p_extract.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
-                           help=f"Model for extraction — {_model_help}; overrides watchdog configure (default: sonnet)")
-    p_extract.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
-                           help=f"Model for document classification — {_model_help}; overrides watchdog configure (default: haiku)")
-    p_extract.add_argument("--extractor-effort", choices=_effort_choices, default=None,
-                           dest="extractor_effort",
-                           help="Reasoning effort for extraction — lower spends fewer tokens; "
-                                "xhigh/max need a supporting model, OpenAI or Claude — "
-                                "overrides watchdog configure (default: medium)")
-    p_extract.add_argument("--classifier-effort", choices=_effort_choices, default=None,
-                           dest="classifier_effort",
-                           help="Reasoning effort for document classification — "
-                                "overrides watchdog configure (default: low)")
-    _add_verify_flag(p_extract)
-    p_extract.add_argument("--concurrency", type=int, default=None,
-                           help="Documents extracted in parallel — overrides watchdog configure (default: 5)")
-    p_extract.add_argument("--classify-pages", type=int, default=None, dest="classify_pages",
-                           help="Pages shown to the document classifier — overrides watchdog configure (default: 5)")
-    p_extract.add_argument("--skill", nargs="?", const=_PICK_SKILL, default=None, dest="skill",
-                           metavar="NAME",
-                           help="Pin a record skill for every document, skipping classification. "
-                                "Pass a skill name, or use --skill with no value to pick interactively.")
-    p_extract.add_argument("--wait", action="store_true", default=False,
-                           help="On a rate limit, sleep until it resets and resume automatically "
-                                "instead of stopping for you to re-run dig. Not with a "
-                                "batch-mode extractor model (claude-batch/openai-batch).")
-    p_extract.add_argument("--estimate", action="store_true",
-                           help="Print a token/cost estimate for the queue and exit — no lock, no confirm, no extraction")
-    p_extract.add_argument("--estimate-all", action="store_true", dest="estimate_all",
-                           help="Like --estimate, but also project the cost across every model in "
-                                "the catalog, cheapest first — for comparing providers before "
-                                "choosing one")
+    _add_extract_flags(p_extract, "dig")
     p_extract.add_argument("--limit", type=_positive_int, default=None, metavar="N",
                            help="Extract only the next N queued documents that still need it, "
                                 "leaving the rest queued (for working through a large set in tranches)")
@@ -555,24 +487,10 @@ def main() -> None:
                            help="Re-extract even when a cached extraction already exists — costs "
                                 "full extraction spend on every document. Nothing is committed to "
                                 "the vault by `dig`, so this needs no overwrite warning.")
-    p_extract.add_argument("--skip-warning", action="store_true", default=False, dest="skip_warning",
-                           help="Skip the 'Public records only' acknowledgement pause — for "
-                                "repeated or scripted runs on a corpus already vetted as public. "
-                                "Still prints a one-line notice that documents were sent to the model.")
     p_extract.set_defaults(func=cmd_extract)
 
     p_finalize = sub.add_parser("bark", help="Complete post-ingest (entity reconciliation, synthesis, timeline, briefing) for an already-extracted batch — e.g. after a rate limit stopped it")
-    p_finalize.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
-                            help=f"Model for the post-ingest step — reconciling duplicate entities, "
-                                 f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
-                                 f"overrides watchdog configure (default: haiku)")
-    p_finalize.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
-                            dest="finalizer_effort",
-                            help="Reasoning effort for the post-ingest step — entity reconciliation, "
-                                 "contradiction flagging, synthesis, timeline, briefing — "
-                                 "xhigh/max need a supporting model, OpenAI or Claude — "
-                                 "overrides watchdog configure (default: high)")
-    _add_finalizer_stage_flags(p_finalize)
+    _add_finalize_flags(p_finalize)
     p_finalize.add_argument("--estimate", action="store_true",
                             help="Print a token/cost estimate for the pending batch and exit — "
                                  "no lock, no finalize")
@@ -580,10 +498,6 @@ def main() -> None:
                             help="Like --estimate, but also project the cost across every model in "
                                  "the catalog, cheapest first — for comparing providers before "
                                  "choosing one")
-    p_finalize.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
-                            help="Run entity reconciliation, synthesis, and the timeline rebuild, "
-                                 "but skip the briefing model call — useful for bulk backfills or "
-                                 "re-ingests where the briefing isn't worth the cost every time.")
     p_finalize.set_defaults(func=cmd_finalize)
 
     p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
@@ -596,8 +510,87 @@ def main() -> None:
     p_auth.set_defaults(func=cmd_auth)
 
     try:
-        import argcomplete
+        import argcomplete  # noqa: F401 — imported only to gate the sort below
         sub.choices = dict(sorted(sub.choices.items()))
+    except ImportError:
+        pass
+    return parser
+
+
+def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
+        cmd_about(None)
+        return
+
+    if len(sys.argv) >= 2 and sys.argv[1] in ("-h", "--help"):
+        _print_banner()
+        return
+
+    if len(sys.argv) >= 3 and sys.argv[2] in ("-h", "--help"):
+        cmd = _ALIASES.get(sys.argv[1], _DEPRECATED_ALIASES.get(sys.argv[1], sys.argv[1]))
+        parser = build_parser()
+        subparser = _subparsers(parser).get(cmd)
+        if subparser is not None:
+            _print_cmd_help(cmd, subparser, desc=_subcommand_help(parser, cmd))
+            return
+
+    if len(sys.argv) >= 2 and sys.argv[1] in _ALIASES:
+        sys.argv[1] = _ALIASES[sys.argv[1]]
+
+    # `extract`/`finalize` → `dig`/`bark` (#441, D138): kept working during a deprecation
+    # window rather than removed outright, but unlike a plain `_ALIASES` entry, this warns —
+    # the point is for people to actually move onto the new name.
+    if len(sys.argv) >= 2 and sys.argv[1] in _DEPRECATED_ALIASES:
+        old, new = sys.argv[1], _DEPRECATED_ALIASES[sys.argv[1]]
+        print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog {old}{_RESET}{_DIM} is deprecated — "
+              f"use {_RESET}{_CYAN}watchdog {new}{_RESET}{_DIM} instead.{_RESET}")
+        sys.argv[1] = new
+
+    if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
+        import importlib
+        module_path, prog_name = _PIPELINE_COMMANDS[sys.argv[1]]
+        sys.argv = [prog_name] + sys.argv[2:]
+        importlib.import_module(module_path).main()
+        return
+
+    # Internal pipeline commands — dispatched before argparse so they never
+    # appear in tab completion
+    _INTERNAL_CMDS = {
+        "entity-index", "queue-status",
+        "is-duplicate",
+        "timeline-collisions", "research-fetch", "research-seen", "watchlist-add",
+    }
+    if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
+        cmd = sys.argv[1]
+        _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
+        if cmd == "entity-index":
+            _p.add_argument("project", nargs="?")
+            cmd_entity_index(_p.parse_args(sys.argv[2:]))
+        elif cmd == "queue-status":
+            _p.add_argument("project", nargs="?")
+            cmd_queue_status(_p.parse_args(sys.argv[2:]))
+        elif cmd == "is-duplicate":
+            _p.add_argument("sha256")
+            _p.add_argument("project", nargs="?")
+            cmd_is_duplicate(_p.parse_args(sys.argv[2:]))
+        elif cmd == "timeline-collisions":
+            from watchdog.pipeline.timeline import main_collisions
+            main_collisions()
+        elif cmd == "research-fetch":
+            _p.add_argument("project", nargs="?")
+            _p.add_argument("--file")
+            cmd_research_fetch(_p.parse_args(sys.argv[2:]))
+        elif cmd == "research-seen":
+            _p.add_argument("project", nargs="?")
+            cmd_research_seen(_p.parse_args(sys.argv[2:]))
+        elif cmd == "watchlist-add":
+            _p.add_argument("terms", nargs="+")
+            cmd_watchlist_add(_p.parse_args(sys.argv[2:]))
+        return
+
+    parser = build_parser()
+    try:
+        import argcomplete
         argcomplete.autocomplete(parser)
     except ImportError:
         pass

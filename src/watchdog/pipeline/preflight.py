@@ -35,6 +35,8 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
+
 
 def run(vault: Path, sha256: str) -> dict:
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
@@ -95,7 +97,7 @@ def main() -> None:
         sys.exit("Usage: python -m watchdog.pipeline.preflight <sha256>")
 
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
     sha256 = sys.argv[1]

@@ -21,7 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from watchdog import model_client, skills_catalog, telemetry_db
+from watchdog import defaults, model_client, skills_catalog, telemetry_db
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import (
     abort, batch_extract, chunking, harvest, leads, merge, preflight, postflight, prompts, reconcile,
@@ -30,7 +30,7 @@ from watchdog.pipeline import (
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 
-DEFAULT_CONCURRENCY = 5
+DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
 # Admission control (#563 step 2 — the observability half, #592, built the ground truth this
 # reads). A new document's dispatch is held back when it would push the run's recent tokens/min
@@ -503,7 +503,7 @@ def latest_usage(vault: Path) -> dict | None:
     return data.get("totals")
 
 
-DEFAULT_CLASSIFY_PAGES = 5
+DEFAULT_CLASSIFY_PAGES = defaults.CLASSIFY_PAGES
 # The record skill a document falls back to when classification names nothing usable.
 _FALLBACK_SKILL = "general-records.md"
 # Per-section input budget when falling back to sectioning after a whole-doc extraction
@@ -2767,7 +2767,7 @@ def pending_finalization(vault: Path) -> dict:
     return {"docs": len(results), "entities": entities}
 
 
-async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None = None,
+async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
                    post_backend: str | None = None, force_shas: list[str] | None = None,
                    skip_briefing: bool = False, finalizer_overrides: dict | None = None,
@@ -2837,8 +2837,9 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
 
 
 async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
-              extract_model: str = "sonnet", post_model: str = "sonnet",
-              classify_model: str = "haiku",
+              extract_model: str = defaults.EXTRACTOR_MODEL,
+              post_model: str = defaults.FINALIZER_MODEL,
+              classify_model: str = defaults.CLASSIFIER_MODEL,
               classify_pages: int = DEFAULT_CLASSIFY_PAGES,
               pinned_skill: str | None = None,
               extract_effort: str | None = None, post_effort: str | None = None,

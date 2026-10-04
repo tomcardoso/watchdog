@@ -1846,30 +1846,17 @@ def test_cmd_delete_purge_removes_files(configured, monkeypatch, capsys):
     assert "Deleted" in capsys.readouterr().out
 
 
-def test_cmd_delete_purge_prints_backup_hint_when_registry_existed(configured, monkeypatch, capsys):
-    """#270: --purge is a one-way delete, but the registry files are snapshotted first
-    (a hedge against a partial failure, not a way to undo — the snapshot lives inside
-    the vault being deleted, so a completed purge removes it too). cmd_new already
-    seeds entities.json/documents.json/registry.json, so any real vault hits this path."""
+def test_cmd_delete_purge_removes_the_vault_without_a_pointless_backup(configured, monkeypatch, capsys):
+    """--purge used to snapshot the registry *inside* the folder it then deleted, and print a
+    paragraph explaining the snapshot couldn't undo anything. It just deletes now."""
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
     monkeypatch.setattr("builtins.input", lambda _: "y")
     cli.cmd_delete(args(name="Shell Co", purge=True))
     out = _strip_ansi(capsys.readouterr().out)
     assert "Deleted" in out
-    assert "snapshot" in out.lower()
-    assert not vault.exists()   # the purge (and its backup dir) is fully gone
-
-
-def test_cmd_delete_purge_no_backup_hint_when_registry_missing(configured, monkeypatch, capsys):
-    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
-    vault = configured / "shell-co"
-    for name in ("entities.json", "documents.json", "registry.json", "manifest.json", "resolutions.json"):
-        (vault / ".watchdog" / "registry" / name).unlink(missing_ok=True)
-    monkeypatch.setattr("builtins.input", lambda _: "y")
-    cli.cmd_delete(args(name="Shell Co", purge=True))
-    out = _strip_ansi(capsys.readouterr().out)
     assert "snapshot" not in out.lower()
+    assert not vault.exists()
 
 
 def test_cmd_delete_cancelled(configured, monkeypatch, capsys):
@@ -2040,6 +2027,85 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
     cli.cmd_chew(args(file=str(f), chew_workers=None))
     assert len(calls) == 1
     assert calls[0]["files"] == [f]
+
+
+def test_cmd_chew_copies_a_file_from_outside_incoming(configured, monkeypatch, tmp_path):
+    """Chew moves what it processes into the vault — a file named from anywhere else (Downloads,
+    the vault's own _CONTEXT/) must be copied in, not taken away from where the user keeps it."""
+    import watchdog.pipeline.preprocess_batch as ppb
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    outside = tmp_path / "downloads" / "doc.pdf"
+    outside.parent.mkdir()
+    outside.write_bytes(b"%PDF original")
+    (outside.parent / "doc.pdf.yml").write_text("source: x\n")
+    calls = []
+    monkeypatch.setattr(ppb, "run_ingest", lambda v, files=None, **k: calls.append(files))
+    monkeypatch.chdir(vault)
+    cli.cmd_chew(args(file=str(outside), chew_workers=None))
+    assert outside.exists()
+    copied = calls[0][0]
+    assert copied.parent == (vault / "_INCOMING").resolve() or copied.parent == vault / "_INCOMING"
+    assert copied.read_bytes() == b"%PDF original"
+    assert copied.with_name("doc.pdf.yml").exists()
+
+
+def test_search_single_word_inside_vault_is_the_query(configured, monkeypatch):
+    """`watchdog search shell` inside a vault once failed because "shell" prefix-matched a
+    project slug; inside a vault a lone argument is always the query."""
+    import watchdog.pipeline.embed as embed_mod
+    cli.cmd_new(args(name="Shell Company Investigation", dir=str(configured)))
+    vault = configured / "shell-company-investigation"
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(embed_mod, "index_stats", lambda v: {"total": 0})
+    a = args(project="shell", query=None, top_n=5, threshold=None, batch=None, everywhere=False,
+             json=True)
+    cli.cmd_search(a)
+    assert a.query == "shell"
+
+
+def test_queue_status_outside_a_vault_without_a_name_exits_cleanly(configured, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit, match="pass the investigation name"):
+        cli.cmd_queue_status(args(project=None))
+
+
+def test_home_config_directory_is_not_a_vault(tmp_path):
+    """The global ~/.watchdog config directory must not make the home folder look like a vault."""
+    from watchdog.vault_paths import is_vault
+    home = tmp_path / "home"
+    (home / ".watchdog").mkdir(parents=True)
+    (home / ".watchdog" / "config.json").write_text("{}")
+    assert not is_vault(home)
+    vault = tmp_path / "v"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    assert is_vault(vault)
+
+
+def test_search_batch_reports_unchecked_terms_when_fulltext_fails(configured, monkeypatch, capsys, tmp_path):
+    from watchdog.pipeline import fulltext
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    terms = tmp_path / "terms.txt"
+    terms.write_text("Jane Roe\n")
+    monkeypatch.setattr(fulltext, "search", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db locked")))
+    from watchdog.cmd.vault import cmd_search_batch
+    cmd_search_batch(args(top_n=5, json=False), vault, str(terms))
+    captured = capsys.readouterr()
+    assert "not checked" in _strip_ansi(captured.out)
+    assert "no hits" not in _strip_ansi(captured.out)
+    assert "NOT checked" in captured.err
+
+
+def test_requeue_accepts_a_project_name(configured, monkeypatch, tmp_path):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    failed = vault / ".watchdog" / "queue" / "_failed"
+    failed.mkdir(parents=True)
+    (failed / "abc.json").write_text("{}")
+    monkeypatch.chdir(tmp_path)
+    cli.cmd_requeue(args(project="Shell Co"))
+    assert (vault / ".watchdog" / "queue" / "abc.json").exists()
 
 
 # ── cmd_rename ────────────────────────────────────────────────────────────────
@@ -3235,11 +3301,60 @@ def test_dig_command_appears_in_help(monkeypatch, capsys):
     """`watchdog dig --help` must work — i.e. `dig` is a registered subcommand."""
     import sys
     monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--help"])
-    with pytest.raises(SystemExit):
-        cli.main()
+    cli.main()
     out = capsys.readouterr().out
     assert "dig" in out
     assert "--extractor-model" in out
+
+
+def test_every_subcommand_help_lists_every_flag_it_accepts(monkeypatch, capsys):
+    """Per-command help is rendered from the parser itself, so it can't drift from what the
+    parser accepts — `ingest --help` once omitted --verify/--estimate/--force, and `search --help`
+    hid --batch/--everywhere/--json."""
+    import argparse
+    import sys
+    parser = cli.build_parser()
+    for name, sub in cli._subparsers(parser).items():
+        monkeypatch.setattr(sys, "argv", ["watchdog", name, "--help"])
+        cli.main()
+        out = _strip_ansi(capsys.readouterr().out)
+        for action in sub._actions:
+            if action.help == argparse.SUPPRESS or isinstance(action, argparse._HelpAction):
+                continue
+            for opt in action.option_strings:
+                assert opt in out, f"{name} --help is missing {opt}"
+
+
+def test_configure_defaults_match_the_runtime_defaults():
+    """`watchdog configure` displays each key's default from `_CONFIGURE_KEYS`; the runtime reads
+    `watchdog.defaults`. They once disagreed (extract_concurrency: shown 5, used 20)."""
+    from watchdog import defaults
+    from watchdog.cmd.ingest import _DEFAULT_EXTRACT_CONCURRENCY
+    from watchdog.cmd.setup import _CONFIGURE_KEYS
+    assert _CONFIGURE_KEYS["extract_concurrency"]["default"] == _DEFAULT_EXTRACT_CONCURRENCY == 20
+    assert _CONFIGURE_KEYS["classify_pages"]["default"] == defaults.CLASSIFY_PAGES
+    assert _CONFIGURE_KEYS["extractor_model"]["default"] == defaults.EXTRACTOR_MODEL
+    assert _CONFIGURE_KEYS["classifier_model"]["default"] == defaults.CLASSIFIER_MODEL
+    assert _CONFIGURE_KEYS["finalizer_model"]["default"] == defaults.FINALIZER_MODEL
+    assert _CONFIGURE_KEYS["extractor_effort"]["default"] == defaults.EXTRACTOR_EFFORT
+    assert _CONFIGURE_KEYS["classifier_effort"]["default"] == defaults.CLASSIFIER_EFFORT
+
+
+@pytest.mark.parametrize("argv", [
+    ["dig", "--concurrency", "0"], ["dig", "--classify-pages", "-1"], ["chew", "--chew-workers", "0"],
+    ["search", "q", "--top", "0"], ["log", "--lines", "0"],
+])
+def test_count_flags_reject_zero_and_negatives(argv):
+    with pytest.raises(SystemExit):
+        cli.build_parser().parse_args(argv)
+
+
+def test_resolve_stage_keeps_colons_inside_the_model_id():
+    """Ollama-style ids are `name:tag` — `local:qwen3:32b` must split at the first colon."""
+    from watchdog.cmd.ingest import _resolve_stage
+    assert _resolve_stage("local:qwen3:32b", None) == ("local", "qwen3:32b")
+    assert _resolve_stage("openrouter:anthropic/claude-3.5-sonnet", None) == (
+        "openrouter", "anthropic/claude-3.5-sonnet")
 
 
 def test_extract_alias_warns_and_dispatches_to_dig(configured, monkeypatch, capsys):
@@ -4273,10 +4388,12 @@ def test_notify_calls_osascript_on_darwin(monkeypatch):
     def fake_run(cmd, **kw):
         calls.append(cmd)
     monkeypatch.setattr("watchdog.cmd.base.subprocess.run", fake_run)
-    cli._notify("Watchdog", "3 files chewed")
+    cli._notify('Watchdog — "Quoted" project', "3 files chewed")
     assert len(calls) == 1
     assert calls[0][0] == "osascript"
-    assert "3 files chewed" in calls[0][2]
+    # Title and body are passed as arguments, never spliced into the script source.
+    assert calls[0][-2:] == ['Watchdog — "Quoted" project', "3 files chewed"]
+    assert not any("Quoted" in part for part in calls[0][:-2])
 
 
 # ── search --json output (consumed by the watchdog-query semantic lane) ──────────

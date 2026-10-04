@@ -30,6 +30,8 @@ The constants are gated on terminal detection (`cmd.base._color_enabled`, #499):
 2. Use `_find_project` for any command that takes a project name — it handles prefix matching and exits cleanly.
 3. Never call `print(f"Error: …")` and continue — use `sys.exit(f"Error: …")`.
 4. If the command produces a success confirmation, use `_GREEN` for the label and `_BOLD` for the key value.
+5. Register the command's arguments only on its argparse subparser in `build_parser()`. `watchdog <cmd> --help` renders them from the parser; `_CMD_HELP` in `cmd/base.py` holds only an optional description override and notes, never flags.
+6. Inside a vault, a lone positional argument is the command's own value (a query, a new name), not a project prefix — only an exact slug names another project.
 
 ## Adding a new CLI alias
 

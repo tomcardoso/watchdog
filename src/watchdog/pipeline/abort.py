@@ -33,6 +33,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
+
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -111,7 +113,7 @@ def main() -> None:
     if len(sys.argv) < 2:
         sys.exit("Usage: watchdog ingest-abort <sha256>")
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     result = run(vault, sys.argv[1])
     print(json.dumps(result, ensure_ascii=False))

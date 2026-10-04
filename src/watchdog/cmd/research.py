@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from watchdog.vault_paths import is_vault
 from watchdog import interactive
 from watchdog.cmd.base import (
     _BOLD,
@@ -122,7 +123,7 @@ def _confirm(prompt: str) -> bool:
 def cmd_research(args) -> None:
     """Explain the mode, open Claude Code on /watchdog-research, then download what it queued."""
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         if getattr(args, "name", None):
             _, info = _find_project(args.name)
             vault = Path(info["path"])

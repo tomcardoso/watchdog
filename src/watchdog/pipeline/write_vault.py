@@ -67,6 +67,7 @@ from pathlib import Path
 
 import yaml
 
+from watchdog.vault_paths import is_vault
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json_or
@@ -1320,7 +1321,7 @@ def main() -> None:
 
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
-    if not (vault_path / ".watchdog").is_dir():
+    if not is_vault(vault_path):
         sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
     for label, p in [("--extraction", extraction_path), ("--neardup-file", neardup_file)]:
         if p is None:

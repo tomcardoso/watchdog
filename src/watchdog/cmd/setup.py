@@ -4,17 +4,16 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
 from pathlib import Path
 
-from watchdog import interactive
+from watchdog.vault_paths import is_vault
+from watchdog import defaults, interactive
 from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _VAULT_PERMISSIONS,
     _find_project,
-    load_projects,
 )
 from watchdog.pipeline.json_io import _read_json, write_private_json
 
@@ -100,7 +99,7 @@ _CONFIGURE_KEYS = {
             "  API key, unless you've set your own value."
         ),
         "type": "int",
-        "default": 5,
+        "default": defaults.EXTRACT_CONCURRENCY,
         "min": 1,
     },
     "extract_token_budget": {
@@ -128,7 +127,7 @@ _CONFIGURE_KEYS = {
             "  Override for one run with `watchdog dig --classify-pages N`. Default: 5. Minimum: 1."
         ),
         "type": "int",
-        "default": 5,
+        "default": defaults.CLASSIFY_PAGES,
         "min": 1,
     },
     "default_skill": {
@@ -311,7 +310,7 @@ _CONFIGURE_KEYS = {
             "  Override for a single run with: watchdog dig --classifier-model M"
         ),
         "type": "string",
-        "default": "haiku",
+        "default": defaults.CLASSIFIER_MODEL,
     },
     "extractor_model": {
         "short": "Model for document extraction (default: sonnet)",
@@ -329,7 +328,7 @@ _CONFIGURE_KEYS = {
             "  to enable it. Override for a single run with: watchdog dig --extractor-model M"
         ),
         "type": "string",
-        "default": "sonnet",
+        "default": defaults.EXTRACTOR_MODEL,
     },
     "finalizer_model": {
         "short": "Model for the post-ingest step — reconciliation + synthesis + briefing (default: haiku)",
@@ -348,7 +347,7 @@ _CONFIGURE_KEYS = {
             "  Override for a single run with: watchdog bark --finalizer-model M"
         ),
         "type": "string",
-        "default": "haiku",
+        "default": defaults.FINALIZER_MODEL,
     },
     "finalizer_reconciliation_model": {
         "short": "Model override for entity-duplicate reconciliation only (default: unset — uses finalizer_model)",
@@ -425,7 +424,7 @@ _CONFIGURE_KEYS = {
             "  Override for a single run with: watchdog dig --extractor-effort E"
         ),
         "type": "enum",
-        "default": "medium",
+        "default": defaults.EXTRACTOR_EFFORT,
         "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     "finalizer_effort": {
@@ -460,7 +459,7 @@ _CONFIGURE_KEYS = {
             "  Override for a single run with: watchdog dig --classifier-effort E"
         ),
         "type": "enum",
-        "default": "low",
+        "default": defaults.CLASSIFIER_EFFORT,
         "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     # ── Local / self-hosted models (#380) ───────────────────────────────────────
@@ -752,7 +751,7 @@ def cmd_refresh_skills(args) -> None:
         vault = Path(info["path"])
     else:
         vault = Path(".").resolve()
-        if not (vault / ".watchdog").is_dir():
+        if not is_vault(vault):
             sys.exit("Error: not inside a watchdog project. cd into a vault or pass a project name.")
     from watchdog.setup_cmd import install_skills
     commands_dir = vault / ".claude" / "commands"
@@ -934,8 +933,7 @@ def _auto_resolved_hint(key: str, config: dict) -> str:
     from watchdog import model_client
     from watchdog.pipeline import section
     raw = config.get("extractor_model") or _CONFIGURE_KEYS["extractor_model"]["default"]
-    backend, _, model = raw.rpartition(":")
-    backend = backend or None
+    backend, model = defaults.split_backend_model(raw)
     model = model or None
     threshold, budget = section.model_defaults(model, backend=backend)
     resolved = threshold if key == "section_token_threshold" else budget
@@ -1301,19 +1299,16 @@ def cmd_configure(args) -> None:
 
 
 def cmd_unlock(args) -> None:
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS
+    from watchdog.pipeline.locks import lock_age_seconds
     inferred = not args.project
     if args.project:
         _, info = _find_project(args.project)
+        vault = Path(info["path"])
     else:
-        cwd = Path(".").resolve()
-        if not (cwd / ".watchdog").is_dir():
+        vault = Path(".").resolve()
+        if not is_vault(vault):
             sys.exit("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.")
-        projects = load_projects()
-        match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-        if match is None:
-            sys.exit("Error: vault not found in registry. Pass the project name explicitly.")
-        args.project, info = match
-    vault = Path(info["path"])
 
     locks = [
         (vault / ".watchdog" / ".chew-lock",                 ".chew-lock",   "chew"),
@@ -1322,32 +1317,21 @@ def cmd_unlock(args) -> None:
 
     print()
     found_any = False
+    ingest_lock_held = False
     for lock_path, lock_name, op_name in locks:
         if not lock_path.exists():
             continue
         found_any = True
-
-        started_at = None
-        for line in lock_path.read_text().splitlines():
-            if line.startswith("started_at:"):
-                started_at = line.split(":", 1)[1].strip()
-                break
-
-        age_str = "unknown age"
-        is_stale = True
-        if started_at:
-            try:
-                t = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
-                age_secs = (datetime.now(timezone.utc) - t).total_seconds()
-                age_str = f"{int(age_secs // 60)}m ago"
-                is_stale = age_secs >= 1800
-            except ValueError:
-                pass
-
-        if is_stale or args.force:
+        age = lock_age_seconds(lock_path)
+        age_str = "unknown age" if age is None else f"{int(age // 60)}m ago"
+        # An unparseable lock is treated as stale here, unlike the automatic takeover in
+        # `locks.acquire_or_take_stale`: running `unlock` is the user's explicit decision.
+        if age is None or age >= STALE_SECONDS or args.force:
             lock_path.unlink()
             print(f"  {_GREEN}Removed:{_RESET} {_BOLD}{lock_name}{_RESET}  {_DIM}({age_str}){_RESET}")
         else:
+            if op_name == "ingest":
+                ingest_lock_held = True
             print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
             force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"
             print(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.")
@@ -1355,17 +1339,20 @@ def cmd_unlock(args) -> None:
     if not found_any:
         print(f"  {_DIM}No locks found — nothing to do.{_RESET}")
 
-    state_file = vault / ".watchdog" / "ingest-state.json"
-    if state_file.exists():
-        state_file.unlink(missing_ok=True)
-        print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}ingest-state.json{_RESET}")
+    # The run state and temp files belong to the ingest that holds the lock — leave them alone
+    # while a live one still does.
+    if not ingest_lock_held:
+        state_file = vault / ".watchdog" / "ingest-state.json"
+        if state_file.exists():
+            state_file.unlink(missing_ok=True)
+            print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}ingest-state.json{_RESET}")
 
-    tmp_dir = vault / ".watchdog" / "tmp"
-    if tmp_dir.exists():
-        leftover = list(tmp_dir.glob("wdg_*"))
-        for f in leftover:
-            f.unlink(missing_ok=True)
-        if leftover:
-            print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}{len(leftover)} leftover temp file{'s' if len(leftover) != 1 else ''} from .watchdog/tmp/{_RESET}")
+        tmp_dir = vault / ".watchdog" / "tmp"
+        if tmp_dir.exists():
+            leftover = list(tmp_dir.glob("wdg_*"))
+            for f in leftover:
+                f.unlink(missing_ok=True)
+            if leftover:
+                print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}{len(leftover)} leftover temp file{'s' if len(leftover) != 1 else ''} from .watchdog/tmp/{_RESET}")
 
     print()

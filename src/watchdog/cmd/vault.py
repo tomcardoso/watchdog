@@ -10,6 +10,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog import interactive
 from watchdog.cmd.base import (
     VAULT_SCHEMA_VERSION,
@@ -34,7 +35,6 @@ from watchdog.cmd.base import (
     save_projects,
     slugify,
 )
-from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 
 
@@ -236,7 +236,7 @@ def cmd_register(args) -> None:
 
     if not vault.exists():
         sys.exit(f"Error: path not found: {vault}")
-    if not (vault / ".watchdog").exists():
+    if not is_vault(vault):
         sys.exit(f"Error: {vault} does not look like a watchdog vault — no .watchdog folder found.")
 
     try:
@@ -485,11 +485,11 @@ def cmd_new(args) -> None:
 def cmd_obsidian(args) -> None:
     if not args.name:
         cwd = Path(".").resolve()
-        if (cwd / ".watchdog").is_dir():
+        if is_vault(cwd):
             projects = load_projects()
             info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
             if info is None:
-                sys.exit("Error: current directory is a vault but not registered. Run `watchdog new` first.")
+                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
         else:
             sys.exit("Error: not inside a watchdog project. Run `watchdog obsidian <name>` or cd into a project first.")
     else:
@@ -543,11 +543,11 @@ def cmd_obsidian(args) -> None:
 def cmd_open(args) -> None:
     if not args.name:
         cwd = Path(".").resolve()
-        if (cwd / ".watchdog").is_dir():
+        if is_vault(cwd):
             projects = load_projects()
             info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
             if info is None:
-                sys.exit("Error: current directory is a vault but not registered. Run `watchdog new` first.")
+                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
         else:
             sys.exit("Error: not inside a watchdog project. Run `watchdog open <name>` or cd into a project first.")
     else:
@@ -581,8 +581,13 @@ def cmd_rename(args) -> None:
 
     if first is not None and new_name is None:
         projects = load_projects()
+        cwd = Path(".").resolve()
+        in_vault = any(Path(v["path"]).resolve() == cwd for v in projects.values())
         slug_try = slugify(first)
-        is_known = slug_try in projects or any(k.startswith(slug_try) for k in projects)
+        # Inside a vault a lone argument is the new value unless it names a project exactly;
+        # prefix-matching here turned `rename Shell` into "rename the shell-company project".
+        is_known = slug_try in projects or (
+            not in_vault and any(k.startswith(slug_try) for k in projects))
         if is_known:
             slug, info = _find_project(first)
         else:
@@ -660,8 +665,13 @@ def cmd_describe(args) -> None:
 
     if first is not None and new_desc is None:
         projects = load_projects()
+        cwd = Path(".").resolve()
+        in_vault = any(Path(v["path"]).resolve() == cwd for v in projects.values())
         slug_try = slugify(first)
-        is_known = slug_try in projects or any(k.startswith(slug_try) for k in projects)
+        # Inside a vault a lone argument is the new value unless it names a project exactly;
+        # prefix-matching here turned `rename Shell` into "rename the shell-company project".
+        is_known = slug_try in projects or (
+            not in_vault and any(k.startswith(slug_try) for k in projects))
         if is_known:
             slug, info = _find_project(first)
         else:
@@ -729,19 +739,9 @@ def cmd_delete(args) -> None:
     del projects[slug]
     save_projects(projects)
 
-    purge_backed_up = False
     if args.purge and vault.exists():
-        if not (vault / ".watchdog").exists():
+        if not is_vault(vault):
             sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
-        reg_dir = vault / ".watchdog" / "registry"
-        # Backing up the whole vault would defeat the purpose of --purge, so this is
-        # registry data only — and it lives inside the vault being deleted, so it's a
-        # hedge against a partial failure, not a way to undo the purge (#270).
-        purge_backed_up = _snapshot(vault, "delete-purge", [
-            reg_dir / "entities.json", reg_dir / "documents.json",
-            reg_dir / "registry.json", reg_dir / "manifest.json",
-            reg_dir / "resolutions.json", reg_dir / "requests.json",
-        ]) is not None
         shutil.rmtree(vault)
 
     # Remove from Obsidian registry
@@ -759,10 +759,6 @@ def cmd_delete(args) -> None:
 
     label = "Deleted" if args.purge else "Removed"
     print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}")
-    if purge_backed_up:
-        print(f"  {_DIM}A registry snapshot was taken before deletion, but it lived inside "
-              f"the vault — a completed purge removes it too, so it's only a hedge against "
-              f"a delete that fails partway, not a way to undo this.{_RESET}")
     print()
 
 
@@ -835,7 +831,7 @@ def cmd_unarchive(args) -> None:
 def cmd_log(args) -> None:
     if not args.name:
         cwd = Path(".").resolve()
-        if (cwd / ".watchdog").is_dir():
+        if is_vault(cwd):
             projects = load_projects()
             info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
             if info is None:
@@ -898,7 +894,7 @@ def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
 def cmd_watch(args) -> None:
     if not args.name:
         cwd = Path(".").resolve()
-        if (cwd / ".watchdog").is_dir():
+        if is_vault(cwd):
             projects = load_projects()
             info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
             if info is None:
@@ -917,7 +913,13 @@ def cmd_watch(args) -> None:
     incoming = vault / "_INCOMING"
     print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}_INCOMING/{_RESET} — press Ctrl+C to stop.\n")
 
-    known: set = set(find_files([incoming]))
+    # Files already waiting are chewed on the first stable poll, like any new arrival — they used
+    # to be ignored until some other file happened to arrive.
+    known: set = set()
+    waiting = len(find_files([incoming]))
+    if waiting:
+        print(f"  {_DIM}{waiting} file{'s' if waiting != 1 else ''} already in _INCOMING/ — chewing "
+              f"them first.{_RESET}\n")
     pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
 
     try:
@@ -1048,7 +1050,7 @@ def cmd_status(args) -> None:
     from collections import Counter
     if not args.name:
         cwd = Path(".").resolve()
-        if (cwd / ".watchdog").is_dir():
+        if is_vault(cwd):
             projects = load_projects()
             info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
             if info is None:
@@ -1337,13 +1339,21 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
     as_json = getattr(args, "json", False)
     limit = args.top_n
     report = []
+    failures = 0
     for term in terms:
         entities = _manifest_matches(manifest, term)
         try:
-            hits = fulltext.search(vault, term, limit=limit)
-        except Exception:
-            hits = []
-        report.append({"term": term, "entities": entities, "hits": hits})
+            hits, error = fulltext.search(vault, term, limit=limit), None
+        except Exception as e:
+            hits, error = [], str(e)
+            failures += 1
+        report.append({"term": term, "entities": entities, "hits": hits, "error": error})
+    if failures:
+        # A failed lookup must never read as "no hits" — for a sanctions or donor list that is a
+        # false negative presented as a result.
+        print(f"  {_YELLOW}Warning: exact-match search failed for {failures} of {len(terms)} "
+              f"term(s) — those terms were NOT checked against the document text "
+              f"(try `watchdog reindex`).{_RESET}", file=sys.stderr)
 
     if as_json:
         print(json.dumps({
@@ -1351,7 +1361,8 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
                 {"term": r["term"],
                  "entities": r["entities"],
                  "hits": [{"kind": h["kind"], "title": h["title"], "path": h["path"], "page": h["page"]}
-                          for h in r["hits"]]}
+                          for h in r["hits"]],
+                 **({"error": r["error"]} if r["error"] else {})}
                 for r in report
             ]
         }, ensure_ascii=False))
@@ -1360,6 +1371,10 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
     print()
     for r in report:
         print(f"  {_BOLD}{r['term']}{_RESET}")
+        if r["error"] and not r["entities"]:
+            print(f"    {_YELLOW}not checked — exact-match search failed: {r['error']}{_RESET}")
+            print()
+            continue
         if not r["entities"] and not r["hits"]:
             print(f"    {_DIM}no hits{_RESET}")
             print()
@@ -1424,16 +1439,17 @@ def cmd_search_everywhere(args) -> None:
 
         entities_by_id = {}
         hits = []
+        error = None
         for term in terms:
             for e in _manifest_matches(manifest, term):
                 entities_by_id[e["id"]] = e
             try:
                 hits.extend(fulltext.search(vault, term, limit=limit))
-            except Exception:
-                pass
+            except Exception as e:
+                error = str(e)
 
         results.append({"slug": slug, "name": info["name"],
-                        "entities": list(entities_by_id.values()), "hits": hits})
+                        "entities": list(entities_by_id.values()), "hits": hits, "error": error})
 
     if as_json:
         print(json.dumps({
@@ -1441,7 +1457,8 @@ def cmd_search_everywhere(args) -> None:
             "investigations": [
                 {"slug": r["slug"], "name": r["name"], "entities": r["entities"],
                  "hits": [{"kind": h["kind"], "title": h["title"], "path": h["path"], "page": h["page"]}
-                          for h in r["hits"]]}
+                          for h in r["hits"]],
+                 **({"error": r["error"]} if r["error"] else {})}
                 for r in results
             ],
         }, ensure_ascii=False))
@@ -1472,6 +1489,12 @@ def cmd_search_everywhere(args) -> None:
             print(f"    {_DIM}{' · '.join(parts)}{_RESET}")
         print()
 
+    unchecked = [r for r in results if r["error"]]
+    if unchecked:
+        names = ", ".join(r["name"] for r in unchecked)
+        print(f"  {_YELLOW}Exact-match search failed in {len(unchecked)} investigation"
+              f"{'s' if len(unchecked) != 1 else ''} ({names}) — the document text there was NOT "
+              f"checked; run `watchdog reindex` in each.{_RESET}\n")
     if n_skipped:
         noun = "investigation" if n_skipped == 1 else "investigations"
         print(f"  {_DIM}Skipped {n_skipped} {noun} with a broken vault path.{_RESET}\n")
@@ -1506,14 +1529,16 @@ def cmd_search(args) -> None:
         _, info = _find_project(project_arg)
         args.query = query_arg
     elif project_arg and not query_arg:
-        projects  = load_projects()
-        slug_try  = slugify(project_arg)
-        is_known  = slug_try in projects or any(k.startswith(slug_try) for k in projects)
-        if is_known:
-            sys.exit("Error: please provide a search query.")
-        cwd   = Path(".").resolve()
+        # One positional: inside a vault it is the query — `watchdog search shell` once failed
+        # with "please provide a search query" because "shell" prefix-matched another project's
+        # slug. Outside a vault it can only be a project name, which still needs a query.
+        projects = load_projects()
+        cwd = Path(".").resolve()
         match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
         if match is None:
+            slug_try = slugify(project_arg)
+            if slug_try in projects or any(k.startswith(slug_try) for k in projects):
+                sys.exit("Error: please provide a search query.")
             sys.exit(f"Project not found: {project_arg}\nRun 'watchdog list' to see all projects.")
         _, info = match
         args.query = project_arg
