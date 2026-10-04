@@ -5333,3 +5333,27 @@ def test_cmd_finalize_called_directly_returns_dict_without_exiting(wdg_home, tmp
     result = ing.cmd_finalize(args())
 
     assert result is errored
+
+
+def test_search_links_passages_to_their_document_note_on_a_terminal(configured, monkeypatch, capsys):
+    from watchdog import terminal
+    vault = _register_search_project(configured)
+    reg = vault / ".watchdog" / "registry"
+    reg.mkdir(parents=True)
+    (reg / "documents.json").write_text(json.dumps({
+        "s1": {"filename": "doc.pdf", "document_note": "documents/doc"},
+        "s2": {"filename": "dup.pdf", "document_note": "documents/dup"},
+        "s3": {"filename": "dup.pdf", "document_note": "documents/dup-abc123"}}))
+    monkeypatch.setattr(terminal, "_COLOR", True)
+    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda *a, **k: [])
+    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
+    for name in ("doc.pdf", "dup.pdf"):
+        monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
+            passage={"filename": name, "page": 3, "text": "shell company", "score": 0.5}))
+        cli.cmd_search(args(project="test-proj", query="shell", top_n=5, threshold=None,
+                            no_rerank=False, json=False, full=False))
+        out = capsys.readouterr().out
+        if name == "doc.pdf":
+            assert "obsidian://open?path=" in out and "doc.md" in out
+        else:
+            assert "obsidian://" not in out      # ambiguous filename: no link rather than a wrong one

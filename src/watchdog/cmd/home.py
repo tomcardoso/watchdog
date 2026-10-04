@@ -9,6 +9,7 @@ from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _RESET, _YELLOW,
     _count_awaiting_bark, _count_awaiting_dig, _count_incoming, load_projects,
 )
+from watchdog.links import note_link
 from watchdog.pipeline.json_io import _read_json_or
 
 # Briefing files that aren't ingest briefings.
@@ -59,6 +60,7 @@ def summary(vault: Path) -> dict:
     docs = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
     context_dir = vault / "_CONTEXT"
     return {
+        "vault": vault,
         "briefing": _latest_briefing(vault),
         "headline": _headline(vault),
         "contradictions": sum(c["count"] for c in found["contradictions"]),
@@ -95,7 +97,8 @@ def render(name: str, s: dict) -> str:
         lines.append(f"\n  {_BOLD}Latest briefing{_RESET}  {_DIM}{s['briefing'].stem}{_RESET}")
         if s["headline"]:
             lines.append(f"    {s['headline']}")
-        lines.append(f"    {_CYAN}briefings/{s['briefing'].name}{_RESET}")
+        rel = f"briefings/{s['briefing'].name}"
+        lines.append(f"    {_CYAN}{note_link(s['vault'], rel)}{_RESET}")
     else:
         lines.append(f"\n  {_DIM}No briefing yet — add documents to get the first one.{_RESET}")
 

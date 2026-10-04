@@ -1500,6 +1500,14 @@ def cmd_search(args) -> None:
 
     full  = getattr(args, "full", False)
     terms = _search_query_terms(args.query)
+    from watchdog.links import note_link
+    docs_reg = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
+    note_by_sha = {sha: d.get("document_note") for sha, d in docs_reg.items()}
+    # Passages carry only a filename; link one only when no other document shares the name.
+    by_name: dict[str, list[str | None]] = {}
+    for d in docs_reg.values():
+        by_name.setdefault(d.get("filename"), []).append(d.get("document_note"))
+    note_by_name = {n: notes[0] for n, notes in by_name.items() if len(notes) == 1}
 
     if exact:
         print(f"  {_BOLD}Exact matches{_RESET}\n")
@@ -1512,10 +1520,11 @@ def cmd_search(args) -> None:
                 where = f"p.{r.get('page')}"
                 if r.get("path"):
                     where += f"  {_DIM}{r['path']}#page={r.get('page')}{_RESET}"
-                print(f"  {_BOLD}{r.get('title') or '?'}{_RESET}  {_DIM}{where}{_RESET}")
+                title = note_link(vault, note_by_sha.get(r.get("key")), r.get("title") or "?")
+                print(f"  {_BOLD}{title}{_RESET}  {_DIM}{where}{_RESET}")
             else:
                 label = _EXACT_KIND_LABELS.get(r["kind"], r["kind"])
-                print(f"  {_BOLD}{r.get('path')}{_RESET}  {_DIM}{label}{_RESET}")
+                print(f"  {_BOLD}{note_link(vault, r.get('path'))}{_RESET}  {_DIM}{label}{_RESET}")
             print(f"  {_DIM}{snippet}{_RESET}")
             print()
 
@@ -1527,7 +1536,8 @@ def cmd_search(args) -> None:
             if not full:
                 snippet = _windowed_snippet(snippet, terms, 240)
             snippet = _highlight_snippet(snippet, terms)
-            print(f"  {_BOLD}{r.get('filename', '?')}{_RESET}  {_DIM}p.{r.get('page')}  score {score}{_RESET}")
+            title = note_link(vault, note_by_name.get(r.get("filename")), r.get("filename", "?"))
+            print(f"  {_BOLD}{title}{_RESET}  {_DIM}p.{r.get('page')}  score {score}{_RESET}")
             print(f"  {_DIM}{snippet}{_RESET}")
             print()
 
@@ -1539,6 +1549,6 @@ def cmd_search(args) -> None:
             if not full:
                 preview = _windowed_snippet(preview, terms, 200)
             preview = _highlight_snippet(preview, terms)
-            print(f"  {_BOLD}{r['note_path']}{_RESET}  {_DIM}score {score}{_RESET}")
+            print(f"  {_BOLD}{note_link(vault, r['note_path'])}{_RESET}  {_DIM}score {score}{_RESET}")
             print(f"  {_DIM}{preview}{_RESET}")
             print()
