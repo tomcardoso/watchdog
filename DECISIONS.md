@@ -258,6 +258,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D249** — Bare `opus` means Opus 5.5; vendor-deprecated models leave the catalog, legacy ones stay
 - **D250** — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
 - **D251** — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
+- **D252** — `watchdog review` steps through open items one at a time; near-duplicates are stamped and resolvable
 
 </details>
 
