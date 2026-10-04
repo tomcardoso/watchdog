@@ -29,7 +29,7 @@ from watchdog.cmd.base import (
     _notify,
     _projects_dir,
     _render_template,
-    _VAULT_PERMISSIONS,
+    _vault_settings,
     _vault_size,
     load_projects,
     save_projects,
@@ -122,10 +122,10 @@ views:
       - aliases
       - formula.documents
   - type: table
-    name: Companies
+    name: Organizations
     filters:
       and:
-        - file.inFolder("entities/company")
+        - file.inFolder("entities/organization")
     order:
       - file.name
       - name
@@ -334,9 +334,7 @@ def cmd_new(args) -> None:
         ".watchdog/staging",
         ".watchdog/timeline",
         ".watchdog/tmp",
-        "entities/person",
-        "entities/company",
-        "entities/address",
+        "entities",
         "documents",
         "briefings",
         "wiki",
@@ -370,11 +368,16 @@ def cmd_new(args) -> None:
     (vault / ".obsidian" / "graph.json").write_text(
         json.dumps(
             {
+                # One group per canonical entity folder (D105) plus documents. Ingest adds a
+                # group for any further folder it creates (orchestrate._update_graph_colours).
                 "colorGroups": [
-                    {"query": "path:entities/person",  "color": {"a": 1, "rgb": 4886745}},   # #4A90D9 blue
-                    {"query": "path:entities/company", "color": {"a": 1, "rgb": 5999451}},   # #5BA95B green
-                    {"query": "path:entities/address", "color": {"a": 1, "rgb": 15238714}},  # #E8863A orange
-                    {"query": "path:documents",        "color": {"a": 1, "rgb": 9145227}},   # #8B8B8B grey
+                    {"query": "path:entities/person",       "color": {"a": 1, "rgb": 4886745}},   # #4A90D9 blue
+                    {"query": "path:entities/organization", "color": {"a": 1, "rgb": 5999451}},   # #5BA95B green
+                    {"query": "path:entities/place",        "color": {"a": 1, "rgb": 15238714}},  # #E8863A orange
+                    {"query": "path:entities/public-body",  "color": {"a": 1, "rgb": 9323693}},   # #8E44AD purple
+                    {"query": "path:entities/proceeding",   "color": {"a": 1, "rgb": 12597547}},  # #C0392B red
+                    {"query": "path:entities/asset",        "color": {"a": 1, "rgb": 1482885}},   # #16A085 teal
+                    {"query": "path:documents",             "color": {"a": 1, "rgb": 9145227}},   # #8B8B8B grey
                 ]
             },
             indent=2,
@@ -394,60 +397,7 @@ def cmd_new(args) -> None:
     install_skills(vault / ".claude" / "commands")
     _register_obsidian_vault(vault)
 
-    (vault / ".claude" / "settings.json").write_text(
-        json.dumps(
-            {
-                "permissions": {
-                    "allow": _VAULT_PERMISSIONS,
-                    # Read/Glob/Grep are unrestricted by default in Claude Code — no permission
-                    # prompt, any path the OS user can read — so without this, a session inside
-                    # one vault could silently read another vault, ~/.watchdog/credentials.json
-                    # (API keys), or anything else on the account. This confines them to the
-                    # vault the session was launched in (I6: source documents are adversarial by
-                    # assumption, so a prompt-injected one could otherwise direct an exfiltrating
-                    # read with no permission prompt to catch it).
-                    "blockReadsOutsideWorkingDirectories": True,
-                },
-                "hooks": {
-                    # Load hot.md into context at the start of a session — and again
-                    # after compaction, which drops hook-injected context. The `compact`
-                    # matcher fires once compaction completes, so this one hook covers a
-                    # fresh start, a resume, and a post-compaction reload. SessionStart
-                    # stdout is added to Claude's context, so `cat` is all it takes.
-                    "SessionStart": [
-                        {
-                            "matcher": "startup|resume|compact",
-                            "hooks": [
-                                {
-                                    "type": "command",
-                                    "command": "[ -f hot.md ] && cat hot.md || true",
-                                }
-                            ],
-                        }
-                    ],
-                    "UserPromptSubmit": [
-                        {
-                            "matcher": "",
-                            "hooks": [
-                                {
-                                    "type": "command",
-                                    "command": (
-                                        "python3 -c \""
-                                        "from pathlib import Path; "
-                                        "p = list(Path('.watchdog/queue').glob('*.json')) "
-                                        "if Path('.watchdog/queue').exists() else []; "
-                                        "print('WATCHDOG: ' + str(len(p)) + ' file(s) ready for extraction — run watchdog dig in your terminal') if p else None"
-                                        "\""
-                                    ),
-                                }
-                            ],
-                        }
-                    ],
-                },
-            },
-            indent=2,
-        ) + "\n"
-    )
+    (vault / ".claude" / "settings.json").write_text(json.dumps(_vault_settings(), indent=2) + "\n")
 
     projects = load_projects()
     entry = {"name": name, "path": str(vault), "created_at": now}

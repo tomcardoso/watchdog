@@ -556,7 +556,7 @@ def main() -> None:
     # Internal pipeline commands — dispatched before argparse so they never
     # appear in tab completion
     _INTERNAL_CMDS = {
-        "entity-index", "queue-status",
+        "entity-index", "queue-status", "prompt-status",
         "is-duplicate",
         "timeline-collisions", "research-fetch", "research-seen", "watchlist-add",
     }
@@ -583,6 +583,16 @@ def main() -> None:
         elif cmd == "research-seen":
             _p.add_argument("project", nargs="?")
             cmd_research_seen(_p.parse_args(sys.argv[2:]))
+        elif cmd == "prompt-status":
+            # The vault's UserPromptSubmit hook: must stay quiet, fast, and never fail a prompt.
+            from pathlib import Path
+            from watchdog.cmd.base import _prompt_status_line
+            try:
+                line = _prompt_status_line(Path(".").resolve())
+            except Exception:
+                line = None
+            if line:
+                print(line)
         elif cmd == "watchlist-add":
             _p.add_argument("terms", nargs="+")
             cmd_watchlist_add(_p.parse_args(sys.argv[2:]))

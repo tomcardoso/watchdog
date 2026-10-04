@@ -7,6 +7,9 @@ after re-reading all documents the entity appears in. Unlike
 watchdog-write-vault (which accumulates), this command replaces
 Summary and Timeline in full — it's a fresh synthesis.
 
+The refreshed events replace the entity note's own Timeline. timeline.md is re-rendered too, but
+from the deduplicated per-date timeline files, so the refreshed events don't change it.
+
 Usage:
     watchdog-write-entity --entity-id alice-smith --extraction .watchdog/tmp/entity-refresh-alice-smith.json [--vault .]
 
@@ -33,21 +36,39 @@ from pathlib import Path
 
 from watchdog.vault_paths import is_vault
 from watchdog.pipeline.write_vault import (
-    _extract_notes_section,
+    _defang_links,
     _extract_analysis,
     _extract_contradictions,
-    _update_manifest,
-    build_entity_note,
+    _extract_notes_section,
+    _registry_lock,
     _today,
+    _update_manifest,
+    _write_json_atomic,
+    build_entity_note,
 )
 from watchdog.pipeline.timeline import cmd_rebuild_timeline
+
+
+def _clean_events(events: list) -> list[dict]:
+    """Keep well-formed events, with dates normalized the way post-flight does — an unparseable
+    date is dropped (the event stays, undated) rather than reaching the note's year grouping."""
+    from watchdog.pipeline.postflight import _DATE_RE, _parse_precise_date
+    out = []
+    for ev in events or []:
+        if not isinstance(ev, dict) or not (ev.get("event") or "").strip():
+            continue
+        date = (ev.get("date") or "").strip()
+        if date and not _DATE_RE.match(date):
+            date = _parse_precise_date(date) or ""
+        out.append({**ev, "date": date})
+    return out
 
 
 def run(extraction_path: Path, vault_path: Path) -> None:
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     entity_id  = extraction["entity_id"]
-    new_summary = extraction.get("summary") or None
-    new_events  = extraction.get("timeline_events", [])
+    new_summary = _defang_links(extraction.get("summary") or "") or None
+    new_events  = _clean_events(extraction.get("timeline_events", []))
 
     registry_dir   = vault_path / ".watchdog" / "registry"
     entities_path  = registry_dir / "entities.json"
@@ -56,29 +77,36 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     if not entities_path.exists():
         sys.exit("Error: entities.json not found — is this a Watchdog vault?")
 
-    entities_reg  = json.loads(entities_path.read_text())
-    documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
+    # Under the same lock every other registry writer takes, and written atomically: this runs
+    # from a Claude Code session that can overlap a `watchdog bark` in the terminal.
+    with _registry_lock(registry_dir):
+        entities_reg  = json.loads(entities_path.read_text(encoding="utf-8"))
+        documents_reg = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
 
-    if entity_id not in entities_reg:
-        sys.exit(f"Error: entity '{entity_id}' not found in entities.json")
+        if entity_id not in entities_reg:
+            sys.exit(f"Error: entity '{entity_id}' not found in entities.json")
 
-    entry = entities_reg[entity_id]
-    note_path = vault_path / f"{entry['note_path']}.md"
+        entry = entities_reg[entity_id]
+        note_path = vault_path / f"{entry['note_path']}.md"
 
-    # Replace timeline events entirely (full refresh from all documents)
-    entry["timeline_events"] = new_events
-    entry["date_last_updated"] = _today()
+        # Replace timeline events entirely (full refresh from all documents)
+        entry["timeline_events"] = new_events
+        entry["date_last_updated"] = _today()
 
-    # Preserve existing analysis and contradictions — entity refresh doesn't touch them
-    existing_analysis = _extract_analysis(note_path)
-    existing_contradictions = _extract_contradictions(note_path)
-    notes_section = _extract_notes_section(note_path)
+        # Preserve existing analysis and contradictions — entity refresh doesn't touch them
+        existing_analysis = _extract_analysis(note_path)
+        existing_contradictions = _extract_contradictions(note_path)
+        notes_section = _extract_notes_section(note_path)
 
-    note_path.parent.mkdir(parents=True, exist_ok=True)
-    note_content = build_entity_note(
-        entry, notes_section, documents_reg, new_summary, existing_analysis, existing_contradictions
-    )
-    note_path.write_text(note_content, encoding="utf-8")
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+        note_content = build_entity_note(
+            entry, notes_section, documents_reg, new_summary, existing_analysis, existing_contradictions
+        )
+        note_path.write_text(note_content, encoding="utf-8")
+        _write_json_atomic(entities_path, entities_reg)
+        _update_manifest(vault_path, entities_reg)
+        cmd_rebuild_timeline(vault_path, quiet=True)
+
     try:
         from watchdog.pipeline.embed import add_note
         add_note(vault_path, entry["note_path"], note_content)
@@ -90,12 +118,11 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     except Exception as e:
         print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
-    entities_path.write_text(
-        json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
-
-    _update_manifest(vault_path, entities_reg)
-    cmd_rebuild_timeline(vault_path, quiet=True)
+    # The refresh JSON was scratch input; clearing it here saves the skill a `rm` call (and its
+    # permission prompt).
+    tmp_dir = (vault_path / ".watchdog" / "tmp").resolve()
+    if extraction_path.resolve().is_relative_to(tmp_dir):
+        extraction_path.unlink(missing_ok=True)
 
     print(f"OK  {entity_id}  timeline_events={len(new_events)}")
 

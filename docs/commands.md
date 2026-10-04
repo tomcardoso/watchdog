@@ -337,6 +337,8 @@ The one-time setup after installation: it verifies system dependencies, configur
 
 Updates a vault's Claude Code command skills (the `/watchdog-*` commands) after upgrading Watchdog. Record skills are global — read straight from the installed package — so they never need refreshing; only the per-vault command skills do.
 
+It also brings the vault's Claude Code settings up to date: it removes permissions that older versions granted but no longer need (including hand-edit access to pipeline-owned notes and the registry), updates the prompt hook that tells a session when documents are still waiting, and moves the dashboard and graph colours to the current entity folders.
+
 ### watchdog show-skills
 
 With no argument, lists every record skill with a one-line description, prints where to add your own, and opens the skills folder on GitHub so the full text is easy to read. Pass a skill name to print that skill in full in the terminal. The skills themselves are covered in [Skills](skills.md).

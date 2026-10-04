@@ -36,16 +36,13 @@ Build a working index in memory:
 
 ### Shared addresses
 
-Find every Address entity. For each, find all other entities that share it:
-```bash
-grep -r "<address-id>" entities/ --include="*.md" -l
-```
+Find every `place` entity (the type covers addresses and properties). For each, use the Grep tool to find the other entity notes that mention its id under `entities/`.
 
-Flag any address shared by entities that have no other apparent connection — especially if those entities are companies or have different registered agents.
+Flag any address shared by entities that have no other apparent connection — especially if those entities are organizations or have different registered agents.
 
 ### Shared directors / officers
 
-Find every Person entity with a `Director` or `Officer` role. Find all companies they appear in. Flag any person who:
+Find every `person` entity with a `Director` or `Officer` role. Find all the organizations they appear in. Flag any person who:
 - Appears as director of 3 or more companies
 - Appears in a role inconsistent with their prior appearances (e.g. previously only as a plaintiff, now as a director)
 
@@ -68,7 +65,7 @@ Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
 
 ## 3. Contradiction scan
 
-Scan every entity note in `entities/` for `[!contradiction]` callouts. These are inserted by the ingest pipeline when a new document contradicts an existing fact.
+Scan every entity note in `entities/` for `[!contradiction]` callouts. The pipeline writes them during finalization (`watchdog bark`), when reconciliation finds that one document contradicts a fact from another.
 
 For each callout found:
 - Record the entity, the disputed fact, both values, and both source documents
@@ -142,7 +139,7 @@ document_count: <n>
 <For each significant connection discovered:>
 
 ### <Connection title>
-- **Entities involved:** [[entities/person/entity-id|Entity Name]], [[entities/company/entity-id|Company Name]]
+- **Entities involved:** [[entities/person/entity-id|Entity Name]], [[entities/organization/entity-id|Organization Name]]
 - **Nature of connection:** <what they share or how they relate>
 - **Documents:** [[documents/doc-slug|Doc Title]] (p. X), [[documents/doc-slug|Doc Title]] (p. Y)
 - **Why it matters:** <one sentence on investigative significance>

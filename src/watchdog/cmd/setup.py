@@ -12,6 +12,9 @@ from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
+    _LEGACY_PROMPT_HOOK_MARKER,
+    _PROMPT_HOOK_COMMAND,
+    _RETIRED_VAULT_PERMISSIONS,
     _VAULT_PERMISSIONS,
     _find_project,
 )
@@ -761,6 +764,7 @@ def cmd_refresh_skills(args) -> None:
     added = []
     removed = []
     read_scope_added = False
+    hook_updated = False
     if settings_path.exists():
         try:
             settings = _read_json(settings_path)
@@ -772,9 +776,9 @@ def cmd_refresh_skills(args) -> None:
             # checks — only Edit(path) rules are, and they cover every file-editing tool
             # (Write included) — so any Write(...) entry here is dead weight that also
             # prints a startup warning every session. Strip them unconditionally.
-            removed = [p for p in allow if p.startswith("Write(")]
+            removed = [p for p in allow if p.startswith("Write(") or p in _RETIRED_VAULT_PERMISSIONS]
             if removed:
-                allow = [p for p in allow if not p.startswith("Write(")]
+                allow = [p for p in allow if p not in removed]
 
             missing = [p for p in _VAULT_PERMISSIONS if p not in existing]
             if missing:
@@ -788,7 +792,14 @@ def cmd_refresh_skills(args) -> None:
                 perms["blockReadsOutsideWorkingDirectories"] = True
                 read_scope_added = True
 
-            if removed or added or read_scope_added:
+            # The old inline `python3 -c` prompt hook (see base._PROMPT_HOOK_COMMAND).
+            for group in (settings.get("hooks") or {}).get("UserPromptSubmit") or []:
+                for hook in group.get("hooks") or []:
+                    if _LEGACY_PROMPT_HOOK_MARKER in (hook.get("command") or ""):
+                        hook["command"] = _PROMPT_HOOK_COMMAND
+                        hook_updated = True
+
+            if removed or added or read_scope_added or hook_updated:
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError):
             pass
@@ -797,10 +808,52 @@ def cmd_refresh_skills(args) -> None:
     if added:
         print(f"  {_GREEN}Permissions updated{_RESET}  {_DIM}added {len(added)} missing rule{'s' if len(added) != 1 else ''}{_RESET}")
     if removed:
-        print(f"  {_GREEN}Permissions cleaned up{_RESET}  {_DIM}removed {len(removed)} dead Write(...) rule{'s' if len(removed) != 1 else ''} (Claude Code only matches Edit(...) now){_RESET}")
+        print(f"  {_GREEN}Permissions cleaned up{_RESET}  {_DIM}removed {len(removed)} retired rule{'s' if len(removed) != 1 else ''} (dead Write(...) rules, and pre-approved edits to pipeline-owned notes){_RESET}")
     if read_scope_added:
         print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
+    if hook_updated:
+        print(f"  {_GREEN}Prompt hook updated{_RESET}  {_DIM}no longer needs python3 on PATH{_RESET}")
+    for change in _migrate_vault_views(vault):
+        print(f"  {_GREEN}Updated{_RESET}  {_DIM}{change}{_RESET}")
     print()
+
+
+def _migrate_vault_views(vault: Path) -> list[str]:
+    """Point an older vault's dashboard and graph colours at the canonical entity folders (D105) —
+    they were scaffolded for `entities/company` and `entities/address`, which ingest never writes,
+    so the dashboard's Companies view was always empty. Edits only those exact strings, leaving
+    any other customization alone. Returns a description of each change made."""
+    changes = []
+    base = vault / "dashboard.base"
+    if base.exists():
+        text = base.read_text(encoding="utf-8")
+        new = (text.replace('file.inFolder("entities/company")', 'file.inFolder("entities/organization")')
+                   .replace("    name: Companies\n", "    name: Organizations\n"))
+        if new != text:
+            base.write_text(new, encoding="utf-8")
+            changes.append("dashboard.base — Companies view now reads entities/organization")
+    graph = vault / ".obsidian" / "graph.json"
+    if graph.exists():
+        try:
+            data = _read_json(graph)
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            renamed = {"path:entities/company": "path:entities/organization",
+                       "path:entities/address": "path:entities/place"}
+            touched = False
+            groups = data.get("colorGroups") or []
+            present = {g.get("query") for g in groups}
+            for g in groups:
+                target = renamed.get(g.get("query"))
+                if target and target not in present:
+                    g["query"] = target
+                    present.add(target)
+                    touched = True
+            if touched:
+                graph.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+                changes.append("graph colours — company/address groups now match organization/place")
+    return changes
 
 
 def cmd_show_skills(args) -> None:

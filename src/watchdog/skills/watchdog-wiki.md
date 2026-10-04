@@ -19,25 +19,14 @@ Read `context.md` if it exists. This tells you what the journalist is pursuing, 
 
 ## 1. Load the vault
 
-Read the lightweight index files first — these are small and give you a complete picture without loading every note:
+Read the lightweight index files first with the Read tool — these are small and give you a complete picture without loading every note:
 
-```bash
-# Entity index: id, name, type, aliases, note_path
-cat .watchdog/registry/manifest.json
+- `.watchdog/registry/manifest.json` — the entity index: id, name, type, aliases, note_path
+- `.watchdog/registry/documents.json` — the document index: sha256 → title, document_type, entities_extracted, page_count, document_note
 
-# Document index: sha256 → title, document_type, entities_extracted, page_count, document_note
-cat .watchdog/registry/documents.json
-```
+Read all briefing notes (these are small and inform which angles are already active) — list them with the Glob tool (`briefings/**/*.md`).
 
-Read all briefing notes (these are small and inform which angles are already active):
-```bash
-find briefings/ -name "*.md" | sort
-```
-
-Read existing thread pages:
-```bash
-find wiki/ -name "*.md" | sort
-```
+Read existing thread pages — list them with the Glob tool (`wiki/**/*.md`).
 
 Do **not** load all entity notes or document notes upfront. Read individual notes on demand as you identify angles worth a thread. Use `note_path` from the manifest and `document_note` from documents.json to read specific notes when needed.
 

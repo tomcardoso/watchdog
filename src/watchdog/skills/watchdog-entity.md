@@ -80,13 +80,9 @@ Write it to `.watchdog/tmp/entity-refresh-<entity-id>.json` using the Write tool
 watchdog write-entity --entity-id <entity-id> --extraction .watchdog/tmp/entity-refresh-<entity-id>.json
 ```
 
-Clean up:
+`write-entity` deletes the scratch file once it has been applied, so there is nothing to clean up.
 
-```bash
-rm .watchdog/tmp/entity-refresh-<entity-id>.json
-```
-
-`watchdog write-entity` rewrites the entity note and rebuilds `timeline.md`. The `## Analysis` and `## Notes` sections are preserved.
+`watchdog write-entity` rewrites the entity note's Summary and Timeline. The `## Analysis` and `## Notes` sections, and any contradiction callouts, are preserved. The vault-wide `timeline.md` is built from every document's extracted events, not from entity notes, so this refresh does not change it.
 
 Print a completion line after each entity:
 ```
@@ -100,7 +96,6 @@ Refreshed: <name> — <N> timeline events
 Print a summary:
 ```
 Entity refresh complete: <N> entities updated
-timeline.md rebuilt
 ```
 
 If any entity IDs were not found, list them:
