@@ -53,14 +53,15 @@ def test_ask_without_a_question_opens_an_empty_session(vault, launched):
 
 def test_ask_warns_when_the_query_skill_is_missing(vault, launched, capsys):
     (vault / ".claude" / "commands" / "watchdog-query.md").unlink()
-    ask.cmd_ask(_args())
+    ask.cmd_ask(_args(["who", "signed?"]))
     assert "watchdog refresh-skills" in capsys.readouterr().out
-    assert launched
+    assert launched == [(vault, "who signed?", None)]       # the question, not an unknown command
 
 
 def test_ask_by_project_name(tmp_path, monkeypatch, launched):
     other = tmp_path / "elsewhere"
-    other.mkdir()
+    (other / ".claude" / "commands").mkdir(parents=True)
+    (other / ".claude" / "commands" / "watchdog-query.md").write_text("x")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ask, "_find_project", lambda name: ("city", {"path": str(other), "name": "City"}))
     ask.cmd_ask(_args(["q"], project="city"))
