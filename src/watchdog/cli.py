@@ -369,7 +369,7 @@ def build_parser() -> argparse.ArgumentParser:
     _model_choices = list(_MODEL_IDS)
     _effort_choices = ["low", "medium", "high", "xhigh", "max"]
     _model_help = ("a Claude tier (sonnet/opus/haiku) or a backend:model form "
-                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-v4-flash, "
+                   "(claude-api:opus, openai:gpt-5-mini, deepseek:deepseek-flash, "
                    "gemini:gemini-3.5-flash-lite, local:qwen3:32b, "
                    "openrouter:anthropic/claude-3.5-sonnet)")
     # Per-stage finalizer model overrides (issue #433): each routes just that post-ingest stage
@@ -621,7 +621,7 @@ def main() -> None:
         sys.exit(1)
 
     # `ingest` combined extract+finalize into one shot; retired in favour of `watchdog add`, or
-    # manual `watchdog dig` + `watchdog bark` (D138, D249).
+    # manual `watchdog dig` + `watchdog bark` (D138, D251).
     # No renamed successor to remap onto, so it keeps its own subparser and just warns here.
     if args.command == "ingest":
         print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog ingest{_RESET}{_DIM} is deprecated — "

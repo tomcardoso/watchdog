@@ -48,7 +48,7 @@ def _write_config(tmp_path, **overrides):
         },
         "finalizer_sweep": {
             "vault_prefix": "bench-fn",
-            "base": {"extractor_model": "deepseek:deepseek-v4-flash"},
+            "base": {"extractor_model": "deepseek:deepseek-flash"},
             "arms": [{"id": "haiku", "finalizer_model": "haiku"}],
         },
     }
@@ -1632,7 +1632,7 @@ def test_arm_backend_honours_an_explicit_pin_regardless_of_auth_mode(monkeypatch
     import watchdog.cmd.auth as wd_auth
     monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "subscription"})
     assert rb.arm_backend("claude-api:sonnet", default="sonnet") == "claude-api"
-    assert rb.arm_backend("deepseek:deepseek-v4-flash", default="sonnet") == "deepseek"
+    assert rb.arm_backend("deepseek:deepseek-flash", default="sonnet") == "deepseek"
 
 
 def test_confirm_run_prints_backend_and_auth_per_arm(monkeypatch, capsys):
@@ -1942,7 +1942,7 @@ def _write_archived_usage(root: Path, run_id: str, vault_name: str, ts: str, cal
     return p
 
 
-def _call(model="deepseek-v4-flash", effort=None, backend="deepseek", task="extract"):
+def _call(model="deepseek-flash", effort=None, backend="deepseek", task="extract"):
     return {"model": model, "effort": effort, "backend": backend, "task": task}
 
 
@@ -1950,11 +1950,11 @@ def test_reference_usage_files_matches_model_effort_backend(tmp_path):
     match = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash",
                                   "20260101T000000Z", [_call()])
     _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash-think",
-                          "20260101T000001Z", [_call(model="deepseek-v4-flash-thinking")])
+                          "20260101T000001Z", [_call(model="deepseek-flash-thinking")])
     _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-sonnet-med",
                           "20260101T000002Z", [_call(model="sonnet", effort="medium", backend="claude-api")])
 
-    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek")
+    found = cr.reference_usage_files(tmp_path, "deepseek-flash", None, "deepseek")
 
     assert found == [match]
 
@@ -1984,7 +1984,7 @@ def test_reference_usage_files_finalize_only_excludes_extraction_calls(tmp_path)
     match = _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-fn-standalone",
                                   "20260101T000001Z", standalone)
 
-    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek",
+    found = cr.reference_usage_files(tmp_path, "deepseek-flash", None, "deepseek",
                                      finalize_only=True)
 
     assert found == [match]
@@ -1995,7 +1995,7 @@ def test_reference_usage_files_caps_to_most_recent_max_runs(tmp_path):
         _write_archived_usage(tmp_path, "2026-01-01-0000", f"bench-ex-ds-flash-{i}",
                               f"2026010{i+1}T000000Z", [_call()])
 
-    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek", max_runs=2)
+    found = cr.reference_usage_files(tmp_path, "deepseek-flash", None, "deepseek", max_runs=2)
 
     assert len(found) == 2
     assert [p.name for p in found] == ["usage-20260103T000000Z.json", "usage-20260104T000000Z.json"]
@@ -2004,7 +2004,7 @@ def test_reference_usage_files_caps_to_most_recent_max_runs(tmp_path):
 def test_reference_usage_files_no_match_returns_empty(tmp_path):
     _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-haiku", "20260101T000000Z",
                           [_call(model="haiku", backend="claude-api")])
-    assert cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek") == []
+    assert cr.reference_usage_files(tmp_path, "deepseek-flash", None, "deepseek") == []
 
 
 def test_fallback_estimate_prices_against_catalog_scaled_by_effort_ratio(monkeypatch):
@@ -2015,9 +2015,9 @@ def test_fallback_estimate_prices_against_catalog_scaled_by_effort_ratio(monkeyp
     the multiplier itself is covered in `test_fallback_estimate_applies_the_current_price_period`."""
     from watchdog import model_catalog
     monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 1.0)
-    est = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
+    est = cr.fallback_estimate(1_000_000, "deepseek-flash", "low")
     ratio = cr.DEFAULT_OUTPUT_RATIO_BY_EFFORT["low"]
-    expected = 1_000_000 * 0.22e-6 + 1_000_000 * ratio * 0.66e-6
+    expected = 1_000_000 * 0.15e-6 + 1_000_000 * ratio * 0.60e-6
     assert est["cost_low"] == est["cost_high"] == pytest.approx(expected)
     assert est["runs_used"] == 0
     assert est["projected"] is True
@@ -2028,9 +2028,9 @@ def test_fallback_estimate_applies_the_current_price_period(monkeypatch):
     asked, so a peak-hours estimate isn't quietly half the bill the arm will actually run up."""
     from watchdog import model_catalog
     monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 1.0)
-    off_peak = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
+    off_peak = cr.fallback_estimate(1_000_000, "deepseek-flash", "low")
     monkeypatch.setattr(model_catalog, "price_multiplier", lambda *_a, **_k: 2.0)
-    peak = cr.fallback_estimate(1_000_000, "deepseek-v4-flash", "low")
+    peak = cr.fallback_estimate(1_000_000, "deepseek-flash", "low")
     assert peak["cost_low"] == pytest.approx(2 * off_peak["cost_low"])
 
 
@@ -2070,7 +2070,7 @@ def test_preview_extractor_arm_borrows_reference_usage_when_vault_is_fresh(tmp_p
     _write_archived_usage(tmp_path, "2026-01-01-0000", "bench-ex-ds-flash", "20260101T000000Z",
                           [_call()], cost_usd=1.5, input_tokens=1000)
 
-    est = rb.preview_extractor_arm(vault, "deepseek:deepseek-v4-flash", None, tmp_path)
+    est = rb.preview_extractor_arm(vault, "deepseek:deepseek-flash", None, tmp_path)
 
     assert est["cost_low"] == est["cost_high"] == 1.5
     assert est["runs_used"] == 1
@@ -2085,7 +2085,7 @@ def test_preview_extractor_arm_falls_back_to_catalog_projection_when_nothing_mat
         "filename": "x.pdf", "pages": [{"page": 1, "markdown": "a" * 4000}],
     }))
 
-    est = rb.preview_extractor_arm(vault, "deepseek:deepseek-v4-flash", "low", tmp_path)
+    est = rb.preview_extractor_arm(vault, "deepseek:deepseek-flash", "low", tmp_path)
 
     assert est["cost_low"] is not None
     assert est["cost_low"] == est["cost_high"]
@@ -2101,7 +2101,7 @@ def test_reference_usage_files_reads_both_the_runs_dir_and_the_legacy_layout(tmp
                                    [_call()])
     moved = _write_archived_usage(tmp_path / "runs", "2026-02-02-0000", "bench-ex-b",
                                   "20260202T000000Z", [_call()])
-    found = cr.reference_usage_files(tmp_path, "deepseek-v4-flash", None, "deepseek")
+    found = cr.reference_usage_files(tmp_path, "deepseek-flash", None, "deepseek")
     assert set(found) == {legacy, moved}
 
 
@@ -2810,7 +2810,7 @@ def test_row_line_flags_sectioned_speed_with_an_asterisk():
 
 
 def test_row_line_shows_reliability_column():
-    row = {"arm_id": "gpt-nano-high", "model": "gpt-5.4-nano", "effort": "high",
+    row = {"arm_id": "gpt-mini-high", "model": "gpt-5.4-mini", "effort": "high",
           "cost_per_page": 0.001, "speed_per_page_s": 5.0, "billing_class": "metered",
           "sectioned_calls": 0, "reliability": "6/6 (2 gaps, 1 retry)", "partial": False,
           "facts_pct": 80, "facts": "8/10", "must_not_miss_pct": None, "must_not_miss": None}

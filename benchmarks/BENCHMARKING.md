@@ -164,14 +164,14 @@ for each, across Claude tiers and DeepSeek, plus the reasoning-effort knob where
 | **Extractor** | `--extractor-model` / `--extractor-effort` | `sonnet` / `high` | yes | per page — **essentially the whole bill** |
 | **Finalizer** | `--finalizer-model` / `--finalizer-effort` | `haiku` / `high` | yes | ~3 calls + reconciliation per ingest — near-constant |
 
-Candidate models per stage: Claude `haiku` / `sonnet` / `opus`, and DeepSeek `deepseek:deepseek-v4-flash` /
+Candidate models per stage: Claude `haiku` / `sonnet` / `opus`, and DeepSeek `deepseek:deepseek-flash` /
 `deepseek:deepseek-v4-pro`. Notes that matter:
 
 - **Haiku has no effort knob** (`_EFFORT_UNSUPPORTED`) — `--extractor-effort` is ignored on Haiku.
   So a Haiku arm is a single point, not a high/medium/low sweep.
 - **The classifier has no effort knob at all.**
 - **DeepSeek's main knob is its thinking toggle**, swapped via the model id:
-  `deepseek:deepseek-v4-flash` (thinking off) vs `deepseek:deepseek-v4-flash-thinking` (on), same for
+  `deepseek:deepseek-flash` (thinking off) vs `deepseek:deepseek-flash-thinking` (on), same for
   `-pro`. Tom's prior testing found non-thinking DeepSeek weak, so test both. Since 2026-08-13 the
   thinking ids *also* take an effort level — `low`/`high`/`max` only (`medium`/`xhigh` are DeepSeek's
   own aliases for `high` and are rejected here rather than run as duplicates, D217) — and a
@@ -204,7 +204,7 @@ Each stage is measured by varying it while holding the other two fixed at a know
   classifier out of the loop, no `--skill` flag needed. This is still where the money goes — it's
   just no longer paying for a finalizer it doesn't need too.
 - **Finalizer sweep** — vary `--finalizer-model` × `--finalizer-effort`; hold the extractor fixed
-  at **`deepseek:deepseek-v4-flash`**. Two reasons for the cheap fixed extractor: (a) it keeps the wasted
+  at **`deepseek:deepseek-flash`**. Two reasons for the cheap fixed extractor: (a) it keeps the wasted
   re-extraction cheap — you cannot re-finalize a finished vault (#384), so each finalizer arm is its
   own full ingest; (b) a messier extraction gives reconciliation *more* to do (more duplicate
   candidates, more borderline contradictions), which discriminates finalizer models better than a
@@ -333,9 +333,9 @@ watchdog dig --extractor-model sonnet --extractor-effort high
 | `bench-ex-sonnet-med` | `sonnet` | `medium` | #215 medium arm |
 | `bench-ex-haiku` | `haiku` | — (ignored) | #361: Haiku as shipped default? |
 | `bench-ex-opus-high` | `opus` | `high` | is Opus worth the premium? |
-| `bench-ex-ds-flash` | `deepseek:deepseek-v4-flash` | — (none exists) | #361: DeepSeek, thinking off |
-| `bench-ex-ds-flash-think-low` | `deepseek:deepseek-v4-flash-thinking` | `low` | DeepSeek flash, thinking on |
-| `bench-ex-ds-flash-think-high` | `deepseek:deepseek-v4-flash-thinking` | `high` | ≡ the old unpinned `-think` arm |
+| `bench-ex-ds-flash` | `deepseek:deepseek-flash` | — (none exists) | #361: DeepSeek, thinking off |
+| `bench-ex-ds-flash-think-low` | `deepseek:deepseek-flash-thinking` | `low` | DeepSeek flash, thinking on |
+| `bench-ex-ds-flash-think-high` | `deepseek:deepseek-flash-thinking` | `high` | ≡ the old unpinned `-think` arm |
 | `bench-ex-ds-pro` | `deepseek:deepseek-v4-pro` | — (none exists) | DeepSeek pro, thinking off |
 | `bench-ex-ds-pro-think-low` | `deepseek:deepseek-v4-pro-thinking` | `low` | DeepSeek pro, thinking on |
 | `bench-ex-ds-pro-think-high` | `deepseek:deepseek-v4-pro-thinking` | `high` | ≡ the old unpinned `-think` arm |
@@ -362,13 +362,13 @@ afterward — it's optional and doesn't change how the arm scores.
 
 ## Step 5 — finalizer sweep (cheap)
 
-Extractor fixed at `deepseek:deepseek-v4-flash`. Unlike Step 4, **extract once and reuse it** —
+Extractor fixed at `deepseek:deepseek-flash`. Unlike Step 4, **extract once and reuse it** —
 the finalizer metrics (entity-duplicate count, contradictions) depend only on `bark`, so paying
 for six fresh extractions of the same fixed input would be wasted spend:
 
 ```
 # Following Step 3 with vault name "bench-fn-base":
-watchdog dig --extractor-model deepseek:deepseek-v4-flash --extractor-effort high
+watchdog dig --extractor-model deepseek:deepseek-flash --extractor-effort high
 
 cd ..
 cp -r bench-fn-base bench-fn-haiku
@@ -392,7 +392,7 @@ watchdog bark --finalizer-model haiku
 | `bench-fn-sonnet-high` | `sonnet` | `high` |
 | `bench-fn-sonnet-med` | `sonnet` | `medium` |
 | `bench-fn-opus-high` | `opus` | `high` |
-| `bench-fn-ds-flash` | `deepseek:deepseek-v4-flash` | — |
+| `bench-fn-ds-flash` | `deepseek:deepseek-flash` | — |
 | `bench-fn-ds-pro-think` | `deepseek:deepseek-v4-pro-thinking` | — |
 
 Score: **entity-duplicate count** and **contradictions C1/C2** (the finalizer metrics). Read the
@@ -409,7 +409,7 @@ this step needs to exercise:
 ```
 watchdog new "bench-classify"
 # copy the six PDFs only (no *.yml), chew, then:
-watchdog ingest --extractor-model deepseek:deepseek-v4-flash --finalizer-model deepseek:deepseek-v4-flash
+watchdog ingest --extractor-model deepseek:deepseek-flash --finalizer-model deepseek:deepseek-flash
 ```
 
 Check the classified skill for each document against `expected_skill` in the keys. All six should

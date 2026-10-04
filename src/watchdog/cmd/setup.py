@@ -321,7 +321,7 @@ _CONFIGURE_KEYS = {
             "  and picks the matching record skill. Haiku is plenty for this; raise it only if\n"
             "  classification is going wrong on ambiguous documents.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: haiku. Recommended alternative: openai:gpt-5.6-luna (with classifier_effort\n"
             "  low), the strongest classifier in benchmark testing against real filings — see\n"
             "  docs/benchmarks.md. Not the shipped default because it needs its own OpenAI key\n"
@@ -338,12 +338,12 @@ _CONFIGURE_KEYS = {
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: sonnet. Recommended alternative: openai:gpt-5.6-luna (with extractor_effort\n"
             "  high), which beat Sonnet at low effort outright in benchmark testing against real\n"
             "  filings — see docs/benchmarks.md. Not the shipped default because it needs its own\n"
             "  OpenAI key even on a plain Claude subscription.\n"
-            "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-v4-flash-thinking)\n"
+            "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-flash-thinking)\n"
             "  to enable it. Override for a single run with: watchdog dig --extractor-model M"
         ),
         "type": "string",
@@ -359,7 +359,7 @@ _CONFIGURE_KEYS = {
             "  cheaper Haiku tier is the default; raise it if synthesized prose feels thin, if\n"
             "  duplicate entities slip through, or if contradictions are being missed.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: haiku. openai:gpt-5.6-luna is a reasonable alternative alongside\n"
             "  extractor_model's — this stage has no dedicated benchmark of its own yet, so\n"
             "  treat it as an extrapolation, not a measured recommendation.\n"
@@ -375,7 +375,7 @@ _CONFIGURE_KEYS = {
             "  entities and flagging contradictions between documents. Leave unset to use\n"
             "  finalizer_model, like every other post-ingest stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
             "  Override for a single run with: watchdog bark --finalizer-reconciliation-model M"
         ),
@@ -389,7 +389,7 @@ _CONFIGURE_KEYS = {
             "  mentioned across more than one document. Leave unset to use finalizer_model, like\n"
             "  every other post-ingest stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
             "  Override for a single run with: watchdog bark --finalizer-synthesis-model M"
         ),
@@ -403,7 +403,7 @@ _CONFIGURE_KEYS = {
             "  collisions and folding coarse-precision restatements into their exact date. Leave\n"
             "  unset to use finalizer_model, like every other post-ingest stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
             "  Override for a single run with: watchdog bark --finalizer-timeline-model M"
         ),
@@ -416,7 +416,7 @@ _CONFIGURE_KEYS = {
             "Overrides finalizer_model for just the briefing stage. Leave unset to use\n"
             "  finalizer_model, like every other post-ingest stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-v4-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
             "  Override for a single run with: watchdog bark --finalizer-briefing-model M"
         ),

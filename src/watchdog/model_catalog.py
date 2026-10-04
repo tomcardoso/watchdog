@@ -31,9 +31,25 @@ def _tier_aliases(entry: dict) -> list[str]:
 
 _MODEL_IDS = {alias: m["id"] for m in _CATALOG["models"] for alias in _tier_aliases(m)}
 
+# Retired provider ids that still work on the wire and are answered by a catalogued model — a
+# model's `legacy_ids` in the YAML (D250). Without this, a config naming the old id would read as
+# an uncatalogued model and lose its pricing, price windows and effort levels.
+_LEGACY_IDS = {legacy.lower(): m["id"] for m in _CATALOG["models"] for legacy in m.get("legacy_ids", [])}
+
+
+def canonical_id(model_id: str) -> str:
+    """The catalogued id a model id resolves to: a legacy id maps to the model that now answers
+    it, anything else is returned unchanged (not lowercased — callers' own matching is)."""
+    return _LEGACY_IDS.get(model_id.lower(), model_id)
+
+
+def _entry(model_id: str) -> dict | None:
+    """The catalog entry for a model id, following a legacy id to its current model."""
+    return _MODELS.get(canonical_id(model_id).lower())
+
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param,
-# and Watchdog keeps the choice inside the model token — `deepseek-v4-flash` (non-thinking) vs
-# `deepseek-v4-flash-thinking` — so it rides the existing `[backend:]model` grammar with no extra
+# and Watchdog keeps the choice inside the model token — `deepseek-flash` (non-thinking) vs
+# `deepseek-flash-thinking` — so it rides the existing `[backend:]model` grammar with no extra
 # provider-specific knob (D88). The marker is Watchdog's own grammar, not a real catalog id, so it
 # lives here, with the catalog that has to normalize it away before every lookup; `model_client.py`
 # imports both names rather than keeping a second copy that could drift. See that module's
@@ -80,20 +96,20 @@ def display_name(model_id: str) -> str:
     """Pretty display form of a model id, for the CLI/usage logging — e.g. 'gpt-5.6-terra' ->
     'GPT-5.6 Terra'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
     model, or an old id no longer in the catalog) rather than raising or guessing."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return entry["name"] if entry and "name" in entry else model_id
 
 
 def catalog_context_window(model_id: str) -> int | None:
     """Explicit context window for a known catalog model id, or None if uncatalogued."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return entry.get("context_window") if entry else None
 
 
 def catalog_max_output_tokens(model_id: str) -> int | None:
     """Explicit single-response output cap for a known catalog model id (#598), or None if
     uncatalogued."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return entry.get("max_output_tokens") if entry else None
 
 
@@ -101,7 +117,7 @@ def catalog_long_context_threshold(model_id: str) -> int | None:
     """Real-token input length at/above which this model bills at a higher rate (#555), or None
     when it prices flat at every length. See `model_catalog.yaml`'s `long_context_threshold`
     comment — including the caveat that these figures still need a vendor citation."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return entry.get("long_context_threshold") if entry else None
 
 
@@ -128,7 +144,7 @@ def fallback_context_window(model_id: str) -> int | None:
 
 def catalog_is_reasoning(model_id: str) -> bool | None:
     """Explicit reasoning flag for a known catalog model id, or None if uncatalogued."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return bool(entry["reasoning"]) if entry and "reasoning" in entry else None
 
 
@@ -146,14 +162,14 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
     `model_client.py` must send `thinking` explicitly to turn it on (#635, D206). False (the
     correct default in both directions) for a model that's already on by default, and for every
     uncatalogued or non-Claude id — never consulted there."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return bool(entry.get("thinking", False)) if entry else False
 
 
 # Claude tiers that ship extended thinking on by default (no `thinking` catalog flag needed —
 # see that field's own comment in model_catalog.yaml). Kept private: catalog_has_reasoning is
 # the only thing that should need this list.
-_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "sonnet-5.5", "opus-5"}
+_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "sonnet-5.5", "opus-5", "opus-5.5"}
 
 
 def catalog_has_reasoning(model_id: str) -> bool:
@@ -166,7 +182,7 @@ def catalog_has_reasoning(model_id: str) -> bool:
     without gets the explicit step-by-step `document.plan` form instead. False — the conservative
     default — for every other catalogued model and any uncatalogued id."""
     bare, deepseek_thinking = _split_deepseek_thinking(model_id)
-    entry = _MODELS.get(bare.lower())
+    entry = _entry(bare)
     if not entry:
         return False
     if deepseek_thinking and entry.get("provider") == "deepseek":
@@ -187,7 +203,7 @@ def catalog_cache_breakpoints(model_id: str) -> bool:
     the `None`-for-uncatalogued shape the other capability lookups use: an earlier-family OpenAI
     model caches by longest-prefix fallback with no breakpoint sent, and a local/OpenRouter model
     behind an arbitrary runner may reject an unknown body field outright."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return bool(entry.get("cache_breakpoints", False)) if entry else False
 
 
@@ -197,7 +213,7 @@ def catalog_effort_levels(model_id: str) -> set[str] | None:
     coverage (e.g. Claude Sonnet 4.6 takes `max` but not `xhigh`), not a per-provider flag. A
     catalogued model with no `effort_levels` field (Claude Haiku, DeepSeek) has none at all,
     which `entry.get(..., [])` already expresses without a special case."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return set(entry.get("effort_levels", [])) if entry else None
 
 
@@ -208,7 +224,7 @@ def catalog_tokenizer_ratio(model_id: str) -> float | None:
     models (Opus 4.8, Sonnet 5) currently declare a value; see `model_catalog.yaml`'s
     `tokenizer_ratio` field comment for the source and rationale. Callers wanting a safe default
     for "no declared ratio" should treat None as 1.0 (`model_client.tokenizer_ratio` does this)."""
-    entry = _MODELS.get(model_id.lower())
+    entry = _entry(model_id)
     return float(entry["tokenizer_ratio"]) if entry and "tokenizer_ratio" in entry else None
 
 
@@ -220,11 +236,24 @@ def _parse_hhmm(value: str) -> time:
     return time(int(hh), int(mm))
 
 
-# model id -> [(start, end, multiplier), ...], UTC, in declaration order. Empty for the vast
-# majority of models, which price the same around the clock — see model_catalog.yaml's
-# `price_periods` comment for the shape and why the base rates are the cheap ones.
+_WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def _parse_days(window: dict) -> frozenset[int] | None:
+    """A window's optional `days: [mon, ...]` -> weekday numbers (Monday is 0), or None when the
+    key is absent (every day). Raises on an unknown name, at import, like `_parse_hhmm`: a typo
+    that silently matched no day would price the window at the base rate, which under-charges."""
+    if "days" not in window:
+        return None
+    return frozenset(_WEEKDAYS.index(str(d).lower()) for d in window["days"])
+
+
+# model id -> [(start, end, multiplier, days), ...], UTC, in declaration order; `days` is a set of
+# weekday numbers or None for every day (D250). Empty for the vast majority of models, which
+# price the same around the clock — see model_catalog.yaml's `price_periods` comment for the shape
+# and why the base rates are the cheap ones.
 _PRICE_PERIODS = {
-    m["id"]: [(_parse_hhmm(w["from"]), _parse_hhmm(w["to"]), float(w["multiplier"]))
+    m["id"]: [(_parse_hhmm(w["from"]), _parse_hhmm(w["to"]), float(w["multiplier"]), _parse_days(w))
               for w in m["price_periods"]]
     for m in _CATALOG["models"] if m.get("price_periods")
 }
@@ -249,15 +278,20 @@ def price_multiplier(model_id: str, at: datetime | None = None) -> float:
     `at` is interpreted in UTC: an aware datetime is converted, a naive one is assumed to already
     be UTC (the shape `datetime.now(timezone.utc)` produces, which is the default). Windows are matched in
     declaration order and the first hit wins, so overlapping windows resolve to the earlier one
-    rather than compounding."""
-    windows = _PRICE_PERIODS.get(model_id.lower())
+    rather than compounding. A window that declares `days` also needs the UTC weekday of `at` to
+    be one of them; the weekday is the UTC calendar day the moment falls on, which is also how the
+    window's hours are read (a midnight-wrapping window would be checked on the day it is entered
+    on the clock, not the day it began — none declares both `days` and a wrap today)."""
+    windows = _PRICE_PERIODS.get(canonical_id(model_id).lower())
     if not windows:
         return 1.0
     moment = at or datetime.now(timezone.utc)
     if moment.tzinfo is not None:
         moment = moment.astimezone(timezone.utc)
     now = moment.time()
-    for start, end, multiplier in windows:
+    for start, end, multiplier, days in windows:
+        if days is not None and moment.weekday() not in days:
+            continue
         if _in_window(now, start, end):
             return multiplier
     return 1.0

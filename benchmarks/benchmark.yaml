@@ -40,9 +40,6 @@ extractor_sweep:
     - {id: sonnet-5-high,     extractor_model: sonnet-5, extractor_effort: high}
 
     # ── OpenAI ──
-    - {id: gpt-nano-low,      extractor_model: "openai:gpt-5.4-nano", extractor_effort: low}
-    - {id: gpt-nano-med,      extractor_model: "openai:gpt-5.4-nano", extractor_effort: medium}
-    - {id: gpt-nano-high,     extractor_model: "openai:gpt-5.4-nano", extractor_effort: high}
     - {id: gpt-mini-low,      extractor_model: "openai:gpt-5.4-mini", extractor_effort: low}
     - {id: gpt-mini-med,      extractor_model: "openai:gpt-5.4-mini", extractor_effort: medium}
     - {id: gpt-mini-high,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: high}
@@ -65,9 +62,9 @@ extractor_sweep:
     # of the provider, not an omission. `ds-*-think-high` is what the old unpinned `ds-*-think`
     # arm actually ran (DeepSeek's default effort is `high`), so archived `-think` figures compare
     # against those two rows — subject to the checkpoint and price caveats in FINDINGS.md.
-    - {id: ds-flash,             extractor_model: "deepseek:deepseek-v4-flash"}
-    - {id: ds-flash-think-low,   extractor_model: "deepseek:deepseek-v4-flash-thinking", extractor_effort: low}
-    - {id: ds-flash-think-high,  extractor_model: "deepseek:deepseek-v4-flash-thinking", extractor_effort: high}
+    - {id: ds-flash,             extractor_model: "deepseek:deepseek-flash"}
+    - {id: ds-flash-think-low,   extractor_model: "deepseek:deepseek-flash-thinking", extractor_effort: low}
+    - {id: ds-flash-think-high,  extractor_model: "deepseek:deepseek-flash-thinking", extractor_effort: high}
     - {id: ds-pro,               extractor_model: "deepseek:deepseek-v4-pro"}
     - {id: ds-pro-think-low,     extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: low}
     - {id: ds-pro-think-high,    extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: high}
@@ -99,14 +96,14 @@ extractor_sweep:
 
 finalizer_sweep:
   vault_prefix: bench-fn
-  base: {extractor_model: "deepseek:deepseek-v4-flash"}   # fixed, cheap, deterministic (#381)
+  base: {extractor_model: "deepseek:deepseek-flash"}   # fixed, cheap, deterministic (#381)
   arms:
     - {id: haiku,             finalizer_model: haiku}
     - {id: sonnet-high,       finalizer_model: sonnet, finalizer_effort: high}
     - {id: sonnet-med,        finalizer_model: sonnet, finalizer_effort: medium}
     # finalizer_effort still defaults to high and has never been benchmarked at any lower effort.
     - {id: sonnet-low,        finalizer_model: sonnet, finalizer_effort: low}
-    - {id: ds-flash,          finalizer_model: "deepseek:deepseek-v4-flash"}
+    - {id: ds-flash,          finalizer_model: "deepseek:deepseek-flash"}
     - {id: ds-pro-think,      finalizer_model: "deepseek:deepseek-v4-pro-thinking"}
     - {id: gemini-flash-lite, finalizer_model: "gemini:gemini-3.5-flash-lite"}
     - {id: gemini-flash,      finalizer_model: "gemini:gemini-3.7-flash"}
@@ -114,21 +111,20 @@ finalizer_sweep:
     # two arms is plenty — same D98 structured-output caveat as the extractor sweep (above)
     # applies here too.
     - {id: gpt-mini,          finalizer_model: "openai:gpt-5.4-mini"}
-    - {id: gpt-nano,          finalizer_model: "openai:gpt-5.4-nano"}
 
 classifier_smoke:
   vault_prefix: bench-classify
-  arm: {id: smoke, extractor_model: "deepseek:deepseek-v4-flash", finalizer_model: "deepseek:deepseek-v4-flash"}
+  arm: {id: smoke, extractor_model: "deepseek:deepseek-flash", finalizer_model: "deepseek:deepseek-flash"}
   # Sanity check only — corpus-v1 spans 2 skills, not enough to RANK classifier models.
 
 classifier_sweep:
   vault_prefix: bench-classify-sweep
   corpus_dir: corpora/classify    # empty for now — see corpora/classify/README.md
-  fixed: {extractor_model: "deepseek:deepseek-v4-flash", finalizer_model: "deepseek:deepseek-v4-flash"}
+  fixed: {extractor_model: "deepseek:deepseek-flash", finalizer_model: "deepseek:deepseek-flash"}
   arms:
     - {id: haiku,             classifier_model: haiku}    # shipped default
     - {id: sonnet,            classifier_model: sonnet}
-    - {id: ds-flash,          classifier_model: "deepseek:deepseek-v4-flash"}
+    - {id: ds-flash,          classifier_model: "deepseek:deepseek-flash"}
     - {id: gemini-flash-lite, classifier_model: "gemini:gemini-3.5-flash-lite"}
   # Classifier has no effort knob (BENCHMARKING.md) — model only, no effort sweep. BLOCKED until
   # classify-corpus/ is populated with a type-diverse document set + expected.yaml labels;

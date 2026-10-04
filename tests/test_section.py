@@ -222,7 +222,7 @@ def test_model_defaults_scale_with_context_window():
     assert section.model_defaults("sonnet-4.6") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("sonnet-4.6") == (129_032, 64_516)
     assert section.model_defaults(None) == (93_750, 46_875)              # default tier
-    assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)   # 1M window / 0.81
+    assert section.model_defaults("deepseek-flash") == (740_740, 370_370)   # 1M window / 0.81
     # `gpt-5-mini` is NOT in the catalog (the real ids are gpt-5.4-mini etc.), so it declares no
     # ratio and its window fractions pass through undivided — the uncorrected control.
     assert section.model_defaults("gpt-5-mini") == (240_000, 120_000)          # 400K window
@@ -231,14 +231,14 @@ def test_model_defaults_scale_with_context_window():
 def test_section_token_threshold_model_aware(monkeypatch):
     monkeypatch.setattr(section, "_config_get", lambda k, d: d)   # no config override
     assert section.section_token_threshold("sonnet-4.6") == 129_032    # 120K / 0.93 (#617)
-    assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
+    assert section.section_token_threshold("deepseek-flash") == 740_740  # 600K / 0.81 (#617)
 
 
 def test_section_token_threshold_config_override_wins(monkeypatch):
     # An explicit config value overrides the model-aware default regardless of the model.
     monkeypatch.setattr(section, "_config_get",
                         lambda k, d: 42 if k == "section_token_threshold" else d)
-    assert section.section_token_threshold("deepseek-v4-flash") == 42
+    assert section.section_token_threshold("deepseek-flash") == 42
 
 
 def test_section_token_threshold_auto_uses_model_default(monkeypatch):
@@ -246,7 +246,7 @@ def test_section_token_threshold_auto_uses_model_default(monkeypatch):
     monkeypatch.setattr(section, "_config_get",
                         lambda k, d: "auto" if k == "section_token_threshold" else d)
     assert section.section_token_threshold("sonnet-4.6") == 129_032    # 120K / 0.93 (#617)
-    assert section.section_token_threshold("deepseek-v4-flash") == 740_740  # 600K / 0.81 (#617)
+    assert section.section_token_threshold("deepseek-flash") == 740_740  # 600K / 0.81 (#617)
 
 
 def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
@@ -312,7 +312,7 @@ def test_model_defaults_unclamped_for_flat_priced_models():
     # window, so it could never reach the boundary and must not be shrunk toward it.
     assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
     assert section.model_defaults("gemini-3.7-flash", backend="gemini") == (659_340, 329_670)
-    assert section.model_defaults("deepseek-v4-flash", backend="deepseek") == (740_740, 370_370)
+    assert section.model_defaults("deepseek-flash", backend="deepseek") == (740_740, 370_370)
     assert section.model_defaults("sonnet-4.6") == (129_032, 64_516)
 
 
@@ -416,7 +416,7 @@ def test_model_defaults_widen_for_over_estimating_tokenizers():
     # unused regardless.
     assert section.model_defaults("sonnet-4.6") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("haiku") == (int(120_000 / 0.93), int(60_000 / 0.93))
-    assert section.model_defaults("deepseek-v4-flash") == (740_740, 370_370)     # 0.81
+    assert section.model_defaults("deepseek-flash") == (740_740, 370_370)     # 0.81
     # gpt-5.4-mini rather than gpt-5.4: same 0.80 ratio, but no pricing boundary to clamp against,
     # so the widening is visible rather than masked by the clamp. 400K window: 240_000/0.80.
     assert section.model_defaults("gpt-5.4-mini", backend="claude-api") == (300_000, 150_000)
