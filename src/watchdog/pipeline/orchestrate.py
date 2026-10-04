@@ -266,7 +266,7 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     return r
 
 
-def _recent_token_rate(records: list[dict], window_s: float = 60.0) -> int:
+def _recent_token_rate(records: list[dict], window_s: float = 60.0, now: float | None = None) -> int:
     """Total input+output tokens across calls whose `end_ts` (#563) falls within the last
     `window_s` seconds of the most recent record — a rolling-window tokens/min figure for
     "what was actually happening right before this run hit a rate limit", reconstructed the same
@@ -274,7 +274,10 @@ def _recent_token_rate(records: list[dict], window_s: float = 60.0) -> int:
     `extract_concurrency`. 0 for an empty list."""
     if not records:
         return 0
-    latest = max(r["end_ts"] for r in records)
+    # `now` anchors the window to the wall clock, which admission control needs: anchored to the
+    # latest record, the rate never decays while every document waits for headroom (nothing
+    # finishes to add a newer record), so a stalled burst sat out the full force-admit timeout.
+    latest = now if now is not None else max(r["end_ts"] for r in records)
     cutoff = latest - window_s
     return sum(r["input_tokens"] + r["output_tokens"] for r in records if r["end_ts"] >= cutoff)
 
@@ -333,7 +336,7 @@ async def _admit(sha: str, est_tokens: int, budget: int | None, cancelled: async
     started = time.monotonic()
     while not cancelled.is_set():
         reserved = sum(v for k, v in _admission_reserved.items() if k != sha)
-        if _recent_token_rate(_usage or []) + reserved + est_tokens <= ceiling:
+        if _recent_token_rate(_usage or [], now=time.time()) + reserved + est_tokens <= ceiling:
             return
         if time.monotonic() - started >= _ADMISSION_MAX_WAIT_S:
             _say(f"{_DIM}Proceeding past the token budget after "
@@ -501,6 +504,8 @@ def latest_usage(vault: Path) -> dict | None:
 
 
 DEFAULT_CLASSIFY_PAGES = 5
+# The record skill a document falls back to when classification names nothing usable.
+_FALLBACK_SKILL = "general-records.md"
 # Per-section input budget when falling back to sectioning after a whole-doc extraction
 # overruns the output ceiling. Small, so each section's output stays well under the cap;
 # section.run caps it at half the document so a splittable doc yields ≥2 sections.
@@ -654,7 +659,7 @@ async def _classify(doc_excerpt: str, model: str, backend: str | None = None,
         prompt=prompts.build_classify_prompt(doc_excerpt, skills_catalog.build_index(), sidecar),
         filename=filename, vault=vault, effort=effort,
     )
-    return r.parsed.get("skill") or "general-records.md"
+    return r.parsed.get("skill") or _FALLBACK_SKILL
 
 
 def _briefing_facts(doc: dict) -> list[dict]:
@@ -1322,7 +1327,15 @@ async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classi
     excerpt = _pages_text(pf.get("pages", [])[:max(1, classify_pages)])[:_CLASSIFY_EXCERPT_CHARS]
     skill = await _classify(excerpt, classify_model, classify_backend, filename=filename,
                             sidecar=pf.get("sidecar"), vault=vault, effort=classify_effort)
-    return (skills_catalog.read_skill(skill), skill.removesuffix(".md"))
+    text = skills_catalog.read_skill(skill)
+    if not text:
+        # The classifier answered with a name the catalog doesn't have (a typo, a path, a skill
+        # removed since the index was built). Extracting with no domain skill under a bogus label
+        # would record a skill that doesn't exist; fall back to the general one instead.
+        _log(vault, f"WARN {filename}: classifier chose unknown skill {skill!r} — using general-records")
+        skill = _FALLBACK_SKILL
+        text = skills_catalog.read_skill(skill)
+    return (text, skill.removesuffix(".md"))
 
 
 async def _extract_document(vault: Path, sha: str, brief: str | None,
@@ -1498,8 +1511,8 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
 # `_run_batch` (called by `run`, not `_extract_document`) resumes a pending batch if one exists,
 # otherwise splits the queue into sectioned documents (extracted synchronously via claude-api —
 # a section's carry-forward depends on the previous section's result, so it can't be an
-# independent batch request) and whole documents (submitted as one batch). Requires a pinned
-# skill: classification is inherently one-document-at-a-time and not batchable.
+# independent batch request) and whole documents (submitted as one batch). Each document
+# resolves its own skill before submission (D144), so a batch may mix document types.
 
 async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_text: str,
                              skill_label: str, brief: str | None, api_key: str,
@@ -1574,18 +1587,20 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
         candidates = await asyncio.to_thread(_candidates_checklist, text)
         is_anthropic = model_client.provider_for_backend(backend) == "anthropic"
         repair_backend = "claude-api" if is_anthropic else "openai"
-        repair_model = None if is_anthropic else model
+        # The batch's own model and effort — a repair on a different model would also stamp the
+        # wrong `extract_model` onto the document's provenance below.
+        repair_model = model
         prompt = prompts.build_extract_prompt(
             pages_text=text,
             skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
             known_document_types=pf.get("known_document_types", []),
             file_metadata=pf.get("file_metadata", {}), processing=pf.get("processing", {}),
-            candidates=candidates, model=repair_model or model)
+            candidates=candidates, model=repair_model)
         if item.get("error"):
             prompt = _append_repair_note(prompt, [item["error"]])
         try:
             r = await _call_model(task="extract", model=repair_model, backend=repair_backend,
-                                  prompt=prompt, schema=schemas.EXTRACTION,
+                                  prompt=prompt, schema=schemas.EXTRACTION, effort=effort,
                                   filename=filename, detail=f"pages 1–{page_count} (repair)",
                                   vault=vault, est_input_tokens=est_input_tokens)
         except model_client.ModelError as e:
@@ -1999,6 +2014,11 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
 
     now = datetime.datetime.now()
     slug = now.strftime("%Y-%m-%d-%H-%M")
+    base, n = slug, 1
+    while (vault / "briefings" / f"{slug}.md").exists():
+        # Two finalizes inside one minute: keep the earlier briefing rather than overwrite it.
+        n += 1
+        slug = f"{base}-{n}"
     n_new = len(new_entities)
 
     body = (
@@ -2289,8 +2309,11 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         _say(f"{_DIM}→  writing briefing…{_RESET}")
         scratchpads = [p.read_text(encoding="utf-8")
                        for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
+        # A non-zero similarity is only ever recorded for a match at or above chew's own
+        # `dup_threshold`, so every one is an alert — re-applying a fixed 0.85 here silently
+        # dropped the matches a lowered threshold was configured to catch.
         neardup_alerts = [{"filename": r["filename"], "similarity": r["near_dup_similarity"]}
-                          for r in ok if r.get("near_dup_similarity", 0) >= 0.85]
+                          for r in ok if r.get("near_dup_similarity", 0) > 0]
         # Fed by the reconciliation pass (#381/D118), which is the only stage that can see a
         # conflict at all. This used to be scraped off the per-document extraction results, so
         # the count could only ever include conflicts the extractor happened to be positioned to
@@ -2464,6 +2487,8 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
 
         remap = _reconcile_entity_ids(entities, pseudo_reg, name_index)
         if remap:
+            # Staged at extraction time, so its events still name the pre-fold ids (D243).
+            timeline.remap_entity_ids(vault, remap, sha=sha)
             if artifact.get("morgue_entity_id") in remap:
                 artifact["morgue_entity_id"] = remap[artifact["morgue_entity_id"]]
             for fact in artifact.get("document", {}).get("key_facts", []):

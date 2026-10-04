@@ -24,6 +24,7 @@ from watchdog.pipeline.chunking import json_size, pack
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json, _read_json_or
+from watchdog.pipeline.timeline import remap_entity_ids
 from watchdog.pipeline.write_vault import (
     _doc_slug, _extract_analysis, _extract_summary, _merge_entity, _new_entity,
     _render_evidence_fragments,
@@ -453,6 +454,8 @@ def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: st
         if changed:
             artifact_path.write_text(
                 json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
+        # Timeline events were staged at extraction time with the pre-merge id (D243).
+        remap_entity_ids(vault, {merge_id: keep_id}, sha=sha)
     return merge_name
 
 

@@ -47,6 +47,45 @@ def _stage_dedup_key(date: str, event: str) -> str:
     return f"{date}|{event.lower()}"
 
 
+def remap_entity_ids(vault: Path, mapping: dict[str, str], sha: str | None = None) -> int:
+    """Rewrite entity ids in timeline NDJSON records through `mapping` (old id -> surviving id),
+    deduplicating each record's `entity_ids`. With `sha`, only that document's raw files
+    (`{date}_{sha[:7]}.ndjson`, records whose `source_sha256` is `sha`) are touched — the shape a
+    pre-commit fold or merge needs, since timeline events are staged at extraction time and would
+    otherwise keep naming an id that no longer exists (rendered as bare text in timeline.md).
+    Without `sha`, every file is rewritten (a post-commit `merge-entities`). Returns the number of
+    records changed."""
+    td = vault / ".watchdog" / "timeline"
+    if not mapping or not td.exists():
+        return 0
+    files = sorted(td.glob(f"*_{sha[:7]}.ndjson" if sha else "*.ndjson"))
+    changed = 0
+    for f in files:
+        out_lines: list[str] = []
+        touched = False
+        for line in _read_ndjson_lines(f):
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                out_lines.append(line)   # leave a malformed line untouched rather than drop it
+                continue
+            eids = rec.get("entity_ids")
+            if (isinstance(eids, list) and any(e in mapping for e in eids)
+                    and (sha is None or rec.get("source_sha256") == sha)):
+                remapped: list[str] = []
+                for eid in eids:
+                    eid = mapping.get(eid, eid)
+                    if eid not in remapped:
+                        remapped.append(eid)
+                rec["entity_ids"] = remapped
+                touched = True
+                changed += 1
+            out_lines.append(json.dumps(rec, ensure_ascii=False))
+        if touched:
+            f.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
+    return changed
+
+
 def stage_timeline_events(vault: Path, extraction: dict) -> int:
     """Write raw per-date NDJSON timeline files from an extraction blob.
 
