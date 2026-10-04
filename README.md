@@ -71,8 +71,7 @@ Never used a terminal? The [install guide](https://github.com/tomcardoso/watchdo
 watchdog new "Shell Company Investigation"
 cd ~/Investigations/shell-company-investigation
 
-# drop documents into _INCOMING/, then:
-watchdog
+watchdog add ~/Downloads/court-filings/
 watchdog obsidian
 ```
 

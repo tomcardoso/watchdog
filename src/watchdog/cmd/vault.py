@@ -425,11 +425,9 @@ def cmd_new(args) -> None:
     print()
     print(f"  {_BOLD}Next steps{_RESET}")
     print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog context{_RESET}")
-    print(f"    2. Drop documents into {_CYAN}{vault}/_INCOMING/{_RESET}")
-    print(f"    3. Run {_CYAN}watchdog chew{_RESET} to process documents")
-    print(f"    4. Run {_CYAN}watchdog dig{_RESET} to extract the queued documents")
-    print(f"    5. Run {_CYAN}watchdog bark{_RESET} to finish reconciliation, synthesis, and the briefing")
-    print(f"    6. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
+    print(f"    2. Run {_CYAN}watchdog add <files or folders>{_RESET} to add documents "
+          f"{_DIM}(or drop them into _INCOMING/ and run {_RESET}{_CYAN}watchdog add{_RESET}{_DIM}){_RESET}")
+    print(f"    3. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
     print()
 
 

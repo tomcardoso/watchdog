@@ -55,8 +55,8 @@ class _RunState:
     # The live status region during extraction (#151); None outside it or off a TTY, so `_say`
     # falls back to plain printing.
     board: "LiveRegion | None" = None
-    # The command a "re-run to resume" message names (#441, D138): `watchdog dig` for a dig run,
-    # bare `watchdog` for the guided walk.
+    # The command a "re-run to resume" message names (D138): `watchdog dig` for a dig run,
+    # `watchdog add` for an add run.
     resume_hint: str = "watchdog dig"
     # Per-call token/cost records (A2), one per model call; None outside a run, so helpers tested
     # directly don't need one.

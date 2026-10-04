@@ -986,10 +986,10 @@ def test_cmd_status_no_usage_line_before_any_ingest(configured, capsys):
     assert "Last ingest" not in _strip_ansi(capsys.readouterr().out)
 
 
-def test_bare_watchdog_skip_briefing_flag_reaches_cmd_guided(configured, tmp_path, monkeypatch):
+def test_bare_watchdog_skip_briefing_flag_reaches_the_home_screen(configured, tmp_path, monkeypatch):
     """`watchdog --skip-briefing` with no subcommand (#410) parses `command=None` and
-    `skip_briefing=True` on the same Namespace `cmd_guided` receives — it rides through
-    unchanged to `cmd_ingest` via `_offer_ingest`, no separate plumbing needed."""
+    `skip_briefing=True` on the Namespace the home screen receives, which passes it on to
+    `watchdog add`."""
     import sys
     vault = tmp_path / "bare-vault"
     (vault / ".watchdog" / "queue").mkdir(parents=True)
@@ -997,7 +997,7 @@ def test_bare_watchdog_skip_briefing_flag_reaches_cmd_guided(configured, tmp_pat
     monkeypatch.setattr(sys, "argv", ["watchdog", "--skip-briefing"])
 
     captured = []
-    monkeypatch.setattr(cli, "cmd_guided", lambda a: captured.append(a))
+    monkeypatch.setattr("watchdog.cmd.home.cmd_home", lambda a: captured.append(a))
 
     cli.main()
 
@@ -1006,16 +1006,17 @@ def test_bare_watchdog_skip_briefing_flag_reaches_cmd_guided(configured, tmp_pat
     assert captured[0].skip_briefing is True
 
 
-def test_cmd_guided_warns_pending_research(configured, capsys, monkeypatch):
+def test_home_screen_shows_pending_research(configured, capsys, monkeypatch):
+    from watchdog.cmd.home import cmd_home
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     vault = configured / "test-proj"
     q = vault / ".watchdog" / "research" / "queue.tsv"
     q.parent.mkdir(parents=True, exist_ok=True)
     q.write_text("https://a.com\n", encoding="utf-8")
     monkeypatch.chdir(vault)
-    cli.cmd_guided(args())
+    cmd_home(args())
     out = _strip_ansi(capsys.readouterr().out)
-    assert "1 research URL" in out
+    assert "research link not downloaded" in out
     assert "watchdog research-fetch" in out
 
 
@@ -5259,24 +5260,28 @@ def test_offer_ingest_propagates_summary_to_caller(monkeypatch, tmp_path):
     summary = {"extracted": 2, "results": [], "rate_limited": True}
     monkeypatch.setattr(ing, "_preview_ingest", lambda vault, args: None)
     monkeypatch.setattr(ing, "_count_queued", lambda vault: 3)
-    monkeypatch.setattr(ing, "_confirm_public_records", lambda n, skip_warning=False: True)
+    monkeypatch.setattr(ing, "_confirm_public_records", lambda n, **kw: True)
     monkeypatch.setattr(ing, "cmd_ingest", lambda a, **kw: summary)
     out = ing._offer_ingest(args(skip_warning=True), tmp_path)
     assert out is summary
     assert ing.exit_code_for(out) == 2
 
 
-def test_guided_walk_returns_resumable_summary(monkeypatch, tmp_path):
-    """The guided `watchdog` walk must hand its summary back to dispatch too, not just `dig` —
-    bare `watchdog` is the most common invocation, so a rate limit there has to exit 2 as well."""
+def test_home_screen_returns_the_add_summary(monkeypatch, tmp_path):
+    """When the home screen runs `watchdog add`, it hands the summary back to dispatch, so a
+    rate limit reached from bare `watchdog` still exits 2."""
+    import sys
+    import watchdog.cmd.home as home
     import watchdog.cmd.ingest as ing
     summary = {"extracted": 1, "results": [], "rate_limited": True}
-    (tmp_path / ".watchdog").mkdir()
+    (tmp_path / ".watchdog" / "queue").mkdir(parents=True)
+    (tmp_path / ".watchdog" / "queue" / f"{'a' * 64}.json").write_text("{}")
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("watchdog.pipeline.research.pending_count", lambda v: 0)
-    monkeypatch.setattr(ing, "_count_queued", lambda vault: 3)
-    monkeypatch.setattr(ing, "_offer_ingest", lambda a, v: summary)
-    out = ing.cmd_guided(args())
+    monkeypatch.setattr(home, "load_projects", lambda: {})
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(home.interactive, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(ing, "cmd_add", lambda a: summary)
+    out = home.cmd_home(args())
     assert out is summary
     assert ing.exit_code_for(out) == 2
 
