@@ -30,3 +30,18 @@ def note_link(vault: Path, rel_path: str | None, text: str | None = None) -> str
     """`text` (default: the path) linked to a vault note or file."""
     label = text if text is not None else (rel_path or "")
     return hyperlink(label, obsidian_url(vault, rel_path) if rel_path else None)
+
+
+def open_url(url: str) -> bool:
+    """Hand `url` to the system opener (Obsidian registers `obsidian://`). False when it failed."""
+    import subprocess
+    import sys
+    try:
+        if sys.platform == "win32":
+            import os
+            os.startfile(url)
+            return True
+        opener = "open" if sys.platform == "darwin" else "xdg-open"
+        return subprocess.run([opener, url], capture_output=True).returncode == 0
+    except Exception:
+        return False

@@ -236,6 +236,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | Command | What it does |
 |---|---|
 | `watchdog search <name> "<query>"` | Search ingested documents by meaning and exact terms — see [below](#watchdog-search). |
+| `watchdog review [kind]` | Step through open contradictions, leads, watch-list hits and possible duplicate documents one at a time — see [below](#watchdog-review). |
 | `watchdog leads [name]` | Print the deterministic lead sweep over the entity graph — see [below](#watchdog-leads). |
 | `watchdog resolve <id…>` | Acknowledge leads, alerts, or contradictions so reports stop re-surfacing them — see [below](#watchdog-resolve-and-unresolve). |
 | `watchdog unresolve <id…>` | Bring acknowledged items back into the active list. |
@@ -274,6 +275,12 @@ Flags:
 - `--json` — machine-readable output.
 
 Omit the project name when running from inside the vault directory; with `--everywhere`, no project name is used at all.
+
+### watchdog review
+
+Run from inside the vault, `watchdog review` shows everything waiting on you one item at a time: open contradictions, leads, watch-list hits and possible duplicate documents. For each, choose **Mark as handled**, **Keep open**, **Open in Obsidian** (which opens the item's note) or **Stop reviewing**. A handled item is acknowledged exactly as `watchdog resolve` would acknowledge it, so it drops out of later reports, briefings and the home screen, and `watchdog unresolve <id>` brings it back.
+
+Name a kind to review only that: `watchdog review contradictions`, `leads`, `alerts` or `duplicates`. When the output is piped or there is no terminal to answer in, it prints the list with each item's resolution id instead.
 
 ### watchdog leads
 

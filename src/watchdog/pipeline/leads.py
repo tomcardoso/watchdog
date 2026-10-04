@@ -90,11 +90,12 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> di
             rid = resolutions.lead_id("isolated", eid)
             if rid not in resolved:
                 isolated.append({"id": eid, "name": ent.get("name") or eid,
+                                 "note_path": ent.get("note_path", ""),
                                  "doc_count": len(ent["appears_in"]), "rid": rid})
 
         if ent.get("contradictions"):
             callouts = [
-                {"summary": _callout_summary(c), "rid": resolutions.contradiction_id(c)}
+                {"summary": _callout_summary(c), "text": c, "rid": resolutions.contradiction_id(c)}
                 for c in ent["contradictions"]
             ]
             callouts = [c for c in callouts if c["rid"] not in resolved]

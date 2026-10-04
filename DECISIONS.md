@@ -258,6 +258,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D249** — Bare `opus` means Opus 5.5; vendor-deprecated models leave the catalog, legacy ones stay
 - **D250** — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
 - **D251** — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
+- **D252** — `watchdog review` steps through open items one at a time; near-duplicates are stamped and resolvable
 
 </details>
 
@@ -2366,3 +2367,7 @@ DeepSeek retired V4 Flash and now serves V4.1 Flash as `deepseek-flash`, still a
 ### D251 — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
 
 Adding documents took three commands (`chew`, `dig`, `bark`) and an understanding of the pipeline's stages, and bare `watchdog` was a guided walk through those same stages. `watchdog add [files…]` now copies files in, chews, extracts and finishes the batch in one run; the stage commands stay for manual control and benchmarking. `add` waits out a rate limit rather than stopping, and finishes a pending batch together with the new documents instead of asking. Bare `watchdog` inside a vault shows what is waiting on the user and offers to run `add`. A new `auto_approve_usd` setting lets a run estimated at or under the limit skip the public-records pause with a one-line notice. A subscription counts as within the limit, since it has no per-run price; an unpriced metered run still asks. The tradeoff: the public-records pause is the only safeguard against sending non-public material, and the setting lets a user waive it for small runs. It is off by default, and its help says that setting it means the user already checks what they add.
+
+### D252 — `watchdog review` steps through open items one at a time; near-duplicates are stamped and resolvable
+
+Contradictions, leads, watch-list hits and possible duplicates were each listed by a different command or file, and acting on one meant copying its resolution id into `watchdog resolve`. `watchdog review [kind]` shows them one at a time with their detail, and marks an item handled in the same `resolutions.json` store, so nothing about acknowledgment changed. Building it showed that `near_duplicate_of` was never written: chew computed the MinHash match but extraction did not carry it onto the document, so the dashboard table, `/watchdog-health` and the home screen were always empty. Extraction now stamps the closest match as a link to its note (or its filename, when the match is in the same batch), and a new `duplicate:<sha12>` id lets a reviewed pair stop surfacing. The tradeoff: documents ingested before this change carry no `near_duplicate_of`, and only a forced re-extraction would add it.
