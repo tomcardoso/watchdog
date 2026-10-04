@@ -204,13 +204,13 @@ def resolve_auth(provider: str = "anthropic") -> dict:
     mode = _load_state().get("mode")
 
     if mode is None:
-        return {"mode": "none", "reason": "auth not configured — run `watchdog setup`"}
+        return {"mode": "none", "reason": "auth not configured — run `watchdog settings setup`"}
     if mode == "subscription":
         return {"mode": "subscription"}
     # api-key
     key = get_api_key(provider)
     return {"mode": "api-key", "key": key} if key else {
-        "mode": "none", "reason": "api-key mode is set but no key is configured — run `watchdog auth`"}
+        "mode": "none", "reason": "api-key mode is set but no key is configured — run `watchdog settings auth`"}
 
 
 # ── model routing → provider (for the status display) ──────────────────────────
@@ -249,7 +249,7 @@ def _status() -> None:
     print(f"  {_BOLD}Claude Code{_RESET}")
     if mode is None:
         print(f"  {_YELLOW}Not configured.{_RESET}")
-        print(f"  {_DIM}Answer the prompt below, or run{_RESET} {_CYAN}watchdog setup{_RESET}{_DIM}.{_RESET}")
+        print(f"  {_DIM}Answer the prompt below, or run{_RESET} {_CYAN}watchdog settings setup{_RESET}{_DIM}.{_RESET}")
     elif mode == "subscription":
         cc = claude_code_logged_in()
         cc_str = f"{_GREEN}detected{_RESET}" if cc else f"{_YELLOW}not detected{_RESET}"
@@ -476,7 +476,7 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
     print(f"  {_DIM}should it sign in?{_RESET}")
 
     if not interactive:
-        print(f"  {_DIM}Non-interactive — set this later with{_RESET} {_CYAN}watchdog auth{_RESET}{_DIM}.{_RESET}")
+        print(f"  {_DIM}Non-interactive — set this later with{_RESET} {_CYAN}watchdog settings auth{_RESET}{_DIM}.{_RESET}")
         return
 
     if claude_code_logged_in():
@@ -496,7 +496,7 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
     _choose_ingestion_provider(state)
     _offer_extra_providers(state)
 
-    print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog configure{_RESET} "
+    print(f"\n  {_DIM}Tune which model runs each stage anytime with{_RESET} {_CYAN}watchdog settings{_RESET} "
           f"{_DIM}(extractor_model, finalizer_model, extractor_effort, …).{_RESET}")
 
 
@@ -524,7 +524,7 @@ def _maybe_tune_concurrency_for_subscription() -> bool:
     print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — {_BOLD}extract_concurrency{_RESET} "
           f"automatically set to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
     print(f"  {_DIM}Concurrent extractions share one Claude Code session's rate limit; raise it back "
-          f"with{_RESET} {_CYAN}watchdog configure extract_concurrency{_RESET}{_DIM}.{_RESET}")
+          f"with{_RESET} {_CYAN}watchdog settings extract_concurrency{_RESET}{_DIM}.{_RESET}")
     return True
 
 
@@ -587,7 +587,7 @@ def _route_ingestion_to_claude(state: dict) -> None:
               f"session limits fast. See{_RESET} {_CYAN}docs/configuration.md{_RESET} {_DIM}(\"Model backends\") "
               f"for cheaper alternatives — OpenAI's GPT-5.6 Luna benchmarked best on real filings (see{_RESET} "
               f"{_CYAN}docs/benchmarks.md{_RESET}{_DIM}) — or switch anytime with{_RESET} "
-              f"{_CYAN}watchdog configure extractor_model{_RESET}{_DIM}.{_RESET}")
+              f"{_CYAN}watchdog settings extractor_model{_RESET}{_DIM}.{_RESET}")
         _maybe_tune_concurrency_for_subscription()
     else:
         # Claude ingestion under api-key mode is metered, not subscription-bound, so any stale
@@ -632,7 +632,7 @@ def _route_ingestion_to_provider(state: dict, provider: str) -> None:
 
     print(f"\n  {_BOLD}Pick a model for ingestion{_RESET} "
           f"{_DIM}(used for classifying, extracting, and finalizing — route an individual stage"
-          f" elsewhere anytime with watchdog configure){_RESET}")
+          f" elsewhere anytime with watchdog settings){_RESET}")
     value = _pick_model_interactive(config.get("extractor_model"), only_provider=provider)
     if value:
         config["classifier_model"] = value

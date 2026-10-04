@@ -4,7 +4,7 @@ This page lists every Watchdog command, what it does, and every option it takes.
 
 ## Colour output
 
-Watchdog colours some of its terminal output — project names in bold, file paths and commands in cyan, warnings in yellow — to make status easier to scan. This turns on automatically when you're looking at a real terminal, and off automatically when you're not: redirecting output to a file (`watchdog list > projects.txt`) or piping it into another program never includes colour codes, so the text you get stays clean either way.
+Watchdog colours some of its terminal output — project names in bold, file paths and commands in cyan, warnings in yellow — to make status easier to scan. This turns on automatically when you're looking at a real terminal, and off automatically when you're not: redirecting output to a file (`watchdog projects list > projects.txt`) or piping it into another program never includes colour codes, so the text you get stays clean either way.
 
 If you'd rather never see colour, set the standard `NO_COLOR` environment variable to any non-empty value and Watchdog will leave it off everywhere, including in the terminal.
 
@@ -14,39 +14,60 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 
 `watchdog dig` and `watchdog bark` use one more code: `2` means the run stopped partway through in a way a re-run picks up automatically — a rate limit paused it, a submitted batch is still waiting on results, some documents were never started, or `bark`'s own post-processing (entity reconciliation, synthesis, the briefing) didn't finish. Running the same command again continues from where it left off. A document that failed extraction and was set aside in `queue/_failed/` doesn't trigger this — that's a completed run with an outcome worth reviewing, not a stalled one. `watchdog requeue` is the fix, and the exit code for that run stays `0`.
 
-## Investigation management
+## How the commands are organized
+
+`watchdog --help` lists eight commands, grouped by what you are doing:
+
+| Command | What it is for |
+|---|---|
+| `watchdog` | With no command inside an investigation: the home screen — see [below](#the-home-screen). |
+| `watchdog add` | Getting documents in — see [Adding documents](#adding-documents). |
+| `watchdog ask` | A back-and-forth Claude Code session about the vault — see [below](#watchdog-ask). |
+| `watchdog search` | Finding passages by meaning and exact wording — see [below](#watchdog-search). |
+| `watchdog review` | Everything flagged for a person: contradictions, leads, watch-list hits, possible duplicates — see [below](#watchdog-review). |
+| `watchdog open` | Opening the investigation in Obsidian; `--folder` opens the folder in Finder or your file explorer instead. Omit the name when you are inside the vault. |
+| `watchdog research` | Web research, and downloading lists of links — see [below](#watchdog-research). |
+| `watchdog projects` | Creating, listing and managing investigations — see [Projects](#projects). |
+| `watchdog settings` | Models, keys, setup, health checks and skills — see [Settings](#settings). |
+
+`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `timeline`, `reindex`, `usage`, `export` and `unlock`. They are described on this page too.
+
+Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts and the vault's slash commands use the old names and see no note.
+
+### The home screen
+
+Run `watchdog` on its own inside an investigation to see the latest briefing, what is waiting on you, and what is in progress, each with the command that deals with it. When documents are waiting, it offers to run `watchdog add`; `--skip-briefing` carries through to that run. Outside an investigation, it lists the commands.
+
+## Projects
 
 | Command | What it does |
 |---|---|
-| `watchdog new [name]` | Create a new investigation vault; omit the name to be prompted, or pass `--description "text"` and `--dir <path>` to set the description and parent directory up front. |
-| `watchdog obsidian [name]` | Open the vault in Obsidian; omit the name when you are inside the vault directory. |
-| `watchdog open [name]` | Open the vault folder in Finder or your file explorer; omit the name when inside the vault directory. |
-| `watchdog list` | List all active investigations; `--all` includes archived ones. |
-| `watchdog status [name]` | Show detailed status for one investigation, or all of them when the name is omitted. |
-| `watchdog log [name]` | Show the ingest history; `--lines N` shows only the last N lines. |
-| `watchdog archive <name>` | Mark an investigation complete, hiding it from `watchdog list`. |
-| `watchdog unarchive <name>` | Restore an archived investigation. |
-| `watchdog rename [name] [new-name]` | Rename an investigation, updating the folder, registry, and Obsidian entry; omit the current name when inside the vault, and omit the new name to be prompted. |
-| `watchdog describe [name] ["text"]` | Set or update an investigation's one-line description; omit the text to be prompted. |
-| `watchdog move <name> <path>` | Move the vault to a new path and update the registry; if the files are already at the new path, it just updates the registry. |
-| `watchdog delete <name>` | Remove an investigation from the registry, leaving the vault files on disk; `--purge` also permanently deletes the files. |
-| `watchdog register [path]` | Register an existing vault folder with Watchdog; omit the path when inside the vault, and pass `--name` to set the name without being prompted. |
+| `watchdog projects list` | List all active investigations; `--all` includes archived ones. `watchdog projects` on its own does the same. |
+| `watchdog projects new [name]` | Create a new investigation vault; omit the name to be prompted, or pass `--description "text"` and `--dir <path>` to set the description and parent directory up front. |
+| `watchdog projects register [path]` | Register an existing vault folder with Watchdog; omit the path when inside the vault, and pass `--name` to set the name without being prompted. |
+| `watchdog projects status [name]` | Show detailed status for one investigation, or all of them when the name is omitted. |
+| `watchdog projects rename [name] [new-name]` | Rename an investigation, updating the folder, registry, and Obsidian entry; omit the current name when inside the vault, and omit the new name to be prompted. |
+| `watchdog projects describe [name] ["text"]` | Set or update an investigation's one-line description; omit the text to be prompted. |
+| `watchdog projects move <name> <path>` | Move the vault to a new path and update the registry; if the files are already at the new path, it just updates the registry. |
+| `watchdog projects archive <name>` | Mark an investigation complete, hiding it from `watchdog projects list`. |
+| `watchdog projects unarchive <name>` | Restore an archived investigation. |
+| `watchdog projects delete <name>` | Remove an investigation from the registry, leaving the vault files on disk; `--purge` also permanently deletes the files. |
+| `watchdog projects log [name]` | Show the ingest history; `--lines N` shows only the last N lines. |
 
-Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
+Investigation names tab-complete in zsh and bash once `watchdog settings setup` has run.
 
-## Processing
+## Adding documents
 
 | Command | What it does |
 |---|---|
 | `watchdog add [PATH…]` | Add documents: copy the named files or folders into `_INCOMING/`, then chew, dig and bark in one run — see [below](#watchdog-add). |
-| `watchdog fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-fetch). |
-| `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
-| `watchdog dig` | Classify and extract queued documents into staged artifacts — see [below](#watchdog-dig). |
-| `watchdog bark` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch staged by `watchdog dig`, or one an interruption left half-done; takes `--finalizer-model` (and its four per-stage overrides), `--finalizer-effort`, `--estimate`, `--estimate-all`, and `--skip-briefing` — see [below](#watchdog-bark). |
-| `watchdog requeue [name]` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog dig`; omit the name inside the vault. |
-| `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
-| `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive, starting with any already waiting there. |
-| `watchdog [--skip-briefing]` | With no subcommand inside a vault: show the home screen — the latest briefing, what is waiting on you, and what is in progress, each with the command that deals with it — and offer to run `watchdog add` when documents are waiting. `--skip-briefing` carries through to that run. Outside a vault, it lists the commands. |
+| `watchdog add --watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive, starting with any already waiting there. |
+| `watchdog research fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-research-fetch). |
+| `watchdog ask --context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
+| `watchdog chew` | Maintenance. Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
+| `watchdog dig` | Maintenance. Classify and extract queued documents into staged artifacts — see [below](#watchdog-dig). |
+| `watchdog bark` | Maintenance. Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch staged by `watchdog dig`, or one an interruption left half-done; takes `--finalizer-model` (and its four per-stage overrides), `--finalizer-effort`, `--estimate`, `--estimate-all`, and `--skip-briefing` — see [below](#watchdog-bark). |
+| `watchdog requeue [name]` | Maintenance. Move documents quarantined in `queue/_failed/` back into the active queue without running them; `watchdog add --retry` requeues and runs them in one step. |
 
 `watchdog chew`, `watchdog dig` and `watchdog bark` are the three steps `watchdog add` runs for you. Run them separately to chew now and extract later, to check what was extracted before it reaches the vault, or to try more than one finalizer model against the same extraction.
 
@@ -64,7 +85,7 @@ It stops for you only to show the public-records warning (see [`watchdog dig`](#
 
 `watchdog dig` runs classification and extraction in your terminal — no Claude Code session is involved. It scans the queue, prints a token estimate, then shows the public-records warning below and asks you to acknowledge it before extracting documents in parallel. On a metered API key with at least one prior run, the estimate includes a rough dollar range projected from this vault's own usage history (the last three runs); on a subscription, or before any run has completed, only the token estimate is shown. The token estimate itself sharpens the same way: once a vault has extracted at least one batch, later estimates are scaled by how far this vault's own recent extractions ran over or under the raw estimate, rather than a fixed guess — a new vault falls back to the raw estimate until it has that history.
 
-`dig` stops as soon as the batch is staged: nothing is written to the vault, and post-processing (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation, the briefing) does not run — that's `watchdog bark`, [below](#watchdog-bark). `watchdog status` shows a staged batch as pending finalization until you run it.
+`dig` stops as soon as the batch is staged: nothing is written to the vault, and post-processing (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation, the briefing) does not run — that's `watchdog bark`, [below](#watchdog-bark). `watchdog projects status` shows a staged batch as pending finalization until you run it.
 
 **Public records only.** Every `dig` that will call the model shows this warning and requires an explicit acknowledgement — the default choice — before anything is sent:
 
@@ -83,7 +104,7 @@ It stops for you only to show the public-records warning (see [`watchdog dig`](#
        Cancel
 ```
 
-It's shown every time, not just once per vault — the risk is per-document, not per-vault — and it replaces the plain "Ingest now?" prompt rather than adding a second one. `--skip-warning` skips the interactive pause, for repeated or scripted runs on a corpus already vetted as public (benchmarking, `--wait` batches, automation); it still prints a one-line notice naming how many documents were sent, so a skipped run is never silent about what it did. It is a per-invocation flag rather than a `watchdog configure` setting — a persistent "never warn me" default would quietly defeat the safeguard for every future run. (See [Benchmarks](benchmarks.md) for how this flag is used to run the model-comparison suite unattended.)
+It's shown every time, not just once per vault — the risk is per-document, not per-vault — and it replaces the plain "Ingest now?" prompt rather than adding a second one. `--skip-warning` skips the interactive pause, for repeated or scripted runs on a corpus already vetted as public (benchmarking, `--wait` batches, automation); it still prints a one-line notice naming how many documents were sent, so a skipped run is never silent about what it did. It is a per-invocation flag rather than a `watchdog settings` setting — a persistent "never warn me" default would quietly defeat the safeguard for every future run. (See [Benchmarks](benchmarks.md) for how this flag is used to run the model-comparison suite unattended.)
 
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
@@ -119,7 +140,7 @@ Most of what a first read misses is not something it couldn't see. Checked again
 
 The verification pass is a second, cheap read aimed at exactly that. Straight after a document is extracted, it goes back to the same text with the facts just pulled from it in hand, and answers one question: what material fact is here and not on that list? Anything it finds is compared against the existing facts by the program — not by the model a second time — and added if it is genuinely new. Added facts look like any other fact in your notes, with the same page citation; the notes don't mark which read found them.
 
-Turn it on for a single run with `--verify`, or for good with `watchdog configure verify_extraction true`. `--no-verify` turns it off again for one run.
+Turn it on for a single run with `--verify`, or for good with `watchdog settings verify_extraction true`. `--no-verify` turns it off again for one run.
 
 **What it costs.** Roughly 15% more per run on the Claude API path, where the re-read reuses the first call's cached prompt at a fraction of the price, so most of the extra is the second call's own thinking. On an OpenAI-compatible model the re-read doesn't get that discount, so expect a larger increase. It runs at low effort by default to keep the thinking cost down; `verifier_effort` raises it if you need to. Not available with a batch extractor model (`claude-batch`, `openai-batch`), which returns its results hours later, long after there is anything to check them against.
 
@@ -127,7 +148,7 @@ Turn it on for a single run with `--verify`, or for good with `watchdog configur
 
 ### watchdog bark
 
-`watchdog bark` completes post-ingest — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, the briefing, and (only when the run adds a new document request while others are already open) consolidating differently-worded document requests that name the same real document — for a batch `watchdog dig` staged, or one an interruption (a rate limit mid-run, a Ctrl+C) left half-done. `watchdog status` flags a batch as pending finalization; `bark` completes it without re-extracting anything. Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracted; extraction only stages its output durably.
+`watchdog bark` completes post-ingest — merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline reconciliation, the briefing, and (only when the run adds a new document request while others are already open) consolidating differently-worded document requests that name the same real document — for a batch `watchdog dig` staged, or one an interruption (a rate limit mid-run, a Ctrl+C) left half-done. `watchdog projects status` flags a batch as pending finalization; `bark` completes it without re-extracting anything. Documents land in the vault — entity and document notes, the registry — at the start of this step, not progressively as each one extracted; extraction only stages its output durably.
 
 **Model and effort flags.** Each takes effect for this run only; the persistent defaults live in [Configuration](configuration.md).
 
@@ -143,7 +164,7 @@ Takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value routi
 - `--finalizer-timeline-model MODEL` — just deduplicating same-date collisions and folding coarse-precision restatements into their exact date.
 - `--finalizer-briefing-model MODEL` — just the briefing.
 
-Each falls back to `--finalizer-model` (and, below that, `finalizer_model` from `watchdog configure`) when left unset — setting only one of these leaves the other three stages on the aggregate finalizer. A stage overridden this way still uses `--finalizer-effort`; effort isn't overridable per stage. When any override is in effect, the "which model runs each stage" line printed before the run starts grows an extra `finalizer:<stage>` row for each stage that actually differs from the aggregate finalizer.
+Each falls back to `--finalizer-model` (and, below that, `finalizer_model` from `watchdog settings`) when left unset — setting only one of these leaves the other three stages on the aggregate finalizer. A stage overridden this way still uses `--finalizer-effort`; effort isn't overridable per stage. When any override is in effect, the "which model runs each stage" line printed before the run starts grows an extra `finalizer:<stage>` row for each stage that actually differs from the aggregate finalizer.
 
 **Other flags.**
 
@@ -157,7 +178,7 @@ A Ctrl+C during `bark`'s sequential post-processing stops it cleanly too; re-run
 
 Extraction is the expensive part of an ingest — the finalizer's few calls (reconciliation, synthesis, timeline, briefing, and the occasional document-request dedup pass) cost little by comparison. To try more than one finalizer model or effort level against the *same* extraction, without paying for extraction again each time:
 
-1. Run `watchdog dig`. Documents extract and stage durably, but nothing is written to the vault and post-processing does not run — `watchdog status` will show the batch as pending finalization.
+1. Run `watchdog dig`. Documents extract and stage durably, but nothing is written to the vault and post-processing does not run — `watchdog projects status` will show the batch as pending finalization.
 2. Run `watchdog bark --finalizer-model <model>` to try one candidate. Do this from inside the vault, or from a copy of the vault folder if you want to test several candidates against the identical extraction — each copy still has the same staged inputs, so pointing a different `--finalizer-model` at each copy compares them fairly.
 
 To isolate just one stage instead of the whole post-ingest step, pass one of the four per-stage overrides described [above](#watchdog-bark) — e.g. `watchdog bark --finalizer-briefing-model opus` tries a different briefing model while reconciliation, synthesis, and the timeline stay on the aggregate finalizer.
@@ -218,48 +239,53 @@ Two flags override the persistent parallelism settings for a single run:
 
 Press Ctrl+C to cancel a chew in progress — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run. When the batch completes, Watchdog sends a desktop notification (macOS only) and offers to extract right away, so you can move straight to extraction without typing the next command — that offer is the same public-records acknowledgement gate described under [`watchdog dig`](#watchdog-dig) above, not a separate confirmation.
 
-### watchdog fetch
+### watchdog research fetch
 
-`watchdog fetch` downloads a batch of URLs into `_INCOMING/` — for when you already have the links and don't need a research session. Each URL is validated, size-capped, and saved with a provenance sidecar, and Wayback Machine archiving applies if you have [configured it](configuration.md).
+`watchdog research fetch` downloads a batch of URLs into `_INCOMING/` — for when you already have the links and don't need a research session. Each URL is validated, size-capped, and saved with a provenance sidecar, and Wayback Machine archiving applies if you have [configured it](configuration.md).
 
 ```bash
-watchdog fetch https://example.gov/filing https://news.example/article
-watchdog fetch links.txt
+watchdog research fetch https://example.gov/filing https://news.example/article
+watchdog research fetch links.txt
 ```
 
 A links file holds one URL per line, or the tab-separated `url⇥title⇥source_type⇥relevance` form. Pass `--project <name>` to target a vault you are not currently inside.
 
 HTML pages get a full rendered snapshot — images, styles, client-rendered content — when the optional capture browser is installed, and fall back to a sanitized plain fetch otherwise; see [Install](install.md) for the optional install. After fetching, run `watchdog chew` and `watchdog dig` as usual.
 
-## Info and settings
+## Investigating
 
 | Command | What it does |
 |---|---|
 | `watchdog ask ["question"]` | Open a Claude Code session on the vault, optionally starting with a question — see [below](#watchdog-ask). |
 | `watchdog search <name> "<query>"` | Search ingested documents by meaning and exact terms — see [below](#watchdog-search). |
 | `watchdog review [kind]` | Step through open contradictions, leads, watch-list hits and possible duplicate documents one at a time — see [below](#watchdog-review). |
-| `watchdog leads [name]` | Print the deterministic lead sweep over the entity graph — see [below](#watchdog-leads). |
-| `watchdog resolve <id…>` | Acknowledge leads, alerts, or contradictions so reports stop re-surfacing them — see [below](#watchdog-resolve-and-unresolve). |
-| `watchdog unresolve <id…>` | Bring acknowledged items back into the active list. |
-| `watchdog merge-entities <keep-id> <merge-id>` | Fold a duplicate entity into another — see [below](#watchdog-merge-entities). |
-| `watchdog timeline [name]` | Rebuild `timeline.md` from the canonical event files; deterministic, no model call. |
-| `watchdog reindex [name]` | Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
+| `watchdog review resolve <id…>` | Mark items handled by their resolution ids — see [below](#watchdog-review-resolve-and-unresolve). |
+| `watchdog review unresolve <id…>` | Bring handled items back into the active list. |
+| `watchdog review watchlist [name]` | Sweep every already-ingested document against the current `watchlist.md` — see [below](#watchdog-review-watchlist). |
+| `watchdog review merge-entities <keep-id> <merge-id>` | Fold a duplicate entity into another — see [below](#watchdog-review-merge-entities). |
+| `watchdog review add-contradiction <entity-id>` | Record a contradiction you have verified, so it is tracked like the ones found during ingest. |
 | `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web — see [below](#watchdog-research). |
-| `watchdog watchlist [name]` | Sweep every already-ingested document against the current `watchlist.md` — see [below](#watchdog-watchlist). |
-| `watchdog usage [name]` | Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
-| `watchdog export [name]` | Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
-| `watchdog doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog move` or `watchdog delete` for each issue. |
-| `watchdog auth` | Show or change how Watchdog authenticates to model providers, interactively — see [below](#watchdog-auth). |
-| `watchdog unlock [name]` | Release a stale chew or ingest lock; `--force` removes it even if recent. |
-| `watchdog setup` | Set up Watchdog after installation; `--force` re-runs it. |
-| `watchdog refresh-skills [name]` | Update a vault's Claude Code command skills after a Watchdog upgrade. |
-| `watchdog show-skills [name]` | List the record skills, or print one in full. |
-| `watchdog about` | Show the installed version and project links. |
-| `watchdog configure [key] [value]` | View or change settings — the full reference is in [Configuration](configuration.md). |
+| `watchdog timeline [name]` | Maintenance. Rebuild `timeline.md` from the canonical event files; deterministic, no model call. |
+| `watchdog reindex [name]` | Maintenance. Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
+| `watchdog usage [name]` | Maintenance. Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
+| `watchdog export [name]` | Maintenance. Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
+| `watchdog unlock [name]` | Maintenance. Release a stale chew or ingest lock; `--force` removes it even if recent. |
+
+## Settings
+
+| Command | What it does |
+|---|---|
+| `watchdog settings [key] [value]` | View or change settings — the full reference is in [Configuration](configuration.md). `watchdog settings configure` is the same command. |
+| `watchdog settings auth` | Show or change how Watchdog authenticates to model providers, interactively — see [below](#watchdog-settings-auth). |
+| `watchdog settings setup` | Set up Watchdog after installation; `--force` re-runs it. |
+| `watchdog settings doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog projects move` or `watchdog projects delete` for each issue. |
+| `watchdog settings skills [name]` | List the record skills, or print one in full. |
+| `watchdog settings refresh-skills [name]` | Update a vault's Claude Code command skills after a Watchdog upgrade. |
+| `watchdog settings about` | Show the installed version and project links. |
 
 ### watchdog search
 
-`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text. How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
+`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog review leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text. How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
 
 ```bash
 watchdog search my-investigation "shell company -real estate"
@@ -285,24 +311,24 @@ Two options: `--project <name>` opens a vault you are not currently inside, and 
 
 ### watchdog review
 
-Run from inside the vault, `watchdog review` shows everything waiting on you one item at a time: open contradictions, leads, watch-list hits and possible duplicate documents. For each, choose **Mark as handled**, **Keep open**, **Open in Obsidian** (which opens the item's note) or **Stop reviewing**. A handled item is acknowledged exactly as `watchdog resolve` would acknowledge it, so it drops out of later reports, briefings and the home screen, and `watchdog unresolve <id>` brings it back.
+Run from inside the vault, `watchdog review` shows everything waiting on you one item at a time: open contradictions, leads, watch-list hits and possible duplicate documents. For each, choose **Mark as handled**, **Keep open**, **Open in Obsidian** (which opens the item's note) or **Stop reviewing**. A handled item is acknowledged exactly as `watchdog review resolve` would acknowledge it, so it drops out of later reports, briefings and the home screen, and `watchdog review unresolve <id>` brings it back.
 
 Name a kind to review only that: `watchdog review contradictions`, `leads`, `alerts` or `duplicates`. When the output is piped or there is no terminal to answer in, it prints the list with each item's resolution id instead.
 
-### watchdog leads
+### Leads
 
-Prints the deterministic lead sweep over the vault's entity graph — no model call. It flags four things: entities named as a relationship target but never profiled, entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles that need verifying — either marked as inferred, or carrying a figure Watchdog could not find anywhere in the source document. The same sweep runs automatically at the end of every ingest, writing `briefings/leads-<date>.md`; this command re-runs it on demand. Items acknowledged with `watchdog resolve` drop out of the list. See [Investigating](investigating.md) for how leads fit the working rhythm.
+The lead sweep is a deterministic pass over the vault's entity graph — no model call. It flags four things: entities named as a relationship target but never profiled, entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles that need verifying — either marked as inferred, or carrying a figure Watchdog could not find anywhere in the source document. The sweep runs automatically at the end of every ingest, writing `briefings/leads-<date>.md`. `watchdog review leads` steps through the open leads one at a time; piped or run without a terminal, it prints them with their resolution ids. (`watchdog leads`, the older command, prints the full sweep and is what the vault's slash commands run.) Items marked handled drop out of the list. See [Investigating](investigating.md) for how leads fit the working rhythm.
 
-### watchdog resolve and unresolve
+### watchdog review resolve and unresolve
 
-Every item in the leads, alerts, and document-request reports carries a short resolution id (for example `lead:isolated:acme`, or `request:9f8e7d6c1a2b` for a document request). Run `watchdog resolve <id…>` from inside the vault to acknowledge items so the deterministic reports stop re-surfacing them. Two flags change the mode: `--sync` imports any `- [x]` checkboxes you have ticked in the `briefings/` files or the vault-root `requests.md` instead of taking ids, and `--list` shows what is currently acknowledged. `watchdog unresolve <id…>` is the inverse, bringing items back into the active list. Acknowledgments are stored in the vault's registry and follow an entity through `watchdog merge-entities`.
+Every item in the leads, alerts, and document-request reports carries a short resolution id (for example `lead:isolated:acme`, or `request:9f8e7d6c1a2b` for a document request). Run `watchdog review resolve <id…>` from inside the vault to acknowledge items so the deterministic reports stop re-surfacing them. Two flags change the mode: `--sync` imports any `- [x]` checkboxes you have ticked in the `briefings/` files or the vault-root `requests.md` instead of taking ids, and `--list` shows what is currently acknowledged. `watchdog review unresolve <id…>` is the inverse, bringing items back into the active list. Acknowledgments are stored in the vault's registry and follow an entity through `watchdog review merge-entities`.
 
-### watchdog merge-entities
+### watchdog review merge-entities
 
 Folds a duplicate entity into another when the same real-world person or company was extracted under two ids. It unions aliases, document appearances, roles, and timeline events onto the surviving entity; remaps every relationship anywhere in the registry that targeted the losing id; carries the losing entity's Analysis section over with provenance intact; and redirects the losing note to a stub pointing at the survivor.
 
 ```bash
-watchdog merge-entities <keep-id> <merge-id>
+watchdog review merge-entities <keep-id> <merge-id>
 ```
 
 The command prints both entities and asks for confirmation, since the merge is irreversible; `--force` skips the prompt. Run `watchdog reindex` afterward to drop the merged entity's stale search-index entries. When both entities had a prose Summary, it prints a reminder to run `/watchdog-entity <keep-id>` in a Claude Code session, which re-synthesizes the survivor from every merged source. See [Investigating](investigating.md) for when duplicates happen and how to spot them.
@@ -319,9 +345,9 @@ Rebuilds the vault's semantic and full-text search indexes from what is already 
 
 Opens Claude Code to research the vault's open questions on the web. Claude queues the sources it finds rather than writing anything to the vault; when the session ends, Watchdog downloads them into `_INCOMING/` so the findings flow through the normal chew-and-ingest pipeline. `--question "<q>"` (or `-q`) seeds a research question, and `--model` picks the Claude model for the session (`sonnet`, `opus`, `haiku`, or an explicit version such as `sonnet-4.6`; default: `sonnet`). The full treatment — effort tiers, interrupted-session recovery, what research deliberately does not do — is in [Investigating](investigating.md).
 
-### watchdog watchlist
+### watchdog review watchlist
 
-Sweeps every already-ingested document against the current `watchlist.md` — deterministic, no model call. The scan that runs automatically at the end of each ingest only sees that run's documents, so a term added afterward is never checked against the existing corpus; this command covers the whole vault instead, writing to the same `briefings/alerts-<date>.md`. Terms already acknowledged with `watchdog resolve` don't re-report. The watchlist format and workflow live in [Investigating](investigating.md).
+Sweeps every already-ingested document against the current `watchlist.md` — deterministic, no model call. The scan that runs automatically at the end of each ingest only sees that run's documents, so a term added afterward is never checked against the existing corpus; this command covers the whole vault instead, writing to the same `briefings/alerts-<date>.md`. Terms already acknowledged with `watchdog review resolve` don't re-report. The watchlist format and workflow live in [Investigating](investigating.md).
 
 ### watchdog usage
 
@@ -339,42 +365,42 @@ A batch-collected extractor stage (the Batches API's cheaper, asynchronous extra
 
 Exports the investigation's entity and relationship graph for network-analysis tools. The default writes Neo4j-import CSV (`nodes.csv` and `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead (it starts by creating a uniqueness constraint, so it needs Neo4j 4.4 or later; every node carries a `WatchdogEntity` label as well as its type), and `--output DIR` sets the destination (default: `<slug>-export/`). The export is deterministic — it reads the registry, with no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped), and edges to never-profiled entities are dropped so the import stays valid.
 
-### watchdog auth
+### watchdog settings auth
 
 Shows how Watchdog currently authenticates to model providers, then, on a terminal, offers to change it.
 
-- `watchdog auth` — prints a **Claude Code** section (subscription/api-key mode, Claude Code login detection — Claude Code is required for the interactive investigation commands and is the ingestion default), an **Ingestion** section showing which provider each of `classifier_model`/`extractor_model`/`finalizer_model` currently resolves to and whether that provider is ready (✓/✗), and a **Provider keys** section listing every stored key, masked, and marked `(in use)` or `(unused)` depending on whether a stage is routed to it. Off a terminal, it stops there.
+- `watchdog settings auth` — prints a **Claude Code** section (subscription/api-key mode, Claude Code login detection — Claude Code is required for the interactive investigation commands and is the ingestion default), an **Ingestion** section showing which provider each of `classifier_model`/`extractor_model`/`finalizer_model` currently resolves to and whether that provider is ready (✓/✗), and a **Provider keys** section listing every stored key, masked, and marked `(in use)` or `(unused)` depending on whether a stage is routed to it. Off a terminal, it stops there.
 - On a terminal it then asks **"Change something?"** — choose **Done — nothing to change** to leave, or pick a service (Anthropic, OpenAI, DeepSeek, or Gemini):
   - For **Anthropic**, choose between your Claude Code subscription (not metered) and a metered API key.
   - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace an existing one, or delete it.
 
-There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `LOCAL_API_KEY`, `OPENROUTER_API_KEY`), which always take precedence over a stored key. `LOCAL_BASE_URL` and `OPENROUTER_BASE_URL` likewise override the `local_base_url`/`openrouter_base_url` `watchdog configure` keys for those two backends. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
+There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `LOCAL_API_KEY`, `OPENROUTER_API_KEY`), which always take precedence over a stored key. `LOCAL_BASE_URL` and `OPENROUTER_BASE_URL` likewise override the `local_base_url`/`openrouter_base_url` `watchdog settings` keys for those two backends. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
 
 ### watchdog unlock
 
 Releases a stale lock left behind by an interrupted chew or ingest — both lock types are checked. A lock that looks recent is left alone unless you pass `--force`. Run it from inside the vault, or pass the investigation name.
 
-### watchdog setup
+### watchdog settings setup
 
 The one-time setup after installation: it verifies system dependencies, configures your projects directory, sets up Claude authentication, offers the optional capture browser, downloads the local models used for document conversion and search, and enables shell tab completion. `--force` re-runs it after it has already completed. The step-by-step walkthrough is in [Install](install.md).
 
-### watchdog refresh-skills
+### watchdog settings refresh-skills
 
 Updates a vault's Claude Code command skills (the `/watchdog-*` commands) after upgrading Watchdog. Record skills are global — read straight from the installed package — so they never need refreshing; only the per-vault command skills do.
 
 It also brings the vault's Claude Code settings up to date: it removes permissions that older versions granted but no longer need (including hand-edit access to pipeline-owned notes and the registry), updates the prompt hook that tells a session when documents are still waiting, and moves the dashboard and graph colours to the current entity folders.
 
-### watchdog show-skills
+### watchdog settings skills
 
 With no argument, lists every record skill with a one-line description, prints where to add your own, and opens the skills folder on GitHub so the full text is easy to read. Pass a skill name to print that skill in full in the terminal. The skills themselves are covered in [Skills](skills.md).
 
-### watchdog about
+### watchdog settings about
 
 Prints the installed version, plus links to the project's GitHub page, issue tracker, and install guide.
 
-### watchdog configure
+### watchdog settings
 
-Views and changes Watchdog's settings — run it with no arguments to see everything, or `watchdog configure <key> <value>` to set one. The full key reference, model backends, and cost guidance are in [Configuration](configuration.md).
+Views and changes Watchdog's settings — run it with no arguments to see everything, or `watchdog settings <key> <value>` to set one. The full key reference, model backends, and cost guidance are in [Configuration](configuration.md).
 
 ## Slash commands
 
@@ -386,7 +412,7 @@ These run inside a Claude Code session with your investigation open (`watchdog a
 | `/watchdog-surface` | Find connections and anomalies across the full vault. |
 | `/watchdog-entity [id…]` | Refresh an entity's Summary and Timeline from all its source documents. |
 | `/watchdog-wiki` | Create or update investigation thread pages in `wiki/`. |
-| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` (launch with `watchdog context`). |
+| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` (launch with `watchdog ask --context`). |
 | `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches, unresolved contradictions, unreviewed near-duplicates. |
 | `/watchdog-research [question]` | Research open questions on the web, queuing sources for download into `_INCOMING/` (launch with `watchdog research`). |
 

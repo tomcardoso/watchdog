@@ -120,7 +120,7 @@ def test_off_a_terminal_it_prints_the_list(vault, monkeypatch, capsys):
     review.cmd_review(argparse.Namespace(kind=None))
     out = _plain(capsys.readouterr().out)
     for text in ("Contradictions", "Leads", "Watch-list hits", "Possible duplicate documents",
-                 "resolve: alert:aaaaaaa:t1", "watchdog resolve <id>"):
+                 "resolve: alert:aaaaaaa:t1", "watchdog review resolve <id>"):
         assert text in out
 
 

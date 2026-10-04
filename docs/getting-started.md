@@ -13,7 +13,7 @@ Two things to keep in mind before you begin.
 Each investigation lives in its own vault — a folder of linked notes that you read in Obsidian. Create one:
 
 ```bash
-watchdog new
+watchdog projects new
 ```
 
 Watchdog prompts you for a name and an optional one-line description. The description pre-seeds `context.md` and is stored in your project registry, which is useful when you have several investigations open at once.
@@ -21,7 +21,7 @@ Watchdog prompts you for a name and an optional one-line description. The descri
 If you would rather skip the prompts, pass everything on the command line:
 
 ```bash
-watchdog new "Shell Company Investigation" --description "Offshore owners behind city-adjacent land deals"
+watchdog projects new "Shell Company Investigation" --description "Offshore owners behind city-adjacent land deals"
 ```
 
 Use a name that will still make sense in six months. Watchdog creates a folder in your configured projects directory — by default, `~/Investigations/shell-company-investigation` — and sets up everything inside it:
@@ -34,7 +34,7 @@ Use a name that will still make sense in six months. Watchdog creates a folder i
 Open the vault in Obsidian:
 
 ```bash
-watchdog obsidian shell-company-investigation
+watchdog open shell-company-investigation
 ```
 
 You will see an empty vault with the folder structure in place. Content comes after ingestion.
@@ -46,7 +46,7 @@ Before dropping in records, it helps to tell Watchdog what you are investigating
 First, copy any background material into the `_CONTEXT/` folder inside the vault — prior published stories, notes, screenshots of relevant web pages, anything that describes the investigation's scope. Then, from inside the vault directory, run:
 
 ```bash
-watchdog context
+watchdog ask --context
 ```
 
 Claude reads the material and interviews you — who the key people and companies are, what you are looking for, what documents you expect. It then writes `context.md`, an investigative brief that persists across every future session and tells Claude what you already know. It also proposes a short list of watchlist candidates — names, companies, and addresses drawn from the same material — for you to accept, edit, or skip. Anything you approve is added to `watchlist.md` right away.
@@ -95,7 +95,7 @@ watchdog add ~/Downloads/court-filings/
 
 `watchdog add` takes the documents all the way in. It converts and OCRs them locally (no AI involved), extracts entities, facts and timeline events from each one, writes everything to the vault, and produces a **briefing** summarizing what was found, connections to entities already in the vault, and anything worth following up. Large documents can take several minutes each to extract, so a long pause on a status row is normal. Read the briefing carefully once it's done — the connections section is often where the story is.
 
-It stops for you only twice: to show the public-records warning before anything is sent to a model, and if your provider refuses your key or account. If you hit a rate limit, it waits for the limit to reset and carries on. To skip the warning for small runs, set a spending limit once — `watchdog configure auto_approve_usd 5` — and any run estimated at or under that amount goes ahead with a one-line notice instead; see [Configuration](configuration.md#controlling-cost).
+It stops for you only twice: to show the public-records warning before anything is sent to a model, and if your provider refuses your key or account. If you hit a rate limit, it waits for the limit to reset and carries on. To skip the warning for small runs, set a spending limit once — `watchdog settings auto_approve_usd 5` — and any run estimated at or under that amount goes ahead with a one-line notice instead; see [Configuration](configuration.md#controlling-cost).
 
 Run `watchdog` on its own inside the vault at any time to see where things stand: the latest briefing, what is waiting on you (contradictions, leads, possible duplicates, watch-list hits), and anything still in progress, each with the command that deals with it. If documents are waiting, it offers to add them.
 
@@ -111,14 +111,14 @@ Three features run alongside every ingest; each has its full treatment in the [i
 
 If you stop a run partway — with Ctrl+C, say — run `watchdog add` again and it picks up where it left off; see [troubleshooting](troubleshooting.md#hitting-rate-limits).
 
-Under the hood, `watchdog add` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#processing) for each one's flags in full, or [Methodology](methodology.md) for a plain-English account of what each step actually does to your documents and why.
+Under the hood, `watchdog add` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#adding-documents) for each one's flags in full, or [Methodology](methodology.md) for a plain-English account of what each step actually does to your documents and why.
 
 ## Explore the vault in Obsidian
 
 After ingest, open Obsidian:
 
 ```bash
-watchdog obsidian shell-company-investigation
+watchdog open shell-company-investigation
 ```
 
 To browse the raw files in Finder or your file explorer instead, run `watchdog open shell-company-investigation`. From inside the vault directory, both commands work without the name.

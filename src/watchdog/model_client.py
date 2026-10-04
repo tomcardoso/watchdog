@@ -1244,7 +1244,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     if provider == "anthropic":
         resolved = auth.resolve_auth()
         if resolved["mode"] == "none":
-            raise ModelError(resolved.get("reason", "no auth configured — run `watchdog setup`"))
+            raise ModelError(resolved.get("reason", "no auth configured — run `watchdog settings setup`"))
         auth_mode = resolved["mode"]
         api_key = resolved.get("key")           # None in subscription mode
         if chosen is None:
@@ -1252,7 +1252,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if chosen == "claude-api" and not api_key:
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
-                f"'{auth_mode}' — run `watchdog auth` to switch to api-key mode, or use the claude-agent-sdk backend")
+                f"'{auth_mode}' — run `watchdog settings auth` to switch to api-key mode, or use the claude-agent-sdk backend")
         return chosen, provider, api_key, auth_mode, None
 
     base_url = None
@@ -1261,11 +1261,11 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if not base_url:
             raise ModelError(
                 f"the {chosen} backend needs a base URL — run "
-                f"`watchdog configure {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
+                f"`watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
 
     api_key = auth.get_api_key(provider)
     if auth.provider_requires_key(provider) and not api_key:
-        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth` to add one")
+        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog settings auth` to add one")
     return chosen, provider, api_key, "api-key", base_url
 
 

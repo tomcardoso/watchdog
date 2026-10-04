@@ -72,7 +72,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 
 - qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
 - Ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
-- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer. Required for OCR on Windows; `watchdog setup` will refuse to continue without it.
+- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer. Required for OCR on Windows; `watchdog settings setup` will refuse to continue without it.
 - pipx: open the terminal and run `python -m pip install pipx`, then `pipx ensurepath`
 
 ## Step 5: install Watchdog
@@ -86,12 +86,12 @@ Wait for it to finish — you'll see a message saying the installation is comple
 ## Step 6: run setup
 
 ```bash
-watchdog setup
+watchdog settings setup
 ```
 
 Setup checks that qpdf and Ghostscript are installed, enables tab completion in your terminal, detects your machine's OCR engine, and downloads the models Watchdog uses for document conversion, search, and name detection. The name-detection model (GLiNER, which spots people, organizations, and places as a backstop alongside the AI model's own reading — see [Methodology](methodology.md)) is the largest single download, at roughly 1.1GB; the rest add up to a few hundred megabytes more. All of it is a one-time download that may take a few minutes on a slow connection.
 
-Switching OCR engines (`watchdog configure ocr_engine tesseract`) works the same way: Watchdog installs the faster Tesseract binding for you automatically, provided the system Tesseract headers from the platform install steps above are already in place.
+Switching OCR engines (`watchdog settings ocr_engine tesseract`) works the same way: Watchdog installs the faster Tesseract binding for you automatically, provided the system Tesseract headers from the platform install steps above are already in place.
 
 Along the way it asks three questions:
 
@@ -99,9 +99,9 @@ Along the way it asks three questions:
 2. **Whether to install the optional capture browser** for full page snapshots (an extra ~150 MB). The default is no; see [Full page snapshots](#optional-full-page-snapshots) below.
 3. **How to authenticate with Claude.** Setup explains that Claude Code powers the interactive commands and is the ingestion default, and reports whether it detects an existing Claude Code login. Press Return to use your subscription, or choose the metered API key option and paste your key.
 
-If you choose the subscription, setup also warns that ingesting more than a few documents at once can be token-heavy for a Pro plan's session limits, and offers to route ingestion to a cheaper metered provider instead — OpenAI's GPT-5.6 Luna is named first, since it benchmarked strongest against real filings (see [Benchmarks](benchmarks.md)), alongside DeepSeek and Gemini — walking you through picking that provider, pasting its key, and choosing a model for each ingest stage. This is entirely optional; declining leaves everything on your Claude Code subscription, same as before. See [Model backends](configuration.md#model-backends) for the full picture, including changing this later with `watchdog auth` or `watchdog configure`.
+If you choose the subscription, setup also warns that ingesting more than a few documents at once can be token-heavy for a Pro plan's session limits, and offers to route ingestion to a cheaper metered provider instead — OpenAI's GPT-5.6 Luna is named first, since it benchmarked strongest against real filings (see [Benchmarks](benchmarks.md)), alongside DeepSeek and Gemini — walking you through picking that provider, pasting its key, and choosing a model for each ingest stage. This is entirely optional; declining leaves everything on your Claude Code subscription, same as before. See [Model backends](configuration.md#model-backends) for the full picture, including changing this later with `watchdog settings auth` or `watchdog settings`.
 
-If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. `watchdog auth` applies the same tune-down if you switch to subscription auth later, and undoes it automatically if you later switch back to an API key — no need to raise it back by hand unless you set your own value.
+If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. `watchdog settings auth` applies the same tune-down if you switch to subscription auth later, and undoes it automatically if you later switch back to an API key — no need to raise it back by hand unless you set your own value.
 
 When setup finishes, reload your shell so tab completion takes effect:
 
@@ -119,12 +119,12 @@ source ~/.bashrc
 
 On Windows there is nothing to reload — setup installs tab completion only for the zsh, bash, and fish shells, so it is skipped there.
 
-After the reload, pressing Tab after `watchdog ` shows the available commands, and pressing Tab after `watchdog status ` completes your investigation names.
+After the reload, pressing Tab after `watchdog ` shows the available commands, and pressing Tab after `watchdog projects status ` completes your investigation names.
 
 ## Step 7: check it works
 
 ```bash
-watchdog about
+watchdog settings about
 ```
 
 You should see Watchdog's version number and project links. If you see `watchdog: command not found` instead, head to [Troubleshooting](troubleshooting.md#watchdog-command-not-found).
@@ -140,24 +140,24 @@ To set it up:
 1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys** in the left sidebar.
 2. Add a payment method under **Settings → Billing**. Unlike Claude's flat monthly subscription, OpenAI's API is pay-as-you-go with no free tier, so a card on file is required before a key can make any paid calls.
 3. Click **Create new secret key** and copy it — it's shown only once.
-4. Run `watchdog setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. By default, model effort levels for the classify/extract/finalize model steps are set to low/medium/high, respectively, but benchmarks have found that Luna extractions perform best with effort set to `high`. To do this, run the following command:
+4. Run `watchdog settings setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. By default, model effort levels for the classify/extract/finalize model steps are set to low/medium/high, respectively, but benchmarks have found that Luna extractions perform best with effort set to `high`. To do this, run the following command:
 
    ```bash
-   watchdog configure extractor_effort high
+   watchdog settings extractor_effort high
    ```
 
-   If want to change your choice of model or effort level later, you can set the models directly by running `watchdog configure` and tweaking the configuration interactively, or by running the following commands:
+   If want to change your choice of model or effort level later, you can set the models directly by running `watchdog settings` and tweaking the configuration interactively, or by running the following commands:
 
    ```bash
-   watchdog configure classifier_model openai:gpt-5.6-luna
-   watchdog configure classifier_effort low
-   watchdog configure extractor_model openai:gpt-5.6-luna
-   watchdog configure extractor_effort high
-   watchdog configure finalizer_model openai:gpt-5.6-luna
-   watchdog configure finalizer_effort high
+   watchdog settings classifier_model openai:gpt-5.6-luna
+   watchdog settings classifier_effort low
+   watchdog settings extractor_model openai:gpt-5.6-luna
+   watchdog settings extractor_effort high
+   watchdog settings finalizer_model openai:gpt-5.6-luna
+   watchdog settings finalizer_effort high
    ```
 
-   Every future `watchdog dig`/`watchdog bark` uses these until you change them again — no per-run flags needed. `watchdog configure` with no arguments shows every setting's current value, including these; `watchdog configure <key>` also works to route just one stage somewhere different, if you want a mix.
+   Every future `watchdog dig`/`watchdog bark` uses these until you change them again — no per-run flags needed. `watchdog settings` with no arguments shows every setting's current value, including these; `watchdog settings <key>` also works to route just one stage somewhere different, if you want a mix.
 
 See [Model backends](configuration.md#model-backends) for routing a stage to a different provider entirely, and [Controlling cost](configuration.md#controlling-cost) for the full cost picture.
 
@@ -187,22 +187,22 @@ pipx install "watchdog-intel[asr]" --force
 
 ## Optional: full page snapshots
 
-By default, `watchdog research` and `watchdog fetch` save web pages with a plain, sanitized fetch. No JavaScript runs, so pages that build themselves in the browser can come through as an empty shell, and images and styling aren't captured.
+By default, `watchdog research` and `watchdog research fetch` save web pages with a plain, sanitized fetch. No JavaScript runs, so pages that build themselves in the browser can come through as an empty shell, and images and styling aren't captured.
 
 Installing the optional capture browser changes that: every web page is rendered in a real (invisible) browser and saved as a faithful, self-contained snapshot, with images, fonts, and stylesheets included and all scripts stripped. It's worth it if the sources you pull in are often JavaScript-heavy or you want the visual layout preserved.
 
-`watchdog setup` asks whether to install it. To install it later, or if you said no the first time:
+`watchdog settings setup` asks whether to install it. To install it later, or if you said no the first time:
 
 ```bash
 pipx inject watchdog-intel playwright
 ~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium
 ```
 
-This adds about 150 MB (the browser itself). If it isn't installed, `watchdog research` and `watchdog fetch` fall back to the plain sanitized fetch automatically — nothing breaks either way.
+This adds about 150 MB (the browser itself). If it isn't installed, `watchdog research` and `watchdog research fetch` fall back to the plain sanitized fetch automatically — nothing breaks either way.
 
 ## Optional: installing with uv instead of pipx
 
-If you already use [uv](https://docs.astral.sh/uv/) — Astral's Python package and tool manager — you can use it instead of pipx for the whole install. Everything past this point (`watchdog setup`, day-to-day use, upgrades) works exactly the same either way; only the install and upgrade commands differ.
+If you already use [uv](https://docs.astral.sh/uv/) — Astral's Python package and tool manager — you can use it instead of pipx for the whole install. Everything past this point (`watchdog settings setup`, day-to-day use, upgrades) works exactly the same either way; only the install and upgrade commands differ.
 
 Install uv, if you don't have it already:
 
@@ -230,7 +230,7 @@ Then install Watchdog:
 uv tool install watchdog-intel
 ```
 
-If that prints a warning that its tool directory isn't on your `PATH`, run `uv tool update-shell`, then close and reopen Terminal. From here, skip Step 5 above and continue with Step 6 (`watchdog setup`).
+If that prints a warning that its tool directory isn't on your `PATH`, run `uv tool update-shell`, then close and reopen Terminal. From here, skip Step 5 above and continue with Step 6 (`watchdog settings setup`).
 
 Wherever the rest of this page says a `pipx` command, use its `uv` equivalent instead:
 

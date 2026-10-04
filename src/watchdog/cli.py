@@ -83,6 +83,7 @@ from watchdog.cmd.setup import (
     cmd_show_skills,
     cmd_unlock,
 )
+from watchdog.cmd import groups
 from watchdog.cmd.ask import cmd_ask
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
@@ -317,19 +318,27 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Specific file to chew (omit to chew all of _INCOMING/)")
     p_chew.add_argument("--chew-workers", type=_positive_int, default=None, metavar="N",
                         dest="chew_workers",
-                        help="Parallel file workers (see chew_workers in watchdog configure)")
+                        help="Parallel file workers (see chew_workers in watchdog settings)")
     p_chew.add_argument("--chunk-workers", type=_positive_int, default=None, metavar="N",
                         dest="chunk_workers",
-                        help="Parallel chunk workers per file (see chunk_workers in watchdog configure)")
+                        help="Parallel chunk workers per file (see chunk_workers in watchdog settings)")
     p_chew.set_defaults(func=cmd_chew)
 
     p_obsidian = sub.add_parser("obsidian", help="Open an investigation vault in Obsidian")
     p_obsidian.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_obsidian.set_defaults(func=cmd_obsidian)
 
-    p_open = sub.add_parser("open", help="Open vault folder in Finder / file explorer")
+    p_open = sub.add_parser("open", help="Open an investigation in Obsidian")
     p_open.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_open.add_argument("--folder", action="store_true", help="Open the folder in Finder / file explorer instead")
     p_open.set_defaults(func=cmd_open)
+
+    for group, (desc, verbs) in groups._GROUP_HELP.items():
+        p_group = sub.add_parser(group, help=desc)
+        p_group.add_argument("verb", nargs="?", help="One of: " + ", ".join(verbs)).completer = (
+            lambda verbs=verbs, **kw: list(verbs))
+        p_group.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS)
+        p_group.set_defaults(func=groups.cmd_group)
 
     p_delete = sub.add_parser("delete", help="Remove an investigation from registry")
     p_delete.add_argument("name", help="Investigation name or slug").completer = _project_completer
@@ -393,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
         """Flags shared by `dig` and the deprecated `ingest` — everything up to and including
         extraction. `rerun` is the command a --wait help line tells you to re-run."""
         p.add_argument("--extractor-model", default=None, dest="extractor_model", metavar="MODEL",
-                       help=f"Model for extraction — {_model_help}; overrides watchdog configure "
+                       help=f"Model for extraction — {_model_help}; overrides watchdog settings "
                             f"(default: {defaults.EXTRACTOR_MODEL})")
         p.add_argument("--classifier-model", default=None, dest="classifier_model", metavar="MODEL",
                        help=f"Model for document classification — {_model_help}; overrides watchdog "
@@ -402,11 +411,11 @@ def build_parser() -> argparse.ArgumentParser:
                        dest="extractor_effort",
                        help="Reasoning effort for extraction — lower spends fewer tokens; "
                             "xhigh/max need a supporting model, OpenAI or Claude — "
-                            f"overrides watchdog configure (default: {defaults.EXTRACTOR_EFFORT})")
+                            f"overrides watchdog settings (default: {defaults.EXTRACTOR_EFFORT})")
         p.add_argument("--classifier-effort", choices=_effort_choices, default=None,
                        dest="classifier_effort",
                        help="Reasoning effort for document classification — "
-                            f"overrides watchdog configure (default: {defaults.CLASSIFIER_EFFORT})")
+                            f"overrides watchdog settings (default: {defaults.CLASSIFIER_EFFORT})")
         # Three states, not two: --verify and --no-verify are explicit answers that beat the
         # `verify_extraction` config key, and the default None means "whatever configure says".
         g = p.add_mutually_exclusive_group()
@@ -414,16 +423,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="After extracting each document, re-read it with a cheap second "
                             "call that lists material facts the extraction missed, and add "
                             "them. Costs roughly 15%% more per run; not with a batch extractor "
-                            "model. Overrides watchdog configure (default: off).")
+                            "model. Overrides watchdog settings (default: off).")
         g.add_argument("--no-verify", action="store_false", default=None, dest="verify",
                        help="Skip the second-read verification pass even when watchdog "
                             "configure turns it on.")
         p.add_argument("--concurrency", type=_positive_int, default=None, metavar="N",
-                       help="Documents extracted in parallel — overrides watchdog configure "
+                       help="Documents extracted in parallel — overrides watchdog settings "
                             f"(default: {defaults.EXTRACT_CONCURRENCY})")
         p.add_argument("--classify-pages", type=_positive_int, default=None, dest="classify_pages",
                        metavar="N",
-                       help="Pages shown to the document classifier — overrides watchdog configure "
+                       help="Pages shown to the document classifier — overrides watchdog settings "
                             f"(default: {defaults.CLASSIFY_PAGES})")
         p.add_argument("--skill", nargs="?", const=_PICK_SKILL, default=None, dest="skill",
                        metavar="NAME",
@@ -451,13 +460,13 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--finalizer-model", default=None, dest="finalizer_model", metavar="MODEL",
                        help=f"Model for the post-ingest step — reconciling duplicate entities, "
                             f"flagging contradictions, synthesis, timeline, briefing — {_model_help}; "
-                            f"overrides watchdog configure (default: {defaults.FINALIZER_MODEL})")
+                            f"overrides watchdog settings (default: {defaults.FINALIZER_MODEL})")
         p.add_argument("--finalizer-effort", choices=_effort_choices, default=None,
                        dest="finalizer_effort",
                        help="Reasoning effort for the post-ingest step — entity reconciliation, "
                             "contradiction flagging, synthesis, timeline, briefing — "
                             "xhigh/max need a supporting model, OpenAI or Claude — "
-                            "overrides watchdog configure (default: high)")
+                            "overrides watchdog settings (default: high)")
         for stage, what in _finalizer_stage_help.items():
             p.add_argument(f"--finalizer-{stage}-model", default=None,
                            dest=f"finalizer_{stage}_model", metavar="MODEL",
@@ -542,6 +551,28 @@ def main() -> None:
         _print_banner()
         return
 
+    # `watchdog help [maintenance|<command>]`
+    if len(sys.argv) >= 2 and sys.argv[1] == "help":
+        topic = sys.argv[2] if len(sys.argv) >= 3 else None
+        if topic is None:
+            _print_banner()
+            return
+        if topic == "maintenance":
+            groups.print_maintenance()
+            return
+        sys.argv = [sys.argv[0], topic, "--help"]
+
+    # The grouped surface (D254): `watchdog projects rename …` runs `rename`, and so on.
+    if len(sys.argv) >= 2 and sys.argv[1] in groups.GROUPS and (
+            len(sys.argv) >= 3 and sys.argv[2] in ("-h", "--help")):
+        groups.print_group_help(sys.argv[1])
+        return
+    if len(sys.argv) >= 2:
+        note = groups.pointer(sys.argv[1])
+        if note:
+            print(f"\n{note}")
+        sys.argv[1:] = groups.rewrite(sys.argv[1:])
+
     if len(sys.argv) >= 3 and sys.argv[2] in ("-h", "--help"):
         cmd = _ALIASES.get(sys.argv[1], _DEPRECATED_ALIASES.get(sys.argv[1], sys.argv[1]))
         parser = build_parser()
@@ -625,7 +656,7 @@ def main() -> None:
         return
 
     if args.command not in {"setup", "about", "configure"} and not CONFIG_FILE.exists():
-        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
+        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog settings setup{_RESET}\n")
         sys.exit(1)
 
     # `ingest` combined extract+finalize into one shot; retired in favour of `watchdog add`, or

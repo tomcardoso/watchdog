@@ -80,7 +80,7 @@ def _check_playwright() -> None:
         _ok("Playwright + Chromium — faithful web captures ready")
         return
 
-    print(f"  {_DIM}Used by `watchdog research`/`watchdog fetch` to save full-fidelity page\n"
+    print(f"  {_DIM}Used by `watchdog research`/`watchdog research fetch` to save full-fidelity page\n"
           f"  snapshots (images, styles, client-rendered pages) instead of a plain fetch.\n"
           f"  Optional — everything else works without it. Adds ~150 MB (Chromium browser).{_RESET}")
     if not interactive.confirm("  Install web-capture support now?", default=False):
@@ -269,7 +269,7 @@ def run(force: bool = False) -> None:
     blocking = _check_deps()
     if blocking:
         print()
-        print("  Install missing dependencies before running `watchdog setup`:")
+        print("  Install missing dependencies before running `watchdog settings setup`:")
         for label, hint in blocking:
             print(f"\n    {label}:\n      {hint}")
         print()
@@ -354,7 +354,7 @@ def run(force: bool = False) -> None:
             except Exception as e:
                 _warn(f"Reranker download failed: {e}\n"
                       f"      Search still works (ranks by BM25 + embedding fusion); the reranker\n"
-                      f"      retries on first search. Disable it with `watchdog configure rerank_model none`.")
+                      f"      retries on first search. Disable it with `watchdog settings rerank_model none`.")
         try:
             from docling.document_converter import DocumentConverter
             DocumentConverter()
@@ -402,6 +402,6 @@ def run(force: bool = False) -> None:
     print(f"    {_CYAN}{reload_hint}{_RESET}")
     print()
     print("  Create your first investigation:")
-    print(f"    {_CYAN}watchdog new \"My Investigation\"{_RESET}")
+    print(f"    {_CYAN}watchdog projects new \"My Investigation\"{_RESET}")
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
     print()

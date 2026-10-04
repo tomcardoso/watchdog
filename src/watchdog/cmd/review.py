@@ -154,7 +154,7 @@ def _print_list(vault: Path, items: list[dict]) -> None:
             for line in i["detail"]:
                 print(f"      {_DIM}{line}{_RESET}")
             print(f"      {_DIM}resolve: {i['rid']}{_RESET}")
-    print(f"\n  {_DIM}Mark one handled with{_RESET} {_CYAN}watchdog resolve <id>{_RESET}\n")
+    print(f"\n  {_DIM}Mark one handled with{_RESET} {_CYAN}watchdog review resolve <id>{_RESET}\n")
 
 
 def _walk(vault: Path, items: list[dict]) -> int:
@@ -198,7 +198,7 @@ def cmd_review(args) -> dict | None:
         return None
     print(f"\n  {_BOLD}{len(items)}{_RESET} {what} to review. "
           f"{_DIM}Handled items stop appearing in briefings and on the home screen;"
-          f" `watchdog unresolve <id>` brings one back.{_RESET}")
+          f" `watchdog review unresolve <id>` brings one back.{_RESET}")
     handled = _walk(vault, items)
     left = len(items) - handled
     print(f"\n  {_GREEN}{handled} handled{_RESET}{_DIM} · {left} still open{_RESET}\n")

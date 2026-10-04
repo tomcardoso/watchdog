@@ -38,7 +38,7 @@ def cmd_ask(args) -> None:
     print(f"\n  {_BOLD}Opening Claude Code in {name}…{_RESET}")
     if not (vault / ".claude" / "commands" / "watchdog-query.md").exists():
         print(f"  {_YELLOW}This vault has no /watchdog-query command.{_RESET} "
-              f"{_DIM}Run{_RESET} {_CYAN}watchdog refresh-skills{_RESET} {_DIM}to install it.{_RESET}")
+              f"{_DIM}Run{_RESET} {_CYAN}watchdog settings refresh-skills{_RESET} {_DIM}to install it.{_RESET}")
     if question:
         print(f"  {_DIM}Claude answers from the vault with citations, then stays open for "
               f"follow-ups.{_RESET}")
