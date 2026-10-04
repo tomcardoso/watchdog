@@ -112,7 +112,11 @@ Two human-invoked phases, with a clean handoff via the queue:
   against every prior document's signature by estimated Jaccard similarity. Matches
   at or above `dup_threshold` (default 0.85) are flagged for journalist review at
   ingest — never auto-discarded. The signature is stored in `documents.json` so
-  future documents compare against it.
+  future documents compare against it. "Every prior document" means three populations (#696):
+  committed documents, documents chewed earlier but still in the queue, and documents staged
+  earlier in the same chew — held in one `preprocess_batch.NearDupIndex` matrix built once per chew
+  and compared with one vectorized pass per document, so a near-duplicate dropped in alongside its
+  original is flagged instead of only one arriving in a later drop.
 - **Output.** Per document: `.watchdog/queue/<sha256>.json` (filename, sha256,
   page count, per-page markdown, `near_dup`, MinHash signature). The original is
   moved to `.watchdog/staging/<sha256>/`.
