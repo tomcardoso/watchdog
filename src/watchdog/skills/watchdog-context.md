@@ -32,21 +32,11 @@ If the response is anything other than an explicit confirmation, stop immediatel
 
 ## 1. Discover and chew files
 
-List all files in `_CONTEXT/`:
-
-```bash
-find _CONTEXT/ -type f -not -name ".*" -not -name "*.yml"
-```
+List the files in `_CONTEXT/` with the Glob tool (pattern `_CONTEXT/**/*`), ignoring hidden files.
 
 If the folder is empty or missing, skip to step 3 — you'll work from the interview alone.
 
-For each file, run:
-
-```bash
-watchdog chew "<file_path>"
-```
-
-Collect the extracted text. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
+Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never run `watchdog chew` on these files: chew is an ingest step that moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `_CONTEXT/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
 
 ---
 

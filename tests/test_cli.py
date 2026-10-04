@@ -301,11 +301,54 @@ def test_cmd_new_creates_vault(configured, tmp_path):
 def test_cmd_new_vault_structure(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     vault = configured / "my-story"
-    for d in ["_INCOMING", "morgue", "entities/person", "entities/company",
-              "entities/address", "documents", "briefings", "wiki", "queries",
+    for d in ["_INCOMING", "morgue", "entities", "documents", "briefings", "wiki", "queries",
               ".watchdog/queue",
               ".watchdog/staging"]:
         assert (vault / d).is_dir(), f"Missing: {d}"
+    # Entity folders are created by ingest under the canonical types (D105) — never the
+    # pre-D105 company/address folders that nothing writes to.
+    assert not (vault / "entities" / "company").exists()
+    assert not (vault / "entities" / "address").exists()
+    dashboard = (vault / "dashboard.base").read_text()
+    assert 'file.inFolder("entities/organization")' in dashboard
+    assert "entities/company" not in dashboard
+    graph = json.loads((vault / ".obsidian" / "graph.json").read_text())
+    queries = {g["query"] for g in graph["colorGroups"]}
+    assert "path:entities/organization" in queries and "path:entities/company" not in queries
+
+
+def test_refresh_skills_migrates_old_dashboard_graph_and_prompt_hook(configured):
+    from watchdog.cmd.base import _PROMPT_HOOK_COMMAND
+    cli.cmd_new(args(name="Old Vault", dir=str(configured)))
+    vault = configured / "old-vault"
+    base = vault / "dashboard.base"
+    base.write_text(base.read_text().replace('entities/organization', 'entities/company')
+                    .replace("name: Organizations", "name: Companies"))
+    graph = vault / ".obsidian" / "graph.json"
+    graph.write_text(json.dumps({"colorGroups": [{"query": "path:entities/company", "color": {}}]}))
+    settings_path = vault / ".claude" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"] = (
+        "python3 -c \"print('WATCHDOG: 1 file(s) ready for extraction — run watchdog dig in your terminal')\"")
+    settings_path.write_text(json.dumps(settings))
+    cli.cmd_refresh_skills(args(name="Old Vault"))
+    assert 'entities/organization' in base.read_text() and "name: Organizations" in base.read_text()
+    assert json.loads(graph.read_text())["colorGroups"][0]["query"] == "path:entities/organization"
+    hook = json.loads(settings_path.read_text())["hooks"]["UserPromptSubmit"][0]["hooks"][0]
+    assert hook["command"] == _PROMPT_HOOK_COMMAND
+
+
+def test_prompt_status_line_splits_dig_and_bark(tmp_path):
+    from watchdog.cmd.base import _prompt_status_line
+    q = tmp_path / ".watchdog" / "queue"
+    q.mkdir(parents=True)
+    assert _prompt_status_line(tmp_path) is None
+    (q / "a.json").write_text("{}")
+    (q / "b.json").write_text("{}")
+    (tmp_path / ".watchdog" / "extracted").mkdir()
+    (tmp_path / ".watchdog" / "extracted" / "b.json").write_text("{}")
+    line = _prompt_status_line(tmp_path)
+    assert "1 file(s) ready for extraction" in line and "1 file(s) extracted and awaiting watchdog bark" in line
 
 
 def test_cmd_new_registry_initialized(configured):
@@ -411,7 +454,9 @@ def test_cmd_new_never_writes_dead_write_permission_rules(configured):
     allow = settings["permissions"]["allow"]
     assert not any(p.startswith("Write(") for p in allow)
     assert "Edit(briefings/**)" in allow
-    assert "Edit(morgue/**)" in allow
+    # Pipeline-owned paths are not hand-editable from a session.
+    assert "Edit(morgue/**)" not in allow
+    assert "Edit(.watchdog/registry/**)" not in allow
 
 
 def test_refresh_skills_removes_dead_write_permission_rules(configured):
