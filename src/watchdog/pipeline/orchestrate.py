@@ -24,7 +24,7 @@ from pathlib import Path
 from watchdog import model_client, skills_catalog, telemetry_db
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import (
-    abort, batch_extract, harvest, leads, merge, preflight, postflight, prompts, reconcile,
+    abort, batch_extract, chunking, harvest, leads, merge, preflight, postflight, prompts, reconcile,
     requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
 )
 from watchdog.pipeline.json_io import _read_json, _read_json_or
@@ -2445,25 +2445,46 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     if not (rec_bundle["entities"] or rec_bundle["pairs"]):
         return result
     n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
-    # Sized and reported the same way the old #216 digest telemetry was — visibility now, so
-    # a future cap/chunking decision (§8.5) comes from real bundle sizes, not a guess.
-    rec_prompt = prompts.build_reconcile_prompt(rec_bundle)
-    kb = len(rec_prompt) / 1024
-    _say(f"{_DIM}→  reconciling · {n_ents} recurring entit{'ies' if n_ents != 1 else 'y'}, "
-         f"{n_pairs} possible duplicate{'s' if n_pairs != 1 else ''} · {kb:.1f} KB…{_RESET}")
-    try:
-        r = await _call_model(
-            task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
-            schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
-            detail=f"{n_ents} entities · {n_pairs} pairs · {kb:.1f} KB", vault=vault)
-    except (model_client.ModelError, model_client.RateLimitError) as e:
-        result["error"] = str(e)
-        _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
-        _log(vault, f"RECONCILE skipped: {e}")
-        return result
+    if rec_bundle.get("pairs_dropped"):
+        msg = (f"reconcile: {rec_bundle['pairs_dropped']} weaker possible-duplicate pairs past the "
+               f"{reconcile._MAX_PAIRS}-pair ceiling were not sent this run")
+        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
+        _log(vault, f"WARN {msg}")
+    # Split into as many size-bounded calls as the bundle needs (#696): one call per run could
+    # outgrow the context window on a large batch, and since a failure here defers the whole batch
+    # (I7), an oversized bundle used to deadlock it — every `watchdog bark` retry sent the same
+    # prompt into the same limit. A bundle that fits still goes out as exactly one call.
+    budget = chunking.prompt_budget_chars(reconciliation_model, reconciliation_backend, vault)
+    chunks = reconcile.chunk_bundle(rec_bundle, budget)
+    answers = []
+    for n, chunk in enumerate(chunks, 1):
+        # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
+        # future change to the budget comes from real bundle sizes, not a guess.
+        rec_prompt = prompts.build_reconcile_prompt(chunk)
+        kb = len(rec_prompt) / 1024
+        c_pairs, c_ents = len(chunk["pairs"]), len(chunk["entities"])
+        part = f" · call {n} of {len(chunks)}" if len(chunks) > 1 else ""
+        _say(f"{_DIM}→  reconciling · {c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}, "
+             f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''} · {kb:.1f} KB{part}…{_RESET}")
+        try:
+            r = await _call_model(
+                task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
+                schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
+                detail=f"{c_ents} entities · {c_pairs} pairs · {kb:.1f} KB{part}", vault=vault)
+        except (model_client.ModelError, model_client.RateLimitError) as e:
+            # Any failed chunk defers the whole batch, exactly as the single call did: applying
+            # the merges the earlier chunks found would commit half-reconciled state (I7).
+            result["error"] = str(e)
+            _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
+            _log(vault, f"RECONCILE skipped: {e}")
+            return result
+        answers.append(r.parsed)
+    if len(chunks) > 1:
+        _say(f"{_DIM}   {n_ents} entities and {n_pairs} pairs reconciled across "
+             f"{len(chunks)} calls{_RESET}")
 
     applied = reconcile.apply_merges(
-        vault, shas, r.parsed, rec_bundle,
+        vault, shas, reconcile.merge_chunk_results(chunks, answers), rec_bundle,
         warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"), _log(vault, f"WARN {m}")))
     result["merged"] = applied["merged"]
     result["remap"] = applied["remap"]

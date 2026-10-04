@@ -787,7 +787,7 @@ order-immune, and near-constant in cost (one call per ingest).
   `_JACCARD_MIN` (0.5) on some pair of its known names (a strict token-subset scores 1.0, as do identical
   token sets — a word-order or stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs
   "Tom Cardoso"), and involves at least one entity touched this run — ranked by overlap and capped at
-  `_MAX_PAIRS` (200). Candidates are found through an inverted index on (canonical type, name token),
+  `_MAX_PAIRS` (2,000 — a runaway guard on call count, reported when it cuts, D237). Candidates are found through an inverted index on (canonical type, name token),
   probing only each name's rarest tokens (a Jaccard prefix filter plus a rarest-token index for subsets),
   so the work tracks the pairs that actually share a token rather than touched × registry (#696); the
   emitted pairs are identical to a full walk's. The model confirms or rejects each pair by index and names the surviving id;
@@ -796,11 +796,15 @@ order-immune, and near-constant in cost (one call per ingest).
   state); two committed sides get the full `merge_entities.run` surgery (§10); and when exactly one side is
   committed, the committed side always survives. Merges chain, following a just-merged id to its survivor,
   and the flattened remap is carried forward so a contradiction naming a folded-away id still lands on the
-  survivor. The bundle's size (entity/pair counts and KB) is reported both live and in `watchdog usage`'s
-  per-call detail, so a future cap or chunking decision comes from real bundle sizes rather than a
-  guess; if it ever does outgrow a context window, it can be split at entity/pair boundaries into
-  several calls with no quality loss, since contradiction detection only compares claims within one
-  entity and each candidate pair is judged independently.
+  survivor. **The bundle is split into size-bounded calls** (`reconcile.chunk_bundle`, `pipeline/chunking.py`,
+  D237): pairs then entities are packed in order into chunks of at most a quarter of the reconciliation
+  model's context window (clamped and tokenizer-corrected as sectioning is), each chunk numbering its own
+  pairs from 0; `merge_chunk_results` maps every answer back to bundle-wide pair indices before the one
+  `apply_merges`. A bundle that fits is still exactly one call. Splitting loses nothing, since contradiction
+  detection only compares claims within one entity and each candidate pair is judged independently. An
+  entity whose ledger alone exceeds a chunk has its oldest claims trimmed (the tail holds this batch's).
+  Any failed chunk defers the whole batch exactly as the single call did. Each call's size (entity/pair
+  counts and KB) is reported live and in `watchdog usage`'s per-call detail.
 - **Contradiction detection** reads each recurring entity's (`appears_in ≥ 2`, the D26 gate) `##
   Analysis` claim ledger — already source-attributed by document — and the model returns structured
   `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile.apply_contradictions`
@@ -1327,7 +1331,7 @@ it to that provider's servers.
 | **classify** (§6) | once per document; skipped entirely if a skill is pinned (run-wide `--skill`/`default_skill`, or that document's own sidecar `skill:` field) | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
 | **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | **all vault entity state** — extraction is a pure function of the document (D118); original-file metadata (EXIF, PDF author fields — stripped at chew, §3) |
 | **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
-| **reconcile** (§8.5) | once per run, if any entity was touched | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
+| **reconcile** (§8.5) | once per run if any entity was touched — split into several size-bounded calls on a large batch (D237) | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
 | **entity-synthesis** (§8) | once per run, batched, only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
 | **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
 | **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |

@@ -228,7 +228,7 @@ def test_build_bundle_claims_come_from_the_analysis_ledger(tmp_path):
 def test_build_bundle_empty_when_nothing_staged(tmp_path):
     vault = make_vault(tmp_path)   # a populated registry, but no staged batch → nothing touched
     bundle = reconcile.build_bundle(vault, [])
-    assert bundle == {"entities": [], "pairs": []}
+    assert bundle == {"entities": [], "pairs": [], "pairs_dropped": 0}
 
 
 # ── _rewrite_staged_ids: remap scope beyond entities[].id / role.target_id ────

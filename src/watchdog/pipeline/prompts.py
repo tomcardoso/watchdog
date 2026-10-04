@@ -272,7 +272,8 @@ def build_synthesis_prompt(bundle: dict) -> str:
 
 def build_reconcile_prompt(bundle: dict) -> str:
     """The finalizer's reconciliation call (#381/D118) — entity resolution + contradiction
-    detection over the whole entity set, once, after every document has landed.
+    detection over the whole entity set, after every document has landed. `bundle` is one chunk of
+    `reconcile.build_bundle`'s output (`reconcile.chunk_bundle`, #696) — the whole of it when it fits.
 
     Two blocks, both assembled deterministically in Python:
 
