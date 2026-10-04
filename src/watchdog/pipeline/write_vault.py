@@ -54,7 +54,6 @@ emits per-entity summaries, fragments, or timeline events:
 }
 """
 
-import argparse
 import hashlib
 import json
 import re
@@ -67,7 +66,6 @@ from pathlib import Path
 
 import yaml
 
-from watchdog.vault_paths import is_vault
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json_or
@@ -1303,36 +1301,3 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         )
 
     return {"new_entities": new_ids, "updated_entities": updated_ids}
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Write all vault artifacts for an ingested document"
-    )
-    parser.add_argument("--extraction", required=True, help="Path to extraction JSON")
-    parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
-    parser.add_argument("--neardup-file", metavar="PATH",
-                        help="Path to near-dup JSON output — shingles are read from here instead of the extraction JSON")
-    args = parser.parse_args()
-
-    extraction_path = Path(args.extraction).resolve()
-    vault_path = Path(args.vault).resolve()
-    neardup_file = Path(args.neardup_file).resolve() if args.neardup_file else None
-
-    if not vault_path.exists():
-        sys.exit(f"Error: vault directory {vault_path} not found")
-    if not is_vault(vault_path):
-        sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
-    for label, p in [("--extraction", extraction_path), ("--neardup-file", neardup_file)]:
-        if p is None:
-            continue
-        if not str(p).startswith(str(vault_path) + "/"):
-            sys.exit(f"Error: {label} path must be inside the vault directory ({vault_path})")
-    if not extraction_path.exists():
-        sys.exit(f"Error: {extraction_path} not found")
-
-    run(extraction_path, vault_path, neardup_file=neardup_file)
-
-
-if __name__ == "__main__":
-    main()

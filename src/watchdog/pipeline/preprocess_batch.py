@@ -19,6 +19,7 @@ from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveR
 from watchdog.pipeline import sidecar
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
+from watchdog import config as user_config
 
 DEFAULT_FILE_TIMEOUT = 600
 
@@ -105,11 +106,7 @@ class NearDupIndex:
 
 
 def _dup_threshold() -> float:
-    try:
-        cfg_path = Path.home() / ".watchdog" / "config.json"
-        return json.loads(cfg_path.read_text()).get("dup_threshold", 0.85)
-    except Exception:
-        return 0.85
+    return user_config.get("dup_threshold", 0.85)
 
 
 def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None,
@@ -218,11 +215,7 @@ def _resolve_workers(
     if explicit_chunk is not None and explicit_chunk < 1:
         sys.exit(f"Error: --chunk-workers must be at least 1 (got {explicit_chunk}).")
 
-    cfg: dict = {}
-    try:
-        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-    except Exception:
-        pass
+    cfg = user_config.read()
 
     pre_cfg   = cfg.get("chew_workers", "auto")
     chunk_cfg = cfg.get("chunk_workers", "auto")

@@ -29,6 +29,7 @@ import json
 import sqlite3
 import threading
 from pathlib import Path
+from watchdog import config as user_config
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
 DB_PATH = WATCHDOG_HOME / "telemetry.db"
@@ -87,12 +88,7 @@ _lock = threading.Lock()
 def enabled() -> bool:
     """The `telemetry` configure key — on unless set to false. An unreadable config counts as on,
     the same default an absent key gets; `dig`/`bark` already refuse to run on a corrupt one."""
-    from watchdog.cmd import base
-    try:
-        cfg = json.loads(base.CONFIG_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return True
-    return not (isinstance(cfg, dict) and cfg.get("telemetry") is False)
+    return user_config.get("telemetry") is not False
 
 
 def _connect() -> sqlite3.Connection:

@@ -1,5 +1,5 @@
 """
-watchdog ingest-abort <sha256> — clean up after a runaway or failed extraction.
+Clean up after a runaway or failed extraction (`orchestrate._fail`).
 
 When an extraction gives up (its runaway guard fires) or returns an unparseable
 result, the document must be left in a clean state so it can be re-ingested
@@ -28,12 +28,9 @@ Re-ingest later: move the queue file back —
 then run `watchdog dig` again.
 """
 
-import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
 
 
 def _iso_now() -> str:
@@ -44,9 +41,7 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
     """`keep_section_checkpoints` (#498) skips the per-section extraction checkpoints
     (`section_ex_{sha256}_*.json`) — set by the automatic failure path (`orchestrate._fail`) so a
     document that failed mid-sectioned-extraction can resume from its already-completed sections
-    on the next `watchdog dig` rather than re-paying for them. The explicit `watchdog ingest-abort`
-    command (this function's other caller) leaves it at the default full wipe: a deliberate abort
-    is a decision to reset the document entirely, not to prime a resume."""
+    on the next `watchdog dig` rather than re-paying for them. The default is a full wipe."""
     tmp = vault / ".watchdog" / "tmp"
     timeline = vault / ".watchdog" / "timeline"
     queue = vault / ".watchdog" / "queue"
@@ -107,17 +102,3 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
         pass
 
     return {"ok": True, "sha256": sha256, "removed": removed, "requeue_path": requeue_path}
-
-
-def main() -> None:
-    if len(sys.argv) < 2:
-        sys.exit("Usage: watchdog ingest-abort <sha256>")
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    result = run(vault, sys.argv[1])
-    print(json.dumps(result, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()

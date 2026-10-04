@@ -105,7 +105,7 @@ def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
     real_finalize = orchestrate.finalize
 
     async def _spy_finalize(*a, **k):
-        board_during_finalize.append(orchestrate._board)
+        board_during_finalize.append(orchestrate._run.board)
         return await real_finalize(*a, **k)
     monkeypatch.setattr(orchestrate, "finalize", _spy_finalize)
 
@@ -113,7 +113,7 @@ def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
 
     assert board_during_finalize == [board_during_finalize[0]]   # finalize ran exactly once
     assert board_during_finalize[0] is not None   # still open when finalize started
-    assert orchestrate._board is None             # closed once the whole run finished
+    assert orchestrate._run.board is None             # closed once the whole run finished
 
 
 def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
@@ -175,20 +175,20 @@ def test_call_model_records_failed_usage_and_reraises(tmp_path, monkeypatch):
             model="claude-sonnet-4-6", backend="claude-api", auth_mode="api-key")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         with pytest.raises(model_client.ModelError):
             asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
                                                 filename="broke.pdf"))
-        assert len(orchestrate._usage) == 1
-        record = orchestrate._usage[0]
+        assert len(orchestrate._run.usage) == 1
+        record = orchestrate._run.usage[0]
         assert record["failed"] is True
         assert record["input_tokens"] == 20
         assert record["cost_usd"] == 0.05
         assert record["attempts"] == 2
         assert record["filename"] == "broke.pdf"
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_call_model_prompt_hash_stable_and_differs(tmp_path, monkeypatch):
@@ -201,7 +201,7 @@ def test_call_model_prompt_hash_stable_and_differs(tmp_path, monkeypatch):
             auth_mode="api-key", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(orchestrate._call_model(task="extract", prompt="hello world",
                                             schema=schemas.EXTRACTION))
@@ -209,12 +209,12 @@ def test_call_model_prompt_hash_stable_and_differs(tmp_path, monkeypatch):
                                             schema=schemas.EXTRACTION))
         asyncio.run(orchestrate._call_model(task="extract", prompt="a different prompt",
                                             schema=schemas.EXTRACTION))
-        hashes = [r["prompt_hash"] for r in orchestrate._usage]
+        hashes = [r["prompt_hash"] for r in orchestrate._run.usage]
         assert hashes[0] == hashes[1]
         assert hashes[0] != hashes[2]
         assert hashes[0] == hashlib.sha256("hello world".encode("utf-8")).hexdigest()
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_call_model_records_est_prompt_tokens_for_whole_rendered_prompt(tmp_path, monkeypatch):
@@ -232,15 +232,15 @@ def test_call_model_records_est_prompt_tokens_for_whole_rendered_prompt(tmp_path
             auth_mode="api-key", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(orchestrate._call_model(task="extract", prompt="x" * 400,
                                             schema=schemas.EXTRACTION, est_input_tokens=12))
-        record = orchestrate._usage[0]
+        record = orchestrate._run.usage[0]
         assert record["est_prompt_tokens"] == 100          # 400 chars / 4
         assert record["est_input_tokens"] == 12            # the caller's document-only figure
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_call_model_records_est_prompt_tokens_for_every_task(tmp_path, monkeypatch):
@@ -253,15 +253,15 @@ def test_call_model_records_est_prompt_tokens_for_every_task(tmp_path, monkeypat
             auth_mode="api-key", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(orchestrate._call_model(task="digest", prompt="y" * 80,
                                             schema=schemas.EXTRACTION))
-        record = orchestrate._usage[0]
+        record = orchestrate._run.usage[0]
         assert record["est_prompt_tokens"] == 20
         assert "est_input_tokens" not in record
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
@@ -291,7 +291,7 @@ def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
             conn.close()
         assert row[0] == "arm-7"
         assert json.loads(row[1]) == {"extract_model": "sonnet"}
-        assert row[2] == orchestrate._run_id
+        assert row[2] == orchestrate._run.run_id
     finally:
         orchestrate._end_usage_run(vault)
 
@@ -333,13 +333,13 @@ def test_call_model_does_not_record_usage_for_error_without_usage(tmp_path, monk
         raise model_client.ModelError("no auth configured")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         with pytest.raises(model_client.ModelError):
             asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION))
-        assert orchestrate._usage == []
+        assert orchestrate._run.usage == []
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_briefing_facts_projects_fact_and_date_only():
@@ -2651,7 +2651,7 @@ def test_record_usage_appends_to_partial_file_immediately(tmp_path):
     vault.mkdir()
     orchestrate._begin_usage_run(vault)
     try:
-        partial = orchestrate._usage_partial_path
+        partial = orchestrate._run.usage_partial_path
         assert partial is not None and not partial.exists()   # not created until the first record
 
         orchestrate._record_usage("extract", model="m", backend="claude-api",
@@ -2680,14 +2680,14 @@ def test_aborted_run_partial_is_consolidated_at_next_run_start(tmp_path):
     usage_dir = vault / ".watchdog" / "registry" / "usage"
 
     orchestrate._begin_usage_run(vault)
-    orphaned_partial = orchestrate._usage_partial_path
+    orphaned_partial = orchestrate._run.usage_partial_path
     orchestrate._record_usage("extract", model="m", backend="claude-api",
                               usage={"input_tokens": 42, "output_tokens": 7}, cost_usd=0.01)
     # Simulate a crash: neither `_end_usage_run` nor any cleanup runs, so the partial and the
     # module globals are left exactly as an aborted process would leave them.
     assert orphaned_partial.exists()
-    orchestrate._usage = None
-    orchestrate._usage_partial_path = None
+    orchestrate._run.usage = None
+    orchestrate._run.usage_partial_path = None
 
     try:
         orchestrate._begin_usage_run(vault)   # the "next run"
@@ -2709,37 +2709,37 @@ def test_record_usage_carries_agent_sdk_harness_timing():
     timing) surfaces as `api_ms`/`num_turns` on the persisted call record — the signal that
     tells a throttled call (long gap between wall-clock latency and API time) apart from a
     genuinely slow one."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-agent-sdk",
             usage={"input_tokens": 100, "output_tokens": 20,
                   "duration_api_ms": 12345, "num_turns": 3},
             cost_usd=0.01, latency_s=60.0)
-        assert len(orchestrate._usage) == 1
-        record = orchestrate._usage[0]
+        assert len(orchestrate._run.usage) == 1
+        record = orchestrate._run.usage[0]
         assert record["api_ms"] == 12345
         assert record["num_turns"] == 3
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_omits_harness_timing_keys_for_other_backends():
     """A raw-API backend's usage dict has no `duration_api_ms`/`num_turns` — the persisted
     record must not grow `api_ms`/`num_turns` keys (even as null) for it, so existing
     `usage-<ts>.json` consumers see byte-identical records to before #402."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20},
             cost_usd=0.01, latency_s=1.0)
-        assert len(orchestrate._usage) == 1
-        record = orchestrate._usage[0]
+        assert len(orchestrate._run.usage) == 1
+        record = orchestrate._run.usage[0]
         assert "api_ms" not in record
         assert "num_turns" not in record
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
@@ -2747,16 +2747,16 @@ def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
     rather than Anthropic's flat `cache_read_input_tokens` — before this fix, an OpenAI call's
     real cache hits (already billed at the discounted rate in `cost_usd`) were silently logged
     as `cache_read_tokens: 0`."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract-section", model="gpt-5.4-nano", backend="openai",
             usage={"prompt_tokens": 20000, "completion_tokens": 5000,
                   "prompt_tokens_details": {"cached_tokens": 5900}},
             cost_usd=0.01, latency_s=1.0)
-        assert orchestrate._usage[0]["cache_read_tokens"] == 5900
+        assert orchestrate._run.usage[0]["cache_read_tokens"] == 5900
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_reads_cache_write_tokens_from_openai_usage_shape():
@@ -2764,142 +2764,142 @@ def test_record_usage_reads_cache_write_tokens_from_openai_usage_shape():
     `prompt_tokens_details.cache_write_tokens`. `cache_write_tokens` used to read only Anthropic's
     `cache_creation_input_tokens`, so every OpenAI write was logged as 0 — the same shape of miss
     #495 fixed for reads."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "digest", model="gpt-5.6-luna", backend="openai",
             usage={"prompt_tokens": 6000, "completion_tokens": 500,
                   "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 4352}},
             cost_usd=0.01, latency_s=1.0)
-        assert orchestrate._usage[0]["cache_write_tokens"] == 4352
-        assert orchestrate._usage[0]["cache_read_tokens"] == 0
+        assert orchestrate._run.usage[0]["cache_write_tokens"] == 4352
+        assert orchestrate._run.usage[0]["cache_read_tokens"] == 0
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_still_reads_anthropic_cache_write_shape():
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20,
                   "cache_creation_input_tokens": 7700},
             cost_usd=0.01, latency_s=1.0)
-        assert orchestrate._usage[0]["cache_write_tokens"] == 7700
+        assert orchestrate._run.usage[0]["cache_write_tokens"] == 7700
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_reads_cache_read_tokens_from_deepseek_usage_shape():
     """#495: DeepSeek reports its cache-hit count as a flat `prompt_cache_hit_tokens` field —
     a third shape distinct from both Anthropic's and OpenAI's."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract-section", model="deepseek-v4-flash", backend="deepseek",
             usage={"prompt_tokens": 20000, "completion_tokens": 5000,
                   "prompt_cache_hit_tokens": 3200},
             cost_usd=0.01, latency_s=1.0)
-        assert orchestrate._usage[0]["cache_read_tokens"] == 3200
+        assert orchestrate._run.usage[0]["cache_read_tokens"] == 3200
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_includes_pruned_keys_when_present():
     """#412/D124: pruned key paths ride along on the usage record so schema drift stays
     visible in `watchdog usage`, not just ingest.log."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01,
             pruned=["extra_field"])
-        assert orchestrate._usage[0]["pruned"] == ["extra_field"]
+        assert orchestrate._run.usage[0]["pruned"] == ["extra_field"]
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_omits_pruned_key_when_absent():
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
-        assert "pruned" not in orchestrate._usage[0]
+        assert "pruned" not in orchestrate._run.usage[0]
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_includes_rate_limit_when_present():
     """#563: the provider's own rate-limit headers ride onto the record so a run's usage file
     carries ground truth for what the provider counted, alongside the tokens we logged."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="gpt-5.4-mini", backend="openai",
             usage={"prompt_tokens": 100, "completion_tokens": 20}, cost_usd=0.01,
             rate_limit={"limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"})
-        assert orchestrate._usage[0]["rate_limit"] == {
+        assert orchestrate._run.usage[0]["rate_limit"] == {
             "limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"}
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_omits_rate_limit_key_when_absent():
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
-        assert "rate_limit" not in orchestrate._usage[0]
+        assert "rate_limit" not in orchestrate._run.usage[0]
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_includes_reasoning_tokens_from_openai_usage_shape():
     """#354: `completion_tokens_details.reasoning_tokens` had been arriving on every OpenAI
     reasoning-model call since D108 and thrown away — it's the field that diagnosed the
     reasoning-starvation failure, so it now rides onto the record."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract-section", model="gpt-5.4-mini", backend="openai",
             usage={"prompt_tokens": 21058, "completion_tokens": 48000,
                   "completion_tokens_details": {"reasoning_tokens": 48000}},
             cost_usd=0.01, latency_s=1.0)
-        assert orchestrate._usage[0]["reasoning_tokens"] == 48000
+        assert orchestrate._run.usage[0]["reasoning_tokens"] == 48000
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_omits_reasoning_tokens_key_for_anthropic_shaped_usage():
     """An Anthropic-shaped usage dict has no `completion_tokens_details` — the persisted record
     must not grow a `reasoning_tokens` key (even as null) for it, matching the `api_ms`/
     `num_turns` convention of only adding fields the provider actually reports."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="claude-sonnet-4-6", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
-        assert "reasoning_tokens" not in orchestrate._usage[0]
+        assert "reasoning_tokens" not in orchestrate._run.usage[0]
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_record_usage_omits_reasoning_tokens_key_when_provider_reports_zero():
     """OpenAI sends `completion_tokens_details.reasoning_tokens: 0` for its chat models. A 0
     says nothing the key's absence doesn't, so it must not land on the record — otherwise every
     gpt-4o row in `watchdog usage` grows a "· reasoning 0" note."""
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
             "extract", model="gpt-4o", backend="openai",
             usage={"prompt_tokens": 100, "completion_tokens": 20,
                   "completion_tokens_details": {"reasoning_tokens": 0}},
             cost_usd=0.01)
-        assert "reasoning_tokens" not in orchestrate._usage[0]
+        assert "reasoning_tokens" not in orchestrate._run.usage[0]
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_usage_totals_sums_reasoning_tokens_and_tolerates_missing_key():
@@ -2934,15 +2934,15 @@ def test_recent_token_rate_empty_list_is_zero():
 # ── admission control (#563) ────────────────────────────────────────────────────
 
 def test_current_token_budget_override_wins_over_discovered():
-    orchestrate._usage = [{"rate_limit": {"limit_tokens": 999}}]
+    orchestrate._run.usage = [{"rate_limit": {"limit_tokens": 999}}]
     try:
         assert orchestrate._current_token_budget(500) == 500
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_current_token_budget_discovers_from_most_recent_record_with_rate_limit():
-    orchestrate._usage = [
+    orchestrate._run.usage = [
         {"rate_limit": {"limit_tokens": 100}},
         {"input_tokens": 10},               # no rate_limit key at all — must be skipped over
         {"rate_limit": {"limit_tokens": 200}},
@@ -2950,28 +2950,28 @@ def test_current_token_budget_discovers_from_most_recent_record_with_rate_limit(
     try:
         assert orchestrate._current_token_budget(None) == 200
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_current_token_budget_none_when_usage_is_none():
-    orchestrate._usage = None
+    orchestrate._run.usage = None
     assert orchestrate._current_token_budget(None) is None
 
 
 def test_current_token_budget_none_when_usage_empty():
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         assert orchestrate._current_token_budget(None) is None
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_current_token_budget_none_when_no_record_carries_rate_limit():
-    orchestrate._usage = [{"input_tokens": 10}, {"input_tokens": 20}]
+    orchestrate._run.usage = [{"input_tokens": 10}, {"input_tokens": 20}]
     try:
         assert orchestrate._current_token_budget(None) is None
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_admit_noop_when_budget_none():
@@ -2984,19 +2984,19 @@ def test_admit_noop_when_budget_none():
 
 def test_admit_noop_when_estimate_alone_exceeds_margin():
     # 1000 >= 1000 * 0.85 — nothing to wait for; the reactive RateLimitError is the backstop.
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(asyncio.wait_for(orchestrate._admit("sha1", 1000, 1000, asyncio.Event()), timeout=1.0))
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_admit_returns_immediately_when_already_under_budget():
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(asyncio.wait_for(orchestrate._admit("sha1", 10, 1000, asyncio.Event()), timeout=1.0))
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_admit_counts_other_documents_reservations_not_just_own(monkeypatch):
@@ -3006,8 +3006,8 @@ def test_admit_counts_other_documents_reservations_not_just_own(monkeypatch):
     in whatever *other* shas are already reserved."""
     monkeypatch.setattr(orchestrate, "_ADMISSION_MAX_WAIT_S", 0.05)
     monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
-    orchestrate._usage = []
-    orchestrate._admission_reserved["other-doc"] = 5000
+    orchestrate._run.usage = []
+    orchestrate._run.admission_reserved["other-doc"] = 5000
     try:
         # budget=10000, margin=0.85 -> ceiling=8500. other's reservation (5000) + this doc's own
         # estimate (4000) = 9000 > 8500 — must not pass immediately; only the max-wait force-admit
@@ -3016,8 +3016,8 @@ def test_admit_counts_other_documents_reservations_not_just_own(monkeypatch):
         asyncio.run(orchestrate._admit("this-doc", 4000, 10000, asyncio.Event()))
         assert time.monotonic() - start >= 0.05
     finally:
-        orchestrate._usage = None
-        orchestrate._admission_reserved.clear()
+        orchestrate._run.usage = None
+        orchestrate._run.admission_reserved.clear()
 
 
 def test_admit_polls_until_the_rate_drops_below_budget(monkeypatch):
@@ -3029,11 +3029,11 @@ def test_admit_polls_until_the_rate_drops_below_budget(monkeypatch):
         return 900 if calls["n"] < 3 else 100   # over budget twice, then clears
 
     monkeypatch.setattr(orchestrate, "_recent_token_rate", fake_rate)
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
     assert calls["n"] >= 3
 
 
@@ -3044,11 +3044,11 @@ def test_admit_force_admits_past_the_max_wait(monkeypatch, capsys):
     monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
     monkeypatch.setattr(orchestrate, "_ADMISSION_MAX_WAIT_S", 0.03)
     monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records, **k: 999_999)
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
     assert "Proceeding past the token budget" in capsys.readouterr().out
 
 
@@ -3056,7 +3056,7 @@ def test_admit_returns_promptly_when_cancelled(monkeypatch):
     monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
     monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records, **k: 999_999)
     cancelled = asyncio.Event()
-    orchestrate._usage = []
+    orchestrate._run.usage = []
 
     async def _run():
         task = asyncio.ensure_future(orchestrate._admit("sha1", 10, 1000, cancelled))
@@ -3067,7 +3067,7 @@ def test_admit_returns_promptly_when_cancelled(monkeypatch):
     try:
         asyncio.run(_run())
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_admit_not_called_for_an_already_extracted_document(tmp_path, monkeypatch):
@@ -3172,9 +3172,9 @@ def test_admission_reserved_cleared_after_a_document_finishes(tmp_path, monkeypa
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     _mock(monkeypatch, extraction=_extraction())
-    orchestrate._admission_reserved.clear()
+    orchestrate._run.admission_reserved.clear()
     asyncio.run(orchestrate.run(vault, concurrency=1))
-    assert orchestrate._admission_reserved == {}
+    assert orchestrate._run.admission_reserved == {}
 
 
 def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
@@ -4614,18 +4614,18 @@ def test_finish_batch_item_records_batch_lifecycle_when_batch_meta_given(tmp_pat
     batch_meta = {"batch_id": "b1", "submitted_at": "2026-07-29T02:54:46Z",
                  "ended_at": "2026-07-29T03:36:02Z", "collected_at": "2026-07-29T04:10:00Z"}
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         asyncio.run(orchestrate._finish_batch_item(
             vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
             model="claude-sonnet-4-6", batch_meta=batch_meta))
-        calls = [c for c in orchestrate._usage if c["task"] == "extract"]
+        calls = [c for c in orchestrate._run.usage if c["task"] == "extract"]
         assert calls[0]["batch_id"] == "b1"
         assert calls[0]["batch_submitted_at"] == "2026-07-29T02:54:46Z"
         assert calls[0]["batch_ended_at"] == "2026-07-29T03:36:02Z"
         assert calls[0]["batch_collected_at"] == "2026-07-29T04:10:00Z"
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_finish_batch_item_repairs_invalid_result_via_claude_api(tmp_path, monkeypatch):
@@ -4680,13 +4680,13 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
     item = {"ok": True, "parsed": _extraction(sha="sha1", filename="a.pdf"),
            "usage": {"input_tokens": 500, "output_tokens": 80}, "cost_usd": 0.015, "error": None}
 
-    orchestrate._usage = []
+    orchestrate._run.usage = []
     try:
         result = asyncio.run(orchestrate._finish_batch_item(
             vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
             model="claude-sonnet-4-6"))
         assert result["status"] == "ok"
-        calls = [c for c in orchestrate._usage if c["task"] == "extract"]
+        calls = [c for c in orchestrate._run.usage if c["task"] == "extract"]
         assert len(calls) == 1
         assert calls[0].pop("end_ts") > 0   # completion timestamp stamped at record time
         assert calls[0] == {
@@ -4700,7 +4700,7 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
             "est_input_tokens": 8,
         }
     finally:
-        orchestrate._usage = None
+        orchestrate._run.usage = None
 
 
 def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
@@ -5259,7 +5259,7 @@ def test_verifier_effort_is_configurable(tmp_path, monkeypatch):
     _queue_doc(vault)
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"verifier_effort": "medium"}))
-    monkeypatch.setattr("watchdog.cmd.base.CONFIG_FILE", config)
+    monkeypatch.setattr("watchdog.config.CONFIG_FILE", config)
     calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
 
     asyncio.run(orchestrate.run(vault, verify=True))

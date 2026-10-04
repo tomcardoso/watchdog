@@ -23,6 +23,7 @@ from watchdog.cmd.base import (
     _count_queued,
     _warn_pending_research,
     _find_project,
+    _registered_project,
     _fmt_date,
     _fmt_size,
     _load_registry,
@@ -433,17 +434,7 @@ def cmd_new(args) -> None:
 
 
 def cmd_obsidian(args) -> None:
-    if not args.name:
-        cwd = Path(".").resolve()
-        if is_vault(cwd):
-            projects = load_projects()
-            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
-            if info is None:
-                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
-        else:
-            sys.exit("Error: not inside a watchdog project. Run `watchdog obsidian <name>` or cd into a project first.")
-    else:
-        _, info = _find_project(args.name)
+    info = _registered_project(args.name, "obsidian")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -491,17 +482,7 @@ def cmd_obsidian(args) -> None:
 
 
 def cmd_open(args) -> None:
-    if not args.name:
-        cwd = Path(".").resolve()
-        if is_vault(cwd):
-            projects = load_projects()
-            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
-            if info is None:
-                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
-        else:
-            sys.exit("Error: not inside a watchdog project. Run `watchdog open <name>` or cd into a project first.")
-    else:
-        _, info = _find_project(args.name)
+    info = _registered_project(args.name, "open")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -786,17 +767,7 @@ def cmd_unarchive(args) -> None:
 
 
 def cmd_log(args) -> None:
-    if not args.name:
-        cwd = Path(".").resolve()
-        if is_vault(cwd):
-            projects = load_projects()
-            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
-            if info is None:
-                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
-        else:
-            sys.exit("Error: not inside a watchdog project. Run `watchdog log <name>` or cd into a project first.")
-    else:
-        _, info = _find_project(args.name)
+    info = _registered_project(args.name, "log")
     vault = Path(info["path"])
     log_path = vault / "log.md"
 
@@ -849,17 +820,7 @@ def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
 
 
 def cmd_watch(args) -> None:
-    if not args.name:
-        cwd = Path(".").resolve()
-        if is_vault(cwd):
-            projects = load_projects()
-            info = next((v for v in projects.values() if Path(v["path"]).resolve() == cwd), None)
-            if info is None:
-                sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
-        else:
-            sys.exit("Error: not inside a watchdog project. Run `watchdog watch <name>` or cd into a project first.")
-    else:
-        _, info = _find_project(args.name)
+    info = _registered_project(args.name, "watch")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")

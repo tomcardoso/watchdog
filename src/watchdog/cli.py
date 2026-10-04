@@ -27,7 +27,6 @@ from watchdog.cmd.base import (
     _launch_claude,
     _load_registry,
     _notify,
-    _perf_cpu_count,
     _print_banner,
     _print_cmd_help,
     _project_completer,
@@ -69,13 +68,8 @@ from watchdog.cmd.ingest import (
     cmd_finalize,
     cmd_guided,
     cmd_ingest,
-    cmd_queue_status,
     cmd_requeue,
     exit_code_for,
-)
-from watchdog.cmd.registry import (
-    cmd_entity_index,
-    cmd_is_duplicate,
 )
 from watchdog.cmd.setup import (
     _CONFIGURE_KEYS,
@@ -555,28 +549,11 @@ def main() -> None:
 
     # Internal pipeline commands — dispatched before argparse so they never
     # appear in tab completion
-    _INTERNAL_CMDS = {
-        "entity-index", "queue-status", "prompt-status",
-        "is-duplicate",
-        "timeline-collisions", "research-fetch", "research-seen", "watchlist-add",
-    }
+    _INTERNAL_CMDS = {"prompt-status", "research-fetch", "research-seen", "watchlist-add"}
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
         _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
-        if cmd == "entity-index":
-            _p.add_argument("project", nargs="?")
-            cmd_entity_index(_p.parse_args(sys.argv[2:]))
-        elif cmd == "queue-status":
-            _p.add_argument("project", nargs="?")
-            cmd_queue_status(_p.parse_args(sys.argv[2:]))
-        elif cmd == "is-duplicate":
-            _p.add_argument("sha256")
-            _p.add_argument("project", nargs="?")
-            cmd_is_duplicate(_p.parse_args(sys.argv[2:]))
-        elif cmd == "timeline-collisions":
-            from watchdog.pipeline.timeline import main_collisions
-            main_collisions()
-        elif cmd == "research-fetch":
+        if cmd == "research-fetch":
             _p.add_argument("project", nargs="?")
             _p.add_argument("--file")
             cmd_research_fetch(_p.parse_args(sys.argv[2:]))

@@ -57,7 +57,7 @@ from watchdog.model_catalog import (
     price_multiplier,
     resolve_model_id,
 )
-from watchdog.pipeline.json_io import _read_json_or
+from watchdog import config as user_config
 
 DEFAULT_TIER = "sonnet"
 
@@ -235,9 +235,7 @@ _LOCAL_DEFAULT_CONTEXT_WINDOW = 8_000
 
 
 def _configured_local_context_window() -> int | None:
-    from watchdog.cmd.base import CONFIG_FILE
-    config = _read_json_or(CONFIG_FILE, {})
-    value = config.get("local_context_window")
+    value = user_config.get("local_context_window")
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
 
@@ -1147,8 +1145,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     # prefix table (`gpt-5`, `o1`, `o3`, `o4`) is OpenAI's own naming convention, and a local model's
     # id has no relation to it (an operator could name a self-hosted model anything); sending
     # `max_completion_tokens` to a runner that doesn't recognize it would either be silently
-    # ignored (defeating the max_tokens ceiling `output_ceiling_for_sectioning` relies on for
-    # local/openrouter) or rejected outright.
+    # ignored (defeating the max_tokens ceiling for local/openrouter) or rejected outright.
     if is_openai and _openai_is_reasoning(model_id):
         body["max_completion_tokens"] = max_tokens
     else:
@@ -1405,26 +1402,6 @@ def _wire_max_tokens(backend: str, model_id: str) -> int:
     return _output_envelope(model_id)
 
 
-def output_ceiling_for_sectioning(backend: str | None, model: str | None) -> int | None:
-    """The per-call output-token ceiling that sectioning must keep a document under — or None
-    when there is nothing to protect (#343). None is returned for the agent SDK (no enforced
-    ceiling), for the prefill-continuation backends (claude-api, deepseek — pagination grows the
-    output past the cap), and for an unresolved backend (`None` routes to a Claude backend, both
-    of which are None-returning). openai, gemini, local, and openrouter (#380) return a real
-    number: they enforce max_tokens yet can't continue, so a document whose estimated output
-    would exceed the ceiling must be sectioned up front rather than truncating and relying on the
-    reactive fallback.
-
-    The ceiling no longer varies by task or effort (#598) — it is the same per-model wire envelope
-    `_wire_max_tokens` sends on every call for this backend/model, so a caller sizing input against
-    predicted output uses the one real number that output actually has to fit."""
-    meta = _BACKEND_META.get(backend)
-    if meta is None or not meta.enforces_max_tokens or meta.supports_continuation:
-        return None
-    model_id = resolve_model_id(model or DEFAULT_TIER)
-    return _wire_max_tokens(backend, model_id)
-
-
 async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: str, schema: dict,
                                     api_key: str | None, max_tokens: int, effort_arg,
                                     task: str | None = None) -> dict:
@@ -1583,7 +1560,3 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated,
         starved=was_starved)
 
-
-def complete_json(**kwargs) -> ModelResult:
-    """Sync wrapper around :func:`acomplete_json` for non-async callers and tests."""
-    return asyncio.run(acomplete_json(**kwargs))

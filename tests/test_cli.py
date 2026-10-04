@@ -32,6 +32,7 @@ def wdg_home(tmp_path, monkeypatch):
     monkeypatch.setattr(_setup, "WATCHDOG_HOME",  home)
     monkeypatch.setattr(_setup, "CONFIG_FILE",    home / "config.json")
     monkeypatch.setattr(cli,    "CONFIG_FILE",    home / "config.json")
+    monkeypatch.setattr("watchdog.config.CONFIG_FILE", home / "config.json")
     return home
 
 
@@ -586,7 +587,6 @@ def test_cmd_new_name_flag(configured, wdg_home):
     cli.cmd_new(args(name_flag="Flag Name Test", dir=str(configured)))
     projects = json.loads((wdg_home / "projects.json").read_text())
     assert "flag-name-test" in projects
-
 
 
 # ── Obsidian helpers ──────────────────────────────────────────────────────────
@@ -2126,12 +2126,6 @@ def test_search_single_word_inside_vault_is_the_query(configured, monkeypatch):
              json=True)
     cli.cmd_search(a)
     assert a.query == "shell"
-
-
-def test_queue_status_outside_a_vault_without_a_name_exits_cleanly(configured, monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(SystemExit, match="pass the investigation name"):
-        cli.cmd_queue_status(args(project=None))
 
 
 def test_home_config_directory_is_not_a_vault(tmp_path):

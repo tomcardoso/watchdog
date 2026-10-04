@@ -2,6 +2,8 @@
 
 import hashlib
 import numpy as np
+import math
+
 import pytest
 from watchdog.pipeline import embed as embed_mod
 
@@ -314,16 +316,45 @@ def test_tokenize_unicode():
         "acme", "corp", "42", "café", "москва"]
 
 
+def _reference_bm25(query_tokens: list[str], docs_tokens: list[list[str]]) -> list[float]:
+    """Straightforward per-passage Okapi BM25 — the reference the cached index must match."""
+    n = len(docs_tokens)
+    if n == 0 or not query_tokens:
+        return [0.0] * n
+    dls = [len(t) for t in docs_tokens]
+    avgdl = (sum(dls) / n) or 1.0
+    df: dict[str, int] = {}
+    for toks in docs_tokens:
+        for t in set(toks):
+            df[t] = df.get(t, 0) + 1
+    q = set(query_tokens)
+    idf = {t: math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5)) for t in q}
+    scores = [0.0] * n
+    for i, toks in enumerate(docs_tokens):
+        if not toks:
+            continue
+        tf: dict[str, int] = {}
+        for t in toks:
+            if t in q:
+                tf[t] = tf.get(t, 0) + 1
+        dl = dls[i]
+        s = 0.0
+        for t, f in tf.items():
+            s += idf[t] * (f * (embed_mod._BM25_K1 + 1)) / (f + embed_mod._BM25_K1 * (1 - embed_mod._BM25_B + embed_mod._BM25_B * dl / avgdl))
+        scores[i] = s
+    return scores
+
+
 def test_bm25_ranks_exact_term_match_first():
     docs = [embed_mod._tokenize(t) for t in
             ["the quarterly report", "shell company in cyprus", "annual filing"]]
-    scores = embed_mod._bm25_scores(embed_mod._tokenize("cyprus shell"), docs)
+    scores = _reference_bm25(embed_mod._tokenize("cyprus shell"), docs)
     assert scores[1] == max(scores) and scores[1] > 0
     assert scores[0] == 0 and scores[2] == 0
 
 
 def test_index_bm25_matches_the_per_passage_formula():
-    """#696: the cached inverted index scores every passage exactly as `_bm25_scores` does."""
+    """#696: the cached inverted index scores every passage exactly as the reference formula does."""
     import random
     rng = random.Random(696)
     words = ["acme", "shell", "cyprus", "court", "file", "no", "12-345", "trust", "café", "report"]
@@ -334,7 +365,7 @@ def test_index_bm25_matches_the_per_passage_formula():
     corpus = [embed_mod._tokenize(f"{m.get('context', '')} {m.get('text', '')}")
               for m in meta if m.get("type") != "note"]
     for query in ("acme shell", "cyprus cyprus 12-345", "café", "zzz", ""):
-        want = embed_mod._bm25_scores(embed_mod._tokenize(query), corpus)
+        want = _reference_bm25(embed_mod._tokenize(query), corpus)
         assert index.bm25(embed_mod._tokenize(query)).tolist() == pytest.approx(want, abs=1e-12)
 
 
@@ -378,7 +409,7 @@ def test_search_cache_holds_no_pickle(vault):
 
 def test_bm25_no_query_terms_is_uniform_zero():
     docs = [embed_mod._tokenize("alpha"), embed_mod._tokenize("beta")]
-    assert embed_mod._bm25_scores(embed_mod._tokenize("zzz"), docs) == [0.0, 0.0]
+    assert _reference_bm25(embed_mod._tokenize("zzz"), docs) == [0.0, 0.0]
 
 
 def test_rrf_fuses_rankings():
