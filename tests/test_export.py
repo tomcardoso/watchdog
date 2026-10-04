@@ -109,7 +109,9 @@ def test_write_cypher(tmp_path):
     edges, _ = _forward_edges(entities)
     path = _write_cypher(entities, edges, tmp_path)
     text = path.read_text(encoding="utf-8")
-    assert "MERGE (n:`person` {id: 'alice'})" in text
+    assert "MERGE (n:`WatchdogEntity` {id: 'alice'}) SET n:`person`" in text
+    assert text.startswith("CREATE CONSTRAINT watchdog_entity_id IF NOT EXISTS")
+    assert "MATCH (a:`WatchdogEntity` {id: 'alice'})" in text   # indexed lookup, not a scan
     assert "n.doc_count = 2" in text
     assert "MERGE (a)-[r:`DIRECTOR`]->(b)" in text
     assert "date_range: '2019–2023'" in text

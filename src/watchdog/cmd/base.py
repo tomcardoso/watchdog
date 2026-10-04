@@ -466,13 +466,23 @@ def _fmt_date(iso: str) -> str:
 
 
 def _vault_size(vault: Path) -> int:
+    """Total bytes under `vault`. `os.scandir` reuses the directory listing's own metadata where the
+    platform provides it, instead of a separate stat per file — `watchdog list` sizes every vault."""
     total = 0
-    for root, _, files in os.walk(vault):
-        for f in files:
-            try:
-                total += (Path(root) / f).stat().st_size
-            except OSError:
-                pass
+    stack = [str(vault)]
+    while stack:
+        try:
+            with os.scandir(stack.pop()) as it:
+                for entry in it:
+                    try:
+                        if entry.is_dir(follow_symlinks=False):
+                            stack.append(entry.path)
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
     return total
 
 

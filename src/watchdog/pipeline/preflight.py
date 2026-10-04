@@ -36,7 +36,24 @@ from pathlib import Path
 
 
 
-def run(vault: Path, sha256: str) -> dict:
+def registry_context(vault: Path) -> dict:
+    """What pre-flight needs from `registry/documents.json`: the committed shas and the document
+    types already in use. Read once and passed to `run` by a caller pre-flighting many documents,
+    so the registry (which carries a minhash per document) isn't re-parsed for each one."""
+    documents_path = vault / ".watchdog" / "registry" / "documents.json"
+    shas: set[str] = set()
+    types: list[str] = []
+    if documents_path.exists():
+        try:
+            docs = json.loads(documents_path.read_text(encoding="utf-8"))
+            shas = set(docs)
+            types = sorted({t for d in docs.values() if (t := d.get("document_type"))})
+        except Exception:
+            pass
+    return {"shas": shas, "types": types}
+
+
+def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
         return {"error": f"queue file not found for sha256 {sha256}"}
@@ -46,17 +63,10 @@ def run(vault: Path, sha256: str) -> dict:
     # Check if already committed to the vault; collect the document types already used in this
     # vault so the extractor can reuse one rather than coining a near-duplicate (keeps the type
     # vocabulary — and the `watchdog status` tally — consistent).
-    documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    already_extracted = False
-    known_document_types: list[str] = []
-    if documents_path.exists():
-        try:
-            docs = json.loads(documents_path.read_text(encoding="utf-8"))
-            already_extracted = sha256 in docs
-            known_document_types = sorted(
-                {t for d in docs.values() if (t := d.get("document_type"))})
-        except Exception:
-            pass
+    if registry is None:
+        registry = registry_context(vault)
+    already_extracted = sha256 in registry["shas"]
+    known_document_types: list[str] = list(registry["types"])
 
     # Has this document already been extracted (staged), regardless of whether it has been
     # committed yet? Sha-only, deliberately (#403 phase 1 / #424) — a durable artifact here means
