@@ -38,7 +38,7 @@ DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 # reads). A new document's dispatch is held back when it would push the run's recent tokens/min
 # over the known budget, rather than only reacting to a 429 by stopping the whole batch.
 # `_ADMISSION_SAFETY_MARGIN` leaves headroom for estimate error and for calls that have finished
-# but not yet landed in `_usage`; not user-configurable — no existing precedent in this codebase
+# but not yet landed in `_run.usage`; not user-configurable — no existing precedent in this codebase
 # for exposing a heuristic margin as its own knob. `_ADMISSION_MAX_WAIT_S` is the deadlock guard:
 # `_recent_token_rate`'s window is anchored to the latest *usage record's* `end_ts`, not
 # wall-clock time, so if every in-flight document is simultaneously waiting in `_admit` (nothing
