@@ -77,11 +77,11 @@ my-investigation/
 
 ## The dashboard
 
-`dashboard.base` is a dashboard of live tables: most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicates. The tables refresh as you ingest.
+`dashboard.base` is a dashboard of live tables: most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicate documents. The tables refresh as you ingest.
 
 It uses [Obsidian Bases](https://help.obsidian.md/bases), a core Obsidian feature in version 1.9 and up. There is nothing to install — no community plugin, no restricted mode to clear. Click a column header to sort (by **Documents**, say, to surface the most-mentioned entities); click a row to open the note.
 
-One table deserves attention: **possible duplicates**. If a row turns out to be the same real-world person or company extracted under two different entity ids, the dashboard can only flag it — the fix is `watchdog merge-entities`, covered in [Investigating](investigating.md#duplicate-entities).
+Two tables deserve attention. **Possible duplicate documents** lists documents that closely match one already in the vault; Watchdog never discards them, so decide whether each pair is the same document. **Single-source entities** is where a duplicate entity — the same person or company under two ids — usually shows up; the fix is `watchdog merge-entities`, covered in [Investigating](investigating.md#duplicate-entities).
 
 ## Entity notes
 

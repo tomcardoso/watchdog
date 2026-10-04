@@ -1,13 +1,10 @@
 """`watchdog merge-entities <keep-id> <merge-id>` — deterministic registry surgery
 that folds a duplicate entity into another (#219).
 
-Three shipped features could only *detect* the same real-world entity living under
-two ids — the dashboard's "Possible duplicates" view, the `/watchdog-health`
-near-duplicate check, and D39's Neo4j-export tradeoff note — this command is the fix.
-No model calls: it must be run from inside the vault it mutates, the same
-"run from inside the vault" convention `watchdog is-duplicate` / `watchdog
-write-vault` already use, since there's no useful project-name lookup for a command
-that edits the registry in place."""
+The same real-world entity can end up under two ids when reconciliation misses a pair;
+`/watchdog-health` and the dashboard's single-source table help spot them, and this command
+folds one into the other. No model calls. It runs from inside the vault it mutates, since
+there's no useful project-name lookup for a command that edits the registry in place."""
 
 import json
 import sys

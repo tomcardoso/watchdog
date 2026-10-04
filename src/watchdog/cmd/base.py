@@ -266,9 +266,9 @@ _CMD_HELP: dict[str, dict] = {
             'confirmation before doing anything — this is irreversible. Answering anything other',
             'than y/yes cancels with no changes made; pass --force to skip the prompt.',
             '',
-            'This is the fix for what the dashboard\'s "Possible duplicates" view and',
-            "`/watchdog-health`'s near-duplicate check can only ever flag. Run `watchdog reindex`",
-            "afterward to drop the merged entity's stale search-index entries.",
+            "This is the fix for duplicate entities that `/watchdog-health` or a review of the",
+            "dashboard's single-source entities turns up. Run `watchdog reindex` afterward to drop",
+            "the merged entity's stale search-index entries.",
         ],
     },
     'contradiction-add': {

@@ -143,7 +143,7 @@ views:
       - name
       - type
   - type: table
-    name: Possible duplicates
+    name: Possible duplicate documents
     filters:
       and:
         - file.inFolder("documents")

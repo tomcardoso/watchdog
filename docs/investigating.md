@@ -148,7 +148,7 @@ Resolved items drop out of the next sweep, so `watchdog leads` and `watchdog wat
 
 ## Duplicate entities
 
-Sometimes the same real-world person or company ends up extracted as two separate entities — most often because a name is spelled differently across documents. The dashboard's "Possible duplicates" table and `/watchdog-health` flag candidates; once you have confirmed two entries are the same, fold one into the other:
+Sometimes the same real-world person or company ends up extracted as two separate entities — most often because a name is spelled differently across documents. Watchdog merges the pairs it is confident about when it finalizes a batch; the ones it leaves are worth checking by hand. The dashboard's "Single-source entities" table is a good place to look, since a duplicate usually appears in only one document. So is any pair of near-duplicate documents `/watchdog-health` reports, which often produce two copies of the same entities. Once you have confirmed two entries are the same, fold one into the other:
 
 ```bash
 watchdog merge-entities <keep-id> <merge-id>
