@@ -112,6 +112,58 @@ def test_candidate_pairs_ranked_and_capped(monkeypatch):
     assert {pairs[0]["a"]["id"], pairs[0]["b"]["id"]} == {"a", "b"}
 
 
+def _brute_force_pairs(entities_reg, touched):
+    """The pre-#696 O(touched·n) walk, kept as the reference the indexed version must match."""
+    from watchdog.pipeline.entity_type import canonical_type
+    types = {eid: canonical_type(e.get("type", "")) for eid, e in entities_reg.items()}
+    out = set()
+    for t_id in (eid for eid in touched if eid in entities_reg):
+        for o_id in entities_reg:
+            if o_id == t_id or types[o_id] != types[t_id]:
+                continue
+            score = max((reconcile._overlap(tn, on)
+                         for tn in reconcile._surfaces(entities_reg[t_id])
+                         for on in reconcile._surfaces(entities_reg[o_id])), default=0.0)
+            if score >= reconcile._JACCARD_MIN:
+                out.add((min(t_id, o_id), max(t_id, o_id), score))
+    return out
+
+
+def test_candidate_pairs_index_matches_brute_force(monkeypatch):
+    """The inverted-index blocking (#696) must emit exactly the pairs the old full walk did —
+    it changes the work, never the answer. Randomized registries mix shared common tokens,
+    subsets, word-order variants, aliases, stopwords and types, over several touched sets."""
+    import random
+    monkeypatch.setattr(reconcile, "_MAX_PAIRS", 10**9)
+    rng = random.Random(696)
+    vocab = ["acme", "holdings", "inc", "ltd", "canada", "bank", "of", "the", "nova", "scotia",
+             "tom", "cardoso", "smith", "group", "trust", "toronto", "capital", "partners"]
+    types = ["Person", "Company", "organization", "Location"]
+    for _ in range(40):
+        reg = {}
+        for i in range(rng.randint(2, 40)):
+            def name():
+                return " ".join(rng.sample(vocab, rng.randint(1, 4)))
+            reg[f"e{i:02d}"] = {"id": f"e{i:02d}", "name": name(), "type": rng.choice(types),
+                                "aliases": [name() for _ in range(rng.randint(0, 2))]}
+        ids = sorted(reg)
+        touched = set(rng.sample(ids, rng.randint(0, len(ids))))
+        got = {(p["a"]["id"], p["b"]["id"]) for p in reconcile.candidate_pairs(reg, touched)}
+        want = {(a, b) for a, b, _ in _brute_force_pairs(reg, touched)}
+        assert got == want
+
+
+def test_candidate_pairs_scales_past_the_quadratic_walk():
+    """5,000 entities, all touched, with no shared tokens beyond one common suffix: the old walk
+    scored ~12.5M pairs and held them in a `seen` set; the index only probes rare tokens."""
+    import time
+    reg = {f"e{i}": {"id": f"e{i}", "name": f"name{i} other{i} inc", "type": "Company",
+                     "aliases": []} for i in range(5000)}
+    started = time.monotonic()
+    assert reconcile.candidate_pairs(reg, set(reg)) == []
+    assert time.monotonic() - started < 10
+
+
 # ── build_bundle ──────────────────────────────────────────────────────────────
 
 def _stage(vault: Path, sha: str, filename: str, entities: list[dict], *, date="2024-06-01") -> None:
@@ -176,7 +228,7 @@ def test_build_bundle_claims_come_from_the_analysis_ledger(tmp_path):
 def test_build_bundle_empty_when_nothing_staged(tmp_path):
     vault = make_vault(tmp_path)   # a populated registry, but no staged batch → nothing touched
     bundle = reconcile.build_bundle(vault, [])
-    assert bundle == {"entities": [], "pairs": []}
+    assert bundle == {"entities": [], "pairs": [], "pairs_dropped": 0}
 
 
 # ── _rewrite_staged_ids: remap scope beyond entities[].id / role.target_id ────

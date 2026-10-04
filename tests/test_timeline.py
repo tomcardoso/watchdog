@@ -196,6 +196,27 @@ def test_collisions_leaves_raws_when_canonical_exists(tmp_path):
     assert raw.exists()   # left for the caller to consume after dedup succeeds
 
 
+def test_collisions_routes_same_batch_same_date_raws_through_dedup(tmp_path):
+    """#696: two documents of one batch dating events to the same day used to be merged straight
+    into a new canonical with no dedup call, so every cross-document restatement survived. Now the
+    first raw is promoted and the rest come back as a collision, exactly like a later batch's."""
+    vault = _vault(tmp_path)
+    stage_timeline_events(vault, _extraction([
+        {"fact": "Receiver appointed over Acme", "date": "2021-06-01", "entities": ["acme"]},
+    ], sha="aaaa1111111"))
+    stage_timeline_events(vault, _extraction([
+        {"fact": "Court appoints a receiver for Acme", "date": "2021-06-01", "entities": ["acme"]},
+    ], sha="bbbb2222222"))
+    td = vault / ".watchdog" / "timeline"
+
+    cols = collisions(vault)
+    assert cols == [{"date": "2021-06-01", "canonical": ".watchdog/timeline/2021-06-01.ndjson",
+                     "raw": [".watchdog/timeline/2021-06-01_bbbb222.ndjson"]}]
+    assert [e["source_sha256"] for e in _read_ndjson(td / "2021-06-01.ndjson")] == ["aaaa1111111"]
+    assert not (td / "2021-06-01_aaaa111.ndjson").exists()
+    assert (td / "2021-06-01_bbbb222.ndjson").exists()   # left for the caller's dedup
+
+
 def _seed_registries(vault: Path, docs: dict, manifest: dict) -> None:
     reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True, exist_ok=True)

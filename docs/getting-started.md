@@ -82,7 +82,7 @@ notes: Check the director change on page 12.
 
 This context is merged into the document record and preserved through ingest. The [vault guide](vault.md#supported-file-types) covers the sidecar format in full.
 
-**Duplicates are handled automatically.** A document that is byte-identical to one already ingested — even under a new name — is set aside in `_INCOMING/_SKIPPED/` rather than processed twice. A separate near-duplicate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them.
+**Duplicates are handled automatically.** A document that is byte-identical to one already ingested — even under a new name — is set aside in `_INCOMING/_SKIPPED/` rather than processed twice. A separate near-duplicate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them. It compares each file against everything already in the investigation and against the other files in the same drop, so two copies of one filing arriving together are caught too.
 
 ## Run the pipeline
 

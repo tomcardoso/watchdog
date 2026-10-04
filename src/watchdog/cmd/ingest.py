@@ -746,6 +746,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # bare --force --estimate is unaffected, since it has no selectors to re-queue in the first
     # place (#424).
     is_estimate = getattr(args, "estimate", False) or getattr(args, "estimate_all", False)
+    # `watchdog dig --limit N` (#696): only the next N queued documents still needing extraction.
+    limit = getattr(args, "limit", None)
     if force_selectors and is_estimate:
         print(f"\n  {_DIM}--estimate is read-only — the named document(s) are not re-queued; "
               f"this estimate reflects the current queue only.{_RESET}")
@@ -768,8 +770,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     from watchdog.model_client import CLAUDE_BACKENDS
 
     if is_estimate:
-        from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate, cost_estimate_all_models
-        queue_files = scan_queue(vault)
+        from watchdog.pipeline.ingest_setup import (
+            cost_estimate, cost_estimate_all_models, limit_queue, scan_queue,
+        )
+        queue_files = limit_queue(vault, scan_queue(vault), limit, force=force)
         if not queue_files:
             failed = _failed_count(vault)
             if failed:
@@ -945,6 +949,17 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
             return
 
+    only_shas = None
+    if limit is not None:
+        from watchdog.pipeline.ingest_setup import limit_queue
+        in_queue = len(result["queue_files"])
+        result["queue_files"] = limit_queue(vault, result["queue_files"], limit, force=force)
+        only_shas = [qf["sha256"] for qf in result["queue_files"]]
+        held = in_queue - len(only_shas)
+        print(f"\n  {_DIM}--limit {limit}: extracting {_RESET}{_BOLD}{len(only_shas)}{_RESET}{_DIM} "
+              f"of {in_queue} queued document{'s' if in_queue != 1 else ''}"
+              + (f"; {held} stay{'s' if held == 1 else ''} queued or already extracted"
+                 if held else "") + f".{_RESET}")
     q = len(result["queue_files"])
     if q and not skip_preview:
         from watchdog.pipeline.ingest_setup import cost_estimate
@@ -1065,6 +1080,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
               f"row is normal, not a stall.{_RESET}")
         print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
     lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    from watchdog.pipeline.locks import heartbeat
     try:
         summary = None
         wait_count = 0
@@ -1076,7 +1092,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # the count of waits taken reaches the bound, break with the last iteration's summary as
         # merged — its `rate_limited: True` is left intact, so the caller can tell the run stopped
         # short rather than completed. `None` never triggers this, matching plain `--wait` exactly.
-        with _caffeinate():
+        with _caffeinate(), heartbeat(lock_file):
             while True:
                 iter_summary = asyncio.run(orchestrate.run(
                     vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
@@ -1086,7 +1102,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
                     resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget,
-                    benchmark_arm_id=getattr(args, "benchmark_arm_id", None)))
+                    benchmark_arm_id=getattr(args, "benchmark_arm_id", None),
+                    only_shas=only_shas))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
@@ -1315,7 +1332,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     `finalizer_overrides` (#433) passes straight through to `orchestrate.finalize` — per-stage
     model/backend overrides for reconciliation, synthesis, timeline, and briefing."""
     from watchdog.pipeline import orchestrate
-    from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
+    from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
     lock = vault / ".watchdog" / "registry" / ".ingest-lock"
     # Atomic acquisition (#257): the shared .ingest-lock means a running ingest or a second
@@ -1334,7 +1351,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         # #467: a bark run has no upper bound on how long reconciliation/synthesis/the briefing
         # take, the same failure mode _caffeinate() was added to guard extraction against (#415)
         # — without it, the machine sleeping mid-call kills a finalize outright.
-        with _caffeinate():
+        with _caffeinate(), heartbeat(lock):
             out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
                                                    post_backend=post_backend, force_shas=force_shas,
                                                    skip_briefing=skip_briefing,

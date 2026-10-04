@@ -614,9 +614,9 @@ def test_requeue_forced_selectors_rechews_morgue_original_bypassing_dedup(tmp_pa
 
     seen_exclude = {}
     real_compute = ppb._compute_near_dup
-    def spy_compute_near_dup(result, v, exclude_sha=None):
+    def spy_compute_near_dup(result, v, exclude_sha=None, index=None):
         seen_exclude["exclude_sha"] = exclude_sha
-        return real_compute(result, v, exclude_sha=exclude_sha)
+        return real_compute(result, v, exclude_sha=exclude_sha, index=index)
     monkeypatch.setattr(ppb, "_compute_near_dup", spy_compute_near_dup)
     monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
         "sha256": SHA, "filename": path.name,

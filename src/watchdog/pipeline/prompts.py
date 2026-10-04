@@ -272,7 +272,8 @@ def build_synthesis_prompt(bundle: dict) -> str:
 
 def build_reconcile_prompt(bundle: dict) -> str:
     """The finalizer's reconciliation call (#381/D118) — entity resolution + contradiction
-    detection over the whole entity set, once, after every document has landed.
+    detection over the whole entity set, after every document has landed. `bundle` is one chunk of
+    `reconcile.build_bundle`'s output (`reconcile.chunk_bundle`, #696) — the whole of it when it fits.
 
     Two blocks, both assembled deterministically in Python:
 
@@ -297,9 +298,21 @@ def build_reconcile_prompt(bundle: dict) -> str:
 
 
 def build_briefing_prompt(*, brief: str | None, results: list, scratchpads: list,
-                          neardup_alerts: list, contradiction_flags: list) -> str:
+                          neardup_alerts: list, contradiction_flags: list,
+                          condensed: dict | None = None) -> str:
+    # `condensed` (#696) is set when the batch was too large to show in full
+    # (`orchestrate._fit_briefing_inputs`); the note tells the model its view is partial and that
+    # the list fields must summarize rather than enumerate, or the response would outgrow the
+    # output cap the same way the input outgrew the window.
+    note = ""
+    if condensed:
+        note = (f"NOTE: this batch is large ({condensed['documents']} documents), so RESULTS below "
+                f"is condensed ({condensed['level']}). Every document is in the vault; you are "
+                f"seeing a partial view. Summarize what_was_ingested by document type and period "
+                f"rather than one line per file, and keep every list to the most significant items."
+                f"\n\n")
     return (
-        f"{_text('briefing')}\n\n"
+        f"{_text('briefing')}\n\n{note}"
         f"INVESTIGATION BRIEF:\n{brief or '(none)'}\n\n"
         f"RESULTS:\n{json.dumps(results, ensure_ascii=False)}\n\n"
         f"NEAR-DUP ALERTS:\n{json.dumps(neardup_alerts, ensure_ascii=False)}\n\n"

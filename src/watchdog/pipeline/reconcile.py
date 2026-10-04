@@ -15,10 +15,12 @@ pass, using the merge remap `apply_merges` returned.
 """
 
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 
 from watchdog.pipeline import contradiction, merge_entities
+from watchdog.pipeline.chunking import json_size, pack
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json, _read_json_or
@@ -38,10 +40,15 @@ _STOPWORDS = {"the", "of", "and", "a", "an", "de", "du", "la", "le"}
 # model then filters, not a merge threshold — nothing merges without the model confirming it.
 _JACCARD_MIN = 0.5
 
-# Hard ceiling on pairs sent in one call, so a pathological vault (thousands of entities sharing a
-# common token) cannot blow the context window. Pairs are ranked by descending overlap first, so
-# what survives the cut is the most likely duplicates, not an arbitrary slice.
-_MAX_PAIRS = 200
+# Ceiling on candidate pairs per run. Pairs no longer share one call — `chunk_bundle` splits them
+# across as many size-bounded calls as they need (#696) — so this is a runaway guard on the number
+# of calls a pathological vault (thousands of names sharing a common token) can trigger, not a
+# context-window guard. Pairs are ranked by descending overlap first, so what survives the cut is
+# the most likely duplicates, and `build_bundle` reports how many were cut.
+_MAX_PAIRS = 2000
+
+# Marker prefixed to an entity's claim ledger when `chunk_bundle` had to trim it to fit one call.
+_TRIMMED = "[earlier claims omitted to fit one reconciliation call]\n"
 
 # An entity needs claims in at least this many documents before two of them can disagree — the same
 # recurrence gate synthesis uses (D26).
@@ -83,7 +90,25 @@ def _overlap(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+def _prefix_len(n_tokens: int) -> int:
+    """How many of a name's tokens (in the global order) any qualifying Jaccard partner must hit.
+
+    `J(A, B) >= t` implies `|A ∩ B| >= t·|A ∪ B| >= t·|A|`, so at least `ceil(t·|A|)` of A's tokens
+    are shared — and therefore any `|A| - ceil(t·|A|) + 1` of them include a shared one. Probing
+    just that many (the rarest) is enough to find every partner; the tolerance keeps a float
+    product like 0.5·4 from ceiling up to 3."""
+    return n_tokens - math.ceil(_JACCARD_MIN * n_tokens - 1e-9) + 1
+
+
 def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
+    """`_ranked_pairs`, capped at `_MAX_PAIRS` and numbered by rank."""
+    pairs = _ranked_pairs(entities_reg, touched)[:_MAX_PAIRS]
+    for index, pair in enumerate(pairs):
+        pair["index"] = index
+    return pairs
+
+
+def _ranked_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     """Block the duplicate-entity field down to pairs worth a model call.
 
     Every pair must (1) share a canonical entity type — a `person` and an `organization` are never
@@ -91,32 +116,66 @@ def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     their known names, and (3) involve at least one entity this run touched, so an ingest does not
     re-litigate the whole vault's history on every run.
 
-    Iterates touched entities against the registry (O(touched·n)) rather than every registry pair
-    (O(n²)) — on a vault with thousands of entities, a single-document ingest touches a handful, and
-    the untouched-against-untouched pairs that dominate the full cross product can never qualify
-    anyway. A pair reachable from both sides (both touched) is scored once.
+    Candidates come from an inverted index keyed on (canonical type, name token) rather than from
+    walking every touched entity against the whole registry (#696). That walk was O(touched·n) in
+    time *and* memory — 4,000 entities, all touched, took ~1 minute and 2 GB, and a vault of tens
+    of thousands ran out of memory. Every qualifying name pair shares a token, so it is enough to
+    probe the index for names sharing one, with two filters keeping the probes off the long
+    postings lists of common tokens ("inc", "canada"):
 
-    Returned newest-signal-first (strongest overlap first) and capped at `_MAX_PAIRS`.
+    - **Jaccard partners** — a name's rarest `_prefix_len` tokens are probed against every
+      indexed token (see `_prefix_len` for why that many suffice).
+    - **Subset partners** — the shorter name's rarest token is necessarily in the longer one. The
+      probing name's own rarest token is in its prefix, so a longer superset is found by the probe
+      above; a shorter subset is found by probing a second index holding each name's *rarest*
+      token only, with every one of the probing name's tokens.
+
+    Token rarity only decides which tokens are probed; any fixed order would be exact, rarity just
+    keeps the postings short. The candidate set is a superset of the qualifying pairs, and each
+    candidate is scored exactly as before, so the output is unchanged — only the work is not.
+
+    Returned strongest-signal-first, uncapped and unnumbered.
     """
     types = {eid: canonical_type(e.get("type", "")) for eid, e in entities_reg.items()}
-    all_ids = sorted(entities_reg)
     touched_ids = sorted(eid for eid in touched if eid in entities_reg)
+    touched_set = set(touched_ids)
+
+    surface_tokens: dict[str, list[frozenset[str]]] = {}
+    freq: dict[str, int] = {}
+    for eid, e in entities_reg.items():
+        toks = [t for t in (_tokens(n) for n in _surfaces(e)) if t]
+        surface_tokens[eid] = toks
+        for ts in toks:
+            for tok in ts:
+                freq[tok] = freq.get(tok, 0) + 1
+
+    def _order(ts: frozenset[str]) -> list[str]:
+        return sorted(ts, key=lambda tok: (freq.get(tok, 0), tok))
+
+    full_index: dict[tuple[str, str], set[str]] = {}
+    rare_index: dict[tuple[str, str], set[str]] = {}
+    for eid, toks in surface_tokens.items():
+        etype = types[eid]
+        for ts in toks:
+            for tok in ts:
+                full_index.setdefault((etype, tok), set()).add(eid)
+            rare_index.setdefault((etype, _order(ts)[0]), set()).add(eid)
 
     scored: list[tuple[float, dict]] = []
-    seen: set[frozenset] = set()   # dedup a pair reachable from both touched sides
-
     for t_id in touched_ids:
-        t = entities_reg[t_id]
         t_type = types[t_id]
-        t_names = _surfaces(t)
-        for o_id in all_ids:
-            if o_id == t_id:
-                continue
-            pair_key = frozenset((t_id, o_id))
-            if pair_key in seen:
-                continue
-            seen.add(pair_key)
-            if types[o_id] != t_type:
+        candidates: set[str] = set()
+        for ts in surface_tokens[t_id]:
+            ordered = _order(ts)
+            for tok in ordered[:_prefix_len(len(ordered))]:
+                candidates |= full_index.get((t_type, tok), set())
+            for tok in ordered:
+                candidates |= rare_index.get((t_type, tok), set())
+        candidates.discard(t_id)
+        t_names = _surfaces(entities_reg[t_id])
+        for o_id in candidates:
+            # A pair with both sides touched is found from both; score it once, from the lower id.
+            if o_id in touched_set and o_id < t_id:
                 continue
             o = entities_reg[o_id]
             score = max(
@@ -136,10 +195,7 @@ def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     # Strongest signal first, so a vault that overruns `_MAX_PAIRS` loses its weakest candidates
     # rather than an arbitrary slice. Ties break on id, so the cut is deterministic.
     scored.sort(key=lambda s: (-s[0], s[1]["a"]["id"], s[1]["b"]["id"]))
-    pairs = [p for _, p in scored[:_MAX_PAIRS]]
-    for index, pair in enumerate(pairs):
-        pair["index"] = index
-    return pairs
+    return [p for _, p in scored]
 
 
 def _orienting_line(text: str, limit: int = 240) -> str:
@@ -263,7 +319,10 @@ def build_bundle(vault: Path, shas: list[str]) -> dict:
     # pair member is usually not a contradiction candidate too (it may appear in one document, or
     # not have been touched this run), so its summary is not already in hand, and reading every
     # note in the registry to enrich a handful of pairs would be the expensive way round.
-    pairs = candidate_pairs(working, touched)
+    ranked = _ranked_pairs(working, touched)
+    pairs = ranked[:_MAX_PAIRS]
+    for index, pair in enumerate(pairs):
+        pair["index"] = index
     summaries: dict[str, str] = {e["entity_id"]: e["summary"] for e in entities}
     for pair in pairs:
         for side in ("a", "b"):
@@ -273,7 +332,73 @@ def build_bundle(vault: Path, shas: list[str]) -> dict:
                 summaries[eid] = _extract_summary(note) or ""
             pair[side]["summary"] = _orienting_line(summaries[eid])
 
-    return {"entities": entities, "pairs": pairs}
+    return {"entities": entities, "pairs": pairs, "pairs_dropped": len(ranked) - len(pairs)}
+
+
+def _trim_claims(entity: dict, budget: int) -> dict:
+    """Fit one entity into `budget` characters by dropping the *oldest* part of its claim ledger.
+
+    A hub entity named in hundreds of documents can carry a ledger larger than a whole call. The
+    ledger is source-attributed blocks in commit order, so its tail holds this batch's new claims —
+    the ones a contradiction check exists for — and the head is what goes. Returns the entity
+    unchanged when it already fits."""
+    size = json_size(entity)
+    if size <= budget:
+        return entity
+    claims = entity.get("claims") or ""
+    keep = max(0, len(claims) - (size - budget) - len(_TRIMMED) - 64)
+    trimmed = dict(entity)
+    trimmed["claims"] = _TRIMMED + claims[len(claims) - keep:] if keep else _TRIMMED
+    return trimmed
+
+
+def chunk_bundle(bundle: dict, budget: int) -> list[dict]:
+    """Split a reconciliation bundle into calls of at most `budget` characters of data (#696).
+
+    Pairs and entities are packed in order, pairs first, into as few chunks as fit; a bundle that
+    already fits comes back as one chunk identical to the input. Each chunk numbers its pairs from
+    0, since the model answers by index into the list it was shown, and records the bundle-wide
+    index of each in `pair_index` so `merge_chunk_results` can translate the answers back. An
+    entity too large for any one call has its oldest claims trimmed (`_trim_claims`) rather than
+    deadlocking the batch on a call that can never fit."""
+    pairs = bundle.get("pairs") or []
+    entities = [_trim_claims(e, budget) for e in bundle.get("entities") or []]
+    items = [("pair", i, p) for i, p in enumerate(pairs)] + [("entity", None, e) for e in entities]
+    chunks = []
+    for group in pack(items, budget, size=lambda item: json_size(item[2])):
+        chunk_pairs, pair_index, chunk_entities = [], [], []
+        for kind, i, item in group:
+            if kind == "pair":
+                local = dict(item)
+                if "index" in local:
+                    local["index"] = len(chunk_pairs)
+                chunk_pairs.append(local)
+                pair_index.append(i)
+            else:
+                chunk_entities.append(item)
+        chunks.append({"pairs": chunk_pairs, "entities": chunk_entities, "pair_index": pair_index})
+    return chunks
+
+
+def merge_chunk_results(chunks: list[dict], parsed: list[dict]) -> dict:
+    """Combine each chunk's model answer into one answer over the whole bundle, in the shape
+    `apply_merges` already takes: every merge's `pair` translated from its chunk's numbering back
+    to the bundle's, contradictions concatenated. A merge naming an index outside its own chunk is
+    passed on as a non-integer label so `apply_merges` warns and skips it, as it would any bad
+    index."""
+    merges, contradictions = [], []
+    for n, (chunk, answer) in enumerate(zip(chunks, parsed)):
+        index = chunk["pair_index"]
+        for item in answer.get("merges") or []:
+            local = item.get("pair")
+            item = dict(item)
+            if isinstance(local, int) and not isinstance(local, bool) and 0 <= local < len(index):
+                item["pair"] = index[local]
+            else:
+                item["pair"] = f"chunk {n + 1} pair {local!r}"
+            merges.append(item)
+        contradictions.extend(answer.get("contradictions") or [])
+    return {"merges": merges, "contradictions": contradictions}
 
 
 def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: str) -> str | None:

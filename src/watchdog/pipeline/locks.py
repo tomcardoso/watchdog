@@ -10,8 +10,15 @@ never sees an empty lock. Callers own the staleness policy on the failure branch
 """
 
 import os
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+# How often a held lock's `started_at` is refreshed while its run is active — well inside the
+# 30-minute staleness window (`ingest_setup.STALE_SECONDS`), so a missed beat or two never lets a
+# live run look abandoned.
+HEARTBEAT_SECONDS = 300
 
 
 def acquire_lock(lock_file: Path, contents: str) -> bool:
@@ -81,3 +88,48 @@ def acquire_or_take_stale(lock_file: Path, contents: str, stale_seconds: float) 
     # closed by the O_EXCL create above.
     lock_file.unlink(missing_ok=True)
     return acquire_lock(lock_file, contents)
+
+
+def _stamp(lock_file: Path) -> bool:
+    """Rewrite just the `started_at:` line of an existing lock to now, keeping its other lines
+    (the holder's pid label). Returns False — writing nothing — when the lock is gone, so a beat
+    racing a release never recreates a lock its holder just dropped."""
+    try:
+        lines = lock_file.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+    now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+    kept = [line for line in lines if not line.startswith("started_at:")]
+    try:
+        lock_file.write_text("\n".join([*kept, f"started_at: {now}"]) + "\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+@contextmanager
+def heartbeat(lock_file: Path, interval: float = HEARTBEAT_SECONDS):
+    """Keep a held lock fresh for as long as the block runs (#696).
+
+    Staleness was only ever refreshed while sleeping through a rate limit (`refresh_lock`), so a
+    run that was simply long — hours of extraction or a finalize over thousands of documents —
+    crossed the 30-minute window mid-work, and a second invocation could take the lock over while
+    the first was still writing. A daemon thread re-stamps `started_at` every `interval` seconds
+    and is stopped and joined before the block exits, so the caller's release always happens after
+    the last beat. A run that dies without exiting the block stops beating with it, so a crashed
+    run's lock still goes stale on schedule."""
+    stop = threading.Event()
+
+    def _beat() -> None:
+        while not stop.wait(interval):
+            if not _stamp(lock_file):
+                return
+
+    thread = threading.Thread(target=_beat, name=f"lock-heartbeat:{lock_file.name}", daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join()
+

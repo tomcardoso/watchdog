@@ -136,7 +136,7 @@ If a chew or ingest was interrupted, a lock file can be left behind that blocks 
 watchdog unlock <name>
 ```
 
-If the lock is recent (under 30 minutes old), Watchdog warns you that the operation may still be running. Once you're sure it isn't, force the removal:
+A running chew, `dig` or `bark` refreshes its lock every five minutes, however long it runs, so a lock only ages once the run that held it has stopped. If the lock is recent (under 30 minutes old), Watchdog warns you that the operation may still be running. Once you're sure it isn't, force the removal:
 
 ```bash
 watchdog unlock <name> --force

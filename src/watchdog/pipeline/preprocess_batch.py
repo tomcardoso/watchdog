@@ -32,43 +32,112 @@ _PROGRESS_KEY = "__progress__"
 _SPACER_KEY = "__progress_spacer__"
 
 
-def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None) -> dict:
+class NearDupIndex:
+    """Every MinHash signature a new document should be compared against, held as one matrix.
+
+    Built once per chew (#696) from the committed documents (`documents.json`) *and* the documents
+    already chewed but not yet ingested (the queue), then grown as this chew stages each document.
+    `_compute_near_dup` used to re-read `documents.json` for every document and compare only
+    against it, so near-duplicates landing in the same drop — common with court records, where one
+    filing turns up in several productions — were never flagged, and each comparison was a Python
+    loop over every prior signature. One vectorized comparison per document now covers all three
+    populations; the similarity is the same fraction of matching hash slots as `minhash_similarity`.
+    """
+
+    def __init__(self):
+        import numpy as np
+        self._np = np
+        self._meta: list[dict] = []
+        self._sigs = np.zeros((0, 0), dtype=np.uint64)
+        self._n = 0
+
+    @classmethod
+    def from_vault(cls, vault: Path) -> "NearDupIndex":
+        index = cls()
+        documents_path = vault / ".watchdog" / "registry" / "documents.json"
+        try:
+            documents = json.loads(documents_path.read_text()) if documents_path.exists() else {}
+        except (OSError, json.JSONDecodeError):
+            documents = {}
+        for sha, doc in documents.items():
+            index.add(sha, doc.get("filename", ""), doc.get("minhash"), doc.get("document_note", ""))
+        queue = vault / ".watchdog" / "queue"
+        for qf in sorted(queue.glob("*.json")) if queue.exists() else []:
+            if qf.stem in documents:
+                continue
+            try:
+                q = json.loads(qf.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            index.add(qf.stem, q.get("filename", ""), (q.get("near_dup") or {}).get("candidate_minhash"))
+        return index
+
+    def add(self, sha: str, filename: str, sig: list[int] | None, document_note: str = "") -> None:
+        if not sig:
+            return
+        np = self._np
+        if self._n == 0 and self._sigs.shape[1] != len(sig):
+            self._sigs = np.zeros((64, len(sig)), dtype=np.uint64)
+        if len(sig) != self._sigs.shape[1]:
+            return   # a signature from a different NUM_HASHES; minhash_similarity scores it 0.0
+        if self._n == len(self._sigs):
+            grown = np.zeros((2 * len(self._sigs), self._sigs.shape[1]), dtype=np.uint64)
+            grown[: self._n] = self._sigs
+            self._sigs = grown
+        self._sigs[self._n] = sig
+        self._meta.append({"sha256": sha, "filename": filename, "document_note": document_note})
+        self._n += 1
+
+    def matches(self, sig: list[int], threshold: float, exclude_sha: str | None = None) -> list[dict]:
+        if not sig or self._n == 0 or len(sig) != self._sigs.shape[1]:
+            return []
+        np = self._np
+        sims = (self._sigs[: self._n] == np.asarray(sig, dtype=np.uint64)).mean(axis=1)
+        out = []
+        for i in np.nonzero(sims >= threshold)[0]:
+            meta = self._meta[i]
+            if meta["sha256"] == exclude_sha:
+                continue
+            out.append({**meta, "similarity": round(float(sims[i]), 4)})
+        # Same key order as before: sha256, filename, similarity, document_note.
+        return [{"sha256": m["sha256"], "filename": m["filename"], "similarity": m["similarity"],
+                 "document_note": m["document_note"]} for m in out]
+
+
+def _dup_threshold() -> float:
+    try:
+        cfg_path = Path.home() / ".watchdog" / "config.json"
+        return json.loads(cfg_path.read_text()).get("dup_threshold", 0.85)
+    except Exception:
+        return 0.85
+
+
+def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None,
+                      index: NearDupIndex | None = None) -> dict:
     """Compute near-duplicate check for a freshly chewed document. Never raises.
+
+    `index` (#696) is the chew-wide `NearDupIndex`; without one, a fresh index is built from the
+    vault — committed and queued documents — for this one call. The document is added to the
+    index afterwards, so later documents in the same chew are compared against it.
 
     `exclude_sha` (#424) leaves one sha out of the comparison — needed when re-chewing a
     document's own committed original for `--force`: its own registry entry is still there
     (this isn't a fresh document), and comparing its content against itself would always match
     at ~1.0 similarity, which would misreport the re-queued document as its own near-duplicate."""
     try:
-        from watchdog.pipeline.near_dup import shingles_from_text, minhash, minhash_similarity
+        from watchdog.pipeline.near_dup import shingles_from_text, minhash
         text = " ".join(p.get("markdown", "") for p in result.get("pages", []))
         if not text.strip():
             return {"near_duplicates": [], "top_similarity": 0.0, "candidate_minhash": []}
-        documents_path = vault / ".watchdog" / "registry" / "documents.json"
-        documents = json.loads(documents_path.read_text()) if documents_path.exists() else {}
+        if index is None:
+            index = NearDupIndex.from_vault(vault)
         candidate_mh = minhash(shingles_from_text(text))
-        threshold = 0.85
-        try:
-            cfg_path = Path.home() / ".watchdog" / "config.json"
-            threshold = json.loads(cfg_path.read_text()).get("dup_threshold", threshold)
-        except Exception:
-            pass
-        matches = []
-        for sha, doc in documents.items():
-            if sha == exclude_sha:
-                continue
-            stored_mh = doc.get("minhash")
-            if stored_mh:
-                sim = minhash_similarity(candidate_mh, stored_mh)
-                if sim >= threshold:
-                    matches.append({
-                        "sha256": sha,
-                        "filename": doc.get("filename", ""),
-                        "similarity": round(sim, 4),
-                        "document_note": doc.get("document_note", ""),
-                    })
+        matches = index.matches(candidate_mh, _dup_threshold(), exclude_sha=exclude_sha)
         matches.sort(key=lambda x: x["similarity"], reverse=True)
         top = matches[0]["similarity"] if matches else 0.0
+        sha = result.get("sha256", "")
+        if sha and sha != exclude_sha:
+            index.add(sha, result.get("filename", ""), candidate_mh)
         return {"near_duplicates": matches, "top_similarity": top, "candidate_minhash": candidate_mh}
     except Exception:
         return {"near_duplicates": [], "top_similarity": 0.0, "candidate_minhash": []}
@@ -358,9 +427,12 @@ def run_ingest(
         sys.exit("\n  Error: a chew is already in progress on this vault. "
                  "Wait for it to finish, or run: watchdog unlock\n")
 
+    from watchdog.pipeline.locks import heartbeat
     try:
-        _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
-                          show_ingest_hint, force_shas=force_shas)
+        # OCR over thousands of pages routinely outlasts the 30-minute staleness window (#696).
+        with heartbeat(lock_file):
+            _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
+                              show_ingest_hint, force_shas=force_shas)
     finally:
         try:
             lock_file.unlink()
@@ -441,6 +513,12 @@ def _run_ingest_inner(
     if live.enabled:
         live.update(_SPACER_KEY, "", pin=True)   # blank clearance line above the progress bar
     _refresh_progress(0)            # seed the pinned progress row; it renders last regardless
+    # Built once for the whole chew, before any document is staged (#696).
+    neardup_index = None
+    try:
+        neardup_index = NearDupIndex.from_vault(vault)
+    except Exception:
+        pass   # _compute_near_dup builds its own per call; near-dup never fails a chew
     pool = ThreadPoolExecutor(max_workers=pre_workers)
     futures = {pool.submit(_chew, f): f for f in files}
     done = 0
@@ -517,7 +595,8 @@ def _run_ingest_inner(
                     except OSError:
                         pass
                     force_self = sha256 if force_shas and sha256 in force_shas else None
-                    result["near_dup"] = _compute_near_dup(result, vault, exclude_sha=force_self)
+                    result["near_dup"] = _compute_near_dup(result, vault, exclude_sha=force_self,
+                                                           index=neardup_index)
                     result["document_type"] = None
                     # Filter to the allowlisted fields, embed the clean copy in the queue JSON,
                     # and drop the original — nothing reads a sidecar off disk past this point

@@ -106,11 +106,18 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
 def collisions(vault: Path) -> list[dict]:
     """Promote no-canonical dates to canonical; return the remaining collisions.
 
-    For dates with only raw files: merge → write canonical, then delete the raws (they are
-    consumed, not retained — otherwise the next ingest re-reports the date as a collision
-    against its own already-promoted raws). For dates that already had a canonical: return
-    ``{date, canonical, raw}`` for semantic dedup by the caller, which deletes those raws only
-    after a *successful* dedup write.
+    For a date with a single raw file and no canonical: promote it — write the canonical, then
+    delete the raw (consumed, not retained — otherwise the next ingest re-reports the date as a
+    collision against its own already-promoted raw). For a date that already had a canonical:
+    return ``{date, canonical, raw}`` for semantic dedup by the caller, which deletes those raws
+    only after a *successful* dedup write.
+
+    A date with **several** raw files and no canonical — two or more documents of one batch
+    dating events to the same day — is a collision too (#696). Merging them straight into a
+    canonical, as this used to, kept every cross-document restatement within a batch, so one large
+    first ingest built a timeline full of duplicates the dedup call never saw. The first raw (in
+    sorted order) is promoted to the canonical and the rest are returned as its collision, so they
+    take exactly the cross-batch path: deduped on success, left in place for a retry on failure.
     """
     td = _timeline_dir(vault)
     if not td.exists():
@@ -124,14 +131,18 @@ def collisions(vault: Path) -> list[dict]:
         if not raw_files:
             continue
         if g["canonical"] is None:
-            lines: list[str] = []
-            for rf in raw_files:
-                lines.extend(_read_ndjson_lines(rf))
-            (td / f"{date}.ndjson").write_text("\n".join(lines) + "\n", encoding="utf-8")
-            # Consume the raws once merged so a later ingest doesn't re-litigate this date
-            # as a phantom collision (canonical vs. its own already-promoted raws).
-            for rf in raw_files:
-                rf.unlink()
+            first, others = raw_files[0], raw_files[1:]
+            canonical = td / f"{date}.ndjson"
+            canonical.write_text("\n".join(_read_ndjson_lines(first)) + "\n", encoding="utf-8")
+            # Consume the promoted raw so a later ingest doesn't re-litigate this date as a
+            # phantom collision (canonical vs. its own already-promoted raw).
+            first.unlink()
+            if others:
+                result.append({
+                    "date": date,
+                    "canonical": str(canonical.relative_to(vault)),
+                    "raw": [str(rf.relative_to(vault)) for rf in others],
+                })
         else:
             result.append({
                 "date": date,

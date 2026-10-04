@@ -112,7 +112,11 @@ Two human-invoked phases, with a clean handoff via the queue:
   against every prior document's signature by estimated Jaccard similarity. Matches
   at or above `dup_threshold` (default 0.85) are flagged for journalist review at
   ingest — never auto-discarded. The signature is stored in `documents.json` so
-  future documents compare against it.
+  future documents compare against it. "Every prior document" means three populations (#696):
+  committed documents, documents chewed earlier but still in the queue, and documents staged
+  earlier in the same chew — held in one `preprocess_batch.NearDupIndex` matrix built once per chew
+  and compared with one vectorized pass per document, so a near-duplicate dropped in alongside its
+  original is flagged instead of only one arriving in a later drop.
 - **Output.** Per document: `.watchdog/queue/<sha256>.json` (filename, sha256,
   page count, per-page markdown, `near_dup`, MinHash signature). The original is
   moved to `.watchdog/staging/<sha256>/`.
@@ -202,7 +206,10 @@ lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken 
 `os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old
 check-then-write left a race window). A lock provably older than 30 minutes is taken over; one
 whose `started_at` is missing or unparseable is left in place for `watchdog unlock` rather than
-deleted regardless of age.
+deleted regardless of age. While a run is active, `locks.heartbeat` re-stamps its lock's `started_at` every five
+minutes from a daemon thread (#696) — extraction, finalize and chew over thousands of documents all
+outlast the 30-minute window — and is joined before the holder releases, so a beat never recreates a
+released lock; a crashed run stops beating, so its lock still goes stale on schedule.
 
 A second, finer lock (`.watchdog/registry/.write-lock`) serializes the actual registry/note
 writes so the concurrent document workers write safely. Uses `flock` on macOS/Linux
@@ -384,6 +391,16 @@ pre-commit fold below (#403 phase 2, D127); `write_vault` replays already-folded
 that commit, keyed for idempotent replay (upsert by note_path), so a repair retry after a mid-write
 crash converges instead of doubling (D67). Registry merges are themselves idempotent (sha-guarded),
 and the entity note's `## Analysis` block is keyed by the source document and replaced, not appended.
+**Within the commit pass the registries are held in memory** (`write_vault.RegistryBatch`, D239): the
+pass takes the registry lock once and `write_vault.run` reads and edits the batch's copies. A pass of
+up to 50 documents (`orchestrate._PER_DOCUMENT_FLUSH_MAX`) still persists them after every document,
+as before; a larger one persists every 50 documents and at the end, rather than re-reading and
+rewriting every registry file per document (which made a pass's I/O quadratic in batch size). The persist is still the commit
+point — a document's queue file is removed only after the flush that wrote its registry entries, so a
+crash between flushes leaves those documents uncommitted and replayable — and a document whose write
+fails mid-way is rolled back in memory (`RegistryBatch.begin`/`rollback`, snapshotting only the entries
+it can touch) so the next flush cannot persist half of it. The pre-commit exact-name fold likewise keeps
+one incrementally-updated `write_vault.NameIndex` instead of rebuilding the name index per document.
 
 **Finalize is a pre-commit resolution pipeline (#403 phases 2–4).** The commit pass does not run in
 isolation: `orchestrate.finalize` resolves the batch *before* it writes, so `write_vault` commits
@@ -739,7 +756,8 @@ investigation**, otherwise it stays a deterministic stub.
   The fragment is a pure function of data the extractor already produced, so it is derived here rather
   than stored: `write_vault` no longer maintains the per-entity fragment files it once did (#403 phase 4,
   D129). `build_bundle` selects the recurring entities, packs each one's fragments + current prose into
-  one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle` bulk-writes
+  one compact bundle; model calls synthesize them in size-bounded chunks (`chunking.pack`, at most
+  `_SYNTHESIS_MAX_ENTITIES` = 25 per call, D238), and `synthesis_bundle.apply_bundle` bulk-writes
   the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
 - **Batch scope comes from the result set, not the pending-commit set.** `_post_ingest` passes
   `build_bundle` the shas of the run's `result_*.json` files, deliberately not `_pending_commits`. On a
@@ -787,17 +805,24 @@ order-immune, and near-constant in cost (one call per ingest).
   `_JACCARD_MIN` (0.5) on some pair of its known names (a strict token-subset scores 1.0, as do identical
   token sets — a word-order or stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs
   "Tom Cardoso"), and involves at least one entity touched this run — ranked by overlap and capped at
-  `_MAX_PAIRS` (200). The model confirms or rejects each pair by index and names the surviving id;
+  `_MAX_PAIRS` (2,000 — a runaway guard on call count, reported when it cuts, D237). Candidates are found through an inverted index on (canonical type, name token),
+  probing only each name's rarest tokens (a Jaccard prefix filter plus a rarest-token index for subsets),
+  so the work tracks the pairs that actually share a token rather than touched × registry (#696); the
+  emitted pairs are identical to a full walk's. The model confirms or rejects each pair by index and names the surviving id;
   `reconcile.apply_merges` applies each merge by a **taxonomy of what is already committed** (D128): a
   batch-only loser is a staged-id rewrite (no stub, backup, or provenance — it never existed as committed
   state); two committed sides get the full `merge_entities.run` surgery (§10); and when exactly one side is
   committed, the committed side always survives. Merges chain, following a just-merged id to its survivor,
   and the flattened remap is carried forward so a contradiction naming a folded-away id still lands on the
-  survivor. The bundle's size (entity/pair counts and KB) is reported both live and in `watchdog usage`'s
-  per-call detail, so a future cap or chunking decision comes from real bundle sizes rather than a
-  guess; if it ever does outgrow a context window, it can be split at entity/pair boundaries into
-  several calls with no quality loss, since contradiction detection only compares claims within one
-  entity and each candidate pair is judged independently.
+  survivor. **The bundle is split into size-bounded calls** (`reconcile.chunk_bundle`, `pipeline/chunking.py`,
+  D237): pairs then entities are packed in order into chunks of at most a quarter of the reconciliation
+  model's context window (clamped and tokenizer-corrected as sectioning is), each chunk numbering its own
+  pairs from 0; `merge_chunk_results` maps every answer back to bundle-wide pair indices before the one
+  `apply_merges`. A bundle that fits is still exactly one call. Splitting loses nothing, since contradiction
+  detection only compares claims within one entity and each candidate pair is judged independently. An
+  entity whose ledger alone exceeds a chunk has its oldest claims trimmed (the tail holds this batch's).
+  Any failed chunk defers the whole batch exactly as the single call did. Each call's size (entity/pair
+  counts and KB) is reported live and in `watchdog usage`'s per-call detail.
 - **Contradiction detection** reads each recurring entity's (`appears_in ≥ 2`, the D26 gate) `##
   Analysis` claim ledger — already source-attributed by document — and the model returns structured
   `{entity_id, label, a_value/a_doc/a_page, b_value/b_doc/b_page}` items. `reconcile.apply_contradictions`
@@ -831,9 +856,12 @@ the entity registry's `timeline_events` is populated independently, straight off
 `key_facts`, by post-flight, and its per-entity dedup stays mechanical (D58). All merge/dedup and
 the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
 
-- `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
-  `{date}.ndjson` (deleting the raws it just merged) and returns the collisions where a canonical
-  already existed; the orchestrator sends each collision's events to one model call
+- `timeline.collisions(vault)` promotes a date with no prior canonical and a single raw to
+  **canonical** `{date}.ndjson` (deleting the raw) and returns the collisions where a canonical
+  already existed. A date with no canonical but raws from several documents of the same batch is a
+  collision too (D240): the first raw is promoted and the rest are returned against it, so
+  same-batch restatements are deduped exactly as cross-batch ones are. The orchestrator sends each
+  collision's events to one model call, up to `_TIMELINE_DEDUP_CONCURRENCY` (5) dates at a time
   (`timeline-dedup`), which returns `groups` (each survivor + the pure-restatement indices that
   fold into it). `_select_kept` applies the decision — keeping the authoritative originals and
   **unioning each group's `entity_ids`** onto the survivor, so an event's entity attribution
@@ -865,7 +893,9 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
 - builds a briefing prompt from the compact per-doc results — which now carry each
   document's `key_facts` (projected to fact + date, the briefing's source for figures and
   chronology) alongside near-dup alerts and contradiction flags — plus the per-document
-  scratchpads, now slimmed to forward-looking leads only (D33); makes one model call
+  scratchpads, now slimmed to forward-looking leads only (D33) — condensed in steps when the batch is
+  too large for one call (`_fit_briefing_inputs`: key facts capped at 5, then 1, then none, then a tally
+  by document type; the prompt then tells the model its view is partial, D238); makes one model call
   (`briefing`), and `_write_briefing` writes the structured prose into `briefings/<ts>.md`,
   `hot.md`, and a `log.md` entry — first resolving any item that's an exact match against the
   registry manifest from an entity id to its display name, since not every backend reliably
@@ -981,9 +1011,21 @@ a dense cosine ranking and a sparse **BM25** ranking are fused with reciprocal-r
 `watchdog setup`, else downloaded on first search; disable with `rerank_model = none` or
 `--no-rerank`). BM25 recovers the exact tokens
 embeddings blur — case numbers, dollar amounts, statute cites, names — and the reranker is
-the single biggest precision lever. BM25 is computed in-memory from the loaded passages (no
-persisted sparse index); if the reranker can't load, search degrades to the fusion order.
-The notes stream stays pure cosine.
+the single biggest precision lever. If the reranker can't load, search degrades to the fusion
+order. The notes stream stays pure cosine.
+
+**Search cache (`embed._CorpusIndex`, #696).** Every `watchdog search` is a fresh process, and
+each one used to re-read every per-file index entry, re-tokenize every passage and score BM25 in
+a Python loop — 20–30 seconds a query at 200,000 passages (about 5,000 ten-page documents). The
+stacked vectors, the metadata and a BM25 inverted index over the corpus passages are now written to
+`.embeddings/_cache/` (`.npy`/`.npz`/JSON — never pickle, since a vault can come from someone
+else) and reused while a fingerprint of every per-file entry's name, size and mtime still matches;
+`add_document`/`add_note` also drop the fingerprint outright, for filesystems with coarse
+timestamps. A repeat query then loads three files and scores with numpy (about 1.3 s on the same
+synthetic index). Rankings are unchanged: same tokenizer, corpus and formula, summed per query term
+rather than per passage. The per-file entries stay the source of truth — the cache is derived,
+rebuilt on the first search after any change, and `watchdog reindex` wipes it with the rest of
+`.embeddings/`.
 
 **Query handling.** Short queries are embedded with the bge instruction prefix
 (asymmetric retrieval — passages get no prefix); a query supports Semantra-style
@@ -1324,11 +1366,11 @@ it to that provider's servers.
 | **classify** (§6) | once per document; skipped entirely if a skill is pinned (run-wide `--skill`/`default_skill`, or that document's own sidecar `skill:` field) | first `classify_pages` pages of extracted text, the in-memory skill-catalog index, the `.yml` provenance sidecar if present | the rest of the document; all entity/registry data |
 | **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | **all vault entity state** — extraction is a pure function of the document (D118); original-file metadata (EXIF, PDF author fields — stripped at chew, §3) |
 | **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
-| **reconcile** (§8.5) | once per run, if any entity was touched | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
-| **entity-synthesis** (§8) | once per run, batched, only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
+| **reconcile** (§8.5) | once per run if any entity was touched — split into several size-bounded calls on a large batch (D237) | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
+| **entity-synthesis** (§8) | once per run, in size-bounded chunks of at most 25 entities (D238), only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
 | **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
 | **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |
-| **briefing** (§9) | once per run, over the whole batch | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
+| **briefing** (§9) | once per run, over the whole batch — input condensed when it would not fit one call (D238) | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
 
 ---
 

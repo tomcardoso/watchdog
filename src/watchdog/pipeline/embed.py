@@ -34,6 +34,7 @@ import json
 import math
 import os
 import re
+import shutil
 import numpy as np
 from pathlib import Path
 
@@ -246,6 +247,153 @@ def _parse_query(query: str) -> tuple[list[str], list[str]]:
     return pos, neg
 
 
+class _CorpusIndex:
+    """Everything one search needs, built once from the per-file index and cached on disk (#696).
+
+    Every `watchdog search` is a fresh process, and each one used to re-read every per-document
+    and per-note file, re-tokenize every passage, and score BM25 in a Python loop — about 20–30
+    seconds per query at 200,000 passages. The stacked vectors, the metadata, and a BM25 inverted
+    index over the corpus passages are now written once to `.embeddings/_cache/` and reused until
+    any per-file index changes (a fingerprint of every file's name, size and mtime), so a repeat
+    query loads three files and scores with numpy. Rankings are unchanged: the BM25 formula,
+    tokenizer and corpus are the same, only summed per query term instead of per passage.
+
+    No pickle: a vault can arrive from someone else, and loading a pickle runs code."""
+
+    _FILES = ("vectors.npy", "meta.json", "bm25.npz", "bm25_vocab.json")
+
+    def __init__(self, vectors, meta, cidx, vocab, offsets, post_idx, post_tf, doc_len):
+        self.vectors, self.meta = vectors, meta
+        self.cidx = cidx                 # global index of each corpus passage, in order
+        self.vocab = vocab               # term -> row into offsets
+        self.offsets, self.post_idx, self.post_tf = offsets, post_idx, post_tf
+        self.doc_len = doc_len           # token count per corpus passage (corpus-local index)
+
+    @classmethod
+    def build(cls, vectors, meta) -> "_CorpusIndex":
+        cidx = np.array([i for i, m in enumerate(meta) if m.get("type") != "note"], dtype=np.int64)
+        postings: dict[str, tuple[list[int], list[int]]] = {}
+        doc_len = np.zeros(len(cidx), dtype=np.int64)
+        for j, gi in enumerate(cidx):
+            m = meta[gi]
+            toks = _tokenize(f"{m.get('context', '')} {m.get('text', '')}")
+            doc_len[j] = len(toks)
+            tf: dict[str, int] = {}
+            for t in toks:
+                tf[t] = tf.get(t, 0) + 1
+            for t, f in tf.items():
+                ids, tfs = postings.setdefault(t, ([], []))
+                ids.append(j)
+                tfs.append(f)
+        terms = sorted(postings)
+        vocab = {t: k for k, t in enumerate(terms)}
+        lengths = [len(postings[t][0]) for t in terms]
+        offsets = np.zeros(len(terms) + 1, dtype=np.int64)
+        if lengths:
+            offsets[1:] = np.cumsum(lengths)
+        post_idx = np.fromiter((j for t in terms for j in postings[t][0]), dtype=np.int64,
+                               count=int(offsets[-1]))
+        post_tf = np.fromiter((f for t in terms for f in postings[t][1]), dtype=np.int64,
+                              count=int(offsets[-1]))
+        return cls(vectors, meta, cidx, vocab, offsets, post_idx, post_tf, doc_len)
+
+    def bm25(self, query_tokens: list[str]) -> "np.ndarray":
+        """Okapi BM25 of every corpus passage against the query — `_bm25_scores`' formula."""
+        n = len(self.cidx)
+        scores = np.zeros(n, dtype=np.float64)
+        if n == 0 or not query_tokens:
+            return scores
+        avgdl = (float(self.doc_len.sum()) / n) or 1.0
+        for t in sorted(set(query_tokens)):
+            k = self.vocab.get(t)
+            if k is None:
+                continue
+            lo, hi = int(self.offsets[k]), int(self.offsets[k + 1])
+            ids, f = self.post_idx[lo:hi], self.post_tf[lo:hi].astype(np.float64)
+            df = hi - lo
+            idf = math.log(1 + (n - df + 0.5) / (df + 0.5))
+            dl = self.doc_len[ids]
+            scores[ids] += idf * (f * (_BM25_K1 + 1)) / (f + _BM25_K1 * (1 - _BM25_B + _BM25_B * dl / avgdl))
+        return scores
+
+    def save(self, cache: Path, fingerprint: str) -> None:
+        tmp = cache.with_name(cache.name + ".tmp")
+        shutil.rmtree(tmp, ignore_errors=True)
+        tmp.mkdir(parents=True)
+        np.save(tmp / "vectors.npy", self.vectors)
+        (tmp / "meta.json").write_text(json.dumps(self.meta, ensure_ascii=False), encoding="utf-8")
+        np.savez(tmp / "bm25.npz", cidx=self.cidx, offsets=self.offsets, post_idx=self.post_idx,
+                 post_tf=self.post_tf, doc_len=self.doc_len)
+        terms = sorted(self.vocab, key=self.vocab.get)
+        (tmp / "bm25_vocab.json").write_text(json.dumps(terms, ensure_ascii=False), encoding="utf-8")
+        (tmp / "fingerprint").write_text(fingerprint, encoding="utf-8")
+        shutil.rmtree(cache, ignore_errors=True)
+        tmp.rename(cache)
+
+    @classmethod
+    def load(cls, cache: Path, fingerprint: str) -> "_CorpusIndex | None":
+        try:
+            if (cache / "fingerprint").read_text(encoding="utf-8") != fingerprint:
+                return None
+            vectors = np.load(cache / "vectors.npy", allow_pickle=False)
+            meta = json.loads((cache / "meta.json").read_text(encoding="utf-8"))
+            with np.load(cache / "bm25.npz", allow_pickle=False) as z:
+                arrays = {k: z[k] for k in ("cidx", "offsets", "post_idx", "post_tf", "doc_len")}
+            terms = json.loads((cache / "bm25_vocab.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, KeyError):
+            return None
+        return cls(vectors, meta, arrays["cidx"], {t: k for k, t in enumerate(terms)},
+                   arrays["offsets"], arrays["post_idx"], arrays["post_tf"], arrays["doc_len"])
+
+
+def _cache_dir(vault_path: Path) -> Path:
+    return _emb_root(vault_path) / "_cache"
+
+
+def _invalidate_cache(vault_path: Path) -> None:
+    """Drop the cached index's fingerprint on every index write. The fingerprint alone would catch
+    the change on most filesystems, but a same-size rewrite inside one coarse mtime tick (FAT/exFAT
+    keep two-second timestamps) would not."""
+    (_cache_dir(vault_path) / "fingerprint").unlink(missing_ok=True)
+
+
+def _fingerprint(vault_path: Path) -> str:
+    """Name, size and mtime of every per-file index entry — any add, rewrite or delete changes it."""
+    h = hashlib.sha256()
+    for d in (_docs_dir(vault_path), _notes_dir(vault_path)):
+        if not d.exists():
+            continue
+        entries = []
+        with os.scandir(d) as it:
+            for e in it:
+                if e.name.endswith((".json", ".npy")):
+                    st = e.stat()
+                    entries.append(f"{d.name}/{e.name}:{st.st_size}:{st.st_mtime_ns}")
+        for line in sorted(entries):
+            h.update(line.encode())
+            h.update(b"\n")
+    return h.hexdigest()
+
+
+def _load_index(vault_path: Path) -> "_CorpusIndex | None":
+    """The cached `_CorpusIndex` when it matches the per-file index, else a fresh build — saved
+    for the next search when the vault is writable. None when the index is empty."""
+    fingerprint = _fingerprint(vault_path)
+    cache = _cache_dir(vault_path)
+    index = _CorpusIndex.load(cache, fingerprint)
+    if index is not None:
+        return index
+    vectors, meta = _load_all(vault_path)
+    if vectors is None or not meta:
+        return None
+    index = _CorpusIndex.build(vectors, meta)
+    try:
+        index.save(cache, fingerprint)
+    except OSError:
+        pass   # a read-only vault still searches, just without the cache
+    return index
+
+
 def _load_all(vault_path: Path) -> tuple["np.ndarray | None", list[dict]]:
     """Load all vectors and metadata. Returns (None, []) when the index is empty."""
     all_vecs: list = []
@@ -294,6 +442,7 @@ def add_document(vault_path: Path, filename: str, pages: list[dict], context: st
     vecs = _normalise(np.array(list(embedder.embed(texts)), dtype=np.float32))
     _docs_dir(vault_path).mkdir(parents=True, exist_ok=True)
     fid = _doc_id(filename)
+    _invalidate_cache(vault_path)
     np.save(_docs_dir(vault_path) / f"{fid}.npy", vecs)
     (_docs_dir(vault_path) / f"{fid}.json").write_text(json.dumps(meta, ensure_ascii=False))
     return len(texts)
@@ -309,6 +458,7 @@ def add_note(vault_path: Path, note_path: str, content: str) -> None:
     meta     = [{"type": "note", "note_path": note_path, "preview": body[:_PREVIEW_LEN]}]
     _notes_dir(vault_path).mkdir(parents=True, exist_ok=True)
     fid = _note_id(note_path)
+    _invalidate_cache(vault_path)
     np.save(_notes_dir(vault_path) / f"{fid}.npy", vec)
     (_notes_dir(vault_path) / f"{fid}.json").write_text(json.dumps(meta, ensure_ascii=False))
 
@@ -344,15 +494,16 @@ def search(vault_path: Path, query: str, top_n: int = 5,
     ``--threshold`` keep their dense-cutoff meaning), even when the *order* is set by
     fusion + rerank.
     """
-    vectors, meta = _load_all(vault_path)
-    if vectors is None or not meta:
+    index = _load_index(vault_path)
+    if index is None:
         return []
+    meta = index.meta
     q = _embed_query(query)
     if q is None:
         return []
-    dense = vectors @ q
+    dense = index.vectors @ q
     if scope == "corpus":
-        return _hybrid_corpus_search(query, dense, meta, top_n, min_score, rerank)
+        return _hybrid_corpus_search(query, dense, meta, top_n, min_score, rerank, index=index)
     # notes / all: cosine ranking (synthesized prose; the dense signal is what matters)
     results: list[dict] = []
     for i in np.argsort(dense)[::-1]:
@@ -368,18 +519,18 @@ def search(vault_path: Path, query: str, top_n: int = 5,
 
 
 def _hybrid_corpus_search(query: str, dense: "np.ndarray", meta: list[dict],
-                          top_n: int, min_score: float, rerank: bool) -> list[dict]:
-    cidx = [i for i, m in enumerate(meta) if m.get("type") != "note"]
+                          top_n: int, min_score: float, rerank: bool,
+                          index: "_CorpusIndex | None" = None) -> list[dict]:
+    if index is None:
+        index = _CorpusIndex.build(None, meta)
+    cidx = [int(i) for i in index.cidx]
     if not cidx:
         return []
-    # Two candidate rankings over the corpus-local index space, then fuse.
-    dense_order = sorted(range(len(cidx)), key=lambda j: dense[cidx[j]], reverse=True)
-    corpus_tokens = [
-        _tokenize(f"{meta[cidx[j]].get('context', '')} {meta[cidx[j]].get('text', '')}")
-        for j in range(len(cidx))
-    ]
-    bm = _bm25_scores(_tokenize(query), corpus_tokens)
-    bm25_order = [j for j in sorted(range(len(cidx)), key=lambda j: bm[j], reverse=True) if bm[j] > 0]
+    # Two candidate rankings over the corpus-local index space, then fuse. A stable argsort of
+    # the negated scores orders exactly as `sorted(..., reverse=True)` did, ties included.
+    dense_order = np.argsort(-dense[index.cidx], kind="stable").tolist()
+    bm = index.bm25(_tokenize(query))
+    bm25_order = [j for j in np.argsort(-bm, kind="stable").tolist() if bm[j] > 0]
     order = _rrf(dense_order, bm25_order) if bm25_order else dense_order
     pool = order[:_RERANK_POOL]
     if rerank and _rerank_enabled() and len(pool) > 1:

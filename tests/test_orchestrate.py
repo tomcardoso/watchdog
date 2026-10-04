@@ -3649,6 +3649,55 @@ def test_post_ingest_consumes_raws_after_successful_dedup(tmp_path, monkeypatch)
     assert timeline.collisions(vault) == []                   # no re-collision → future runs are silent
 
 
+def test_post_ingest_dedups_same_date_events_within_one_first_batch(tmp_path, monkeypatch):
+    """#696: with no canonical yet, two documents' events on the same day used to be merged with
+    no dedup call. They now get one, and the restatement folds."""
+    vault = make_vault(tmp_path)
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    for sha, eid in (("aaaa111", "alice"), ("bbbb222", "bob")):
+        (td / f"2020-03-15_{sha}.ndjson").write_text(json.dumps({
+            "date": "2020-03-15", "event": "Appointed director", "source_sha256": sha,
+            "page": 1, "entity_ids": [eid], "basis": "stated"}) + "\n", encoding="utf-8")
+    calls = []
+    _mock_post_ingest(monkeypatch, timeline_dedup=lambda: calls.append(1) or
+                      {"groups": [{"keep": 0, "duplicates": [1]}]})
+
+    out = asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))
+
+    assert out["timeline_collisions"] == 1 and calls == [1]
+    recs = [json.loads(line) for line in (td / "2020-03-15.ndjson").read_text().splitlines()]
+    assert len(recs) == 1 and recs[0]["entity_ids"] == ["alice", "bob"]
+    assert list(td.glob("2020-03-15_*.ndjson")) == []
+
+
+def test_post_ingest_runs_timeline_dedup_calls_concurrently_but_capped(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    for day in range(1, 13):
+        _seed_collision(vault, date=f"2020-03-{day:02d}")
+    monkeypatch.setattr(orchestrate, "_TIMELINE_DEDUP_CONCURRENCY", 3)
+    state = {"now": 0, "peak": 0}
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = {}
+        if task == "timeline-dedup":
+            state["now"] += 1
+            state["peak"] = max(state["peak"], state["now"])
+            await asyncio.sleep(0.01)
+            state["now"] -= 1
+            parsed = {"groups": [{"keep": 0, "duplicates": [1]}]}
+        elif task == "briefing":
+            raise model_client.ModelError("no briefing in this test")
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="api-key", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    out = asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))
+    assert out["timeline_collisions"] == 12
+    assert state["peak"] == 3
+    assert timeline.collisions(vault) == []
+
+
 def test_finalize_completes_an_interrupted_run(tmp_path, monkeypatch):
     """A rate limit during post-ingest leaves the batch finalizable; a later finalize
     completes synthesis + briefing and clears the per-run inputs."""
@@ -4267,6 +4316,24 @@ def test_run_batch_openai_requires_an_api_key(tmp_path, monkeypatch):
                                            "haiku", 5, None, backend="openai-batch"))
 
 
+def test_run_only_shas_restricts_the_run_to_those_queued_documents(tmp_path, monkeypatch):
+    """`only_shas` (#696, `watchdog dig --limit`) narrows the queue scan; the rest stays queued."""
+    vault = make_vault(tmp_path)
+    for sha in ("aaa", "bbb", "ccc"):
+        _queue_doc(vault, sha=sha, filename=f"{sha}.pdf")
+    seen = []
+
+    async def fake_run_batch(vault, shas, *a, **k):
+        seen.append(list(shas))
+        return {"results": [], "batch_pending": True}
+    monkeypatch.setattr(orchestrate, "_run_batch", fake_run_batch)
+
+    asyncio.run(orchestrate.run(vault, extract_backend="claude-batch", skip_finalize=True,
+                                only_shas=["ccc", "aaa", "zzz"]))
+    assert seen == [["aaa", "ccc"]]
+    assert {p.stem for p in (vault / ".watchdog" / "queue").glob("*.json")} == {"aaa", "bbb", "ccc"}
+
+
 def test_submit_batch_openai_sections_via_openai_not_claude_api(tmp_path, monkeypatch):
     """A sectioned document under an openai-batch run must fall back to the `openai` single-call
     backend, not `claude-api` — a vault routed entirely to OpenAI must never need Claude
@@ -4763,7 +4830,8 @@ def test_commit_pass_processes_staged_artifacts_in_sorted_sha_order(tmp_path, mo
 
     order = []
 
-    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False):
+    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False,
+                    batch=None):
         order.append(extraction_path.stem)
         return {"new_entities": [], "updated_entities": []}
     monkeypatch.setattr(write_vault_module, "run", fake_wv_run)
@@ -4792,7 +4860,8 @@ def test_commit_pass_survives_one_artifact_failing_to_commit(tmp_path, monkeypat
     queue_dir.mkdir(parents=True, exist_ok=True)
     (queue_dir / "aaaa.json").write_text("{}")
 
-    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False):
+    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False,
+                    batch=None):
         if extraction_path.stem == "aaaa":
             raise ValueError("boom")
         return {"new_entities": ["bbbb"], "updated_entities": []}

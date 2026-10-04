@@ -703,6 +703,88 @@ def test_compute_near_dup_excludes_forced_self_match(tmp_path):
     assert with_exclude["top_similarity"] == 0.0
 
 
+# ── near-dup within one chew and against the queue (#696) ──────────────────────
+
+_FILING = ("The applicant Acme Holdings Inc filed a notice of motion in the Superior Court of "
+           "Justice seeking an order approving the sale of the Front Street property to the "
+           "purchaser for the sum of four million dollars, with the monitor consenting and the "
+           "secured creditors served on the fourteenth day of March.")
+
+
+def _empty_vault(tmp_path):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
+    return vault
+
+
+def test_near_dup_flags_a_match_earlier_in_the_same_chew(tmp_path):
+    from watchdog.pipeline.preprocess_batch import NearDupIndex, _compute_near_dup
+    vault = _empty_vault(tmp_path)
+    index = NearDupIndex.from_vault(vault)
+    first = _compute_near_dup({"sha256": "a", "filename": "a.pdf",
+                               "pages": [{"markdown": _FILING}]}, vault, index=index)
+    assert first["near_duplicates"] == []
+    second = _compute_near_dup({"sha256": "b", "filename": "b.pdf",
+                                "pages": [{"markdown": _FILING + " Filed."}]}, vault, index=index)
+    assert [m["sha256"] for m in second["near_duplicates"]] == ["a"]
+    assert second["near_duplicates"][0]["filename"] == "a.pdf"
+
+
+def test_near_dup_flags_a_match_still_in_the_queue(tmp_path):
+    """A document chewed earlier but not yet ingested sits only in the queue; a later chew must
+    still compare against it."""
+    from watchdog.pipeline.near_dup import shingles_from_text, minhash
+    from watchdog.pipeline.preprocess_batch import _compute_near_dup
+    vault = _empty_vault(tmp_path)
+    (vault / ".watchdog" / "queue" / "q1.json").write_text(json.dumps({
+        "filename": "queued.pdf",
+        "near_dup": {"candidate_minhash": minhash(shingles_from_text(_FILING))}}))
+    out = _compute_near_dup({"sha256": "new", "pages": [{"markdown": _FILING}]}, vault)
+    assert [m["sha256"] for m in out["near_duplicates"]] == ["q1"]
+
+
+def test_chew_flags_near_duplicates_dropped_together(tmp_path, monkeypatch):
+    """End to end: two near-identical filings dropped into one `_INCOMING/` — the later-staged one
+    names the earlier as its near-duplicate in its queue file."""
+    from watchdog.pipeline import preprocess_batch as ppb
+    monkeypatch.setenv("HOME", str(tmp_path))
+    vault = _empty_vault(tmp_path)
+    incoming = vault / "_INCOMING"
+    incoming.mkdir()
+    for name in ("a.pdf", "b.pdf"):
+        (incoming / name).write_bytes(name.encode())
+    monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
+        "sha256": ppb.sha256_file(path), "filename": path.name,
+        "pages": [{"page": 1, "markdown": _FILING + (" Filed." if path.name == "b.pdf" else "")}],
+        "page_count": 1, "char_count": len(_FILING), "source_path": str(path),
+    })
+    ppb.run_ingest(vault, workers=1, show_ingest_hint=False)
+    queued = {json.loads(q.read_text())["filename"]: json.loads(q.read_text())["near_dup"]
+              for q in (vault / ".watchdog" / "queue").glob("*.json")}
+    flagged = [name for name, nd in queued.items() if nd["near_duplicates"]]
+    assert len(queued) == 2 and len(flagged) == 1
+    other = ({"a.pdf", "b.pdf"} - set(flagged)).pop()
+    assert queued[flagged[0]]["near_duplicates"][0]["filename"] == other
+
+
+def test_near_dup_index_scores_like_minhash_similarity_past_its_initial_capacity(tmp_path):
+    import random
+    from watchdog.pipeline.near_dup import NUM_HASHES, minhash_similarity
+    from watchdog.pipeline.preprocess_batch import NearDupIndex
+    rng = random.Random(696)
+    base = [rng.randrange(1000) for _ in range(NUM_HASHES)]
+    index, sigs = NearDupIndex(), {}
+    for i in range(200):   # past the 64-row initial allocation
+        sig = [v if rng.random() < i / 200 else rng.randrange(1000) for v in base]
+        sigs[f"s{i}"] = sig
+        index.add(f"s{i}", f"{i}.pdf", sig)
+    got = {m["sha256"]: m["similarity"] for m in index.matches(base, 0.5)}
+    want = {sha: round(minhash_similarity(base, sig), 4) for sha, sig in sigs.items()
+            if minhash_similarity(base, sig) >= 0.5}
+    assert got == want and got
+
+
 # ── live status region (#158) ───────────────────────────────────────────────────
 
 def test_tty_run_shows_inflight_row_and_progress(tmp_path, monkeypatch):

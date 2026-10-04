@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog.pipeline.backup import snapshot as _snapshot
-from watchdog.pipeline.json_io import _read_json
+from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
 from watchdog.pipeline.section import (
     section_token_threshold as _section_token_threshold,
@@ -53,6 +53,27 @@ def scan_queue(vault: Path) -> list[dict]:
                 "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
             })
     return queue_files
+
+
+def limit_queue(vault: Path, queue_files: list[dict], limit: int | None,
+                force: bool = False) -> list[dict]:
+    """The first `limit` queued documents that still need extracting (`watchdog dig --limit`, #696).
+
+    Queue files outlive extraction — they stay until finalize commits them — so the queue mixes
+    documents still to read with documents already staged (`.watchdog/extracted/<sha>.json`) or
+    committed. Counting those against the limit would make a second `dig --limit 100` re-select
+    the first hundred and extract nothing; skipping them makes each call take the *next* N.
+    `force` re-extracts staged/committed documents anyway, so nothing is skipped then. `limit`
+    None returns `queue_files` unchanged."""
+    if limit is None:
+        return queue_files
+    if force:
+        return queue_files[:limit]
+    extracted = vault / ".watchdog" / "extracted"
+    documents = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
+    todo = [q for q in queue_files
+            if not (extracted / f"{q['sha256']}.json").exists() and q["sha256"] not in documents]
+    return todo[:limit]
 
 
 def _real_input_tokens(totals: dict, backend: str | None = None) -> int:

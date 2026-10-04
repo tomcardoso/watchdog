@@ -322,6 +322,60 @@ def test_bm25_ranks_exact_term_match_first():
     assert scores[0] == 0 and scores[2] == 0
 
 
+def test_index_bm25_matches_the_per_passage_formula():
+    """#696: the cached inverted index scores every passage exactly as `_bm25_scores` does."""
+    import random
+    rng = random.Random(696)
+    words = ["acme", "shell", "cyprus", "court", "file", "no", "12-345", "trust", "café", "report"]
+    meta = [{"type": "passage", "text": " ".join(rng.choices(words, k=rng.randint(0, 30))),
+             "context": rng.choice(["", "Doc A · Affidavit"])} for _ in range(300)]
+    meta.insert(5, {"type": "note", "preview": "acme"})       # notes are outside the corpus
+    index = embed_mod._CorpusIndex.build(None, meta)
+    corpus = [embed_mod._tokenize(f"{m.get('context', '')} {m.get('text', '')}")
+              for m in meta if m.get("type") != "note"]
+    for query in ("acme shell", "cyprus cyprus 12-345", "café", "zzz", ""):
+        want = embed_mod._bm25_scores(embed_mod._tokenize(query), corpus)
+        assert index.bm25(embed_mod._tokenize(query)).tolist() == pytest.approx(want, abs=1e-12)
+
+
+def test_search_cache_is_reused_and_invalidated_on_change(vault, monkeypatch):
+    embed_mod.add_document(vault, "a.pdf", _pages("shell company in cyprus", "annual report"))
+    first = embed_mod.search(vault, "cyprus", top_n=3, scope="corpus")
+    cache = vault / ".embeddings" / "_cache"
+    assert (cache / "fingerprint").exists()
+
+    built = []
+    real_build = embed_mod._CorpusIndex.build
+    monkeypatch.setattr(embed_mod._CorpusIndex, "build",
+                        classmethod(lambda cls, v, m: built.append(1) or real_build(v, m)))
+    assert embed_mod.search(vault, "cyprus", top_n=3, scope="corpus") == first
+    assert built == []                                      # served from the cache
+
+    embed_mod.add_document(vault, "b.pdf", _pages("cyprus trust deed"))
+    after = embed_mod.search(vault, "cyprus", top_n=3, scope="corpus")
+    assert built == [1]                                     # the change forced a rebuild
+    assert {r["filename"] for r in after} == {"a.pdf", "b.pdf"}
+
+
+def test_search_without_a_writable_cache_still_works(vault, monkeypatch):
+    embed_mod.add_document(vault, "a.pdf", _pages("shell company in cyprus"))
+    monkeypatch.setattr(embed_mod._CorpusIndex, "save",
+                        lambda self, cache, fp: (_ for _ in ()).throw(OSError("read-only")))
+    assert embed_mod.search(vault, "cyprus", top_n=1, scope="corpus")[0]["filename"] == "a.pdf"
+
+
+def test_search_cache_holds_no_pickle(vault):
+    embed_mod.add_document(vault, "a.pdf", _pages("shell company in cyprus"))
+    embed_mod.search(vault, "cyprus", top_n=1, scope="corpus")
+    cache = vault / ".embeddings" / "_cache"
+    for f in cache.glob("*.np*"):
+        if f.suffix == ".npy":
+            np.load(f, allow_pickle=False)
+        else:
+            with np.load(f, allow_pickle=False) as z:
+                [z[k] for k in z.files]
+
+
 def test_bm25_no_query_terms_is_uniform_zero():
     docs = [embed_mod._tokenize("alpha"), embed_mod._tokenize("beta")]
     assert embed_mod._bm25_scores(embed_mod._tokenize("zzz"), docs) == [0.0, 0.0]
