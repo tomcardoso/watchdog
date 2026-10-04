@@ -446,3 +446,20 @@ def test_rerank_failure_falls_back_to_fusion(vault, monkeypatch, capsys):
     # …and the fallback is announced rather than silent
     assert "unavailable" in capsys.readouterr().err.lower()
     assert results[0]["page"] == 1
+
+
+def test_documents_sharing_a_filename_keep_separate_passages(vault):
+    """Index files are keyed by sha, not filename, so a second Order.pdf no longer overwrites
+    the first one's passages (D241)."""
+    embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "alpha text"}], sha256="a" * 64)
+    embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "beta text"}], sha256="b" * 64)
+    _, meta = embed_mod._load_all(vault)
+    assert sorted(m["text"] for m in meta) == ["alpha text", "beta text"]
+
+
+def test_drop_legacy_removes_only_the_filename_keyed_file(vault):
+    embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "old"}])          # legacy key
+    embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "new"}], sha256="c" * 64,
+                           drop_legacy=True)
+    _, meta = embed_mod._load_all(vault)
+    assert [m["text"] for m in meta] == ["new"]
