@@ -692,7 +692,14 @@ def cmd_delete(args) -> None:
     if args.purge and vault.exists():
         if not is_vault(vault):
             sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
+        resolved = vault.resolve()   # before the folder is gone, so symlinks still resolve
         shutil.rmtree(vault)
+        try:
+            from watchdog import telemetry_db
+            telemetry_db.purge_vault(resolved)
+        except Exception as e:
+            print(f"  {_YELLOW}Warning:{_RESET} could not remove this vault's rows from the "
+                  f"telemetry store: {e}")
 
     # Remove from Obsidian registry
     cfg = _obsidian_config_path()

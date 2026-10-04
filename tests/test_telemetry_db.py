@@ -135,3 +135,64 @@ def test_record_call_raises_on_connection_failure(tmp_path, monkeypatch):
     with pytest.raises(sqlite3.OperationalError):
         telemetry_db.record_call(_MINIMAL_RECORD, vault=vault, run_id="r1", benchmark_arm_id=None,
                                  prompt_hash=None, config_snapshot=None)
+
+
+# ── Opt-out, purge, connection reuse ─────────────────────────────────────────
+
+from watchdog.telemetry_db import enabled as _real_enabled   # noqa: E402 — before conftest's patch
+
+
+@pytest.mark.parametrize("config, expected", [
+    (None, True),                       # no config file yet
+    ({}, True),                         # key unset
+    ({"telemetry": True}, True),
+    ({"telemetry": False}, False),
+])
+def test_enabled_reads_the_telemetry_key(tmp_path, monkeypatch, config, expected):
+    from watchdog.cmd import base
+    cfg = tmp_path / "config.json"
+    if config is not None:
+        cfg.write_text(json.dumps(config))
+    monkeypatch.setattr(base, "CONFIG_FILE", cfg)
+    assert _real_enabled() is expected
+
+
+def test_enabled_treats_unreadable_config_as_on(tmp_path, monkeypatch):
+    from watchdog.cmd import base
+    cfg = tmp_path / "config.json"
+    cfg.write_text("{not json")
+    monkeypatch.setattr(base, "CONFIG_FILE", cfg)
+    assert _real_enabled() is True
+
+
+def test_purge_vault_deletes_only_that_vaults_rows(tmp_path):
+    keep, drop = tmp_path / "keep", tmp_path / "drop"
+    keep.mkdir()
+    drop.mkdir()
+    for v in (keep, drop, drop):
+        telemetry_db.record_call(_MINIMAL_RECORD, vault=v, run_id="r", benchmark_arm_id=None,
+                                 prompt_hash=None, config_snapshot=None)
+    assert telemetry_db.purge_vault(drop) == 2
+    conn = sqlite3.connect(telemetry_db.DB_PATH)
+    try:
+        assert conn.execute("SELECT vault_name FROM calls").fetchall() == [("keep",)]
+    finally:
+        conn.close()
+
+
+def test_purge_vault_never_creates_the_store(tmp_path):
+    assert telemetry_db.purge_vault(tmp_path) == 0
+    assert not telemetry_db.DB_PATH.exists()
+
+
+def test_connection_is_reused_across_calls_and_closed_on_close(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    telemetry_db.record_call(_MINIMAL_RECORD, vault=vault, run_id="r", benchmark_arm_id=None,
+                             prompt_hash=None, config_snapshot=None)
+    first = telemetry_db._conn
+    telemetry_db.record_call(_MINIMAL_RECORD, vault=vault, run_id="r", benchmark_arm_id=None,
+                             prompt_hash=None, config_snapshot=None)
+    assert first is not None and telemetry_db._conn is first
+    telemetry_db.close()
+    assert telemetry_db._conn is None
