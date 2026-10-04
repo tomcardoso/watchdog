@@ -5580,3 +5580,18 @@ def test_briefing_in_the_same_minute_does_not_overwrite(tmp_path):
     third = orchestrate._write_briefing(vault, b, [], [], [])
     assert len({first, second, third}) == 3
     assert all((vault / f).exists() for f in (first, second, third))
+
+
+def test_record_usage_skips_the_telemetry_store_when_turned_off(tmp_path, monkeypatch):
+    from watchdog import telemetry_db
+    monkeypatch.setattr(telemetry_db, "enabled", lambda: False)
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    orchestrate._begin_usage_run(vault)
+    try:
+        orchestrate._record_usage("extract", model="m", backend="claude-api",
+                                  usage={"input_tokens": 1, "output_tokens": 1}, cost_usd=0.0,
+                                  vault=vault)
+    finally:
+        orchestrate._end_usage_run(vault)
+    assert not telemetry_db.DB_PATH.exists()

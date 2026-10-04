@@ -1,6 +1,7 @@
 import argparse
 import contextlib
 import json
+import sqlite3
 import os
 import re
 import pytest
@@ -1889,6 +1890,24 @@ def test_cmd_delete_purge_removes_files(configured, monkeypatch, capsys):
     cli.cmd_delete(args(name="Shell Co", purge=True))
     assert not vault.exists()
     assert "Deleted" in capsys.readouterr().out
+
+
+def test_cmd_delete_purge_removes_the_vaults_telemetry_rows(configured, monkeypatch):
+    from watchdog import telemetry_db
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_new(args(name="Other Co", dir=str(configured)))
+    record = {"task": "extract", "model": "m", "backend": "claude-api", "input_tokens": 1,
+              "output_tokens": 1, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    for slug in ("shell-co", "other-co"):
+        telemetry_db.record_call(record, vault=configured / slug, run_id="r",
+                                 benchmark_arm_id=None, prompt_hash=None, config_snapshot=None)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    conn = sqlite3.connect(telemetry_db.DB_PATH)
+    try:
+        assert conn.execute("SELECT vault_name FROM calls").fetchall() == [("other-co",)]
+    finally:
+        conn.close()
 
 
 def test_cmd_delete_purge_removes_the_vault_without_a_pointless_backup(configured, monkeypatch, capsys):

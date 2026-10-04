@@ -634,6 +634,23 @@ _CONFIGURE_KEYS = {
         "type": "string",
         "secret": True,
     },
+    # ── Privacy ───────────────────────────────────────────────────────────────
+    "telemetry": {
+        "short": "Record every model call in ~/.watchdog/telemetry.db (default: true)",
+        "help": (
+            "Watchdog keeps a local database of every model call it makes, across all your\n"
+            "  investigations: the model, tokens, cost and timing, plus the vault's path and name\n"
+            "  and the document's filename. It never leaves your computer and holds no document\n"
+            "  text; it exists so cost and speed can be compared across runs and models.\n"
+            "  Because it lists the documents in every investigation, treat the file as sensitive.\n"
+            "  Set to false to stop recording; existing rows stay until you delete the file.\n"
+            "  `watchdog delete --purge` removes a vault's rows along with the vault.\n"
+            "  Each vault's own usage files, which `watchdog usage` reads, are unaffected.\n"
+            "  Default: true."
+        ),
+        "type": "bool",
+        "default": True,
+    },
 }
 
 # Column width for the `watchdog configure` key listing (both the plain listing and the wizard
@@ -669,6 +686,8 @@ _CONFIGURE_SECTIONS = [
      ["research_max_rounds", "research_max_fetches"]),
     ("Web archiving", "Optionally save research sources to the Wayback Machine.",
      ["wayback_save", "wayback_access_key", "wayback_secret_key"]),
+    ("Privacy", "The local record of model calls across your investigations.",
+     ["telemetry"]),
 ]
 
 _OCR_ENGINE_PACKAGES = {
