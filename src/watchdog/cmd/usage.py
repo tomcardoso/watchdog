@@ -1,15 +1,8 @@
-"""`watchdog usage` — per-call token/cost/latency breakdown for ingest runs (#207, #317, #319).
+"""`watchdog usage` — per-call token, cost and latency breakdown for a vault's runs.
 
-Reads `.watchdog/registry/usage/usage-<ts>.json` (D50, relocated out of the flat Registry dir
-in #319) — the Python orchestrator's own per-call telemetry, written after every ingest run
-(`watchdog dig`/`watchdog bark`) — and groups calls by stage (classifier / extractor / finalizer,
-matching the CLI's own `--classifier-model` / `--extractor-model` / `--finalizer-model`
-vocabulary). Extractor rows show the filename and page range (or section) each call covered.
-Cost is read directly from each record — there is no local pricing table to keep in sync, since
-`model_client` already computed `cost_usd` authoritatively at call time.
-
-Formerly the standalone `scripts/analyze-session` dev tool; folded into the CLI (#319) so it's
-usable without a repo checkout."""
+Reads `.watchdog/registry/usage/usage-<ts>.json` (D50) and groups calls by stage (classifier,
+extractor, finalizer). Extractor rows show the file and page range or section each call covered.
+Cost comes from each record, as computed by `model_client` at call time."""
 
 import json
 import re

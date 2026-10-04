@@ -1,40 +1,15 @@
-"""Deterministic figure verification against the morgue text (#363, widened by D141/#397).
+"""Deterministic figure verification against the page text (D112, D141, D200, D213).
 
-Tributary's validation review surfaced a failure class quote-checking doesn't catch: a
-model reports "$430,000 across two transfers" when the source pages state $250,000 and
-$180,000 separately — a computed sum presented as if it were extracted verbatim. Nothing
-checked that the numbers inside a `key_facts[].fact` sentence actually appear on the cited
-page.
+Checks that the numbers in a stated fact appear on its cited page (or a neighbour), to catch a
+computed figure presented as if read off the page — "$430,000 across two transfers" when the page
+prints $250,000 and $180,000. A fact with `basis: "inferred"` is exempt. Advisory only, never a
+gate.
 
-Same posture as the D32 coverage warning and #267 quote verification (`quote_verify.py`):
-annotation/advisory only, never a gate. A fact with `basis: "inferred"` is a declared
-derivation and is exempt outright; a fact with `basis` absent or `"stated"` claims to be
-read off the page, so its numeric tokens are checked against the cited page and its
-immediate neighbors.
-
-Normalization is deliberately conservative: no free-form unit conversion and no arithmetic.
-A fact whose figure can't be tied to any single printed number — a sum, a difference, a
-count — will legitimately miss and get flagged, which is the whole point of the check.
-
-D141 (#397) narrowed that gap for the one case real-world benchmarking showed to dominate
-the warning volume: financial statements reported in thousands, where the page shows
-"21,406" under a "(in $000s)" header and the model correctly writes the fact as
-"$21,406,000". That's not a paraphrase, it's an exact x1,000/x1,000,000 scale of the same
-digits — `_scale_variants` checks both directions before giving up on a token. A fact citing
-the wrong page for a number that's verbatim elsewhere in the *same* document (a comparative
-figure pulled from the MD&A highlights page while citing the statement page) gets a
-separate, softer warning — the number is real, the citation just points at the wrong spot —
-rather than being lumped in with "may be derived or garbled".
-
-D213 closed the successor gap, which turned out to dominate the remaining flag volume: a
-figure reported to *fewer digits* than the page prints it at. A $000s statement showing
-"360,291" backs a fact that correctly says "$360.3 million", but that is not an exact scale
-of the same digits, so `_scale_variants` never matched it and the fact was told the number
-appears nowhere in its own source. Measured over the extraction artifacts on disk, 15 of 27
-flagged figures were restatements of this kind. `_rounding_interval` accepts them, taking
-its precision from how the fact writes the figure — see that function for the window and
-what it deliberately gives up.
-"""
+Normalization is conservative: no unit conversion, no arithmetic. Two equivalences are accepted:
+an exact ×1,000/×1,000,000 scale of the same digits (`_scale_variants`, for statements reported
+in thousands) and a figure written to fewer digits than the page prints (`_rounding_interval`,
+e.g. "$360.3 million" for "360,291" in a $000s table). A figure found only on another page of the
+same document gets a softer "found on another page" note."""
 
 import bisect
 import re

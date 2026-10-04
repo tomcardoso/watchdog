@@ -293,17 +293,11 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
                            usage_files: list[Path] | None = None) -> dict:
-    """Pre-flight cost estimate for `watchdog bark` (#417, a #403 follow-up) — prices the staged
-    post-ingest corpus (`result_<sha>.json`/`notes_<sha>.md` in `.watchdog/tmp/`, readable
-    directly since #403) with the same chars/4 heuristic `scan_queue` applies to queued
-    documents. The $/token ratio only draws on usage files written by a *standalone* finalize
-    (every call in `orchestrate.FINALIZE_TASKS`) — an ingest's own finalize tail shares its run's
-    usage file with extraction and would misprice in either direction, so it's excluded. No
-    dollar figure with no standalone-finalize history yet, or on subscription auth
-    (`claude-agent-sdk`, D72) — same treatment `cost_estimate` gives.
-
-    ``usage_files``, when given, replaces this vault's own history (#478) — see
-    `cost_estimate`'s own note on the same parameter."""
+    """Pre-flight cost estimate for `watchdog bark`: the staged `result_<sha>.json`/`notes_<sha>.md`
+    priced with the chars/4 heuristic. The $/token ratio comes only from standalone-finalize usage
+    files (every call in `orchestrate.FINALIZE_TASKS`), since a run's own finalize shares its usage
+    file with extraction. No dollar figure without that history, or on subscription auth.
+    `usage_files` replaces this vault's history, as in `cost_estimate`."""
     tmp = vault / ".watchdog" / "tmp"
     results = sorted(tmp.glob("result_*.json"))
     docs = len(results)

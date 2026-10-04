@@ -1,28 +1,12 @@
-"""
-Watchdog post-flight — validates an extraction JSON and stages it as a durable artifact.
+"""Post-flight: validate an extraction and stage it as a durable artifact.
 
-Handles everything after Claude produces the extraction JSON:
-  1. Validates the extraction (schema + required fields)
-  2. Reads near-dup minhash from the queue file
-  3. Writes the validated/sanitized/exploded extraction to `.watchdog/extracted/<sha>.json`
-  4. Cleans up temp files
-  5. Returns {"ok": true} or {"errors": [...]}
+Validates the extraction, resolves quote locators, checks figures, explodes `key_facts` into
+per-entity fragments and timeline events, stages raw timeline NDJSON, and writes the result to
+`.watchdog/extracted/<sha>.json`. Returns {"ok": true} or {"errors": [...]}.
 
-**Post-flight no longer writes to the vault** (#403 phase 1). It used to call `write_vault.run()`
-directly, so the vault populated progressively, one document at a time, as extraction completed.
-Now it stages the validated extraction as a durable artifact instead, and a serial commit pass at
-the top of `orchestrate.finalize` replays `write_vault.run()` over every staged-but-uncommitted
-artifact, sorted by sha. The artifact is never cleaned up on success — it doubles as an audit
-record of what the model actually produced, and it is what makes a document's extraction durable
-and reusable rather than transient pipeline state.
-
-Entity *resolution* is not done here (#381/D118). Post-flight used to apply the extractor's
-`match_id` merge decisions, but an extractor that reads one document can only resolve against the
-documents that happened to land before it. Two deterministic passes now cover it instead:
-`write_vault._reconcile_entity_ids` folds exact normalized-name duplicates in-lock at write time,
-and the finalizer's `reconcile` pass resolves the name *variants* that need judgement, once, with
-every document's entities in view.
-"""
+It never writes to the vault: finalize's commit pass replays `write_vault.run()` over staged
+artifacts (D126, I7). The artifact is kept as an audit record. Entity resolution happens later —
+the exact-name fold and the reconcile pass (D118, D127)."""
 
 import json
 import re

@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — all 222 decisions, D1 to D222 (click to expand)</strong></summary>
+<summary><strong>Index — all 248 decisions, D1 to D248 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -34,7 +34,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D25** — confidence is omitted when high; absent ⇒ high (#140) — field reworked into basis by D34; the omit-default mechanism survives, the 4-level scale does not.
 - **D26** — Unified fact primitive: the model emits each material fact once on document.key_facts, tagged with entities + an optional date; postflight fans it back out (#140)
 - **D27** — Skip exact duplicates at chew, not just at ingest (#146)
-- **D28** — Task-prompt prose lives in prompts/.md templates, in a separate directory from record skills
+- **D28** — Task-prompt prose lives in prompts/*.md templates, in a separate directory from record skills
 - **D29** — Stop round-tripping deterministic document fields through the model; stamp them in Python (#140 family)
 - **D30** — document_type is deduped against a per-vault registry (match-or-coin), its slug is derived, and dead/duplicate type fields are dropped (#140 cleanup, stacks on D29)
 - **D31** — Timeline-dedup returns kept indices, not echoed event objects; and collapses only pure restatements, never divergent accounts
@@ -229,6 +229,32 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D220** — three gaps closed against the #551 design comment: real wall-clock speed (kept rankable), a reliability column sourced from run artifacts, and a link from configuration.md's model table (issue #551)
 - **D221** — GPT-5.6 Luna becomes the default for all three ingest stages, at high/high/low effort; classify gains a real effort knob for the first time (issues #361/#432/#531, following #551's benchmark)
 - **D222** — D221 reverted for the shipped default: Claude (Sonnet/Haiku) again, Luna kept only as a documented recommendation (issue #361, superseding D221's model-default choice)
+- **D223** — GLiNER becomes a mandatory dependency, not an optional extra (revises D123's tradeoff)
+- **D224** — _setup_metered_ingestion asks for one model, not three, when routing ingestion to a provider (revises D95's per-stage picker)
+- **D225** — _setup_metered_ingestion also applies each stage's generic default effort, gated by effort_supported() (extends D224)
+- **D226** — watchdog setup's Chromium download gets its own NODE_EXTRA_CA_CERTS bundle on macOS (revises D122's pattern for a Node-driven download)
+- **D227** — resolve_quotes' self-resolved outcomes (page-spanning, ambiguous-but-resolved, confidently auto-corrected) no longer warn
+- **D228** — The live region and its "Elapsed" row stay open through finalize, not just extraction
+- **D229** — build_converter forces Docling's accelerator to CPU (#682)
+- **D230** — preprocess.py's subprocess entrypoint captures stdout and replays only its last line (#684)
+- **D231** — _load_gliner's suppression block now wraps from gliner import GLiNER, not just from_pretrained()
+- **D232** — _parse_precise_date widens to dash-separated day-month-year, 2-digit years, and provably-unambiguous year-first slash dates
+- **D233** — Vault sessions are confined to the vault: permissions.blockReadsOutsideWorkingDirectories set in every vault's .claude/settings.json
+- **D234** — _VAULT_PERMISSIONS drops every dead Write(path) entry; Edit(path) is the only rule form that matches
+- **D235** — watchdog setup's auth flow no longer nests the ingestion-provider choice inside the Claude access choice
+- **D236** — Bare sonnet now resolves to Claude Sonnet 5.5; Sonnet 4.6 is reachable only as sonnet-4.6
+- **D237** — Reconciliation is split into size-bounded calls; the pair cap becomes a runaway guard
+- **D238** — Entity synthesis is chunked; the briefing condenses its input instead
+- **D239** — A large commit pass persists the registries every 50 documents, not after each one
+- **D240** — Same-date events from one batch's documents go through timeline dedup
+- **D241** — Document notes, morgue originals and passage indexes are keyed by content, not filename; sidecar skill pins are names only
+- **D242** — A pending batch is always finalized, never discarded; provider auth and billing failures stop the run
+- **D243** — Pre-commit folds rewrite staged timeline events; admission control uses the wall clock
+- **D244** — Per-command help is rendered from the parser; defaults live in one module; the home folder is never a vault
+- **D245** — Investigation sessions cannot hand-edit pipeline-owned files
+- **D246** — Prompt examples are invented, never drawn from the benchmark corpus
+- **D247** — The global telemetry store can be turned off, and a purged vault's rows go with it
+- **D248** — Dedup calls are bounded by item count; duplicates split across windows stay separate
 
 </details>
 
@@ -1017,7 +1043,7 @@ Resolution is deliberately manual only — a ticked checkbox or `watchdog resolv
 
 ### D112 — Figure-grounding advisory in post-flight is a warning, not a gate
 
-Tributary's validation review surfaced a failure class quote verification doesn't catch: a computed sum presented as if it were extracted verbatim — "$430,000 across two transfers" when the source pages actually state $250,000 and $180,000 separately (#363). `figure_verify.verify_figures` runs in post-flight alongside `quote_verify.verify_quotes`: it extracts the numeric tokens from every stated (`basis` absent or `"stated"`) `key_facts[].fact`, normalizes them conservatively, and checks each against the cited page's text and its immediate neighbors (the same ±1 page window quote verification already uses for OCR/page-marker drift). A fact with `basis: "inferred"` is a declared derivation and is exempt outright.
+A validation review of a live run surfaced a failure class quote verification doesn't catch: a computed sum presented as if it were extracted verbatim — "$430,000 across two transfers" when the source pages actually state $250,000 and $180,000 separately (#363). `figure_verify.verify_figures` runs in post-flight alongside `quote_verify.verify_quotes`: it extracts the numeric tokens from every stated (`basis` absent or `"stated"`) `key_facts[].fact`, normalizes them conservatively, and checks each against the cited page's text and its immediate neighbors (the same ±1 page window quote verification already uses for OCR/page-marker drift). A fact with `basis: "inferred"` is a declared derivation and is exempt outright.
 
 Advisory, not a gate — same posture as the D32 coverage warning and D75 quote verification. A blocking gate would misfire on legitimate paraphrase: "about $1.2-million" for a page that says "$1,200,000" is a reasonable summary, not an invented figure, and a hard block would either reject good extractions or pressure the model to stop paraphrasing altogether. The companion fix on the prompt side (`extract_instructions.md`'s Basis paragraph) asks the model to name a derived figure's components in the fact text, so the check has something to verify against instead of the sum alone.
 

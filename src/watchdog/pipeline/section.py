@@ -33,19 +33,10 @@ from pathlib import Path
 from watchdog import config as user_config
 
 
-# Overlap between consecutive sections, as a fraction of the section budget (#490's overlap
-# finding) — this used to be a fixed 4,000-token absolute value, calibrated against Claude's
-# historical 60,000-token default budget (6.7%). On a backend with a small output-derived budget
-# (openai/gemini, ~7,000 tokens — see model_defaults below), that same fixed value ate 57% of
-# every section: a 70-page document that needs 6 sections at Claude's overlap ratio needed 22 at
-# the fixed one, each one mostly re-reading pages the previous section already covered. Scaling
-# it keeps the overlap's actual purpose (make sure a table/paragraph straddling a page boundary
-# is wholly visible in at least one section) proportional to the section size instead of
-# swallowing it. (Those small output-derived budgets are themselves gone as of #555 — see the
-# comment above `_config_get` — but scaling the overlap remains the right shape regardless.)
-# `_OVERLAP_NUMERATOR/_OVERLAP_DENOMINATOR` are chosen so Claude's default budget
-# (60,000) reproduces the historical fixed value exactly — this fix targets other backends'
-# runaway scaling, not Claude's already-correct default behaviour.
+# Overlap between consecutive sections, as a fraction of the section budget, so a table or
+# paragraph straddling a page boundary is wholly visible in one section without the overlap
+# swallowing small budgets. The fraction reproduces the historical 4,000 tokens at a
+# 60,000-token budget.
 _OVERLAP_NUMERATOR, _OVERLAP_DENOMINATOR = 4_000, 60_000
 _CHARS_PER_TOKEN = 4                # cheap heuristic
 
@@ -59,15 +50,9 @@ _CHARS_PER_TOKEN = 4                # cheap heuristic
 _THRESHOLD_FRACTION = 0.6
 _BUDGET_FRACTION = 0.3
 
-# Sectioning is sized from the input window alone (D202) — no output-derived cap. An earlier
-# version predicted a call's total output from its input and clamped the input budget to fit the
-# model's output envelope; deleted because the clamp never bound in practice, pooled models with
-# wildly different reasoning volumes into one fit (producing #555's headline spread), and was
-# ill-conditioned wherever the fit's slope was near zero. Truncation is now handled where it's
-# observable instead of predicted (bounded re-split on actual truncation, a starvation retry that
-# drops one effort level). `effort` is consequently no longer a parameter here — it no longer has
-# anything left to scale; the wire `max_tokens` (`model_client._wire_max_tokens`) no longer feeds
-# back into input sizing.
+# Sectioning is sized from the input window alone (D202): no output-derived cap and no effort
+# parameter. Truncation is handled where it is observed — a bounded re-split, or a retry one effort
+# level lower when reasoning starves the answer.
 
 
 def _config_get(key: str, default):
@@ -85,41 +70,14 @@ def _resolve_override(key: str, model_default: int) -> int:
 
 def model_defaults(model: str | None, backend: str | None = None,
                    vault: Path | None = None) -> tuple[int, int]:
-    """(threshold, budget) est-token sectioning defaults for the extraction stage (#321, #574,
-    #555).
+    """(threshold, budget) est-token sectioning defaults for the extraction model (D89, D180, D202).
 
-    Catalogued numbers only: `model`'s context window sets the size, its `long_context_threshold`
-    caps it where exceeding one would double the bill, and its tokenizer ratio converts the result
-    into the est-token units the planner packs against. `model`/`backend` are the extraction
-    stage's tier/id and backend (None ⇒ default tier / auth-routed Claude backend). There is no
-    output-ceiling term — see the comment above `_config_get` for the measurements that removed
-    it, and note that `effort` is deliberately no longer a parameter.
-
-    The pricing clamp is applied in REAL tokens, before the ratio division, because that is the
-    unit a provider bills and meters in. Clamping the est-token value afterwards would let a
-    sub-1.0 ratio divide it back up past the boundary — the same ordering bug D198 found in the
-    old output clamp, avoided here by construction rather than by a second clamp.
-
-    Divided by `model_client.tokenizer_ratio` (#574, remeasured #617): `est_tokens`'s chars/4
-    heuristic is calibrated against Claude's *old* tokenizer, so on a model whose tokenizer
-    produces a different number of real tokens per character the est-token count mis-states what a
-    call will actually spend. Dividing the est-token threshold/budget by that ratio keeps the real
-    tokens sectioning sends inside the model's real context window. Above 1.0 — only Claude 4.7+,
-    at 1.28 — it shrinks the budget. Below 1.0 it widens it, and that is the common case: Claude
-    through Sonnet 4.6 at 0.93, Gemini at 0.91, GPT-5.x at 0.80, DeepSeek V4 at 0.81, i.e. chars/4
-    over-estimates most real tokenizers on this corpus. Widening is safe because
-    `_THRESHOLD_FRACTION` leaves 40% of the window unused regardless. Only an uncatalogued id
-    resolves to 1.0 and leaves this a no-op.
-
-    `vault` (#606 Part B), when given, is passed straight through to `tokenizer_ratio` so it can
-    prefer this vault's own empirically-measured ratio over the static catalog constant once
-    enough matching history has accumulated — see `tokenizer_ratio`'s own docstring. `section.run`
-    passes its own `vault` argument here automatically, so the real ingest path benefits without
-    any caller change; a caller with no vault context (e.g. `watchdog configure`'s preview) leaves
-    this `None` and gets the catalog ratio, exactly as before.
-
-    `_BUDGET_FRACTION` is deliberately half `_THRESHOLD_FRACTION`, so a document just over the
-    threshold splits into two sections rather than one section plus a sliver."""
+    Fractions of the model's context window, clamped below its `long_context_threshold` (in real
+    tokens, before the ratio division, so a sub-1.0 ratio can't push it back past the boundary), then
+    divided by `tokenizer_ratio` to convert to the chars/4 est-token units the planner packs against.
+    `vault`, when given, lets `tokenizer_ratio` use this vault's measured ratio. No output-ceiling term
+    and no effort parameter (D202). The budget is half the threshold, so a document just over the
+    threshold splits into two sections rather than one plus a sliver."""
     from watchdog import model_client
     window = model_client.context_window(model, backend)
     threshold = int(window * _THRESHOLD_FRACTION)
@@ -231,18 +189,11 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
         model: str | None = None, backend: str | None = None) -> dict:
     """Plan sections for a document.
 
-    Normally threshold-gated: documents at/under `section_token_threshold` are not
-    sectioned. Pass `force_budget` to always section (used as a fallback when
-    whole-document extraction overruns the model's output ceiling) — the per-section
-    budget is capped at half the document so a splittable document yields ≥2 sections.
-
-    `model`/`backend` are the extraction stage's model (tier name or raw id) and backend, used to
-    derive the context-window-aware threshold and budget (#321, #555); config values override the
-    derived defaults. Both are irrelevant on the `force_budget` path, which sets its own small
-    budget. `vault` (already this function's own first argument) is additionally passed to
-    `model_defaults` so the tokenizer-ratio correction can prefer this vault's own calibrated ratio
-    over the static catalog constant when enough history is available (#606 Part B).
-    """
+    Documents at or under `section_token_threshold` aren't sectioned. `force_budget` always
+    sections (the fallback after a whole-document overrun), capping the budget at half the document
+    so it yields at least two sections. `model`/`backend` are the extraction model, used for the
+    window-derived defaults (config values override them); `vault` lets the tokenizer correction use
+    this vault's measured ratio."""
     queue_file = vault / ".watchdog" / "queue" / f"{sha256}.json"
     if not queue_file.exists():
         return {"error": f"queue file not found for sha256 {sha256}"}
