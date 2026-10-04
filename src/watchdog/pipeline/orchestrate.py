@@ -597,6 +597,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     # stamped here, same posture as sha256/filename above: a claim the file makes about itself,
     # never asked of the model.
     doc["file_metadata"] = pf.get("file_metadata") or {}
+    doc["near_duplicate_of"] = _near_duplicate_of(pf.get("near_dup"))
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
     extraction["morgue_document_type"] = slugify(doc.get("document_type") or "") or "document"
@@ -604,6 +605,20 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     # value here too, so a value with spaces or an embedded path separator (e.g. "Acme Corp" or
     # "acme/subsidiary") can't produce a broken morgue directory layout or wikilinks.
     extraction["morgue_entity_id"] = slugify(extraction.get("morgue_entity_id") or "")
+
+
+def _near_duplicate_of(near_dup: dict | None) -> str | None:
+    """The closest earlier document chew's MinHash matched, as a link to its note — or its
+    filename when the match is in this same batch and has no note yet. Detection only: nothing is
+    discarded, and `watchdog review duplicates` is where the user decides."""
+    from watchdog.pipeline.write_vault import _defang
+    matches = (near_dup or {}).get("near_duplicates") or []
+    if not matches:
+        return None
+    best = max(matches, key=lambda m: m.get("similarity", 0.0))
+    name = _defang(best.get("filename") or best.get("sha256", "")[:12]).replace("|", "-")
+    note = best.get("document_note")
+    return f"[[{note}|{name}]]" if note else name
 
 
 async def _classify(doc_excerpt: str, model: str, backend: str | None = None,

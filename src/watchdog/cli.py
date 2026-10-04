@@ -89,6 +89,7 @@ from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
+from watchdog.cmd.review import KINDS as _REVIEW_KINDS, cmd_review
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
 from watchdog.cmd.usage import cmd_usage
@@ -252,6 +253,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
+
+    p_review = sub.add_parser("review", help="Step through contradictions, leads, watch-list hits and duplicates")
+    p_review.add_argument("kind", nargs="?", choices=_REVIEW_KINDS, help="Review only this kind")
+    p_review.set_defaults(func=cmd_review)
 
     p_resolve = sub.add_parser("resolve", help="Acknowledge leads/alerts/contradictions so they stop re-surfacing")
     p_resolve.add_argument("ids", nargs="*", metavar="ID", help="Resolution ids printed next to each report item")

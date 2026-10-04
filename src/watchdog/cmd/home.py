@@ -10,7 +10,6 @@ from watchdog.cmd.base import (
     _count_awaiting_bark, _count_awaiting_dig, _count_incoming, load_projects,
 )
 from watchdog.links import note_link
-from watchdog.pipeline.json_io import _read_json_or
 
 # Briefing files that aren't ingest briefings.
 _NOT_INGEST_BRIEFINGS = ("leads-", "alerts-", "research-")
@@ -52,12 +51,12 @@ def _failed(vault: Path) -> int:
 
 def summary(vault: Path) -> dict:
     """Everything the home screen shows, read from local files only."""
+    from watchdog.cmd.review import count_open_duplicates
     from watchdog.pipeline import leads, orchestrate, research, resolutions
     from watchdog.pipeline.preprocess_batch import find_files
 
     resolved = resolutions.resolved_ids(vault)
     found = leads.scan(vault)
-    docs = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
     context_dir = vault / "_CONTEXT"
     return {
         "vault": vault,
@@ -65,7 +64,7 @@ def summary(vault: Path) -> dict:
         "headline": _headline(vault),
         "contradictions": sum(c["count"] for c in found["contradictions"]),
         "leads": len(found["unprofiled"]) + len(found["isolated"]) + len(found["inferred"]),
-        "near_duplicates": sum(1 for d in docs.values() if d.get("near_duplicate_of")),
+        "near_duplicates": count_open_duplicates(vault),
         "alerts": _open_alerts(vault, resolved),
         "incoming": _count_incoming(vault),
         "awaiting_dig": _count_awaiting_dig(vault),
@@ -88,7 +87,7 @@ def _row(n: int, label: str, command: str) -> str:
     one, _, many = label.partition("|")
     label = one if n == 1 or not many else many
     left = f"{n:>4}  {label}"
-    return f"  {_BOLD}{n:>4}{_RESET}  {label}{' ' * max(2, 30 - len(left))}{_CYAN}{command}{_RESET}"
+    return f"  {_BOLD}{n:>4}{_RESET}  {label}{' ' * max(2, 38 - len(left))}{_CYAN}{command}{_RESET}"
 
 
 def render(name: str, s: dict) -> str:
@@ -102,11 +101,12 @@ def render(name: str, s: dict) -> str:
     else:
         lines.append(f"\n  {_DIM}No briefing yet — add documents to get the first one.{_RESET}")
 
-    waiting = [(s["contradictions"], "contradiction|contradictions", "watchdog leads"),
-               (s["leads"], "open lead|open leads", "watchdog leads"),
+    waiting = [(s["contradictions"], "contradiction|contradictions",
+                "watchdog review contradictions"),
+               (s["leads"], "open lead|open leads", "watchdog review leads"),
                (s["near_duplicates"], "possible duplicate document|possible duplicate documents",
-                "watchdog obsidian"),
-               (s["alerts"], "watch-list hit|watch-list hits", "watchdog watchlist")]
+                "watchdog review duplicates"),
+               (s["alerts"], "watch-list hit|watch-list hits", "watchdog review alerts")]
     waiting = [w for w in waiting if w[0]]
     if waiting:
         lines.append(f"\n  {_BOLD}Waiting on you{_RESET}")

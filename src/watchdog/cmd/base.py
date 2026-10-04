@@ -265,6 +265,23 @@ _CMD_HELP: dict[str, dict] = {
             'to briefings/leads-<date>.md; this command re-runs it on demand between ingests.',
         ],
     },
+    'review': {
+        "desc": 'Step through what is waiting on you, one item at a time',
+        "notes": [
+            'Shows each open contradiction, lead, watch-list hit and possible duplicate document',
+            'in turn. For each one, mark it handled, keep it open, or open its note in Obsidian.',
+            'Handled items stop appearing in briefings, reports and the home screen; they are',
+            'stored in the same place `watchdog resolve` writes, so `watchdog unresolve <id>`',
+            'brings one back.',
+            '',
+            'Name a kind to review only that: contradictions, leads, alerts or duplicates.',
+            'Piped or run without a terminal, it prints the list with each resolution id instead.',
+            '',
+            'Examples:',
+            '    watchdog review',
+            '    watchdog review contradictions',
+        ],
+    },
     'merge-entities': {
         "desc": 'Merge a duplicate entity into another, deterministically',
         "notes": [
@@ -768,6 +785,7 @@ def _print_banner() -> None:
         ]),
         ("Investigate", [
             ("search",     "Semantic search across ingested documents"),
+            ("review",     "Step through contradictions, leads, watch-list hits and duplicates"),
             ("leads",      "Surface investigative leads from the entity graph"),
             ("watchlist",  "Sweep the whole vault against watchlist.md"),
             ("research",   "Research open questions on the web (downloads into _INCOMING/)"),

@@ -69,6 +69,10 @@ def alert_id(sha256: str, term: str) -> str:
     return f"alert:{sha256[:7]}:{_short(term, 8)}"
 
 
+def duplicate_id(sha256: str) -> str:
+    return f"duplicate:{sha256[:12]}"
+
+
 def request_id(what: str) -> str:
     normalized = re.sub(r"\s+", " ", what).strip().lower()
     return f"request:{_short(normalized, 12)}"

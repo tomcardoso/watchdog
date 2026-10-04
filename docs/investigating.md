@@ -100,7 +100,7 @@ Re-run the sweep any time:
 watchdog leads
 ```
 
-Running `watchdog` on its own inside the vault shows how many leads are open, alongside contradictions and watch-list hits.
+Running `watchdog` on its own inside the vault shows how many leads are open, alongside contradictions, watch-list hits and possible duplicate documents. `watchdog review` walks through them one at a time — see [Resolving items](#resolving-items).
 
 ## Document requests
 
@@ -132,7 +132,15 @@ It writes to the same `briefings/alerts-<date>.md`.
 
 ## Resolving items
 
-Once you have dealt with a lead, a watchlist alert, a contradiction, or a document request, mark it done so it stops reappearing. Every item in the leads, alerts, and requests files carries a short resolution id, printed next to it:
+Once you have dealt with a lead, a watchlist alert, a contradiction, a possible duplicate document or a document request, mark it done so it stops reappearing. The easiest way is to work through them in one sitting:
+
+```bash
+watchdog review
+```
+
+It shows one item at a time, with the surrounding detail, and lets you mark it handled, keep it open, or open its note in Obsidian to check it first. Add `contradictions`, `leads`, `alerts` or `duplicates` to review just one kind.
+
+You can also resolve items directly. Every item in the leads, alerts, and requests files carries a short resolution id, printed next to it:
 
 ```bash
 watchdog resolve lead:isolated:acme

@@ -292,7 +292,10 @@ registry, keyed for idempotent replay (D67).
   (D238). `_write_briefing` writes `briefings/<ts>.md` (a counter suffix on collision), `hot.md`
   and a `log.md` entry. `--skip-briefing` skips the call and those three files (D134).
 - **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
-  `resolutions.json` holds acknowledgments so handled items don't resurface (D68). Document
+  `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
+  `watchdog review` (`cmd/review.py`) steps through the open ones, plus near-duplicate documents
+  (`documents.json` `near_duplicate_of`, stamped at extraction from chew's MinHash match), and
+  writes to the same store (D252). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
   paraphrases, and `requests.md` is re-rendered (D111, D159).
 - `watchdog contradiction-add` lets a journalist promote a candidate contradiction found by
