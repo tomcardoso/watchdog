@@ -92,6 +92,9 @@ _run_id: str | None = None
 # were called with — the config that shaped this run's calls, not re-read from disk.
 _benchmark_arm_id: str | None = None
 _run_config_snapshot: dict | None = None
+# Whether this run writes to the global telemetry store — the `telemetry` configure key, read once
+# by `_begin_usage_run`.
+_telemetry_on: bool = False
 
 # Admission control's in-flight reservations (#563): sha -> estimated tokens, for a document that
 # has been admitted (or is mid-admission-check) but whose real usage hasn't landed in `_usage`
@@ -214,7 +217,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         # interleave with this write even under concurrent extraction.
         with open(_usage_partial_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    if vault is not None and _run_id is not None:
+    if vault is not None and _run_id is not None and _telemetry_on:
         try:
             telemetry_db.record_call(record, vault=vault, run_id=_run_id,
                                      benchmark_arm_id=_benchmark_arm_id, prompt_hash=prompt_hash,
@@ -451,8 +454,9 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     their own parameters and pass a benchmark arm's id through when `run_benchmark.py` is the
     caller, both threaded no further than module-globals here since a single run/finalize call
     is the same one-run-per-process scope `_usage` itself already relies on."""
-    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot
+    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot, _telemetry_on
     _consolidate_orphaned_usage(vault)
+    _telemetry_on = telemetry_db.enabled()
     _usage = []
     _admission_reserved.clear()
     usage_dir = vault / ".watchdog" / "registry" / "usage"
@@ -475,8 +479,10 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
     mirrored onto the returned `totals` so both the persisted file and the in-memory summary
     agree. The two `finalize()` exit points never extract anything, so they call this with the
     default `None` and no such field appears."""
-    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot
+    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot, _telemetry_on
     path = _write_usage(vault, _usage, est_input_tokens=est_input_tokens)
+    telemetry_db.close()
+    _telemetry_on = False
     totals = _usage_totals(_usage) if _usage else None
     if totals is not None and est_input_tokens is not None:
         totals["est_input_tokens"] = est_input_tokens

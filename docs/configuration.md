@@ -65,6 +65,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `wayback_save` | `false` | Also submit every research source to the Internet Archive's Wayback Machine. |
 | `wayback_access_key` | *(unset)* | archive.org access key for `wayback_save`; masked in the listing. |
 | `wayback_secret_key` | *(unset)* | archive.org secret key, paired with the access key. |
+| `telemetry` | `true` | Keep a local record of every model call in `~/.watchdog/telemetry.db` — see [The telemetry record](#the-telemetry-record). |
 
 Choosing `classifier_model`, `extractor_model`, or `finalizer_model`? See
 [Benchmarks](benchmarks.md) for how each model and effort level actually performs on real
@@ -123,6 +124,12 @@ Both research keys are advisory budgets that the interactive research skill limi
 ### Wayback archiving
 
 With `wayback_save` on, every source that `watchdog research` or `watchdog fetch` downloads is also submitted to the Internet Archive's Wayback Machine, and the snapshot URL is recorded in the source's provenance sidecar — a citable copy that survives if the original changes or is taken down. It is a no-op until both keys are set; generate a free pair at [archive.org/account/s3.php](https://archive.org/account/s3.php). Archiving is best-effort and never blocks or fails a download.
+
+### The telemetry record
+
+Watchdog keeps a database of every model call it makes, at `~/.watchdog/telemetry.db`. Each row records the model, the tokens used, the cost and the time taken, along with the path and name of the vault and the filename of the document the call was about. It holds no document text and never leaves your computer. It exists so cost and speed can be compared across runs and models.
+
+Because it lists the documents in every one of your investigations, treat the file as sensitive: keep it out of shared folders and backups that others can reach. To stop recording, run `watchdog configure telemetry false`. Rows already written stay until you delete the file. `watchdog delete --purge` removes a vault's rows along with the vault. Each vault's own usage files, which `watchdog usage` reads, are separate and unaffected.
 
 ## Examples
 

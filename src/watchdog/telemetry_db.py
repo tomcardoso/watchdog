@@ -18,10 +18,16 @@ the config values in effect for the run (`config_json`).
 Raw provider responses are deliberately not captured here — see DECISIONS.md's entry for this
 change. A write failure here must never break an ingest run: `record_call` swallows every error
 and logs a WARN via the caller's own `_log`, the same best-effort posture `_record_usage` already
-takes toward every other side channel."""
+takes toward every other side channel.
+
+The store is on by default and turned off with `watchdog configure telemetry false`, which stops
+new rows being written; `watchdog delete --purge` removes a vault's rows along with the vault.
+Rows hold vault paths and document filenames, so the file is as sensitive as the vaults it
+describes."""
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
@@ -71,18 +77,68 @@ CREATE INDEX IF NOT EXISTS idx_calls_vault ON calls(vault_path);
 """
 
 
+# One connection per process, reused across calls and closed at the end of a run (`close`). It is
+# keyed by path so a test that repoints `DB_PATH` gets a fresh connection, not a stale one.
+_conn: sqlite3.Connection | None = None
+_conn_path: Path | None = None
+_lock = threading.Lock()
+
+
+def enabled() -> bool:
+    """The `telemetry` configure key — on unless set to false. An unreadable config counts as on,
+    the same default an absent key gets; `dig`/`bark` already refuse to run on a corrupt one."""
+    from watchdog.cmd import base
+    try:
+        cfg = json.loads(base.CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    return not (isinstance(cfg, dict) and cfg.get("telemetry") is False)
+
+
 def _connect() -> sqlite3.Connection:
-    """Open `DB_PATH`, creating its parent/schema on first use. WAL mode + a busy timeout so a
-    second concurrent writer (a separate `watchdog dig` process against another vault, or a
-    benchmark sweep's back-to-back arms) retries instead of raising `database is locked` — the
-    JSON usage files never had this problem since each vault's own directory only ever sees one
-    writer, but this store is shared across every vault."""
+    """The process's connection to `DB_PATH`, opened and given its schema on first use. WAL mode
+    lets another process (a `watchdog dig` against another vault, a benchmark arm) write at the
+    same time; the short busy timeout bounds how long a contended write can hold up the event
+    loop this runs on — a write that still can't get the lock fails and is logged, never waited
+    out. Caller holds `_lock`."""
+    global _conn, _conn_path
+    if _conn is not None and _conn_path == DB_PATH:
+        return _conn
+    _close_locked()
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=5.0)
+    conn = sqlite3.connect(DB_PATH, timeout=0.5, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA busy_timeout=500")
     conn.executescript(_SCHEMA)
+    _conn, _conn_path = conn, DB_PATH
     return conn
+
+
+def _close_locked() -> None:
+    global _conn, _conn_path
+    if _conn is not None:
+        try:
+            _conn.close()
+        finally:
+            _conn, _conn_path = None, None
+
+
+def close() -> None:
+    """Close the process's connection, if open. Called at the end of every run."""
+    with _lock:
+        _close_locked()
+
+
+def purge_vault(vault: Path) -> int:
+    """Delete every row recorded for `vault`; returns how many. A no-op when the store doesn't
+    exist — purging must never create it."""
+    if not DB_PATH.exists():
+        return 0
+    with _lock:
+        conn = _connect()
+        cur = conn.execute("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
+        conn.commit()
+        return cur.rowcount
 
 
 def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str | None,
@@ -115,8 +171,8 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
         record.get("batch_id"), record.get("batch_submitted_at"),
         record.get("batch_ended_at"), record.get("batch_collected_at"),
     )
-    conn = _connect()
-    try:
+    with _lock:
+        conn = _connect()
         conn.execute(
             """INSERT INTO calls (
                 run_id, vault_path, vault_name, benchmark_arm_id,
@@ -131,5 +187,3 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
             row,
         )
         conn.commit()
-    finally:
-        conn.close()

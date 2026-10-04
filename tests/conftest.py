@@ -22,3 +22,8 @@ def isolate_telemetry_db(tmp_path, monkeypatch):
     `test_orchestrate.py`) that build their own vault without going through it."""
     import watchdog.telemetry_db as telemetry_db_mod
     monkeypatch.setattr(telemetry_db_mod, "DB_PATH", tmp_path / "telemetry.db")
+    # Recording is on for tests regardless of the developer's own `telemetry` setting; the
+    # setting itself is tested against `telemetry_db.enabled` imported before this patch.
+    monkeypatch.setattr(telemetry_db_mod, "enabled", lambda: True)
+    yield
+    telemetry_db_mod.close()
