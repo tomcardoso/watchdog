@@ -55,6 +55,7 @@ emits per-entity summaries, fragments, or timeline events:
 """
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -114,6 +115,55 @@ def _doc_slug(filename: str) -> str:
     return slugify(Path(filename).stem) or "document"
 
 
+def _unique_doc_slug(vault_path: Path, slug: str, sha256: str, filename: str,
+                     documents_reg: dict) -> str:
+    """The document-note slug for `sha256` — `slug` unless another document already owns it.
+
+    Ownership is decided by the registry, not by the note's `file:` line: two different documents
+    can share a filename (every production has its `Order.pdf`), and keying on the filename let
+    the second silently overwrite the first's note (D241). A document already in the registry keeps
+    the note it has, so a `--force` re-commit replaces its own note rather than forking a new one.
+    A note on disk that no registry entry claims (hand-made, or left by a crash) is still respected
+    when it names a different file, as before."""
+    own = (documents_reg.get(sha256) or {}).get("document_note")
+    if own:
+        return own.removeprefix("documents/")
+    taken = {e.get("document_note") for s, e in documents_reg.items() if s != sha256}
+    candidate = vault_path / "documents" / f"{slug}.md"
+    clash = f"documents/{slug}" in taken
+    if not clash and candidate.exists():
+        try:
+            head = candidate.read_text(encoding="utf-8", errors="replace")
+            clash = f"file: {filename}" not in head
+        except OSError:
+            pass
+    return f"{slug}-{sha256[:6]}" if clash else slug
+
+
+def _file_sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _unique_morgue_path(vault_path: Path, morgue_dir: str, filename: str, sha256: str,
+                        documents_reg: dict) -> str:
+    """`<morgue_dir>/<filename>`, or `<stem>-<sha6><suffix>` there when another document already
+    holds that path — the original is moved, not copied, so a clash would replace another
+    document's only copy of its source file (D241)."""
+    relative = f"{morgue_dir}/{filename}"
+    if (documents_reg.get(sha256) or {}).get("morgue_path") == relative:
+        return relative
+    taken = {e.get("morgue_path") for s, e in documents_reg.items() if s != sha256}
+    existing = vault_path / relative
+    if relative in taken or (existing.is_file() and _file_sha256(existing) != sha256):
+        p = Path(filename)
+        relative = f"{morgue_dir}/{p.stem}-{sha256[:6]}{p.suffix}"
+    return relative
+
+
 def _defang(text: str) -> str:
     """Defang ``[[``/``]]`` in model-supplied text before it is written into a vault note (#305,
     #508) — otherwise a hostile value can close a wikilink early and forge a second one pointing
@@ -123,6 +173,13 @@ def _defang(text: str) -> str:
     over its contents."""
     from watchdog.pipeline.research import neutralize
     return neutralize(text or "")
+
+
+def _defang_links(text: str) -> str:
+    """`_defang` without its whitespace collapse — for multi-line bodies (a document summary)
+    whose paragraph breaks must survive. Breaks `[[`/`]]` so model- or document-supplied text can
+    never forge a wikilink."""
+    return (text or "").replace("[[", "[ [").replace("]]", "] ]")
 
 
 def _assert_in_vault(path: Path, vault_path: Path, label: str) -> Path:
@@ -385,7 +442,7 @@ def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
         else:
             source_part = ""
 
-        line = f"- **{rendered_date}** — {ev['event']}{source_part}{basis_note}"
+        line = f"- **{rendered_date}** — {_defang(ev['event'])}{source_part}{basis_note}"
         lines_by_year.setdefault(year, []).append(line)
 
     sections = [f"### {year}\n" + "\n".join(lines_by_year[year]) for year in sorted(lines_by_year)]
@@ -727,7 +784,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
 
 
 def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict],
-                            morgue_path: str = "") -> None:
+                            morgue_path: str = "", filename_shared: bool = False) -> None:
     """Embed this document's source passages into the semantic index, with a contextual
     prefix built from what extraction produced — the document's title, type, and the
     entities it names. The prefix anchors a passage that lacks the document's who/what,
@@ -750,7 +807,8 @@ def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dic
     if names:
         context += " Mentions: " + ", ".join(names) + "."
     from watchdog.pipeline.embed import add_document
-    add_document(vault_path, doc["filename"], pages, context=context)
+    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256,
+                 drop_legacy=not filename_shared)
     from watchdog.pipeline.fulltext import add_document as fts_add_document
     fts_add_document(vault_path, doc["filename"], sha256, pages, morgue_path=morgue_path)
 
@@ -917,7 +975,7 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         md_path = str(Path(morgue_path).with_suffix(".md"))
         body += f"\n**Full text:** [[{md_path}]]\n"
 
-    body += f"\n## Summary\n\n{doc.get('summary', '')}\n"
+    body += f"\n## Summary\n\n{_defang_links(doc.get('summary', ''))}\n"
 
     key_facts = doc.get("key_facts", [])
     if key_facts:
@@ -926,8 +984,8 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
             pg = _page_link(morgue_path or "", kf.get("page"))
             page = f" ({pg})" if pg else ""
             basis_note = " *(inferred)*" if kf.get("basis") == "inferred" else ""
-            body += f"- {kf['fact']}{page}{basis_note}{_figure_verification_note(kf)}\n"
-            quote = (kf.get("quote") or "").strip()
+            body += f"- {_defang(kf['fact'])}{page}{basis_note}{_figure_verification_note(kf)}\n"
+            quote = _defang((kf.get("quote") or "").strip())
             if quote:
                 body += f"  > {quote}{_quote_verification_note(kf)}\n"
 
@@ -966,19 +1024,6 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     registry_dir.mkdir(parents=True, exist_ok=True)
 
     with (nullcontext() if batch is not None else _registry_lock(registry_dir)):
-        # Detect slug collision: if a note with this slug already exists for a different
-        # file, append a short SHA prefix to disambiguate.
-        _candidate = vault_path / "documents" / f"{slug}.md"
-        if _candidate.exists():
-            try:
-                _head = _candidate.read_text(encoding="utf-8", errors="replace")
-                if f"file: {doc['filename']}" not in _head:
-                    slug = f"{slug}-{doc_sha256[:6]}"
-                    if not quiet:
-                        print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
-            except OSError:
-                pass
-
         entities_path  = registry_dir / "entities.json"
         documents_path = registry_dir / "documents.json"
         log_path       = registry_dir / "ingest.log"
@@ -989,16 +1034,22 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             entities_reg  = json.loads(entities_path.read_text())  if entities_path.exists()  else {}
             documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
 
+        base_slug = slug
+        slug = _unique_doc_slug(vault_path, slug, doc_sha256, doc["filename"], documents_reg)
+        if slug != base_slug and not quiet:
+            print(f"WARN  slug collision — using documents/{slug}.md for {doc['filename']}")
+
         # Resolved-contradiction overlay (#266): callouts the journalist has acknowledged are
         # dropped from the rendered note body. The registry keeps the full list, so unresolving
         # restores them on the next write.
         from watchdog.pipeline import requests, resolutions
         resolved_ids = resolutions.resolved_ids(vault_path)
 
-        morgue_relative = (
+        morgue_relative = _unique_morgue_path(
+            vault_path,
             f"morgue/{extraction.get('morgue_entity_id', 'unknown')}"
-            f"/{extraction.get('morgue_document_type', 'document')}"
-            f"/{doc['filename']}"
+            f"/{extraction.get('morgue_document_type', 'document')}",
+            doc["filename"], doc_sha256, documents_reg,
         )
 
         # ── 1. Update entity registry ─────────────────────────────────────────
@@ -1194,7 +1245,10 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # Index the source passages (corpus stream) with a contextual prefix — now that
         # extraction has supplied the title, type, and entities the prefix needs (D43).
         try:
-            _index_corpus_passages(vault_path, doc, entity_entries_for_note, morgue_path=morgue_relative)
+            filename_shared = any(e.get("filename") == doc["filename"]
+                                  for s, e in documents_reg.items() if s != doc_sha256)
+            _index_corpus_passages(vault_path, doc, entity_entries_for_note,
+                                   morgue_path=morgue_relative, filename_shared=filename_shared)
         except Exception as e:
             print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
 
@@ -1212,16 +1266,17 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
     source = vault_path / doc.get("original_path", f"_INCOMING/{doc['filename']}")
     if source.exists():
-        shutil.move(str(source), str(morgue_dir / source.name))
+        morgue_name = Path(morgue_relative).name
+        shutil.move(str(source), str(morgue_dir / morgue_name))
         # No sidecar file survives past chew (D121) — it's filtered/allowlisted into the queue
         # JSON there and carried onto `doc["sidecar"]` by orchestrate._stamp_document. Re-write it
         # as a .yml here so morgue still keeps a permanent, citable copy alongside the source.
         sidecar_text = doc.get("sidecar")
         if sidecar_text:
-            (morgue_dir / f"{source.name}.yml").write_text(sidecar_text, encoding="utf-8")
+            (morgue_dir / f"{morgue_name}.yml").write_text(sidecar_text, encoding="utf-8")
         # Preserve the Docling text alongside the original so the full document stays greppable in
         # the vault — extraction now indexes this substrate rather than restating it (#140).
-        _write_morgue_markdown(vault_path, doc_sha256, morgue_dir, source.stem)
+        _write_morgue_markdown(vault_path, doc_sha256, morgue_dir, Path(morgue_name).stem)
 
         incoming_dir = vault_path / "_INCOMING"
         parent = source.parent

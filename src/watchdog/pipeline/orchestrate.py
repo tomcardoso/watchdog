@@ -596,10 +596,10 @@ def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
     value = sidecar.skill_pin(sidecar_text)
     if not value:
         return None
-    resolved = skills_catalog.resolve(value)
+    resolved = skills_catalog.resolve_name(value)
     if not resolved:
-        _say(f"  {_YELLOW}⚠{_RESET}  {filename}: sidecar pins unknown skill "
-             f"'{value}' — classifying instead{_RESET}")
+        _say(f"{_YELLOW}⚠{_RESET}  {filename}: sidecar pins unknown skill "
+             f"'{value}' (a sidecar may name a catalog skill, not a file path) — classifying instead")
     return resolved
 
 

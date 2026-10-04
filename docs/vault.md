@@ -173,7 +173,7 @@ A sidecar can also pin that one document's record skill:
 skill: bankruptcy
 ```
 
-Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way `--skill` does for a whole run. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single `ingest`, rather than needing one run per type. See [Skills](skills.md#reading-and-pinning-skills).
+Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way `--skill` does for a whole run. It must name a skill from the catalogue (`watchdog show-skills` lists them); a file path is ignored here and the document is classified instead, since a sidecar can arrive with a document you didn't write yourself. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single `ingest`, rather than needing one run per type. See [Skills](skills.md#reading-and-pinning-skills).
 
 ---
 

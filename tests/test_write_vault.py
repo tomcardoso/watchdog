@@ -1388,6 +1388,68 @@ def test_slug_collision_appends_sha_prefix(tmp_path, capsys):
     assert len(notes) == 2
 
 
+def _commit_same_name(tmp_path, vault, sha, body, entity="court", dtype="order"):
+    """Stage an original named Order.pdf under its own sha and commit it."""
+    staged = vault / ".watchdog" / "staging" / sha
+    staged.mkdir(parents=True, exist_ok=True)
+    (staged / "Order.pdf").write_text(body)
+    sub = tmp_path / f"x-{sha}-{len(list(tmp_path.glob('x-*')))}"
+    sub.mkdir()
+    return run(make_extraction(sub, overrides={
+        "document": {"sha256": sha, "filename": "Order.pdf",
+                     "original_path": f".watchdog/staging/{sha}/Order.pdf",
+                     "title": body, "key_facts": []},
+        "entities": [], "morgue_entity_id": entity, "morgue_document_type": dtype,
+    }), vault)
+
+
+def test_same_filename_different_documents_keep_separate_notes_and_originals(tmp_path):
+    """Two different files that share a filename (every production has its Order.pdf) must not
+    overwrite each other's document note or morgue original (D241)."""
+    vault = make_vault(tmp_path)
+    _commit_same_name(tmp_path, vault, "a" * 64, "FIRST")
+    _commit_same_name(tmp_path, vault, "b" * 64, "SECOND")
+
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    notes = {docs["a" * 64]["document_note"], docs["b" * 64]["document_note"]}
+    assert len(notes) == 2
+    for note in notes:
+        assert (vault / f"{note}.md").exists()
+    originals = sorted(p.read_text() for p in (vault / "morgue").rglob("Order*.pdf"))
+    assert originals == ["FIRST", "SECOND"]
+    paths = {docs["a" * 64]["morgue_path"], docs["b" * 64]["morgue_path"]}
+    assert len(paths) == 2 and all((vault / mp).exists() for mp in paths)
+
+
+def test_recommitting_a_document_keeps_its_own_note(tmp_path):
+    """A --force re-commit of the same sha replaces its own note rather than forking a new one."""
+    vault = make_vault(tmp_path)
+    _commit_same_name(tmp_path, vault, "a" * 64, "FIRST")
+    _commit_same_name(tmp_path, vault, "b" * 64, "SECOND")
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    before = docs["b" * 64]["document_note"]
+    _commit_same_name(tmp_path, vault, "b" * 64, "SECOND AGAIN")
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    assert docs["b" * 64]["document_note"] == before
+    assert len(list((vault / "documents").glob("order*.md"))) == 2
+
+
+def test_document_note_defangs_fact_quote_and_summary(tmp_path):
+    """Facts, resolved quotes and the summary come from (or quote) the document itself, so a
+    hostile document must not be able to forge a wikilink in its own note."""
+    vault = make_vault(tmp_path)
+    run(make_extraction(tmp_path, overrides={"document": {
+        "summary": "Para one [[entities/person/x|forged]].\n\nPara two.",
+        "key_facts": [{"fact": "Paid [[evil]] $5.", "page": 1,
+                       "quote": "a quote with [[links/elsewhere]] inside"}],
+    }}), vault)
+    note = (vault / "documents" / "test-doc.md").read_text()
+    body = note.split("## Summary", 1)[1]
+    assert "[[entities/person/x" not in body and "[[evil]]" not in body
+    assert "[[links/elsewhere]]" not in body
+    assert "Para one" in body and "\n\nPara two." in body   # paragraph breaks survive
+
+
 # ── Concurrent-safety (sequential simulation) ─────────────────────────────────
 
 def test_two_sequential_runs_merge_shared_entity(tmp_path):

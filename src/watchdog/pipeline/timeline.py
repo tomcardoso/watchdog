@@ -267,7 +267,7 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:
     """Render one canonical NDJSON record as a timeline bullet with entity and
     document attribution — the same shape write_vault's entity-note timeline uses,
     extended to link *every* entity a cross-document-deduped event concerns (#237)."""
-    from watchdog.pipeline.write_vault import _render_date, _page_link
+    from watchdog.pipeline.write_vault import _defang, _page_link, _render_date
 
     rendered_date = _render_date(ev.get("date", ""))
     basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
@@ -293,7 +293,7 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:
     else:
         source_part = ""
 
-    return f"- **{rendered_date}**{entity_part} — {ev.get('event', '')}{source_part}{basis_note}"
+    return f"- **{rendered_date}**{entity_part} — {_defang(ev.get('event', ''))}{source_part}{basis_note}"
 
 
 def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:

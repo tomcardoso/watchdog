@@ -106,6 +106,15 @@ def resolve(value: str) -> str | None:
     return catalog().get(value.removesuffix(".md"))
 
 
+def resolve_name(value: str) -> str | None:
+    """Resolve a skill pin by catalog name only — never as a filesystem path. For pins that arrive
+    inside a document's own sidecar (orchestrate._sidecar_skill), which is untrusted input (D121):
+    a path there would let a sidecar name any readable file — `~/.watchdog/credentials.json`, say —
+    and have its contents sent to the model as the "domain skill" (D241)."""
+    name = Path(value).name.removesuffix(".md")
+    return catalog().get(name) if name == value.removesuffix(".md") else None
+
+
 def build_index() -> str:
     """The classification index text, generated in memory from the catalog.
 

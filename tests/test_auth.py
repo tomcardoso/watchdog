@@ -705,3 +705,19 @@ def test_ensure_provider_key_prompts_for_openrouter_key(home, monkeypatch):
     monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-or-test-123456")
     auth.ensure_provider_key("openrouter:anthropic/claude-3.5-sonnet")
     assert auth.get_api_key("openrouter") == "sk-or-test-123456"
+
+
+def test_write_private_json_creates_owner_only_file(tmp_path):
+    import os
+    import stat
+    import sys
+    from watchdog.pipeline.json_io import write_private_json
+    path = tmp_path / "sub" / "credentials.json"
+    old = os.umask(0o022)
+    try:
+        write_private_json(path, {"keys": {"anthropic": "sk"}})
+    finally:
+        os.umask(old)
+    assert json.loads(path.read_text())["keys"]["anthropic"] == "sk"
+    if sys.platform != "win32":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600

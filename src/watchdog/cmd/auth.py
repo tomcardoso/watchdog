@@ -19,7 +19,6 @@ The environment variable always takes precedence over a stored key.
 
 import json
 import os
-import stat
 import subprocess
 import sys
 from getpass import getpass
@@ -28,7 +27,7 @@ from pathlib import Path
 from watchdog.cmd import base
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.interactive import CANCELLED, confirm, pick
-from watchdog.pipeline.json_io import _read_json, _read_json_or
+from watchdog.pipeline.json_io import _read_json, _read_json_or, write_private_json
 
 # Providers whose keys watchdog manages. `anthropic` covers both the Claude
 # Agent SDK and the Claude API backends — they share ANTHROPIC_API_KEY. The
@@ -140,8 +139,7 @@ def _load_state() -> dict:
 def _save_state(state: dict) -> None:
     base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     path = _credentials_path()
-    path.write_text(json.dumps(state, indent=2) + "\n")
-    os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)  # 0600 — owner read/write only
+    write_private_json(path, state)
 
 
 def _mask(key: str) -> str:
@@ -174,8 +172,7 @@ def _load_config() -> dict:
 def _save_config(config: dict) -> None:
     from watchdog.cmd.base import CONFIG_FILE, WATCHDOG_HOME
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
-    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)   # mirrors setup.py's _persist (#304)
+    write_private_json(CONFIG_FILE, config)
 
 
 def get_base_url(provider: str) -> str | None:
@@ -528,8 +525,7 @@ def _maybe_tune_concurrency_for_subscription() -> bool:
 
     config["extract_concurrency"] = _SUBSCRIPTION_CONCURRENCY
     base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    base.CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
-    os.chmod(base.CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    write_private_json(base.CONFIG_FILE, config)
     print(f"\n  {_GREEN}✓{_RESET}  Detected Claude subscription auth — {_BOLD}extract_concurrency{_RESET} "
           f"automatically set to {_BOLD}{_SUBSCRIPTION_CONCURRENCY}{_RESET}.")
     print(f"  {_DIM}Concurrent extractions share one Claude Code session's rate limit; raise it back "
@@ -655,8 +651,7 @@ def _route_ingestion_to_provider(state: dict, provider: str) -> None:
                 config[key] = default_effort
 
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
-    os.chmod(CONFIG_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    write_private_json(CONFIG_FILE, config)
     print(f"\n  {_GREEN}✓{_RESET}  Ingestion routed to {_BOLD}{provider}{_RESET}.")
     _maybe_restore_concurrency_from_subscription()
 
