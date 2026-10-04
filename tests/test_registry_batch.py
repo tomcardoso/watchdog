@@ -129,3 +129,22 @@ def test_name_index_matches_a_rebuild_as_entities_are_added_and_gain_aliases():
         index.add(eid, reg[eid])
         want = _rebuilt(reg)
         assert all(index.get(k) == v for k, v in want.items())
+
+
+@pytest.mark.parametrize("n_docs, flush_every", [(1, 1), (50, 1), (51, 50), (500, 50)])
+def test_commit_pass_persists_small_batches_per_document(tmp_path, monkeypatch, n_docs, flush_every):
+    """A small commit pass keeps the per-document registry persist it always had; only a batch
+    past `_PER_DOCUMENT_FLUSH_MAX` trades it for the 50-document flush (D239)."""
+    from watchdog.pipeline import orchestrate
+    vault = make_vault(tmp_path)
+    seen = []
+    real_init = write_vault.RegistryBatch.__init__
+
+    def spy_init(self, vault_path, flush_every=50):
+        seen.append(flush_every)
+        real_init(self, vault_path, flush_every=flush_every)
+    monkeypatch.setattr(write_vault.RegistryBatch, "__init__", spy_init)
+    monkeypatch.setattr(orchestrate, "_commit_extracted", lambda vault, sha, batch=None: None)
+
+    orchestrate._commit_pending(vault, [f"sha{i}" for i in range(n_docs)])
+    assert seen == [flush_every]

@@ -1914,6 +1914,10 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
 # Timeline-dedup calls in flight at once (#696); each colliding date is its own call and file.
 _TIMELINE_DEDUP_CONCURRENCY = 5
 
+# Commit passes of at most this many documents persist the registries after every document, as
+# they always did; larger ones persist every 50 (`write_vault.RegistryBatch`, D239).
+_PER_DOCUMENT_FLUSH_MAX = 50
+
 # Most entities one synthesis call rewrites (#696). The output — a summary and analysis per entity —
 # grows with this, so it is bounded by count as well as by input size.
 _SYNTHESIS_MAX_ENTITIES = 25
@@ -2654,8 +2658,11 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
     written_map: dict[str, dict] = {}
     from watchdog.pipeline.write_vault import RegistryBatch
     # One in-memory registry for the whole pass, flushed every few dozen documents (#696) — not
-    # re-read and rewritten in full for each one.
-    with RegistryBatch(vault) as batch:
+    # re-read and rewritten in full for each one. A small batch still persists after every
+    # document, as before: the rewrite cost only matters at scale, and per-document commits keep
+    # a crash from undoing any document that had already finished.
+    flush_every = 1 if len(shas) <= _PER_DOCUMENT_FLUSH_MAX else 50
+    with RegistryBatch(vault, flush_every=flush_every) as batch:
         for sha in shas:
             written = _commit_extracted(vault, sha, batch=batch)
             if written:

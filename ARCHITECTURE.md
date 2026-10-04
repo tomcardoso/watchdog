@@ -392,9 +392,10 @@ that commit, keyed for idempotent replay (upsert by note_path), so a repair retr
 crash converges instead of doubling (D67). Registry merges are themselves idempotent (sha-guarded),
 and the entity note's `## Analysis` block is keyed by the source document and replaced, not appended.
 **Within the commit pass the registries are held in memory** (`write_vault.RegistryBatch`, D239): the
-pass takes the registry lock once, `write_vault.run` reads and edits the batch's copies, and the batch
-persists them every 50 documents and at the end, rather than re-reading and rewriting every registry
-file per document (which made a pass's I/O quadratic in batch size). The persist is still the commit
+pass takes the registry lock once and `write_vault.run` reads and edits the batch's copies. A pass of
+up to 50 documents (`orchestrate._PER_DOCUMENT_FLUSH_MAX`) still persists them after every document,
+as before; a larger one persists every 50 documents and at the end, rather than re-reading and
+rewriting every registry file per document (which made a pass's I/O quadratic in batch size). The persist is still the commit
 point — a document's queue file is removed only after the flush that wrote its registry entries, so a
 crash between flushes leaves those documents uncommitted and replayable — and a document whose write
 fails mid-way is rolled back in memory (`RegistryBatch.begin`/`rollback`, snapshotting only the entries
