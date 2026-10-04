@@ -268,7 +268,8 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     calibration = _tokens_calibration(vault, max_runs) if documents else None
     est_tokens = round(raw_tokens * calibration) if calibration else raw_tokens
     result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
-              "cost_low": None, "cost_high": None, "runs_used": 0}
+              "cost_low": None, "cost_high": None, "runs_used": 0,
+              "subscription": backend == "claude-agent-sdk"}
     if backend == "claude-agent-sdk" or not documents:
         return result
 

@@ -232,7 +232,7 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
     return "\n".join(lines)
 
 
-def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
+def _preview_ingest(vault: Path, args) -> tuple[str, str, dict] | None:
     """Read-only preview of what an ingest run would do — the doc/page/token cost estimate and
     which models would run each stage — shown before any ingest confirm prompt, mirroring
     `--estimate`'s lock-free scan (#269, #325). None when the queue is empty."""
@@ -262,7 +262,7 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
                                       classify_effort, extract_effort, post_effort, finalizer_overrides,
                                       concurrency=getattr(args, "concurrency", None),
                                       is_dig=getattr(args, "command", None) == "dig")
-    return _format_cost_estimate(est), models_line
+    return _format_cost_estimate(est), models_line, est
 
 
 def _pick_skill_interactive() -> str | None:
@@ -336,7 +336,7 @@ def _run_preprocess(
     run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
 
-def _into_incoming(vault: Path, f: Path) -> Path:
+def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
     """The path chew should process for `watchdog chew <file>`: `f` itself when it is already in
     `_INCOMING/`, else a copy placed there. Chew *moves* what it processes into the vault, so
     chewing a file from anywhere else — `~/Downloads`, or the vault's own `_CONTEXT/` — would
@@ -354,8 +354,9 @@ def _into_incoming(vault: Path, f: Path) -> Path:
     sidecar = f.with_name(f"{f.name}.yml")
     if sidecar.exists():
         shutil.copy2(sidecar, dest.with_name(f"{dest.name}.yml"))
-    print(f"\n  {_DIM}Copied {_RESET}{_CYAN}{f.name}{_RESET}{_DIM} into _INCOMING/ — the original "
-          f"stays where it is.{_RESET}")
+    if not quiet:
+        print(f"\n  {_DIM}Copied {_RESET}{_CYAN}{f.name}{_RESET}{_DIM} into _INCOMING/ — the original "
+              f"stays where it is.{_RESET}")
     return dest
 
 
@@ -407,7 +408,17 @@ def _public_records_warning(n_docs: int) -> str:
     )
 
 
-def _confirm_public_records(n_docs: int, *, skip_warning: bool = False) -> bool:
+def _auto_approve_limit(config: dict) -> float | None:
+    """The `auto_approve_usd` setting as a positive dollar amount, or None when it is unset or 0."""
+    try:
+        v = float(config.get("auto_approve_usd") or 0)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dict | None = None,
+                            limit: float | None = None) -> bool:
     """The point-of-no-return gate before any ingest/extract that will call the model (#426):
     shows the README's 'Public records only' warning and requires an explicit acknowledgement,
     defaulting to Acknowledge — the standing warning is the real safeguard; a Cancel default
@@ -423,6 +434,21 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False) -> bool:
     """
     if n_docs == 0:
         return True
+    high = (est or {}).get("cost_high")
+    subscription = bool((est or {}).get("subscription"))
+    if limit is not None and (subscription or (high is not None and high <= limit)):
+        # Within the auto-approve budget (D251): the user settled the question when they set the
+        # limit, so the run goes ahead with the same one-line notice --skip-warning prints. A
+        # subscription has no per-run price, so it is always within the limit.
+        cost = "no per-run charge on your subscription" if subscription else f"estimated ${high:.2f} at most"
+        print(f"\n  {_DIM}Auto-approved ({cost}; limit ${limit:.2f}) — sending {_RESET}{_BOLD}{n_docs}"
+              f"{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
+        return True
+    if limit is not None and not skip_warning:
+        reason = (f"estimated ${high:.2f} is over your ${limit:.2f} auto-approve limit"
+                  if high is not None else
+                  "no dollar estimate yet for this vault, so the auto-approve limit can't apply")
+        print(f"\n  {_DIM}Asking first: {reason}.{_RESET}")
     if skip_warning:
         print(f"\n  {_DIM}Sending {_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document"
               f"{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
@@ -438,13 +464,15 @@ def _offer_ingest(args, vault: Path) -> dict | None:
     `exit_code_for` — a rate limit that pauses the run reached from `watchdog` or `watchdog
     chew` has to surface as exit 2 the same way a bare `watchdog dig` does (#499)."""
     preview = _preview_ingest(vault, args)
+    est = None
     if preview:
-        estimate_line, models_line = preview
+        estimate_line, models_line, est = preview
         print(estimate_line)
         print(models_line)
     from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
     n_docs = len(needs_extraction(vault, scan_queue(vault)))
-    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
+    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False),
+                               est=est, limit=_auto_approve_limit(load_config())):
         return cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         # No leading blank line here — pick()'s own close-out already leaves one (#411).
@@ -730,12 +758,13 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
-    # This function backs three CLI surfaces: the deprecated `ingest` (full pipeline),
-    # `dig` (extract only, via cmd_extract setting no_finalize), and the guided `watchdog`
-    # walk (bare, via _offer_ingest). "Run it again" hints below point at whichever of those
-    # got the caller here, rather than the retired `watchdog ingest` (#441, D138).
-    pipeline_hint = "watchdog dig" if getattr(args, "command", None) == "dig" else "watchdog"
+    # This function backs `add` (the whole pipeline), `dig` (extract only, via cmd_extract
+    # setting no_finalize), the deprecated `ingest`, and `chew`'s offer to continue
+    # (`_offer_ingest`). "Run it again" hints below name whichever command got the caller here.
+    command = getattr(args, "command", None)
+    pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add"}.get(command, "watchdog")
     is_dig = pipeline_hint == "watchdog dig"
+    is_add = command == "add"
 
     raw_force = getattr(args, "force", False)
     if isinstance(raw_force, list):
@@ -878,6 +907,11 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                   f"finalizing it now.{_RESET}")
             return _run_finalize(vault, post_model, post_effort, post_backend,
                                  skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
+        elif is_add:
+            # `add` takes documents all the way through, so a pending batch is simply finalized
+            # together with the new documents — the choice the pick below defaults to.
+            print(f"\n  {_DIM}A previous batch is pending finalization{_RESET}{detail}{_DIM} — it "
+                  f"will be finalized together with the new documents.{_RESET}")
         else:
             # A programmatic caller must never block on the pick below — it has no way to answer
             # it (#494). Fail loud instead of hanging on an invisible prompt.
@@ -931,6 +965,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
             if _failed_count(vault):
                 print(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
                       f"{_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} again.{_RESET}\n")
+            elif is_add:
+                print(f"\n  {_DIM}Nothing new to add. Drop files in {_RESET}{_CYAN}_INCOMING/{_RESET}"
+                      f"{_DIM}, or pass them: {_RESET}{_CYAN}watchdog add <files or folders>{_RESET}\n")
             else:
                 print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
                 print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
@@ -952,9 +989,11 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # already staged or committed are counted out unless --force re-extracts them.
     to_send = result["queue_files"] if force else needs_extraction(vault, result["queue_files"])
     q = len(to_send)
-    if q and not skip_preview:
+    est = None
+    if q:
         from watchdog.pipeline.ingest_setup import cost_estimate
         est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]))
+    if q and not skip_preview:
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                   post_backend, post_model, classify_effort, extract_effort, post_effort,
@@ -1004,6 +1043,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                  + ("" if verify_flag else
                     f"  Pass {_CYAN}--no-verify{_RESET} for this run, or turn the setting off.\n"))
     wait = getattr(args, "wait", False)
+    if is_add and extract_backend not in BATCH_BACKENDS:
+        # `add` sees a run through: a rate limit pauses it until the limit resets.
+        wait = True
     if wait and extract_backend in BATCH_BACKENDS:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
                  f"batch already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} "
@@ -1028,7 +1070,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
-        if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False)):
+        if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False),
+                                       est=est, limit=_auto_approve_limit(config)):
             _release_lock()
             # No leading blank line — pick()'s own close-out already leaves one (#411).
             print(f"  When ready, run:  {_CYAN}{pipeline_hint}{_RESET}\n")
@@ -1201,6 +1244,10 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
         print(f"  {_DIM}Finalize when ready — run it once for the vault as-is, or copy the vault "
               f"folder to try more than one finalizer:{_RESET}")
         print(f"  {_CYAN}watchdog bark{_RESET}\n")
+    elif pipeline_hint == "watchdog add":
+        print(f"\n  {_DIM}Next:{_RESET} {_CYAN}watchdog{_RESET}{_DIM} for what's waiting on you · "
+              f"{_RESET}{_CYAN}watchdog context{_RESET}{_DIM} to ask questions · {_RESET}"
+              f"{_CYAN}watchdog obsidian{_RESET}{_DIM} to read the notes{_RESET}\n")
     else:
         print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
 
@@ -1361,6 +1408,61 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     return out
 
 
+def _expand_paths(paths: list[str]) -> list[Path]:
+    """Files named on the command line, with folders expanded to the files chew supports in them."""
+    from watchdog.pipeline.preprocess_batch import find_files
+    out: list[Path] = []
+    for raw in paths:
+        p = Path(raw).expanduser().resolve()
+        if not p.exists():
+            sys.exit(f"Error: not found: {raw}")
+        if p.is_dir():
+            found = find_files([p])
+            if not found:
+                print(f"\n  {_DIM}No supported files in {_RESET}{_CYAN}{raw}{_RESET}")
+            out.extend(found)
+        elif p.name.endswith(".yml"):
+            continue   # a sidecar travels with its document
+        else:
+            out.append(p)
+    return out
+
+
+def cmd_add(args) -> dict | None:
+    """`watchdog add [files or folders…]` — take documents all the way into the vault in one
+    command: copy them into `_INCOMING/`, chew, extract and finalize (D251).
+
+    It stops only for the public-records acknowledgement (skipped within `auto_approve_usd`) and
+    for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
+    picks up whatever is waiting: files in `_INCOMING/`, queued documents, a pending batch.
+    `--retry` first puts documents that failed extraction back in the queue."""
+    vault = Path(".").resolve()
+    if not is_vault(vault):
+        sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+    args.command = "add"
+    _warn_pending_research(vault)
+
+    if getattr(args, "retry", False):
+        n = _requeue_failed(vault)
+        if n:
+            print(f"\n  {_DIM}Retrying {_RESET}{_BOLD}{n}{_RESET}{_DIM} document"
+                  f"{'s' if n != 1 else ''} that failed before.{_RESET}")
+
+    files = _expand_paths(getattr(args, "paths", None) or [])
+    copied = sum(1 for f in files if _into_incoming(vault, f, quiet=True) != f)
+    if copied:
+        print(f"\n  {_DIM}Copied {_RESET}{_BOLD}{copied}{_RESET}{_DIM} file{'s' if copied != 1 else ''} "
+              f"into _INCOMING/ — the originals stay where they are.{_RESET}")
+
+    from watchdog.pipeline.preprocess_batch import find_files
+    incoming = vault / "_INCOMING"
+    if incoming.is_dir() and find_files([incoming]):
+        _run_preprocess(vault, workers=getattr(args, "chew_workers", None),
+                        chunk_workers=getattr(args, "chunk_workers", None),
+                        show_ingest_hint=False)
+    return cmd_ingest(args)
+
+
 def cmd_requeue(args) -> None:
     """Move documents from queue/_failed/ back into the active queue for re-ingest."""
     if getattr(args, "project", None):
@@ -1416,57 +1518,4 @@ def cmd_context(args) -> None:
         _launch_claude(vault, "/watchdog-context", model=model)
     else:
         print(f"\n  When ready, open Claude Code and run:  {_CYAN}/watchdog-context{_RESET}\n")
-
-
-def cmd_guided(args) -> dict | None:
-    """Bare `watchdog` inside a project: walk the pipeline in order — context → chew → ingest —
-    offering each stage that has pending work and falling through to the next when declined (#132).
-
-    Each stage self-skips when its directory/queue is empty, so the flow always lands on the
-    sensible next step. Reuses the same prompt helpers as the individual commands for consistency.
-    """
-    from watchdog.pipeline.preprocess_batch import find_files
-    from watchdog.pipeline import research
-    vault = Path(".").resolve()
-    did_offer = False
-
-    # Crash-recovery: a research session that died before its post-flight download left URLs queued.
-    if research.pending_count(vault):
-        print()
-        _warn_pending_research(vault)
-
-    # 1. Context — when _CONTEXT/ has files and context.md hasn't been seeded yet. (Re-seeding an
-    #    existing context.md stays the explicit `watchdog context`; the guided flow won't nag.)
-    #    cmd_context offers to open Claude Code; accepting replaces this process (os.execvp), so
-    #    the walk ends there — seed context, then re-run `watchdog` for chew/ingest. Declining
-    #    returns here and falls through to chew below.
-    context_dir = vault / "_CONTEXT"
-    context_files = find_files([context_dir]) if context_dir.is_dir() else []
-    if context_files and not (vault / "context.md").exists():
-        did_offer = True
-        cmd_context(args)
-
-    # 2. Chew — when _INCOMING/ has files. _run_preprocess prompts and chews; the ingest offer
-    #    below then picks up whatever it queued.
-    incoming = vault / "_INCOMING"
-    if incoming.is_dir() and find_files([incoming]):
-        did_offer = True
-        _run_preprocess(vault, confirm=True, show_ingest_hint=False)
-
-    # 3. Ingest — when the queue has documents ready.
-    if _count_queued(vault):
-        did_offer = True
-        return _offer_ingest(args, vault)
-
-    if not did_offer:
-        print(f"\n  {_DIM}Nothing pending — drop files in {_RESET}{_CYAN}_INCOMING/{_RESET}{_DIM} "
-              f"then run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}, or {_RESET}{_CYAN}watchdog status{_RESET}"
-              f"{_DIM} for details.{_RESET}")
-        # With nothing to process, surface standing leads as a nudge (deterministic, no model).
-        from watchdog.pipeline import leads
-        n = leads.total(leads.scan(vault))
-        if n:
-            print(f"  {_YELLOW}⚠{_RESET}  {_BOLD}{n}{_RESET} open lead{'s' if n != 1 else ''} "
-                  f"{_DIM}— run {_RESET}{_CYAN}watchdog leads{_RESET}{_DIM} to review{_RESET}")
-        print()
 

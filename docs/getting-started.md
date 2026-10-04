@@ -86,14 +86,18 @@ This context is merged into the document record and preserved through ingest. Th
 
 ## Run the pipeline
 
-From the vault directory, the simplest way to process what you dropped in is to run Watchdog with no arguments:
+From the vault directory, add documents with `watchdog add`. Name files or folders and they are copied in (the originals stay where they are); with nothing named, it adds whatever you dropped into `_INCOMING/`:
 
 ```bash
 cd ~/Investigations/shell-company-investigation
-watchdog
+watchdog add ~/Downloads/court-filings/
 ```
 
-Bare `watchdog` walks the whole pipeline for you: it chews what's in `_INCOMING/` — converting and OCRing documents locally, no AI involved — then extracts entities, facts, and timeline events from each one, then writes everything to the vault and produces a **briefing** summarizing what was found, connections to entities already in the vault, and anything worth following up. It confirms before each step that costs money or takes time, and skips any step that has nothing to do. Large documents can take several minutes each to extract, so a long pause on a status row is normal. Read the briefing carefully once it's done — the connections section is often where the story is.
+`watchdog add` takes the documents all the way in. It converts and OCRs them locally (no AI involved), extracts entities, facts and timeline events from each one, writes everything to the vault, and produces a **briefing** summarizing what was found, connections to entities already in the vault, and anything worth following up. Large documents can take several minutes each to extract, so a long pause on a status row is normal. Read the briefing carefully once it's done — the connections section is often where the story is.
+
+It stops for you only twice: to show the public-records warning before anything is sent to a model, and if your provider refuses your key or account. If you hit a rate limit, it waits for the limit to reset and carries on. To skip the warning for small runs, set a spending limit once — `watchdog configure auto_approve_usd 5` — and any run estimated at or under that amount goes ahead with a one-line notice instead; see [Configuration](configuration.md#controlling-cost).
+
+Run `watchdog` on its own inside the vault at any time to see where things stand: the latest briefing, what is waiting on you (contradictions, leads, possible duplicates, watch-list hits), and anything still in progress, each with the command that deals with it. If documents are waiting, it offers to add them.
 
 By default Watchdog uses Sonnet (Claude's mid-tier model) for extraction and Haiku (the fast, inexpensive tier) for classification and post-ingest — no setup beyond Claude Code itself. Benchmark testing against real court-and-financial filings found OpenAI's GPT-5.6 Luna the stronger choice for extraction and classification (see [Benchmarks](benchmarks.md)); switching to it needs its own OpenAI key, which is why it's a recommendation rather than the shipped default. You can change the models, tune how much reasoning each stage spends, and pin a specific domain skill — per run or as persistent defaults. The [configuration guide](configuration.md) covers all of it, including how to cut cost.
 
@@ -105,9 +109,9 @@ Three features run alongside every ingest; each has its full treatment in the [i
 
 - **Resolving.** Once you have dealt with a lead or an alert, you can mark it done so it stops reappearing, which turns those reports into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
 
-If you hit a rate limit — a temporary cap on how much you can send the model — Watchdog stops cleanly and picks up where it left off next time you run it; see [troubleshooting](troubleshooting.md#hitting-rate-limits).
+If you stop a run partway — with Ctrl+C, say — run `watchdog add` again and it picks up where it left off; see [troubleshooting](troubleshooting.md#hitting-rate-limits).
 
-Under the hood, `watchdog` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#processing) for each one's flags in full, or [Methodology](methodology.md) for a plain-English account of what each step actually does to your documents and why.
+Under the hood, `watchdog add` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#processing) for each one's flags in full, or [Methodology](methodology.md) for a plain-English account of what each step actually does to your documents and why.
 
 ## Explore the vault in Obsidian
 

@@ -257,6 +257,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D248** — Dedup calls are bounded by item count; duplicates split across windows stay separate
 - **D249** — Bare `opus` means Opus 5.5; vendor-deprecated models leave the catalog, legacy ones stay
 - **D250** — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
+- **D251** — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
 
 </details>
 
@@ -2361,3 +2362,7 @@ Anthropic now steers users to Opus 5.5 ($4 / $20 per million tokens, against Opu
 ### D250 — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
 
 DeepSeek retired V4 Flash and now serves V4.1 Flash as `deepseek-flash`, still answering the old `deepseek-v4-flash` name at the Flash price. Renaming the entry alone would have made every existing config naming the old id read as uncatalogued and lose its price, peak windows and effort levels, so an entry may now list `legacy_ids` that resolve to it (`model_catalog.canonical_id`); the old id is an alias, not a second row, so the picker lists the model once. DeepSeek's peak is also Monday to Friday only (UTC), which the schedule could not say, so a `price_periods` window may now carry `days`. Chinese public holidays are also off-peak and are not modelled: a run on one is priced at the peak rate, an over-estimate. The tradeoff: archived DeepSeek Flash figures measured the retired V4 checkpoint, not V4.1, so they are not comparable, and V4.1's tokenizer ratio is copied from V4 rather than measured.
+
+### D251 — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
+
+Adding documents took three commands (`chew`, `dig`, `bark`) and an understanding of the pipeline's stages, and bare `watchdog` was a guided walk through those same stages. `watchdog add [files…]` now copies files in, chews, extracts and finishes the batch in one run; the stage commands stay for manual control and benchmarking. `add` waits out a rate limit rather than stopping, and finishes a pending batch together with the new documents instead of asking. Bare `watchdog` inside a vault shows what is waiting on the user and offers to run `add`. A new `auto_approve_usd` setting lets a run estimated at or under the limit skip the public-records pause with a one-line notice. A subscription counts as within the limit, since it has no per-run price; an unpriced metered run still asks. The tradeoff: the public-records pause is the only safeguard against sending non-public material, and the setting lets a user waive it for small runs. It is off by default, and its help says that setting it means the user already checks what they add.

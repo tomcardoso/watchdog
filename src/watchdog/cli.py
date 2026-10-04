@@ -66,7 +66,7 @@ from watchdog.cmd.ingest import (
     cmd_context,
     cmd_extract,
     cmd_finalize,
-    cmd_guided,
+    cmd_add,
     cmd_ingest,
     cmd_requeue,
     exit_code_for,
@@ -142,11 +142,10 @@ def build_parser() -> argparse.ArgumentParser:
         prog="watchdog",
         description="Investigative journalism document intelligence tool",
     )
-    # Bare `watchdog` (no subcommand) inside a vault walks into `cmd_guided`, which falls
-    # through to `cmd_ingest` via `_offer_ingest` — this top-level flag rides along on that
-    # same `args` Namespace and reaches `cmd_ingest`'s `getattr(args, "skip_briefing", False)`
-    # unchanged (#410). Subcommand-scoped `--skip-briefing` (on `ingest`/`bark`) is separate,
-    # added on their own subparsers below.
+    # Bare `watchdog` inside a vault shows the home screen, which can run `watchdog add` — this
+    # top-level flag rides along on that `args` Namespace into `cmd_ingest` (#410).
+    # Subcommand-scoped `--skip-briefing` (on `add`/`ingest`/`bark`) is added on their own
+    # subparsers below.
     parser.add_argument("--skip-briefing", action="store_true", default=False, dest="skip_briefing",
                         help="When the guided walk reaches ingest, run entity reconciliation, "
                              "synthesis, and the timeline rebuild, but skip the briefing model call.")
@@ -459,6 +458,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     from watchdog.cmd.ingest import _PICK_SKILL
 
+    p_add = sub.add_parser("add", help="Add documents to the vault — chew, extract and finish in one step")
+    p_add.add_argument("paths", nargs="*", metavar="PATH",
+                       help="Files or folders to add (copied into _INCOMING/; originals stay put). "
+                            "Omit to add whatever is already waiting.")
+    p_add.add_argument("--retry", action="store_true", default=False,
+                       help="First put documents that failed extraction back in the queue")
+    _add_extract_flags(p_add, "add")
+    _add_finalize_flags(p_add)
+    p_add.set_defaults(func=cmd_add)
+
     p_ingest = sub.add_parser("ingest", help="[deprecated] Extract and finalize queued documents in one run — "
                                              "use `watchdog`, or `watchdog dig` then `watchdog bark`")
     _add_extract_flags(p_ingest, "ingest")
@@ -592,9 +601,12 @@ def main() -> None:
                 run_setup()
             return
         from pathlib import Path
-        wddir = Path(".watchdog")
-        if wddir.is_dir() and (wddir / "queue").is_dir():
-            cmd_guided(args)
+        from watchdog.vault_paths import is_vault
+        if is_vault(Path(".").resolve()):
+            from watchdog.cmd.home import cmd_home
+            code = exit_code_for(cmd_home(args))
+            if code:
+                sys.exit(code)
         else:
             _print_banner()
         return
@@ -603,12 +615,12 @@ def main() -> None:
         print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
         sys.exit(1)
 
-    # `ingest` combined extract+finalize into one shot; retired in favour of two clearer paths
-    # — the guided `watchdog` walk, or manual `watchdog dig` + `watchdog bark` (#441, D138).
+    # `ingest` combined extract+finalize into one shot; retired in favour of `watchdog add`, or
+    # manual `watchdog dig` + `watchdog bark` (D138, D251).
     # No renamed successor to remap onto, so it keeps its own subparser and just warns here.
     if args.command == "ingest":
         print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog ingest{_RESET}{_DIM} is deprecated — "
-              f"use {_RESET}{_CYAN}watchdog{_RESET}{_DIM} for the guided walk, or {_RESET}"
+              f"use {_RESET}{_CYAN}watchdog add{_RESET}{_DIM}, or {_RESET}"
               f"{_CYAN}watchdog dig{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog bark{_RESET}"
               f"{_DIM} for manual control.{_RESET}")
 

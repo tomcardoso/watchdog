@@ -100,7 +100,7 @@ Re-run the sweep any time:
 watchdog leads
 ```
 
-A bare `watchdog` with nothing pending also nudges you when leads are open.
+Running `watchdog` on its own inside the vault shows how many leads are open, alongside contradictions and watch-list hits.
 
 ## Document requests
 
@@ -206,7 +206,7 @@ After the first ingest, the typical loop is:
 3. **Read the briefing** — pay particular attention to connections with entities already in the vault
 4. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
 
-Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of the guided walkthrough — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
+Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of `watchdog add` — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
 
 ## Managing investigations
 

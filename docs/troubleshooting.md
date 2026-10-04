@@ -128,7 +128,7 @@ Ingest has two stages: `watchdog dig` reads each document (the slow, paid part);
 watchdog bark
 ```
 
-This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog bark` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog dig` or the bare guided walk also notices an unfinished batch: `dig` leaves it for `bark`, and the guided walk finalizes it — see the [command reference](commands.md). Nothing in an unfinished batch is ever discarded.
+This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog bark` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog dig` or `watchdog add` also notices an unfinished batch: `dig` leaves it for `bark`, and `add` finishes it — see the [command reference](commands.md). Nothing in an unfinished batch is ever discarded.
 
 ## Ingest prevents the machine from sleeping during a run
 

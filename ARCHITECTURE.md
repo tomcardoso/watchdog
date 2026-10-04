@@ -45,8 +45,8 @@ _INCOMING/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watc
    commits it to the vault in one serial pass, then runs post-ingest: contradictions, entity
    synthesis, timeline dedup, the briefing.
 
-Bare `watchdog` walks through all three; `watchdog ingest` (deprecated, D138) runs dig and bark
-together. A failed document is set aside in `queue/_failed/` without sinking the batch.
+`watchdog add` runs all three in one go (D251), and bare `watchdog` inside a vault is a home screen
+that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together. A failed document is set aside in `queue/_failed/` without sinking the batch.
 
 ---
 

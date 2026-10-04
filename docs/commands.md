@@ -38,6 +38,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 
 | Command | What it does |
 |---|---|
+| `watchdog add [PATH…]` | Add documents: copy the named files or folders into `_INCOMING/`, then chew, dig and bark in one run — see [below](#watchdog-add). |
 | `watchdog fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-fetch). |
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog dig` | Classify and extract queued documents into staged artifacts — see [below](#watchdog-dig). |
@@ -45,9 +46,19 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog requeue [name]` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog dig`; omit the name inside the vault. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
 | `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive, starting with any already waiting there. |
-| `watchdog [--skip-briefing]` | With no subcommand inside a vault: walk the pipeline — offering to seed context, chew, then dig and bark — skipping any stage with no pending work. `--skip-briefing` carries through if the walk reaches that step. |
+| `watchdog [--skip-briefing]` | With no subcommand inside a vault: show the home screen — the latest briefing, what is waiting on you, and what is in progress, each with the command that deals with it — and offer to run `watchdog add` when documents are waiting. `--skip-briefing` carries through to that run. Outside a vault, it lists the commands. |
 
-`watchdog dig` and `watchdog bark` are the two halves of what used to be one `watchdog ingest` command (renamed in favour of the guided `watchdog` walk plus these two manual-control stages — see [`watchdog ingest` (deprecated)](#watchdog-ingest-deprecated) below).
+`watchdog chew`, `watchdog dig` and `watchdog bark` are the three steps `watchdog add` runs for you. Run them separately to chew now and extract later, to check what was extracted before it reaches the vault, or to try more than one finalizer model against the same extraction.
+
+### watchdog add
+
+`watchdog add` takes documents all the way into the vault in one run. Pass files or folders and they are copied into `_INCOMING/` (the originals, and any `.yml` sidecars beside them, stay where they are); pass nothing and it adds whatever is already waiting — files in `_INCOMING/`, documents chewed but not extracted, or a batch an interruption left unfinished. It then chews, extracts and finishes the batch, ending with the briefing.
+
+It stops for you only to show the public-records warning (see [`watchdog dig`](#watchdog-dig)) and when a provider refuses your key or account. A rate limit pauses the run until it resets, as `--wait` does for `dig`. A batch left pending from an earlier run is finished together with the new documents.
+
+- `--retry` — first put documents that failed extraction back in the queue (the same as `watchdog requeue`).
+- **Auto-approve.** With `auto_approve_usd` set, a run whose estimated cost is at or under that amount skips the warning pause and prints a one-line notice instead. A Claude subscription has no per-run price, so its runs are always within the limit. A run over the limit, or with no dollar estimate yet, still asks. See [Configuration](configuration.md).
+- Every flag of [`dig`](#watchdog-dig) and [`bark`](#watchdog-bark) — models, efforts, `--verify`, `--concurrency`, `--skill`, `--estimate`, `--skip-warning`, `--skip-briefing` and the rest — works the same way here.
 
 ### watchdog dig
 
@@ -83,7 +94,7 @@ It's shown every time, not just once per vault — the risk is per-document, not
 
 Each model flag takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value that routes the stage to another provider — see [Model backends](configuration.md#model-backends). Left unset, `--extractor-effort`/`--classifier-effort` default only when their stage's resolved model actually supports it, and are skipped automatically for one that doesn't (Haiku); set explicitly, a level the resolved model doesn't support — including `xhigh`/`max` on a model that doesn't reach them — fails with a clear error rather than running silently at a different effort than you asked for.
 
-The "which model runs each stage" line printed before extraction starts shows only classifier and extractor for `dig` — no finalizer row, since `dig` never finalizes in the run it's invoked from; that row appears for `watchdog bark` and the bare guided walk instead, both of which do finalize inline.
+The "which model runs each stage" line printed before extraction starts shows only classifier and extractor for `dig` — no finalizer row, since `dig` never finalizes in the run it's invoked from; that row appears for `watchdog bark` and `watchdog add` instead, both of which finalize.
 
 **Scope and behaviour flags.**
 
@@ -100,7 +111,7 @@ The "which model runs each stage" line printed before extraction starts shows on
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog dig` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry — this is surfaced everywhere the queue's state matters: the normal run summary, `--estimate`, and a bare `watchdog dig` with nothing new to read, which offers to requeue and retry right there instead of just reporting an empty queue. On macOS or Linux, dig also keeps the machine from sleeping for the run's duration — see [Troubleshooting](troubleshooting.md#ingest-prevents-the-machine-from-sleeping-during-a-run).
 
-If a previous batch is still pending finalization when you start `watchdog dig`, `dig` says so and carries on: it never finalizes, so the next `watchdog bark` finalizes the pending batch together with whatever this run extracts. Nothing in a pending batch is ever thrown away — every extracted document is written to the vault by the next finalize, whichever command runs it. The bare guided walk, which does finalize, asks whether to finalize the pending batch together with the new documents or on its own first; with nothing new to read, it simply finalizes it.
+If a previous batch is still pending finalization when you start `watchdog dig`, `dig` says so and carries on: it never finalizes, so the next `watchdog bark` finalizes the pending batch together with whatever this run extracts. Nothing in a pending batch is ever thrown away — every extracted document is written to the vault by the next finalize, whichever command runs it. `watchdog add` finishes the pending batch together with the new documents; with nothing new to read, it simply finishes it.
 
 #### Catching what the extractor missed
 
@@ -138,7 +149,7 @@ Each falls back to `--finalizer-model` (and, below that, `finalizer_model` from 
 
 - `--estimate` — print a token/cost estimate for the pending batch and exit — no lock, no finalize — the same read-only contract as `dig`'s own `--estimate`. It prices the batch already staged in the vault's working files rather than a queue, so the dollar figure draws only on this vault's history of *standalone* `watchdog bark` runs (a finalize that ran as part of a normal `dig`+`bark` sequence, or the deprecated `watchdog ingest`, doesn't count, since its cost is mixed in with extraction). A vault that has only ever finalized as part of a combined run — never on its own — gets the token count with no dollar figure, until it has that history.
 - `--estimate-all` — like `--estimate`, but also projects the staged batch's cost against every model in the catalog, cheapest first — see [Comparing model cost across the catalog](#comparing-model-cost-across-the-catalog) below.
-- `--skip-briefing` — finalize as usual (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation) but skip the briefing model call. Useful for bulk backfills or re-ingests where a briefing isn't worth its cost every time. `hot.md` and that run's entry in `log.md` are only written alongside a briefing, so both are skipped too — the run still ends with `briefings/leads-<date>.md`, `requests.md`, and `watchlist.md` alerts, which don't depend on the briefing. Also available as a top-level `watchdog --skip-briefing` when the bare guided walk reaches this step.
+- `--skip-briefing` — finalize as usual (merging duplicate entities, flagging contradictions, entity synthesis, timeline reconciliation) but skip the briefing model call. Useful for bulk backfills or re-ingests where a briefing isn't worth its cost every time. `hot.md` and that run's entry in `log.md` are only written alongside a briefing, so both are skipped too — the run still ends with `briefings/leads-<date>.md`, `requests.md`, and `watchlist.md` alerts, which don't depend on the briefing. Also available on `watchdog add`, and as a top-level `watchdog --skip-briefing` when the home screen runs `add`.
 
 A Ctrl+C during `bark`'s sequential post-processing stops it cleanly too; re-run `watchdog bark` once you're ready to pick back up.
 
@@ -187,7 +198,7 @@ watchdog ingest --force report.pdf disclosure-2024.pdf
 
 ### watchdog ingest (deprecated)
 
-`watchdog ingest` combined `dig` and `bark` into one non-interactive-ish shot: extract everything queued, then finalize automatically. It's deprecated in favour of two clearer paths that cover the same ground — the guided `watchdog` walk (which also seeds context and chews first), or `watchdog dig` followed by `watchdog bark` for manual control. Running it still works during the deprecation window (a warning prints first), with the same flags it always had: every flag listed under [`dig`](#watchdog-dig) and [`bark`](#watchdog-bark) above, plus `--force [DOC …]`, which — unlike `dig --force` — accepts document names to re-queue and re-extract documents already committed to the vault (see [Re-extracting with --force](#re-extracting-with---force)).
+`watchdog ingest` combined `dig` and `bark` into one non-interactive-ish shot: extract everything queued, then finalize automatically. It's deprecated in favour of `watchdog add` (which also chews first), or `watchdog dig` followed by `watchdog bark` for manual control. Running it still works during the deprecation window (a warning prints first), with the same flags it always had: every flag listed under [`dig`](#watchdog-dig) and [`bark`](#watchdog-bark) above, plus `--force [DOC …]`, which — unlike `dig --force` — accepts document names to re-queue and re-extract documents already committed to the vault (see [Re-extracting with --force](#re-extracting-with---force)).
 
 ### watchdog chew
 

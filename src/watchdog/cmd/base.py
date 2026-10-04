@@ -52,7 +52,7 @@ _ALIASES = {
 # before remapping, since the goal is to move people onto the new name, not hide it forever.
 # `extract`/`finalize` renamed straight across to `dig`/`bark` (same flags, same function);
 # `ingest` has no such 1:1 successor — it combined extract+finalize into one non-interactive
-# shot, a role now split between the guided `watchdog` walk and manual `dig`+`bark` — so it
+# shot, a role now taken by `watchdog add` and manual `dig`+`bark` — so it
 # keeps its own subparser and is flagged separately in `main()`, not remapped here.
 _DEPRECATED_ALIASES = {
     "extract":  "dig",
@@ -180,7 +180,19 @@ _CMD_HELP: dict[str, dict] = {
         "desc": 'Create a new investigation vault',
     },
     'ingest': {
-        "desc": '[deprecated] Extract queued documents (runs the Python pipeline) — use `watchdog` for the guided walk, or `watchdog dig` then `watchdog bark` instead',
+        "desc": '[deprecated] Extract queued documents (runs the Python pipeline) — use `watchdog add`, or `watchdog dig` then `watchdog bark` instead',
+    },
+    'add': {
+        "desc": 'Add documents to the vault: copy them into _INCOMING/, chew, extract and finish the batch in one step',
+        "notes": [
+            'With no files, add whatever is waiting: files in _INCOMING/, chewed documents, or a',
+            'batch that was interrupted. Originals passed by path stay where they are.',
+            '',
+            'Stops only for the public-records acknowledgement and for a provider refusing your',
+            'key or account. Set `watchdog configure auto_approve_usd <dollars>` to skip the',
+            'acknowledgement for runs estimated at or under that amount. A rate limit pauses the',
+            'run until it resets.',
+        ],
     },
     'context': {
         "desc": 'Open Claude Code to seed investigation context from _CONTEXT/',
@@ -746,10 +758,11 @@ def _print_banner() -> None:
             ("delete",     "Remove an investigation from registry"),
         ]),
         ("Document processing", [
+            ("add",              "Add documents to the vault — chew, dig and bark in one step"),
             ("fetch",            "Download a batch of URLs into _INCOMING/"),
-            ("chew",             "Process documents in _INCOMING/"),
-            ("dig",              "Extract queued documents into the vault"),
-            ("bark",             "Complete post-ingest — reconciliation, synthesis, briefing"),
+            ("chew",             "Process documents in _INCOMING/ (step 1 of add)"),
+            ("dig",              "Extract queued documents (step 2 of add)"),
+            ("bark",             "Finish a batch — reconciliation, synthesis, briefing (step 3 of add)"),
             ("context",          "Seed investigation context from _CONTEXT/"),
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
         ]),

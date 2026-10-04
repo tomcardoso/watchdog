@@ -105,6 +105,21 @@ _CONFIGURE_KEYS = {
         "default": defaults.EXTRACT_CONCURRENCY,
         "min": 1,
     },
+    "auto_approve_usd": {
+        "short": "Skip the public-records pause for runs estimated at or under this many dollars (default: off)",
+        "help": (
+            "Before documents are sent to a model, Watchdog shows the 'Public records only'\n"
+            "  warning and waits for you to acknowledge it. Set a dollar amount here and a run\n"
+            "  whose estimated cost is at or under it goes ahead with a one-line notice instead.\n"
+            "  Setting it means you have already checked that what you add is public record.\n"
+            "  A Claude subscription has no per-run price, so its runs are always within the limit.\n"
+            "  A run over the limit, or one with no dollar estimate yet (a vault with no past runs\n"
+            "  on a metered key), still asks.\n"
+            "  Set to 0 to turn it off. Default: off."
+        ),
+        "type": "float",
+        "min": 0.0,
+    },
     "extract_token_budget": {
         "short": "Cap on tokens/min during `watchdog dig`, overriding auto-discovery (default: auto)",
         "help": (
@@ -670,7 +685,7 @@ _CONFIGURE_SECTIONS = [
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
+     ["auto_approve_usd", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),
     ("Models", "Which model runs each step, and how hard it thinks.",

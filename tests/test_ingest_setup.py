@@ -302,7 +302,13 @@ def test_cost_estimate_empty_queue(tmp_path):
     vault = _make_vault(tmp_path)
     est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
     assert est == {"documents": 0, "pages": 0, "est_tokens": 0,
-                    "cost_low": None, "cost_high": None, "runs_used": 0}
+                    "cost_low": None, "cost_high": None, "runs_used": 0,
+                    "subscription": False}
+
+
+def test_cost_estimate_marks_subscription_runs(tmp_path):
+    vault = _make_vault(tmp_path)
+    assert cost_estimate(vault, scan_queue(vault), backend="claude-agent-sdk")["subscription"] is True
 
 
 def test_cost_estimate_no_usage_history_omits_cost(tmp_path):
