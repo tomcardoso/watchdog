@@ -32,6 +32,7 @@ import hashlib
 import json
 import re
 import time
+import weakref
 from dataclasses import dataclass
 from functools import lru_cache, partial
 from pathlib import Path
@@ -828,6 +829,21 @@ def _batch_cost(model_id: str, usage) -> float | None:
     return cost * 0.5 if cost is not None else None
 
 
+# One Anthropic client per event loop and key, so concurrent calls share a connection pool instead
+# of each opening its own. Keyed weakly by loop: a client's connections belong to the loop that
+# opened them, and each `asyncio.run` gets a new one.
+_ANTHROPIC_CLIENTS: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
+
+
+def _anthropic_client(anthropic_mod, api_key: str):
+    loop = asyncio.get_running_loop()
+    per_loop = _ANTHROPIC_CLIENTS.setdefault(loop, {})
+    key = (anthropic_mod.AsyncAnthropic, api_key)
+    if key not in per_loop:
+        per_loop[key] = anthropic_mod.AsyncAnthropic(api_key=api_key)
+    return per_loop[key]
+
+
 async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: dict,
                               api_key: str | None, max_tokens: int,
                               effort: str | None = None, prefix: str | None = None) -> dict:
@@ -873,7 +889,7 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
         # RateLimitError catch has to wrap the whole `async with`, not just an inner call.
         # `AsyncMessageStream.response`/`.get_final_message()` (#563) map 1:1 onto the old
         # `.headers`/`.parse()`, so the rate-limit-header capture below is unchanged.
-        async with anthropic.AsyncAnthropic(api_key=api_key).messages.stream(
+        async with _anthropic_client(anthropic, api_key).messages.stream(
             model=model_id,
             max_tokens=max_tokens,
             system=_SYSTEM_PROMPT,
