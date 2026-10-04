@@ -1923,6 +1923,19 @@ def _resolve_names(items: list, names: dict) -> list:
     return [names[x.strip()] if isinstance(x, str) and x.strip() in names else x for x in items]
 
 
+def _with_entity_names(results: list, names: dict) -> list:
+    """Copies of briefing result rows with `new_entities`/`updated_entities` given as display
+    names rather than registry ids, so the briefing model is never shown an id to echo."""
+    out = []
+    for r in results:
+        r = dict(r)
+        for key in ("new_entities", "updated_entities"):
+            if key in r:
+                r[key] = [names.get(x, x) for x in r[key]]
+        out.append(r)
+    return out
+
+
 def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text: str) -> None:
     """Best-effort full-text index update (#109) — never fails the ingest run over it."""
     try:
@@ -2007,8 +2020,8 @@ def _fit_briefing_inputs(results: list, scratchpads: list, budget: int
 
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                     contradiction_flags: list, n_new_requests: int = 0) -> str:
-    # Resolve entity ids the model may have echoed instead of display names (#342) — deterministic
-    # backstop on top of the prompt/schema instructions, since not every backend honours those.
+    # The prompt is given display names (`_with_entity_names`); this catches an id the model
+    # picked up from a scratchpad and returned as a whole list item (#342).
     names = _load_entity_names(vault)
     what_was_ingested = _resolve_names(b.get("what_was_ingested", []), names)
     new_entities = _resolve_names(b.get("new_entities", []), names)
@@ -2342,7 +2355,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r = await _call_model(
                 task="briefing", model=briefing_model, backend=briefing_backend, schema=schemas.BRIEFING,
                 prompt=prompts.build_briefing_prompt(
-                    brief=brief, results=brief_results, scratchpads=brief_pads,
+                    brief=brief, results=_with_entity_names(brief_results, _load_entity_names(vault)),
+                    scratchpads=brief_pads,
                     neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags,
                     condensed=condensed),
                 effort=post_effort, vault=vault)

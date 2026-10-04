@@ -5582,6 +5582,16 @@ def test_briefing_in_the_same_minute_does_not_overwrite(tmp_path):
     assert all((vault / f).exists() for f in (first, second, third))
 
 
+def test_briefing_input_names_entities_rather_than_ids():
+    """The briefing model is given display names, so it has no id to echo back (#342)."""
+    rows = [{"filename": "a.pdf", "new_entities": ["acme-corp", "unknown-id"],
+             "updated_entities": ["jane-doe"], "key_facts": []}]
+    named = orchestrate._with_entity_names(rows, {"acme-corp": "Acme Corp.", "jane-doe": "Jane Doe"})
+    assert named[0]["new_entities"] == ["Acme Corp.", "unknown-id"]
+    assert named[0]["updated_entities"] == ["Jane Doe"]
+    assert rows[0]["new_entities"] == ["acme-corp", "unknown-id"]   # input left untouched
+
+
 def test_record_usage_skips_the_telemetry_store_when_turned_off(tmp_path, monkeypatch):
     from watchdog import telemetry_db
     monkeypatch.setattr(telemetry_db, "enabled", lambda: False)
