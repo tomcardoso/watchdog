@@ -787,7 +787,10 @@ order-immune, and near-constant in cost (one call per ingest).
   `_JACCARD_MIN` (0.5) on some pair of its known names (a strict token-subset scores 1.0, as do identical
   token sets — a word-order or stopword variant the exact-name pass can't fold, e.g. "Cardoso, Tom" vs
   "Tom Cardoso"), and involves at least one entity touched this run — ranked by overlap and capped at
-  `_MAX_PAIRS` (200). The model confirms or rejects each pair by index and names the surviving id;
+  `_MAX_PAIRS` (200). Candidates are found through an inverted index on (canonical type, name token),
+  probing only each name's rarest tokens (a Jaccard prefix filter plus a rarest-token index for subsets),
+  so the work tracks the pairs that actually share a token rather than touched × registry (#696); the
+  emitted pairs are identical to a full walk's. The model confirms or rejects each pair by index and names the surviving id;
   `reconcile.apply_merges` applies each merge by a **taxonomy of what is already committed** (D128): a
   batch-only loser is a staged-id rewrite (no stub, backup, or provenance — it never existed as committed
   state); two committed sides get the full `merge_entities.run` surgery (§10); and when exactly one side is

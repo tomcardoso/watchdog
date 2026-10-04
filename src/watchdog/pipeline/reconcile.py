@@ -15,6 +15,7 @@ pass, using the merge remap `apply_merges` returned.
 """
 
 import json
+import math
 from copy import deepcopy
 from pathlib import Path
 
@@ -83,6 +84,16 @@ def _overlap(a: str, b: str) -> float:
     return len(ta & tb) / len(ta | tb)
 
 
+def _prefix_len(n_tokens: int) -> int:
+    """How many of a name's tokens (in the global order) any qualifying Jaccard partner must hit.
+
+    `J(A, B) >= t` implies `|A ∩ B| >= t·|A ∪ B| >= t·|A|`, so at least `ceil(t·|A|)` of A's tokens
+    are shared — and therefore any `|A| - ceil(t·|A|) + 1` of them include a shared one. Probing
+    just that many (the rarest) is enough to find every partner; the tolerance keeps a float
+    product like 0.5·4 from ceiling up to 3."""
+    return n_tokens - math.ceil(_JACCARD_MIN * n_tokens - 1e-9) + 1
+
+
 def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     """Block the duplicate-entity field down to pairs worth a model call.
 
@@ -91,32 +102,66 @@ def candidate_pairs(entities_reg: dict, touched: set[str]) -> list[dict]:
     their known names, and (3) involve at least one entity this run touched, so an ingest does not
     re-litigate the whole vault's history on every run.
 
-    Iterates touched entities against the registry (O(touched·n)) rather than every registry pair
-    (O(n²)) — on a vault with thousands of entities, a single-document ingest touches a handful, and
-    the untouched-against-untouched pairs that dominate the full cross product can never qualify
-    anyway. A pair reachable from both sides (both touched) is scored once.
+    Candidates come from an inverted index keyed on (canonical type, name token) rather than from
+    walking every touched entity against the whole registry (#696). That walk was O(touched·n) in
+    time *and* memory — 4,000 entities, all touched, took ~1 minute and 2 GB, and a vault of tens
+    of thousands ran out of memory. Every qualifying name pair shares a token, so it is enough to
+    probe the index for names sharing one, with two filters keeping the probes off the long
+    postings lists of common tokens ("inc", "canada"):
 
-    Returned newest-signal-first (strongest overlap first) and capped at `_MAX_PAIRS`.
+    - **Jaccard partners** — a name's rarest `_prefix_len` tokens are probed against every
+      indexed token (see `_prefix_len` for why that many suffice).
+    - **Subset partners** — the shorter name's rarest token is necessarily in the longer one. The
+      probing name's own rarest token is in its prefix, so a longer superset is found by the probe
+      above; a shorter subset is found by probing a second index holding each name's *rarest*
+      token only, with every one of the probing name's tokens.
+
+    Token rarity only decides which tokens are probed; any fixed order would be exact, rarity just
+    keeps the postings short. The candidate set is a superset of the qualifying pairs, and each
+    candidate is scored exactly as before, so the output is unchanged — only the work is not.
+
+    Returned strongest-signal-first and capped at `_MAX_PAIRS`.
     """
     types = {eid: canonical_type(e.get("type", "")) for eid, e in entities_reg.items()}
-    all_ids = sorted(entities_reg)
     touched_ids = sorted(eid for eid in touched if eid in entities_reg)
+    touched_set = set(touched_ids)
+
+    surface_tokens: dict[str, list[frozenset[str]]] = {}
+    freq: dict[str, int] = {}
+    for eid, e in entities_reg.items():
+        toks = [t for t in (_tokens(n) for n in _surfaces(e)) if t]
+        surface_tokens[eid] = toks
+        for ts in toks:
+            for tok in ts:
+                freq[tok] = freq.get(tok, 0) + 1
+
+    def _order(ts: frozenset[str]) -> list[str]:
+        return sorted(ts, key=lambda tok: (freq.get(tok, 0), tok))
+
+    full_index: dict[tuple[str, str], set[str]] = {}
+    rare_index: dict[tuple[str, str], set[str]] = {}
+    for eid, toks in surface_tokens.items():
+        etype = types[eid]
+        for ts in toks:
+            for tok in ts:
+                full_index.setdefault((etype, tok), set()).add(eid)
+            rare_index.setdefault((etype, _order(ts)[0]), set()).add(eid)
 
     scored: list[tuple[float, dict]] = []
-    seen: set[frozenset] = set()   # dedup a pair reachable from both touched sides
-
     for t_id in touched_ids:
-        t = entities_reg[t_id]
         t_type = types[t_id]
-        t_names = _surfaces(t)
-        for o_id in all_ids:
-            if o_id == t_id:
-                continue
-            pair_key = frozenset((t_id, o_id))
-            if pair_key in seen:
-                continue
-            seen.add(pair_key)
-            if types[o_id] != t_type:
+        candidates: set[str] = set()
+        for ts in surface_tokens[t_id]:
+            ordered = _order(ts)
+            for tok in ordered[:_prefix_len(len(ordered))]:
+                candidates |= full_index.get((t_type, tok), set())
+            for tok in ordered:
+                candidates |= rare_index.get((t_type, tok), set())
+        candidates.discard(t_id)
+        t_names = _surfaces(entities_reg[t_id])
+        for o_id in candidates:
+            # A pair with both sides touched is found from both; score it once, from the lower id.
+            if o_id in touched_set and o_id < t_id:
                 continue
             o = entities_reg[o_id]
             score = max(
