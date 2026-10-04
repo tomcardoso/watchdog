@@ -855,9 +855,12 @@ the entity registry's `timeline_events` is populated independently, straight off
 `key_facts`, by post-flight, and its per-entity dedup stays mechanical (D58). All merge/dedup and
 the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
 
-- `timeline.collisions(vault)` promotes dates with no prior canonical to **canonical**
-  `{date}.ndjson` (deleting the raws it just merged) and returns the collisions where a canonical
-  already existed; the orchestrator sends each collision's events to one model call
+- `timeline.collisions(vault)` promotes a date with no prior canonical and a single raw to
+  **canonical** `{date}.ndjson` (deleting the raw) and returns the collisions where a canonical
+  already existed. A date with no canonical but raws from several documents of the same batch is a
+  collision too (D240): the first raw is promoted and the rest are returned against it, so
+  same-batch restatements are deduped exactly as cross-batch ones are. The orchestrator sends each
+  collision's events to one model call, up to `_TIMELINE_DEDUP_CONCURRENCY` (5) dates at a time
   (`timeline-dedup`), which returns `groups` (each survivor + the pure-restatement indices that
   fold into it). `_select_kept` applies the decision — keeping the authoritative originals and
   **unioning each group's `entity_ids`** onto the survivor, so an event's entity attribution

@@ -2272,3 +2272,9 @@ D211's own tradeoff paragraph named this fix and set it aside as a bigger, unmea
 
 **Tradeoff:** a crash now re-commits up to 49 documents instead of at most one, and the registry lock is held for the whole commit pass rather than per document, so another registry writer (say, `watchdog merge-entities` run by hand during a finalize) waits longer.
 
+### D240 — Same-date events from one batch's documents go through timeline dedup
+
+**`timeline.collisions` merged every raw file for a date with no canonical straight into a new canonical**, with no dedup call, so only dates that already existed in the vault were ever de-duplicated (#696). One large first ingest (thousands of documents, many restating the same court dates and filing deadlines) built a timeline full of cross-document duplicates, while the same documents ingested in two batches would have been cleaned up. Now the first raw is promoted and the rest are returned as a collision against it, taking the same path as a later batch's: folded on a successful call, left in place for a retry on failure. Collision calls run up to five at a time, since a large batch can share thousands of dates and each is its own file and call.
+
+**Tradeoff:** a batch now makes one `timeline-dedup` call per date that two or more of its documents share, where it used to make none. Those calls are on the timeline model (the finalizer tier by default) and only see the events for that one date.
+

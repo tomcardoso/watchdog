@@ -1911,6 +1911,9 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
         print(f"  Warning: full-text index update failed for {note_path}: {e}", file=sys.stderr)
 
 
+# Timeline-dedup calls in flight at once (#696); each colliding date is its own call and file.
+_TIMELINE_DEDUP_CONCURRENCY = 5
+
 # Most entities one synthesis call rewrites (#696). The output — a summary and analysis per entity —
 # grows with this, so it is bounded by count as well as by input size.
 _SYNTHESIS_MAX_ENTITIES = 25
@@ -2208,7 +2211,15 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
     cols = timeline.collisions(vault)
     out["timeline_collisions"] = len(cols)
-    for col in cols:
+    if cols:
+        _say(f"{_DIM}   de-duplicating {len(cols)} date{'s' if len(cols) != 1 else ''} "
+             f"shared across documents…{_RESET}")
+    # Each colliding date is independent — its own canonical file, its own call — so they run
+    # concurrently (#696): a large batch can share thousands of dates, and in sequence that was
+    # hours of single calls.
+    gate = asyncio.Semaphore(_TIMELINE_DEDUP_CONCURRENCY)
+
+    async def _dedup(col: dict) -> None:
         canonical = vault / col["canonical"]
         raw_paths = [vault / r for r in col["raw"]]
         events: list[dict] = []
@@ -2219,24 +2230,27 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 except json.JSONDecodeError:
                     pass
         if not events:
-            continue
+            return
         try:
-            r = await _call_model(
-                task="timeline-dedup", model=timeline_model, backend=timeline_backend,
-                schema=schemas.TIMELINE_DEDUP,
-                prompt=prompts.build_timeline_dedup_prompt(col["date"], events), effort=post_effort,
-                detail=col["date"], vault=vault)
+            async with gate:
+                r = await _call_model(
+                    task="timeline-dedup", model=timeline_model, backend=timeline_backend,
+                    schema=schemas.TIMELINE_DEDUP,
+                    prompt=prompts.build_timeline_dedup_prompt(col["date"], events),
+                    effort=post_effort, detail=col["date"], vault=vault)
             kept = _select_kept(events, r.parsed.get("groups"))
         except (model_client.ModelError, model_client.RateLimitError):
             # Dedup failed (e.g. rate limit): leave the canonical AND its raws untouched so the
             # next ingest retries this collision cleanly. Writing the canonical+raw union back
             # here would bake in duplicate rows that compound on every later run (#250).
-            continue
+            return
         canonical.write_text(
             "\n".join(json.dumps(e, ensure_ascii=False) for e in kept) + "\n", encoding="utf-8")
         # The raws are now merged into the canonical — consume them so they aren't re-collided.
         for rp in raw_paths:
             rp.unlink(missing_ok=True)
+
+    await asyncio.gather(*(_dedup(col) for col in cols))
 
     # 2b. Cross-precision reconciliation (#239, D63): date-keyed buckets never compare a
     # month-precision event against the specific day it restates. For each month holding both, one
