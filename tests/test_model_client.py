@@ -1090,6 +1090,7 @@ def _fake_openai_resp(monkeypatch, *, status_code=200, headers=None):
     class FakeResp:
         pass
     FakeResp.status_code = status_code
+    FakeResp.text = ""
     FakeResp.headers = headers or {}
     FakeResp.raise_for_status = lambda self: None
     FakeResp.json = lambda self: {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
@@ -2522,10 +2523,12 @@ def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, m
     assert mc.output_ceiling_for_sectioning(backend, model) == mc._wire_max_tokens(backend, model_id)
 
 
-def _fake_httpx_sequence(monkeypatch, status_codes):
+def _fake_httpx_sequence(monkeypatch, status_codes, bodies=None):
     """Patch httpx.AsyncClient to return canned responses with the given status codes, one per
-    post, repeating the last one if posts continue. Returns the list of recorded post calls."""
+    post, repeating the last one if posts continue. `bodies` maps a status code to its response
+    text. Returns the list of recorded post calls."""
     import httpx
+    bodies = bodies or {}
 
     codes = list(status_codes)
     posts = []
@@ -2535,6 +2538,7 @@ def _fake_httpx_sequence(monkeypatch, status_codes):
 
         def __init__(self, status_code):
             self.status_code = status_code
+            self.text = bodies.get(status_code, "")
 
         def raise_for_status(self):
             if self.status_code >= 400:
@@ -2580,11 +2584,11 @@ def test_openai_backend_retries_transient_5xx(monkeypatch):
 
 
 def test_openai_backend_gives_up_after_bounded_5xx_retries(monkeypatch):
-    # A persistent 5xx exhausts the retry budget and raises — it must not loop forever.
-    import httpx
-    posts = _fake_httpx_sequence(monkeypatch, [502])
+    # A persistent 5xx exhausts the retry budget and raises — it must not loop forever — with
+    # the provider's own error body in the message.
+    posts = _fake_httpx_sequence(monkeypatch, [502], bodies={502: "upstream down"})
     _no_sleep(monkeypatch)
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(mc.ModelError, match="HTTP 502: upstream down"):
         asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
                                               base_url="https://api.deepseek.com"))
     assert len(posts) == mc._TRANSIENT_RETRIES + 1
@@ -2600,6 +2604,62 @@ def test_openai_backend_never_retries_429(monkeypatch):
                                               base_url="https://api.deepseek.com"))
     assert len(posts) == 1
     assert delays == []
+
+
+@pytest.mark.parametrize("code,body", [
+    (401, '{"error": {"message": "Incorrect API key provided"}}'),
+    (403, '{"error": "forbidden"}'),
+    (402, '{"error": "payment required"}'),
+    (429, '{"error": {"code": "insufficient_quota", "message": "You exceeded your current quota"}}'),
+])
+def test_openai_backend_raises_provider_auth_error_for_key_and_billing_failures(monkeypatch, code, body):
+    """A bad key or an exhausted quota fails every call the same way, so it must surface as the
+    session-wide ProviderAuthError — not a per-document failure, and (for OpenAI's quota 429) not
+    a rate limit `--wait` would sleep on forever."""
+    posts = _fake_httpx_sequence(monkeypatch, [code], bodies={code: body})
+    _no_sleep(monkeypatch)
+    with pytest.raises(mc.ProviderAuthError):
+        asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk", 8000,
+                                              base_url="https://api.openai.com/v1"))
+    assert len(posts) == 1
+
+
+def test_openai_backend_retries_transport_errors(monkeypatch):
+    import httpx
+    calls = []
+
+    class FakeResp:
+        status_code = 200
+        headers = {}
+        text = ""
+        def json(self):
+            return {"choices": [{"message": {"content": '{"name": "Acme"}'}}],
+                    "usage": {"prompt_tokens": 10, "completion_tokens": 5}}
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            calls.append(url)
+            if len(calls) == 1:
+                raise httpx.ConnectError("connection reset")
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    _no_sleep(monkeypatch)
+    out = asyncio.run(mc._openai_complete_async("p", "deepseek-v4-flash", SCHEMA, "sk-ds", 8000,
+                                                base_url="https://api.deepseek.com"))
+    assert len(calls) == 2 and '"Acme"' in out["text"]
+
+
+def test_acomplete_json_lets_provider_auth_error_through(monkeypatch):
+    async def boom(*a, **k):
+        raise mc.ProviderAuthError("bad key")
+    monkeypatch.setitem(mc._ABACKENDS, "claude-api", boom)
+    monkeypatch.setattr(mc.auth, "resolve_auth", lambda *a, **k: {"mode": "api-key", "key": "sk"})
+    with pytest.raises(mc.ProviderAuthError):
+        asyncio.run(mc.acomplete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api"))
 
 
 # ── agent SDK: built-in tools stay out of the request (D145, #475) ─────────────

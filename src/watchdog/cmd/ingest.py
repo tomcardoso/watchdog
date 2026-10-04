@@ -250,10 +250,10 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
     """Read-only preview of what an ingest run would do — the doc/page/token cost estimate and
     which models would run each stage — shown before any ingest confirm prompt, mirroring
     `--estimate`'s lock-free scan (#269, #325). None when the queue is empty."""
-    from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate
+    from watchdog.pipeline.ingest_setup import cost_estimate, needs_extraction, scan_queue
     from watchdog.cmd.auth import resolve_auth
     from watchdog.cmd.base import CONFIG_FILE
-    queue_files = scan_queue(vault)
+    queue_files = needs_extraction(vault, scan_queue(vault))
     if not queue_files:
         return None
     config: dict = {}
@@ -438,7 +438,8 @@ def _offer_ingest(args, vault: Path) -> dict | None:
         estimate_line, models_line = preview
         print(estimate_line)
         print(models_line)
-    n_docs = _count_queued(vault)
+    from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
+    n_docs = len(needs_extraction(vault, scan_queue(vault)))
     if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
         return cmd_ingest(args, confirm=False, skip_preview=True)
     else:
@@ -851,25 +852,12 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     from watchdog.pipeline import orchestrate as _orch
     from watchdog.pipeline.ingest_setup import run as is_run
 
-    queue_dir = vault / ".watchdog" / "queue"
-    queued = list(queue_dir.glob("*.json")) if queue_dir.exists() else []
-
-    # A prior run may have left a batch un-finalized (e.g. a rate limit hit during synthesis).
-    # A new ingest resets those inputs, so ask what to do rather than silently discarding them.
-    wipe_pending = True
+    # A prior run may have left a batch un-finalized — `dig` stages without finalizing, and a rate
+    # limit or Ctrl+C can stop `bark` partway. Nothing in it is ever thrown away: every staged
+    # extraction is committed by the next finalize, whichever run that is.
     if _orch.has_pending_finalization(vault):
-        if not queued:
-            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{_DIM} — run "
-                  f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} to complete it.{_RESET}\n")
-            return
-        # A programmatic caller (run_benchmark.py driving cmd_extract directly, not a human at
-        # `watchdog dig`) must never block on the merge/discard/finalize pick below — it has no
-        # way to answer it (#494). Fail loud instead of hanging on an invisible prompt.
-        if non_interactive:
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is pending finalization in "
-                     f"this vault — refusing to prompt for a decision in a non-interactive run.\n"
-                     f"  Run {_CYAN}watchdog bark{_RESET} to finalize it, or clear the vault's "
-                     f"pending state, then retry.\n")
+        from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
+        new_docs = scan_queue(vault) if force else needs_extraction(vault, scan_queue(vault))
         p = _orch.pending_finalization(vault)
         bits = []
         if p["docs"]:
@@ -877,43 +865,45 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         if p["entities"]:
             bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
         detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
-        print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
-        print(f"  {_DIM}A new ingest resets it — what would you like to do?{_RESET}")
-        # `dig` never finalizes in the same run it's invoked from — "then finalize everything
-        # together" would be wrong there, since merging just carries the old batch's state
-        # forward for a later `watchdog bark` (#456). For the same reason, `dig` drops the
-        # "finalize it now" choice entirely: dig-by-definition stops before finalization, so
-        # offering to finalize inline here would contradict the command it was invoked as (#456).
-        merge_label = (
-            f"Merge it into this ingest {_DIM}— extract the new docs; a later "
-            f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} finalizes both batches together{_RESET}"
-            if is_dig else
-            f"Merge it into this ingest {_DIM}— extract the new docs, then finalize everything together{_RESET}")
-        discard_label = (
-            f"Discard it and ingest only the new docs {_DIM}— safe: never touches what's already "
-            f"extracted, just clears state kept for a future bark{_RESET}")
-        options = [merge_label]
-        if not is_dig:
-            options.append(
+        if is_dig:
+            # `dig` never finalizes, so there's nothing to decide: the staged batch waits for the
+            # next `watchdog bark`, which finalizes it together with whatever this run extracts.
+            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM} — "
+                  f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} will finalize it together with "
+                  f"this run.{_RESET}")
+            if not new_docs:
+                print(f"  {_DIM}Nothing new to extract.{_RESET}\n")
+                return
+        elif not new_docs:
+            # Bare `watchdog` (or the deprecated `ingest`) with nothing new to read: the only work
+            # left is the finalize, so do it rather than extracting nothing and stopping.
+            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM} — "
+                  f"finalizing it now.{_RESET}")
+            return _run_finalize(vault, post_model, post_effort, post_backend,
+                                 skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
+        else:
+            # A programmatic caller must never block on the pick below — it has no way to answer
+            # it (#494). Fail loud instead of hanging on an invisible prompt.
+            if non_interactive:
+                sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is pending finalization in "
+                         f"this vault — refusing to prompt for a decision in a non-interactive run.\n"
+                         f"  Run {_CYAN}watchdog bark{_RESET} to finalize it, then retry.\n")
+            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
+            options = [
+                f"Finalize it together with the new documents {_DIM}— extract the new docs, then "
+                f"finalize everything in one pass{_RESET}",
                 f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
-                f"the briefing); ingest the new docs after{_RESET}")
-        options.append(discard_label)
-        choice = interactive.pick(options, 0, title="Pending batch")
-        if choice is interactive.CANCELLED:
-            return
-        discard_choice = len(options) - 1
-        if not is_dig and choice == 1:         # finalize now, then stop
-            out = _run_finalize(vault, post_model, post_effort, post_backend,
-                                skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
-            if not (out.get("error") or out.get("briefing_error")):
-                print(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n")
-            return
-        if choice == discard_choice:           # discard
-            wipe_pending = True
-            print(f"  {_DIM}Discarding the pending batch — ingesting only the new documents.{_RESET}")
-        else:                                  # default: merge (non-destructive)
-            wipe_pending = False
-            print(f"  {_DIM}Merging the pending batch into this ingest.{_RESET}")
+                f"the briefing); ingest the new docs after{_RESET}",
+            ]
+            choice = interactive.pick(options, 0, title="Pending batch")
+            if choice is interactive.CANCELLED:
+                return
+            if choice == 1:                    # finalize now, then stop
+                out = _run_finalize(vault, post_model, post_effort, post_backend,
+                                    skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
+                if not (out.get("error") or out.get("briefing_error")):
+                    print(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n")
+                return out
 
     from watchdog.pipeline import batch_extract
     from watchdog.model_client import BATCH_BACKENDS
@@ -923,7 +913,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # is_run normally only acquires the lock when the queue is non-empty.
     batch_pending = extract_backend in BATCH_BACKENDS and batch_extract.read_state(vault) is not None
 
-    result = is_run(vault, wipe_pending=wipe_pending, force_lock=batch_pending)
+    result = is_run(vault, wipe_pending=False, force_lock=batch_pending)
     if "error" in result:
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
     if result["total"] == 0 and not batch_pending:
@@ -934,7 +924,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 f"\n  {_quarantine_notice(failed)} Nothing else is queued."
                 f"{_DIM} Requeue {'them' if failed != 1 else 'it'} and retry now?{_RESET}", default=True):
             _requeue_failed(vault)
-            result = is_run(vault, wipe_pending=wipe_pending, force_lock=batch_pending)
+            result = is_run(vault, wipe_pending=False, force_lock=batch_pending)
             if "error" in result:
                 sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
         if result["total"] == 0:
@@ -960,10 +950,14 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
               f"of {in_queue} queued document{'s' if in_queue != 1 else ''}"
               + (f"; {held} stay{'s' if held == 1 else ''} queued or already extracted"
                  if held else "") + f".{_RESET}")
-    q = len(result["queue_files"])
+    from watchdog.pipeline.ingest_setup import needs_extraction
+    # What this run will actually send to the model — queue files outlive extraction, so documents
+    # already staged or committed are counted out unless --force re-extracts them.
+    to_send = result["queue_files"] if force else needs_extraction(vault, result["queue_files"])
+    q = len(to_send)
     if q and not skip_preview:
         from watchdog.pipeline.ingest_setup import cost_estimate
-        est = cost_estimate(vault, result["queue_files"], _effective_extract_backend(extract_backend, a["mode"]))
+        est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]))
         print(f"\n{_format_cost_estimate(est)}")
         print(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
                                   post_backend, post_model, classify_effort, extract_effort, post_effort,
@@ -1148,7 +1142,9 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
     rate_limited = summary.get("rate_limited")
     batch_pending = summary.get("batch_pending")
     n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
-    if rate_limited:
+    if summary.get("auth_error"):
+        headline = f"{_YELLOW}Ingest stopped — the provider refused the credentials or account{_RESET}"
+    elif rate_limited:
         headline = f"{_YELLOW}Ingest paused — rate limit{_RESET}"
     elif cancelled:
         headline = f"{_YELLOW}Ingest stopped{_RESET}"
@@ -1184,7 +1180,8 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
             # the vault yet — the extracted documents are staged and a re-run picks up where it
             # stopped, so don't imply they're already saved.
             print(f"  {_DIM}Nothing was written to the vault yet; re-run {_RESET}"
-                  f"{_CYAN}watchdog bark{_RESET}{_DIM} once your rate limit resets to finish the ingest.{_RESET}")
+                  f"{_CYAN}watchdog bark{_RESET}{_DIM} once the cause above is fixed (for a rate "
+                  f"limit, once it resets) to finish the ingest.{_RESET}")
         else:
             print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
                   f"{_CYAN}watchdog bark{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
@@ -1227,6 +1224,8 @@ def exit_code_for(result) -> int:
     keep getting the dict back, not a `SystemExit`."""
     if not isinstance(result, dict):
         return 0
+    if result.get("auth_error"):
+        return 1   # not resumable by re-running — the key or the account needs fixing first
     if result.get("rate_limited") or result.get("batch_pending"):
         return 2
     if result.get("cancelled") or any(r.get("status") == "cancelled" for r in result.get("results", [])):
@@ -1363,7 +1362,8 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     if out.get("error") or out.get("briefing_error"):
         reason = out.get("error") or out.get("briefing_error")
         print(f"\n  {_YELLOW}Finalize didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
-        print(f"  {_DIM}Re-run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} once the limit resets.{_RESET}\n")
+        print(f"  {_DIM}Nothing is lost — re-run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} once the "
+              f"cause above is fixed (for a rate limit, once it resets).{_RESET}\n")
         return out
     n = out.get("synthesized", 0)
     parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]

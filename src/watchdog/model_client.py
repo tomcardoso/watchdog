@@ -352,6 +352,30 @@ class RateLimitError(RuntimeError):
         self.rate_limit = rate_limit
 
 
+class ProviderAuthError(RuntimeError):
+    """The provider refused the credentials or the account can't pay — a bad or revoked key
+    (401/403), an exhausted credit balance or quota. Like :class:`RateLimitError` this is
+    session-wide, not per-document: every later call would fail the same way, so the
+    orchestrator stops the run and leaves documents queued instead of quarantining each one.
+    Unlike a rate limit it never clears by waiting, so `--wait` doesn't sleep on it."""
+
+
+# Every failure a single model call can end in. Post-ingest stages catch all three and degrade
+# (skip synthesis, keep the timeline untouched) rather than crash a run whose documents are saved.
+CALL_FAILURES = (ModelError, RateLimitError, ProviderAuthError)
+
+# Body text that marks a 400/402/429 as an account problem rather than a bad request or a rate
+# limit: Anthropic's "credit balance is too low", OpenAI's `insufficient_quota` (sent as a 429,
+# which would otherwise read as a rate limit and have `--wait` sleep on it forever).
+_BILLING_HINTS = ("credit balance", "insufficient_quota", "billing", "quota exceeded",
+                  "exceeded your current quota", "payment required")
+
+
+def _looks_like_billing(*texts: str) -> bool:
+    blob = " ".join(t for t in texts if t).lower()
+    return any(h in blob for h in _BILLING_HINTS)
+
+
 # Substrings that mark a rate/usage-limit error in a result, notice, or exception text.
 _RATE_LIMIT_HINTS = ("rate_limit", "rate limit", "session limit", "usage limit",
                      "too many requests")
@@ -363,6 +387,18 @@ def _looks_like_rate_limit(api_status, *texts: str) -> bool:
         return True
     blob = " ".join(t for t in texts if t).lower()
     return any(h in blob for h in _RATE_LIMIT_HINTS)
+
+
+_AUTH_HINTS = ("invalid api key", "authentication_error", "invalid x-api-key", "/login",
+               "oauth token has expired")
+
+
+def _looks_like_auth_failure(api_status, *texts: str) -> bool:
+    """True for a 401/403, a billing refusal, or CLI text reporting a bad or missing login."""
+    if api_status in (401, 403):
+        return True
+    blob = " ".join(t for t in texts if t).lower()
+    return any(h in blob for h in _AUTH_HINTS) or _looks_like_billing(blob)
 
 
 @dataclass
@@ -710,9 +746,13 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         # The SDK raises on a CLI error result via two paths — a ProcessError rewritten to
         # "Claude Code returned an error result: …", or a {type:error} stream message. If it
         # was a rate limit, raise a typed, actionable error instead of an opaque one.
+        if _looks_like_auth_failure(api_status, out["text"], str(e)):
+            raise ProviderAuthError(f"Claude Code could not authenticate: {out['text'] or e}") from e
         if rejected or _looks_like_rate_limit(api_status, notice, out["text"], str(e)):
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         raise
+    if is_error and _looks_like_auth_failure(api_status, out["text"]):
+        raise ProviderAuthError(f"Claude Code could not authenticate: {out['text']}")
     if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
     return out
@@ -843,9 +883,17 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
             resp = await stream.get_final_message()
             headers = stream.response.headers
     except anthropic.RateLimitError as e:   # 429 — surface as the shared typed error
+        if _looks_like_billing(str(e)):
+            raise ProviderAuthError(f"Anthropic account can't pay for this call: {e}") from e
         raise RateLimitError(str(e) or "Claude API rate limit reached",
                              rate_limit=_rate_limit_headers(e.response.headers,
                                                             _ANTHROPIC_RATE_LIMIT_HEADERS)) from e
+    except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+        raise ProviderAuthError(f"Anthropic rejected the API key: {e}") from e
+    except anthropic.APIStatusError as e:
+        if _looks_like_billing(str(e)):
+            raise ProviderAuthError(f"Anthropic account can't pay for this call: {e}") from e
+        raise
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
@@ -1121,10 +1169,17 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     import truststore
     ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     async with httpx.AsyncClient(timeout=600, verify=ssl_context) as client:
-        # Bounded retry on 5xx only (#354) — parity with the Anthropic SDK's built-in transient
-        # retry. 429 is excluded: it raises RateLimitError below on the first response.
+        # Bounded retry on 5xx and on transport failures (a dropped connection, a timeout) —
+        # parity with the Anthropic SDK's built-in transient retry (#354). 429 is excluded: it
+        # raises RateLimitError below on the first response.
         for attempt in range(_TRANSIENT_RETRIES + 1):
-            resp = await client.post(url, headers=headers, json=body)
+            try:
+                resp = await client.post(url, headers=headers, json=body)
+            except httpx.TransportError:
+                if attempt == _TRANSIENT_RETRIES:
+                    raise
+                await asyncio.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
+                continue
             if resp.status_code < 500 or attempt == _TRANSIENT_RETRIES:
                 break
             await asyncio.sleep(_TRANSIENT_BACKOFF_S * (attempt + 1))
@@ -1134,9 +1189,18 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     # doesn't send them, so a DeepSeek/Gemini/local/OpenRouter call just carries no rate_limit
     # rather than a misattributed one.
     rate_limit = _rate_limit_headers(resp.headers, _OPENAI_RATE_LIMIT_HEADERS)
-    if resp.status_code == 429:
-        raise RateLimitError(f"{base_url} rate limit reached", rate_limit=rate_limit)
-    resp.raise_for_status()
+    if resp.status_code >= 400:
+        # The provider's own JSON error body is the only place the real reason lives ("invalid
+        # model", "context length exceeded", "insufficient_quota") — keep it in the message.
+        detail = (resp.text or "").strip()[:500]
+        if resp.status_code in (401, 403):
+            raise ProviderAuthError(f"{base_url} rejected the API key (HTTP {resp.status_code}): {detail}")
+        if resp.status_code == 402 or _looks_like_billing(detail):
+            raise ProviderAuthError(f"{base_url} account can't pay for this call "
+                                    f"(HTTP {resp.status_code}): {detail}")
+        if resp.status_code == 429:
+            raise RateLimitError(f"{base_url} rate limit reached", rate_limit=rate_limit)
+        raise ModelError(f"{base_url} returned HTTP {resp.status_code}: {detail}")
     data = resp.json()
     choices = data.get("choices") or []
     text = (choices[0].get("message", {}).get("content") or "") if choices else ""
@@ -1433,7 +1497,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         try:
             out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
                                                   api_key, max_tokens, effort_arg, task)
-        except (RateLimitError, ModelError):
+        except (RateLimitError, ModelError, ProviderAuthError):
             raise
         except Exception as e:                  # any backend/transport failure → typed error
             raise ModelError(f"{chosen} backend error: {e}") from e
