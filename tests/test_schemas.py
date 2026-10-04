@@ -101,17 +101,18 @@ def test_extraction_has_no_morgue_document_type():
     """Same dead-weight pattern as document's stamped fields — orchestrate._stamp_document
     unconditionally derives this as slugify(document_type), never reading the model's value."""
     assert "morgue_document_type" not in schemas.EXTRACTION["properties"]
+    assert "morgue_document_type" not in schemas.SECTION["properties"]
 
 
 def test_section_tolerates_explicit_null_on_its_optional_string_fields():
     """#490: gpt-nano's sectioned extraction hard-failed with 'None is not of type string' on
-    exactly these three fields — OpenAI's json_object mode gives no wire-level shape enforcement,
+    exactly these fields — OpenAI's json_object mode gives no wire-level shape enforcement,
     so a model that means 'nothing for this section' sometimes emits an explicit null instead of
     omitting the key. Every downstream reader already treats null and absent the same way, so
     these being nullable rather than bare 'string' should never fail validation."""
     import jsonschema
     section = {"document": {"key_facts": []}, "entities": [], "morgue_entity_id": None,
-              "morgue_document_type": None, "observations": None}
+              "observations": None}
     errors = list(jsonschema.Draft202012Validator(schemas.SECTION).iter_errors(section))
     assert not errors, [e.message for e in errors]
 
