@@ -54,6 +54,7 @@ from watchdog.model_catalog import (
     fallback_context_window,
     fallback_is_reasoning,
     _split_deepseek_thinking,
+    canonical_id,
     fallback_max_output_tokens,
     price_multiplier,
     resolve_model_id,
@@ -222,7 +223,7 @@ def _configured_local_context_window() -> int | None:
 def context_window(model: str | None, backend: str | None = None) -> int:
     """Token context window for a stage's model, for provider-aware sectioning (#321).
 
-    `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-v4-flash`,
+    `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-flash`,
     `gpt-5-mini`), or None for the default tier — resolved first, then looked up in the model
     catalog, then the substring fallback table. Unlisted ids fall back to a conservative default
     rather than raising, so a new or misspelled id degrades to safe (small-chunk) sectioning
@@ -960,7 +961,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     prices flat, and 2.0 for a DeepSeek call landing in one of its peak windows. It multiplies the
     finished cost rather than each rate because the multiplier applies to every column equally,
     which is how DeepSeek states it and the only shape `price_periods` allows."""
-    rates = _OPENAI_PRICING.get(model_id)
+    rates = _OPENAI_PRICING.get(canonical_id(model_id))
     if not rates or not usage:
         return None
     inp, outp, cached_rate, write_rate = rates

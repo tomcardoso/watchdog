@@ -2750,7 +2750,7 @@ def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract-section", model="gpt-5.4-nano", backend="openai",
+            "extract-section", model="gpt-5.4-mini", backend="openai",
             usage={"prompt_tokens": 20000, "completion_tokens": 5000,
                   "prompt_tokens_details": {"cached_tokens": 5900}},
             cost_usd=0.01, latency_s=1.0)
@@ -2796,7 +2796,7 @@ def test_record_usage_reads_cache_read_tokens_from_deepseek_usage_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract-section", model="deepseek-v4-flash", backend="deepseek",
+            "extract-section", model="deepseek-flash", backend="deepseek",
             usage={"prompt_tokens": 20000, "completion_tokens": 5000,
                   "prompt_cache_hit_tokens": 3200},
             cost_usd=0.01, latency_s=1.0)

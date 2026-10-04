@@ -393,8 +393,10 @@ what it changes. It keeps one Summary and suggests `/watchdog-entity` when both 
   JSON mode plus the schema in the prompt (D98). `local`/`openrouter` take a configured base URL;
   `local` takes an optional `local_context_window` (D139). A failed call retries on the same model
   and effort (I4). Auth and billing failures raise `ProviderAuthError` (D242).
-- **Catalogue (D142, D217).** `model_catalog.yaml` single-sources ids, pricing (including
-  time-of-day `price_periods`), context windows, output caps, tokenizer ratios and capability flags.
+- **Catalogue (D142, D217, D249, D250).** `model_catalog.yaml` single-sources ids, pricing (including
+  time-of-day, optionally weekday-only, `price_periods`), context windows, output caps, tokenizer
+  ratios and capability flags. A retired provider id lives on its replacement's `legacy_ids`. A
+  vendor-deprecated model is removed; a merely legacy one stays.
 - **Batch backends (D52, D144, D169).** `claude-batch` and `openai-batch` submit the whole queue to
   the provider's Batch API at half price; `dig` submits and exits, and a later `dig` collects
   (`batch-pending.json`, one batch per vault). Each document resolves its own skill first.

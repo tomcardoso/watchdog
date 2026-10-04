@@ -1272,10 +1272,11 @@ def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
 
 
 def test_pick_model_interactive_custom_free_text(monkeypatch):
-    # "18" is "Type my own…" — shifted down by 1 when Opus 5 (#635) joined the Claude group
-    # (previously 17, shifted down by 3 when gemini-2.5-flash/-flash-lite/-pro were dropped from
-    # the catalog, #583, D182).
-    answers = iter(["18", "openai:my-custom-model"])
+    # "19" is "Type my own…" — one more for each of Opus 5.5 and GPT-6 Luna joining the catalog
+    # (D249) and one fewer for GPT-5.4 Nano leaving it (previously 18, after Opus 5 (#635) joined
+    # the Claude group; 17 before that, after gemini-2.5-flash/-flash-lite/-pro were dropped, #583,
+    # D182).
+    answers = iter(["19", "openai:my-custom-model"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
 
@@ -2526,7 +2527,7 @@ def test_resolve_stage_claude_batch_backend():
 
 def test_resolve_stage_non_claude_backend_keeps_raw_model():
     from watchdog.cmd.ingest import _resolve_stage
-    assert _resolve_stage("deepseek:deepseek-v4-flash", None) == ("deepseek", "deepseek-v4-flash")
+    assert _resolve_stage("deepseek:deepseek-flash", None) == ("deepseek", "deepseek-flash")
     assert _resolve_stage("openai:gpt-5-mini", None) == ("openai", "gpt-5-mini")
 
 
@@ -3336,13 +3337,13 @@ def test_ingest_parser_accepts_finalizer_stage_models(configured, monkeypatch):
     monkeypatch.setattr(sys, "argv", [
         "watchdog", "ingest",
         "--finalizer-reconciliation-model", "opus",
-        "--finalizer-synthesis-model", "deepseek:deepseek-v4-flash",
+        "--finalizer-synthesis-model", "deepseek:deepseek-flash",
         "--finalizer-timeline-model", "openai:gpt-5-mini",
         "--finalizer-briefing-model", "haiku",
     ])
     cli.main()
     assert seen == {
-        "reconciliation": "opus", "synthesis": "deepseek:deepseek-v4-flash",
+        "reconciliation": "opus", "synthesis": "deepseek:deepseek-flash",
         "timeline": "openai:gpt-5-mini", "briefing": "haiku",
     }
 
