@@ -24,10 +24,13 @@ def _vault(name: str | None) -> tuple[Path, str]:
     return vault, (info or {}).get("name") or vault.name
 
 
-def prompt_for(question: str | None) -> str | None:
-    """The session's first prompt: the query skill on `question`, or nothing."""
+def prompt_for(question: str | None, has_skill: bool = True) -> str | None:
+    """The session's first prompt: the query skill on `question`, the bare question when the vault
+    has no `/watchdog-query` (an unknown slash command would lose it), or nothing."""
     question = " ".join((question or "").split())
-    return f"/watchdog-query {question}" if question else None
+    if not question:
+        return None
+    return f"/watchdog-query {question}" if has_skill else question
 
 
 def cmd_ask(args) -> None:
@@ -36,7 +39,8 @@ def cmd_ask(args) -> None:
         sys.exit(f"Error: project directory not found: {vault}")
     question = " ".join(getattr(args, "question", None) or [])
     print(f"\n  {_BOLD}Opening Claude Code in {name}…{_RESET}")
-    if not (vault / ".claude" / "commands" / "watchdog-query.md").exists():
+    has_skill = (vault / ".claude" / "commands" / "watchdog-query.md").exists()
+    if not has_skill:
         print(f"  {_YELLOW}This vault has no /watchdog-query command.{_RESET} "
               f"{_DIM}Run{_RESET} {_CYAN}watchdog settings refresh-skills{_RESET} {_DIM}to install it.{_RESET}")
     if question:
@@ -46,4 +50,4 @@ def cmd_ask(args) -> None:
         print(f"  {_DIM}Ask anything about the documents — for a cited answer saved to queries/, "
               f"start with{_RESET} {_CYAN}/watchdog-query{_RESET}{_DIM}.{_RESET}")
     print(f"  {_DIM}Exit with Ctrl-D.{_RESET}\n")
-    _launch_claude(vault, prompt_for(question), model=getattr(args, "model", None))
+    _launch_claude(vault, prompt_for(question, has_skill), model=getattr(args, "model", None))
