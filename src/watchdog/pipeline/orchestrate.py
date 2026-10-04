@@ -786,7 +786,7 @@ async def _verify_facts(vault, sha, base, extraction, *, model, backend, filenam
         r = await _call_model(task="verify", model=model, backend=backend, prompt=prompt,
                               schema=schemas.VERIFY, effort=_verifier_effort(),
                               filename=filename, detail=f"{detail} (verify)", vault=vault)
-    except model_client.RateLimitError:
+    except (model_client.RateLimitError, model_client.ProviderAuthError):
         raise
     except Exception as e:
         _log(vault, f"WARN {filename}: verification pass failed, keeping extraction as-is ({e})")
@@ -2210,14 +2210,14 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     schema=schemas.SYNTHESIS,
                     prompt=prompts.build_synthesis_prompt({"entities": chunk}), effort=post_effort,
                     detail=f"call {n} of {len(chunks)}" if len(chunks) > 1 else None, vault=vault)
-            except (model_client.ModelError, model_client.RateLimitError) as e:
+            except model_client.CALL_FAILURES as e:
                 # Synthesis is enrichment: leave the structured claims already in the notes
                 # rather than crashing. The staged artifacts persist, so a later finalize redoes it.
                 out["error"] = str(e)
                 failed += len(chunk)
                 _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} for {len(chunk)} "
                      f"entit{'ies' if len(chunk) != 1 else 'y'} — {e}{_RESET}")
-                if isinstance(e, model_client.RateLimitError):
+                if isinstance(e, (model_client.RateLimitError, model_client.ProviderAuthError)):
                     failed += sum(len(c) for c in chunks[n:])
                     break   # every later chunk would hit the same limit
                 continue
@@ -2263,7 +2263,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     prompt=prompts.build_timeline_dedup_prompt(col["date"], events),
                     effort=post_effort, detail=col["date"], vault=vault)
             kept = _select_kept(events, r.parsed.get("groups"))
-        except (model_client.ModelError, model_client.RateLimitError):
+        except model_client.CALL_FAILURES:
             # Dedup failed (e.g. rate limit): leave the canonical AND its raws untouched so the
             # next ingest retries this collision cleanly. Writing the canonical+raw union back
             # here would bake in duplicate rows that compound on every later run (#250).
@@ -2287,7 +2287,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
                 prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]),
                 detail=grp["month"], vault=vault)
-        except (model_client.ModelError, model_client.RateLimitError):
+        except model_client.CALL_FAILURES:
             continue   # leave the month untouched rather than risk a bad fold
         timeline.apply_precision_matches(vault, grp, r.parsed.get("matches") or [])
     n_dates, n_events = timeline.cmd_rebuild_timeline(vault, quiet=True)
@@ -2342,26 +2342,22 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 effort=post_effort, vault=vault)
             out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
                                               n_new_requests)
-        except model_client.RateLimitError as e:
+        except (model_client.RateLimitError, model_client.ProviderAuthError) as e:
             out["briefing_error"] = str(e)
             _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
         except model_client.ModelError as e:
-            # Extraction has already run through this same backend, so a briefing ModelError is
-            # almost always an output-cap truncation: the briefing's arrays (what_was_ingested/
-            # connections/leads/…) scale with batch size, so a big/dense batch can overrun even
-            # the 16k-token ceiling and truncate the JSON. That's deterministic — a plain re-run
-            # feeds the identical input into the identical ceiling and fails the same way (#296)
-            # — so we fail loudly with the real remedy (a smaller batch) rather than retrying or
-            # silently shipping a degraded briefing. Everything else (per-doc facts, entity
-            # notes, timeline) is already on disk; only the synthesized briefing is lost, and the
-            # pending batch can be discarded on the next ingest to unstick. Streaming (an
-            # unbounded ceiling) is future work. `_fit_briefing_inputs` (#696) now condenses an
-            # oversized batch and tells the model to summarize rather than list, so this is the
-            # backstop, no longer the expected outcome of a large batch.
+            # Everything else (per-doc facts, entity notes, timeline) is already on disk; only the
+            # briefing is lost, and the batch stays pending so `watchdog bark` retries it. A
+            # truncation is deterministic — the same input hits the same output cap (#296) — so it
+            # gets the real remedy; `_fit_briefing_inputs` (#696) makes that the backstop, not the
+            # expected outcome of a large batch.
             out["briefing_error"] = str(e)
-            _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was exceeded "
-                 f"(this batch is too large to summarize in one pass). Re-ingest it in smaller "
-                 f"batches; everything else was written.{_RESET}")
+            if e.truncated:
+                _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was "
+                     f"exceeded (this batch is too large to summarize in one pass). Finalize it in "
+                     f"smaller batches; everything else was written.{_RESET}")
+            else:
+                _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — {e}{_RESET}")
 
     # 4. Watch-word scan (deterministic, no model; #165). Scans this run's documents against
     # the vault-root watchlist.md and writes briefings/alerts-<date>.md. No-op if the list is empty.
@@ -2405,7 +2401,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 schema=schemas.REQUEST_DEDUP,
                 prompt=prompts.build_request_dedup_prompt(open_), effort=post_effort, vault=vault)
             n_folded = _apply_request_dedup(vault, open_, r.parsed.get("groups"))
-        except (model_client.ModelError, model_client.RateLimitError):
+        except model_client.CALL_FAILURES:
             n_folded = 0   # leave requests unmerged; a later run with new activity retries
         if n_folded:
             out["requests_folded"] = n_folded
@@ -2628,7 +2624,7 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
                 task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
                 schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
                 detail=f"{c_ents} entities · {c_pairs} pairs · {kb:.1f} KB{part}", vault=vault)
-        except (model_client.ModelError, model_client.RateLimitError) as e:
+        except model_client.CALL_FAILURES as e:
             # Any failed chunk defers the whole batch, exactly as the single call did: applying
             # the merges the earlier chunks found would commit half-reconciled state (I7).
             result["error"] = str(e)
@@ -2714,8 +2710,31 @@ def _clear_post_ingest_inputs(vault: Path) -> None:
 
 
 def has_pending_finalization(vault: Path) -> bool:
-    """True if an extracted-but-not-finalized batch is sitting in tmp (e.g. a rate-limited run)."""
-    return any((vault / ".watchdog" / "tmp").glob("result_*.json"))
+    """True if an extracted-but-not-finalized batch is waiting: per-document results in tmp (e.g. a
+    rate-limited run), or a staged extraction not yet committed to the vault. The second matters on
+    its own — results can be gone while the staged artifact remains, and a document in that state
+    used to be skipped by `dig` ("already extracted") and refused by `bark` ("nothing to finalize")
+    indefinitely."""
+    return any((vault / ".watchdog" / "tmp").glob("result_*.json")) or bool(_pending_commits(vault))
+
+
+def _restore_missing_results(vault: Path, shas: list[str]) -> None:
+    """Rebuild `result_<sha>.json` from the staged extraction for any pending commit that lacks
+    one, so the briefing covers every document this finalize commits rather than only those whose
+    per-run result file happened to survive."""
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    for sha in shas:
+        result_path = tmp / f"result_{sha}.json"
+        if result_path.exists():
+            continue
+        extraction = _read_json_or(vault / ".watchdog" / "extracted" / f"{sha}.json", None)
+        if not isinstance(extraction, dict):
+            continue
+        queue = _read_json_or(vault / ".watchdog" / "queue" / f"{sha}.json", {})
+        filename = (extraction.get("document") or {}).get("filename") or queue.get("filename") or sha[:12]
+        result = _compact_result(sha, filename, extraction, queue.get("near_dup") or {}, None, {})
+        result_path.write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
 
 def pending_finalization(vault: Path) -> dict:
@@ -2781,6 +2800,7 @@ async def finalize(vault: Path, *, post_model: str = "haiku", brief: str | None 
         _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
 
     shas = _pending_commits(vault, force_shas=force_shas)
+    _restore_missing_results(vault, shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     if shas:
         _batch_exact_fold(vault, shas)
@@ -2924,7 +2944,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         stop_reason: dict = {}      # {"rate_limit": "<notice>"} when a limit stopped the batch
         tasks: list = []
 
-        def _request_stop(rate_limit: str | None = None, resets_at: int | None = None) -> None:
+        def _request_stop(rate_limit: str | None = None, resets_at: int | None = None,
+                          auth_error: str | None = None) -> None:
             """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
             if cancelled.is_set():
                 return
@@ -2932,6 +2953,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             if rate_limit:
                 stop_reason["rate_limit"] = rate_limit
                 stop_reason["resets_at"] = resets_at
+            if auth_error:
+                stop_reason["auth_error"] = auth_error
             for t in tasks:
                 t.cancel()
 
@@ -2997,6 +3020,18 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                 _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
                                      f"{_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
                             _request_stop(rate_limit=str(e), resets_at=e.resets_at)
+                        return {"sha256": sha, "filename": "", "status": "cancelled"}
+                    except model_client.ProviderAuthError as e:
+                        # A bad key or an empty balance fails every document the same way —
+                        # stop and leave them queued rather than quarantine each one.
+                        if not cancelled.is_set():
+                            print()
+                            _say(f"{_YELLOW}The provider refused this run{_RESET}{_DIM} — {e}{_RESET}")
+                            _say(f"{_DIM}Stopping; finished documents are saved and the rest stay "
+                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog auth"
+                                 f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}"
+                                 f"{_DIM}.{_RESET}")
+                            _request_stop(auth_error=str(e))
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
@@ -3067,7 +3102,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         cancelled_flag = cancelled.is_set()
         rate_limit_msg = stop_reason.get("rate_limit")
         rate_limit_resets_at = stop_reason.get("resets_at")
-        extra_summary = {}
+        extra_summary = {"auth_error": stop_reason["auth_error"]} if stop_reason.get("auth_error") else {}
 
     def by_status(s):
         return sum(1 for r in results if r.get("status") == s)
@@ -3083,13 +3118,19 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                "quarantined": quarantined, **extra_summary}
     if not pinned_skill:
         _nudge_skill_pin(results)
-    if summary["extracted"] and not cancelled_flag and skip_finalize:
+    # Finalize whenever something is waiting to be committed — this run's extractions, or a batch
+    # an earlier `dig` staged (a re-run that extracts nothing new used to skip finalize entirely
+    # and still report "Ingest complete"). Not while a submitted batch is still in flight with
+    # nothing extracted this run: its documents finalize when it is collected.
+    waiting = summary["extracted"] or (not extra_summary.get("batch_pending")
+                                       and has_pending_finalization(vault))
+    if waiting and not cancelled_flag and skip_finalize:
         # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
         # `watchdog bark` (possibly on a vault copy, possibly with a different
         # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
         # this point (`_finish_extraction` persisted `result_*.json` per document).
         summary["finalize_skipped"] = True
-    elif summary["extracted"] and not cancelled_flag:
+    elif waiting and not cancelled_flag:
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
             # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is

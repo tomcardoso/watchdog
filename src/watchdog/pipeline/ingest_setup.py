@@ -69,11 +69,18 @@ def limit_queue(vault: Path, queue_files: list[dict], limit: int | None,
         return queue_files
     if force:
         return queue_files[:limit]
+    return needs_extraction(vault, queue_files)[:limit]
+
+
+def needs_extraction(vault: Path, queue_files: list[dict]) -> list[dict]:
+    """The queued documents a run would actually send to the model: neither staged
+    (`.watchdog/extracted/<sha>.json`) nor already committed. Queue files outlive extraction, so
+    counting the whole queue overstates what a run sends — the public-records gate and the
+    pending-batch prompt both need this figure, not `len(queue_files)`."""
     extracted = vault / ".watchdog" / "extracted"
     documents = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
-    todo = [q for q in queue_files
+    return [q for q in queue_files
             if not (extracted / f"{q['sha256']}.json").exists() and q["sha256"] not in documents]
-    return todo[:limit]
 
 
 def _real_input_tokens(totals: dict, backend: str | None = None) -> int:

@@ -3360,124 +3360,67 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == (None, "haiku")
 
 
-def test_pending_batch_dialog_flags_spend_and_safety(wdg_home, tmp_path, monkeypatch):
-    """The pending-finalization dialog's "Finalize it now" and "Discard" options used to give
-    no hint that one spends real money right now and the other is actually safe/non-destructive
-    (#458) — a reader had to already know the internals to tell them apart."""
+def _pending_batch_setup(tmp_path, monkeypatch):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
-
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
     monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
     monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+    return vault
 
-    class _Stop(Exception):
-        pass
 
+class _Stop(Exception):
+    pass
+
+
+def test_pending_batch_dialog_offers_finalize_together_or_now(wdg_home, tmp_path, monkeypatch):
+    """With new documents queued and a batch pending, the guided walk asks whether to finalize
+    everything together or the pending batch first. There is no discard: every staged extraction
+    is committed by the next finalize, so discarding only ever stranded documents (D242)."""
+    from watchdog.cmd import ingest as ing
+    _pending_batch_setup(tmp_path, monkeypatch)
     monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
                         lambda *a, **k: (_ for _ in ()).throw(_Stop()))
-
     captured = {}
-
-    def _fake_pick(choices, *a, **k):
-        captured["choices"] = choices
-        return 0
-
-    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
-
+    monkeypatch.setattr(ing.interactive, "pick",
+                        lambda choices, *a, **k: captured.setdefault("choices", choices) and 0)
     with pytest.raises(_Stop):
         ing.cmd_ingest(args(), confirm=False)
-    finalize_label, discard_label = captured["choices"][1], captured["choices"][2]
-    assert "real model spend" in finalize_label
-    assert "safe" in discard_label
+    choices = captured["choices"]
+    assert len(choices) == 2
+    assert "together" in choices[0]
+    assert "real model spend" in choices[1]
+    assert not any("Discard" in c for c in choices)
 
 
-def test_pending_batch_merge_label_reflects_dig_vs_ingest(wdg_home, tmp_path, monkeypatch):
-    """`dig` never finalizes in the same run it's invoked from — its pending-finalization
-    dialog must not claim merging "finalizes everything together"; only `watchdog bark` does
-    that later. The old combined pipeline (bare `watchdog`/`ingest`) does finalize inline, so
-    keeps the original wording (#456)."""
-    from watchdog.cmd import auth as auth_module
+def test_dig_with_pending_batch_does_not_prompt(wdg_home, tmp_path, monkeypatch, capsys):
+    """`dig` never finalizes, so a pending batch leaves nothing to decide — it is noted and left
+    for the next `watchdog bark`, and extraction of the new documents goes ahead."""
     from watchdog.cmd import ingest as ing
-    from watchdog.pipeline import orchestrate as orch_module
-
-    vault = _vault_with_queued_doc(tmp_path)
-    monkeypatch.chdir(vault)
-    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
-    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
-    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
-
-    class _Stop(Exception):
-        pass
-
+    _pending_batch_setup(tmp_path, monkeypatch)
     monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
                         lambda *a, **k: (_ for _ in ()).throw(_Stop()))
-
-    captured = {}
-
-    def _fake_pick(choices, *a, **k):
-        captured["choices"] = choices
-        return 0   # Merge
-
-    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
-
+    monkeypatch.setattr(ing.interactive, "pick",
+                        lambda *a, **k: (_ for _ in ()).throw(AssertionError("no prompt for dig")))
     with pytest.raises(_Stop):
         ing.cmd_ingest(args(command="dig"), confirm=False)
-    dig_merge_label = captured["choices"][0]
-    assert "watchdog bark" in dig_merge_label
-    assert "then finalize everything together" not in dig_merge_label
-
-    captured.clear()
-    with pytest.raises(_Stop):
-        ing.cmd_ingest(args(), confirm=False)
-    bare_merge_label = captured["choices"][0]
-    assert "then finalize everything together" in bare_merge_label
+    assert "watchdog bark" in capsys.readouterr().out
 
 
-def test_pending_batch_dialog_omits_finalize_for_dig(wdg_home, tmp_path, monkeypatch):
-    """`watchdog dig` is documented to stop before finalization (#456) — its pending-finalization
-    dialog must not offer "Finalize it now", since dig itself can never carry that out. The bare
-    guided walk still offers all three options."""
-    from watchdog.cmd import auth as auth_module
+def test_bare_walk_with_only_a_pending_batch_finalizes_it(wdg_home, tmp_path, monkeypatch):
+    """Nothing new to read and a batch pending: the guided walk's only remaining work is the
+    finalize, so it runs it instead of extracting nothing and reporting "Ingest complete"."""
     from watchdog.cmd import ingest as ing
-    from watchdog.pipeline import orchestrate as orch_module
-
-    vault = _vault_with_queued_doc(tmp_path)
-    monkeypatch.chdir(vault)
-    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
-    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
-    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
-
-    class _Stop(Exception):
-        pass
-
-    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
-                        lambda *a, **k: (_ for _ in ()).throw(_Stop()))
-
-    captured = {}
-
-    def _fake_pick(choices, *a, **k):
-        captured["choices"] = choices
-        return len(choices) - 1   # discard, whatever index that lands on
-
-    monkeypatch.setattr(ing.interactive, "pick", _fake_pick)
-
-    # dig: only merge + discard, no "finalize it now".
-    with pytest.raises(_Stop):
-        ing.cmd_ingest(args(command="dig"), confirm=False)
-    assert len(captured["choices"]) == 2
-    assert not any("Finalize it now" in c for c in captured["choices"])
-    assert "Discard" in captured["choices"][1]
-
-    # bare guided walk: still all three, finalize included.
-    captured.clear()
-    with pytest.raises(_Stop):
-        ing.cmd_ingest(args(), confirm=False)
-    assert len(captured["choices"]) == 3
-    assert any("Finalize it now" in c for c in captured["choices"])
+    vault = _pending_batch_setup(tmp_path, monkeypatch)
+    sha = next((vault / ".watchdog" / "queue").glob("*.json")).stem
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text("{}")
+    called = {}
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: called.setdefault("yes", {"synthesized": 0}))
+    out = ing.cmd_ingest(args(), confirm=False)
+    assert called and out == {"synthesized": 0}
 
 
 # ── non_interactive: programmatic callers must never block on a human prompt (#494) ────────────
@@ -3506,22 +3449,11 @@ def test_cmd_ingest_non_interactive_refuses_pending_batch_instead_of_prompting(w
 def test_cmd_extract_threads_non_interactive_through_to_cmd_ingest(wdg_home, tmp_path, monkeypatch):
     """`cmd_extract` (the `dig` entry point run_benchmark.py actually calls) must pass its
     `non_interactive` kwarg through rather than dropping it."""
-    from watchdog.cmd import auth as auth_module
     from watchdog.cmd import ingest as ing
-    from watchdog.pipeline import orchestrate as orch_module
-
-    vault = _vault_with_queued_doc(tmp_path)
-    monkeypatch.chdir(vault)
-    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
-    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
-    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
-
-    def _boom(*a, **k):
-        raise AssertionError("interactive.pick must not be called in non_interactive mode")
-    monkeypatch.setattr(ing.interactive, "pick", _boom)
-
-    with pytest.raises(SystemExit, match="non-interactive run"):
-        ing.cmd_extract(args(command="dig"), non_interactive=True)
+    seen = {}
+    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: seen.update(k))
+    ing.cmd_extract(args(command="dig"), non_interactive=True)
+    assert seen == {"non_interactive": True}
 
 
 def test_cmd_ingest_non_interactive_skips_quarantine_requeue_offer(wdg_home, tmp_path, monkeypatch):

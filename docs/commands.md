@@ -10,7 +10,7 @@ If you'd rather never see colour, set the standard `NO_COLOR` environment variab
 
 ## Exit codes
 
-If you're running Watchdog from a script or a scheduled job, the process exit code tells you how a run went without parsing any text: `0` means it completed and there's nothing left to do; `1` marks a genuine error, such as bad input or a setting that still needs configuring; `130` means it was interrupted with Ctrl+C.
+If you're running Watchdog from a script or a scheduled job, the process exit code tells you how a run went without parsing any text: `0` means it completed and there's nothing left to do; `1` marks a genuine error, such as bad input, a setting that still needs configuring, or a provider that rejected your API key or has no credit left; `130` means it was interrupted with Ctrl+C.
 
 `watchdog dig` and `watchdog bark` use one more code: `2` means the run stopped partway through in a way a re-run picks up automatically — a rate limit paused it, a submitted batch is still waiting on results, some documents were never started, or `bark`'s own post-processing (entity reconciliation, synthesis, the briefing) didn't finish. Running the same command again continues from where it left off. A document that failed extraction and was set aside in `queue/_failed/` doesn't trigger this — that's a completed run with an outcome worth reviewing, not a stalled one. `watchdog requeue` is the fix, and the exit code for that run stays `0`.
 
@@ -100,7 +100,7 @@ The "which model runs each stage" line printed before extraction starts shows on
 
 **Resumability.** Pressing Ctrl+C, or hitting a rate limit without `--wait`, stops the batch cleanly: finished documents are saved and unfinished ones stay queued, so re-running `watchdog dig` picks up where it left off. A document that genuinely fails extraction is set aside in `queue/_failed/`; the run reports how many, and `watchdog requeue` moves them back to retry — this is surfaced everywhere the queue's state matters: the normal run summary, `--estimate`, and a bare `watchdog dig` with nothing new to read, which offers to requeue and retry right there instead of just reporting an empty queue. On macOS or Linux, dig also keeps the machine from sleeping for the run's duration — see [Troubleshooting](troubleshooting.md#ingest-prevents-the-machine-from-sleeping-during-a-run).
 
-If a previous batch is still pending finalization when you start `watchdog dig`, it asks what to do: **merge** the pending batch into this run (a following `watchdog bark` finalizes both together), or **discard** it. `dig` never finalizes in the run it's invoked from, so it doesn't offer to finalize inline — the bare guided walk (which does finalize inline) offers that as a third option, **finalize** it first and stop.
+If a previous batch is still pending finalization when you start `watchdog dig`, `dig` says so and carries on: it never finalizes, so the next `watchdog bark` finalizes the pending batch together with whatever this run extracts. Nothing in a pending batch is ever thrown away — every extracted document is written to the vault by the next finalize, whichever command runs it. The bare guided walk, which does finalize, asks whether to finalize the pending batch together with the new documents or on its own first; with nothing new to read, it simply finalizes it.
 
 #### Catching what the extractor missed
 
