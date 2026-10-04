@@ -59,7 +59,8 @@ import json
 import re
 import shutil
 import sys
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -134,7 +135,37 @@ def _assert_in_vault(path: Path, vault_path: Path, label: str) -> Path:
     return path
 
 
-def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> dict[str, str]:
+class NameIndex:
+    """(normalized name, canonical type) → entity id, over every name and alias in a registry.
+
+    Built once and kept current with `add` (#696), rather than rebuilt from the whole registry for
+    every document — on a batch of thousands that rebuild was O(documents × entities). The lookup
+    matches a fresh rebuild exactly: a key shared by several entities resolves to the one inserted
+    into the registry first, which is what `dict.setdefault` over the registry's insertion order
+    gave. Valid while entities are only added or gain aliases — their name and type never change
+    in `_merge_entity`, and nothing is removed during a fold."""
+
+    def __init__(self, entities_reg: dict):
+        self._pos: dict[str, int] = {}
+        self._index: dict[tuple[str, str], str] = {}
+        for eid, entry in entities_reg.items():
+            self.add(eid, entry)
+
+    def add(self, eid: str, entry: dict) -> None:
+        pos = self._pos.setdefault(eid, len(self._pos))
+        etype = canonical_type(entry["type"])
+        for n in [entry["name"], *entry.get("aliases", [])]:
+            key = (normalize_entity_name(n), etype)
+            current = self._index.get(key)
+            if current is None or self._pos[current] > pos:
+                self._index[key] = eid
+
+    def get(self, key: tuple[str, str]) -> str | None:
+        return self._index.get(key)
+
+
+def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict,
+                          name_index: NameIndex | None = None) -> dict[str, str]:
     """
     Remap incoming entities that name an existing entity under a different slug.
 
@@ -160,10 +191,7 @@ def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict) -> 
     view — ``morgue_entity_id`` and ``document.key_facts[].entities`` (#513) — rather than only
     the fields (``entities[].id``, ``roles[].target_id``) reconciled here.
     """
-    norm_index: dict[tuple[str, str], str] = {}
-    for eid, entry in entities_reg.items():
-        for n in [entry["name"], *entry.get("aliases", [])]:
-            norm_index.setdefault((normalize_entity_name(n), canonical_type(entry["type"])), eid)
+    norm_index = name_index if name_index is not None else NameIndex(entities_reg)
 
     remap: dict[str, str] = {}
     for entity in incoming_entities:
@@ -198,11 +226,14 @@ def _resolve_role_targets(incoming_entities: list[dict], entities_reg: dict) -> 
     falls back to the id as name and ``Unknown`` as type.
     """
     lookup: dict[str, tuple] = {e["id"]: (e.get("name"), e.get("type")) for e in incoming_entities}
-    for eid, entry in entities_reg.items():
-        lookup.setdefault(eid, (entry.get("name"), entry.get("type")))
     for entity in incoming_entities:
         for role in entity.get("roles", []):
             tid = role.get("target_id")
+            # Looked up per target rather than by copying the whole registry into `lookup` for
+            # every document (#696); this batch's entities still take precedence.
+            if tid not in lookup and tid in entities_reg:
+                entry = entities_reg[tid]
+                lookup[tid] = (entry.get("name"), entry.get("type"))
             name, typ = lookup.get(tid, (None, None))
             if not role.get("target_name"):
                 role["target_name"] = name or tid or ""
@@ -388,6 +419,130 @@ def _registry_lock(registry_dir: Path):
             elif _msvcrt is not None:
                 fh.seek(0)
                 _msvcrt.locking(fh.fileno(), _msvcrt.LK_UNLCK, 1)
+
+
+def _write_json_atomic(path: Path, data) -> None:
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    tmp.rename(path)
+
+
+class RegistryBatch:
+    """Hold the registries in memory across a commit pass, writing them every `flush_every`
+    documents instead of after each one (#696).
+
+    `run()` used to read and rewrite all of `entities.json`, `documents.json`, `registry.json` and
+    the manifest for every document, so a commit pass's I/O grew with the square of the batch —
+    on thousands of documents, hours spent re-serializing registries tens of megabytes long. Inside
+    a batch, `run()` reads the in-memory copies and leaves persisting to `flush`.
+
+    The registry persist stays the commit point (D67): a document only counts as committed once a
+    flush has written it, and the caller's `after_flush` callbacks — the queue-file unlink — run
+    only after that. A crash between flushes leaves the unflushed documents uncommitted with their
+    queue files in place, and the next finalize replays them; every write `run()` makes before the
+    persist (notes, morgue, indexes) is already replace-not-append for exactly that case. The
+    registry lock is held for the whole batch, since `run()` no longer re-reads the registry under
+    it for each document."""
+
+    def __init__(self, vault_path: Path, flush_every: int = 50):
+        self.vault_path = vault_path
+        self.registry_dir = vault_path / ".watchdog" / "registry"
+        self.flush_every = flush_every
+        self.entities: dict = {}
+        self.documents: dict = {}
+        self._pending = 0
+        self._after_flush: list = []
+        self._lock = None
+        self._undo: tuple | None = None
+
+    def __enter__(self) -> "RegistryBatch":
+        self.registry_dir.mkdir(parents=True, exist_ok=True)
+        self._lock = _registry_lock(self.registry_dir)
+        self._lock.__enter__()
+        try:
+            for attr, name in (("entities", "entities.json"), ("documents", "documents.json")):
+                path = self.registry_dir / name
+                setattr(self, attr, json.loads(path.read_text()) if path.exists() else {})
+        except BaseException:
+            self._lock.__exit__(None, None, None)
+            raise
+        return self
+
+    def begin(self, entity_ids: set[str], doc_sha256: str) -> None:
+        """Snapshot the registry entries one document may change, so `rollback` can undo a write
+        that fails partway. Without a batch a failed write never persisted anything — its edits
+        lived in a registry copy it then discarded — and a batch must not let the next flush write
+        them either. Only the entries a write can touch are copied: the document's own entities,
+        the targets its roles point at (`_add_reverse_role`), and its own documents entry."""
+        missing = object()
+        self._undo = (
+            {eid: deepcopy(self.entities[eid]) if eid in self.entities else missing
+             for eid in entity_ids},
+            doc_sha256,
+            deepcopy(self.documents[doc_sha256]) if doc_sha256 in self.documents else missing,
+            missing,
+        )
+
+    def rollback(self) -> None:
+        """Restore the entries `begin` snapshotted; a no-op when nothing is open."""
+        if self._undo is None:
+            return
+        entities, doc_sha256, document, missing = self._undo
+        for eid, entry in entities.items():
+            if entry is missing:
+                self.entities.pop(eid, None)
+            else:
+                self.entities[eid] = entry
+        if document is missing:
+            self.documents.pop(doc_sha256, None)
+        else:
+            self.documents[doc_sha256] = document
+        self._undo = None
+
+    def committed(self, after_flush=None) -> None:
+        """Record one document written; flush once `flush_every` have accumulated. `after_flush`
+        runs once that document's registry entries are on disk."""
+        self._undo = None
+        self._pending += 1
+        if after_flush is not None:
+            self._after_flush.append(after_flush)
+        if self._pending >= self.flush_every:
+            self.flush()
+
+    def flush(self) -> None:
+        if not self._pending:
+            return
+        _persist_registries(self.vault_path, self.entities, self.documents)
+        self._pending = 0
+        callbacks, self._after_flush = self._after_flush, []
+        for callback in callbacks:
+            callback()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        try:
+            if exc_type is None:
+                self.flush()
+        finally:
+            self._lock.__exit__(exc_type, exc, tb)
+
+
+def _persist_registries(vault_path: Path, entities_reg: dict, documents_reg: dict) -> None:
+    """The commit point (D67): every registry file, each atomically, entities and documents first."""
+    registry_dir = vault_path / ".watchdog" / "registry"
+    registry_path = registry_dir / "registry.json"
+    _write_json_atomic(registry_dir / "entities.json", entities_reg)
+    _write_json_atomic(registry_dir / "documents.json", documents_reg)
+    existing_registry = (
+        _read_json_or(registry_path, {}, catch=(json.JSONDecodeError,))
+        if registry_path.exists() else {}
+    )
+    existing_registry.update({
+        "last_updated":   _now_iso(),
+        "document_count": len(documents_reg),
+        "entity_count":   len(entities_reg),
+    })
+    _write_json_atomic(registry_path, existing_registry)
+    _update_manifest(vault_path, entities_reg)
 
 
 def _update_manifest(vault_path: Path, entities_reg: dict) -> None:
@@ -788,7 +943,11 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
 
 # ── Main operation ────────────────────────────────────────────────────────────
 
-def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False) -> dict:
+def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = None, neardup_data: dict | None = None, quiet: bool = False,
+        batch: RegistryBatch | None = None) -> dict:
+    """Commit one staged extraction to the vault. With `batch` (#696), the registries are read
+    from and left in the batch's memory — persisting them is the batch's flush, not this call's —
+    and the batch already holds the registry lock."""
     extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
     doc = extraction.get("document")
     if not doc:
@@ -806,7 +965,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     registry_dir = vault_path / ".watchdog" / "registry"
     registry_dir.mkdir(parents=True, exist_ok=True)
 
-    with _registry_lock(registry_dir):
+    with (nullcontext() if batch is not None else _registry_lock(registry_dir)):
         # Detect slug collision: if a note with this slug already exists for a different
         # file, append a short SHA prefix to disambiguate.
         _candidate = vault_path / "documents" / f"{slug}.md"
@@ -822,11 +981,13 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
 
         entities_path  = registry_dir / "entities.json"
         documents_path = registry_dir / "documents.json"
-        registry_path  = registry_dir / "registry.json"
         log_path       = registry_dir / "ingest.log"
 
-        entities_reg  = json.loads(entities_path.read_text())  if entities_path.exists()  else {}
-        documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
+        if batch is not None:
+            entities_reg, documents_reg = batch.entities, batch.documents
+        else:
+            entities_reg  = json.loads(entities_path.read_text())  if entities_path.exists()  else {}
+            documents_reg = json.loads(documents_path.read_text()) if documents_path.exists() else {}
 
         # Resolved-contradiction overlay (#266): callouts the journalist has acknowledged are
         # dropped from the rendered note body. The registry keeps the full list, so unresolving
@@ -847,6 +1008,13 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # ran over the staged extraction JSON before any commit began.
         # Roles arrive as target_id only; re-inflate target_name/target_type deterministically.
         _resolve_role_targets(incoming_entities, entities_reg)
+        if batch is not None:
+            batch.begin(
+                {e["id"] for e in incoming_entities}
+                | {r["target_id"] for e in incoming_entities for r in e.get("roles", [])
+                   if r.get("target_id")},
+                doc_sha256,
+            )
 
         modified: set[str] = set()
         # Which entities this document *introduced* vs. added to — decided here, where it is
@@ -991,27 +1159,11 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         note_index_jobs.append((f"documents/{slug}", "document", doc_title, doc_note_content))
 
         # ── 5. Persist registries (atomic temp-then-rename) ──────────────────
+        #
+        # Inside a RegistryBatch (#696) this is the batch's flush, every `flush_every` documents.
 
-        def _write_atomic(path: Path, data) -> None:
-            tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            tmp.rename(path)
-
-        _write_atomic(entities_path, entities_reg)
-        _write_atomic(documents_path, documents_reg)
-
-        existing_registry = (
-            _read_json_or(registry_path, {}, catch=(json.JSONDecodeError,))
-            if registry_path.exists() else {}
-        )
-        existing_registry.update({
-            "last_updated":   _now_iso(),
-            "document_count": len(documents_reg),
-            "entity_count":   len(entities_reg),
-        })
-        _write_atomic(registry_path, existing_registry)
-
-        _update_manifest(vault_path, entities_reg)
+        if batch is None:
+            _persist_registries(vault_path, entities_reg, documents_reg)
 
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(

@@ -2266,3 +2266,9 @@ D211's own tradeoff paragraph named this fix and set it aside as a bigger, unmea
 
 **Tradeoff:** on a large batch the briefing is written from a partial view — every fact is still in the vault, but the briefing may not mention it. The previous behaviour was no briefing at all and an instruction to re-ingest in smaller batches.
 
+### D239 — The commit pass persists the registries every 50 documents, not after each one
+
+**`write_vault.run` re-read and rewrote `entities.json`, `documents.json`, `registry.json` and the manifest for every document**, so a commit pass's I/O grew with the square of the batch; on thousands of documents that is hours spent re-serializing registries tens of megabytes long (#696). `write_vault.RegistryBatch` now holds the registry lock and the registries in memory for the whole pass and persists them every 50 documents and at the end. D67's commit point is kept, with a coarser grain: a document counts as committed only once a flush has written it, and its queue file is removed only after that flush, so a crash between flushes leaves up to 49 documents uncommitted and the next finalize replays them through the same replace-not-append writes D67 already relies on. A document whose write raises mid-way is rolled back in memory from a snapshot of just the entries it could touch, so the next flush cannot persist half of it — without a batch, a failed write never persisted anything, and that stays true. The exact-name fold's name index is likewise maintained incrementally instead of rebuilt per document (`write_vault.NameIndex`), with lookups identical to a rebuild.
+
+**Tradeoff:** a crash now re-commits up to 49 documents instead of at most one, and the registry lock is held for the whole commit pass rather than per document, so another registry writer (say, `watchdog merge-entities` run by hand during a finalize) waits longer.
+

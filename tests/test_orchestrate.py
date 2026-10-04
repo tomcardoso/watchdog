@@ -4763,7 +4763,8 @@ def test_commit_pass_processes_staged_artifacts_in_sorted_sha_order(tmp_path, mo
 
     order = []
 
-    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False):
+    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False,
+                    batch=None):
         order.append(extraction_path.stem)
         return {"new_entities": [], "updated_entities": []}
     monkeypatch.setattr(write_vault_module, "run", fake_wv_run)
@@ -4792,7 +4793,8 @@ def test_commit_pass_survives_one_artifact_failing_to_commit(tmp_path, monkeypat
     queue_dir.mkdir(parents=True, exist_ok=True)
     (queue_dir / "aaaa.json").write_text("{}")
 
-    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False):
+    def fake_wv_run(*, extraction_path, vault_path, neardup_data=None, neardup_file=None, quiet=False,
+                    batch=None):
         if extraction_path.stem == "aaaa":
             raise ValueError("boom")
         return {"new_entities": ["bbbb"], "updated_entities": []}

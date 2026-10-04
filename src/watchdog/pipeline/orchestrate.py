@@ -2425,7 +2425,9 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     same remap (#513) — both sit outside `_reconcile_entity_ids`'s own view, so without this
     they'd go stale whenever the entity they name gets folded into a different id later in the
     batch."""
-    from watchdog.pipeline.write_vault import _merge_entity, _new_entity, _reconcile_entity_ids
+    from watchdog.pipeline.write_vault import (
+        NameIndex, _merge_entity, _new_entity, _reconcile_entity_ids,
+    )
 
     # Freshly parsed from disk, so this is already an in-memory copy independent of the real
     # registry file — mutating it below (reconcile/merge) can never write through to disk.
@@ -2435,12 +2437,14 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     )
 
     extracted_dir = vault / ".watchdog" / "extracted"
+    # Kept current as the fold walks the batch rather than rebuilt per document (#696).
+    name_index = NameIndex(pseudo_reg)
     for sha in shas:
         artifact_path = extracted_dir / f"{sha}.json"
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
         entities = artifact.get("entities") or []
 
-        remap = _reconcile_entity_ids(entities, pseudo_reg)
+        remap = _reconcile_entity_ids(entities, pseudo_reg, name_index)
         if remap:
             if artifact.get("morgue_entity_id") in remap:
                 artifact["morgue_entity_id"] = remap[artifact["morgue_entity_id"]]
@@ -2455,6 +2459,7 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
                 _merge_entity(pseudo_reg[eid], entity, sha)
             else:
                 pseudo_reg[eid] = _new_entity(entity, sha)
+            name_index.add(eid, pseudo_reg[eid])
 
         artifact_path.write_text(
             json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -2478,7 +2483,7 @@ def _pending_commits(vault: Path, force_shas: list[str] | None = None) -> list[s
     return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
 
 
-def _commit_extracted(vault: Path, sha: str) -> dict | None:
+def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
     """Replay `write_vault.run` over one staged extraction artifact — the commit half of the
     #403 phase 1 split. Reads near-dup data from the queue file (still present — its deletion is
     deferred to here, since `write_vault._write_morgue_markdown` and the corpus indexer both
@@ -2491,7 +2496,11 @@ def _commit_extracted(vault: Path, sha: str) -> dict | None:
     take around this same call (it validates before staging, so a well-formed artifact should
     never trip write_vault, but a batch of several documents must not go uncommitted because one
     staged artifact turned out to be corrupt or malformed on disk). The artifact and queue file
-    are left in place on failure, so the next finalize retries this sha rather than losing it."""
+    are left in place on failure, so the next finalize retries this sha rather than losing it.
+
+    With `batch` (a `write_vault.RegistryBatch`, #696), the queue file is removed only once the
+    batch has flushed this document's registry entries to disk — until then the document is not
+    committed, and a crash must leave it replayable."""
     extracted_path = vault / ".watchdog" / "extracted" / f"{sha}.json"
     if not extracted_path.exists():
         return None
@@ -2500,16 +2509,23 @@ def _commit_extracted(vault: Path, sha: str) -> dict | None:
     from watchdog.pipeline.write_vault import run as wv_run
     try:
         written = wv_run(extraction_path=extracted_path, vault_path=vault,
-                         neardup_data=neardup_data, quiet=True)
+                         neardup_data=neardup_data, quiet=True, batch=batch)
     except SystemExit as e:
+        if batch is not None:
+            batch.rollback()
         _say(f"{_YELLOW}⚠{_RESET}  commit failed for {sha[:12]}…{_RESET}{_DIM} — {e}{_RESET}")
         _log(vault, f"WARN commit failed for {sha}: {e}")
         return None
     except Exception as e:
+        if batch is not None:
+            batch.rollback()
         _say(f"{_YELLOW}⚠{_RESET}  commit failed for {sha[:12]}…{_RESET}{_DIM} — {e}{_RESET}")
         _log(vault, f"WARN commit failed for {sha}: {e}")
         return None
-    queue_file.unlink(missing_ok=True)
+    if batch is not None:
+        batch.committed(after_flush=lambda: queue_file.unlink(missing_ok=True))
+    else:
+        queue_file.unlink(missing_ok=True)
     return written
 
 
@@ -2622,11 +2638,15 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
          f"to the vault…{_RESET}")
     tmp_dir = vault / ".watchdog" / "tmp"
     written_map: dict[str, dict] = {}
-    for sha in shas:
-        written = _commit_extracted(vault, sha)
-        if not written:
-            continue
-        written_map[sha] = written
+    from watchdog.pipeline.write_vault import RegistryBatch
+    # One in-memory registry for the whole pass, flushed every few dozen documents (#696) — not
+    # re-read and rewritten in full for each one.
+    with RegistryBatch(vault) as batch:
+        for sha in shas:
+            written = _commit_extracted(vault, sha, batch=batch)
+            if written:
+                written_map[sha] = written
+    for sha, written in written_map.items():
         result_path = tmp_dir / f"result_{sha}.json"
         if not result_path.exists():
             continue
