@@ -102,11 +102,9 @@ def merge_extractions(sections: list[dict]) -> dict:
     by_id: dict[str, dict] = {}
     norm_index: dict[str, str] = {}   # normalized surface form -> canonical id
     morgue_entity_id = None
-    morgue_document_type = None
 
     for sec in sections:
         morgue_entity_id = morgue_entity_id or sec.get("morgue_entity_id")
-        morgue_document_type = morgue_document_type or sec.get("morgue_document_type")
 
         for ent in sec.get("entities", []):
             eid = ent.get("id")
@@ -184,7 +182,6 @@ def merge_extractions(sections: list[dict]) -> dict:
         "document": document,
         "entities": entities,
         "morgue_entity_id": morgue_entity_id,
-        "morgue_document_type": morgue_document_type,
     }
     if document_requests:
         merged["document_requests"] = document_requests

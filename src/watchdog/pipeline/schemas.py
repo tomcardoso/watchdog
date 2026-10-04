@@ -101,7 +101,7 @@ _ENTITY = _obj(
 )
 
 # sha256/filename/original_path/page_count, source/obtained, file_metadata, and (on EXTRACTION,
-# below) morgue_document_type used to sit in these schemas too, as optional properties — the
+# below, and on SECTION) morgue_document_type used to sit in these schemas too, as optional properties — the
 # model never fills any of them (orchestrate._stamp_document sets every one unconditionally,
 # after the model call returns, straight from pf/sha/document_type — never reading a pre-existing
 # value first), so they were pure dead weight from the model's perspective. They were kept
@@ -156,7 +156,7 @@ EXTRACTION = _obj(
 # required on every section, gpt-nano started explicitly nulling these three — genuinely
 # section-1-only fields it has nothing to say on past section 1 — on later sections instead of
 # omitting them, the same "OpenAI's json_object mode gives no wire-level shape enforcement" gap
-# that motivated widening morgue_entity_id/morgue_document_type/observations below. Reproduced
+# that motivated widening morgue_entity_id/observations below. Reproduced
 # directly: a SECTION document with these three set to None hard-failed with the exact three
 # "None is not of type 'string'" errors seen on a live gpt-nano ingest.
 _SECTION_DOCUMENT_PROPS = {
@@ -196,7 +196,6 @@ SECTION = _obj(
         # `.get(...) or ""` reads) — so widening costs nothing and stops a validator rejection
         # that was never actually protecting a real invariant.
         "morgue_entity_id": _NULLABLE_STR,
-        "morgue_document_type": _NULLABLE_STR,
         "observations": _NULLABLE_STR,   # appended to the carry-forward scratchpad
         # Same field as EXTRACTION's, moved out of `observations` (#365) — optional, omit when
         # this section names nothing obtainable. merge.merge_extractions unions across sections.
