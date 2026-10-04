@@ -417,6 +417,34 @@ def _auto_approve_limit(config: dict) -> float | None:
     return v if v > 0 else None
 
 
+def _auto_approve_estimate(vault: Path, est: dict | None, *, auth_mode: str | None,
+                           classify: tuple, extract: tuple, finalizers: list[tuple],
+                           finishes_pending: bool) -> dict:
+    """What the auto-approve gate is allowed to rely on (D256), as `{subscription, cost_high,
+    blocker}`. A run counts as a subscription run only when every stage it calls is served by
+    the Claude Code subscription; otherwise the dollar figure must come from past complete runs on
+    the models configured now (`matched_cost_high`), never from whatever model made the history.
+    A pending batch this run would also finish is not in any estimate, so it always asks."""
+    from watchdog.pipeline.ingest_setup import matched_cost_high
+
+    def served_by(backend):
+        return backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
+
+    stages = [classify, extract, *finalizers]
+    if finishes_pending:
+        return {"blocker": "a batch left from an earlier run will be finished too, and no estimate "
+                           "covers it"}
+    if all(served_by(b) == "claude-agent-sdk" for b, _ in stages):
+        return {"subscription": True}
+    tokens = (est or {}).get("est_tokens") or 0
+    high = matched_cost_high(vault, tokens, classifier=classify[1], extractor=extract[1],
+                             finalizers={m for _, m in finalizers})
+    if high is None:
+        return {"blocker": "no past run of `watchdog add` on the models set now to estimate the "
+                           "cost from"}
+    return {"cost_high": high}
+
+
 def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dict | None = None,
                             limit: float | None = None) -> bool:
     """The point-of-no-return gate before any ingest/extract that will call the model (#426):
@@ -445,7 +473,9 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dic
               f"{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
         return True
     if limit is not None and not skip_warning:
-        reason = (f"estimated ${high:.2f} is over your ${limit:.2f} auto-approve limit"
+        blocker = (est or {}).get("blocker")
+        reason = (f"{blocker}, so the auto-approve limit can't apply" if blocker else
+                  f"estimated ${high:.2f} is over your ${limit:.2f} auto-approve limit"
                   if high is not None else
                   "no dollar estimate yet for this vault, so the auto-approve limit can't apply")
         print(f"\n  {_DIM}Asking first: {reason}.{_RESET}")
@@ -1070,8 +1100,18 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
+        limit = _auto_approve_limit(config)
+        gate_est = None
+        if limit is not None and q:
+            gate_est = _auto_approve_estimate(
+                vault, est, auth_mode=a["mode"],
+                classify=(classify_backend, classify_model), extract=(extract_backend, extract_model),
+                finalizers=[(post_backend, post_model)] + [
+                    (finalizer_overrides.get(f"{s}_backend"), finalizer_overrides.get(f"{s}_model"))
+                    for s in _FINALIZER_STAGES],
+                finishes_pending=not (is_dig or run_skip_finalize) and _orch.has_pending_finalization(vault))
         if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False),
-                                       est=est, limit=_auto_approve_limit(config)):
+                                       est=gate_est, limit=limit):
             _release_lock()
             # No leading blank line — pick()'s own close-out already leaves one (#411).
             print(f"  When ready, run:  {_CYAN}{pipeline_hint}{_RESET}\n")
@@ -1408,21 +1448,42 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     return out
 
 
-def _expand_paths(paths: list[str]) -> list[Path]:
-    """Files named on the command line, with folders expanded to the files chew supports in them."""
+def _is_hidden(path: Path, root: Path) -> bool:
+    """A dotfile or a file inside a dot-folder below `root` (`.git/`, `.obsidian/`, macOS `._x`)."""
+    return any(part.startswith(".") for part in path.relative_to(root).parts)
+
+
+def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
+    """Files named on the command line, with folders expanded to the files chew reads in them.
+
+    Never the investigation's own files: a path inside the vault is refused (files already in
+    `_INCOMING/` are picked up without being named), and a folder that contains the vault — `add
+    ~/Documents` with the vault under it — has the vault's files left out, so Watchdog's notes
+    and registry are never read back in as source documents. Hidden files and folders are skipped."""
     from watchdog.pipeline.preprocess_batch import find_files
+    vault = vault.resolve()
     out: list[Path] = []
     for raw in paths:
         p = Path(raw).expanduser().resolve()
         if not p.exists():
             sys.exit(f"Error: not found: {raw}")
+        if p == vault or vault in p.parents:
+            if p == vault / "_INCOMING" or (vault / "_INCOMING") in p.parents:
+                continue   # already waiting; added below without copying
+            sys.exit(f"Error: {raw} is inside this investigation. Name files from outside it, "
+                     f"or move them into _INCOMING/.")
         if p.is_dir():
-            found = find_files([p])
+            found = [f for f in find_files([p]) if not _is_hidden(f, p)]
+            inside = [f for f in found if vault in f.parents]
+            if inside:
+                print(f"\n  {_DIM}Leaving out {len(inside)} file{'s' if len(inside) != 1 else ''} "
+                      f"from this investigation's own folder.{_RESET}")
+                found = [f for f in found if vault not in f.parents]
             if not found:
                 print(f"\n  {_DIM}No supported files in {_RESET}{_CYAN}{raw}{_RESET}")
             out.extend(found)
-        elif p.name.endswith(".yml"):
-            continue   # a sidecar travels with its document
+        elif p.name.endswith(".yml") or p.name.startswith("."):
+            continue   # a sidecar travels with its document; hidden files are never documents
         else:
             out.append(p)
     return out
@@ -1440,6 +1501,13 @@ def cmd_add(args) -> dict | None:
     if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
     args.command = "add"
+    if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
+        # Read-only, like `dig --estimate`: nothing is copied, retried or chewed.
+        if getattr(args, "paths", None) or getattr(args, "retry", False):
+            print(f"\n  {_DIM}--estimate changes nothing, so the named files are not copied in "
+                  f"and failed documents are not retried; this estimate covers the current queue "
+                  f"only.{_RESET}")
+        return cmd_ingest(args)
     _warn_pending_research(vault)
 
     if getattr(args, "retry", False):
@@ -1448,7 +1516,7 @@ def cmd_add(args) -> dict | None:
             print(f"\n  {_DIM}Retrying {_RESET}{_BOLD}{n}{_RESET}{_DIM} document"
                   f"{'s' if n != 1 else ''} that failed before.{_RESET}")
 
-    files = _expand_paths(getattr(args, "paths", None) or [])
+    files = _expand_paths(getattr(args, "paths", None) or [], vault)
     copied = sum(1 for f in files if _into_incoming(vault, f, quiet=True) != f)
     if copied:
         print(f"\n  {_DIM}Copied {_RESET}{_BOLD}{copied}{_RESET}{_DIM} file{'s' if copied != 1 else ''} "

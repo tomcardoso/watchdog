@@ -292,6 +292,63 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     return result
 
 
+_EXTRACT_TASKS = {"extract", "extract-section", "verify"}
+
+
+def _same_model(recorded: str | None, configured: str) -> bool:
+    from watchdog.model_catalog import canonical_id, resolve_model_id
+    if not recorded:
+        return False
+    return (canonical_id(resolve_model_id(recorded)).lower()
+            == canonical_id(resolve_model_id(configured)).lower())
+
+
+def matched_cost_high(vault: Path, est_tokens: int, *, classifier: str, extractor: str,
+                      finalizers: set[str], max_runs: int = 3) -> float | None:
+    """A conservative dollar figure for the auto-approve gate (D256): `est_tokens` times the
+    highest $/input-token of this vault's last `max_runs` complete runs — runs that both extracted
+    and finished a batch — whose every classify, extract and finish call used the models
+    configured now. `cost_estimate`'s ratio comes from any recent run, whatever model made it, so a
+    vault that switched to a pricier model would be priced at the old rate; this one returns None
+    rather than guess. Input tokens are summed per call with each call's own backend, so a
+    provider that reports cached tokens inside its input count is not counted twice (#617)."""
+    from watchdog.pipeline import orchestrate
+    if est_tokens <= 0:
+        return None
+    ratios: list[float] = []
+    for uf in reversed(orchestrate.usage_files(vault)):
+        try:
+            calls = _read_json(uf).get("calls") or []
+        except (OSError, json.JSONDecodeError):
+            continue
+        tasks = {c.get("task") for c in calls}
+        if not (tasks & _EXTRACT_TASKS) or not (tasks & orchestrate.FINALIZE_TASKS):
+            continue
+        matches = True
+        for c in calls:
+            task, model = c.get("task"), c.get("model")
+            if task in _EXTRACT_TASKS:
+                ok = _same_model(model, extractor)
+            elif task == "classify":
+                ok = _same_model(model, classifier)
+            elif task in orchestrate.FINALIZE_TASKS:
+                ok = any(_same_model(model, f) for f in finalizers)
+            else:
+                ok = True
+            if not ok:
+                matches = False
+                break
+        if not matches:
+            continue
+        tokens = sum(_real_input_tokens(c, c.get("backend")) for c in calls)
+        cost = sum(c.get("cost_usd") or 0 for c in calls)
+        if tokens > 0 and cost > 0:
+            ratios.append(cost / tokens)
+        if len(ratios) >= max_runs:
+            break
+    return est_tokens * max(ratios) if ratios else None
+
+
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
                            usage_files: list[Path] | None = None) -> dict:
     """Pre-flight cost estimate for `watchdog bark`: the staged `result_<sha>.json`/`notes_<sha>.md`

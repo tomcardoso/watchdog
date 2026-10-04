@@ -207,6 +207,36 @@ def remap_rid(vault: Path, old_rid: str, new_rid: str) -> bool:
 
 # ── Checkbox sync ────────────────────────────────────────────────────────────────
 
+def tick_in_briefings(vault: Path, rids, ticked: bool = True) -> int:
+    """Set the checkbox of every briefing line (and `requests.md` line) carrying one of `rids`,
+    so the files agree with the store after `watchdog review` or `watchdog resolve <id>` marks an
+    item handled (`ticked=True`) or `watchdog unresolve` reopens it (`ticked=False`). Without it,
+    the next `watchdog resolve --sync` reads the stale box as the journalist's own change and
+    undoes the command (D256). Returns lines changed."""
+    wanted = set(rids)
+    if not wanted:
+        return 0
+    changed = 0
+    for md in sorted((vault / "briefings").glob("*.md")) + [vault / "requests.md"]:
+        if not md.exists():
+            continue
+        text = md.read_text(encoding="utf-8", errors="replace")
+        lines = text.split("\n")
+        hit = False
+        for i, line in enumerate(lines):
+            box = _CHECKBOX_RE.match(line)
+            stale = box and (box.group("mark") == " ") == ticked
+            wid = _WID_RE.search(line) if stale else None
+            if wid and wid.group(1) in wanted:
+                start = box.start("mark")
+                lines[i] = line[:start] + ("x" if ticked else " ") + line[start + 1:]
+                changed += 1
+                hit = True
+        if hit:
+            md.write_text("\n".join(lines), encoding="utf-8")
+    return changed
+
+
 def sync_from_briefings(vault: Path) -> tuple[list[str], list[str]]:
     """Import ``- [x]`` / ``- [ ]`` checkbox state from the briefing files, plus the vault-root
     ``requests.md``, into the store.

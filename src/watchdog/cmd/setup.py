@@ -112,9 +112,10 @@ _CONFIGURE_KEYS = {
             "  warning and waits for you to acknowledge it. Set a dollar amount here and a run\n"
             "  whose estimated cost is at or under it goes ahead with a one-line notice instead.\n"
             "  Setting it means you have already checked that what you add is public record.\n"
-            "  A Claude subscription has no per-run price, so its runs are always within the limit.\n"
-            "  A run over the limit, or one with no dollar estimate yet (a vault with no past runs\n"
-            "  on a metered key), still asks.\n"
+            "  The estimate comes from past `watchdog add` runs on the models set now. A run where\n"
+            "  every step uses your Claude subscription has no per-run price, so it is always within\n"
+            "  the limit. A run over the limit, one with no past run on these models, or one that\n"
+            "  would also finish a batch left from an earlier run, still asks.\n"
             "  Set to 0 to turn it off. Default: off."
         ),
         "type": "float",

@@ -27,9 +27,12 @@ KINDS = ("contradictions", "leads", "alerts", "duplicates")
 _LABELS = {"contradictions": "Contradictions", "leads": "Leads",
            "alerts": "Watch-list hits", "duplicates": "Possible duplicate documents"}
 
-_ALERT_LINE = re.compile(r"^- \[[ xX]\] \*\*(?P<link>.+?)\*\*(?P<rest>.*?)<!--wid:(?P<rid>alert:[^>]+?)-->")
+# The link is greedy up to the last `**` before the optional entity/count suffix, so a filename
+# containing `**` stays whole.
+_ALERT_LINE = re.compile(r"^- \[[ xX]\] \*\*(?P<link>.+)\*\*(?P<rest>(?: · known entity .*?)?"
+                         r"(?: \(\d+ matches\))?) ?<!--wid:(?P<rid>alert:[^>]+?)-->")
 _ALERT_TERM = re.compile(r"^### `(?P<term>.+)`")
-_WIKILINK = re.compile(r"^\[\[(?P<target>[^|\]]+)(?:\|(?P<text>[^\]]+))?\]\]$")
+_WIKILINK = re.compile(r"^\[\[(?P<target>[^|\]]+)(?:\|(?P<text>.+))?\]\]$")   # text may hold `]`
 
 
 def _item(kind: str, rid: str, title: str, detail: list[str], note: str | None) -> dict:
@@ -177,6 +180,7 @@ def _walk(vault: Path, items: list[dict]) -> int:
                 continue
             if choice == "Mark as handled":
                 resolutions.resolve(vault, [item["rid"]], label="review")
+                resolutions.tick_in_briefings(vault, [item["rid"]])
                 handled += 1
                 print(f"  {_GREEN}Marked handled.{_RESET}")
             break

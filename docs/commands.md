@@ -57,7 +57,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 It stops for you only to show the public-records warning (see [`watchdog dig`](#watchdog-dig)) and when a provider refuses your key or account. A rate limit pauses the run until it resets, as `--wait` does for `dig`. A batch left pending from an earlier run is finished together with the new documents.
 
 - `--retry` — first put documents that failed extraction back in the queue (the same as `watchdog requeue`).
-- **Auto-approve.** With `auto_approve_usd` set, a run whose estimated cost is at or under that amount skips the warning pause and prints a one-line notice instead. A Claude subscription has no per-run price, so its runs are always within the limit. A run over the limit, or with no dollar estimate yet, still asks. See [Configuration](configuration.md).
+- **Auto-approve.** With `auto_approve_usd` set, a run whose estimated cost is at or under that amount skips the warning pause and prints a one-line notice instead. A run where every step uses your Claude subscription has no per-run price, so it is always within the limit. A run over the limit, one with no past run on the models set now to estimate from, or one that would also finish a batch left from an earlier run, still asks. See [Configuration](configuration.md#controlling-cost).
 - Every flag of [`dig`](#watchdog-dig) and [`bark`](#watchdog-bark) — models, efforts, `--verify`, `--concurrency`, `--skill`, `--estimate`, `--skip-warning`, `--skip-briefing` and the rest — works the same way here.
 
 ### watchdog dig
@@ -279,6 +279,8 @@ Omit the project name when running from inside the vault directory; with `--ever
 ### watchdog review
 
 Run from inside the vault, `watchdog review` shows everything waiting on you one item at a time: open contradictions, leads, watch-list hits and possible duplicate documents. For each, choose **Mark as handled**, **Keep open**, **Open in Obsidian** (which opens the item's note) or **Stop reviewing**. A handled item is acknowledged exactly as `watchdog resolve` would acknowledge it, so it drops out of later reports, briefings and the home screen, and `watchdog unresolve <id>` brings it back.
+
+The dashboard's "Possible duplicate documents" table reads the documents' own notes, so it keeps listing a pair after you mark it handled here.
 
 Name a kind to review only that: `watchdog review contradictions`, `leads`, `alerts` or `duplicates`. When the output is piped or there is no terminal to answer in, it prints the list with each item's resolution id instead.
 
