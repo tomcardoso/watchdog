@@ -5459,3 +5459,55 @@ def test_half_label_names_the_pages_a_half_actually_holds():
     assert orchestrate._half_label("<!-- PAGE 3 -->\n\ntext", "pages 3–4", 1, 2) == "page 3"
     # No markers to read (a character-split, non-paginated section) — fall back to the parent.
     assert orchestrate._half_label("plain text", "part 2 of 5", 1, 2) == "part 2 of 5 (part 1/2)"
+
+
+# ── staged batches are never stranded; auth failures stop the run (D242) ──────────────────────
+
+def test_staged_extraction_without_results_still_finalizes(tmp_path, monkeypatch):
+    """A dug-but-unbarked document whose result file is gone (the old "Discard" choice deleted
+    it) used to be skipped by dig and refused by bark forever. It must still count as pending,
+    and the next run must commit it — with a rebuilt result so the briefing sees it."""
+    from watchdog.pipeline import ingest_setup
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+    asyncio.run(orchestrate.run(vault, skip_finalize=True))
+    for p in (vault / ".watchdog" / "tmp").glob("result_*.json"):
+        p.unlink()
+    assert orchestrate.has_pending_finalization(vault)
+    ingest_setup.run(vault, wipe_pending=False)
+    (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 0 and "post_ingest" in summary
+    docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
+    assert "abc123" in docs
+    assert not orchestrate.has_pending_finalization(vault)
+
+
+def test_rerun_after_dig_finalizes_instead_of_reporting_complete(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    _mock(monkeypatch, extraction=_extraction())
+    asyncio.run(orchestrate.run(vault, skip_finalize=True))
+    summary = asyncio.run(orchestrate.run(vault))
+    assert summary["extracted"] == 0
+    assert summary.get("post_ingest", {}).get("briefing")
+    assert not orchestrate.has_pending_finalization(vault)
+
+
+def test_provider_auth_error_stops_the_run_without_quarantining(tmp_path, monkeypatch):
+    """A bad key fails every document the same way: the run must stop with every document still
+    queued, not move each one to _failed/."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="a" * 64, filename="a.pdf")
+    _queue_doc(vault, sha="b" * 64, filename="b.pdf")
+
+    async def refuse(**kwargs):
+        raise model_client.ProviderAuthError("invalid x-api-key")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", refuse)
+    summary = asyncio.run(orchestrate.run(vault, concurrency=1))
+    assert summary["auth_error"] == "invalid x-api-key"
+    assert summary["failed"] == 0 and summary["quarantined"] == 0
+    assert len(list((vault / ".watchdog" / "queue").glob("*.json"))) == 2
+    from watchdog.cmd.ingest import exit_code_for
+    assert exit_code_for(summary) == 1

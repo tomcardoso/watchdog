@@ -68,6 +68,12 @@ watchdog dig
 
 You don't have to remember to check: a bare `watchdog dig` with nothing new to read notices a document waiting in `queue/_failed/` and offers to requeue and retry it right there, instead of just reporting an empty queue. `watchdog dig --estimate` mentions it too, without moving anything (an estimate never changes what's on disk). The same quarantine notice appears if a document needs attention when `watchdog bark`'s wrap-up (described below) finishes or is interrupted.
 
+## The provider rejected the key, or the account is out of credit
+
+If a run stops with "the provider refused the credentials or account", every document is still queued — nothing was set aside in `queue/_failed/`. The model provider turned the request down: the API key is wrong, revoked, or lacks access to the model, or the account has run out of credit or quota. The message includes the provider's own explanation.
+
+Check the key with `watchdog auth`, or top up the account on the provider's site, then run `watchdog dig` again. A run that stops this way exits with code `1`, not `2`, because re-running it unchanged would fail the same way.
+
 ## Hitting rate limits
 
 A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can burn through that budget even when `extract_concurrency` looks conservative, since one document slot's token cost can differ from another's by an order of magnitude.
@@ -122,7 +128,7 @@ Ingest has two stages: `watchdog dig` reads each document (the slow, paid part);
 watchdog bark
 ```
 
-This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog bark` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog dig` (or the bare guided walk) also notices an unfinished batch and asks what to do with it — see the [command reference](commands.md).
+This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog bark` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog dig` or the bare guided walk also notices an unfinished batch: `dig` leaves it for `bark`, and the guided walk finalizes it — see the [command reference](commands.md). Nothing in an unfinished batch is ever discarded.
 
 ## Ingest prevents the machine from sleeping during a run
 
