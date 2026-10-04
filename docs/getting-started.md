@@ -13,7 +13,7 @@ Two things to keep in mind before you begin.
 Each investigation lives in its own vault — a folder of linked notes that you read in Obsidian. Create one:
 
 ```bash
-watchdog projects new
+watchdog new
 ```
 
 Watchdog prompts you for a name and an optional one-line description. The description pre-seeds `context.md` and is stored in your project registry, which is useful when you have several investigations open at once.
@@ -21,7 +21,7 @@ Watchdog prompts you for a name and an optional one-line description. The descri
 If you would rather skip the prompts, pass everything on the command line:
 
 ```bash
-watchdog projects new "Shell Company Investigation" --description "Offshore owners behind city-adjacent land deals"
+watchdog new "Shell Company Investigation" --description "Offshore owners behind city-adjacent land deals"
 ```
 
 Use a name that will still make sense in six months. Watchdog creates a folder in your configured projects directory — by default, `~/Investigations/shell-company-investigation` — and sets up everything inside it:

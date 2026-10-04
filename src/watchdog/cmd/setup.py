@@ -26,7 +26,7 @@ _CONFIGURE_KEYS = {
     "projects_dir": {
         "short": "Path where new investigation vaults are created",
         "help": (
-            "The directory where `watchdog projects new` creates investigation vaults.\n"
+            "The directory where `watchdog new` creates investigation vaults.\n"
             "  Set during setup; change here to move future vaults to a different location.\n"
             "  Existing vaults are not moved."
         ),
@@ -95,7 +95,7 @@ _CONFIGURE_KEYS = {
             "How many documents `watchdog dig` extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
             "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
-            "  Default: 20, minimum: 1 (sequential). `watchdog settings setup`/`watchdog settings auth` set this to 3\n"
+            "  Default: 20, minimum: 1 (sequential). `watchdog setup`/`watchdog settings auth` set this to 3\n"
             "  automatically on Claude subscription auth that keeps ingestion — concurrent extractions\n"
             "  there share one Claude Code session's rate limit, and the higher metered-path default\n"
             "  reliably throttles it — and restore it to 20 automatically on switching back to an\n"
@@ -579,7 +579,7 @@ _CONFIGURE_KEYS = {
             "After `watchdog search` fuses the dense (embedding) and sparse (BM25) candidate\n"
             "  lists, a cross-encoder reranks the top of that pool for precision — the biggest\n"
             "  single retrieval-quality lever (Anthropic contextual-retrieval). Runs entirely on\n"
-            "  your machine via fastembed — no API, no cost. Pre-downloaded by `watchdog settings setup`,\n"
+            "  your machine via fastembed — no API, no cost. Pre-downloaded by `watchdog setup`,\n"
             "  otherwise on first search (~300 MB).\n"
             "  Set to `none` (or empty) to turn reranking off and rank by fusion alone.\n"
             "  Other fastembed cross-encoders: Xenova/ms-marco-MiniLM-L-6-v2 (English, ~90 MB),\n"
@@ -1324,7 +1324,7 @@ def cmd_configure(args) -> None:
         try:
             config = _read_json(CONFIG_FILE)
         except json.JSONDecodeError:
-            sys.exit("Error: config file is corrupt. Try running 'watchdog settings setup --force'.")
+            sys.exit("Error: config file is corrupt. Try running 'watchdog setup --force'.")
 
     key   = getattr(args, "key",   None)
     value = getattr(args, "value", None)

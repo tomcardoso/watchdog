@@ -269,7 +269,7 @@ def run(force: bool = False) -> None:
     blocking = _check_deps()
     if blocking:
         print()
-        print("  Install missing dependencies before running `watchdog settings setup`:")
+        print("  Install missing dependencies before running `watchdog setup`:")
         for label, hint in blocking:
             print(f"\n    {label}:\n      {hint}")
         print()
@@ -402,6 +402,6 @@ def run(force: bool = False) -> None:
     print(f"    {_CYAN}{reload_hint}{_RESET}")
     print()
     print("  Create your first investigation:")
-    print(f"    {_CYAN}watchdog projects new \"My Investigation\"{_RESET}")
+    print(f"    {_CYAN}watchdog new \"My Investigation\"{_RESET}")
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
     print()

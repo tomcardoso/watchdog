@@ -58,7 +58,7 @@ Watchdog benchmarks its own model and effort defaults against real court and fin
 
 ```bash
 pipx install watchdog-intel
-watchdog settings setup
+watchdog setup
 ```
 
 Prefer [uv](https://docs.astral.sh/uv/)? Use `uv tool install watchdog-intel` instead of the first line.
@@ -68,7 +68,7 @@ Never used a terminal? The [install guide](https://github.com/tomcardoso/watchdo
 ## Quick start
 
 ```bash
-watchdog projects new "Shell Company Investigation"
+watchdog new "Shell Company Investigation"
 cd ~/Investigations/shell-company-investigation
 
 watchdog add ~/Downloads/court-filings/
@@ -111,14 +111,14 @@ To run from source:
 git clone https://github.com/tomcardoso/watchdog
 cd watchdog
 pipx install --editable . --force
-watchdog settings setup
+watchdog setup
 ```
 
 Please open an issue before starting significant work.
 
 ## Acknowledgements
 
-The vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici. Search is built on [fastembed](https://github.com/qdrant/fastembed) by Qdrant; the passage-window approach, `+`/`-` queries and show-the-source principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. Embedding the raw corpus separately from the knowledge graph was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro, and the structured vault index for entity lookup by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code). The ASCII dogs shown by `watchdog projects new` and `watchdog settings about` were drawn by Felix Lee and Sarah Kearsley.
+The vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici. Search is built on [fastembed](https://github.com/qdrant/fastembed) by Qdrant; the passage-window approach, `+`/`-` queries and show-the-source principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. Embedding the raw corpus separately from the knowledge graph was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro, and the structured vault index for entity lookup by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code). The ASCII dogs shown by `watchdog new` and `watchdog settings about` were drawn by Felix Lee and Sarah Kearsley.
 
 ## License
 

@@ -16,7 +16,7 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 
 ## How the commands are organized
 
-`watchdog --help` lists eight commands, grouped by what you are doing:
+`watchdog --help` lists ten commands, grouped by what you are doing:
 
 | Command | What it is for |
 |---|---|
@@ -27,8 +27,10 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog review` | Everything flagged for a person: contradictions, leads, watch-list hits, possible duplicates — see [below](#watchdog-review). |
 | `watchdog open` | Opening the investigation in Obsidian; `--folder` opens the folder in Finder or your file explorer instead. Omit the name when you are inside the vault. |
 | `watchdog research` | Web research, and downloading lists of links — see [below](#watchdog-research). |
-| `watchdog projects` | Creating, listing and managing investigations — see [Projects](#projects). |
-| `watchdog settings` | Models, keys, setup, health checks and skills — see [Settings](#settings). |
+| `watchdog new` | Creating a new investigation — see [Projects](#projects). |
+| `watchdog projects` | Listing and managing investigations — see [Projects](#projects). |
+| `watchdog settings` | Models, keys, health checks and skills — see [Settings](#settings). |
+| `watchdog setup` | Setting up Watchdog after installation; `--force` re-runs it. |
 
 `watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `timeline`, `reindex`, `usage`, `export` and `unlock`. They are described on this page too.
 
@@ -43,7 +45,7 @@ Run `watchdog` on its own inside an investigation to see the latest briefing, wh
 | Command | What it does |
 |---|---|
 | `watchdog projects list` | List all active investigations; `--all` includes archived ones. `watchdog projects` on its own does the same. |
-| `watchdog projects new [name]` | Create a new investigation vault; omit the name to be prompted, or pass `--description "text"` and `--dir <path>` to set the description and parent directory up front. |
+| `watchdog new [name]` | Create a new investigation vault; omit the name to be prompted, or pass `--description "text"` and `--dir <path>` to set the description and parent directory up front. |
 | `watchdog projects register [path]` | Register an existing vault folder with Watchdog; omit the path when inside the vault, and pass `--name` to set the name without being prompted. |
 | `watchdog projects status [name]` | Show detailed status for one investigation, or all of them when the name is omitted. |
 | `watchdog projects rename [name] [new-name]` | Rename an investigation, updating the folder, registry, and Obsidian entry; omit the current name when inside the vault, and omit the new name to be prompted. |
@@ -54,7 +56,7 @@ Run `watchdog` on its own inside an investigation to see the latest briefing, wh
 | `watchdog projects delete <name>` | Remove an investigation from the registry, leaving the vault files on disk; `--purge` also permanently deletes the files. |
 | `watchdog projects log [name]` | Show the ingest history; `--lines N` shows only the last N lines. |
 
-Investigation names tab-complete in zsh and bash once `watchdog settings setup` has run.
+Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 
 ## Adding documents
 
@@ -277,7 +279,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 |---|---|
 | `watchdog settings [key] [value]` | View or change settings — the full reference is in [Configuration](configuration.md). `watchdog settings configure` is the same command. |
 | `watchdog settings auth` | Show or change how Watchdog authenticates to model providers, interactively — see [below](#watchdog-settings-auth). |
-| `watchdog settings setup` | Set up Watchdog after installation; `--force` re-runs it. |
+| `watchdog setup` | Set up Watchdog after installation; `--force` re-runs it. |
 | `watchdog settings doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog projects move` or `watchdog projects delete` for each issue. |
 | `watchdog settings skills [name]` | List the record skills, or print one in full. |
 | `watchdog settings refresh-skills [name]` | Update a vault's Claude Code command skills after a Watchdog upgrade. |
@@ -380,7 +382,7 @@ There is no separate `set`/`get`/`use`/`remove` subcommand — this one interact
 
 Releases a stale lock left behind by an interrupted chew or ingest — both lock types are checked. A lock that looks recent is left alone unless you pass `--force`. Run it from inside the vault, or pass the investigation name.
 
-### watchdog settings setup
+### watchdog setup
 
 The one-time setup after installation: it verifies system dependencies, configures your projects directory, sets up Claude authentication, offers the optional capture browser, downloads the local models used for document conversion and search, and enables shell tab completion. `--force` re-runs it after it has already completed. The step-by-step walkthrough is in [Install](install.md).
 

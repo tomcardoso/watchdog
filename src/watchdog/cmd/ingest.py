@@ -845,7 +845,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         a = resolve_auth()
         if a["mode"] == "none":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                     f"  Run {_CYAN}watchdog settings setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
     else:
         a = {"mode": None}
 
@@ -1339,7 +1339,7 @@ def cmd_finalize(args) -> dict | None:
         a = resolve_auth()
         if a["mode"] == "none":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                     f"  Run {_CYAN}watchdog settings setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
 
 
     return _run_finalize(vault, post_model, post_effort, post_backend,

@@ -1,5 +1,6 @@
-"""The grouped command surface (D254): eight commands a reporter uses, routed onto the parsers
-that implement them.
+"""The grouped command surface (D254): the ten commands a reporter uses, routed onto the parsers
+that implement them. `new` and `setup` stay top-level because they are the first two commands
+anyone runs.
 
 `watchdog projects rename …`, `watchdog settings auth …` and the verbs under `review`,
 `research`, `add` and `ask` are rewritten to the original command (`rename`, `auth`, …) before
@@ -16,12 +17,12 @@ from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET
 # group → {verb: original command}. A group's first entry is what the bare group runs.
 GROUPS: dict[str, dict[str, str]] = {
     "projects": {
-        "list": "list", "new": "new", "register": "register", "status": "status",
+        "list": "list", "register": "register", "status": "status",
         "rename": "rename", "describe": "describe", "move": "move", "archive": "archive",
         "unarchive": "unarchive", "delete": "delete", "log": "log",
     },
     "settings": {
-        "configure": "configure", "auth": "auth", "setup": "setup", "doctor": "doctor",
+        "configure": "configure", "auth": "auth", "doctor": "doctor",
         "skills": "show-skills", "refresh-skills": "refresh-skills", "about": "about",
     },
 }
@@ -44,7 +45,6 @@ FLAGS: dict[tuple[str, str], str] = {
 _GROUP_HELP = {
     "projects": ("Create, list and manage investigations", {
         "list": "List investigations (--all includes archived ones)",
-        "new": "Create a new investigation",
         "register": "Register an existing vault folder",
         "status": "Show detailed status for one investigation, or all",
         "rename": "Rename an investigation",
@@ -58,7 +58,6 @@ _GROUP_HELP = {
     "settings": ("Models, keys, setup, health checks and skills", {
         "configure": "View or change a setting (also: watchdog settings <key> <value>)",
         "auth": "Show and change how Watchdog signs in to model providers",
-        "setup": "Run first-time setup again",
         "doctor": "Check for missing or broken vaults",
         "skills": "List the record skills",
         "refresh-skills": "Update a vault's skill files after an upgrade",

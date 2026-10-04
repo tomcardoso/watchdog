@@ -463,7 +463,7 @@ def load_projects() -> dict:
         try:
             return json.load(f)
         except json.JSONDecodeError as e:
-            sys.exit(f"Error: projects file is corrupt — {e}\nRun 'watchdog settings setup --force'.")
+            sys.exit(f"Error: projects file is corrupt — {e}\nRun 'watchdog setup --force'.")
 
 
 def _project_completer(prefix, parsed_args, **kwargs):
@@ -487,7 +487,7 @@ def load_config() -> dict:
         data = _read_json(CONFIG_FILE)
     except json.JSONDecodeError as e:
         sys.exit(f"Error: config file is corrupt — {e}\nFix or remove {CONFIG_FILE}, or run "
-                 f"'watchdog settings setup --force'.")
+                 f"'watchdog setup --force'.")
     return data if isinstance(data, dict) else {}
 
 
@@ -497,7 +497,7 @@ def _projects_dir() -> Path:
         try:
             config = _read_json(CONFIG_FILE)
         except json.JSONDecodeError as e:
-            sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog settings setup --force'.")
+            sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog setup --force'.")
         # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a
         # config written before that key existed, or hand-edited to set only one other knob) —
         # `or default` treats any falsy value the same as a missing one, since `config.get(...,
@@ -796,8 +796,10 @@ def _print_banner() -> None:
             ("research",   "Research open questions on the web"),
         ]),
         ("Manage", [
-            ("projects",   "Create, list, rename, move, archive or delete investigations"),
-            ("settings",   "Models, keys, setup, health checks and skills"),
+            ("new",        "Create a new investigation"),
+            ("projects",   "List, rename, move, archive or delete investigations"),
+            ("settings",   "Models, keys, health checks and skills"),
+            ("setup",      "Set up Watchdog after installation"),
         ]),
     ]
     for group_name, cmds in groups:

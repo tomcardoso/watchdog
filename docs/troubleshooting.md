@@ -23,7 +23,7 @@ Then close and reopen your terminal.
 Watchdog is installed but hasn't been through first-time setup. Run:
 
 ```bash
-watchdog settings setup
+watchdog setup
 ```
 
 ## qpdf, Ghostscript, or Tesseract missing during setup
@@ -31,7 +31,7 @@ watchdog settings setup
 Setup refuses to continue until its required tools are installed. Install the missing tool for your platform — the exact commands are in [Step 4 of the install guide](install.md#step-4-install-the-prerequisites) — then run setup again:
 
 ```bash
-watchdog settings setup
+watchdog setup
 ```
 
 ## A file landed in _INCOMING/_FAILED/

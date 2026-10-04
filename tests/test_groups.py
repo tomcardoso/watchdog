@@ -65,7 +65,7 @@ def _run(monkeypatch, *argv):
 def test_banner_shows_the_grouped_surface(monkeypatch, capsys):
     _run(monkeypatch, "--help")
     out = capsys.readouterr().out
-    for cmd in ("add", "ask", "search", "review", "open", "research", "projects", "settings",
+    for cmd in ("add", "ask", "search", "review", "open", "research", "projects", "settings", "new", "setup",
                 "watchdog help maintenance"):
         assert cmd in out
     for old in ("merge-entities", "refresh-skills", "unarchive", "contradiction-add"):
