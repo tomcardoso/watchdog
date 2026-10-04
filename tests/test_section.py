@@ -265,24 +265,10 @@ def test_run_threshold_follows_model_window(tmp_path, monkeypatch):
 
 # ── the output ceiling no longer sizes the input (#555) ───────────────────────
 
-def test_model_defaults_ignores_the_output_ceiling(monkeypatch):
-    # The load-bearing assertion of #555: `model_defaults` must never consult
-    # `output_ceiling_for_sectioning`. A backend that enforces a fixed output ceiling it can't
-    # paginate past (openai/gemini) used to have its threshold/budget capped by inverting an
-    # affine output-density fit against that ceiling (#343, #542); across 673 archived extraction
-    # calls that cap never bound — peak output was 14-27% of the envelope on every model but
-    # gpt-5.4-mini at high effort — while the pooled fit behind it let one model's reasoning
-    # volume set every other model's budget. Both the fit and the ceiling term are gone.
-    #
-    # Monkeypatching the lookup to explode is what makes this mutation-resistant: reinstating any
-    # ceiling term, however it is clamped, turns this red rather than merely changing a number.
-    import watchdog.model_client as mc
-
-    def boom(backend, model):
-        raise AssertionError("model_defaults must not consult the output ceiling (#555)")
-
-    monkeypatch.setattr(mc, "output_ceiling_for_sectioning", boom)
-    # Pure input-window defaults on the very backends that used to be capped. Both models price
+def test_model_defaults_ignores_the_output_ceiling():
+    # #555: a backend that enforces an output ceiling it can't paginate past (openai/gemini) used
+    # to have its threshold/budget capped against that ceiling; across 673 archived extraction
+    # calls the cap never bound. The defaults are now pure input-window fractions. Pure input-window defaults on the very backends that used to be capped. Both models price
     # flat, so the surviving long-context clamp doesn't confound the assertion.
     assert section.model_defaults("gpt-5.4-mini", backend="openai") == (300_000, 150_000)
     assert section.model_defaults("gemini-3.7-flash", backend="gemini") == (659_340, 329_670)

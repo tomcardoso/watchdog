@@ -11,6 +11,7 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 """
 
 import asyncio
+from dataclasses import dataclass, field
 import contextlib
 import datetime
 import hashlib
@@ -29,6 +30,7 @@ from watchdog.pipeline import (
 )
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
+from watchdog import config as user_config
 
 DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
@@ -36,7 +38,7 @@ DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 # reads). A new document's dispatch is held back when it would push the run's recent tokens/min
 # over the known budget, rather than only reacting to a 429 by stopping the whole batch.
 # `_ADMISSION_SAFETY_MARGIN` leaves headroom for estimate error and for calls that have finished
-# but not yet landed in `_usage`; not user-configurable — no existing precedent in this codebase
+# but not yet landed in `_run.usage`; not user-configurable — no existing precedent in this codebase
 # for exposing a heuristic margin as its own knob. `_ADMISSION_MAX_WAIT_S` is the deadlock guard:
 # `_recent_token_rate`'s window is anchored to the latest *usage record's* `end_ts`, not
 # wall-clock time, so if every in-flight document is simultaneously waiting in `_admit` (nothing
@@ -53,77 +55,55 @@ _ADMISSION_MAX_WAIT_S = 300.0
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing"}
 
 
-# During extraction this holds the live status region (#151); per-document rows redraw in
-# place and finished/failed lines + notes scroll above it. None outside extraction (and when
-# stdout isn't a TTY), so `_say` falls back to plain append-only printing.
-_board: LiveRegion | None = None
+@dataclass
+class _RunState:
+    """State for the one run (`run()` or a standalone `finalize()`) this process is executing —
+    one run per process, behind the vault's run lock. Reset by `_begin_usage_run`/`_end_usage_run`
+    and by `run()` itself."""
+    # The live status region during extraction (#151); None outside it or off a TTY, so `_say`
+    # falls back to plain printing.
+    board: "LiveRegion | None" = None
+    # The command a "re-run to resume" message names (#441, D138): `watchdog dig` for a dig run,
+    # bare `watchdog` for the guided walk.
+    resume_hint: str = "watchdog dig"
+    # Per-call token/cost records (A2), one per model call; None outside a run, so helpers tested
+    # directly don't need one.
+    usage: "list[dict] | None" = None
+    # The run's `usage-<ts>.partial.jsonl` (#407): each record is appended as it completes, so a
+    # crash still leaves it on disk. None whenever `usage` is.
+    usage_partial_path: "Path | None" = None
+    # The run's id in the global telemetry store (#611) — the same `<ts>` as the usage file.
+    run_id: "str | None" = None
+    # Tags for the run's telemetry rows (#611): the benchmark arm, if any, and the model/effort
+    # knobs the run was called with.
+    benchmark_arm_id: "str | None" = None
+    config_snapshot: "dict | None" = None
+    # Whether the run writes to the global telemetry store (the `telemetry` configure key).
+    telemetry_on: bool = False
+    # Admission control's in-flight reservations (#563): sha -> estimated tokens for a document
+    # admitted but whose real usage hasn't landed yet. `run()` dispatches every document at once,
+    # so each one's first `_admit` check runs before any call completes; reserving eagerly lets a
+    # later document see the earlier ones. Released in `_guarded`'s `finally`.
+    admission_reserved: "dict[str, int]" = field(default_factory=dict)
 
-# The command a "re-run to resume/collect later" message should name for the current run (#441,
-# D138). `cmd_ingest` owns which surface it is — `watchdog dig` for a `dig` run, bare `watchdog`
-# for the guided walk or the deprecated `ingest` — and passes it as `run`'s `resume_hint`, which
-# stashes it here so the extraction-side notices (rate-limit stop, batch submit/poll) point back
-# at the right entry point rather than always saying `dig`. One run per process (behind the run
-# lock), same single-run assumption `_board`/`_usage` already rely on.
-_resume_hint: str = "watchdog dig"
 
-# Per-call token/cost telemetry for the current run (A2) — a list of dicts, one per successful
-# model call, accumulated by `_call_model`. None outside a `run`/standalone `finalize` call, so
-# unit tests that exercise the per-document helpers directly (without going through either) don't
-# need to know about it. `ModelResult.usage`/`cost_usd` were previously computed and discarded —
-# this is the prerequisite for answering "how many tokens did this ingest spend, by stage?"
-# without spelunking Claude Code session logs.
-_usage: list[dict] | None = None
-
-# Path of the current run's `usage-<ts>.partial.jsonl` (#407) — set alongside `_usage` by
-# `_begin_usage_run`, mirrored into `_record_usage` so every call's record lands on disk the
-# moment it completes, not just in the end-of-run `usage-<ts>.json`. None whenever `_usage` is.
-_usage_partial_path: Path | None = None
-
-# This run's id for the global telemetry store (#611) — the same `<ts>` used for
-# `usage-<ts>.partial.jsonl`, so a `calls` row is trivially joinable back to its JSON file. Set
-# by `_begin_usage_run` alongside `_usage_partial_path`; None whenever `_usage` is.
-_run_id: str | None = None
-
-# `benchmark_arm_id`/`config_snapshot` for the current run's telemetry rows (#611) — set by
-# `_begin_usage_run`, read by `_record_usage`. `_benchmark_arm_id` is None for an ordinary ingest
-# run and the arm id (e.g. from `benchmark.yaml`) for a `run_benchmark.py`-driven one, letting a
-# later query filter benchmark noise out of production estimates or drill into one arm's calls.
-# `_run_config_snapshot` is a small dict of the model/effort/budget knobs `run()`/`finalize()`
-# were called with — the config that shaped this run's calls, not re-read from disk.
-_benchmark_arm_id: str | None = None
-_run_config_snapshot: dict | None = None
-# Whether this run writes to the global telemetry store — the `telemetry` configure key, read once
-# by `_begin_usage_run`.
-_telemetry_on: bool = False
-
-# Admission control's in-flight reservations (#563): sha -> estimated tokens, for a document that
-# has been admitted (or is mid-admission-check) but whose real usage hasn't landed in `_usage`
-# yet. Needed because `run()` fires every queued document's dispatch at once — `asyncio`'s
-# scheduler runs each one's synchronous prefix (including its first `_admit` check) back-to-back,
-# all before any of them completes a real model call, so a check against `_usage` alone would see
-# every concurrently-dispatched document as if it were the only one running. Set eagerly, *before*
-# `_admit` is even called, so a later document in the same dispatch burst sees an earlier one's
-# reservation already present when its own turn comes (ordinary synchronous dict mutation, so this
-# works correctly even though both documents' checks happen in the same event-loop tick). Cleared
-# per-document once that document's `_guarded` call finishes, in `finally` — success, failure, or
-# cancellation all release it the same way.
-_admission_reserved: dict[str, int] = {}
+_run = _RunState()
 
 
 def _say(msg: str) -> None:
     """Print a styled progress line to the terminal (indented per the CLI style guide).
     Routes through the live region as a scrollback note when one is active."""
     line = f"  {msg}"
-    if _board is not None:
-        _board.note(line)
+    if _run.board is not None:
+        _run.board.note(line)
     else:
         print(line, flush=True)
 
 
 def _settle(sha: str, line: str) -> None:
     """Print a document's terminal line (OK / ✗), clearing its in-flight live row if present."""
-    if _board is not None:
-        _board.finish(sha, line)
+    if _run.board is not None:
+        _run.board.finish(sha, line)
     else:
         print(line, flush=True)
 
@@ -136,7 +116,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
                   vault: Path | None = None, prompt_hash: str | None = None) -> None:
-    """Append one call's usage to the run-scoped `_usage` accumulator, if one is active.
+    """Append one call's usage to the run-scoped `_run.usage` accumulator, if one is active.
     Tolerates both Anthropic-style and OpenAI-compatible usage dicts (D37); takes explicit
     fields rather than a `model_client.ModelResult` so a batch-collected item (D52, no live
     call) can feed it too, not just `_call_model` (D64).
@@ -157,7 +137,7 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
 
     `vault`/`prompt_hash` (D50/#611) feed the global telemetry store in addition to this run's
     own usage file; that write is best-effort and never allowed to fail the ingest it observes."""
-    if _usage is None:
+    if _run.usage is None:
         return
     u = usage or {}
     record = {
@@ -209,19 +189,19 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
         record["est_input_tokens"] = est_input_tokens
     if est_prompt_tokens is not None:
         record["est_prompt_tokens"] = est_prompt_tokens
-    _usage.append(record)
-    if _usage_partial_path is not None:
+    _run.usage.append(record)
+    if _run.usage_partial_path is not None:
         # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
         # interrupt between this call and the run's end-of-run `_write_usage` still leaves
         # this record on disk. `_record_usage` has no `await` in it, so no other call can
         # interleave with this write even under concurrent extraction.
-        with open(_usage_partial_path, "a", encoding="utf-8") as f:
+        with open(_run.usage_partial_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    if vault is not None and _run_id is not None and _telemetry_on:
+    if vault is not None and _run.run_id is not None and _run.telemetry_on:
         try:
-            telemetry_db.record_call(record, vault=vault, run_id=_run_id,
-                                     benchmark_arm_id=_benchmark_arm_id, prompt_hash=prompt_hash,
-                                     config_snapshot=_run_config_snapshot)
+            telemetry_db.record_call(record, vault=vault, run_id=_run.run_id,
+                                     benchmark_arm_id=_run.benchmark_arm_id, prompt_hash=prompt_hash,
+                                     config_snapshot=_run.config_snapshot)
         except Exception as e:
             _log(vault, f"WARN telemetry_db write failed for task={task}: {e}")
 
@@ -289,7 +269,7 @@ def _current_token_budget(config_override: int | None) -> int | None:
     """The effective admission ceiling for `_admit` (#563): `config_override`
     (`extract_token_budget`) when the user set one, else the most recent `rate_limit.limit_tokens`
     seen on any call this run, else `None` (nothing known yet — `_admit` becomes a no-op, same as
-    before this feature existed). Reads `_usage` directly rather than tracking a separate
+    before this feature existed). Reads `_run.usage` directly rather than tracking a separate
     module-global, so it resets for free alongside `_begin_usage_run`/`_end_usage_run` with no
     extra reset code to keep in sync.
 
@@ -299,9 +279,9 @@ def _current_token_budget(config_override: int | None) -> int | None:
     `config_override` is its only lever, not a fallback for it (see D185)."""
     if config_override is not None:
         return config_override
-    if not _usage:
+    if not _run.usage:
         return None
-    for record in reversed(_usage):
+    for record in reversed(_run.usage):
         rl = record.get("rate_limit")
         if rl and rl.get("limit_tokens") is not None:
             return rl["limit_tokens"]
@@ -311,13 +291,13 @@ def _current_token_budget(config_override: int | None) -> int | None:
 async def _admit(sha: str, est_tokens: int, budget: int | None, cancelled: asyncio.Event) -> None:
     """Block dispatching `sha` (estimated at `est_tokens`) until the run's recent tokens/min
     (`_recent_token_rate`) plus every *other* currently in-flight document's reservation
-    (`_admission_reserved`, excluding `sha` itself) plus this document's own estimate would stay
+    (`_run.admission_reserved`, excluding `sha` itself) plus this document's own estimate would stay
     at or under `budget * _ADMISSION_SAFETY_MARGIN` (#563 admission control). The reservation term
-    matters because `run()` fires every queued document's dispatch at once: `_usage` alone only
+    matters because `run()` fires every queued document's dispatch at once: `_run.usage` alone only
     reflects *completed* calls, and every document's first admission check happens before any of
-    them has completed one — checking `_usage` alone would let an entire concurrent burst through
+    them has completed one — checking `_run.usage` alone would let an entire concurrent burst through
     regardless of budget, each one seeing the others as if they didn't exist. The caller (`run()`'s
-    `_guarded`) is responsible for adding/removing `sha`'s own entry in `_admission_reserved`; this
+    `_guarded`) is responsible for adding/removing `sha`'s own entry in `_run.admission_reserved`; this
     function only reads it.
 
     A no-op — returns immediately — when `budget` is `None` (nothing known yet) or when
@@ -327,7 +307,7 @@ async def _admit(sha: str, est_tokens: int, budget: int | None, cancelled: async
     document stuck.
 
     Force-admits past `_ADMISSION_MAX_WAIT_S` regardless of the rate: `_recent_token_rate`'s
-    window only advances when a new call lands in `_usage`, so if every in-flight document were
+    window only advances when a new call lands in `_run.usage`, so if every in-flight document were
     ever simultaneously waiting here, nothing would ever produce that new record — an otherwise
     real possibility of stalling forever that this cap forecloses."""
     if budget is None:
@@ -338,8 +318,8 @@ async def _admit(sha: str, est_tokens: int, budget: int | None, cancelled: async
     told = False
     started = time.monotonic()
     while not cancelled.is_set():
-        reserved = sum(v for k, v in _admission_reserved.items() if k != sha)
-        if _recent_token_rate(_usage or [], now=time.time()) + reserved + est_tokens <= ceiling:
+        reserved = sum(v for k, v in _run.admission_reserved.items() if k != sha)
+        if _recent_token_rate(_run.usage or [], now=time.time()) + reserved + est_tokens <= ceiling:
             return
         if time.monotonic() - started >= _ADMISSION_MAX_WAIT_S:
             _say(f"{_DIM}Proceeding past the token budget after "
@@ -446,26 +426,25 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     """Start this run's usage accumulation (#407): first consolidate any orphaned partial from
     a previous aborted run, then open this run's own `usage-<ts>.partial.jsonl` that
     `_record_usage` appends each call's record to as it completes. Called by every top-level
-    entry point — `run()` and a standalone `finalize()` — in place of the bare `_usage = []`
+    entry point — `run()` and a standalone `finalize()` — in place of the bare `_run.usage = []`
     this replaced.
 
     `benchmark_arm_id`/`config_snapshot` (#611) are stamped onto every `calls` row this run
     writes to the global telemetry store — `run()`/`finalize()` build `config_snapshot` from
     their own parameters and pass a benchmark arm's id through when `run_benchmark.py` is the
     caller, both threaded no further than module-globals here since a single run/finalize call
-    is the same one-run-per-process scope `_usage` itself already relies on."""
-    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot, _telemetry_on
+    is the same one-run-per-process scope `_run.usage` itself already relies on."""
     _consolidate_orphaned_usage(vault)
-    _telemetry_on = telemetry_db.enabled()
-    _usage = []
-    _admission_reserved.clear()
+    _run.telemetry_on = telemetry_db.enabled()
+    _run.usage = []
+    _run.admission_reserved.clear()
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    _usage_partial_path = usage_dir / f"usage-{ts}.partial.jsonl"
-    _run_id = ts
-    _benchmark_arm_id = benchmark_arm_id
-    _run_config_snapshot = config_snapshot
+    _run.usage_partial_path = usage_dir / f"usage-{ts}.partial.jsonl"
+    _run.run_id = ts
+    _run.benchmark_arm_id = benchmark_arm_id
+    _run.config_snapshot = config_snapshot
 
 
 def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[str | None, dict | None]:
@@ -479,20 +458,19 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
     mirrored onto the returned `totals` so both the persisted file and the in-memory summary
     agree. The two `finalize()` exit points never extract anything, so they call this with the
     default `None` and no such field appears."""
-    global _usage, _usage_partial_path, _run_id, _benchmark_arm_id, _run_config_snapshot, _telemetry_on
-    path = _write_usage(vault, _usage, est_input_tokens=est_input_tokens)
+    path = _write_usage(vault, _run.usage, est_input_tokens=est_input_tokens)
     telemetry_db.close()
-    _telemetry_on = False
-    totals = _usage_totals(_usage) if _usage else None
+    _run.telemetry_on = False
+    totals = _usage_totals(_run.usage) if _run.usage else None
     if totals is not None and est_input_tokens is not None:
         totals["est_input_tokens"] = est_input_tokens
-    if _usage_partial_path is not None:
-        _usage_partial_path.unlink(missing_ok=True)
-    _usage_partial_path = None
-    _usage = None
-    _run_id = None
-    _benchmark_arm_id = None
-    _run_config_snapshot = None
+    if _run.usage_partial_path is not None:
+        _run.usage_partial_path.unlink(missing_ok=True)
+    _run.usage_partial_path = None
+    _run.usage = None
+    _run.run_id = None
+    _run.benchmark_arm_id = None
+    _run.config_snapshot = None
     return path, totals
 
 
@@ -586,8 +564,8 @@ def _candidates_checklist(text: str, *, vault: Path | None = None, sha: str | No
     if sha is not None:
         tty = f"{_DIM}→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…{_RESET}"
         plain = f"{_DIM}→  {filename}  harvesting candidates…{_RESET}"
-        if _board is not None:
-            _board.update(sha, f"  {tty}", f"  {plain}")
+        if _run.board is not None:
+            _run.board.update(sha, f"  {tty}", f"  {plain}")
         else:
             _say(plain)
     candidates = harvest.harvest(text) + harvest.harvest_entities(harvest.split_pages(text))
@@ -756,12 +734,7 @@ def _verifier_effort() -> str | None:
     advanced knob in the same family as `empty_extraction_min_words` (D153). Low is the default
     for a cost reason, not a quality one — gap-finding against a supplied list is a comparison,
     and output tokens are where the pass's cost actually lives (D172)."""
-    from watchdog.cmd import base
-    try:
-        cfg = json.loads(base.CONFIG_FILE.read_text(encoding="utf-8"))
-    except Exception:
-        cfg = {}
-    effort = cfg.get("verifier_effort", "low")
+    effort = user_config.get("verifier_effort", "low")
     return effort if effort in model_client._EFFORT_LEVELS else "low"
 
 
@@ -783,8 +756,8 @@ async def _verify_facts(vault, sha, base, extraction, *, model, backend, filenam
     is session-wide and has to stop the run as it would from any other call, and cancellation
     (a `BaseException`, so `except Exception` never sees it)."""
     doc = extraction.get("document", {})
-    if _board is not None:
-        _board.update(sha, f"  {_DIM}→  {filename}  {detail} · verifying…{_RESET}",
+    if _run.board is not None:
+        _run.board.update(sha, f"  {_DIM}→  {filename}  {detail} · verifying…{_RESET}",
                       f"  {_DIM}→  {filename}  verifying…{_RESET}")
     prompt = prompts.build_verify_prompt(
         base, key_facts=doc.get("key_facts") or [], entities=extraction.get("entities") or [])
@@ -821,8 +794,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     candidates = await asyncio.to_thread(
         _candidates_checklist, text, vault=vault, sha=sha, filename=filename, flow=flow)
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
-    if _board is not None:
-        _board.update(sha, f"  {_DIM}→  {filename}  {flow} · extracting…{_RESET}",
+    if _run.board is not None:
+        _run.board.update(sha, f"  {_DIM}→  {filename}  {flow} · extracting…{_RESET}",
                       f"  {_DIM}→  {filename}  extracting…{_RESET}")
     base = prompts.build_extract_prompt(
         pages_text=text,
@@ -965,8 +938,8 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
         _candidates_checklist, sec_text, vault=vault, sha=sha, filename=pf["filename"],
         flow=sec["label"])
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
-    if _board is not None:
-        _board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
+    if _run.board is not None:
+        _run.board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
                       f"  {_DIM}→  {pf['filename']}  extracting…{_RESET}")
     base = prompts.build_section_prompt(
         pages_text=sec_text,
@@ -1025,8 +998,7 @@ def _repairable_by_section1(errors: list[str]) -> bool:
 
 def _section_checkpoint_path(vault: Path, sha: str, index: int) -> Path:
     # Same naming convention section.run() uses for a section's raw text (section_{sha}_{idx}.md)
-    # and the one abort.py's cleanup already globs for (#498) — reusing it means an explicit
-    # `watchdog ingest-abort` sweeps these away for free with no changes needed there.
+    # and the one abort.py's cleanup already globs for (#498).
     return vault / ".watchdog" / "tmp" / f"section_ex_{sha}_{index:02d}.json"
 
 
@@ -1396,8 +1368,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     def _step(tty: str, plain: str) -> None:
         """Mutate this document's single in-flight live row (TTY); append the plain transition
         line when there's no live region (non-TTY) — keeping logged output unchanged."""
-        if _board is not None:
-            _board.update(sha, f"  {tty}", f"  {plain}")
+        if _run.board is not None:
+            _run.board.update(sha, f"  {tty}", f"  {plain}")
         else:
             _say(plain)
 
@@ -1699,7 +1671,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
         done = sum(v for k, v in counts.items() if k != "processing")
         _say(f"{_YELLOW}A batch extraction is still processing{_RESET}{_DIM} "
              f"({done}/{len(state['shas'])} finished so far) — re-run {_RESET}"
-             f"{_CYAN}{_resume_hint}{_RESET}{_DIM} later to check again.{_RESET}")
+             f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later to check again.{_RESET}")
         return {"results": [], "batch_pending": True}
 
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
@@ -1726,7 +1698,7 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
         # already_extracted check skips them on the next pass) — so a later run finishes.
         _say(f"{_YELLOW}Rate limit reached during batch collection{_RESET}{_DIM} — {e} "
              f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
-             f"{_CYAN}{_resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
+             f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
         return {"results": results, "batch_pending": True}
 
     _log(vault, _batch_log_line(state, st, collected_at))
@@ -1838,7 +1810,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                                           effort=extract_effort, skills=skills,
                                           api_key=api_key, backend=backend)
     _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
-         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} later "
+         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later "
          f"to collect it.{_RESET}")
     return {"results": results, "batch_pending": True}
 
@@ -2102,8 +2074,8 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
              f"- **Briefing:** [[briefings/{slug}|{slug}]]\n")
     if contradiction_flags:
         entry += f"- **Contradictions flagged:** {len(contradiction_flags)}\n"
-    if _usage:   # (F5, #222) — _post_ingest's own calls (synthesis/timeline-dedup/briefing)
-        totals = _usage_totals(_usage)   # are already recorded by the time this runs
+    if _run.usage:   # (F5, #222) — _post_ingest's own calls (synthesis/timeline-dedup/briefing)
+        totals = _usage_totals(_run.usage)   # are already recorded by the time this runs
         cost = f" · ~${totals['cost_usd']:.4f}" if totals.get("cost_usd") else ""
         entry += (f"- **Usage:** {totals['input_tokens']:,} in / "
                  f"{totals['output_tokens']:,} out tokens{cost}\n")
@@ -2867,8 +2839,7 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
     model other than `post_model`/`post_backend`. `benchmark_arm_id` (#611) tags this run's
     telemetry when `run_benchmark.py` is the caller; ignored when nested inside `run()`, which
     already set the tag for the whole run."""
-    global _usage
-    standalone_usage = _usage is None   # not nested inside `run` — this call owns the usage file
+    standalone_usage = _run.usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
         config_snapshot = {"post_model": post_model, "post_effort": post_effort,
                            "finalizer_overrides": finalizer_overrides}
@@ -2964,9 +2935,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         "classify_effort": classify_effort,
         "extract_token_budget": extract_token_budget, "verify": verify, "concurrency": concurrency,
     }
-
-    global _board, _usage, _resume_hint
-    _resume_hint = resume_hint
+    _run.resume_hint = resume_hint
 
     # claude-batch/openai-batch (#214, #530): submit-many/poll/collect, not one-await-per-document,
     # so it's a genuinely different flow — handled entirely by _run_batch (which also covers a
@@ -3001,7 +2970,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # Live status region for the concurrent extraction phase (#151): one in-place row per
         # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
         # where it degrades to the previous append-only output.
-        _board = LiveRegion()
+        _run.board = LiveRegion()
         _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
         # Admission control (#563): every queued document's pre-flight output is read once, up
         # front — cheap (sync, local JSON only, no model call) — and reused for two things: the
@@ -3060,9 +3029,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                                force=force, verify_pass=verify, pf=pf)
             # Reserved *before* calling `_admit` — and before this document has even been checked
             # for admission — so a sibling document dispatched in the same burst (every queued
-            # document starts at once; see `_admission_reserved`'s own comment) sees this one
+            # document starts at once; see `_run.admission_reserved`'s own comment) sees this one
             # accounted for the moment its own turn comes, not only once real usage lands.
-            _admission_reserved[sha] = est_by_sha.get(sha, 0)
+            _run.admission_reserved[sha] = est_by_sha.get(sha, 0)
             try:
                 try:
                     await _admit(sha, est_by_sha.get(sha, 0), budget, cancelled)
@@ -3088,7 +3057,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                             # sustaining right before the stop, and (when the provider sent them) the
                             # last-seen remaining/limit off the 429 itself.
                             detail_parts = []
-                            rate = _recent_token_rate(_usage) if _usage else 0
+                            rate = _recent_token_rate(_run.usage) if _run.usage else 0
                             if rate:
                                 detail_parts.append(f"~{rate:,} tokens/min observed")
                             rl = e.rate_limit or {}
@@ -3105,7 +3074,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                      f"Waiting to resume automatically once it resets.{_RESET}")
                             else:
                                 _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                                     f"{_RESET}{_CYAN}{_resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                                     f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
                             _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except model_client.ProviderAuthError as e:
@@ -3116,7 +3085,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                             _say(f"{_YELLOW}The provider refused this run{_RESET}{_DIM} — {e}{_RESET}")
                             _say(f"{_DIM}Stopping; finished documents are saved and the rest stay "
                                  f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog auth"
-                                 f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_resume_hint}{_RESET}"
+                                 f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}"
                                  f"{_DIM}.{_RESET}")
                             _request_stop(auth_error=str(e))
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
@@ -3125,7 +3094,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     except Exception as e:               # one bad doc must not sink the batch
                         return _fail(vault, sha, "", f"unexpected error: {e}")
             finally:
-                _admission_reserved.pop(sha, None)
+                _run.admission_reserved.pop(sha, None)
 
         # On ctrl+c, cancel in-flight work once and shut down cleanly instead of letting
         # KeyboardInterrupt tear through the event loop with a traceback. Finished documents
@@ -3140,17 +3109,17 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             while True:
                 await asyncio.sleep(1)
                 elapsed = int(time.monotonic() - start)
-                _board.update("__elapsed__", f"  {_DIM}Elapsed {elapsed // 60:02d}:{elapsed % 60:02d}{_RESET}",
+                _run.board.update("__elapsed__", f"  {_DIM}Elapsed {elapsed // 60:02d}:{elapsed % 60:02d}{_RESET}",
                               pin=True)
 
         # Only on a real TTY — LiveRegion.update() falls back to plain append-only printing
         # when disabled, which would spam a new line every second into logs/CI output.
-        if _board.enabled:
+        if _run.board.enabled:
             # Blank clearance line above the elapsed row (#456), same pattern as chew's own
             # pinned progress bar (preprocess_batch._SPACER_KEY) — registered once, before the
             # timer starts, since pinned rows render in insertion order among pinned keys.
-            _board.update("__elapsed_spacer__", "", pin=True)
-        timer_task = asyncio.ensure_future(_tick_elapsed()) if _board.enabled else None
+            _run.board.update("__elapsed_spacer__", "", pin=True)
+        timer_task = asyncio.ensure_future(_tick_elapsed()) if _run.board.enabled else None
 
         def _on_interrupt() -> None:
             if cancelled.is_set():
@@ -3174,7 +3143,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # capture_stderr (#419): a dependency running in one of these tasks' worker
             # threads (e.g. harvest's GLiNER load) can write straight to stderr mid-extraction;
             # left alone that corrupts the board's redraw math, duplicating in-flight rows.
-            with _board.capture_stderr():
+            with _run.board.capture_stderr():
                 await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             if handler_set:
@@ -3224,7 +3193,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # synthesized and briefed together with this run's documents. Wrapped in the same
             # stderr capture as extraction (#419) — reconcile/synthesize can load the same
             # stderr-noisy local models (e.g. GLiNER) while the live region is still open below.
-            with _board.capture_stderr() if _board is not None else contextlib.nullcontext():
+            with _run.board.capture_stderr() if _run.board is not None else contextlib.nullcontext():
                 summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
                                                         post_effort=post_effort, post_backend=post_backend,
                                                         skip_briefing=skip_briefing,
@@ -3246,7 +3215,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             _say(f"{_YELLOW}Post-processing incomplete{_RESET}{_DIM} — {e}{_RESET}")
             _say(f"{_DIM}Your {summary['extracted']} extracted document"
                  f"{'s are' if summary['extracted'] != 1 else ' is'} saved.{_RESET}")
-    if _board is not None:
+    if _run.board is not None:
         # Close the live region now that finalize (if any) has also run — see the comment at the
         # extraction gather's own `finally` above for why this was moved out of there.
         if timer_task is not None:
@@ -3255,8 +3224,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 await timer_task
             except asyncio.CancelledError:
                 pass
-        _board.stop()
-        _board = None
+        _run.board.stop()
+        _run.board = None
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled_flag else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")

@@ -251,7 +251,7 @@ savings but no rate-limit headroom.
 
 **Admission control (D185, #563).** A new document's dispatch is held back (`orchestrate._admit`,
 gating before the concurrency semaphore so a slot isn't held idle) when the run's recent
-tokens/min, plus every *other* in-flight document's reservation (`_admission_reserved`), plus this
+tokens/min, plus every *other* in-flight document's reservation (`_run.admission_reserved`), plus this
 document's own estimate, would exceed a budget — the `extract_token_budget` override if set, else
 the most recent `rate_limit.limit_tokens` reported this run, else ungated (pre-#563 behaviour).
 
@@ -259,7 +259,7 @@ The reservation dict is load-bearing, not an optimization: `run()` dispatches ev
 document at once, and asyncio runs each one's synchronous prefix — including its first `_admit`
 check — in the same event-loop tick, before any of them has completed a real call, so checking
 recorded usage alone would let an entire over-budget burst through simultaneously. `_guarded` sets
-`_admission_reserved[sha]` before calling `_admit` and clears it in a `finally`, so a later
+`_run.admission_reserved[sha]` before calling `_admit` and clears it in a `finally`, so a later
 document in the same burst sees an earlier one's reservation the moment its own turn comes; see
 D185 for the full race analysis. Force-admits past a fixed wait cap so a fully-reserved run can't
 stall forever, and never engages for `claude-agent-sdk` (its rate-limit detection reads a CLI
@@ -482,13 +482,10 @@ accept an explicit `section_token_threshold`/`section_token_budget` integer as a
 escape hatch (a pinned integer does not rescale when the extraction model changes).
 **The output ceiling does not enter into sectioning** (D202, #555). `effort` is not a parameter
 of `model_defaults`/`section_token_threshold`/`section.run`.
-`output_ceiling_for_sectioning(backend, model)` still exists and still returns one per-model
-wire envelope (`model_client._wire_max_tokens`, D197, #598) — the catalogued `max_output_tokens`
-cap under a 10% headroom, task- and effort-independent, with an uncatalogued id resolving through
-a documented per-family cap (`max_output_tokens_fallback`, shaped like `context_window_fallback`)
-before a conservative default, or `None` for claude-api/deepseek (pagination grows output past any
-cap) and claude-agent-sdk (no enforced ceiling at all) — but it governs only the wire `max_tokens`
-now, and sectioning never calls it. Truncation is handled where it is observable instead: the
+The wire `max_tokens` is one per-model envelope (`model_client._wire_max_tokens`, D197, #598) —
+the catalogued `max_output_tokens` cap under a 10% headroom, task- and effort-independent, with an
+uncatalogued id resolving through a documented per-family cap (`max_output_tokens_fallback`, shaped
+like `context_window_fallback`) before a conservative default — and sectioning never consults it. Truncation is handled where it is observable instead: the
 bounded re-split (D183, #540) and the starvation retry (#558).
 Finally, the threshold and budget are divided by `model_client.tokenizer_ratio` (D180, #574;
 measured against corpus-v1, D198, #617) — correcting the chars/4 `est_tokens` heuristic, which was
@@ -535,8 +532,7 @@ rejection doesn't discard already-paid-for sections — a retry replays a checkp
 whose section metadata still matches the freshly recomputed plan, and only extracts what's
 missing. Checkpoints are cleared once post-flight succeeds; the automatic-failure path
 (`orchestrate._fail`) deliberately preserves them (`abort.run(..., keep_section_checkpoints=True)`)
-so the next `watchdog dig` can resume, while the explicit `watchdog ingest-abort` command still
-wipes them, since a deliberate abort means starting the document over.
+so the next `watchdog dig` can resume.
 
 **Whole-document digest (`document.summary`, #279).** No section call ever sees the whole
 document, so no section emits `document.summary` any more. Immediately after

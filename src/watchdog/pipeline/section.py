@@ -29,10 +29,9 @@ path).
 """
 
 import json
-import sys
 from pathlib import Path
+from watchdog import config as user_config
 
-from watchdog.vault_paths import is_vault
 
 # Overlap between consecutive sections, as a fraction of the section budget (#490's overlap
 # finding) — this used to be a fixed 4,000-token absolute value, calibrated against Claude's
@@ -67,16 +66,12 @@ _BUDGET_FRACTION = 0.3
 # ill-conditioned wherever the fit's slope was near zero. Truncation is now handled where it's
 # observable instead of predicted (bounded re-split on actual truncation, a starvation retry that
 # drops one effort level). `effort` is consequently no longer a parameter here — it no longer has
-# anything left to scale; `output_ceiling_for_sectioning` still exists and governs wire
-# `max_tokens`, but no longer feeds back into input sizing.
+# anything left to scale; the wire `max_tokens` (`model_client._wire_max_tokens`) no longer feeds
+# back into input sizing.
 
 
 def _config_get(key: str, default):
-    try:
-        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-    except Exception:
-        cfg = {}
-    return cfg.get(key, default)
+    return user_config.get(key, default)
 
 
 def _resolve_override(key: str, model_default: int) -> int:
@@ -305,19 +300,3 @@ def run(vault: Path, sha256: str, *, force_budget: int | None = None,
 
     return {"sectioned": True, "page_count": page_count,
             "est_tokens": total_tokens, "sections": sections}
-
-
-def main() -> None:
-    if len(sys.argv) < 2:
-        sys.exit("Usage: watchdog section-plan <sha256>")
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    result = run(vault, sys.argv[1])
-    if "error" in result:
-        sys.exit(f"Error: {result['error']}")
-    print(json.dumps(result, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()

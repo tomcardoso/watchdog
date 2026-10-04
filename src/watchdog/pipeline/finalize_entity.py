@@ -26,12 +26,10 @@ Extraction JSON schema:
 }
 """
 
-import argparse
 import json
 import sys
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
 from watchdog.pipeline.write_vault import (
     _extract_notes_section,
     _extract_contradictions,
@@ -115,31 +113,3 @@ def run(extraction_path: Path, vault_path: Path) -> None:
     _update_manifest(vault_path, entities_reg)
 
     print(f"OK  {entity_id}  summary+analysis synthesized")
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Write a finalizer's synthesized Summary + Analysis into an entity note"
-    )
-    parser.add_argument("--entity-id", required=True, help="Entity ID (kebab-case)")
-    parser.add_argument("--extraction", required=True, help="Path to synthesis JSON")
-    parser.add_argument("--vault", default=".", help="Vault root directory (default: .)")
-    args = parser.parse_args()
-
-    extraction_path = Path(args.extraction).resolve()
-    vault_path = Path(args.vault).resolve()
-
-    if not vault_path.exists():
-        sys.exit(f"Error: vault directory {vault_path} not found")
-    if not is_vault(vault_path):
-        sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
-    if not str(extraction_path).startswith(str(vault_path) + "/"):
-        sys.exit(f"Error: --extraction path must be inside the vault directory ({vault_path})")
-    if not extraction_path.exists():
-        sys.exit(f"Error: {extraction_path} not found")
-
-    run(extraction_path, vault_path)
-
-
-if __name__ == "__main__":
-    main()

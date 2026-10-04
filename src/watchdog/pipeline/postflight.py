@@ -30,8 +30,8 @@ import sys
 from datetime import date as _date
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
 from watchdog.pipeline.json_io import _read_json
+from watchdog import config as user_config
 
 _VALID_BASIS = {"stated", "inferred"}
 _DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
@@ -145,11 +145,7 @@ _EMPTY_EXTRACTION_MIN_WORDS = 500
 
 
 def _config_get(key: str, default):
-    try:
-        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-    except Exception:
-        cfg = {}
-    return cfg.get(key, default)
+    return user_config.get(key, default)
 
 
 def _find_coverage_gap(extraction: dict, page_count: int | None) -> dict | None:
@@ -546,27 +542,3 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
             pass
 
     return {"ok": True, "sha256": sha256}
-
-
-def main() -> None:
-    import argparse
-    parser = argparse.ArgumentParser(description="Watchdog postflight processor")
-    parser.add_argument("--extraction", required=True, help="Path to extraction JSON")
-    args = parser.parse_args()
-
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-
-    extraction_path = Path(args.extraction).resolve()
-    if not str(extraction_path).startswith(str(vault) + "/"):
-        sys.exit(f"Error: --extraction must be inside the vault directory ({vault})")
-
-    result = run(vault, extraction_path)
-    print(json.dumps(result, ensure_ascii=False))
-    if "errors" in result:
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()

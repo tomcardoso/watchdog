@@ -29,14 +29,10 @@ The caller stores the candidate's shingles in documents.json after a successful
 ingest so future documents can be compared against it.
 """
 
-import argparse
 import hashlib
-import json
 import re
-import sys
-from pathlib import Path
+from watchdog import config as user_config
 
-from watchdog.vault_paths import is_vault
 
 
 DEFAULT_THRESHOLD = 0.85
@@ -65,13 +61,10 @@ def _reset_config_cache() -> None:
 
 
 def _config_get(key: str, default):
-    """Read ~/.watchdog/config.json once per process, then serve from cache."""
+    """`config.json`, read once per process and then served from cache."""
     global _config_cache
     if _config_cache is None:
-        try:
-            _config_cache = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-        except Exception:
-            _config_cache = {}
+        _config_cache = user_config.read()
     return _config_cache.get(key, default)
 
 
@@ -119,115 +112,3 @@ def minhash_similarity(sig_a: list[int], sig_b: list[int]) -> float:
     if not sig_a or not sig_b or len(sig_a) != len(sig_b):
         return 0.0
     return sum(a == b for a, b in zip(sig_a, sig_b)) / len(sig_a)
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Watchdog near-duplicate detector")
-    parser.add_argument("--text", help="Candidate document text (or use --stdin/--text-file)")
-    parser.add_argument("--stdin", action="store_true", help="Read candidate text from stdin")
-    parser.add_argument("--text-file", help="Path to a file containing the candidate text")
-    parser.add_argument("--registry", help="Path to registry/documents.json")
-    parser.add_argument(
-        "--threshold",
-        type=float,
-        default=None,
-        help=f"Similarity threshold (default: from config or {DEFAULT_THRESHOLD})",
-    )
-    parser.add_argument(
-        "--summary",
-        metavar="FILE",
-        help="Read an existing near-dup JSON output file and print only {near_duplicates, top_similarity}",
-    )
-    parser.add_argument(
-        "--output",
-        metavar="FILE",
-        help="Write JSON result to FILE instead of stdout; deletes --text-file after writing",
-    )
-    args = parser.parse_args()
-
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        print(json.dumps({"error": "must be run from inside a Watchdog vault directory"}))
-        sys.exit(1)
-
-    def _check_vault(label: str, p: Path) -> None:
-        if not str(p.resolve()).startswith(str(vault) + "/"):
-            print(json.dumps({"error": f"{label} must be inside the vault directory ({vault})"}))
-            sys.exit(1)
-
-    if args.summary:
-        summary_path = Path(args.summary)
-        _check_vault("--summary", summary_path)
-        data = json.loads(summary_path.read_text())
-        matches = data.get("near_duplicates", [])
-        top = matches[0]["similarity"] if matches else 0.0
-        print(json.dumps({"near_duplicates": matches, "top_similarity": round(top, 4)}))
-        return
-
-    if not args.registry:
-        print(json.dumps({"error": "--registry is required"}))
-        sys.exit(1)
-
-    threshold = (
-        args.threshold
-        if args.threshold is not None
-        else _config_get("dup_threshold", DEFAULT_THRESHOLD)
-    )
-
-    if args.stdin:
-        text = sys.stdin.read()
-    elif args.text_file:
-        _check_vault("--text-file", Path(args.text_file))
-        text = Path(args.text_file).read_text(encoding="utf-8", errors="replace")
-    elif args.text:
-        text = args.text
-    else:
-        print(json.dumps({"error": "Provide --text, --text-file, or --stdin"}))
-        sys.exit(1)
-
-    registry_path = Path(args.registry)
-    _check_vault("--registry", registry_path)
-    documents = json.loads(registry_path.read_text()) if registry_path.exists() else {}
-
-    candidate_sh = shingles_from_text(text)
-    candidate_mh = minhash(candidate_sh)
-    matches = []
-
-    for sha, doc in documents.items():
-        stored_mh = doc.get("minhash")
-        if stored_mh:
-            sim = minhash_similarity(candidate_mh, stored_mh)
-        else:
-            stored_sh = doc.get("shingles")
-            if not stored_sh:
-                continue
-            sim = jaccard(candidate_sh, set(stored_sh))
-        if sim >= threshold:
-            matches.append(
-                {
-                    "sha256": sha,
-                    "filename": doc.get("filename", ""),
-                    "similarity": round(sim, 4),
-                    "document_note": doc.get("document_note", ""),
-                }
-            )
-
-    matches.sort(key=lambda x: x["similarity"], reverse=True)
-
-    result = json.dumps(
-        {"near_duplicates": matches, "candidate_minhash": candidate_mh},
-        ensure_ascii=False,
-    )
-
-    if args.output:
-        output_path = Path(args.output)
-        _check_vault("--output", output_path)
-        output_path.write_text(result + "\n", encoding="utf-8")
-        if args.text_file:
-            Path(args.text_file).unlink(missing_ok=True)
-    else:
-        print(result)
-
-
-if __name__ == "__main__":
-    main()
