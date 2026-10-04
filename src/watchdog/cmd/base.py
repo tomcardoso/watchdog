@@ -71,14 +71,14 @@ _PIPELINE_COMMANDS = {
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
 
 _VAULT_PERMISSIONS = [
-    # watchdog commands the in-Claude-Code skills run (extraction is now a Python
-    # command — `watchdog dig` / `watchdog bark` — and needs no in-vault Bash permissions).
-    "Bash(watchdog entity-index)",
-    "Bash(watchdog queue-status)",
-    "Bash(watchdog is-duplicate *)",
+    # watchdog commands the in-Claude-Code skills run (extraction is a terminal command —
+    # `watchdog dig` / `watchdog bark` — and needs no in-vault Bash permissions).
     "Bash(watchdog write-entity --entity-id *)",
-    "Bash(watchdog unlock*)",
     "Bash(watchdog timeline)",
+    # /watchdog-query's semantic lane and /watchdog-surface's deterministic lead sweep — both
+    # read-only, both run every session, so a prompt on each call was pure friction.
+    "Bash(watchdog search *)",
+    "Bash(watchdog leads)",
     # /watchdog-context proposes watchlist seed terms (#229); the deterministic append+dedup
     # lives in this command, not the skill hand-editing watchlist.md.
     "Bash(watchdog watchlist-add *)",
@@ -90,30 +90,87 @@ _VAULT_PERMISSIONS = [
     # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
     # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of
     # `watchdog research` (in the terminal, ungated), never from the skill (#186, D45).
-    # File-permission checks only match Edit(path) rules — Write(path) rules are never matched
-    # (Claude Code warns on every Write(...) entry below as dead; Edit(path) covers every
-    # file-editing tool, Write included). Only Edit(...) entries remain below; the pairing
-    # comments describe what each path is for, not a Write/Edit split.
-    # internal vault state
+    # File-permission checks only match Edit(path) rules — Edit(path) covers every file-editing
+    # tool, Write included.
+    # Scratch space: the /watchdog-entity refresh JSON.
     "Edit(.watchdog/tmp/**)",
     # durable web-research worklist (#196) — the skill writes queued URLs here (not tmp/, which
     # setup sweeps), so a crashed session's queue survives.
     "Edit(.watchdog/research/**)",
-    "Edit(.watchdog/registry/**)",
-    "Edit(.watchdog/timeline/**)",
-    # session-authored pages (compounding queries → wiki threads)
+    # session-authored pages (compounding queries → wiki threads, surface/research reports)
     "Edit(queries/**)",
     "Edit(wiki/**)",
-    # post-ingest output files
     "Edit(briefings/**)",
+    "Edit(context.md)",
+]
+
+# Rules older vaults were created with that `refresh-skills` now removes. Entity and document
+# notes, the morgue, the registry and the timeline are pipeline-owned (D81): no skill writes them
+# directly, and pre-approving edits there let a prompt-injected session rewrite them without a
+# prompt (I6). The ingest-era commands are no longer run from a session at all.
+_RETIRED_VAULT_PERMISSIONS = {
+    "Bash(watchdog entity-index)",
+    "Bash(watchdog queue-status)",
+    "Bash(watchdog is-duplicate *)",
+    "Bash(watchdog unlock*)",
+    "Edit(.watchdog/registry/**)",
+    "Edit(.watchdog/timeline/**)",
     "Edit(entities/**)",
     "Edit(documents/**)",
     "Edit(morgue/**)",
     "Edit(hot.md)",
     "Edit(log.md)",
-    "Edit(context.md)",
     "Edit(.obsidian/graph.json)",
-]
+}
+
+# The UserPromptSubmit hook each vault runs before every prompt: a one-line nudge when documents
+# are waiting for `dig` or `bark`. It calls an internal watchdog command rather than an inline
+# `python3 -c` one-liner, which assumed `python3` was on PATH (often not on Windows) and counted
+# every queue file — including ones already dug — as "ready for extraction".
+_PROMPT_HOOK_COMMAND = "watchdog prompt-status"
+_LEGACY_PROMPT_HOOK_MARKER = "ready for extraction — run watchdog dig in your terminal"
+
+
+def _vault_settings() -> dict:
+    """The `.claude/settings.json` a new vault starts with (and that `refresh-skills` brings an
+    existing vault's settings up to)."""
+    return {
+        "permissions": {
+            "allow": list(_VAULT_PERMISSIONS),
+            # Read/Glob/Grep are unrestricted by default in Claude Code — no permission
+            # prompt, any path the OS user can read — so without this, a session inside
+            # one vault could silently read another vault, ~/.watchdog/credentials.json
+            # (API keys), or anything else on the account. This confines them to the
+            # vault the session was launched in (I6: source documents are adversarial by
+            # assumption, so a prompt-injected one could otherwise direct an exfiltrating
+            # read with no permission prompt to catch it).
+            "blockReadsOutsideWorkingDirectories": True,
+        },
+        "hooks": {
+            # Load hot.md into context at the start of a session — and again after compaction,
+            # which drops hook-injected context. SessionStart stdout is added to Claude's
+            # context, so `cat` is all it takes.
+            "SessionStart": [
+                {"matcher": "startup|resume|compact",
+                 "hooks": [{"type": "command", "command": "[ -f hot.md ] && cat hot.md || true"}]},
+            ],
+            "UserPromptSubmit": [
+                {"matcher": "", "hooks": [{"type": "command", "command": _PROMPT_HOOK_COMMAND}]},
+            ],
+        },
+    }
+
+
+def _prompt_status_line(vault: Path) -> str | None:
+    """The nudge `watchdog prompt-status` prints, or None when nothing is waiting."""
+    dig, bark = _count_awaiting_dig(vault), _count_awaiting_bark(vault)
+    parts = []
+    if dig:
+        parts.append(f"{dig} file(s) ready for extraction — run watchdog dig")
+    if bark:
+        parts.append(f"{bark} file(s) extracted and awaiting watchdog bark")
+    return "WATCHDOG: " + "; ".join(parts) + " (in your terminal)" if parts else None
+
 
 _CMD_HELP: dict[str, dict] = {
     "register": {

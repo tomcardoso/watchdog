@@ -16,7 +16,7 @@ The question is: **$ARGUMENTS**
 ### 1. Parse the question
 
 Identify:
-- What entities are referenced (people, companies, addresses)?
+- What entities are referenced (people, organizations, places)?
 - What time period, if any?
 - What kind of relationship or fact is being asked about?
 - Is this a lookup ("who is the director of X?"), a comparison ("which companies share address Y?"), a timeline ("when did Z first appear?"), or an analysis ("what's unusual about this transaction?")?
@@ -26,7 +26,7 @@ Identify:
 
 **Facets — narrow before you read.** If the question names a filter — an entity type ("which companies…"), a document type ("court filings", "annual reports"), or a date range ("in 2021", "between 2019 and 2022") — apply it before opening individual notes, using metadata already captured at ingest. No new lookups are needed, and facets combine (e.g. "companies named in court filings from 2021" narrows on all three):
 
-- **Entity type** — `.watchdog/registry/manifest.json`'s `type` field (`Person`, `Company`, `Fund`, `Address`, …). Keep only matching entries before matching on name/alias in the manifest step below.
+- **Entity type** — `.watchdog/registry/manifest.json`'s `type` field — one of `person`, `organization`, `public-body`, `place`, `asset` or `proceeding` (a company is an `organization`; an address is a `place`). Keep only matching entries before matching on name/alias in the manifest step below.
 - **Document type** — each document note's `document_type` frontmatter field. Grep across notes rather than opening each one:
   ```bash
   grep -l "^document_type: <type>" documents/*.md

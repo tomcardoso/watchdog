@@ -171,3 +171,55 @@ def test_unknown_entity_id_exits(tmp_path):
     extraction = make_extraction(tmp_path, entity_id="nobody-here")
     with pytest.raises(SystemExit):
         run(extraction, vault)
+
+
+# ── Session-input hardening ───────────────────────────────────────────────────
+
+def test_summary_wikilinks_defanged(tmp_path):
+    """The summary is model-written from document text; it must not forge a vault link."""
+    vault = make_vault(tmp_path)
+    path = make_extraction(tmp_path)
+    data = json.loads(path.read_text())
+    data["summary"] = "See [[morgue/secret|this]] for details."
+    path.write_text(json.dumps(data))
+    run(path, vault)
+
+    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
+    assert "[[morgue/secret" not in content
+    assert "[ [morgue/secret|this] ]" in content
+
+
+def test_malformed_events_dropped_and_unparseable_dates_cleared(tmp_path):
+    vault = make_vault(tmp_path)
+    path = make_extraction(tmp_path)
+    data = json.loads(path.read_text())
+    data["timeline_events"] += [
+        "not an event",
+        {"date": "2019-02-01", "event": "   "},
+        {"date": "sometime in spring", "event": "Undated meeting", "source_sha256": "sha-doc1"},
+    ]
+    path.write_text(json.dumps(data))
+    run(path, vault)
+
+    events = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())[
+        "alice-smith"]["timeline_events"]
+    assert [e["event"] for e in events].count("Undated meeting") == 1
+    assert len(events) == 3
+    assert next(e for e in events if e["event"] == "Undated meeting")["date"] == ""
+
+
+def test_scratch_file_under_tmp_removed_after_apply(tmp_path):
+    vault = make_vault(tmp_path)
+    tmp_dir = vault / ".watchdog" / "tmp"
+    tmp_dir.mkdir(parents=True)
+    scratch = tmp_dir / "entity-refresh-alice-smith.json"
+    scratch.write_text(make_extraction(tmp_path).read_text())
+    run(scratch, vault)
+    assert not scratch.exists()
+
+
+def test_extraction_outside_tmp_left_in_place(tmp_path):
+    vault = make_vault(tmp_path)
+    path = make_extraction(tmp_path)
+    run(path, vault)
+    assert path.exists()

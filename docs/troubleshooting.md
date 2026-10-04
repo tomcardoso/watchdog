@@ -159,6 +159,8 @@ cd ~/Investigations/your-investigation
 watchdog refresh-skills
 ```
 
+The same command also updates the vault's Claude Code settings and its dashboard and graph views to match the new version.
+
 ## A vault moved or is missing
 
 If you've reorganized your files and Watchdog can no longer find a vault, start with a health check of every registered investigation:
