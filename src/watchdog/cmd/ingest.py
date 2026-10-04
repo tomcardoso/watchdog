@@ -11,12 +11,14 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from watchdog import interactive
+from watchdog.vault_paths import is_vault
+from watchdog import defaults, interactive
 from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _count_queued,
     _find_project,
     _launch_claude,
+    load_config,
     _MODEL_IDS,
     _notify,
     _render_template,
@@ -39,7 +41,7 @@ _EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # Anthropic/OpenAI/DeepSeek with margin, given how long an extraction call actually takes (D162).
 # `watchdog setup`/`watchdog auth` override this to `auth._SUBSCRIPTION_CONCURRENCY` (3) in
 # config when ingestion stays on a Claude subscription, which throttles well below this value.
-_DEFAULT_EXTRACT_CONCURRENCY = 20
+_DEFAULT_EXTRACT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
 # --wait (#271): cushion past the provider's reported reset time, since a resume attempted
 # right at the boundary can still land inside the window.
@@ -97,7 +99,7 @@ def _resolve_finalizer_overrides(args, config: dict, post_backend: str | None, p
     return overrides
 
 
-def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, str]:
+def _resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
     """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
 
     Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
@@ -106,8 +108,7 @@ def _resolve_stage(flag_val, config_val, default="sonnet") -> tuple[str | None, 
     one value means a stage can never be half-configured."""
     from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
     raw = flag_val or config_val or default
-    backend, sep, model = raw.rpartition(":")
-    backend = backend or None
+    backend, model = defaults.split_backend_model(raw)
     if backend is not None and backend not in BACKENDS:
         sys.exit(f"Error: unknown backend '{backend}' — choose {', '.join(BACKENDS)}")
     if backend is None or backend in CLAUDE_BACKENDS:
@@ -252,27 +253,21 @@ def _preview_ingest(vault: Path, args) -> tuple[str, str] | None:
     `--estimate`'s lock-free scan (#269, #325). None when the queue is empty."""
     from watchdog.pipeline.ingest_setup import cost_estimate, needs_extraction, scan_queue
     from watchdog.cmd.auth import resolve_auth
-    from watchdog.cmd.base import CONFIG_FILE
     queue_files = needs_extraction(vault, scan_queue(vault))
     if not queue_files:
         return None
-    config: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            config = json.loads(CONFIG_FILE.read_text())
-        except Exception:
-            pass
+    config = load_config()
     extract_backend, extract_model = _resolve_stage(
         getattr(args, "extractor_model", None), config.get("extractor_model"))
     post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
     classify_backend, classify_model = _resolve_stage(
-        getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+        getattr(args, "classifier_model", None), config.get("classifier_model"), default=defaults.CLASSIFIER_MODEL)
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
-                             default="medium", backend=extract_backend, model=extract_model)
+                             default=defaults.EXTRACTOR_EFFORT, backend=extract_backend, model=extract_model)
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     classify_effort = _effort(getattr(args, "classifier_effort", None), config.get("classifier_effort"),
-                              default="low", backend=classify_backend, model=classify_model)
+                              default=defaults.CLASSIFIER_EFFORT, backend=classify_backend, model=classify_model)
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
     auth_mode = resolve_auth()["mode"] if extract_backend is None else None
@@ -356,9 +351,32 @@ def _run_preprocess(
     run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
 
+def _into_incoming(vault: Path, f: Path) -> Path:
+    """The path chew should process for `watchdog chew <file>`: `f` itself when it is already in
+    `_INCOMING/`, else a copy placed there. Chew *moves* what it processes into the vault, so
+    chewing a file from anywhere else — `~/Downloads`, or the vault's own `_CONTEXT/` — would
+    silently take it away from where the user keeps it."""
+    incoming = vault / "_INCOMING"
+    if f.is_relative_to(incoming.resolve()):
+        return f
+    incoming.mkdir(exist_ok=True)
+    dest = incoming / f.name
+    n = 1
+    while dest.exists():
+        n += 1
+        dest = incoming / f"{f.stem}-{n}{f.suffix}"
+    shutil.copy2(f, dest)
+    sidecar = f.with_name(f"{f.name}.yml")
+    if sidecar.exists():
+        shutil.copy2(sidecar, dest.with_name(f"{dest.name}.yml"))
+    print(f"\n  {_DIM}Copied {_RESET}{_CYAN}{f.name}{_RESET}{_DIM} into _INCOMING/ — the original "
+          f"stays where it is.{_RESET}")
+    return dest
+
+
 def cmd_chew(args) -> dict | None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
 
     _warn_pending_research(vault)
@@ -371,6 +389,7 @@ def cmd_chew(args) -> dict | None:
         f = Path(file_arg).resolve()
         if not f.exists():
             sys.exit(f"Error: file not found: {f}")
+        f = _into_incoming(vault, f)
         run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f],
                    show_ingest_hint=False)
     else:
@@ -723,7 +742,7 @@ def _requeue_failed(vault: Path) -> int:
 def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
               non_interactive: bool = False) -> dict | None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
     # This function backs three CLI surfaces: the deprecated `ingest` (full pipeline),
@@ -755,14 +774,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     elif force_selectors:
         _requeue_forced_selectors(vault, force_selectors)
 
-    from watchdog.cmd.base import CONFIG_FILE
-    config: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            import json as _json
-            config = _json.loads(CONFIG_FILE.read_text())
-        except Exception:
-            pass
+    config = load_config()
 
     extract_backend, extract_model = _resolve_stage(
         getattr(args, "extractor_model", None), config.get("extractor_model"))
@@ -801,9 +813,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         return
 
     post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
     classify_backend, classify_model = _resolve_stage(
-        getattr(args, "classifier_model", None), config.get("classifier_model"), default="haiku")
+        getattr(args, "classifier_model", None), config.get("classifier_model"), default=defaults.CLASSIFIER_MODEL)
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
     # Claude auth is only required when at least one stage is actually routed to it — a vault
@@ -824,10 +836,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         a = {"mode": None}
 
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
-                             default="medium", backend=extract_backend, model=extract_model)
+                             default=defaults.EXTRACTOR_EFFORT, backend=extract_backend, model=extract_model)
     post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     classify_effort = _effort(getattr(args, "classifier_effort", None), config.get("classifier_effort"),
-                              default="low", backend=classify_backend, model=classify_model)
+                              default=defaults.CLASSIFIER_EFFORT, backend=classify_backend, model=classify_model)
     try:
         concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency")
                           or _DEFAULT_EXTRACT_CONCURRENCY)
@@ -844,9 +856,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     except (TypeError, ValueError):
         token_budget = None
     try:
-        classify_pages = int(getattr(args, "classify_pages", None) or config.get("classify_pages") or 5)
+        classify_pages = int(getattr(args, "classify_pages", None) or config.get("classify_pages") or defaults.CLASSIFY_PAGES)
     except (TypeError, ValueError):
-        classify_pages = 5
+        classify_pages = defaults.CLASSIFY_PAGES
     classify_pages = max(1, classify_pages)
 
     from watchdog.pipeline import orchestrate as _orch
@@ -1259,7 +1271,7 @@ def cmd_finalize(args) -> dict | None:
     The guided `watchdog` walk finalizes automatically at the end; run this when a rate limit or
     interrupt stopped post-processing before it finished, so the batch isn't left half-done."""
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
     from watchdog.pipeline import orchestrate
@@ -1267,16 +1279,9 @@ def cmd_finalize(args) -> dict | None:
         print(f"\n  {_DIM}Nothing to finalize — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} first.{_RESET}\n")
         return
 
-    from watchdog.cmd.base import CONFIG_FILE
-    config: dict = {}
-    if CONFIG_FILE.exists():
-        try:
-            import json as _json
-            config = _json.loads(CONFIG_FILE.read_text())
-        except Exception:
-            pass
+    config = load_config()
     post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default="haiku")
+        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
     post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
     finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
 
@@ -1377,9 +1382,14 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
 
 def cmd_requeue(args) -> None:
     """Move documents from queue/_failed/ back into the active queue for re-ingest."""
-    vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
+    if getattr(args, "project", None):
+        _, info = _find_project(args.project)
+        vault = Path(info["path"])
+    else:
+        vault = Path(".").resolve()
+        if not is_vault(vault):
+            sys.exit("Error: must be run from inside a Watchdog vault directory, or pass the "
+                     "investigation name")
     n = _requeue_failed(vault)
     if not n:
         print(f"\n  {_DIM}No documents in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — nothing to requeue.{_RESET}\n")
@@ -1390,7 +1400,7 @@ def cmd_requeue(args) -> None:
 
 def cmd_context(args) -> None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         if getattr(args, "name", None):
             _, info = _find_project(args.name)
             vault = Path(info["path"])
@@ -1482,11 +1492,13 @@ def cmd_guided(args) -> dict | None:
 
 def cmd_queue_status(args) -> None:
     cwd = Path(".").resolve()
-    if (cwd / ".watchdog").is_dir():
+    if is_vault(cwd):
         vault = cwd
-    else:
+    elif getattr(args, "project", None):
         _, info = _find_project(args.project)
         vault = Path(info["path"])
+    else:
+        sys.exit("Error: not inside a Watchdog vault — pass the investigation name.")
 
     (vault / ".watchdog" / "tmp").mkdir(parents=True, exist_ok=True)
 

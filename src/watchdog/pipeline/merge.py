@@ -20,6 +20,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.json_io import _read_json
 
@@ -232,7 +233,7 @@ def main() -> None:
     if len(sys.argv) < 2:
         sys.exit("Usage: python -m watchdog.pipeline.merge <sha256>")
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     result = run(vault, sys.argv[1])
     if "error" in result:

@@ -30,6 +30,7 @@ import sys
 from datetime import date as _date
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.pipeline.json_io import _read_json
 
 _VALID_BASIS = {"stated", "inferred"}
@@ -554,7 +555,7 @@ def main() -> None:
     args = parser.parse_args()
 
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
     extraction_path = Path(args.extraction).resolve()

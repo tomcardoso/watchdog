@@ -4,13 +4,14 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.cmd.base import _find_project
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 
 
 def cmd_entity_index(args) -> None:
     cwd = Path(".").resolve()
-    if (cwd / ".watchdog").is_dir():
+    if is_vault(cwd):
         vault = cwd
     else:
         _, info = _find_project(args.project)
@@ -36,7 +37,7 @@ def cmd_entity_index(args) -> None:
 
 def cmd_is_duplicate(args) -> None:
     cwd = Path(".").resolve()
-    if (cwd / ".watchdog").is_dir():
+    if is_vault(cwd):
         vault = cwd
     else:
         _, info = _find_project(args.project)
