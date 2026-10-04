@@ -36,15 +36,24 @@ def acquire_lock(lock_file: Path, contents: str) -> bool:
     return True
 
 
+def _write_atomic(lock_file: Path, text: str) -> None:
+    """Replace the lock's contents in one step. A plain truncate-and-write leaves a window where
+    a concurrent reader (another invocation checking staleness) sees an empty file and reads the
+    lock's age as unknown."""
+    tmp = lock_file.with_name(f"{lock_file.name}.{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, lock_file)
+
+
 def refresh_lock(lock_file: Path) -> None:
     """Rewrite an already-held lock's ``started_at`` to now.
 
     For a long-lived holder (e.g. `watchdog dig --wait` sleeping through a rate limit) so
     the staleness heuristic never mistakes a live-but-sleeping run for an abandoned one.
     """
-    lock_file.write_text(
-        f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n",
-        encoding="utf-8")
+    _write_atomic(
+        lock_file,
+        f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
 
 
 def lock_started_at(lock_file: Path) -> str | None:
@@ -103,7 +112,7 @@ def _stamp(lock_file: Path) -> bool:
     now = datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
     kept = [line for line in lines if not line.startswith("started_at:")]
     try:
-        lock_file.write_text("\n".join([*kept, f"started_at: {now}"]) + "\n", encoding="utf-8")
+        _write_atomic(lock_file, "\n".join([*kept, f"started_at: {now}"]) + "\n")
     except OSError:
         return False
     return True
