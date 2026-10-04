@@ -3024,7 +3024,7 @@ def test_admit_polls_until_the_rate_drops_below_budget(monkeypatch):
     monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
     calls = {"n": 0}
 
-    def fake_rate(records):
+    def fake_rate(records, **kwargs):
         calls["n"] += 1
         return 900 if calls["n"] < 3 else 100   # over budget twice, then clears
 
@@ -3043,7 +3043,7 @@ def test_admit_force_admits_past_the_max_wait(monkeypatch, capsys):
     # a permanently-over-budget rate must not stall forever.
     monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
     monkeypatch.setattr(orchestrate, "_ADMISSION_MAX_WAIT_S", 0.03)
-    monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records: 999_999)
+    monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records, **k: 999_999)
     orchestrate._usage = []
     try:
         asyncio.run(orchestrate._admit("sha1", 10, 1000, asyncio.Event()))
@@ -3054,7 +3054,7 @@ def test_admit_force_admits_past_the_max_wait(monkeypatch, capsys):
 
 def test_admit_returns_promptly_when_cancelled(monkeypatch):
     monkeypatch.setattr(orchestrate, "_ADMISSION_POLL_INTERVAL_S", 0.01)
-    monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records: 999_999)
+    monkeypatch.setattr(orchestrate, "_recent_token_rate", lambda records, **k: 999_999)
     cancelled = asyncio.Event()
     orchestrate._usage = []
 
@@ -5511,3 +5511,72 @@ def test_provider_auth_error_stops_the_run_without_quarantining(tmp_path, monkey
     assert len(list((vault / ".watchdog" / "queue").glob("*.json"))) == 2
     from watchdog.cmd.ingest import exit_code_for
     assert exit_code_for(summary) == 1
+
+
+# ── pipeline correctness (D243) ──────────────────────────────────────────────────────────────
+
+def test_admission_window_decays_with_the_wall_clock():
+    """Admission control anchors its window to now: calls that finished minutes ago must not
+    keep the budget 'full' while every document waits (nothing new would ever land)."""
+    old = [{"end_ts": time.time() - 600, "input_tokens": 50_000, "output_tokens": 0}]
+    assert orchestrate._recent_token_rate(old) == 50_000            # diagnostic: latest-anchored
+    assert orchestrate._recent_token_rate(old, now=time.time()) == 0
+
+
+def test_unknown_classifier_skill_falls_back_to_general_records(tmp_path, monkeypatch):
+    vault = make_vault(tmp_path)
+    _queue_doc(vault)
+    from watchdog.pipeline import preflight
+
+    async def fake(**kwargs):
+        return model_client.ModelResult(parsed={"skill": "no-such-skill.md"}, text="", model="m",
+                                         backend="claude-api", auth_mode="api-key")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+    text, label = asyncio.run(orchestrate._resolve_skill(
+        vault, preflight.run(vault, "abc123"), None, "haiku", 5, None, filename="test-doc.pdf"))
+    assert label == "general-records" and text
+
+
+def test_exact_fold_remaps_staged_timeline_ids(tmp_path, monkeypatch):
+    """Timeline events are staged at extraction; when the batch fold merges two ids, the losing
+    document's events must follow, or timeline.md shows the dead id as bare text."""
+    import copy
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="a" * 64, filename="a.pdf", text="Ernst & Young Inc. was appointed.")
+    _queue_doc(vault, sha="b" * 64, filename="b.pdf", text="Ernst & Young Inc. filed a report.")
+
+    def ext_for(prompt):
+        flat = model_client._flatten_prompt(prompt)
+        e = copy.deepcopy(_extraction())
+        eid = "ernst-and-young-inc" if "appointed" in flat else "ernst-young-inc"
+        e["entities"] = [{"id": eid, "name": "Ernst & Young Inc.", "type": "organization",
+                          "aliases": [], "roles": []}]
+        e["morgue_entity_id"] = eid
+        e["document"]["key_facts"] = [{"fact": f"Event in {eid}", "page": 1,
+                                       "date": "2021-02-01", "entities": [eid]}]
+        return e
+
+    async def fake(*, task, prompt, schema, **kwargs):
+        parsed = {"classify": {"skill": "general-records.md"},
+                  "entity-synthesis": {"entity_syntheses": []},
+                  "timeline-dedup": {"groups": [{"keep": 0, "duplicates": []},
+                                                {"keep": 1, "duplicates": []}]},
+                  "reconcile": {"merges": [], "contradictions": []},
+                  "briefing": {"investigation_status": "x", "what_was_ingested": []}}.get(task)
+        return model_client.ModelResult(parsed=parsed or ext_for(prompt), text="", model="m",
+                                         backend="claude-api", auth_mode="api-key")
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    tl = (vault / "timeline.md").read_text()
+    assert "— ernst-young-inc —" not in tl
+    assert tl.count("[[entities/organization/ernst-and-young-inc|") == 2
+
+
+def test_briefing_in_the_same_minute_does_not_overwrite(tmp_path):
+    vault = make_vault(tmp_path)
+    b = {"investigation_status": "x", "what_was_ingested": []}
+    first = orchestrate._write_briefing(vault, b, [], [], [])
+    second = orchestrate._write_briefing(vault, b, [], [], [])
+    third = orchestrate._write_briefing(vault, b, [], [], [])
+    assert len({first, second, third}) == 3
+    assert all((vault / f).exists() for f in (first, second, third))

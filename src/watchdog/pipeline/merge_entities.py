@@ -160,39 +160,10 @@ def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
 # ── Vault-level operation ──────────────────────────────────────────────────────
 
 def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int:
-    """Rewrite `merge_id` → `keep_id` in the `entity_ids` of every timeline NDJSON record
-    (canonical and raw), so the unified timeline's entity links follow the merge instead of
-    pointing at the merged-away stub (#237). Parallel to the registry surgery in `merge()` —
-    deterministic, no model call. Returns the number of records changed."""
-    td = vault_path / ".watchdog" / "timeline"
-    if not td.exists():
-        return 0
-    changed = 0
-    for f in sorted(td.glob("*.ndjson")):
-        out_lines: list[str] = []
-        touched = False
-        for line in f.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                out_lines.append(line)   # leave a malformed line untouched rather than drop it
-                continue
-            eids = rec.get("entity_ids")
-            if isinstance(eids, list) and merge_id in eids:
-                remapped: list[str] = []
-                for eid in eids:
-                    eid = keep_id if eid == merge_id else eid
-                    if eid not in remapped:
-                        remapped.append(eid)
-                rec["entity_ids"] = remapped
-                touched = True
-                changed += 1
-            out_lines.append(json.dumps(rec, ensure_ascii=False))
-        if touched:
-            f.write_text("\n".join(out_lines) + "\n", encoding="utf-8")
-    return changed
+    """Rewrite `merge_id` → `keep_id` in every timeline NDJSON record (canonical and raw), so the
+    unified timeline's entity links follow the merge (#237). Returns the records changed."""
+    from watchdog.pipeline.timeline import remap_entity_ids
+    return remap_entity_ids(vault_path, {merge_id: keep_id})
 
 
 def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
