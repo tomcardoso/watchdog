@@ -36,6 +36,8 @@ import re
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
+
 
 DEFAULT_THRESHOLD = 0.85
 SHINGLE_SIZE = 3  # word 3-grams
@@ -144,7 +146,7 @@ def main() -> None:
     args = parser.parse_args()
 
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         print(json.dumps({"error": "must be run from inside a Watchdog vault directory"}))
         sys.exit(1)
 

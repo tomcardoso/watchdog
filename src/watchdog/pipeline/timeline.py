@@ -15,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.pipeline.json_io import _read_json_or
 
 
@@ -389,13 +390,13 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
 
 def main_collisions() -> None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     cmd_timeline_collisions(vault)
 
 
 def main_rebuild() -> None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.")
     cmd_rebuild_timeline(vault)

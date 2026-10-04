@@ -218,13 +218,14 @@ def test_finalizer_model_written_to_state(tmp_path):
     assert state["finalizer_model"] == "opus"
 
 
-def test_finalizer_model_defaults_to_sonnet(tmp_path):
+def test_finalizer_model_defaults_to_the_shared_default(tmp_path):
+    from watchdog import defaults
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
 
     result = run(vault)
 
-    assert result["finalizer_model"] == "sonnet"
+    assert result["finalizer_model"] == defaults.FINALIZER_MODEL
 
 
 def test_queue_files_include_page_count(tmp_path):

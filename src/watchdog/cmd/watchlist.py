@@ -13,6 +13,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline import watchlist as _watchlist
 from watchdog.pipeline.json_io import _read_json_or
@@ -58,7 +59,7 @@ def cmd_watchlist_add(args) -> None:
     to — deterministic append + dedup belongs in Python, not in the model hand-editing
     watchlist.md (#229). Prints `{"added": [...], "skipped": N}` for the skill to read."""
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
     added = _watchlist.add_terms(vault, args.terms)
     print(json.dumps({"added": added, "skipped": len(args.terms) - len(added)}, ensure_ascii=False))

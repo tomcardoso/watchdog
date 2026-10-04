@@ -24,6 +24,7 @@ import sys
 from getpass import getpass
 from pathlib import Path
 
+from watchdog import defaults
 from watchdog.cmd import base
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.interactive import CANCELLED, confirm, pick
@@ -226,14 +227,16 @@ def _ingest_stage_provider(value: str | None) -> str:
     """Best-effort `[backend:]model` config value → provider name, for the status display
     only — not validated the way `cmd/ingest.py`'s `_resolve_stage` is; it just needs to
     answer "which provider is this stage pointed at" (#325)."""
-    if not value or ":" not in value:
+    backend, _ = defaults.split_backend_model(value or "")
+    if backend is None:
         return "anthropic"          # bare Claude tier (haiku/sonnet/opus)
-    backend = value.split(":", 1)[0]
     from watchdog.model_client import provider_for_backend
     return provider_for_backend(backend)
 
 
-_INGEST_STAGES = (("classifier_model", "haiku"), ("extractor_model", "sonnet"), ("finalizer_model", "haiku"))
+_INGEST_STAGES = (("classifier_model", defaults.CLASSIFIER_MODEL),
+                  ("extractor_model", defaults.EXTRACTOR_MODEL),
+                  ("finalizer_model", defaults.FINALIZER_MODEL))
 
 
 # ── command surface ───────────────────────────────────────────────────────────
@@ -505,7 +508,7 @@ def setup_auth_interactive(interactive: bool | None = None) -> None:
           f"{_DIM}(extractor_model, finalizer_model, extractor_effort, …).{_RESET}")
 
 
-_SUBSCRIPTION_CONCURRENCY = 3
+_SUBSCRIPTION_CONCURRENCY = defaults.SUBSCRIPTION_CONCURRENCY
 
 
 def _maybe_tune_concurrency_for_subscription() -> bool:

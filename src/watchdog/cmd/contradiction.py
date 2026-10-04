@@ -11,13 +11,14 @@ callout. Run from inside the vault, the same convention `watchdog merge-entities
 import sys
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET
 from watchdog.pipeline import contradiction as _contradiction
 
 
 def cmd_contradiction_add(args) -> None:
     vault = Path(".").resolve()
-    if not (vault / ".watchdog").is_dir():
+    if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
 
     try:

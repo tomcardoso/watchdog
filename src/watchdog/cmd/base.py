@@ -7,6 +7,7 @@ import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
+from watchdog.vault_paths import is_vault
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
@@ -173,295 +174,200 @@ def _prompt_status_line(vault: Path) -> str | None:
 
 
 _CMD_HELP: dict[str, dict] = {
-    "register": {
-        "desc": "Register an existing vault folder with watchdog",
-        "args": [("path", "Path to the existing vault folder")],
-        "opts": [("--name NAME", "Investigation name (omit to be prompted)")],
+    # Per-command prose for `watchdog <cmd> --help`: a one-line description and optional
+    # notes. Arguments and options are read from the argparse parser itself
+    # (`_print_cmd_help`), so the help can never drift from what the parser accepts.
+    'register': {
+        "desc": 'Register an existing vault folder with watchdog',
     },
-    "new": {
-        "desc": "Create a new investigation vault",
-        "args": [("name", "Investigation name (e.g. 'Shell Company Investigation')")],
-        "opts": [("--dir DIR", "Parent directory (default: projects_dir from config)")],
+    'new': {
+        "desc": 'Create a new investigation vault',
     },
-    "ingest": {
-        "desc": "[deprecated] Extract queued documents (runs the Python pipeline) — use "
-                "`watchdog` for the guided walk, or `watchdog dig` then `watchdog bark` instead",
-        "opts": [
-            ("--extractor-model M",  "Override the extraction model for this run — a tier (sonnet/opus/haiku) or backend:model (e.g. deepseek:deepseek-v4-flash); default from watchdog configure"),
-            ("--finalizer-model M",  "Override the post-ingest model (entity reconciliation + synthesis + timeline + briefing) for this run — tier or backend:model; default from watchdog configure"),
-            ("--finalizer-reconciliation-model M", "Override --finalizer-model for just entity reconciliation + contradiction flagging; falls back to --finalizer-model when unset"),
-            ("--finalizer-synthesis-model M", "Override --finalizer-model for just multi-mention entity synthesis; falls back to --finalizer-model when unset"),
-            ("--finalizer-timeline-model M", "Override --finalizer-model for just timeline dedup/reconciliation; falls back to --finalizer-model when unset"),
-            ("--finalizer-briefing-model M", "Override --finalizer-model for just the briefing; falls back to --finalizer-model when unset"),
-            ("--classifier-model M", "Override the document-classification model for this run — tier or backend:model; default from watchdog configure"),
-            ("--extractor-effort E", "Reasoning effort for extraction (low/medium/high) — lower spends fewer tokens; default from watchdog configure"),
-            ("--finalizer-effort E", "Reasoning effort for the post-ingest step (low/medium/high); default from watchdog configure"),
-            ("--classifier-effort E", "Reasoning effort for document classification (low/medium/high); default from watchdog configure"),
-            ("--concurrency N",      "Documents extracted in parallel for this run (default from watchdog configure: 5)"),
-            ("--classify-pages N",   "Pages shown to the document classifier for this run (default from watchdog configure: 5)"),
-            ("--skill [NAME|PATH]",  "Pin a record skill (name or file path) for every document, skipping classification (no value = pick from the list)"),
-            ("--wait",               "On a rate limit, sleep until it resets and resume automatically instead of stopping for you to re-run ingest. Not with a batch-mode extractor model (claude-batch/openai-batch)"),
-            ("--skip-warning",       "Skip the 'Public records only' acknowledgement pause (still prints a one-line notice of what was sent)"),
-        ],
+    'ingest': {
+        "desc": '[deprecated] Extract queued documents (runs the Python pipeline) — use `watchdog` for the guided walk, or `watchdog dig` then `watchdog bark` instead',
     },
-    "context": {
-        "desc": "Open Claude Code to seed investigation context from _CONTEXT/",
-        "args": [("name", "Investigation name or slug (default: current directory)", True)],
-        "opts": [("--model M", "Model to use (sonnet/opus/haiku, default: sonnet)")],
+    'context': {
+        "desc": 'Open Claude Code to seed investigation context from _CONTEXT/',
     },
-    "obsidian": {
-        "desc": "Open an investigation vault in Obsidian",
-        "args": [("name", "Investigation name or slug")],
+    'obsidian': {
+        "desc": 'Open an investigation vault in Obsidian',
     },
-    "open": {
-        "desc": "Open vault folder in Finder / file explorer",
-        "args": [("name", "Investigation name or slug (default: current directory)")],
+    'open': {
+        "desc": 'Open vault folder in Finder / file explorer',
     },
-    "archive": {
-        "desc": "Archive a completed investigation (hidden from watchdog list)",
-        "args": [("name", "Investigation name or slug")],
+    'archive': {
+        "desc": 'Archive a completed investigation (hidden from watchdog list)',
     },
-    "unarchive": {
-        "desc": "Restore an archived investigation",
-        "args": [("name", "Investigation name or slug")],
+    'unarchive': {
+        "desc": 'Restore an archived investigation',
     },
-    "rename": {
-        "desc": "Rename an investigation (folder and registry)",
-        "args": [
-            ("project", "Investigation name or slug (omit when inside the project folder)", True),
-            ("name",    "New name (omit to be prompted)", True),
-        ],
+    'rename': {
+        "desc": 'Rename an investigation (folder and registry)',
     },
-    "describe": {
-        "desc": "Set or update an investigation description",
-        "args": [
-            ("project", "Investigation name or slug (omit when inside the project folder)", True),
-            ("text",    "New description text (omit to be prompted)", True),
-        ],
+    'describe': {
+        "desc": 'Set or update an investigation description',
     },
-    "move": {
-        "desc": "Update vault path in registry",
-        "args": [("name", "Investigation name or slug"), ("path", "New path for the vault")],
+    'move': {
+        "desc": 'Update vault path in registry',
     },
-    "delete": {
-        "desc": "Remove an investigation from registry",
-        "args": [("name", "Investigation name or slug")],
-        "opts": [("--purge", "Also permanently delete all vault files from disk")],
+    'delete': {
+        "desc": 'Remove an investigation from registry',
     },
-    "chew": {
-        "desc": "Process documents in _INCOMING/ and prepare them for ingestion",
-        "args": [("file", "Specific file to chew (omit to chew all of _INCOMING/)", True)],
-        "opts": [
-            ("--chew-workers N",  "Parallel file workers (overrides chew_workers in watchdog configure)"),
-            ("--chunk-workers N", "Parallel chunk workers per file, for large PDFs (overrides chunk_workers)"),
-        ],
+    'chew': {
+        "desc": 'Process documents in _INCOMING/ and prepare them for ingestion',
     },
-    "watch": {
-        "desc": "Watch _INCOMING/ and chew files automatically as they arrive",
-        "args": [("name", "Investigation name or slug")],
+    'watch': {
+        "desc": 'Watch _INCOMING/ and chew files automatically as they arrive',
     },
-    "log": {
-        "desc": "Show ingest history for an investigation",
-        "args": [("name", "Investigation name or slug")],
-        "opts": [("--lines N", "Number of lines to show (default: all)")],
+    'log': {
+        "desc": 'Show ingest history for an investigation',
     },
-    "list": {
-        "desc": "List all registered investigations",
-        "opts": [("--all", "Include archived investigations")],
+    'list': {
+        "desc": 'List all registered investigations',
     },
-    "status": {
-        "desc": "Show detailed status for an investigation",
-        "args": [("name", "Investigation name or slug (omit to show all)")],
+    'status': {
+        "desc": 'Show detailed status for an investigation',
     },
-    "search": {
-        "desc": "Semantic search across ingested documents",
-        "args": [
-            ("project", "Investigation name or slug (omit when inside the project folder)", True),
-            ("query",   "Search query (supports +/- phrases — see Notes)"),
-        ],
-        "opts": [
-            ("--top N", "Results to return per section (default: 5)"),
-            ("--threshold S", "Hide results scoring below S (0.0–1.0); ~0.5 keeps strong matches"),
-            ("--full", "Print the complete passage/note instead of a truncated snippet"),
-        ],
+    'search': {
+        "desc": 'Semantic search across ingested documents',
         "notes": [
-            "Searches by meaning, not keywords: \"conflict of interest\" surfaces passages about",
-            "recusals or related-party dealings even when that phrase never appears. Returns the",
-            "matching source passage with its page — not a generated answer.",
-            "",
-            "Steer with +/-: lead a phrase with - to push away from it, + to pull toward another",
-            "idea. The whole phrase up to the next +/- is one term (no quotes needed); a hyphenated",
-            "word like no-bid stays intact.",
-            "    watchdog search \"shell company -real estate\"",
-            "    watchdog search \"consulting fee +offshore -salary\"",
-            "",
-            "Scores run 0–1 and are relative: a strong conceptual match sits around 0.5–0.65,",
+            'Searches by meaning, not keywords: "conflict of interest" surfaces passages about',
+            'recusals or related-party dealings even when that phrase never appears. Returns the',
+            'matching source passage with its page — not a generated answer.',
+            '',
+            'Steer with +/-: lead a phrase with - to push away from it, + to pull toward another',
+            'idea. The whole phrase up to the next +/- is one term (no quotes needed); a hyphenated',
+            'word like no-bid stays intact.',
+            '    watchdog search "shell company -real estate"',
+            '    watchdog search "consulting fee +offshore -salary"',
+            '',
+            'Scores run 0–1 and are relative: a strong conceptual match sits around 0.5–0.65,',
             "below ~0.4 is usually noise. There's no universal cutoff — tune --threshold to your",
-            "corpus. (A +/- query shifts the scale lower, so judge those by ranking, not score.)",
+            'corpus. (A +/- query shifts the scale lower, so judge those by ranking, not score.)',
         ],
     },
-    "leads": {
-        "desc": "Surface investigative leads from the entity graph (deterministic, no model)",
-        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
+    'leads': {
+        "desc": 'Surface investigative leads from the entity graph (deterministic, no model)',
         "notes": [
-            "Reads the entity registry and reports, with no model call: entities named as a",
-            "relationship target but never profiled, entities recurring across documents with no",
-            "relationships, and entities carrying unresolved contradiction flags.",
-            "",
-            "The same sweep runs at the end of every ingest run, writing the full report",
-            "to briefings/leads-<date>.md; this command re-runs it on demand between ingests.",
+            'Reads the entity registry and reports, with no model call: entities named as a',
+            'relationship target but never profiled, entities recurring across documents with no',
+            'relationships, and entities carrying unresolved contradiction flags.',
+            '',
+            'The same sweep runs at the end of every ingest run, writing the full report',
+            'to briefings/leads-<date>.md; this command re-runs it on demand between ingests.',
         ],
     },
-    "merge-entities": {
-        "desc": "Merge a duplicate entity into another, deterministically",
-        "args": [
-            ("keep-id",  "Entity id to keep (the survivor)"),
-            ("merge-id", "Entity id to merge away (folded into keep-id)"),
-        ],
-        "opts": [("--force", "Skip the confirmation prompt")],
+    'merge-entities': {
+        "desc": 'Merge a duplicate entity into another, deterministically',
         "notes": [
-            "Must be run from inside the vault. Unions aliases, appears_in, roles, and timeline",
-            "events onto keep-id; remaps every role.target_id across the whole registry that",
-            "pointed at merge-id (not just the two entities involved); concatenates the losing",
+            'Must be run from inside the vault. Unions aliases, appears_in, roles, and timeline',
+            'events onto keep-id; remaps every role.target_id across the whole registry that',
+            'pointed at merge-id (not just the two entities involved); concatenates the losing',
             "note's Analysis into the survivor's with provenance intact; and redirects the losing",
-            "note to a stub linking to the survivor. No model calls.",
-            "",
-            "Prints both entities (name, type, document/relationship counts) and asks for",
-            "confirmation before doing anything — this is irreversible. Answering anything other",
-            "than y/yes cancels with no changes made; pass --force to skip the prompt.",
-            "",
-            "This is the fix for what the dashboard's \"Possible duplicates\" view and",
+            'note to a stub linking to the survivor. No model calls.',
+            '',
+            'Prints both entities (name, type, document/relationship counts) and asks for',
+            'confirmation before doing anything — this is irreversible. Answering anything other',
+            'than y/yes cancels with no changes made; pass --force to skip the prompt.',
+            '',
+            'This is the fix for what the dashboard\'s "Possible duplicates" view and',
             "`/watchdog-health`'s near-duplicate check can only ever flag. Run `watchdog reindex`",
             "afterward to drop the merged entity's stale search-index entries.",
         ],
     },
-    "contradiction-add": {
-        "desc": "Promote a verified surface-found contradiction into an entity note",
-        "args": [("entity-id", "Entity id the contradiction belongs to")],
-        "opts": [
-            ("--label TEXT",  "Short label for the disputed fact"),
-            ("--a VALUE",     "First (existing) value"),
-            ("--a-doc SLUG",  "Document slug the first value comes from"),
-            ("--a-page N",    "Page number for the first value (optional)"),
-            ("--b VALUE",     "Second (conflicting) value"),
-            ("--b-doc SLUG",  "Document slug the second value comes from"),
-            ("--b-page N",    "Page number for the second value (optional)"),
-        ],
+    'contradiction-add': {
+        "desc": 'Promote a verified surface-found contradiction into an entity note',
         "notes": [
-            "Must be run from inside the vault. `/watchdog-surface` reports cross-document",
-            "contradictions as labelled candidates rather than writing callouts into entity",
-            "notes, which are pipeline-owned (D81). Once you have verified a candidate against",
+            'Must be run from inside the vault. `/watchdog-surface` reports cross-document',
+            'contradictions as labelled candidates rather than writing callouts into entity',
+            'notes, which are pipeline-owned (D81). Once you have verified a candidate against',
             "the sources, this writes it into the entity's ## Contradictions section through the",
             "pipeline's own note builder, in the exact format extraction emits — so the callout",
-            "is tracked by the resolutions layer and `watchdog resolve` / `unresolve` work on it",
-            "like any pipeline-emitted one. No model calls.",
-            "",
-            "Validates that the entity id and both document slugs exist before writing; a callout",
-            "already present is a no-op. `/watchdog-surface` can run this after explicit",
-            "journalist confirmation when promoting a candidate.",
+            'is tracked by the resolutions layer and `watchdog resolve` / `unresolve` work on it',
+            'like any pipeline-emitted one. No model calls.',
+            '',
+            'Validates that the entity id and both document slugs exist before writing; a callout',
+            'already present is a no-op. `/watchdog-surface` can run this after explicit',
+            'journalist confirmation when promoting a candidate.',
         ],
     },
-    "research": {
+    'research': {
         "desc": "Open Claude Code to research the vault's open questions on the web",
-        "args": [("name", "Investigation name or slug (default: current directory)", True)],
-        "opts": [
-            ("--question Q, -q Q", "Research question to seed (omit to be prompted)"),
-            ("--model M",          "Model to use (sonnet/opus/haiku, default: sonnet)"),
-        ],
         "notes": [
             "Seeded by the vault's entities, leads, and gaps, Claude conducts bounded web research",
-            "and queues the sources it finds; when the session ends, watchdog downloads them into",
-            "_INCOMING/ — so findings flow through the normal chew → ingest pipeline. Claude never",
-            "writes vault notes directly. After the download, run `watchdog chew` then",
-            "`watchdog dig` to fold the sources into the vault.",
+            'and queues the sources it finds; when the session ends, watchdog downloads them into',
+            '_INCOMING/ — so findings flow through the normal chew → ingest pipeline. Claude never',
+            'writes vault notes directly. After the download, run `watchdog chew` then',
+            '`watchdog dig` to fold the sources into the vault.',
         ],
     },
-    "watchlist": {
-        "desc": "Sweep the whole vault against watchlist.md (deterministic, no model)",
-        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
+    'watchlist': {
+        "desc": 'Sweep the whole vault against watchlist.md (deterministic, no model)',
         "notes": [
             "Reads every document already in documents.json — not just the current run's — and",
             "scans each one's morgue text against watchlist.md, exactly like the per-ingest scan",
-            "(D35). For when a term is added to the watchlist after documents were already",
+            '(D35). For when a term is added to the watchlist after documents were already',
             "ingested and you want the whole vault swept, not just what's ingested from now on.",
-            "",
-            "Writes to the same briefings/alerts-<date>.md as the per-run scan (appending if the",
-            "file already exists). Since it has no memory of prior scans, a full sweep re-reports",
-            "every past hit each time it runs — expected, not a bug.",
+            '',
+            'Writes to the same briefings/alerts-<date>.md as the per-run scan (appending if the',
+            'file already exists). Since it has no memory of prior scans, a full sweep re-reports',
+            'every past hit each time it runs — expected, not a bug.',
         ],
     },
-    "fetch": {
-        "desc": "Download a batch of URLs (or a links file) into _INCOMING/",
-        "args": [("URL|FILE", "One or more URLs, or the path to a links file (one URL per line, or the "
-                  "tab-separated url⇥title⇥source_type⇥relevance form)")],
-        "opts": [("--project P", "Investigation name or slug (default: current directory)")],
+    'fetch': {
+        "desc": 'Download a batch of URLs (or a links file) into _INCOMING/',
         "notes": [
-            "For when you already have a list of links — from a spreadsheet, a colleague, your own",
-            "browsing — and just want them pulled into the pipeline, no research session needed. Each",
-            "URL runs through the same egress hygiene as research sources (public host only, size cap,",
-            "scripts stripped) and lands as a document + provenance sidecar. Then run `watchdog chew`",
-            "and `watchdog dig`. Archives to the Wayback Machine too when wayback_save is on.",
+            'For when you already have a list of links — from a spreadsheet, a colleague, your own',
+            'browsing — and just want them pulled into the pipeline, no research session needed. Each',
+            'URL runs through the same egress hygiene as research sources (public host only, size cap,',
+            'scripts stripped) and lands as a document + provenance sidecar. Then run `watchdog chew`',
+            'and `watchdog dig`. Archives to the Wayback Machine too when wayback_save is on.',
         ],
     },
-    "usage": {
-        "desc": "Per-call token/cost/latency breakdown for ingest runs (deterministic, no model)",
-        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
-        "opts": [
-            ("--all",         "Compare every run recorded in the vault instead of showing just the latest"),
-            ("--run TIMESTAMP", "Analyze one specific past run instead of the latest"),
-        ],
+    'usage': {
+        "desc": 'Per-call token/cost/latency breakdown for ingest runs (deterministic, no model)',
         "notes": [
-            "Reads `.watchdog/registry/usage/usage-<ts>.json`, written after every ingest run",
-            "(`watchdog dig`/`watchdog bark`), and groups calls by stage (classifier/extractor/",
+            'Reads `.watchdog/registry/usage/usage-<ts>.json`, written after every ingest run',
+            '(`watchdog dig`/`watchdog bark`), and groups calls by stage (classifier/extractor/',
             "finalizer, matching the CLI's own --classifier-model/--extractor-model/",
-            "--finalizer-model flags). Extractor rows show the filename and page range (or",
-            "section) each call covered.",
-            "",
-            "Cost is read directly from each record — model_client computes cost_usd",
-            "authoritatively at call time, so there is no local pricing table to keep in sync.",
+            '--finalizer-model flags). Extractor rows show the filename and page range (or',
+            'section) each call covered.',
+            '',
+            'Cost is read directly from each record — model_client computes cost_usd',
+            'authoritatively at call time, so there is no local pricing table to keep in sync.',
             "Also reports each call's wall-clock latency, and cost per page across the vault's",
-            "whole document registry (not just the run being analyzed).",
+            'whole document registry (not just the run being analyzed).',
         ],
     },
-    "export": {
-        "desc": "Export the entity/relationship graph for Neo4j, Gephi, or NetworkX",
-        "args": [("project", "Investigation name or slug (omit when inside the project folder)", True)],
-        "opts": [
-            ("--output DIR",     "Output directory (default: <slug>-export/)"),
-            ("--format FMT",     "csv (default) or cypher"),
-        ],
+    'export': {
+        "desc": 'Export the entity/relationship graph for Neo4j, Gephi, or NetworkX',
         "notes": [
-            "Reads the entity registry and emits a graph — no model calls, fully deterministic.",
-            "csv writes nodes.csv + relationships.csv for `neo4j-admin database import` (also",
-            "loadable in Gephi); cypher writes a single graph.cypher of MERGE statements.",
-            "",
-            "Only stated-direction relationships are emitted (the auto-generated reverse edges are",
-            "skipped), and edges to entities that were never profiled are dropped so the import",
-            "stays valid. Graph quality is bounded by ingest-time entity deduplication.",
+            'Reads the entity registry and emits a graph — no model calls, fully deterministic.',
+            'csv writes nodes.csv + relationships.csv for `neo4j-admin database import` (also',
+            'loadable in Gephi); cypher writes a single graph.cypher of MERGE statements.',
+            '',
+            'Only stated-direction relationships are emitted (the auto-generated reverse edges are',
+            'skipped), and edges to entities that were never profiled are dropped so the import',
+            'stays valid. Graph quality is bounded by ingest-time entity deduplication.',
         ],
     },
-    "timeline": {
-        "desc": "Rebuild timeline.md from canonical .watchdog/timeline/ files",
-        "args": [("name", "Investigation name or slug (default: current directory)", True)],
+    'timeline': {
+        "desc": 'Rebuild timeline.md from canonical .watchdog/timeline/ files',
     },
-    "unlock": {
-        "desc": "Release a stale chew or ingest lock",
-        "args": [("project", "Investigation name or slug")],
-        "opts": [("--force", "Remove lock even if recent")],
+    'unlock': {
+        "desc": 'Release a stale chew or ingest lock',
     },
-    "setup": {
-        "desc": "Set up Watchdog after installation",
-        "opts": [("--force", "Re-run setup even if already complete")],
+    'setup': {
+        "desc": 'Set up Watchdog after installation',
     },
-    "configure": {
-        "desc": "View or change configuration",
-        "args": [("key", "Configuration key (optional)"), ("value", "Value to set (optional)")],
+    'configure': {
+        "desc": 'View or change configuration',
     },
-    "doctor": {
-        "desc": "Check all registered investigations for missing or broken vaults",
+    'doctor': {
+        "desc": 'Check all registered investigations for missing or broken vaults',
     },
-    "about": {
-        "desc": "Show version and project links",
+    'about': {
+        "desc": 'Show version and project links',
     },
 }
 
@@ -541,6 +447,20 @@ def save_projects(projects: dict) -> None:
         f.write("\n")
 
 
+def load_config() -> dict:
+    """`config.json` as a dict — `{}` when it doesn't exist yet. A corrupt file exits with a clear
+    error instead of being silently treated as empty, which ran `dig`/`bark` on the default models
+    and provider with no hint that the user's settings were being ignored."""
+    if not CONFIG_FILE.exists():
+        return {}
+    try:
+        data = _read_json(CONFIG_FILE)
+    except json.JSONDecodeError as e:
+        sys.exit(f"Error: config file is corrupt — {e}\nFix or remove {CONFIG_FILE}, or run "
+                 f"'watchdog setup --force'.")
+    return data if isinstance(data, dict) else {}
+
+
 def _projects_dir() -> Path:
     default = Path.home() / "Investigations"
     if CONFIG_FILE.exists():
@@ -587,7 +507,7 @@ def _check_project_health(info: dict) -> str | None:
     vault = Path(info["path"])
     if not vault.exists():
         return "folder not found"
-    if not (vault / ".watchdog").exists():
+    if not is_vault(vault):
         return "not a watchdog vault"
     return None
 
@@ -672,7 +592,7 @@ def _resolve_vault(project: str | None) -> tuple[str, dict, Path]:
         return slug, info, Path(info["path"])
 
     cwd = Path(".").resolve()
-    if not (cwd / ".watchdog").is_dir():
+    if not is_vault(cwd):
         sys.exit("Error: not inside a Watchdog vault — provide an investigation name.")
     for slug, info in load_projects().items():
         if Path(info["path"]).resolve() == cwd:
@@ -698,8 +618,12 @@ def _notify(title: str, body: str) -> None:
     if sys.platform != "darwin":
         return
     try:
+        # Title and body go in as script arguments, never spliced into the AppleScript source,
+        # so a quote in a project name can't break (or rewrite) the script.
         subprocess.run(
-            ["osascript", "-e", f'display notification "{body}" with title "{title}"'],
+            ["osascript", "-e", "on run argv", "-e",
+             "display notification (item 2 of argv) with title (item 1 of argv)",
+             "-e", "end run", title, body],
             capture_output=True, timeout=5,
         )
     except Exception:
@@ -728,37 +652,69 @@ def _check_vault_locks(vault: Path, slug: str) -> None:
         sys.exit(f"Error: ingest is in progress. Wait for it to finish or run: watchdog unlock {slug}")
 
 
-def _print_cmd_help(cmd: str) -> None:
+def _flag_label(action) -> str:
+    """`--name METAVAR` (or `-q Q, --question Q`) for one argparse optional action."""
+    if action.nargs == 0:
+        return ", ".join(action.option_strings)
+    metavar = action.metavar or (action.dest.upper() if not action.choices else
+                                 "|".join(str(c) for c in action.choices))
+    if action.nargs in ("?", "*"):
+        metavar = f"[{metavar}]"
+    return ", ".join(f"{o} {metavar}" for o in action.option_strings)
+
+
+def _print_cmd_help(cmd: str, subparser, desc: str | None = None) -> None:
+    """Render `watchdog <cmd> --help` in the CLI's own style. Arguments and options come from
+    `subparser` (the real argparse parser for `cmd`); only the description and notes come from
+    `_CMD_HELP`, so a flag can't be accepted but missing from the help, or vice versa."""
+    import argparse
     info = _CMD_HELP.get(cmd, {})
-    arg_defs = info.get("args", [])
-    opts = info.get("opts", [])
+    arg_defs, opts = [], []
+    for action in subparser._actions:
+        if isinstance(action, argparse._HelpAction) or action.help == argparse.SUPPRESS:
+            continue
+        text = (action.help or "").replace("%%", "%")
+        if action.option_strings:
+            opts.append((_flag_label(action), text))
+        else:
+            arg_defs.append((action.metavar or action.dest, text, action.nargs in ("?", "*")))
     usage_parts = ["watchdog", cmd]
-    for a in arg_defs:
-        name, optional = a[0], (len(a) > 2 and a[2])
+    for name, _, optional in arg_defs:
         usage_parts.append(f"[{name}]" if optional else f"<{name}>")
     if opts:
         usage_parts.append("[options]")
-    # Pad every arg/opt name to the widest one actually in this command's help — a fixed 18
-    # broke alignment as soon as a flag+metavar ran longer than that (e.g. "--classifier-model
-    # M" is 21 chars), leaving its description crammed one space after the flag while shorter
-    # ones sat in a neat column (#411).
-    width = max([len(a[0]) for a in arg_defs] + [len(flag) for flag, _ in opts] + [len("--help")])
-    print(f"\n  {info.get('desc', '')}")
+    import shutil
+    import textwrap
+    # Labels longer than the cap print their description on the next line instead of pushing
+    # every row's description to the right.
+    width = min(26, max([len(a[0]) for a in arg_defs] + [len(flag) for flag, _ in opts] + [len("--help")]))
+    cols = max(60, min(shutil.get_terminal_size((100, 24)).columns, 110))
+
+    def _row(label: str, text: str) -> None:
+        indent = " " * (4 + width + 1)
+        body = textwrap.wrap(text, cols - len(indent)) or [""]
+        if len(label) > width:
+            print(f"    {_CYAN}{label}{_RESET}")
+            lines = body
+        else:
+            print(f"    {_CYAN}{label:<{width}}{_RESET} {body[0]}")
+            lines = body[1:]
+        for line in lines:
+            print(f"{indent}{line}")
+
+    print(f"\n  {info.get('desc') or desc or subparser.description or ''}")
     print()
     print(f"  {_DIM}Usage:  {' '.join(usage_parts)}{_RESET}")
     if arg_defs:
         print()
         print(f"  {_BOLD}Arguments{_RESET}")
-        for a in arg_defs:
-            name, desc = a[0], a[1]
-            optional = len(a) > 2 and a[2]
-            note = "  (optional)" if optional else ""
-            print(f"    {_CYAN}{name:<{width}}{_RESET} {desc}{note}")
+        for name, text, optional in arg_defs:
+            _row(name, text + ("  (optional)" if optional else ""))
     print()
     print(f"  {_BOLD}Options{_RESET}")
-    for flag, desc in opts:
-        print(f"    {_CYAN}{flag:<{width}}{_RESET} {desc}")
-    print(f"    {_CYAN}{'--help':<{width}}{_RESET} Show this message and exit")
+    for flag, text in opts:
+        _row(flag, text)
+    _row("--help", "Show this message and exit")
     notes = info.get("notes", [])
     if notes:
         print()

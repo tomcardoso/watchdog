@@ -42,9 +42,9 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 | `watchdog chew` | Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog dig` | Classify and extract queued documents into staged artifacts — see [below](#watchdog-dig). |
 | `watchdog bark` | Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch staged by `watchdog dig`, or one an interruption left half-done; takes `--finalizer-model` (and its four per-stage overrides), `--finalizer-effort`, `--estimate`, `--estimate-all`, and `--skip-briefing` — see [below](#watchdog-bark). |
-| `watchdog requeue` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog dig`. |
+| `watchdog requeue [name]` | Move documents quarantined in `queue/_failed/` back into the active queue, ready for the next `watchdog dig`; omit the name inside the vault. |
 | `watchdog context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
-| `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive. |
+| `watchdog watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive, starting with any already waiting there. |
 | `watchdog [--skip-briefing]` | With no subcommand inside a vault: walk the pipeline — offering to seed context, chew, then dig and bark — skipping any stage with no pending work. `--skip-briefing` carries through if the walk reaches that step. |
 
 `watchdog dig` and `watchdog bark` are the two halves of what used to be one `watchdog ingest` command (renamed in favour of the guided `watchdog` walk plus these two manual-control stages — see [`watchdog ingest` (deprecated)](#watchdog-ingest-deprecated) below).
@@ -87,7 +87,7 @@ The "which model runs each stage" line printed before extraction starts shows on
 
 **Scope and behaviour flags.**
 
-- `--concurrency N` — documents extracted in parallel (default: 5); lower it if you hit rate limits.
+- `--concurrency N` — documents extracted in parallel (default: 20, or 3 on a Claude subscription — see `extract_concurrency` in [Configuration](configuration.md)); lower it if you hit rate limits.
 - `--classify-pages N` — leading pages shown to the classifier (default: 5); more pages classify ambiguous documents better.
 - `--skill NAME` — pin one record skill for every document, skipping classification; pass a skill name or a path to a skill file, or use `--skill` with no value to pick from a list. A document's own sidecar can pin a different skill for just that document — see [Skills](skills.md#reading-and-pinning-skills).
 - `--wait` — on a rate limit, sleep until it resets and resume automatically instead of stopping; for unattended overnight batches. It uses the reset time the provider reports, or a fixed fallback interval when it doesn't, and repeats until the queue drains. Not compatible with a batch-mode extractor model (`claude-batch`/`openai-batch` — see [Batch mode](configuration.md#batch-mode-bulk-extraction-at-half-price)).
@@ -198,6 +198,8 @@ watchdog chew                        # everything in _INCOMING/
 watchdog chew path/to/file.pdf       # one specific file
 ```
 
+A file you name that isn't already in `_INCOMING/` is copied there first, so chewing a document from your Downloads folder (or from the vault's own `_CONTEXT/`) never moves the original away from where you keep it.
+
 Two flags override the persistent parallelism settings for a single run:
 
 - `--chew-workers N` — files processed in parallel (the `chew_workers` setting; default: adaptive).
@@ -256,7 +258,7 @@ Flags:
 - `--threshold S` — hide semantic results scoring below S (0.0–1.0).
 - `--no-rerank` — skip the local reranking step; faster, lower quality.
 - `--full` — print the complete passage or note instead of a snippet.
-- `--batch FILE` — read terms from a file (one per line) and report hits per term instead of ranking a single query; useful for checking a list of names.
+- `--batch FILE` — read terms from a file (one per line) and report hits per term instead of ranking a single query; useful for checking a list of names. If the exact-match index can't be read, the affected terms are reported as **not checked** — never as "no hits".
 - `--everywhere` — search every registered, non-archived investigation instead of one; only the entity-lookup and exact-match lanes run (semantic ranking doesn't scale across vaults), results are grouped by investigation, and vaults with a broken path are skipped. Combine with `--batch` to check a term list across every vault.
 - `--json` — machine-readable output.
 
@@ -290,7 +292,7 @@ Rebuilds the vault's semantic and full-text search indexes from what is already 
 
 ### watchdog research
 
-Opens Claude Code to research the vault's open questions on the web. Claude queues the sources it finds rather than writing anything to the vault; when the session ends, Watchdog downloads them into `_INCOMING/` so the findings flow through the normal chew-and-ingest pipeline. `--question "<q>"` (or `-q`) seeds a research question, and `--model` overrides the model (`sonnet`, `opus`, or `haiku`; default: `sonnet`). The full treatment — effort tiers, interrupted-session recovery, what research deliberately does not do — is in [Investigating](investigating.md).
+Opens Claude Code to research the vault's open questions on the web. Claude queues the sources it finds rather than writing anything to the vault; when the session ends, Watchdog downloads them into `_INCOMING/` so the findings flow through the normal chew-and-ingest pipeline. `--question "<q>"` (or `-q`) seeds a research question, and `--model` picks the Claude model for the session (`sonnet`, `opus`, `haiku`, or an explicit version such as `sonnet-4.6`; default: `sonnet`). The full treatment — effort tiers, interrupted-session recovery, what research deliberately does not do — is in [Investigating](investigating.md).
 
 ### watchdog watchlist
 
