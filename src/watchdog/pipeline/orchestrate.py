@@ -2797,8 +2797,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               skip_briefing: bool = False, finalizer_overrides: dict | None = None,
               resume_hint: str = "watchdog dig", verify: bool = False,
               extract_token_budget: int | None = None,
-              benchmark_arm_id: str | None = None) -> dict:
+              benchmark_arm_id: str | None = None,
+              only_shas: list[str] | None = None) -> dict:
     """Extract every queued document (bounded by `concurrency`), then post-ingest.
+
+    `only_shas` (#696, `watchdog dig --limit`) restricts this run to those queued documents; the
+    rest of the queue is left untouched for a later run.
 
     `extract_model`/`post_model`/`classify_model` drive extraction, synthesis/timeline/briefing,
     and the cheap classifier (first `classify_pages` pages) respectively; `pinned_skill` skips
@@ -2822,6 +2826,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     (#611) tags this run's telemetry when `run_benchmark.py` is the caller."""
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
+    if only_shas is not None:
+        keep = set(only_shas)
+        shas = [s for s in shas if s in keep]
     config_snapshot = {
         "extract_model": extract_model, "extract_effort": extract_effort,
         "extract_backend": extract_backend, "post_model": post_model, "post_effort": post_effort,

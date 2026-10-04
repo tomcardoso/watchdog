@@ -3106,6 +3106,65 @@ def test_cmd_extract_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path
     assert "watchdog bark" in out
 
 
+def test_dig_limit_extracts_only_the_next_n_unextracted(wdg_home, tmp_path, monkeypatch, capsys):
+    """`watchdog dig --limit N` (#696) hands orchestrate.run the next N queued documents that still
+    need extracting — already-staged ones are skipped, not counted against the limit."""
+    from watchdog.cmd import auth as auth_module
+    from watchdog.cmd import ingest as ing
+    from watchdog.pipeline import orchestrate as orch_module
+
+    vault = _vault_with_queued_doc(tmp_path)
+    qdir = vault / ".watchdog" / "queue"
+    for sha in ("sha2", "sha3", "sha4"):
+        (qdir / f"{sha}.json").write_text((qdir / "sha1.json").read_text().replace("sha1", sha))
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "extracted" / "sha1.json").write_text("{}")   # already staged
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: False)
+    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)
+    calls = []
+
+    async def fake_run(*a, **k):
+        calls.append(k)
+        return {"results": [], "extracted": 0, "skipped": 0, "failed": 0, "cancelled": False,
+                "rate_limited": False, "stop_message": None, "rate_limit_resets_at": None,
+                "quarantined": 0, "finalize_skipped": True}
+    monkeypatch.setattr(orch_module, "run", fake_run)
+
+    ing.cmd_extract(args(limit=2))
+
+    assert calls[0]["only_shas"] == ["sha2", "sha3"]
+    assert "extracting 2 of 4 queued documents" in _strip_ansi(capsys.readouterr().out)
+
+
+def test_limit_queue_force_ignores_staged_state(tmp_path):
+    from watchdog.pipeline.ingest_setup import limit_queue
+    queue = [{"sha256": s} for s in ("a", "b", "c")]
+    (tmp_path / ".watchdog" / "extracted").mkdir(parents=True)
+    (tmp_path / ".watchdog" / "extracted" / "a.json").write_text("{}")
+    (tmp_path / ".watchdog" / "registry").mkdir(parents=True)
+    (tmp_path / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({"b": {}}))
+    assert limit_queue(tmp_path, queue, 5) == [{"sha256": "c"}]          # staged + committed skipped
+    assert limit_queue(tmp_path, queue, 2, force=True) == queue[:2]
+    assert limit_queue(tmp_path, queue, None) == queue
+
+
+@pytest.mark.parametrize("value, ok", [("3", True), ("0", False), ("-1", False), ("x", False)])
+def test_dig_parser_limit_must_be_positive(monkeypatch, capsys, value, ok):
+    import sys
+    seen = {}
+    monkeypatch.setattr(cli, "cmd_extract", lambda a: seen.update(limit=a.limit))
+    monkeypatch.setattr(sys, "argv", ["watchdog", "dig", "--limit", value])
+    if ok:
+        cli.main()
+        assert seen == {"limit": int(value)}
+    else:
+        with pytest.raises(SystemExit):
+            cli.main()
+        assert "--limit" in capsys.readouterr().err
+
+
 def test_cmd_extract_sets_no_finalize_on_args(wdg_home, tmp_path, monkeypatch):
     """cmd_extract mutates the passed-in args to force no_finalize, then delegates to cmd_ingest
     unchanged — verified directly against cmd_ingest's call signature."""

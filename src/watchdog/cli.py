@@ -101,6 +101,17 @@ from watchdog.cmd.usage import cmd_usage
 from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
 
 
+def _positive_int(value: str) -> int:
+    """argparse type for a count that must be at least 1 (`watchdog dig --limit`)."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a whole number, got {value!r}")
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"must be at least 1 (got {n})")
+    return n
+
+
 def _cmd_rebuild_timeline(args) -> None:
     from pathlib import Path
     from watchdog.pipeline.timeline import cmd_rebuild_timeline, main_rebuild
@@ -537,6 +548,9 @@ def main() -> None:
                            help="Like --estimate, but also project the cost across every model in "
                                 "the catalog, cheapest first — for comparing providers before "
                                 "choosing one")
+    p_extract.add_argument("--limit", type=_positive_int, default=None, metavar="N",
+                           help="Extract only the next N queued documents that still need it, "
+                                "leaving the rest queued (for working through a large set in tranches)")
     p_extract.add_argument("--force", action="store_true", default=False, dest="force",
                            help="Re-extract even when a cached extraction already exists — costs "
                                 "full extraction spend on every document. Nothing is committed to "

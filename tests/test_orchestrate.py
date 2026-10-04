@@ -4316,6 +4316,24 @@ def test_run_batch_openai_requires_an_api_key(tmp_path, monkeypatch):
                                            "haiku", 5, None, backend="openai-batch"))
 
 
+def test_run_only_shas_restricts_the_run_to_those_queued_documents(tmp_path, monkeypatch):
+    """`only_shas` (#696, `watchdog dig --limit`) narrows the queue scan; the rest stays queued."""
+    vault = make_vault(tmp_path)
+    for sha in ("aaa", "bbb", "ccc"):
+        _queue_doc(vault, sha=sha, filename=f"{sha}.pdf")
+    seen = []
+
+    async def fake_run_batch(vault, shas, *a, **k):
+        seen.append(list(shas))
+        return {"results": [], "batch_pending": True}
+    monkeypatch.setattr(orchestrate, "_run_batch", fake_run_batch)
+
+    asyncio.run(orchestrate.run(vault, extract_backend="claude-batch", skip_finalize=True,
+                                only_shas=["ccc", "aaa", "zzz"]))
+    assert seen == [["aaa", "ccc"]]
+    assert {p.stem for p in (vault / ".watchdog" / "queue").glob("*.json")} == {"aaa", "bbb", "ccc"}
+
+
 def test_submit_batch_openai_sections_via_openai_not_claude_api(tmp_path, monkeypatch):
     """A sectioned document under an openai-batch run must fall back to the `openai` single-call
     backend, not `claude-api` — a vault routed entirely to OpenAI must never need Claude

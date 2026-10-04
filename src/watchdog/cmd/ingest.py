@@ -746,6 +746,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # bare --force --estimate is unaffected, since it has no selectors to re-queue in the first
     # place (#424).
     is_estimate = getattr(args, "estimate", False) or getattr(args, "estimate_all", False)
+    # `watchdog dig --limit N` (#696): only the next N queued documents still needing extraction.
+    limit = getattr(args, "limit", None)
     if force_selectors and is_estimate:
         print(f"\n  {_DIM}--estimate is read-only — the named document(s) are not re-queued; "
               f"this estimate reflects the current queue only.{_RESET}")
@@ -768,8 +770,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     from watchdog.model_client import CLAUDE_BACKENDS
 
     if is_estimate:
-        from watchdog.pipeline.ingest_setup import scan_queue, cost_estimate, cost_estimate_all_models
-        queue_files = scan_queue(vault)
+        from watchdog.pipeline.ingest_setup import (
+            cost_estimate, cost_estimate_all_models, limit_queue, scan_queue,
+        )
+        queue_files = limit_queue(vault, scan_queue(vault), limit, force=force)
         if not queue_files:
             failed = _failed_count(vault)
             if failed:
@@ -945,6 +949,17 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
             return
 
+    only_shas = None
+    if limit is not None:
+        from watchdog.pipeline.ingest_setup import limit_queue
+        in_queue = len(result["queue_files"])
+        result["queue_files"] = limit_queue(vault, result["queue_files"], limit, force=force)
+        only_shas = [qf["sha256"] for qf in result["queue_files"]]
+        held = in_queue - len(only_shas)
+        print(f"\n  {_DIM}--limit {limit}: extracting {_RESET}{_BOLD}{len(only_shas)}{_RESET}{_DIM} "
+              f"of {in_queue} queued document{'s' if in_queue != 1 else ''}"
+              + (f"; {held} stay{'s' if held == 1 else ''} queued or already extracted"
+                 if held else "") + f".{_RESET}")
     q = len(result["queue_files"])
     if q and not skip_preview:
         from watchdog.pipeline.ingest_setup import cost_estimate
@@ -1087,7 +1102,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
                     resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget,
-                    benchmark_arm_id=getattr(args, "benchmark_arm_id", None)))
+                    benchmark_arm_id=getattr(args, "benchmark_arm_id", None),
+                    only_shas=only_shas))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
