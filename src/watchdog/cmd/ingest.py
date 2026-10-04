@@ -1065,6 +1065,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
               f"row is normal, not a stall.{_RESET}")
         print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
     lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    from watchdog.pipeline.locks import heartbeat
     try:
         summary = None
         wait_count = 0
@@ -1076,7 +1077,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # the count of waits taken reaches the bound, break with the last iteration's summary as
         # merged — its `rate_limited: True` is left intact, so the caller can tell the run stopped
         # short rather than completed. `None` never triggers this, matching plain `--wait` exactly.
-        with _caffeinate():
+        with _caffeinate(), heartbeat(lock_file):
             while True:
                 iter_summary = asyncio.run(orchestrate.run(
                     vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
@@ -1315,7 +1316,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     `finalizer_overrides` (#433) passes straight through to `orchestrate.finalize` — per-stage
     model/backend overrides for reconciliation, synthesis, timeline, and briefing."""
     from watchdog.pipeline import orchestrate
-    from watchdog.pipeline.locks import acquire_or_take_stale, lock_started_at
+    from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
     lock = vault / ".watchdog" / "registry" / ".ingest-lock"
     # Atomic acquisition (#257): the shared .ingest-lock means a running ingest or a second
@@ -1334,7 +1335,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         # #467: a bark run has no upper bound on how long reconciliation/synthesis/the briefing
         # take, the same failure mode _caffeinate() was added to guard extraction against (#415)
         # — without it, the machine sleeping mid-call kills a finalize outright.
-        with _caffeinate():
+        with _caffeinate(), heartbeat(lock):
             out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
                                                    post_backend=post_backend, force_shas=force_shas,
                                                    skip_briefing=skip_briefing,

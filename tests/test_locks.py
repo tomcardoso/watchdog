@@ -64,6 +64,43 @@ def test_refresh_lock_resets_age(tmp_path):
     assert "pid: cli" in lock.read_text()
 
 
+def test_heartbeat_keeps_a_long_run_lock_fresh(tmp_path):
+    """#696: a long active run re-stamps its lock, so a second invocation never sees it as stale
+    while the first is still working. The holder's other lines (its pid label) survive."""
+    import time
+    lock = tmp_path / ".lock"
+    old = _iso(datetime.now(timezone.utc) - timedelta(seconds=3600))
+    lock.write_text(f"pid: 4242\nstarted_at: {old}\n")
+    with locks.heartbeat(lock, interval=0.02):
+        deadline = time.monotonic() + 5
+        while locks.lock_age_seconds(lock) > 5 and time.monotonic() < deadline:
+            time.sleep(0.01)
+    assert locks.lock_age_seconds(lock) < 5
+    assert "pid: 4242" in lock.read_text()
+    assert locks.acquire_or_take_stale(lock, "started_at: x\n", 1800) is False
+
+
+def test_heartbeat_never_recreates_a_released_lock(tmp_path):
+    import time
+    lock = tmp_path / ".lock"
+    lock.write_text("started_at: 2020-01-01T00:00:00Z\n")
+    with locks.heartbeat(lock, interval=0.02):
+        lock.unlink()
+        time.sleep(0.1)
+    assert not lock.exists()
+
+
+def test_heartbeat_stops_when_the_block_exits(tmp_path):
+    """The beat thread is joined before the block exits, so the caller's release always comes
+    after the last beat."""
+    import threading
+    lock = tmp_path / ".lock"
+    lock.write_text("started_at: 2020-01-01T00:00:00Z\n")
+    with locks.heartbeat(lock, interval=0.02):
+        pass
+    assert not any(t.name.startswith("lock-heartbeat") for t in threading.enumerate())
+
+
 def _racer(arg):
     lock_path, contents = arg
     return locks.acquire_lock(Path(lock_path), contents)

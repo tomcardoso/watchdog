@@ -202,7 +202,10 @@ lock, the shared finalize lock, and chew's `.watchdog/.chew-lock` — are taken 
 `os.open(O_CREAT|O_EXCL)`, so two concurrent invocations can't both win (the old
 check-then-write left a race window). A lock provably older than 30 minutes is taken over; one
 whose `started_at` is missing or unparseable is left in place for `watchdog unlock` rather than
-deleted regardless of age.
+deleted regardless of age. While a run is active, `locks.heartbeat` re-stamps its lock's `started_at` every five
+minutes from a daemon thread (#696) — extraction, finalize and chew over thousands of documents all
+outlast the 30-minute window — and is joined before the holder releases, so a beat never recreates a
+released lock; a crashed run stops beating, so its lock still goes stale on schedule.
 
 A second, finer lock (`.watchdog/registry/.write-lock`) serializes the actual registry/note
 writes so the concurrent document workers write safely. Uses `flock` on macOS/Linux

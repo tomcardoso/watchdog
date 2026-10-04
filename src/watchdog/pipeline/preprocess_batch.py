@@ -358,9 +358,12 @@ def run_ingest(
         sys.exit("\n  Error: a chew is already in progress on this vault. "
                  "Wait for it to finish, or run: watchdog unlock\n")
 
+    from watchdog.pipeline.locks import heartbeat
     try:
-        _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
-                          show_ingest_hint, force_shas=force_shas)
+        # OCR over thousands of pages routinely outlasts the 30-minute staleness window (#696).
+        with heartbeat(lock_file):
+            _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
+                              show_ingest_hint, force_shas=force_shas)
     finally:
         try:
             lock_file.unlink()
