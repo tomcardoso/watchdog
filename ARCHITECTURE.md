@@ -1010,9 +1010,21 @@ a dense cosine ranking and a sparse **BM25** ranking are fused with reciprocal-r
 `watchdog setup`, else downloaded on first search; disable with `rerank_model = none` or
 `--no-rerank`). BM25 recovers the exact tokens
 embeddings blur — case numbers, dollar amounts, statute cites, names — and the reranker is
-the single biggest precision lever. BM25 is computed in-memory from the loaded passages (no
-persisted sparse index); if the reranker can't load, search degrades to the fusion order.
-The notes stream stays pure cosine.
+the single biggest precision lever. If the reranker can't load, search degrades to the fusion
+order. The notes stream stays pure cosine.
+
+**Search cache (`embed._CorpusIndex`, #696).** Every `watchdog search` is a fresh process, and
+each one used to re-read every per-file index entry, re-tokenize every passage and score BM25 in
+a Python loop — 20–30 seconds a query at 200,000 passages (about 5,000 ten-page documents). The
+stacked vectors, the metadata and a BM25 inverted index over the corpus passages are now written to
+`.embeddings/_cache/` (`.npy`/`.npz`/JSON — never pickle, since a vault can come from someone
+else) and reused while a fingerprint of every per-file entry's name, size and mtime still matches;
+`add_document`/`add_note` also drop the fingerprint outright, for filesystems with coarse
+timestamps. A repeat query then loads three files and scores with numpy (about 1.3 s on the same
+synthetic index). Rankings are unchanged: same tokenizer, corpus and formula, summed per query term
+rather than per passage. The per-file entries stay the source of truth — the cache is derived,
+rebuilt on the first search after any change, and `watchdog reindex` wipes it with the rest of
+`.embeddings/`.
 
 **Query handling.** Short queries are embedded with the bge instruction prefix
 (asymmetric retrieval — passages get no prefix); a query supports Semantra-style

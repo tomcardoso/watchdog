@@ -38,6 +38,8 @@ Omit the investigation name when you are inside the vault directory. Results com
 
 The ranking is a hybrid: passages are scored both by *meaning* and by *exact terms*, then re-ranked locally on your machine for precision. In practice, that means searching for `"conflict of interest"` surfaces passages about recusals or related-party dealings even when the phrase never appears — while an exact token like a case number or a dollar figure still lands its passage.
 
+On a large investigation, the first search after an ingest takes longer than the rest: Watchdog rebuilds a saved copy of the search index then, so that every later search can load it in a second or two instead of re-reading thousands of documents. On a set of about 5,000 ten-page documents, that first search takes around half a minute.
+
 You can steer results with `+` and `-` phrases — lead a phrase with `-` to push away from it, `+` to pull toward another idea. The whole phrase up to the next sign is one term; no quotes needed:
 
 ```bash
