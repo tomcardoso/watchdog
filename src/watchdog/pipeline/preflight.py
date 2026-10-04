@@ -32,10 +32,8 @@ a different question and consulted at a different point in the pipeline:
 """
 
 import json
-import sys
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
 
 
 def registry_context(vault: Path) -> dict:
@@ -100,35 +98,3 @@ def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
         # never read from _INCOMING again past this point (D121).
         "sidecar": queue.get("sidecar"),
     }
-
-
-def main() -> None:
-    if len(sys.argv) < 2:
-        sys.exit("Usage: python -m watchdog.pipeline.preflight <sha256>")
-
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-
-    sha256 = sys.argv[1]
-    result = run(vault, sha256)
-    if "error" in result:
-        sys.exit(f"Error: {result['error']}")
-
-    # Write pages as a single markdown file with page-break markers
-    tmp_dir = vault / ".watchdog" / "tmp"
-    tmp_dir.mkdir(parents=True, exist_ok=True)
-    pages_path = tmp_dir / f"preflight_{sha256}_pages.md"
-    parts = []
-    for page in result.get("pages", []):
-        parts.append(f"<!-- PAGE {page['page']} -->\n\n{page.get('markdown', '')}")
-    pages_path.write_text("\n\n---\n\n".join(parts))
-
-    # Stdout is metadata-only — pages must be read from pages_path
-    metadata = {k: v for k, v in result.items() if k != "pages"}
-    metadata["pages_path"] = str(pages_path)
-    print(json.dumps(metadata, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()

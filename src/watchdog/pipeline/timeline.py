@@ -388,13 +388,6 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     return (len(canonical_files), len(events))
 
 
-def main_collisions() -> None:
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    cmd_timeline_collisions(vault)
-
-
 def main_rebuild() -> None:
     vault = Path(".").resolve()
     if not is_vault(vault):

@@ -1489,33 +1489,3 @@ def cmd_guided(args) -> dict | None:
                   f"{_DIM}— run {_RESET}{_CYAN}watchdog leads{_RESET}{_DIM} to review{_RESET}")
         print()
 
-
-def cmd_queue_status(args) -> None:
-    cwd = Path(".").resolve()
-    if is_vault(cwd):
-        vault = cwd
-    elif getattr(args, "project", None):
-        _, info = _find_project(args.project)
-        vault = Path(info["path"])
-    else:
-        sys.exit("Error: not inside a Watchdog vault — pass the investigation name.")
-
-    (vault / ".watchdog" / "tmp").mkdir(parents=True, exist_ok=True)
-
-    queue_dir = vault / ".watchdog" / "queue"
-    if not queue_dir.exists():
-        print('{"total": 0, "files": []}')
-        return
-
-    files = sorted(queue_dir.glob("*.json"))
-    entries = []
-    for f in files:
-        source_type = None
-        try:
-            data = json.loads(f.read_text())
-            source_type = data.get("metadata", {}).get("source_type")
-        except Exception:
-            pass
-        entries.append({"path": str(f), "source_type": source_type})
-
-    print(json.dumps({"total": len(entries), "files": entries}, ensure_ascii=False))

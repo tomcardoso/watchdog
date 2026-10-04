@@ -37,6 +37,7 @@ import re
 import shutil
 import numpy as np
 from pathlib import Path
+from watchdog import config as user_config
 
 # Pin fastembed cache to a persistent location — fastembed 0.8+ defaults to
 # tempfile.gettempdir()/fastembed_cache which is ephemeral on many systems.
@@ -70,13 +71,7 @@ _reranker = None
 
 
 def _config_get(key: str, default):
-    """Read ~/.watchdog/config.json (best-effort). Local copy to avoid importing the
-    heavyweight preprocess module just for one value."""
-    try:
-        cfg = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-    except Exception:
-        return default
-    return cfg.get(key, default)
+    return user_config.get(key, default)
 
 
 def _model_name() -> str:
@@ -124,36 +119,6 @@ def _get_reranker():
 
 def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.lower())
-
-
-def _bm25_scores(query_tokens: list[str], docs_tokens: list[list[str]]) -> list[float]:
-    """Okapi BM25 score of each passage against the query, computed in-memory over the
-    loaded corpus (no persisted index — passages already live in memory at query time)."""
-    n = len(docs_tokens)
-    if n == 0 or not query_tokens:
-        return [0.0] * n
-    dls = [len(t) for t in docs_tokens]
-    avgdl = (sum(dls) / n) or 1.0
-    df: dict[str, int] = {}
-    for toks in docs_tokens:
-        for t in set(toks):
-            df[t] = df.get(t, 0) + 1
-    q = set(query_tokens)
-    idf = {t: math.log(1 + (n - df.get(t, 0) + 0.5) / (df.get(t, 0) + 0.5)) for t in q}
-    scores = [0.0] * n
-    for i, toks in enumerate(docs_tokens):
-        if not toks:
-            continue
-        tf: dict[str, int] = {}
-        for t in toks:
-            if t in q:
-                tf[t] = tf.get(t, 0) + 1
-        dl = dls[i]
-        s = 0.0
-        for t, f in tf.items():
-            s += idf[t] * (f * (_BM25_K1 + 1)) / (f + _BM25_K1 * (1 - _BM25_B + _BM25_B * dl / avgdl))
-        scores[i] = s
-    return scores
 
 
 def _rrf(*rankings: list[int]) -> list[int]:
@@ -298,7 +263,7 @@ class _CorpusIndex:
         return cls(vectors, meta, cidx, vocab, offsets, post_idx, post_tf, doc_len)
 
     def bm25(self, query_tokens: list[str]) -> "np.ndarray":
-        """Okapi BM25 of every corpus passage against the query — `_bm25_scores`' formula."""
+        """Okapi BM25 (k1=`_BM25_K1`, b=`_BM25_B`) of every corpus passage against the query."""
         n = len(self.cidx)
         scores = np.zeros(n, dtype=np.float64)
         if n == 0 or not query_tokens:

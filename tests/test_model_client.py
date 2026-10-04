@@ -12,6 +12,12 @@ from watchdog import model_client as mc
 from watchdog.pipeline import prompts
 
 
+
+
+def complete_json(**kwargs):
+    """Synchronous `acomplete_json`, for tests that don't need their own event loop."""
+    return asyncio.run(mc.acomplete_json(**kwargs))
+
 SCHEMA = {
     "type": "object",
     "properties": {"name": {"type": "string"}},
@@ -53,7 +59,7 @@ def subscription_auth(monkeypatch):
 def test_api_key_mode_routes_to_claude_api(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    r = complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.backend == "claude-api"
     assert r.parsed == {"name": "Acme"}
     assert api.calls[0]["api_key"] == "sk-ant-x"
@@ -62,7 +68,7 @@ def test_api_key_mode_routes_to_claude_api(api_key_auth, monkeypatch):
 def test_subscription_mode_routes_to_agent_sdk(subscription_auth, monkeypatch):
     agent = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-agent-sdk", agent)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    r = complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.backend == "claude-agent-sdk"
     assert agent.calls[0]["api_key"] is None      # subscription → no key passed
 
@@ -70,20 +76,20 @@ def test_subscription_mode_routes_to_agent_sdk(subscription_auth, monkeypatch):
 def test_explicit_backend_override(api_key_auth, monkeypatch):
     agent = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-agent-sdk", agent)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-agent-sdk")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-agent-sdk")
     assert r.backend == "claude-agent-sdk"
 
 
 def test_claude_api_without_key_errors(subscription_auth):
     with pytest.raises(mc.ModelError, match="needs an API key"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-api")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-api")
 
 
 def test_no_auth_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "resolve_auth",
                         lambda *a, **k: {"mode": "none", "reason": "run setup"})
     with pytest.raises(mc.ModelError, match="run setup"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+        complete_json(task="t", prompt="p", schema=SCHEMA)
 
 
 # ── validation, retry, escalation ─────────────────────────────────────────────
@@ -92,7 +98,7 @@ def test_invalid_then_valid_retries_same_model(api_key_auth, monkeypatch):
     # haiku requested; first output bad JSON, second valid — retry stays on haiku (no escalation)
     api = FakeBackend(_out("not json"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="haiku")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, model="haiku")
     assert r.parsed == {"name": "Acme"}
     assert r.attempts == 2
     assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == mc._MODEL_IDS["haiku"]
@@ -101,7 +107,7 @@ def test_invalid_then_valid_retries_same_model(api_key_auth, monkeypatch):
 def test_schema_violation_then_valid(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"wrong": 1}'), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="sonnet")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, model="sonnet")
     assert r.parsed == {"name": "Acme"} and r.attempts == 2
 
 
@@ -109,7 +115,7 @@ def test_fails_after_retries(api_key_auth, monkeypatch):
     api = FakeBackend(_out("nope"), _out("still nope"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="failed JSON validation after 2"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+        complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
 
 
 # ── usage telemetry for retried/failed calls (#412/D125) ─────────────────────
@@ -119,7 +125,7 @@ def test_usage_merges_across_attempts_on_success(api_key_auth, monkeypatch):
     failed first attempt still spent real tokens."""
     api = FakeBackend(_out("not json"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    r = complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.usage == {"input_tokens": 20}   # 10 + 10, both attempts' usage
 
 
@@ -129,7 +135,7 @@ def test_model_error_carries_merged_usage_cost_and_attempts(api_key_auth, monkey
     api = FakeBackend(_out("nope", cost=0.02), _out("still nope", cost=0.03))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError) as excinfo:
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+        complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
     err = excinfo.value
     assert err.usage == {"input_tokens": 20}
     assert err.cost_usd == pytest.approx(0.05)
@@ -163,7 +169,7 @@ _NESTED_SCHEMA = {
 def test_acomplete_json_prunes_top_level_extra_key_and_succeeds(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme", "extra_field": "nope"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    r = complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.parsed == {"name": "Acme"}
     assert r.attempts == 1
     assert r.pruned == ["extra_field"]
@@ -174,7 +180,7 @@ def test_acomplete_json_prunes_key_nested_in_array_item(api_key_auth, monkeypatc
               '"target_id": "x", "date": "2020"}]}]}')
     api = FakeBackend(_out(payload))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=_NESTED_SCHEMA)
+    r = complete_json(task="t", prompt="p", schema=_NESTED_SCHEMA)
     assert r.pruned == ["entities[0].roles[0].date"]
     assert "date" not in r.parsed["entities"][0]["roles"][0]
 
@@ -184,27 +190,27 @@ def test_prune_does_not_rescue_missing_required_field(api_key_auth, monkeypatch)
     api = FakeBackend(_out('{"extra_field": "nope"}'), _out('{"extra_field": "still nope"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+        complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
 
 
 def test_prune_does_not_rescue_wrong_typed_field(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": 123}'), _out('{"name": 456}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
+        complete_json(task="t", prompt="p", schema=SCHEMA, max_retries=1)
 
 
 def test_raw_model_id_does_not_escalate(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-sonnet-4-6")
+    complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-sonnet-4-6")
     assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == "claude-sonnet-4-6"
 
 
 def test_cost_accumulates_across_attempts(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad", cost=0.02), _out('{"name": "Acme"}', cost=0.03))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA)
+    r = complete_json(task="t", prompt="p", schema=SCHEMA)
     assert r.cost_usd == pytest.approx(0.05)
 
 
@@ -214,7 +220,7 @@ def test_wire_max_tokens_is_task_independent(api_key_auth, monkeypatch, task):
     # override, unlike the old `_TASK_MAX_TOKENS` table.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task=task, prompt="p", schema=SCHEMA)
+    complete_json(task=task, prompt="p", schema=SCHEMA)
     assert api.calls[0]["max_tokens"] == mc._wire_max_tokens("claude-api", "claude-sonnet-4-6")
 
 
@@ -223,7 +229,7 @@ def test_wire_max_tokens_is_task_independent(api_key_auth, monkeypatch, task):
 def test_effort_passed_to_backend_for_sonnet(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="low")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="low")
     assert api.calls[0]["effort"] == "low"
 
 
@@ -231,7 +237,7 @@ def test_effort_high_is_treated_as_no_override(api_key_auth, monkeypatch):
     # `high` is the model default — sending nothing preserves current behaviour.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="high")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="high")
     assert api.calls[0]["effort"] is None
 
 
@@ -241,13 +247,13 @@ def test_effort_rejected_for_haiku(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="low"):
-        mc.complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
+        complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
 
 
 def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet")
     assert api.calls[0]["effort"] is None
 
 
@@ -457,7 +463,7 @@ def test_resolve_effort_rejects_unsupported_levels(provider, model_id, effort):
 def test_openai_reasoning_model_accepts_xhigh(openai_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-5.6-luna", effort="xhigh")
+    complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-5.6-luna", effort="xhigh")
     assert be.calls[0]["effort"] == "xhigh"
 
 
@@ -465,7 +471,7 @@ def test_openai_chat_model_rejects_max(openai_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
     with pytest.raises(mc.ModelError, match="max"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="max")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="max")
 
 
 def test_claude_sonnet_rejects_xhigh(api_key_auth, monkeypatch):
@@ -473,20 +479,20 @@ def test_claude_sonnet_rejects_xhigh(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="xhigh"):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-4.6", effort="xhigh")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-4.6", effort="xhigh")
 
 
 def test_claude_sonnet_accepts_max(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="max")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="max")
     assert api.calls[0]["effort"] == "max"
 
 
 def test_claude_opus_accepts_xhigh(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="opus", effort="xhigh")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="opus", effort="xhigh")
     assert api.calls[0]["effort"] == "xhigh"
 
 
@@ -496,7 +502,7 @@ def test_claude_sonnet5_accepts_xhigh_via_tier_name(api_key_auth, monkeypatch):
     # accepts it, confirming the new catalog entry resolves and its effort_levels take effect.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-5", effort="xhigh")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-5", effort="xhigh")
     assert api.calls[0]["effort"] == "xhigh"
     assert api.calls[0]["model_id"] == "claude-sonnet-5"
 
@@ -505,7 +511,7 @@ def test_gemini_rejects_max(gemini_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
     with pytest.raises(mc.ModelError, match="max"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="max")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="max")
 
 
 def test_deepseek_rejects_xhigh(monkeypatch):
@@ -514,7 +520,7 @@ def test_deepseek_rejects_xhigh(monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
     with pytest.raises(mc.ModelError, match="xhigh"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
                          model="deepseek-reasoner", effort="xhigh")
 
 
@@ -554,7 +560,7 @@ def openai_key(monkeypatch):
 def test_openai_backend_routes_with_stored_key(openai_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     assert r.backend == "openai"
     assert be.calls[0]["api_key"] == "sk-openai-x"     # uses the provider key, not Claude auth
 
@@ -562,13 +568,13 @@ def test_openai_backend_routes_with_stored_key(openai_key, monkeypatch):
 def test_openai_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
     with pytest.raises(mc.ModelError, match="watchdog auth"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai")
 
 
 def test_openai_effort_passed_for_reasoning_model(openai_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-5-mini", effort="low")
+    complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-5-mini", effort="low")
     assert be.calls[0]["effort"] == "low"
 
 
@@ -577,7 +583,7 @@ def test_openai_effort_rejected_for_chat_model(openai_key, monkeypatch):
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
     # a chat model can't take reasoning_effort at all → errors rather than running silently
     with pytest.raises(mc.ModelError, match="high"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="high")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="high")
 
 
 def test_deepseek_rejects_effort(monkeypatch):
@@ -586,7 +592,7 @@ def test_deepseek_rejects_effort(monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
     with pytest.raises(mc.ModelError, match="high"):     # no portable knob on DeepSeek at all
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="deepseek",
                          model="deepseek-reasoner", effort="high")
 
 
@@ -599,7 +605,7 @@ def gemini_key(monkeypatch):
 def test_gemini_backend_routes_with_stored_key(gemini_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-flash")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-flash")
     assert r.backend == "gemini"
     assert be.calls[0]["api_key"] == "AIza-x"          # uses the provider key, not Claude auth
 
@@ -607,14 +613,14 @@ def test_gemini_backend_routes_with_stored_key(gemini_key, monkeypatch):
 def test_gemini_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
     with pytest.raises(mc.ModelError, match="watchdog auth"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini")
 
 
 def test_gemini_effort_passed_through(gemini_key, monkeypatch):
     # Unlike OpenAI, every Gemini model accepts reasoning_effort — no capability gate.
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
-    mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="medium")
+    complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini", model="gemini-2.5-pro", effort="medium")
     assert be.calls[0]["effort"] == "medium"
 
 
@@ -633,7 +639,7 @@ def local_configured(monkeypatch):
 def test_local_backend_runs_without_a_key(local_configured, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "local", be)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
     assert r.backend == "local"
     assert be.calls[0]["api_key"] is None
     assert be.calls[0]["base_url"] == "http://localhost:11434/v1"
@@ -642,7 +648,7 @@ def test_local_backend_runs_without_a_key(local_configured, monkeypatch):
 def test_local_backend_missing_base_url_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_base_url", lambda provider: None)
     with pytest.raises(mc.ModelError, match="local_base_url"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
 
 
 def test_local_effort_is_always_rejected(local_configured, monkeypatch):
@@ -651,7 +657,7 @@ def test_local_effort_is_always_rejected(local_configured, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "local", be)
     with pytest.raises(mc.ModelError, match="high"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="local",
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="local",
                          model="llama-3.3-70b", effort="high")
 
 
@@ -662,7 +668,7 @@ def test_openrouter_backend_uses_default_base_url(monkeypatch):
                         lambda provider="anthropic": "sk-or-x" if provider == "openrouter" else None)
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "openrouter", be)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
                          model="anthropic/claude-3.5-sonnet")
     assert r.backend == "openrouter"
     assert be.calls[0]["api_key"] == "sk-or-x"
@@ -674,7 +680,7 @@ def test_openrouter_backend_without_key_errors(monkeypatch):
                         lambda provider: "https://openrouter.ai/api/v1" if provider == "openrouter" else None)
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
     with pytest.raises(mc.ModelError, match="watchdog auth"):
-        mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
+        complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
                          model="anthropic/claude-3.5-sonnet")
 
 
@@ -685,10 +691,9 @@ def test_context_window_local_conservative_default(monkeypatch):
 
 
 def test_context_window_local_config_override(tmp_path, monkeypatch):
-    from watchdog.cmd import base as cmd_base
     config_file = tmp_path / "config.json"
     config_file.write_text('{"local_context_window": 32000}')
-    monkeypatch.setattr(cmd_base, "CONFIG_FILE", config_file)
+    monkeypatch.setattr("watchdog.config.CONFIG_FILE", config_file)
     assert mc.context_window("llama-3.3-70b", "local") == 32_000
 
 
@@ -758,16 +763,6 @@ def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp
     vault = tmp_path / "vault"
     # sonnet-5's catalog ratio (1.28) is used when the vault has no matching calibration history.
     assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.28
-
-
-def test_output_ceiling_applies_to_local_and_openrouter():
-    # local/openrouter enforce max_tokens and can't paginate (#380) — same treatment as
-    # openai/gemini. Neither "llama-3.3-70b" nor the OpenRouter id is catalogued, so both fall
-    # back to `_DEFAULT_MAX_OUTPUT_TOKENS` under headroom (#598).
-    uncatalogued = int(mc._DEFAULT_MAX_OUTPUT_TOKENS * (1 - mc._OUTPUT_HEADROOM))
-    assert mc.output_ceiling_for_sectioning("local", "llama-3.3-70b") == uncatalogued
-    assert mc.output_ceiling_for_sectioning("openrouter", "anthropic/claude-3.5-sonnet") == uncatalogued
-    assert mc.output_ceiling_for_sectioning("claude-agent-sdk", "sonnet") is None
 
 
 @pytest.mark.parametrize("model_id, expected_cap", [
@@ -1872,13 +1867,13 @@ def test_claude_batch_rejected_as_a_single_call_backend(api_key_auth):
     """claude-batch is submit/poll/collect only (#214) — routing a normal single-call task to
     it must fail clearly, not silently misbehave or read as 'unknown backend'."""
     with pytest.raises(mc.ModelError, match="batch-mode-only"):
-        mc.complete_json(task="classify", prompt="p", schema=SCHEMA, backend="claude-batch")
+        complete_json(task="classify", prompt="p", schema=SCHEMA, backend="claude-batch")
 
 
 def test_openai_batch_rejected_as_a_single_call_backend(api_key_auth):
     """openai-batch (#530) gets the same batch-mode-only guard as claude-batch."""
     with pytest.raises(mc.ModelError, match="batch-mode-only"):
-        mc.complete_json(task="classify", prompt="p", schema=SCHEMA, backend="openai-batch")
+        complete_json(task="classify", prompt="p", schema=SCHEMA, backend="openai-batch")
 
 
 def test_openai_batch_registered_alongside_claude_batch():
@@ -2106,7 +2101,7 @@ def test_acomplete_json_carries_rate_limit_onto_model_result(api_key_auth, monke
         return {"text": '{"name": "Acme"}', "usage": {"input_tokens": 10}, "cost_usd": 0.01,
                 "rate_limit": {"limit_tokens": 100, "remaining_tokens": 50, "reset_tokens": "1m0s"}}
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
-    r = mc.complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-api")
+    r = complete_json(task="t", prompt="p", schema=SCHEMA, backend="claude-api")
     assert r.rate_limit == {"limit_tokens": 100, "remaining_tokens": 50, "reset_tokens": "1m0s"}
 
 
@@ -2146,7 +2141,7 @@ def test_truncated_response_continues_until_complete(api_key_auth, monkeypatch):
     # claude-api can prefill: a max-token cut is continued from the partial and concatenated.
     be = PagingBackend(('{"name": "Ac', "max_tokens"), ('me"}', "end_turn"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
-    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    r = complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
     assert r.parsed == {"name": "Acme"}
     assert be.calls[0]["prefix"] is None
     assert be.calls[1]["prefix"] == '{"name": "Ac'      # partial prefilled to continue
@@ -2157,7 +2152,7 @@ def test_deepseek_paginates(deepseek_key, monkeypatch):
     # DeepSeek's prefix-completion beta is also a continuation backend.
     be = PagingBackend(('{"na', "length"), ('me": "Acme"}', "stop"))
     monkeypatch.setitem(mc._ABACKENDS, "deepseek", be)
-    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="deepseek",
+    r = complete_json(task="extract", prompt="p", schema=SCHEMA, backend="deepseek",
                          model="deepseek-v4-flash")
     assert r.parsed == {"name": "Acme"}
     assert be.calls[1]["prefix"] == '{"na'
@@ -2171,7 +2166,7 @@ def test_truncated_result_rejected_even_when_parseable(openai_key, monkeypatch):
     be = PagingBackend(('{"name": "Acme"}', "length"), ('{"name": "Acme"}', "length"))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
     with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     assert len(be.calls) == 1                            # no wasted retry of an un-continuable cut
     assert be.calls[0]["prefix"] is None                # never attempted to continue
 
@@ -2183,7 +2178,7 @@ def test_truncated_error_carries_a_structured_truncated_flag(openai_key, monkeyp
     be = PagingBackend(('{"name": "Acme"}', "length"))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
     with pytest.raises(mc.ModelError) as exc_info:
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     assert exc_info.value.truncated is True
 
 
@@ -2193,7 +2188,7 @@ def test_json_validation_failure_is_not_flagged_truncated(api_key_auth, monkeypa
     be = PagingBackend(("not json", "end_turn"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
     with pytest.raises(mc.ModelError) as exc_info:
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
                          max_retries=0)
     assert exc_info.value.truncated is False
 
@@ -2210,7 +2205,7 @@ def test_truncated_empty_text_reports_reasoning_starvation(openai_key, monkeypat
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
     with pytest.raises(mc.ModelError,
                        match="entire 48,000-token output budget on internal reasoning") as exc_info:
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     # #558: a caller needs to tell starvation apart from an ordinary truncation structurally, not
     # by matching this message's text — re-splitting the input doesn't fix a starved call.
     assert exc_info.value.truncated is True
@@ -2230,7 +2225,7 @@ def test_truncated_partial_text_keeps_ordinary_message_when_the_answer_dominated
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
     with pytest.raises(mc.ModelError,
                        match="truncated at the model's max-token ceiling") as exc_info:
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     # #558: an ordinary truncation (answer outweighed reasoning) must not be flagged starved —
     # re-splitting the input is the right recovery here, not an effort-level retry.
     assert exc_info.value.starved is False
@@ -2251,7 +2246,7 @@ def test_truncated_partial_text_reports_starvation_when_reasoning_dominated(open
     with pytest.raises(mc.ModelError,
                        match="spent 15,137 of its output budget on internal reasoning, leaving "
                              "only 847 tokens of answer") as exc_info:
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     assert exc_info.value.starved is True   # #558: the partial-text starvation shape too
 
 
@@ -2262,7 +2257,7 @@ def test_truncated_partial_text_without_usage_keeps_ordinary_message(openai_key,
         return {"text": '{"name": "Ac', "usage": None, "cost_usd": 0.01, "finish_reason": "length"}
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
     with pytest.raises(mc.ModelError, match="truncated at the model's max-token ceiling"):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
 
 
 def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
@@ -2272,7 +2267,7 @@ def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
     be = PagingBackend(*rounds)
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
     with pytest.raises(mc.ModelError, match="truncated"):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api",
                          max_retries=0)
     # first call + exactly _MAX_CONTINUATIONS continuation rounds, then it gives up
     assert len(be.calls) == mc._MAX_CONTINUATIONS + 1
@@ -2281,7 +2276,7 @@ def test_continuation_stops_at_the_guard(api_key_auth, monkeypatch):
 def test_natural_stop_is_not_paginated(api_key_auth, monkeypatch):
     be = PagingBackend(('{"name": "Acme"}', "end_turn"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
-    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    r = complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
     assert r.parsed == {"name": "Acme"}
     assert len(be.calls) == 1                            # no continuation for a natural stop
 
@@ -2307,7 +2302,7 @@ def test_truncation_is_captured(openai_key, monkeypatch, capture_dir):
     be = PagingBackend(('{"name": "Acme"}', "length"))
     monkeypatch.setitem(mc._ABACKENDS, "openai", be)
     with pytest.raises(mc.ModelError):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
+        complete_json(task="extract", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o")
     records = _captured(capture_dir, "truncation")
     assert len(records) == 1
     assert records[0]["backend"] == "openai"
@@ -2318,7 +2313,7 @@ def test_malformed_json_is_captured(api_key_auth, monkeypatch, capture_dir):
     api = FakeBackend(_out("not json"), _out("still not json"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, max_retries=1)
+        complete_json(task="extract", prompt="p", schema=SCHEMA, max_retries=1)
     records = _captured(capture_dir, "malformed_json")
     assert len(records) == 2                      # one per failed attempt
     assert {r["text"] for r in records} == {"not json", "still not json"}
@@ -2327,7 +2322,7 @@ def test_malformed_json_is_captured(api_key_auth, monkeypatch, capture_dir):
 def test_schema_drift_is_captured(api_key_auth, monkeypatch, capture_dir):
     api = FakeBackend(_out('{"name": "Acme", "extra": 1}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    r = mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
+    r = complete_json(task="extract", prompt="p", schema=SCHEMA)
     assert r.parsed == {"name": "Acme"}
     records = _captured(capture_dir, "schema_drift")
     assert len(records) == 1
@@ -2337,14 +2332,14 @@ def test_schema_drift_is_captured(api_key_auth, monkeypatch, capture_dir):
 def test_no_capture_when_response_is_clean(api_key_auth, monkeypatch, capture_dir):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA)
+    complete_json(task="extract", prompt="p", schema=SCHEMA)
     assert list(capture_dir.glob("*.json")) == []
 
 
 def test_continuation_is_captured(api_key_auth, monkeypatch, capture_dir):
     be = PagingBackend(('{"name": "Ac', "max_tokens"), ('me"}', "end_turn"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", be)
-    mc.complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, backend="claude-api")
     records = _captured(capture_dir, "continuation")
     assert len(records) == 1
     assert records[0]["prefix"] == '{"name": "Ac'
@@ -2357,7 +2352,7 @@ def test_capture_disabled_by_default(api_key_auth, monkeypatch, tmp_path):
     api = FakeBackend(_out("not json"))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError):
-        mc.complete_json(task="extract", prompt="p", schema=SCHEMA, max_retries=0)
+        complete_json(task="extract", prompt="p", schema=SCHEMA, max_retries=0)
     assert not fc.enabled()
 
 
@@ -2506,23 +2501,12 @@ def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
     ("deepseek", "deepseek-v4-flash-thinking"),
     (None, None),                       # unresolved → routes to a Claude backend
 ])
-def test_output_ceiling_is_none_when_nothing_to_protect(backend, model):
-    assert mc.output_ceiling_for_sectioning(backend, model) is None
-
-
 @pytest.mark.parametrize("backend, model", [
     ("openai", "gpt-5.4"),
     ("gemini", "gemini-3.7-flash"),
     ("local", "llama-3.3-70b"),
     ("openrouter", "anthropic/claude-3.5-sonnet"),
 ])
-def test_output_ceiling_returned_for_non_continuation_capped_backends(backend, model):
-    # openai, gemini, local, and openrouter enforce max_tokens yet can't continue — a real
-    # number, matching `_wire_max_tokens` exactly (#598: no more per-task/effort variation).
-    model_id = mc.resolve_model_id(model)
-    assert mc.output_ceiling_for_sectioning(backend, model) == mc._wire_max_tokens(backend, model_id)
-
-
 def _fake_httpx_sequence(monkeypatch, status_codes, bodies=None):
     """Patch httpx.AsyncClient to return canned responses with the given status codes, one per
     post, repeating the last one if posts continue. `bodies` maps a status code to its response

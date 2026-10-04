@@ -59,13 +59,9 @@ _DEPRECATED_ALIASES = {
     "finalize": "bark",
 }
 
-# The orchestrator (pipeline/orchestrate.py) drives extraction in Python and calls
-# preflight/postflight/synthesis_bundle/section/merge/abort as functions, so those no
-# longer need CLI registrations. What remains are commands the in-Claude-Code skills
-# (e.g. /watchdog-entity) still shell out to.
+# Pipeline modules that keep a command-line entry point because a vault's Claude Code session
+# runs them (/watchdog-entity). Everything else in pipeline/ is called as functions.
 _PIPELINE_COMMANDS = {
-    "near-dup":      ("watchdog.pipeline.near_dup",       "watchdog-near-dup"),
-    "write-vault":   ("watchdog.pipeline.write_vault",    "watchdog-write-vault"),
     "write-entity":  ("watchdog.pipeline.write_entity",   "watchdog-write-entity"),
 }
 
@@ -372,22 +368,6 @@ _CMD_HELP: dict[str, dict] = {
 }
 
 
-def _perf_cpu_count() -> int:
-    """Performance core count on Apple Silicon; total core count everywhere else."""
-    try:
-        r = subprocess.run(
-            ["sysctl", "-n", "hw.perflevel0.logicalcpu"],
-            capture_output=True, text=True, timeout=2,
-        )
-        if r.returncode == 0:
-            n = int(r.stdout.strip())
-            if n > 0:
-                return n
-    except Exception:
-        pass
-    return os.cpu_count() or 4
-
-
 def _detected_install_manager() -> str:
     """Best-effort detection of which packaging tool manages this watchdog install, so a
     printed follow-up command for adding an optional extra afterwards (`pipx inject` vs
@@ -608,6 +588,21 @@ def _resolve_vault(project: str | None) -> tuple[str, dict, Path]:
         if Path(info["path"]).resolve() == cwd:
             return slug, info, cwd
     return slugify(cwd.name), {"name": cwd.name, "path": str(cwd)}, cwd
+
+
+def _registered_project(name: str | None, command: str) -> dict:
+    """The registry entry for `name`, or for the current directory when no name is given — which
+    must then be a registered vault. `command` names the command in the error message."""
+    if name:
+        return _find_project(name)[1]
+    cwd = Path(".").resolve()
+    if not is_vault(cwd):
+        sys.exit(f"Error: not inside a watchdog project. Run `watchdog {command} <name>` or cd "
+                 f"into a project first.")
+    info = next((v for v in load_projects().values() if Path(v["path"]).resolve() == cwd), None)
+    if info is None:
+        sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
+    return info
 
 
 def _find_project(name: str) -> tuple[str, dict]:

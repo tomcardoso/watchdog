@@ -3,7 +3,7 @@
 A curated, checked-in library of real model responses that hit a specific condition — truncation,
 malformed JSON, schema drift, pagination continuation — so `test_model_client.py` can pin the
 deterministic code around the model (`section`, `acomplete_json`, `_complete_with_pagination`,
-`_merge_usage`, `output_ceiling_for_sectioning`) against real backend behaviour, not hand-authored
+`_merge_usage`) against real backend behaviour, not hand-authored
 guesses at what a truncated or malformed response looks like.
 
 ## Where these come from

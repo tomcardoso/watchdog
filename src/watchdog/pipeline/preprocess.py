@@ -40,6 +40,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
+from watchdog import config as user_config
 
 # alphanumeric+space ratio below which text is considered garbled by the character-class
 # signal alone. Lowered from 0.75 (#580/#597): 0.75 was too aggressive for tables and
@@ -353,13 +354,10 @@ def _reset_config_cache() -> None:
 
 
 def _config_get(key: str, default):
-    """Read ~/.watchdog/config.json once per process, then serve from cache."""
+    """`config.json`, read once per process and then served from cache."""
     global _config_cache
     if _config_cache is None:
-        try:
-            _config_cache = json.loads((Path.home() / ".watchdog" / "config.json").read_text())
-        except Exception:
-            _config_cache = {}
+        _config_cache = user_config.read()
     return _config_cache.get(key, default)
 
 
