@@ -84,7 +84,7 @@ that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together.
 **Code:** `pipeline/ingest_setup.py`, `pipeline/locks.py`, `cmd/ingest.py`.
 
 A run resolves auth, takes the run lock, scans the queue, and runs `orchestrate.run` in-process.
-Models, efforts, concurrency and classification come from `watchdog configure` or per-run flags;
+Models, efforts, concurrency and classification come from `watchdog settings` or per-run flags;
 their defaults live in `watchdog/defaults.py`.
 
 - **Locks (D66, D69).** The ingest, finalize and chew locks are created with `O_CREAT|O_EXCL`. A
@@ -454,7 +454,7 @@ journalist's step (I5).
   re-fetch them.
 - **Wayback (optional).** With `wayback_save` and keys set, each source is also submitted to Save
   Page Now; failures never block a download.
-- **`watchdog fetch`** downloads a given list of links through the same path, without a session.
+- **`watchdog research fetch`** downloads a given list of links through the same path, without a session.
 - Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
   advisory; only the egress checks are enforced. Web tools are granted by the skill's own
   `allowed-tools`, not the vault-wide permissions.

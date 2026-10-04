@@ -121,7 +121,7 @@ After ingest, open Obsidian:
 watchdog open shell-company-investigation
 ```
 
-To browse the raw files in Finder or your file explorer instead, run `watchdog open shell-company-investigation`. From inside the vault directory, both commands work without the name.
+To browse the raw files in Finder or your file explorer instead, run `watchdog open --folder shell-company-investigation`. From inside the vault directory, both commands work without the name.
 
 The vault now contains one note per person, company, and address found in any document (`entities/`), one note per ingested document (`documents/`), a current-state summary of the investigation (`hot.md`), and a running record of every ingest session (`log.md`). The [vault guide](vault.md) explains every folder and file, including the anatomy of an entity note.
 

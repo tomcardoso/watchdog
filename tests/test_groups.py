@@ -13,6 +13,9 @@ import watchdog.cmd.groups as groups
     (["projects"], ["list"]),
     (["projects", "rename", "old", "new"], ["rename", "old", "new"]),
     (["projects", "list", "--all"], ["list", "--all"]),
+    (["projects", "--all"], ["list", "--all"]),
+    (["projects", "new", "x"], ["projects", "new", "x"]),     # `new` is top-level, not a verb
+    (["settings", "setup"], ["configure", "setup"]),           # likewise `setup`
     (["projects", "--help"], ["projects", "--help"]),
     (["projects", "bogus"], ["projects", "bogus"]),
     (["settings"], ["configure"]),
@@ -28,6 +31,7 @@ import watchdog.cmd.groups as groups
     (["research", "-q", "who?"], ["research", "-q", "who?"]),
     (["add", "--watch"], ["watch"]),
     (["add", "my-story", "--watch"], ["watch", "my-story"]),
+    (["ask", "--context", "--project", "city", "--model", "opus"], ["context", "city", "--model", "opus"]),
     (["add", "a.pdf"], ["add", "a.pdf"]),
     (["ask", "--context"], ["context"]),
     (["ask", "who", "is", "she?"], ["ask", "who", "is", "she?"]),
@@ -50,7 +54,7 @@ def test_pointer_only_at_a_terminal(monkeypatch):
     monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
     assert "watchdog projects rename" in groups.pointer("rename")
     assert "watchdog settings" in groups.pointer("configure")
-    assert "watchdog review leads" in groups.pointer("leads")
+    assert groups.pointer("leads") is None        # `leads` prints the sweep; it did not move
     assert "watchdog open" in groups.pointer("obsidian")
     assert groups.pointer("chew") is None and groups.pointer("search") is None
     monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
@@ -108,3 +112,40 @@ def test_unknown_verb_explains_the_group(monkeypatch, capsys):
     with pytest.raises(SystemExit, match="unknown command 'bogus'"):
         _run(monkeypatch, "projects", "bogus")
     assert "watchdog projects" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("argv", [
+    ["add", "file.pdf", "other", "--watch"],      # two names
+    ["add", "--watch", "--retry"],               # a flag `watch` does not take
+    ["ask", "who", "is", "--context", "she"],   # a question is not a project name
+])
+def test_flag_routing_refuses_arguments_the_target_cannot_take(argv):
+    with pytest.raises(SystemExit, match="takes only an investigation name"):
+        groups.rewrite(argv)
+
+
+@pytest.mark.parametrize("argv, expected", [
+    (["help", "skills"], "Usage:  watchdog show-skills"),
+    (["help", "projects", "rename"], "Usage:  watchdog rename"),
+    (["help", "review"], "Usage:  watchdog review"),
+])
+def test_help_topics(monkeypatch, capsys, argv, expected):
+    _run(monkeypatch, *argv)
+    assert expected in capsys.readouterr().out
+
+
+def test_review_help_lists_its_verbs(monkeypatch, capsys):
+    _run(monkeypatch, "review", "--help")
+    out = capsys.readouterr().out
+    for verb in groups.VERBS["review"]:
+        assert f"watchdog review {verb}" in out
+
+
+def test_pointer_prints_through_main(monkeypatch, capsys):
+    monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "CONFIG_FILE", type("P", (), {"exists": lambda self: True})())
+    seen = []
+    parser = cli.build_parser
+    monkeypatch.setattr(cli, "build_parser", lambda: _patched(parser(), "list", seen))
+    _run(monkeypatch, "list")
+    assert "`watchdog list` is now" in capsys.readouterr().out and seen

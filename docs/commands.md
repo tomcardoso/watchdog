@@ -32,7 +32,7 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog settings` | Models, keys, health checks and skills — see [Settings](#settings). |
 | `watchdog setup` | Setting up Watchdog after installation; `--force` re-runs it. |
 
-`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `timeline`, `reindex`, `usage`, `export` and `unlock`. They are described on this page too.
+`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `usage`, `export` and `unlock`. They are described on this page too.
 
 Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts and the vault's slash commands use the old names and see no note.
 
@@ -273,18 +273,6 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog export [name]` | Maintenance. Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
 | `watchdog unlock [name]` | Maintenance. Release a stale chew or ingest lock; `--force` removes it even if recent. |
 
-## Settings
-
-| Command | What it does |
-|---|---|
-| `watchdog settings [key] [value]` | View or change settings — the full reference is in [Configuration](configuration.md). `watchdog settings configure` is the same command. |
-| `watchdog settings auth` | Show or change how Watchdog authenticates to model providers, interactively — see [below](#watchdog-settings-auth). |
-| `watchdog setup` | Set up Watchdog after installation; `--force` re-runs it. |
-| `watchdog settings doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog projects move` or `watchdog projects delete` for each issue. |
-| `watchdog settings skills [name]` | List the record skills, or print one in full. |
-| `watchdog settings refresh-skills [name]` | Update a vault's Claude Code command skills after a Watchdog upgrade. |
-| `watchdog settings about` | Show the installed version and project links. |
-
 ### watchdog search
 
 `watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog review leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text. How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
@@ -367,6 +355,22 @@ A batch-collected extractor stage (the Batches API's cheaper, asynchronous extra
 
 Exports the investigation's entity and relationship graph for network-analysis tools. The default writes Neo4j-import CSV (`nodes.csv` and `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead (it starts by creating a uniqueness constraint, so it needs Neo4j 4.4 or later; every node carries a `WatchdogEntity` label as well as its type), and `--output DIR` sets the destination (default: `<slug>-export/`). The export is deterministic — it reads the registry, with no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped), and edges to never-profiled entities are dropped so the import stays valid.
 
+### watchdog unlock
+
+Releases a stale lock left behind by an interrupted chew or ingest — both lock types are checked. A lock that looks recent is left alone unless you pass `--force`. Run it from inside the vault, or pass the investigation name.
+
+## Settings
+
+| Command | What it does |
+|---|---|
+| `watchdog settings [key] [value]` | View or change settings — the full reference is in [Configuration](configuration.md). `watchdog settings configure` is the same command. |
+| `watchdog settings auth` | Show or change how Watchdog authenticates to model providers, interactively — see [below](#watchdog-settings-auth). |
+| `watchdog setup` | Set up Watchdog after installation; `--force` re-runs it. |
+| `watchdog settings doctor` | Check all registered investigations for missing or broken vaults, suggesting `watchdog projects move` or `watchdog projects delete` for each issue. |
+| `watchdog settings skills [name]` | List the record skills, or print one in full. |
+| `watchdog settings refresh-skills [name]` | Update a vault's Claude Code command skills after a Watchdog upgrade. |
+| `watchdog settings about` | Show the installed version and project links. |
+
 ### watchdog settings auth
 
 Shows how Watchdog currently authenticates to model providers, then, on a terminal, offers to change it.
@@ -377,10 +381,6 @@ Shows how Watchdog currently authenticates to model providers, then, on a termin
   - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace an existing one, or delete it.
 
 There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `LOCAL_API_KEY`, `OPENROUTER_API_KEY`), which always take precedence over a stored key. `LOCAL_BASE_URL` and `OPENROUTER_BASE_URL` likewise override the `local_base_url`/`openrouter_base_url` `watchdog settings` keys for those two backends. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
-
-### watchdog unlock
-
-Releases a stale lock left behind by an interrupted chew or ingest — both lock types are checked. A lock that looks recent is left alone unless you pass `--force`. Run it from inside the vault, or pass the investigation name.
 
 ### watchdog setup
 
