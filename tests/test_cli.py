@@ -3119,7 +3119,7 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
     assert calls[0].get("skip_finalize") is True
     out = capsys.readouterr().out
     assert "watchdog bark" in out
-    assert "Open a fresh Claude Code session" not in out
+    assert "to ask investigation questions" not in out
 
 
 def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_path, monkeypatch):

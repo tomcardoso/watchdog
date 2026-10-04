@@ -38,7 +38,7 @@ watchdog          reads, OCRs and converts each document, sends the extracted
 your vault        linked notes in Obsidian; ask questions in Claude Code
 ```
 
-After Watchdog has processed the documents you've given it, you read the briefing, explore the vault in Obsidian, and ask questions inside Claude Code — `/watchdog-query Who are the directors of Shell Co Ltd?` — with every answer cited back to a page.
+After Watchdog has processed the documents you've given it, you read the briefing, explore the vault in Obsidian, and ask questions in a Claude Code session — `watchdog ask "Who are the directors of Shell Co Ltd?"` — with every answer cited back to a page.
 
 For a closer look at what happens to a single document — the OCR pipeline, the information extraction process, the final summarization step — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
 
@@ -73,6 +73,7 @@ cd ~/Investigations/shell-company-investigation
 
 watchdog add ~/Downloads/court-filings/
 watchdog obsidian
+watchdog ask "Who are the directors of Shell Co Ltd?"
 ```
 
 For a full first-investigation walkthrough, see [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md).

@@ -259,6 +259,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D250** — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
 - **D251** — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
 - **D252** — `watchdog review` steps through open items one at a time; near-duplicates are stamped and resolvable
+- **D253** — `watchdog ask` opens an interactive Claude Code session, not a one-shot answer
 
 </details>
 
@@ -2371,3 +2372,7 @@ Adding documents took three commands (`chew`, `dig`, `bark`) and an understandin
 ### D252 — `watchdog review` steps through open items one at a time; near-duplicates are stamped and resolvable
 
 Contradictions, leads, watch-list hits and possible duplicates were each listed by a different command or file, and acting on one meant copying its resolution id into `watchdog resolve`. `watchdog review [kind]` shows them one at a time with their detail, and marks an item handled in the same `resolutions.json` store, so nothing about acknowledgment changed. Building it showed that `near_duplicate_of` was never written: chew computed the MinHash match but extraction did not carry it onto the document, so the dashboard table, `/watchdog-health` and the home screen were always empty. Extraction now stamps the closest match as a link to its note (or its filename, when the match is in the same batch), and a new `duplicate:<sha12>` id lets a reviewed pair stop surfacing. The tradeoff: documents ingested before this change carry no `near_duplicate_of`, and only a forced re-extraction would add it.
+
+### D253 — `watchdog ask` opens an interactive Claude Code session, not a one-shot answer
+
+Asking a question meant opening Claude Code in the vault by hand and typing a slash command. `watchdog ask ["question"]` does that: it opens Claude Code in the vault and, with a question, starts the session with `/watchdog-query <question>`. A one-shot command that printed an answer and exited was considered and rejected, because investigation questions usually lead to follow-ups and a fresh session already carries the vault's state through `hot.md`. The session uses Claude Code's own sign-in and, unless `--model` is given, its own model setting, not the ingest provider. The tradeoff: `ask` needs Claude Code installed and cannot be scripted or piped, and an answer is not printed to the terminal for use elsewhere.

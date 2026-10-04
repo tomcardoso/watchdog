@@ -265,6 +265,24 @@ _CMD_HELP: dict[str, dict] = {
             'to briefings/leads-<date>.md; this command re-runs it on demand between ingests.',
         ],
     },
+    'ask': {
+        "desc": 'Open a Claude Code session to ask questions about the vault',
+        "notes": [
+            'Opens Claude Code inside the investigation, so you can go back and forth with',
+            'Claude about the documents. With a question, the session starts by answering it',
+            'through /watchdog-query: a cited answer from the vault, saved to queries/ when it is',
+            'substantive. The session then stays open for follow-ups. Without a question, it',
+            'opens ready for one. Exit with Ctrl-D.',
+            '',
+            'The session uses whatever Claude Code is signed in with (your subscription or key),',
+            'not the model provider set for adding documents.',
+            '',
+            'Examples:',
+            '    watchdog ask',
+            '    watchdog ask "who signed the 2021 loan agreement?"',
+            '    watchdog ask --project city-hall "what changed in the latest filings?"',
+        ],
+    },
     'review': {
         "desc": 'Step through what is waiting on you, one item at a time',
         "notes": [
@@ -784,6 +802,7 @@ def _print_banner() -> None:
             ("watch",            "Watch _INCOMING/ and chew files automatically"),
         ]),
         ("Investigate", [
+            ("ask",        "Ask questions about the vault in a Claude Code session"),
             ("search",     "Semantic search across ingested documents"),
             ("review",     "Step through contradictions, leads, watch-list hits and duplicates"),
             ("leads",      "Surface investigative leads from the entity graph"),

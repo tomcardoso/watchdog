@@ -4,11 +4,17 @@ This guide covers the day-to-day work of an investigation once documents are in 
 
 ## How a session starts
 
-Every investigation question runs inside a Claude Code session opened in the vault. At the start of each session, Claude reads `hot.md` automatically — a current-state summary of the investigation, rewritten after every ingest. That is what lets you continue an investigation across many separate sessions without losing context: Claude arrives already oriented, without re-reading the entire vault.
+Every investigation question runs inside a Claude Code session opened in the vault — `watchdog ask` opens one for you. At the start of each session, Claude reads `hot.md` automatically — a current-state summary of the investigation, rewritten after every ingest. That is what lets you continue an investigation across many separate sessions without losing context: Claude arrives already oriented, without re-reading the entire vault.
 
 ## Asking questions
 
-From inside a Claude Code session with the vault open:
+Start a session with your question:
+
+```bash
+watchdog ask "Who are the directors of Shell Co Ltd?"
+```
+
+The session opens, answers that question, and stays open for follow-ups. Inside it, type further questions in plain language, or use `/watchdog-query` for a cited answer filed to `queries/`:
 
 ```
 /watchdog-query Who are the directors of Shell Co Ltd?
