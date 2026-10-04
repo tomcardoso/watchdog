@@ -2808,3 +2808,24 @@ def test_agent_supports_thinking_detects_the_real_sdk_dataclass(monkeypatch):
         mc._agent_supports_thinking.cache_clear()
         assert mc._agent_supports_thinking() is has
     mc._agent_supports_thinking.cache_clear()
+
+
+def test_anthropic_client_is_reused_within_a_loop_and_not_across_loops():
+    import asyncio
+    import types
+
+    made = []
+
+    class FakeClient:
+        def __init__(self, api_key=None):
+            made.append(api_key)
+    fake_mod = types.SimpleNamespace(AsyncAnthropic=FakeClient)
+
+    async def two_calls():
+        return (mc._anthropic_client(fake_mod, "k1"), mc._anthropic_client(fake_mod, "k1"),
+                mc._anthropic_client(fake_mod, "k2"))
+
+    a, b, c = asyncio.run(two_calls())
+    assert a is b and c is not a
+    asyncio.run(two_calls())
+    assert made == ["k1", "k2", "k1", "k2"]   # a new loop gets new clients

@@ -1354,9 +1354,8 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
                             classify_effort: str | None = None,
                             force: bool = False, verify_pass: bool = False,
                             pf: dict | None = None) -> dict:
-    # `pf` (#563): `run()`'s dispatch loop already calls `preflight.run` for every queued document
-    # up front, to size admission control's per-document token estimate — passed in here so it
-    # isn't read twice. `None` (every other call site) falls back to reading it fresh, unchanged.
+    # `pf`: `run()` passes the document's pre-flight in, read with the registry it parsed once for
+    # the whole queue. `None` (every other call site) reads it fresh.
     if pf is None:
         pf = preflight.run(vault, sha)
     if pf.get("error"):
@@ -1948,6 +1947,31 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
 # Timeline-dedup calls in flight at once (#696); each colliding date is its own call and file.
 _TIMELINE_DEDUP_CONCURRENCY = 5
 
+# Most items one timeline-dedup, timeline-precision or request-dedup call is shown. A larger set is
+# split into calls of this size, sorted first so near-identical wording tends to share a call;
+# duplicates that land in different calls stay separate, which is the safe direction for a pass
+# that may only ever merge.
+_DEDUP_MAX_ITEMS = 200
+
+
+def _chunked(items: list, size: int | None = None) -> list[list[int]]:
+    """Index windows of at most `size` (default `_DEDUP_MAX_ITEMS`) over `items`, in order."""
+    size = size or _DEDUP_MAX_ITEMS
+    return [list(range(i, min(i + size, len(items)))) for i in range(0, len(items), size)]
+
+
+def _offset_groups(groups, window: list[int]) -> list[dict]:
+    """Translate a dedup call's keep/duplicates indices, local to `window`, into indices into the
+    full list. An out-of-range local index is dropped."""
+    out = []
+    for g in groups if isinstance(groups, list) else []:
+        if not isinstance(g, dict) or not _valid_index(g.get("keep"), len(window)):
+            continue
+        dups = g.get("duplicates") if isinstance(g.get("duplicates"), list) else []
+        out.append({"keep": window[g["keep"]],
+                    "duplicates": [window[d] for d in dups if _valid_index(d, len(window))]})
+    return out
+
 # Commit passes of at most this many documents persist the registries after every document, as
 # they always did; larger ones persist every 50 (`write_vault.RegistryBatch`, D239).
 _PER_DOCUMENT_FLUSH_MAX = 50
@@ -2274,14 +2298,20 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     pass
         if not events:
             return
+        if len(events) > _DEDUP_MAX_ITEMS:
+            events.sort(key=lambda e: (e.get("event") or "").casefold())
+        groups: list[dict] = []
         try:
-            async with gate:
-                r = await _call_model(
-                    task="timeline-dedup", model=timeline_model, backend=timeline_backend,
-                    schema=schemas.TIMELINE_DEDUP,
-                    prompt=prompts.build_timeline_dedup_prompt(col["date"], events),
-                    effort=post_effort, detail=col["date"], vault=vault)
-            kept = _select_kept(events, r.parsed.get("groups"))
+            for window in _chunked(events):
+                async with gate:
+                    r = await _call_model(
+                        task="timeline-dedup", model=timeline_model, backend=timeline_backend,
+                        schema=schemas.TIMELINE_DEDUP,
+                        prompt=prompts.build_timeline_dedup_prompt(
+                            col["date"], [events[i] for i in window]),
+                        effort=post_effort, detail=col["date"], vault=vault)
+                groups += _offset_groups(r.parsed.get("groups"), window)
+            kept = _select_kept(events, groups)
         except model_client.CALL_FAILURES:
             # Dedup failed (e.g. rate limit): leave the canonical AND its raws untouched so the
             # next ingest retries this collision cleanly. Writing the canonical+raw union back
@@ -2299,16 +2329,30 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # month-precision event against the specific day it restates. For each month holding both, one
     # focused model call folds coarse restatements into their day, unioning entity attribution.
     # Gated on a month carrying both precisions, so most ingests make zero extra calls.
-    for grp in timeline.month_precision_groups(vault):
+    # A month with more events than one call should see is compared window by window; each
+    # month is its own files, so months run concurrently like the dedup above.
+    async def _precision(grp: dict) -> None:
+        matches: list[dict] = []
         try:
-            r = await _call_model(
-                task="timeline-precision", model=timeline_model, backend=timeline_backend,
-                schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
-                prompt=prompts.build_timeline_precision_prompt(grp["month"], grp["coarse"], grp["precise"]),
-                detail=grp["month"], vault=vault)
+            for cw in _chunked(grp["coarse"]):
+                for pw in _chunked(grp["precise"]):
+                    async with gate:
+                        r = await _call_model(
+                            task="timeline-precision", model=timeline_model, backend=timeline_backend,
+                            schema=schemas.TIMELINE_PRECISION_MATCH, effort=post_effort,
+                            prompt=prompts.build_timeline_precision_prompt(
+                                grp["month"], [grp["coarse"][i] for i in cw],
+                                [grp["precise"][j] for j in pw]),
+                            detail=grp["month"], vault=vault)
+                    for m in r.parsed.get("matches") or []:
+                        if (isinstance(m, dict) and _valid_index(m.get("coarse"), len(cw))
+                                and _valid_index(m.get("precise"), len(pw))):
+                            matches.append({"coarse": cw[m["coarse"]], "precise": pw[m["precise"]]})
         except model_client.CALL_FAILURES:
-            continue   # leave the month untouched rather than risk a bad fold
-        timeline.apply_precision_matches(vault, grp, r.parsed.get("matches") or [])
+            return   # leave the month untouched rather than risk a bad fold
+        timeline.apply_precision_matches(vault, grp, matches)
+
+    await asyncio.gather(*(_precision(grp) for grp in timeline.month_precision_groups(vault)))
     n_dates, n_events = timeline.cmd_rebuild_timeline(vault, quiet=True)
     _say(f"{_DIM}   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
          f"{n_events} event{'s' if n_events != 1 else ''}{_RESET}")
@@ -2415,12 +2459,23 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     added_new_requests = any(
         s.get("sha256") in ok_shas for r in open_ for s in r.get("sources") or [])
     if added_new_requests and len(open_) > 1:
+        if len(open_) > _DEDUP_MAX_ITEMS:
+            open_ = sorted(open_, key=lambda r: ((r.get("type") or "").casefold(),
+                                                 (r.get("what") or "").casefold()))
+        groups = []
         try:
-            r = await _call_model(
-                task="request-dedup", model=request_dedup_model, backend=request_dedup_backend,
-                schema=schemas.REQUEST_DEDUP,
-                prompt=prompts.build_request_dedup_prompt(open_), effort=post_effort, vault=vault)
-            n_folded = _apply_request_dedup(vault, open_, r.parsed.get("groups"))
+            for window in _chunked(open_):
+                # A window holding none of this run's requests was already compared last time.
+                if not any(s.get("sha256") in ok_shas
+                           for i in window for s in open_[i].get("sources") or []):
+                    continue
+                r = await _call_model(
+                    task="request-dedup", model=request_dedup_model, backend=request_dedup_backend,
+                    schema=schemas.REQUEST_DEDUP,
+                    prompt=prompts.build_request_dedup_prompt([open_[i] for i in window]),
+                    effort=post_effort, vault=vault)
+                groups += _offset_groups(r.parsed.get("groups"), window)
+            n_folded = _apply_request_dedup(vault, open_, groups)
         except model_client.CALL_FAILURES:
             n_folded = 0   # leave requests unmerged; a later run with new activity retries
         if n_folded:
@@ -2956,9 +3011,19 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # budget they don't need. `budget` is resolved once for the whole run, not per document —
         # `_current_token_budget` already falls back to whatever `rate_limit` the most recent call
         # reported, so it naturally sharpens as the run itself makes calls.
-        pf_by_sha = {s: preflight.run(vault, s) for s in shas}
-        est_by_sha = {s: section.est_tokens_from_pages(pf.get("pages", []))
-                      for s, pf in pf_by_sha.items() if not pf.get("error")}
+        # Only the estimate and the skip flags are kept: page text is dropped as each document is
+        # sized and read again when it is extracted, so a large queue is never all in memory at
+        # once. The registry is parsed once for the whole queue — nothing commits during `run()`
+        # (I7), so it cannot change underneath.
+        registry_ctx = preflight.registry_context(vault)
+        pf_by_sha: dict[str, dict] = {}
+        est_by_sha: dict[str, int] = {}
+        for s in shas:
+            pf = preflight.run(vault, s, registry=registry_ctx)
+            if not pf.get("error"):
+                est_by_sha[s] = section.est_tokens_from_pages(pf.get("pages", []))
+            pf_by_sha[s] = {k: v for k, v in pf.items() if k != "pages"}
+            del pf
         budget = _current_token_budget(extract_token_budget)
         sem = asyncio.Semaphore(max(1, concurrency))
         cancelled = asyncio.Event()
@@ -3012,7 +3077,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                         return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                        classify_pages, pinned_skill, extract_effort,
                                                        extract_backend, classify_backend, classify_effort,
-                                                       force=force, verify_pass=verify, pf=pf)
+                                                       force=force, verify_pass=verify,
+                                                       pf=preflight.run(vault, sha, registry=registry_ctx))
                     except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                         if not cancelled.is_set():
                             print()

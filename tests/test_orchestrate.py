@@ -3077,10 +3077,10 @@ def test_admit_not_called_for_an_already_extracted_document(tmp_path, monkeypatc
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     real_preflight_run = orchestrate.preflight.run
 
-    def fake_preflight(v, s):
+    def fake_preflight(v, s, registry=None):
         if s == "sha1":
             return {"already_extracted": True, "filename": "a.pdf", "pages": []}
-        return real_preflight_run(v, s)
+        return real_preflight_run(v, s, registry=registry)
     monkeypatch.setattr(orchestrate.preflight, "run", fake_preflight)
 
     admit_calls = []
@@ -4501,7 +4501,7 @@ def test_extract_document_skips_already_extracted_and_unlinks_queue_file(tmp_pat
 def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="done", filename="done.pdf")
-    monkeypatch.setattr(orchestrate.preflight, "run", lambda v, s: (
+    monkeypatch.setattr(orchestrate.preflight, "run", lambda v, s, registry=None: (
         {"error": "not found"} if s == "gone" else
         {"already_extracted": True, "filename": "done.pdf"}))
     skill_file = tmp_path / "pinned.md"
@@ -5605,3 +5605,65 @@ def test_record_usage_skips_the_telemetry_store_when_turned_off(tmp_path, monkey
     finally:
         orchestrate._end_usage_run(vault)
     assert not telemetry_db.DB_PATH.exists()
+
+
+def test_run_parses_the_documents_registry_once_and_does_not_hold_page_text(tmp_path, monkeypatch):
+    """Pre-flighting a large queue must not re-read documents.json per document, and the page
+    text read to size each document is dropped rather than kept for the whole run."""
+    vault = make_vault(tmp_path)
+    for i in range(3):
+        _queue_doc(vault, sha=f"sha{i}", filename=f"{i}.pdf")
+    reads = []
+    real_ctx = orchestrate.preflight.registry_context
+    monkeypatch.setattr(orchestrate.preflight, "registry_context",
+                        lambda v: reads.append(v) or real_ctx(v))
+    seen_pf = []
+    real_extract = orchestrate._extract_document
+
+    async def spy_extract(*a, pf=None, **k):
+        seen_pf.append(pf)
+        return await real_extract(*a, pf=pf, **k)
+    monkeypatch.setattr(orchestrate, "_extract_document", spy_extract)
+    _mock(monkeypatch, extraction=_extraction())
+
+    asyncio.run(orchestrate.run(vault, concurrency=1))
+    assert len(reads) == 1
+    assert len(seen_pf) == 3 and all("pages" in pf for pf in seen_pf)   # re-read when extracted
+
+
+# ── Bounded dedup calls ──────────────────────────────────────────────────────
+
+def test_offset_groups_maps_window_indices_and_drops_bad_ones():
+    window = [10, 11, 12]
+    groups = [{"keep": 0, "duplicates": [2, 7]}, {"keep": 5, "duplicates": [1]}, "junk"]
+    assert orchestrate._offset_groups(groups, window) == [{"keep": 10, "duplicates": [12]}]
+    assert orchestrate._chunked(list("abcde"), 2) == [[0, 1], [2, 3], [4]]
+
+
+def test_timeline_dedup_splits_a_crowded_date_into_bounded_calls(tmp_path, monkeypatch):
+    """A date with more events than one call may see is deduplicated window by window, and the
+    windows' folds are applied together."""
+    monkeypatch.setattr(orchestrate, "_DEDUP_MAX_ITEMS", 2)
+    vault = make_vault(tmp_path)
+    date = "2020-03-15"
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    texts = ["Alpha", "Alpha", "Beta", "Beta"]
+    (td / f"{date}.ndjson").write_text(
+        "\n".join(json.dumps({"date": date, "event": t, "source_sha256": f"s{i}"})
+                  for i, t in enumerate(texts[:2])) + "\n", encoding="utf-8")
+    (td / f"{date}_newdoc1.ndjson").write_text(
+        "\n".join(json.dumps({"date": date, "event": t, "source_sha256": f"s{i + 2}"})
+                  for i, t in enumerate(texts[2:])) + "\n", encoding="utf-8")
+    calls = []
+
+    def dedup():
+        calls.append(1)
+        return {"groups": [{"keep": 0, "duplicates": [1]}]}
+    _mock_post_ingest(monkeypatch, timeline_dedup=dedup)
+    asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku"))
+
+    assert len(calls) == 2
+    kept = [json.loads(line)["event"] for line in (td / f"{date}.ndjson").read_text().splitlines()]
+    assert kept == ["Alpha", "Beta"]
+    assert not (td / f"{date}_newdoc1.ndjson").exists()

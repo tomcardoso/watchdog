@@ -80,6 +80,9 @@ def _write_csv(entities: dict, edges: list[dict], out: Path) -> tuple[Path, Path
 
 _LABEL_RE = re.compile(r"[^A-Za-z0-9_]")
 
+# The label every exported node carries alongside its type label.
+_NODE_LABEL = "WatchdogEntity"
+
 
 def _cypher_label(type_: str) -> str:
     """Map an entity type to a Cypher label token (backtick-quoted at the call site)."""
@@ -92,12 +95,15 @@ def _esc(s: str) -> str:
 
 def _write_cypher(entities: dict, edges: list[dict], out: Path) -> Path:
     path = out / "graph.cypher"
-    lines = []
+    # Every node also carries one shared label with a uniqueness constraint on `id`, so each
+    # relationship's MATCH is an index lookup rather than a scan of every node (Neo4j 4.4+).
+    lines = [f"CREATE CONSTRAINT watchdog_entity_id IF NOT EXISTS "
+             f"FOR (n:`{_NODE_LABEL}`) REQUIRE n.id IS UNIQUE;"]
     for eid, ent in entities.items():
         label = _cypher_label(ent.get("type", ""))
         lines.append(
-            f"MERGE (n:`{label}` {{id: '{_esc(eid)}'}}) "
-            f"SET n.name = '{_esc(ent.get('name', ''))}', "
+            f"MERGE (n:`{_NODE_LABEL}` {{id: '{_esc(eid)}'}}) "
+            f"SET n:`{label}`, n.name = '{_esc(ent.get('name', ''))}', "
             f"n.type = '{_esc(ent.get('type', ''))}', "
             f"n.doc_count = {len(ent.get('appears_in', []))};"
         )
@@ -108,7 +114,8 @@ def _write_cypher(entities: dict, edges: list[dict], out: Path) -> Path:
         if e["date_range"]:
             props.append(f"date_range: '{_esc(e['date_range'])}'")
         lines.append(
-            f"MATCH (a {{id: '{_esc(e['start'])}'}}), (b {{id: '{_esc(e['end'])}'}}) "
+            f"MATCH (a:`{_NODE_LABEL}` {{id: '{_esc(e['start'])}'}}), "
+            f"(b:`{_NODE_LABEL}` {{id: '{_esc(e['end'])}'}}) "
             f"MERGE (a)-[r:`{rel}`]->(b) SET r += {{{', '.join(props)}}};"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

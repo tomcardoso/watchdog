@@ -863,7 +863,9 @@ the briefing then run in `_post_ingest` (model: `post_model`) after extraction:
   same-batch restatements are deduped exactly as cross-batch ones are. The orchestrator sends each
   collision's events to one model call, up to `_TIMELINE_DEDUP_CONCURRENCY` (5) dates at a time
   (`timeline-dedup`), which returns `groups` (each survivor + the pure-restatement indices that
-  fold into it). `_select_kept` applies the decision — keeping the authoritative originals and
+  fold into it). A date with more than `_DEDUP_MAX_ITEMS` (200) events is sorted by text and sent
+  in windows of that size; the same bound applies to timeline-precision months and request dedup
+  (D248). `_select_kept` applies the decision — keeping the authoritative originals and
   **unioning each group's `entity_ids`** onto the survivor, so an event's entity attribution
   survives a cross-document collapse regardless of which restatement won (D59). On a **successful**
   dedup it writes the deduped set back to the canonical and consumes the collision's raws; on a
