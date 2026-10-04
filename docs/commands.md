@@ -257,7 +257,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 
 ### watchdog search
 
-`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
+`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text. How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
 
 ```bash
 watchdog search my-investigation "shell company -real estate"

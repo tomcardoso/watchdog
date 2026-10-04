@@ -384,7 +384,9 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"
     _write_timeline_md(vault, content)
     if not quiet:
-        print(f"timeline.md rebuilt — {len(canonical_files)} date(s), {len(events)} event(s)")
+        from watchdog.links import note_link
+        print(f"{note_link(vault, 'timeline.md')} rebuilt — {len(canonical_files)} date(s), "
+              f"{len(events)} event(s)")
     return (len(canonical_files), len(events))
 
 
