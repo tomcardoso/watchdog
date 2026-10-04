@@ -1,4 +1,4 @@
-"""`watchdog add`, the auto-approve budget, and the bare-`watchdog` home screen (D249)."""
+"""`watchdog add`, the auto-approve budget, and the bare-`watchdog` home screen (D251)."""
 
 import argparse
 import json

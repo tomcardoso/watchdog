@@ -1,4 +1,4 @@
-"""Bare `watchdog` inside a vault: one screen of what's going on and what to do next (D249)."""
+"""Bare `watchdog` inside a vault: one screen of what's going on and what to do next (D251)."""
 
 import re
 import sys

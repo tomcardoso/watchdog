@@ -5,7 +5,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 **Appending:** add the next `### D<n>` at the **end** (ascending, newest last). Keep entries concise — a few sentences of rationale, then the tradeoff. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. When a decision establishes or revises an invariant, update the Invariants section in ARCHITECTURE.md in the same change.
 
 <details>
-<summary><strong>Index — all 248 decisions, D1 to D248 (click to expand)</strong></summary>
+<summary><strong>Index — all 250 decisions, D1 to D250 (click to expand)</strong></summary>
 
 - **D1** — Local-first preprocessing
 - **D2** — Deterministic code writes, model decides
@@ -255,6 +255,9 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D246** — Prompt examples are invented, never drawn from the benchmark corpus
 - **D247** — The global telemetry store can be turned off, and a purged vault's rows go with it
 - **D248** — Dedup calls are bounded by item count; duplicates split across windows stay separate
+- **D249** — Bare `opus` means Opus 5.5; vendor-deprecated models leave the catalog, legacy ones stay
+- **D250** — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
+- **D251** — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
 
 </details>
 
@@ -2350,6 +2353,16 @@ The PRESERVE CHANGES example in `extract_instructions.md` was a scored key fact 
 
 After #696 three finalize calls could still grow without limit: one colliding date's events, one month's precision match, and every open document request. Each now sees at most 200 items per call; a larger set is sorted (event text, or request type and wording) so near-identical entries tend to share a window, then sent in windows. Request dedup skips windows holding none of this run's requests. The tradeoff: two duplicates that land in different windows are not merged. That is the safe direction for passes that may only ever merge, and the next run with new activity gets another chance. Separately, `run()` now parses `documents.json` once for the whole queue and drops each document's page text after sizing it, re-reading it at extraction, so a large queue is never held in memory at once.
 
-### D249 — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
+
+### D249 — Bare `opus` means Opus 5.5; vendor-deprecated models leave the catalog, legacy ones stay
+
+Anthropic now steers users to Opus 5.5 ($4 / $20 per million tokens, against Opus 4.8's $5 / $25), so bare `opus` moved to it, the same way bare `sonnet` moved to 5.5 in D236. Opus 4.8 stays selectable as `opus-4.8` and Opus 5 as `opus-5`, so a pinned config or benchmark arm keeps its meaning. Opus 5.5's cache read is 0.05x input, not the 0.1x every other Claude entry uses, so it is entered as the vendor states it rather than derived. The same change set a rule for retirements: a model its vendor has formally deprecated is removed (`gpt-5.4-nano`, shutdown 2027-04-01), while a model the vendor only calls legacy (Sonnet 4.6, Sonnet 5, Opus 4.8, Opus 5) stays. `gpt-6-luna` was added alongside `gpt-5.6-luna` rather than replacing it, since the archived benchmark figures and the docs' recommendation were measured on 5.6 Luna. The tradeoff: any setup saying `opus` now runs a cheaper model with thinking always on, archived `opus` figures are not comparable, and Opus 5.5's and GPT-6 Luna's tokenizer ratios are copied from their families, not measured.
+
+
+### D250 — A catalog entry can carry `legacy_ids`, and a price window can be limited to weekdays
+
+DeepSeek retired V4 Flash and now serves V4.1 Flash as `deepseek-flash`, still answering the old `deepseek-v4-flash` name at the Flash price. Renaming the entry alone would have made every existing config naming the old id read as uncatalogued and lose its price, peak windows and effort levels, so an entry may now list `legacy_ids` that resolve to it (`model_catalog.canonical_id`); the old id is an alias, not a second row, so the picker lists the model once. DeepSeek's peak is also Monday to Friday only (UTC), which the schedule could not say, so a `price_periods` window may now carry `days`. Chinese public holidays are also off-peak and are not modelled: a run on one is priced at the peak rate, an over-estimate. The tradeoff: archived DeepSeek Flash figures measured the retired V4 checkpoint, not V4.1, so they are not comparable, and V4.1's tokenizer ratio is copied from V4 rather than measured.
+
+### D251 — `watchdog add` is the one-command ingest path, with an opt-in auto-approve budget; bare `watchdog` is a home screen
 
 Adding documents took three commands (`chew`, `dig`, `bark`) and an understanding of the pipeline's stages, and bare `watchdog` was a guided walk through those same stages. `watchdog add [files…]` now copies files in, chews, extracts and finishes the batch in one run; the stage commands stay for manual control and benchmarking. `add` waits out a rate limit rather than stopping, and finishes a pending batch together with the new documents instead of asking. Bare `watchdog` inside a vault shows what is waiting on the user and offers to run `add`. A new `auto_approve_usd` setting lets a run estimated at or under the limit skip the public-records pause with a one-line notice. A subscription counts as within the limit, since it has no per-run price; an unpriced metered run still asks. The tradeoff: the public-records pause is the only safeguard against sending non-public material, and the setting lets a user waive it for small runs. It is off by default, and its help says that setting it means the user already checks what they add.
