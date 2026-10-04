@@ -1911,6 +1911,72 @@ def _fts_add_note_safe(vault: Path, note_path: str, kind: str, title: str, text:
         print(f"  Warning: full-text index update failed for {note_path}: {e}", file=sys.stderr)
 
 
+# Most entities one synthesis call rewrites (#696). The output — a summary and analysis per entity —
+# grows with this, so it is bounded by count as well as by input size.
+_SYNTHESIS_MAX_ENTITIES = 25
+
+# Key facts kept per document at each briefing condensation step (#696); None keeps them all.
+_BRIEFING_FACT_LEVELS = (None, 5, 1, 0)
+
+
+def _fit_briefing_inputs(results: list, scratchpads: list, budget: int
+                         ) -> tuple[list, list, dict | None]:
+    """Shrink the briefing's input until it fits one call of `budget` characters (#696).
+
+    The briefing is one narrative over the whole batch, so unlike reconciliation or synthesis it
+    cannot be split into independent calls. Instead its input degrades in steps, stopping at the
+    first that fits: every document's key facts, then the first five per document, then one, then
+    none; past that, the per-document rows are replaced by a tally by document type and date range
+    plus as many rows as still fit. Scratchpads take whatever room the results leave, whole and in
+    order. Nothing here is lost from the vault — every fact is still in its document and entity
+    notes — only from the briefing's view of the batch.
+
+    Returns ``(results, scratchpads, condensed)``, where `condensed` is None when nothing had to
+    give, else a description the prompt passes to the model so it summarizes rather than lists."""
+    size = chunking.json_size
+    pads_size = sum(len(p) for p in scratchpads)
+    if size(results) + pads_size <= budget:
+        return results, scratchpads, None
+
+    fitted, level = None, ""
+    for cap in _BRIEFING_FACT_LEVELS[1:]:
+        trimmed = [{**r, "key_facts": r.get("key_facts", [])[:cap]} for r in results]
+        if cap == 0:
+            trimmed = [{k: v for k, v in r.items() if k not in ("key_facts", "new_entities",
+                                                                "updated_entities")}
+                       | {"new_entity_count": len(r.get("new_entities") or [])} for r in trimmed]
+        if size(trimmed) <= budget * 0.75:
+            fitted = trimmed
+            level = (f"first {cap} key fact{'s' if cap != 1 else ''} per document" if cap
+                     else "no key facts, one row per document")
+            break
+    if fitted is None:
+        by_type: dict[str, int] = {}
+        for r in results:
+            t = r.get("document_type") or "unknown"
+            by_type[t] = by_type.get(t, 0) + 1
+        dates = sorted(d for d in (r.get("date") for r in results) if d)
+        rows = [{"filename": r.get("filename"), "document_type": r.get("document_type"),
+                 "date": r.get("date")} for r in results]
+        sample = chunking.pack(rows, int(budget * 0.5))[0] if rows else []
+        fitted = [{"batch_summary": {"documents": len(results), "by_document_type": by_type,
+                                     "date_range": [dates[0], dates[-1]] if dates else None,
+                                     "rows_shown": len(sample)}},
+                  *sample]
+        level = f"tally by document type plus {len(sample)} of {len(results)} rows"
+
+    room = budget - size(fitted)
+    pads: list[str] = []
+    for pad in scratchpads:
+        if len(pad) > room:
+            break
+        pads.append(pad)
+        room -= len(pad)
+    if len(pads) < len(scratchpads):
+        level += f"; {len(pads)} of {len(scratchpads)} scratchpads"
+    return fitted, pads, {"level": level, "documents": len(results)}
+
+
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                     contradiction_flags: list, n_new_requests: int = 0) -> str:
     # Resolve entity ids the model may have echoed instead of display names (#342) — deterministic
@@ -2096,22 +2162,47 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     batch_shas = [r["sha256"] for r in results if r.get("status") == "ok"]
     bundle = synthesis_bundle.build_bundle(vault, batch_shas)
     if bundle.get("entities"):
-        _say(f"{_DIM}→  synthesizing {len(bundle['entities'])} multi-mention "
-             f"entit{'ies' if len(bundle['entities']) != 1 else 'y'}…{_RESET}")
-        try:
-            r = await _call_model(
-                task="entity-synthesis", model=synthesis_model, backend=synthesis_backend,
-                schema=schemas.SYNTHESIS,
-                prompt=prompts.build_synthesis_prompt(bundle), effort=post_effort, vault=vault)
-        except (model_client.ModelError, model_client.RateLimitError) as e:
-            # Synthesis is enrichment: leave the structured claims already in the notes
-            # rather than crashing. The staged artifacts persist, so a later finalize redoes it.
-            out["error"] = str(e)
-            _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} — {e}{_RESET}")
-        else:
+        n_ents = len(bundle["entities"])
+        # Split across size-bounded calls (#696): one call per run outgrew the context window —
+        # and the output cap, since every entity gets its own rewritten summary — on a large
+        # batch. Entities are synthesized independently, so the split loses nothing. An entity
+        # too large for a call on its own still gets one to itself; if that call fails, only it
+        # keeps its carried-forward prose.
+        budget = chunking.prompt_budget_chars(synthesis_model, synthesis_backend, vault)
+        chunks = chunking.pack(bundle["entities"], budget, max_items=_SYNTHESIS_MAX_ENTITIES)
+        part = f" across {len(chunks)} calls" if len(chunks) > 1 else ""
+        _say(f"{_DIM}→  synthesizing {n_ents} multi-mention "
+             f"entit{'ies' if n_ents != 1 else 'y'}{part}…{_RESET}")
+        syntheses: list[dict] = []
+        failed = 0
+        answered = False
+        for n, chunk in enumerate(chunks, 1):
+            try:
+                r = await _call_model(
+                    task="entity-synthesis", model=synthesis_model, backend=synthesis_backend,
+                    schema=schemas.SYNTHESIS,
+                    prompt=prompts.build_synthesis_prompt({"entities": chunk}), effort=post_effort,
+                    detail=f"call {n} of {len(chunks)}" if len(chunks) > 1 else None, vault=vault)
+            except (model_client.ModelError, model_client.RateLimitError) as e:
+                # Synthesis is enrichment: leave the structured claims already in the notes
+                # rather than crashing. The staged artifacts persist, so a later finalize redoes it.
+                out["error"] = str(e)
+                failed += len(chunk)
+                _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} for {len(chunk)} "
+                     f"entit{'ies' if len(chunk) != 1 else 'y'} — {e}{_RESET}")
+                if isinstance(e, model_client.RateLimitError):
+                    failed += sum(len(c) for c in chunks[n:])
+                    break   # every later chunk would hit the same limit
+                continue
+            answered = True
+            syntheses.extend(r.parsed.get("entity_syntheses") or [])
+        if answered:
             res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
-            res_path.write_text(json.dumps(r.parsed, ensure_ascii=False), encoding="utf-8")
+            res_path.write_text(json.dumps({"entity_syntheses": syntheses}, ensure_ascii=False),
+                                encoding="utf-8")
             out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+        if failed:
+            _log(vault, f"WARN synthesis: {failed} of {n_ents} entities not synthesized this run")
 
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
     _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
@@ -2196,12 +2287,17 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             r for r in requests.open_requests(vault)
             if any(s.get("sha256") in ok_shas for s in r.get("sources") or [])
         ])
+        budget = chunking.prompt_budget_chars(briefing_model, briefing_backend, vault)
+        brief_results, brief_pads, condensed = _fit_briefing_inputs(ok, scratchpads, budget)
+        if condensed:
+            _say(f"{_DIM}   large batch — briefing input condensed ({condensed['level']}){_RESET}")
         try:
             r = await _call_model(
                 task="briefing", model=briefing_model, backend=briefing_backend, schema=schemas.BRIEFING,
                 prompt=prompts.build_briefing_prompt(
-                    brief=brief, results=ok, scratchpads=scratchpads,
-                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags),
+                    brief=brief, results=brief_results, scratchpads=brief_pads,
+                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags,
+                    condensed=condensed),
                 effort=post_effort, vault=vault)
             out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
                                               n_new_requests)
@@ -2218,7 +2314,9 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             # silently shipping a degraded briefing. Everything else (per-doc facts, entity
             # notes, timeline) is already on disk; only the synthesized briefing is lost, and the
             # pending batch can be discarded on the next ingest to unstick. Streaming (an
-            # unbounded ceiling) is future work.
+            # unbounded ceiling) is future work. `_fit_briefing_inputs` (#696) now condenses an
+            # oversized batch and tells the model to summarize rather than list, so this is the
+            # backstop, no longer the expected outcome of a large batch.
             out["briefing_error"] = str(e)
             _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was exceeded "
                  f"(this batch is too large to summarize in one pass). Re-ingest it in smaller "

@@ -739,7 +739,8 @@ investigation**, otherwise it stays a deterministic stub.
   The fragment is a pure function of data the extractor already produced, so it is derived here rather
   than stored: `write_vault` no longer maintains the per-entity fragment files it once did (#403 phase 4,
   D129). `build_bundle` selects the recurring entities, packs each one's fragments + current prose into
-  one compact bundle; a single model call synthesizes them all; `synthesis_bundle.apply_bundle` bulk-writes
+  one compact bundle; model calls synthesize them in size-bounded chunks (`chunking.pack`, at most
+  `_SYNTHESIS_MAX_ENTITIES` = 25 per call, D238), and `synthesis_bundle.apply_bundle` bulk-writes
   the Summary/Analysis via the shared writer in `pipeline/finalize_entity.py`.
 - **Batch scope comes from the result set, not the pending-commit set.** `_post_ingest` passes
   `build_bundle` the shas of the run's `result_*.json` files, deliberately not `_pending_commits`. On a
@@ -872,7 +873,9 @@ merge — deterministic, no model call, parallel to its registry surgery (§I1);
 - builds a briefing prompt from the compact per-doc results — which now carry each
   document's `key_facts` (projected to fact + date, the briefing's source for figures and
   chronology) alongside near-dup alerts and contradiction flags — plus the per-document
-  scratchpads, now slimmed to forward-looking leads only (D33); makes one model call
+  scratchpads, now slimmed to forward-looking leads only (D33) — condensed in steps when the batch is
+  too large for one call (`_fit_briefing_inputs`: key facts capped at 5, then 1, then none, then a tally
+  by document type; the prompt then tells the model its view is partial, D238); makes one model call
   (`briefing`), and `_write_briefing` writes the structured prose into `briefings/<ts>.md`,
   `hot.md`, and a `log.md` entry — first resolving any item that's an exact match against the
   registry manifest from an entity id to its display name, since not every backend reliably
@@ -1332,10 +1335,10 @@ it to that provider's servers.
 | **extract** — whole-doc or per-section (§5) | once per document, or once per section for a document over the sectioning threshold | the page/section text, the matched domain skill, the investigation brief (`context.md`), the `.yml` sidecar, known document types | **all vault entity state** — extraction is a pure function of the document (D118); original-file metadata (EXIF, PDF author fields — stripped at chew, §3) |
 | **digest** (§5) | once per sectioned document, after merge — whole-doc extraction composes its digest inline instead, with no extra call | filename, title, document_type, page_count, the merged `key_facts` (not the raw text), the domain skill, brief, sidecar | the document's raw text |
 | **reconcile** (§8.5) | once per run if any entity was touched — split into several size-bounded calls on a large batch (D237) | deterministically-blocked candidate duplicate pairs (same type, overlapping names), and each recurring entity's source-attributed `## Analysis` claim ledger + roles digest | raw document text; entities with no plausible duplicate and no cross-document claims |
-| **entity-synthesis** (§8) | once per run, batched, only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
+| **entity-synthesis** (§8) | once per run, in size-bounded chunks of at most 25 entities (D238), only for entities appearing in 2+ documents vault-wide | per qualifying entity: its current `## Summary`/`## Analysis` prose plus every accumulated fact fragment tagged to it across all its documents | timeline, relationships, contradictions — deterministic, never seen by a model |
 | **timeline-dedup** (§9) | once per colliding date (0+ per run) | the event text and page for every event sharing that date | entities' full histories; unrelated dates |
 | **timeline-precision** (§9) | once per month mixing month- and day-precision dates | that month's coarse and precise event text + page | other months; entity histories |
-| **briefing** (§9) | once per run, over the whole batch | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
+| **briefing** (§9) | once per run, over the whole batch — input condensed when it would not fit one call (D238) | the investigation brief, compact per-document results (type, date, entity counts, key facts), near-dup alerts, contradiction flags, every document's scratchpad notes | raw document text; full entity notes |
 
 ---
 

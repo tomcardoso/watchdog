@@ -2,9 +2,10 @@
 of one whole-batch call into several that each fit."""
 
 import asyncio
+import json
 
 from watchdog import model_client
-from watchdog.pipeline import chunking, orchestrate, reconcile
+from watchdog.pipeline import chunking, orchestrate, prompts, reconcile
 
 from tests.test_write_vault import make_vault
 
@@ -149,3 +150,97 @@ def test_reconcile_pre_commit_failed_chunk_applies_nothing(tmp_path, monkeypatch
     result = asyncio.run(orchestrate._reconcile_pre_commit(vault, ["s"], "haiku", None, None))
     assert result["error"]
     assert applied == []
+
+
+# ── entity synthesis: several calls, applied together ────────────────────────
+
+def _post_ingest_with(vault, monkeypatch, n_entities, fail_call=None):
+    (vault / ".watchdog" / "tmp").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(orchestrate.synthesis_bundle, "build_bundle", lambda vault, shas: {
+        "entities": [{"entity_id": f"e{i}", "name": f"E{i}"} for i in range(n_entities)]})
+    applied = []
+
+    def fake_apply(res_path, vault):
+        ids = [s["entity_id"] for s in json.loads(res_path.read_text())["entity_syntheses"]]
+        applied.append(ids)
+        return {"applied": ids}
+    monkeypatch.setattr(orchestrate.synthesis_bundle, "apply_bundle", fake_apply)
+    monkeypatch.setattr(orchestrate, "_SYNTHESIS_MAX_ENTITIES", 2)
+    calls = []
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        parsed = {}
+        if task == "entity-synthesis":
+            calls.append(task)
+            if len(calls) == fail_call:
+                raise model_client.ModelError("too long")
+            ents = json.loads(prompt.split("Entities:\n", 1)[1])
+            parsed = {"entity_syntheses": [{"entity_id": e["entity_id"], "summary": "s"}
+                                           for e in ents]}
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="b",
+                                        auth_mode="api-key", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+    out = asyncio.run(orchestrate._post_ingest(vault, [], None, "haiku", skip_briefing=True))
+    return out, calls, applied
+
+
+def test_synthesis_splits_by_entity_count_and_applies_once(tmp_path, monkeypatch):
+    out, calls, applied = _post_ingest_with(make_vault(tmp_path), monkeypatch, 5)
+    assert len(calls) == 3
+    assert applied == [["e0", "e1", "e2", "e3", "e4"]]
+    assert out["synthesized"] == 5
+
+
+def test_synthesis_failed_chunk_keeps_the_others(tmp_path, monkeypatch):
+    """Synthesis is enrichment: one oversized or failed call costs only its own entities."""
+    out, calls, applied = _post_ingest_with(make_vault(tmp_path), monkeypatch, 5, fail_call=2)
+    assert len(calls) == 3
+    assert applied == [["e0", "e1", "e4"]]
+    assert out["error"]
+
+
+# ── briefing: input condensed to fit one call ────────────────────────────────
+
+def _results(n, facts=10):
+    return [{"sha256": f"s{i}", "filename": f"doc{i}.pdf",
+             "document_type": "Affidavit" if i % 2 else "Annual Report",
+             "date": f"2020-01-{i % 28 + 1:02d}", "entity_count": 3,
+             "new_entities": ["x"], "updated_entities": [],
+             "key_facts": [{"fact": f"fact {j} of doc {i} " * 3} for j in range(facts)]}
+            for i in range(n)]
+
+
+def test_briefing_inputs_untouched_when_they_fit():
+    results, pads = _results(3), ["pad one", "pad two"]
+    assert orchestrate._fit_briefing_inputs(results, pads, 10**7) == (results, pads, None)
+
+
+def test_briefing_inputs_cap_key_facts_first():
+    results = _results(20)
+    budget = int(chunking.json_size(_results(20, facts=5)) / 0.75) + 10
+    fitted, _, condensed = orchestrate._fit_briefing_inputs(results, [], budget)
+    assert all(len(r["key_facts"]) == 5 for r in fitted)
+    assert "first 5 key facts" in condensed["level"]
+    assert chunking.json_size(fitted) <= budget
+
+
+def test_briefing_inputs_fall_back_to_a_tally_for_a_huge_batch():
+    results = _results(5000, facts=2)
+    budget = 20_000
+    fitted, pads, condensed = orchestrate._fit_briefing_inputs(results, ["p" * 50_000], budget)
+    summary = fitted[0]["batch_summary"]
+    assert summary["documents"] == 5000
+    assert summary["by_document_type"] == {"Annual Report": 2500, "Affidavit": 2500}
+    assert chunking.json_size(fitted) <= budget
+    assert pads == []
+    assert condensed["documents"] == 5000
+
+
+def test_briefing_prompt_tells_the_model_its_view_is_partial():
+    p = prompts.build_briefing_prompt(brief=None, results=[], scratchpads=[], neardup_alerts=[],
+                                      contradiction_flags=[],
+                                      condensed={"level": "no key facts", "documents": 4000})
+    assert "4000 documents" in p and "partial view" in p
+    plain = prompts.build_briefing_prompt(brief=None, results=[], scratchpads=[], neardup_alerts=[],
+                                          contradiction_flags=[])
+    assert "partial view" not in plain
