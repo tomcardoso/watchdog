@@ -1,4 +1,4 @@
-"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I7), #349.
+"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I9), #349.
 
 Each test name starts with the invariant id it guards (`test_I1_...`, `test_I2_...`, etc.), so
 a failing rule shows up as a specific, named red bar instead of relying on code review to catch
@@ -27,9 +27,12 @@ Deliberately NOT guarded here, and why:
   URLs) is a separate, uncapturable process — nothing in this repo can mechanically assert what
   an interactive session does. The guard below instead asserts the deterministic Python side of
   the boundary: `pipeline/research.py`'s enumerable write paths never touch vault notes.
-- **I6's untrusted-input defanging** (defusedxml over stdlib `xml.etree`, metadata allowlisting
-  and length caps) is exercised where the parsers live — `tests/test_file_metadata.py` — and not
-  re-asserted here.
+- **I6's metadata allowlisting and length caps** are exercised where the parsers live —
+  `tests/test_file_metadata.py`. Only the defusedxml rule is guarded here, statically.
+- **I8 (transcribe, don't correct)** is a prompt instruction with no ground truth to check a
+  transcribed value against, exactly like I1's summary grounding.
+- **I9's "every --json command"** is guarded at its root — the colour gate — plus the existing
+  `--json` output tests in `tests/test_cli.py`; this file does not enumerate every command.
 
 I2's runtime guard was confirmed to run hermetically (the direct-text preprocessing path does
 not import Docling), so both the static and runtime layers described in the issue are present.
@@ -316,3 +319,40 @@ def test_I7_vault_unmutated_until_the_finalize_commit(tmp_path, monkeypatch):
     asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
     assert _committed_state(vault) != before
     assert json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+
+
+# ── I6 — anything parsed out of a source document is untrusted input ─────────
+
+def test_I6_no_module_parses_xml_with_the_stdlib():
+    """The stdlib XML parsers expand internal entities (a crafted .docx is a billion-laughs
+    bomb); source-document XML goes through defusedxml. No module may import them, at any level."""
+    stdlib_xml = ("xml.etree", "xml.dom", "xml.sax", "xml.parsers")
+    for f in _SRC.rglob("*.py"):
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+            mods = ([a.name for a in node.names] if isinstance(node, ast.Import)
+                    else [node.module] if isinstance(node, ast.ImportFrom) and node.module else [])
+            bad = [m for m in mods if m == "xml" or m.startswith(stdlib_xml)]
+            assert not bad, f"{f.relative_to(_SRC)} imports stdlib XML: {bad}"
+
+
+# ── I9 — styling is a terminal affordance, never part of the output ──────────
+
+def test_I9_colour_is_off_whenever_stdout_is_not_a_terminal(monkeypatch):
+    """The gate every styled string goes through: colour only on a real terminal, never forced
+    on by FORCE_COLOR (which Claude Code sets for the commands it runs), always off with NO_COLOR."""
+    import io
+    import sys
+    from watchdog import terminal
+
+    class _Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("FORCE_COLOR", "3")
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    assert terminal._color_enabled() is False
+    monkeypatch.setattr(sys, "stdout", _Tty())
+    assert terminal._color_enabled() is True
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert terminal._color_enabled() is False

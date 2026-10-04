@@ -106,7 +106,7 @@ If a previous batch is still pending finalization when you start `watchdog dig`,
 
 Most of what a first read misses is not something it couldn't see. Checked against the exact text the model was given, effectively every missed fact in our test corpus was right there on the page — read, and judged not worth writing down. The pattern repeats: an obligation phrased in standard contract wording, a one-line note under a table, something in a schedule at the back.
 
-The verification pass is a second, cheap read aimed at exactly that. Straight after a document is extracted, it goes back to the same text with the facts just pulled from it in hand, and answers one question: what material fact is here and not on that list? Anything it finds is compared against the existing facts by the program — not by the model a second time — and added if it is genuinely new. Added facts look like any other fact in your notes and are marked so you can tell where they came from.
+The verification pass is a second, cheap read aimed at exactly that. Straight after a document is extracted, it goes back to the same text with the facts just pulled from it in hand, and answers one question: what material fact is here and not on that list? Anything it finds is compared against the existing facts by the program — not by the model a second time — and added if it is genuinely new. Added facts look like any other fact in your notes, with the same page citation; the notes don't mark which read found them.
 
 Turn it on for a single run with `--verify`, or for good with `watchdog configure verify_extraction true`. `--no-verify` turns it off again for one run.
 

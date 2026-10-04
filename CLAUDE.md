@@ -91,7 +91,7 @@ pipx inject watchdog-intel pytest numpy
 
 Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
 
-CI runs on every push and PR via `.github/workflows/ci.yml`.
+CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml` and `publish.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
 
 ## Linting
 
@@ -128,14 +128,14 @@ Constants and choices that were fitted against a *specific* benchmark run and ar
 
 ## Releasing to PyPI
 
-The package publishes to PyPI automatically when a GitHub release is created. Publishing uses OIDC trusted-publisher auth — no API tokens or secrets.
+Pushing a version tag publishes the package: `.github/workflows/publish.yml` runs on any `v*` tag, tests it, builds the sdist and wheel with `hatch`, creates (or updates) the GitHub release with generated notes, and uploads to PyPI. Publishing uses OIDC trusted-publisher auth — no API tokens or secrets.
 
 **Release steps:**
 
-1. Bump `version` in `pyproject.toml` (follows [PEP 440](https://peps.python.org/pep-0440/): `0.1.0a1`, `0.1.0b1`, `0.1.0`, `0.2.0`, etc.)
-2. Commit and push
-3. On GitHub: Releases → Draft a new release → create a tag matching the version (e.g. `v0.1.0`) → Publish release
-4. The `.github/workflows/publish.yml` workflow fires, builds the sdist + wheel with `hatch`, and uploads to PyPI
+1. On a branch named `chore/v<version>`, bump `version` in `pyproject.toml` (follows [PEP 440](https://peps.python.org/pep-0440/): `0.1.0a1`, `0.1.0b1`, `0.1.0`, `0.2.0`, etc.). Put the release notes in the PR description under a "What's new" heading — the workflow uses that section as the release notes, falling back to GitHub's generated list of merged PRs.
+2. Merge the PR.
+3. Tag the merge commit and push the tag: `git tag v<version> && git push origin v<version>`.
+4. The workflow does the rest. Don't draft the release by hand in the GitHub UI first: the workflow overwrites its notes. A version ending in `a`, `b` or `rc` plus a number is marked as a pre-release.
 
 The `pypi` GitHub environment and PyPI trusted-publisher entry for `watchdog-intel` are already configured — no further setup needed.
 
