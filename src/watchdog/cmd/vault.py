@@ -878,7 +878,7 @@ def cmd_list(args) -> None:
         if archived and not show_all:
             print(f"\n  No active investigations. {len(archived)} archived — run {_CYAN}watchdog projects list --all{_RESET} to show.\n")
         else:
-            print(f"\n  No projects. Create one with: {_CYAN}watchdog projects new <name>{_RESET}\n")
+            print(f"\n  No projects. Create one with: {_CYAN}watchdog new <name>{_RESET}\n")
         return
 
     rows = []

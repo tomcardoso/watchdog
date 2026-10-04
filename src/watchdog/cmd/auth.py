@@ -204,7 +204,7 @@ def resolve_auth(provider: str = "anthropic") -> dict:
     mode = _load_state().get("mode")
 
     if mode is None:
-        return {"mode": "none", "reason": "auth not configured — run `watchdog settings setup`"}
+        return {"mode": "none", "reason": "auth not configured — run `watchdog setup`"}
     if mode == "subscription":
         return {"mode": "subscription"}
     # api-key
@@ -249,7 +249,7 @@ def _status() -> None:
     print(f"  {_BOLD}Claude Code{_RESET}")
     if mode is None:
         print(f"  {_YELLOW}Not configured.{_RESET}")
-        print(f"  {_DIM}Answer the prompt below, or run{_RESET} {_CYAN}watchdog settings setup{_RESET}{_DIM}.{_RESET}")
+        print(f"  {_DIM}Answer the prompt below, or run{_RESET} {_CYAN}watchdog setup{_RESET}{_DIM}.{_RESET}")
     elif mode == "subscription":
         cc = claude_code_logged_in()
         cc_str = f"{_GREEN}detected{_RESET}" if cc else f"{_YELLOW}not detected{_RESET}"

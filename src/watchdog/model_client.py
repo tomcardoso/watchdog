@@ -1244,7 +1244,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     if provider == "anthropic":
         resolved = auth.resolve_auth()
         if resolved["mode"] == "none":
-            raise ModelError(resolved.get("reason", "no auth configured — run `watchdog settings setup`"))
+            raise ModelError(resolved.get("reason", "no auth configured — run `watchdog setup`"))
         auth_mode = resolved["mode"]
         api_key = resolved.get("key")           # None in subscription mode
         if chosen is None:

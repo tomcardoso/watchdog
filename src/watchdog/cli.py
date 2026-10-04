@@ -656,7 +656,7 @@ def main() -> None:
         return
 
     if args.command not in {"setup", "about", "configure"} and not CONFIG_FILE.exists():
-        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog settings setup{_RESET}\n")
+        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
         sys.exit(1)
 
     # `ingest` combined extract+finalize into one shot; retired in favour of `watchdog add`, or

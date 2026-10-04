@@ -286,7 +286,7 @@ def test_bare_auth_unconfigured_points_to_setup(home, monkeypatch, capsys):
     auth.cmd_auth(object())
     out = capsys.readouterr().out
     assert "Not configured" in out
-    assert "watchdog settings setup" in out
+    assert "watchdog setup" in out
 
 
 def test_bare_auth_noninteractive_just_prints_status(home, monkeypatch, capsys):

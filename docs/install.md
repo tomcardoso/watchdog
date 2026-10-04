@@ -72,7 +72,7 @@ sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
 
 - qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
 - Ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
-- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer. Required for OCR on Windows; `watchdog settings setup` will refuse to continue without it.
+- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer. Required for OCR on Windows; `watchdog setup` will refuse to continue without it.
 - pipx: open the terminal and run `python -m pip install pipx`, then `pipx ensurepath`
 
 ## Step 5: install Watchdog
@@ -86,7 +86,7 @@ Wait for it to finish — you'll see a message saying the installation is comple
 ## Step 6: run setup
 
 ```bash
-watchdog settings setup
+watchdog setup
 ```
 
 Setup checks that qpdf and Ghostscript are installed, enables tab completion in your terminal, detects your machine's OCR engine, and downloads the models Watchdog uses for document conversion, search, and name detection. The name-detection model (GLiNER, which spots people, organizations, and places as a backstop alongside the AI model's own reading — see [Methodology](methodology.md)) is the largest single download, at roughly 1.1GB; the rest add up to a few hundred megabytes more. All of it is a one-time download that may take a few minutes on a slow connection.
@@ -142,7 +142,7 @@ To set it up:
 1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys** in the left sidebar.
 2. Add a payment method under **Settings → Billing**. Unlike Claude's flat monthly subscription, OpenAI's API is pay-as-you-go with no free tier, so a card on file is required before a key can make any paid calls.
 3. Click **Create new secret key** and copy it — it's shown only once.
-4. Run `watchdog settings setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. By default, model effort levels for the classify/extract/finalize model steps are set to low/medium/high, respectively, but benchmarks have found that Luna extractions perform best with effort set to `high`. To do this, run the following command:
+4. Run `watchdog setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. By default, model effort levels for the classify/extract/finalize model steps are set to low/medium/high, respectively, but benchmarks have found that Luna extractions perform best with effort set to `high`. To do this, run the following command:
 
    ```bash
    watchdog settings extractor_effort high
@@ -193,7 +193,7 @@ By default, `watchdog research` and `watchdog research fetch` save web pages wit
 
 Installing the optional capture browser changes that: every web page is rendered in a real (invisible) browser and saved as a faithful, self-contained snapshot, with images, fonts, and stylesheets included and all scripts stripped. It's worth it if the sources you pull in are often JavaScript-heavy or you want the visual layout preserved.
 
-`watchdog settings setup` asks whether to install it. To install it later, or if you said no the first time:
+`watchdog setup` asks whether to install it. To install it later, or if you said no the first time:
 
 ```bash
 pipx inject watchdog-intel playwright
@@ -204,7 +204,7 @@ This adds about 150 MB (the browser itself). If it isn't installed, `watchdog re
 
 ## Optional: installing with uv instead of pipx
 
-If you already use [uv](https://docs.astral.sh/uv/) — Astral's Python package and tool manager — you can use it instead of pipx for the whole install. Everything past this point (`watchdog settings setup`, day-to-day use, upgrades) works exactly the same either way; only the install and upgrade commands differ.
+If you already use [uv](https://docs.astral.sh/uv/) — Astral's Python package and tool manager — you can use it instead of pipx for the whole install. Everything past this point (`watchdog setup`, day-to-day use, upgrades) works exactly the same either way; only the install and upgrade commands differ.
 
 Install uv, if you don't have it already:
 
@@ -232,7 +232,7 @@ Then install Watchdog:
 uv tool install watchdog-intel
 ```
 
-If that prints a warning that its tool directory isn't on your `PATH`, run `uv tool update-shell`, then close and reopen Terminal. From here, skip Step 5 above and continue with Step 6 (`watchdog settings setup`).
+If that prints a warning that its tool directory isn't on your `PATH`, run `uv tool update-shell`, then close and reopen Terminal. From here, skip Step 5 above and continue with Step 6 (`watchdog setup`).
 
 Wherever the rest of this page says a `pipx` command, use its `uv` equivalent instead:
 
