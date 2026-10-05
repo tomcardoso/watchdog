@@ -487,7 +487,10 @@ noted as such.
   *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** XML goes through
   `defusedxml`, never the stdlib parsers; metadata is allowlisted and length-capped; a failing
-  reader yields `{}`; document text in a note is defanged. *History: D78, D110, D154, D241.*
+  reader yields `{}`; document text in a note is defanged. A command a vault's session runs without a
+  prompt reaches only that vault: under `CLAUDECODE`, `search` and `write-entity` refuse other
+  investigations and files outside it, and the vault denies its sessions `~/.watchdog`.
+  *History: D78, D110, D154, D241, D257.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction stages
   `.watchdog/extracted/<sha>.json` and touches no committed state. Every vault write happens in the
   serial, sha-sorted commit pass, after the pre-commit fold and merges — so a reconcile failure

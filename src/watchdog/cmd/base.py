@@ -100,15 +100,17 @@ _VAULT_PERMISSIONS = [
     "Edit(context.md)",
 ]
 
-# Rules older vaults were created with that `refresh-skills` now removes. Entity and document
-# notes, the morgue, the registry and the timeline are pipeline-owned (D81): no skill writes them
-# directly, and pre-approving edits there let a prompt-injected session rewrite them without a
-# prompt (I6). The ingest-era commands are no longer run from a session at all.
+# Watchdog's own config and keys, denied to a vault's sessions outright (D257). These rules govern
+# Claude Code's file tools; commands the vault pre-approves confine themselves in code.
 _VAULT_DENY = [
     "Read(~/.watchdog/**)",
     "Edit(~/.watchdog/**)",
 ]
 
+# Rules older vaults were created with that `refresh-skills` now removes. Entity and document
+# notes, the morgue, the registry and the timeline are pipeline-owned (D81): no skill writes them
+# directly, and pre-approving edits there let a prompt-injected session rewrite them without a
+# prompt (I6). The ingest-era commands are no longer run from a session at all.
 _RETIRED_VAULT_PERMISSIONS = {
     "Bash(watchdog entity-index)",
     "Bash(watchdog queue-status)",

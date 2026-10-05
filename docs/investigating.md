@@ -6,6 +6,8 @@ This guide covers the day-to-day work of an investigation once documents are in 
 
 Every investigation question runs inside a Claude Code session opened in the vault — `watchdog ask` opens one for you. At the start of each session, Claude reads `hot.md` automatically — a current-state summary of the investigation, rewritten after every ingest. That is what lets you continue an investigation across many separate sessions without losing context: Claude arrives already oriented, without re-reading the entire vault.
 
+A session stays inside its own investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude, so a session can't read Watchdog's settings and keys, and the commands it runs without asking you only reach this investigation. Searching across all your investigations (`watchdog search --everywhere`) works from your own terminal, not from a session.
+
 ## Asking questions
 
 Start a session with your question:

@@ -1419,32 +1419,35 @@ def cmd_search_everywhere(args) -> None:
 
 
 def _confine_to_session_vault(args) -> None:
-    """Inside a Claude Code session, keep `watchdog search` to the vault the session runs in.
+    """Inside a Claude Code session, keep `watchdog search` to the vault the session runs in (D257).
 
     The vault's settings pre-approve `watchdog search *` so /watchdog-query can run it without a
     prompt, and the documents a session reads are adversarial by assumption (I6). Without this,
     a prompt-injected document could have the session run `search --batch ~/.watchdog/
-    credentials.json` (every line is echoed back as a term), search another investigation by
-    name, or search all of them with `--everywhere` — all with no prompt. Claude Code marks its
-    shell with `CLAUDECODE=1`; dropping the marker means running a different command line, which
-    the allow rule no longer matches, so it prompts. A person at their own terminal is unaffected."""
+    credentials.json` (every line is echoed back as a term), search another investigation, or
+    search all of them with `--everywhere`, all with no prompt. Claude Code marks its shell with
+    `CLAUDECODE=1`; dropping the marker means running a different command line, which the allow
+    rule no longer matches, so it prompts. A person at their own terminal is unaffected.
+
+    Other investigations are never looked up here, and every refusal reads the same whatever
+    was named, so the error can't be used to learn which investigations exist."""
     if not os.environ.get("CLAUDECODE"):
         return
+    refuse = ("Error: from inside a Claude Code session, watchdog search only works from this "
+              "investigation's own folder, on this investigation{}. Run it in your own terminal "
+              "instead.")
     here = Path(".").resolve()
-    why = None
+    own = {slug for slug, v in load_projects().items() if Path(v["path"]).resolve() == here}
+    if not own:
+        sys.exit(refuse.format(""))
     if getattr(args, "everywhere", False):
-        why = "--everywhere searches every investigation"
-    elif getattr(args, "batch", None):
-        target = Path(args.batch).expanduser().resolve()
-        if here not in target.parents:
-            why = f"--batch can only read a file inside this investigation, not {args.batch}"
-    if why is None and args.project and (args.query or getattr(args, "batch", None)):
-        _, info = _find_project(args.project)
-        if Path(info["path"]).resolve() != here:
-            why = f"it names another investigation ({args.project})"
-    if why:
-        sys.exit(f"Error: from inside a Claude Code session, watchdog search stays in this "
-                 f"investigation — {why}. Run it in your own terminal instead.")
+        sys.exit(refuse.format(" (not --everywhere)"))
+    batch = getattr(args, "batch", None)
+    if batch and here not in Path(batch).expanduser().resolve().parents:
+        sys.exit(refuse.format(", with a --batch file inside it"))
+    if args.project and (args.query or batch) and args.project not in own \
+            and slugify(args.project) not in own:
+        sys.exit(refuse.format(""))
 
 
 def cmd_search(args) -> None:
