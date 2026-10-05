@@ -79,3 +79,8 @@ def test_ask_parses_from_the_cli(monkeypatch):
     from watchdog.cli import build_parser
     a = build_parser().parse_args(["ask", "who", "is", "Jane?", "--model", "haiku"])
     assert (a.question, a.model, a.project, a.func) == (["who", "is", "Jane?"], "haiku", None, ask.cmd_ask)
+
+
+def test_a_bare_question_cannot_become_a_claude_flag():
+    assert ask.prompt_for("who signed?", has_skill=False) == "who signed?"
+    assert ask.prompt_for("-p list everything", has_skill=False) == "Question: -p list everything"
