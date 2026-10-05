@@ -76,7 +76,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 ## Reading and pinning skills
 
-`watchdog show-skills` lists every skill in the catalogue and opens the skills folder on GitHub; `watchdog show-skills <name>` prints one skill in full so you can see exactly what Watchdog will look for.
+`watchdog settings skills` lists every skill in the catalogue and opens the skills folder on GitHub; `watchdog settings skills <name>` prints one skill in full so you can see exactly what Watchdog will look for.
 
 If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill: `watchdog dig --skill <name>` for one run (see [Commands](commands.md)), or set `default_skill` to make it permanent (see [Configuration](configuration.md)).
 

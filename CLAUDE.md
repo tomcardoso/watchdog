@@ -158,7 +158,7 @@ Ingest runs entirely in the terminal — the Python orchestrator (`pipeline/orch
    synthesis and the briefing, in one terminal run (D251). `watchdog chew`, `dig` and `bark` run
    the same three steps one at a time. `watchdog ingest` still works but is deprecated
    (#441/D138); don't recommend it in new code or docs.
-2. Open a Claude Code session in the vault → ask investigation questions; the session reads `hot.md`, `briefings/`, and the registry fresh, with no ingest-time context baggage
+2. `watchdog ask ["question"]` (D253) opens a Claude Code session in the vault → ask investigation questions; the session reads `hot.md`, `briefings/`, and the registry fresh, with no ingest-time context baggage
 
 Investigation sessions stay separate from ingest by construction, so a session's context is spent only on Q&A.
 

@@ -274,7 +274,7 @@ def test_cmd_list_one_corrupt_registry_does_not_hide_other_projects(configured, 
     assert "Healthy Co" in out
     assert "Broken Co" in out
     assert "registry file is corrupt" in out
-    assert "watchdog doctor" in out
+    assert "watchdog settings doctor" in out
 
 
 def test_cmd_doctor_one_corrupt_registry_reports_instead_of_crashing(configured, wdg_home, capsys):
@@ -703,7 +703,7 @@ def test_cmd_open_opens_vault_folder(configured, monkeypatch):
     calls = []
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
-    cli.cmd_open(args(name="My Story"))
+    cli.cmd_open(args(name="My Story", folder=True))
     assert len(calls) == 1
     assert calls[0] == ["open", str(vault)]
 
@@ -715,7 +715,7 @@ def test_cmd_open_infers_project_from_cwd(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.chdir(vault)
-    cli.cmd_open(args(name=None))
+    cli.cmd_open(args(name=None, folder=True))
     assert len(calls) == 1
     assert calls[0] == ["open", str(vault)]
 
@@ -725,7 +725,14 @@ def test_cmd_open_exits_on_failure(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     with pytest.raises(SystemExit):
-        cli.cmd_open(args(name="My Story"))
+        cli.cmd_open(args(name="My Story", folder=True))
+
+
+def test_cmd_open_defaults_to_obsidian(configured, monkeypatch):
+    seen = []
+    monkeypatch.setattr("watchdog.cmd.vault.cmd_obsidian", lambda a: seen.append(a.name))
+    cli.cmd_open(args(name="My Story", folder=False))
+    assert seen == ["My Story"]
 
 
 # ── cmd_list ──────────────────────────────────────────────────────────────────
@@ -1400,7 +1407,6 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("version",  "about"),
     ("config",   "configure"),
     ("setting",  "configure"),
-    ("settings", "configure"),
     ("find",      "search"),
     ("process",   "chew"),
     ("preprocess", "chew"),
@@ -3119,7 +3125,7 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
     assert calls[0].get("skip_finalize") is True
     out = capsys.readouterr().out
     assert "watchdog bark" in out
-    assert "Open a fresh Claude Code session" not in out
+    assert "to ask investigation questions" not in out
 
 
 def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_path, monkeypatch):
@@ -3867,7 +3873,7 @@ def test_cmd_finalize_estimate_nothing_pending(wdg_home, tmp_path, monkeypatch, 
 
     ing.cmd_finalize(args(estimate=True))
 
-    assert "Nothing to finalize" in capsys.readouterr().out
+    assert "Nothing to finish" in capsys.readouterr().out
 
 
 def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):

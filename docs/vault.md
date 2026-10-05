@@ -81,7 +81,7 @@ my-investigation/
 
 It uses [Obsidian Bases](https://help.obsidian.md/bases), a core Obsidian feature in version 1.9 and up. There is nothing to install — no community plugin, no restricted mode to clear. Click a column header to sort (by **Documents**, say, to surface the most-mentioned entities); click a row to open the note.
 
-Two tables deserve attention. **Possible duplicate documents** lists documents that closely match one already in the vault; Watchdog never discards them, so decide whether each pair is the same document. **Single-source entities** is where a duplicate entity — the same person or company under two ids — usually shows up; the fix is `watchdog merge-entities`, covered in [Investigating](investigating.md#duplicate-entities).
+Two tables deserve attention. **Possible duplicate documents** lists documents that closely match one already in the vault; Watchdog never discards them, so decide whether each pair is the same document. **Single-source entities** is where a duplicate entity — the same person or company under two ids — usually shows up; the fix is `watchdog review merge-entities`, covered in [Investigating](investigating.md#duplicate-entities).
 
 ## Entity notes
 
@@ -163,7 +163,7 @@ obtained: 2026-06-05
 notes: Check the director change on page 12.
 ```
 
-Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog fetch` and web research arrive in `_INCOMING/` with a provenance sidecar already attached.
+Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog research fetch` and web research arrive in `_INCOMING/` with a provenance sidecar already attached.
 
 Edit a sidecar before running `chew`: chew reads it once, and the file is gone afterward, so an edit made between `chew` and `ingest` has no effect. Re-run `chew` if you need to change one.
 
@@ -173,7 +173,7 @@ A sidecar can also pin that one document's record skill:
 skill: bankruptcy
 ```
 
-Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way `--skill` does for a whole run. It must name a skill from the catalogue (`watchdog show-skills` lists them); a file path is ignored here and the document is classified instead, since a sidecar can arrive with a document you didn't write yourself. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single `ingest`, rather than needing one run per type. See [Skills](skills.md#reading-and-pinning-skills).
+Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way `--skill` does for a whole run. It must name a skill from the catalogue (`watchdog settings skills` lists them); a file path is ignored here and the document is classified instead, since a sidecar can arrive with a document you didn't write yourself. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single `ingest`, rather than needing one run per type. See [Skills](skills.md#reading-and-pinning-skills).
 
 ---
 

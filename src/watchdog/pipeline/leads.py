@@ -142,7 +142,7 @@ def _format(leads: dict, now: datetime.datetime) -> str:
     lines = [f"# Investigative leads — {now:%Y-%m-%d}\n",
              "*Deterministic whole-vault sweep of the entity registry — no model, "
              "regenerated on each ingest.*\n",
-             "*Tick a box and run `watchdog resolve --sync` (or `watchdog resolve <id>`) to "
+             "*Tick a box and run `watchdog review resolve --sync` (or `watchdog review resolve <id>`) to "
              "drop an item from future sweeps.*\n"]
 
     if leads["unprofiled"]:

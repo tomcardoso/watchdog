@@ -186,7 +186,7 @@ def _register_obsidian_vault(vault: Path) -> None:
         cfg.parent.mkdir(parents=True, exist_ok=True)
         cfg.write_text(json.dumps(data))
     except Exception:
-        pass  # non-fatal — user can register manually via watchdog obsidian
+        pass  # non-fatal — user can register manually via watchdog open
 
 
 def _obsidian_vault_ts(vault: Path):
@@ -243,7 +243,7 @@ def cmd_register(args) -> None:
     try:
         reg = _load_registry(vault)
     except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog settings doctor' to diagnose.")
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Infer name: use folder name as default, let user override
@@ -269,7 +269,7 @@ def cmd_register(args) -> None:
 
     projects = load_projects()
     if slug in projects:
-        sys.exit(f"Error: a project with slug '{slug}' is already registered. Use 'watchdog rename' or choose a different name.")
+        sys.exit(f"Error: a project with slug '{slug}' is already registered. Use 'watchdog projects rename' or choose a different name.")
 
     created_at = reg.get("created_at", now) if reg else now
     projects[slug] = {"name": name, "path": str(vault), "created_at": created_at}
@@ -424,15 +424,15 @@ def cmd_new(args) -> None:
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()
     print(f"  {_BOLD}Next steps{_RESET}")
-    print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog context{_RESET}")
+    print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog ask --context{_RESET}")
     print(f"    2. Run {_CYAN}watchdog add <files or folders>{_RESET} to add documents "
           f"{_DIM}(or drop them into _INCOMING/ and run {_RESET}{_CYAN}watchdog add{_RESET}{_DIM}){_RESET}")
-    print(f"    3. Run {_CYAN}watchdog obsidian {slug}{_RESET} to open the vault in Obsidian")
+    print(f"    3. Run {_CYAN}watchdog open {slug}{_RESET} to open the vault in Obsidian")
     print()
 
 
 def cmd_obsidian(args) -> None:
-    info = _registered_project(args.name, "obsidian")
+    info = _registered_project(args.name, "open")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -442,7 +442,7 @@ def cmd_obsidian(args) -> None:
         print(f"  Open Obsidian → {_BOLD}Open folder as vault{_RESET} → navigate to:")
         print(f"  {_CYAN}{vault}{_RESET}")
         print()
-        print(f"  After opening it once, {_CYAN}watchdog obsidian {info['name']}{_RESET} will work automatically.\n")
+        print(f"  After opening it once, {_CYAN}watchdog open {info['name']}{_RESET} will work automatically.\n")
         return
     launch = _obsidian_launch_epoch()
     ts = _obsidian_vault_ts(vault)
@@ -455,7 +455,7 @@ def cmd_obsidian(args) -> None:
         print(f"  Obsidian only reads its vault list when it starts, and {_BOLD}{info['name']}{_RESET}")
         print("  was registered afterwards.")
         print()
-        print(f"  Quit Obsidian completely, then run {_CYAN}watchdog obsidian {info['name']}{_RESET} again.\n")
+        print(f"  Quit Obsidian completely, then run {_CYAN}watchdog open {info['name']}{_RESET} again.\n")
         return
     from urllib.parse import quote
     url = f"obsidian://open?path={quote(str(vault))}"
@@ -472,7 +472,7 @@ def cmd_obsidian(args) -> None:
         print(f"\n  {_GREEN}Opened:{_RESET} {_BOLD}{info['name']}{_RESET} in Obsidian\n")
         return
     else:
-        sys.exit("Error: watchdog obsidian is not supported on this platform")
+        sys.exit("Error: watchdog open is not supported on this platform")
     result = subprocess.run(opener, capture_output=True)
     if result.returncode != 0:
         sys.exit("Error: could not open Obsidian — is it installed?")
@@ -480,6 +480,8 @@ def cmd_obsidian(args) -> None:
 
 
 def cmd_open(args) -> None:
+    if not getattr(args, "folder", False):
+        return cmd_obsidian(args)
     info = _registered_project(args.name, "open")
     vault = Path(info["path"])
     if not vault.exists():
@@ -523,7 +525,7 @@ def cmd_rename(args) -> None:
             cwd   = Path(".").resolve()
             match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
             if match is None:
-                sys.exit(f"Project not found: {first}\nRun 'watchdog list' to see all projects.")
+                sys.exit(f"Project not found: {first}\nRun 'watchdog projects list' to see all projects.")
             slug, info = match
             new_name = first.strip()
     elif first is not None:
@@ -607,7 +609,7 @@ def cmd_describe(args) -> None:
             cwd   = Path(".").resolve()
             match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
             if match is None:
-                sys.exit(f"Project not found: {first}\nRun 'watchdog list' to see all projects.")
+                sys.exit(f"Project not found: {first}\nRun 'watchdog projects list' to see all projects.")
             slug, info = match
             new_desc = first.strip()
     elif first is not None:
@@ -724,7 +726,7 @@ def cmd_move(args) -> None:
     elif not dst.exists():
         sys.exit(
             f"Error: {src} not found and {dst} does not exist — nothing to update.\n"
-            f"Move the vault manually first, then re-run: watchdog move {slug} <new-path>"
+            f"Move the vault manually first, then re-run: watchdog projects move {slug} <new-path>"
         )
 
     projects = load_projects()
@@ -753,7 +755,7 @@ def cmd_archive(args) -> None:
     projects = load_projects()
     projects[slug]["archived"] = True
     save_projects(projects)
-    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from watchdog list{_RESET}\n")
+    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from watchdog projects list{_RESET}\n")
 
 
 def cmd_unarchive(args) -> None:
@@ -765,7 +767,7 @@ def cmd_unarchive(args) -> None:
 
 
 def cmd_log(args) -> None:
-    info = _registered_project(args.name, "log")
+    info = _registered_project(args.name, "projects log")
     vault = Path(info["path"])
     log_path = vault / "log.md"
 
@@ -818,7 +820,7 @@ def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
 
 
 def cmd_watch(args) -> None:
-    info = _registered_project(args.name, "watch")
+    info = _registered_project(args.name, "add --watch")
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -874,7 +876,7 @@ def cmd_list(args) -> None:
 
     if not visible:
         if archived and not show_all:
-            print(f"\n  No active investigations. {len(archived)} archived — run {_CYAN}watchdog list --all{_RESET} to show.\n")
+            print(f"\n  No active investigations. {len(archived)} archived — run {_CYAN}watchdog projects list --all{_RESET} to show.\n")
         else:
             print(f"\n  No projects. Create one with: {_CYAN}watchdog new <name>{_RESET}\n")
         return
@@ -953,12 +955,12 @@ def cmd_list(args) -> None:
         if description:
             print(f"    {_DIM}{description}{_RESET}")
         if health:
-            print(f"    {_YELLOW}⚠ {health}{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog move {slug} <path>{_RESET}{_DIM} to relink or {_RESET}{_CYAN}watchdog delete {slug}{_RESET}{_DIM} to remove{_RESET}")
+            print(f"    {_YELLOW}⚠ {health}{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog projects move {slug} <path>{_RESET}{_DIM} to relink or {_RESET}{_CYAN}watchdog projects delete {slug}{_RESET}{_DIM} to remove{_RESET}")
         elif registry_corrupt:
-            print(f"    {_YELLOW}⚠ registry file is corrupt{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog doctor{_RESET}{_DIM} to diagnose{_RESET}")
+            print(f"    {_YELLOW}⚠ registry file is corrupt{_RESET}  {_DIM}run {_RESET}{_CYAN}watchdog settings doctor{_RESET}{_DIM} to diagnose{_RESET}")
     if archived and not show_all:
         n = len(archived)
-        print(f"  {_DIM}+ {n} archived — run {_RESET}{_CYAN}watchdog list --all{_RESET}{_DIM} to show{_RESET}")
+        print(f"  {_DIM}+ {n} archived — run {_RESET}{_CYAN}watchdog projects list --all{_RESET}{_DIM} to show{_RESET}")
     print()
 
 
@@ -985,7 +987,7 @@ def cmd_status(args) -> None:
     try:
         reg = _load_registry(vault)
     except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog settings doctor' to diagnose.")
     if not reg:
         print(f"\n  {_BOLD}{info['name']}{_RESET}")
         print(f"  {_CYAN}{info['path']}{_RESET}")
@@ -1001,7 +1003,7 @@ def cmd_status(args) -> None:
         docs_data = _read_json(docs_file) if docs_file.exists() else {}
         ents_data = _read_json(ents_file) if ents_file.exists() else {}
     except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog doctor' to diagnose.")
+        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog settings doctor' to diagnose.")
 
     total_pages = sum(d.get("page_count", 0) for d in docs_data.values())
     doc_types   = Counter(d["document_type"] for d in docs_data.values() if d.get("document_type"))
@@ -1047,7 +1049,7 @@ def cmd_status(args) -> None:
         if p["entities"]:
             bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
         detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
-        print(f"  {_YELLOW}Batch pending finalization{_RESET}{detail} {_DIM}— run{_RESET} {_CYAN}watchdog bark{_RESET}")
+        print(f"  {_YELLOW}Batch waiting to be finished{_RESET}{detail} {_DIM}— run{_RESET} {_CYAN}watchdog bark{_RESET}")
 
     from watchdog.pipeline import batch_extract
     pending_batch = batch_extract.read_state(vault)
@@ -1114,8 +1116,8 @@ def cmd_doctor(args) -> None:
         arch_note = f"  {_DIM}(archived){_RESET}" if info.get("archived") else ""
         print(f"  {_YELLOW}⚠  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}{arch_note}")
         print(f"     {_DIM}{problem.capitalize()}: {info['path']}{_RESET}")
-        print(f"     {_DIM}→ {_RESET}{_CYAN}watchdog move {slug} <new-path>{_RESET}{_DIM} to relink{_RESET}")
-        print(f"     {_DIM}→ {_RESET}{_CYAN}watchdog delete {slug}{_RESET}{_DIM} to remove from registry{_RESET}")
+        print(f"     {_DIM}→ {_RESET}{_CYAN}watchdog projects move {slug} <new-path>{_RESET}{_DIM} to relink{_RESET}")
+        print(f"     {_DIM}→ {_RESET}{_CYAN}watchdog projects delete {slug}{_RESET}{_DIM} to remove from registry{_RESET}")
         print()
 
     for slug, info, found_ver in schema_issues:
@@ -1485,7 +1487,7 @@ def cmd_search(args) -> None:
             slug_try = slugify(project_arg)
             if slug_try in projects or any(k.startswith(slug_try) for k in projects):
                 sys.exit("Error: please provide a search query.")
-            sys.exit(f"Project not found: {project_arg}\nRun 'watchdog list' to see all projects.")
+            sys.exit(f"Project not found: {project_arg}\nRun 'watchdog projects list' to see all projects.")
         _, info = match
         args.query = project_arg
     else:

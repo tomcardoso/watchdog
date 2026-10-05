@@ -4,11 +4,17 @@ This guide covers the day-to-day work of an investigation once documents are in 
 
 ## How a session starts
 
-Every investigation question runs inside a Claude Code session opened in the vault. At the start of each session, Claude reads `hot.md` automatically — a current-state summary of the investigation, rewritten after every ingest. That is what lets you continue an investigation across many separate sessions without losing context: Claude arrives already oriented, without re-reading the entire vault.
+Every investigation question runs inside a Claude Code session opened in the vault — `watchdog ask` opens one for you. At the start of each session, Claude reads `hot.md` automatically — a current-state summary of the investigation, rewritten after every ingest. That is what lets you continue an investigation across many separate sessions without losing context: Claude arrives already oriented, without re-reading the entire vault.
 
 ## Asking questions
 
-From inside a Claude Code session with the vault open:
+Start a session with your question:
+
+```bash
+watchdog ask "Who are the directors of Shell Co Ltd?"
+```
+
+The session opens, answers that question, and stays open for follow-ups. Inside it, type further questions in plain language, or use `/watchdog-query` for a cited answer filed to `queries/`:
 
 ```
 /watchdog-query Who are the directors of Shell Co Ltd?
@@ -94,11 +100,13 @@ At the end of every ingest, Watchdog runs a deterministic sweep over the whole e
 - **Unresolved contradictions** — entities carrying contradiction flags recorded at ingest, listed so they do not sit unreviewed.
 - **Inferred facts to verify** — entities carrying facts or roles the extractor flagged as inferred rather than read. Leads to verify, not findings.
 
-Re-run the sweep any time:
+Work through the open leads one at a time:
 
 ```bash
-watchdog leads
+watchdog review leads
 ```
+
+To print the whole sweep instead, as it appears in the briefing file, run `watchdog leads`.
 
 Running `watchdog` on its own inside the vault shows how many leads are open, alongside contradictions, watch-list hits and possible duplicate documents. `watchdog review` walks through them one at a time — see [Resolving items](#resolving-items).
 
@@ -113,7 +121,7 @@ Two filings rarely cite the same document in identical words, though — a court
 Resolve a request the same way as a lead, once you have the document in hand:
 
 ```bash
-watchdog resolve --sync
+watchdog review resolve --sync
 ```
 
 ## The watchlist
@@ -125,7 +133,7 @@ The scan runs automatically at the end of every ingest, over that run's new docu
 Because the automatic scan only ever sees new documents, a term added after documents are already in the vault is never checked against them. To sweep everything already ingested against the current watchlist:
 
 ```bash
-watchdog watchlist
+watchdog review watchlist
 ```
 
 It writes to the same `briefings/alerts-<date>.md`.
@@ -143,23 +151,23 @@ It shows one item at a time, with the surrounding detail, and lets you mark it h
 You can also resolve items directly. Every item in the leads, alerts, and requests files carries a short resolution id, printed next to it:
 
 ```bash
-watchdog resolve lead:isolated:acme
+watchdog review resolve lead:isolated:acme
 ```
 
 Or tick the item's `- [x]` checkbox in the briefing file (or `requests.md`) and import your ticks:
 
 ```bash
-watchdog resolve --sync
+watchdog review resolve --sync
 ```
 
-Resolved items drop out of the next sweep, so `watchdog leads` and `watchdog watchlist` become a shrinking to-do list rather than an ever-growing wall. `watchdog resolve --list` shows what you have acknowledged; `watchdog unresolve <id>` brings an item back. Acknowledgments follow an entity through a merge.
+Resolved items drop out of the next sweep, so `watchdog review leads` and `watchdog review watchlist` become a shrinking to-do list rather than an ever-growing wall. `watchdog review resolve --list` shows what you have acknowledged; `watchdog review unresolve <id>` brings an item back. Acknowledgments follow an entity through a merge.
 
 ## Duplicate entities
 
 Sometimes the same real-world person or company ends up extracted as two separate entities — most often because a name is spelled differently across documents. Watchdog merges the pairs it is confident about when it finalizes a batch; the ones it leaves are worth checking by hand. The dashboard's "Single-source entities" table is a good place to look, since a duplicate usually appears in only one document. So is any pair of near-duplicate documents `/watchdog-health` reports, which often produce two copies of the same entities. Once you have confirmed two entries are the same, fold one into the other:
 
 ```bash
-watchdog merge-entities <keep-id> <merge-id>
+watchdog review merge-entities <keep-id> <merge-id>
 ```
 
 The duplicate's aliases, documents, relationships, and timeline events all combine onto the surviving entity, and every relationship elsewhere in the vault that pointed at the losing id follows the merge. Before doing anything, Watchdog prints both entities — name, type, document and relationship counts — and asks for confirmation, because a merge is irreversible.
@@ -187,18 +195,18 @@ Then open a fresh session to investigate what came back.
 
 A few things worth knowing:
 
-- **Interrupted sessions lose nothing.** The queued links are held durably in the vault's internal state, so even a long deep run keeps what it queued if it is cut off. If a session dies before the download runs, `watchdog`, `watchdog chew`, and `watchdog status` all warn that sources are queued but not downloaded; re-run `watchdog research` (which offers to download the leftover queue) or run `watchdog research-fetch` to finish.
+- **Interrupted sessions lose nothing.** The queued links are held durably in the vault's internal state, so even a long deep run keeps what it queued if it is cut off. If a session dies before the download runs, `watchdog`, `watchdog chew`, and `watchdog projects status` all warn that sources are queued but not downloaded; re-run `watchdog research` (which offers to download the leftover queue) or run `watchdog research-fetch` to finish.
 - **Already-captured sources are skipped.** Across repeated research on the same investigation, Claude skips sources the vault has already captured — unless you ask it to re-check one for updates.
 - **Page snapshots.** HTML pages are captured as full rendered snapshots — images, styles, client-rendered content — when the optional capture browser is installed, falling back to a sanitized plain fetch otherwise. See the [installation guide](install.md) for the optional install.
 - **Wayback archiving.** Optionally, each downloaded source can also be saved to the Internet Archive's Wayback Machine, with the snapshot URL recorded in the source's provenance record — a citable public copy that survives if the original is later changed or taken down. It is off by default and never blocks a download; the [configuration guide](configuration.md) covers the keys to set.
 
 ### Already have the URLs?
 
-If you already have a batch of links — from a spreadsheet, a colleague, or your own browsing — you do not need a research session. Hand them straight to `watchdog fetch`:
+If you already have a batch of links — from a spreadsheet, a colleague, or your own browsing — you do not need a research session. Hand them straight to `watchdog research fetch`:
 
 ```bash
-watchdog fetch https://example.gov/filing https://news.example/article
-watchdog fetch links.txt
+watchdog research fetch https://example.gov/filing https://news.example/article
+watchdog research fetch links.txt
 ```
 
 A links file has one URL per line. Each URL is validated, size-capped, and saved into `_INCOMING/` with a provenance sidecar — the same hygiene as research sources — then you chew and ingest as normal.
@@ -214,29 +222,29 @@ After the first ingest, the typical loop is:
 3. **Read the briefing** — pay particular attention to connections with entities already in the vault
 4. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
 
-Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of `watchdog add` — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
+Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of `watchdog add` — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog add --watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
 
 ## Managing investigations
 
 Each investigation is a separate vault; create as many as you need. The commands below keep them organized — the [command reference](commands.md) has the full flag-by-flag detail.
 
-**Status.** `watchdog status shell-company-investigation` shows document and entity counts, pending files in `_INCOMING/`, files awaiting extraction, and the last-updated date. Omit the name to see all investigations.
+**Status.** `watchdog projects status shell-company-investigation` shows document and entity counts, pending files in `_INCOMING/`, files awaiting extraction, and the last-updated date. Omit the name to see all investigations.
 
-**History.** `watchdog log shell-company-investigation` shows the ingest history; `--lines 50` shows the last 50 lines.
+**History.** `watchdog projects log shell-company-investigation` shows the ingest history; `--lines 50` shows the last 50 lines.
 
-**List.** `watchdog list` shows every active investigation; `--all` includes archived ones.
+**List.** `watchdog projects list` shows every active investigation; `--all` includes archived ones.
 
-**Archive.** When an investigation concludes, `watchdog archive shell-company-investigation` hides it from the list without deleting anything. `watchdog unarchive` restores it.
+**Archive.** When an investigation concludes, `watchdog projects archive shell-company-investigation` hides it from the list without deleting anything. `watchdog projects unarchive` restores it.
 
-**Rename.** `watchdog rename shell-company-investigation "Oil Company Investigation"` renames the vault folder and updates the registry and the Obsidian vault entry. Blocked while a chew or ingest is in progress.
+**Rename.** `watchdog projects rename shell-company-investigation "Oil Company Investigation"` renames the vault folder and updates the registry and the Obsidian vault entry. Blocked while a chew or ingest is in progress.
 
-**Describe.** `watchdog describe shell-company-investigation "One-line summary"` sets or updates the description; omit the text to be prompted.
+**Describe.** `watchdog projects describe shell-company-investigation "One-line summary"` sets or updates the description; omit the text to be prompted.
 
-**Move.** `watchdog move shell-company-investigation /Volumes/Archive/Investigations` moves the vault to a new location and updates the registry. If you have already moved the files by hand, it just updates the registry.
+**Move.** `watchdog projects move shell-company-investigation /Volumes/Archive/Investigations` moves the vault to a new location and updates the registry. If you have already moved the files by hand, it just updates the registry.
 
-**Delete.** `watchdog delete shell-company-investigation` removes an investigation from the registry but leaves the vault files on disk. Adding `--purge` also permanently deletes all vault files — it requires explicit confirmation, and it is permanent. Use `archive` instead if you might want the vault later.
+**Delete.** `watchdog projects delete shell-company-investigation` removes an investigation from the registry but leaves the vault files on disk. Adding `--purge` also permanently deletes all vault files — it requires explicit confirmation, and it is permanent. Use `archive` instead if you might want the vault later.
 
-**Register.** `watchdog register` adds an existing vault folder to the registry; run it from inside the vault directory, or pass the path.
+**Register.** `watchdog projects register` adds an existing vault folder to the registry; run it from inside the vault directory, or pass the path.
 
 ## Trusting what you read
 

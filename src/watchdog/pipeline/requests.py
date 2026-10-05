@@ -146,7 +146,7 @@ def _format(open_: list[dict]) -> str:
     lines = [
         "# Documents to request\n",
         "*Regenerated on each ingest — lists only what is still outstanding.*\n",
-        "*Tick a box and run `watchdog resolve --sync` (or `watchdog resolve <id>`) once you "
+        "*Tick a box and run `watchdog review resolve --sync` (or `watchdog review resolve <id>`) once you "
         "have the document.*\n",
     ]
     for dtype in sorted(by_type):
