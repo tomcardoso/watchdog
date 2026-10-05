@@ -147,7 +147,18 @@ def test_refresh_adds_the_deny_rules_and_keeps_the_users(tmp_path, monkeypatch, 
     assert "Read(~/.watchdog/**)" in out["permissions"]["deny"]
 
 
-@pytest.mark.parametrize("value", [{"permissions": None}, ["not", "a", "dict"]])
+@pytest.mark.parametrize("value", [{"permissions": None}, ["not", "a", "dict"],
+                                   {"permissions": {"allow": [], "deny": {"a": 1}}}])
 def test_refresh_leaves_an_unrecognised_settings_file_alone(tmp_path, monkeypatch, capsys, value):
     assert _refresh(tmp_path, monkeypatch, value) == value
     assert "unchanged" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("target", ["../no-such-vault", "../secret-probe-bravo", "../../"])
+def test_write_entity_refusal_does_not_reveal_whether_a_path_exists(session, monkeypatch, target):
+    from watchdog.pipeline import write_entity
+    monkeypatch.setattr(sys, "argv", ["write-entity", "--entity-id", "bob", "--vault", target,
+                                      "--extraction", "x.json"])
+    with pytest.raises(SystemExit) as e:
+        write_entity.main()
+    assert "only writes to this investigation" in str(e.value)

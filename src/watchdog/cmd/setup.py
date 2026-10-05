@@ -831,8 +831,10 @@ def cmd_refresh_skills(args) -> None:
             deny = perms.get("deny")
             if isinstance(deny, str):
                 deny = [deny]                     # a single rule written as a bare string
+            elif deny is None:
+                deny = []
             elif not isinstance(deny, list):
-                deny = []                         # missing or null
+                raise TypeError("permissions.deny is not a list")   # left alone, with a warning
             missing_deny = [p for p in _VAULT_DENY if p not in deny]
             if missing_deny:
                 perms["deny"] = deny + missing_deny

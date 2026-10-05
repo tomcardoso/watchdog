@@ -140,15 +140,16 @@ def main() -> None:
     extraction_path = Path(args.extraction).resolve()
     vault_path = Path(args.vault).resolve()
 
+    # The vault's settings pre-approve this command for /watchdog-entity. From a Claude Code
+    # session it may only write to the vault the session runs in, never another one (D257, I6).
+    # Checked before anything about the path is reported, so it can't confirm a guessed name.
+    if os.environ.get("CLAUDECODE") and vault_path != Path(".").resolve():
+        sys.exit("Error: from inside a Claude Code session, write-entity only writes to this "
+                 "investigation; --vault must be the current folder.")
     if not vault_path.exists():
         sys.exit(f"Error: vault directory {vault_path} not found")
     if not is_vault(vault_path):
         sys.exit(f"Error: {vault_path} is not a Watchdog vault directory")
-    # The vault's settings pre-approve this command for /watchdog-entity. From a Claude Code
-    # session it may only write to the vault the session runs in, never another one (D257, I6).
-    if os.environ.get("CLAUDECODE") and vault_path != Path(".").resolve():
-        sys.exit("Error: from inside a Claude Code session, write-entity only writes to this "
-                 "investigation; --vault must be the current folder.")
     if not str(extraction_path).startswith(str(vault_path) + "/"):
         sys.exit(f"Error: --extraction path must be inside the vault directory ({vault_path})")
     if not extraction_path.exists():
