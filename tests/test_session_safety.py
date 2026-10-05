@@ -151,7 +151,10 @@ def test_refresh_adds_the_deny_rules_and_keeps_the_users(tmp_path, monkeypatch, 
                                    {"permissions": {"allow": [], "deny": {"a": 1}}}])
 def test_refresh_leaves_an_unrecognised_settings_file_alone(tmp_path, monkeypatch, capsys, value):
     assert _refresh(tmp_path, monkeypatch, value) == value
-    assert "unchanged" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "unchanged" in out
+    for claim in ("Permissions updated", "Read access confined", "keys protected", "cleaned up"):
+        assert claim not in out
 
 
 @pytest.mark.parametrize("target", ["../no-such-vault", "../secret-probe-bravo", "../../"])

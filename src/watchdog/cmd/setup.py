@@ -850,6 +850,9 @@ def cmd_refresh_skills(args) -> None:
             if removed or added or read_scope_added or deny_added or hook_updated:
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
+            # Nothing was written, so nothing above may be reported as done.
+            added, removed = [], []
+            read_scope_added = deny_added = hook_updated = False
             print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
                   f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
 
