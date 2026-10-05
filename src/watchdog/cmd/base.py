@@ -105,6 +105,11 @@ _VAULT_PERMISSIONS = [
 # notes, the morgue, the registry and the timeline are pipeline-owned (D81): no skill writes them
 # directly, and pre-approving edits there let a prompt-injected session rewrite them without a
 # prompt (I6). The ingest-era commands are no longer run from a session at all.
+_VAULT_DENY = [
+    "Read(~/.watchdog/**)",
+    "Edit(~/.watchdog/**)",
+]
+
 _RETIRED_VAULT_PERMISSIONS = {
     "Bash(watchdog entity-index)",
     "Bash(watchdog queue-status)",
@@ -142,6 +147,9 @@ def _vault_settings() -> dict:
             # assumption, so a prompt-injected one could otherwise direct an exfiltrating
             # read with no permission prompt to catch it).
             "blockReadsOutsideWorkingDirectories": True,
+            # An explicit deny on Watchdog's own config and keys, which holds whatever the
+            # read-scope setting above does or doesn't cover.
+            "deny": list(_VAULT_DENY),
         },
         "hooks": {
             # Load hot.md into context at the start of a session — and again after compaction,

@@ -1416,7 +1416,37 @@ def cmd_search_everywhere(args) -> None:
         print(f"  {_DIM}Skipped {n_skipped} {noun} with a broken vault path.{_RESET}\n")
 
 
+def _confine_to_session_vault(args) -> None:
+    """Inside a Claude Code session, keep `watchdog search` to the vault the session runs in.
+
+    The vault's settings pre-approve `watchdog search *` so /watchdog-query can run it without a
+    prompt, and the documents a session reads are adversarial by assumption (I6). Without this,
+    a prompt-injected document could have the session run `search --batch ~/.watchdog/
+    credentials.json` (every line is echoed back as a term), search another investigation by
+    name, or search all of them with `--everywhere` — all with no prompt. Claude Code marks its
+    shell with `CLAUDECODE=1`; dropping the marker means running a different command line, which
+    the allow rule no longer matches, so it prompts. A person at their own terminal is unaffected."""
+    if not os.environ.get("CLAUDECODE"):
+        return
+    here = Path(".").resolve()
+    why = None
+    if getattr(args, "everywhere", False):
+        why = "--everywhere searches every investigation"
+    elif getattr(args, "batch", None):
+        target = Path(args.batch).expanduser().resolve()
+        if here not in target.parents:
+            why = f"--batch can only read a file inside this investigation, not {args.batch}"
+    if why is None and args.project and (args.query or getattr(args, "batch", None)):
+        _, info = _find_project(args.project)
+        if Path(info["path"]).resolve() != here:
+            why = f"it names another investigation ({args.project})"
+    if why:
+        sys.exit(f"Error: from inside a Claude Code session, watchdog search stays in this "
+                 f"investigation — {why}. Run it in your own terminal instead.")
+
+
 def cmd_search(args) -> None:
+    _confine_to_session_vault(args)
     if getattr(args, "everywhere", False):
         cmd_search_everywhere(args)
         return

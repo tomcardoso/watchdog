@@ -15,6 +15,7 @@ from watchdog.cmd.base import (
     _LEGACY_PROMPT_HOOK_MARKER,
     _PROMPT_HOOK_COMMAND,
     _RETIRED_VAULT_PERMISSIONS,
+    _VAULT_DENY,
     _VAULT_PERMISSIONS,
     _find_project,
 )
@@ -825,6 +826,11 @@ def cmd_refresh_skills(args) -> None:
 
             if "blockReadsOutsideWorkingDirectories" not in perms:
                 perms["blockReadsOutsideWorkingDirectories"] = True
+                read_scope_added = True
+            deny = perms.setdefault("deny", [])
+            missing_deny = [p for p in _VAULT_DENY if p not in deny]
+            if missing_deny:
+                deny.extend(missing_deny)
                 read_scope_added = True
 
             # The old inline `python3 -c` prompt hook (see base._PROMPT_HOOK_COMMAND).
