@@ -141,3 +141,35 @@ def test_resolved_callout_is_filtered_from_body_but_kept_in_ledger(tmp_path):
     assert "[!contradiction] role" not in body       # resolved → filtered from the body
     assert "[!contradiction] address" in body         # the new one is present
     assert len(_entities(vault)["alice-smith"]["contradictions"]) == 2
+
+
+# ── Registry lock (D258) ──────────────────────────────────────────────────────
+
+def test_add_waits_for_the_registry_lock_and_keeps_a_concurrent_commit(tmp_path):
+    """A session's contradiction-add overlapping `bark`'s commit must not write back a stale
+    entities.json: it takes the same registry lock and reads the registry after the commit."""
+    import threading
+    from watchdog.pipeline.write_vault import _registry_lock, _write_json_atomic
+
+    vault = _setup(tmp_path)
+    registry = vault / ".watchdog" / "registry"
+    done = threading.Event()
+
+    def add():
+        contradiction.run(vault, "alice-smith", "role", "director", "test-doc", 1,
+                          "officer", "second-doc", 2)
+        done.set()
+
+    with _registry_lock(registry):
+        worker = threading.Thread(target=add)
+        worker.start()
+        assert not done.wait(0.5)                 # blocked while the "commit" holds the lock
+        ents = json.loads((registry / "entities.json").read_text())
+        ents["committed-meanwhile"] = {"name": "Committed Meanwhile", "type": "person",
+                                       "note_path": "entities/person/committed-meanwhile"}
+        _write_json_atomic(registry / "entities.json", ents)
+    worker.join(10)
+    assert done.is_set()
+    ents = json.loads((registry / "entities.json").read_text())
+    assert "committed-meanwhile" in ents          # the commit survived
+    assert ents["alice-smith"]["contradictions"]  # and so did the contradiction

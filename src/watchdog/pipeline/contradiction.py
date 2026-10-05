@@ -76,7 +76,7 @@ def _resolve_doc(doc_index: dict, doc_arg: str) -> tuple[str, dict]:
     return slug, entry
 
 
-def run(vault: Path, entity_id: str, label: str,
+def _run_unlocked(vault: Path, entity_id: str, label: str,
         a_value: str, a_doc: str, a_page,
         b_value: str, b_doc: str, b_page) -> dict:
     """Write a verified contradiction callout into an entity's note and registry ledger.
@@ -155,10 +155,24 @@ def run(vault: Path, entity_id: str, label: str,
     except Exception as e:
         print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
-    entities_path.write_text(
-        json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    from watchdog.pipeline.write_vault import _write_json_atomic
+    _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault, entities_reg)
 
     return {"added": True, "rid": rid, "entity_name": entry["name"],
             "note_path": entry["note_path"] + ".md"}
+
+
+def run(vault: Path, entity_id: str, label: str,
+        a_value: str, a_doc: str, a_page,
+        b_value: str, b_doc: str, b_page) -> dict:
+    """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
+    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
+    from watchdog.pipeline.write_vault import _registry_lock
+    registry_dir = Path(vault) / ".watchdog" / "registry"
+    if not registry_dir.is_dir():
+        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
+    with _registry_lock(registry_dir):
+        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
+

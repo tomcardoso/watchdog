@@ -262,6 +262,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D253** — `watchdog ask` opens an interactive Claude Code session, not a one-shot answer
 - **D254** — `--help` shows ten commands; old names stay as the stable interface for scripts and skills
 - **D257** — Commands a vault session runs without a prompt confine themselves to that vault
+- **D258** — Every registry writer takes the registry lock; lock files are rewritten through unique temp files
 
 </details>
 
@@ -2386,3 +2387,7 @@ The CLI had grown to more than 40 top-level commands at one level, most of them 
 ### D257 — Commands a vault session runs without a prompt confine themselves to that vault
 
 A post-merge review of D245 found that `Bash(watchdog search *)`, pre-approved so /watchdog-query never prompts, let a session read any file: `search --batch` echoes each line of the file as a term, so `~/.watchdog/credentials.json` printed API keys. A project name or `--everywhere` searched other investigations, and `write-entity --vault` could write into another one. Sessions read adversarial documents (I6), so each of these was reachable by prompt injection with no prompt. Both commands now check `CLAUDECODE`, which Claude Code sets in its shells; when it is set, they refuse anything outside the vault the session runs in. `search` never looks other investigations up, and every refusal reads the same, so the error can't be used to list them. Vault settings also deny `Read`/`Edit` of `~/.watchdog/**`, and `refresh-skills` adds the rule to existing vaults. The guard is in the commands rather than the permission rules, because a rule pattern can't express "no `--batch` outside the vault", and deny rules only govern Claude Code's own file tools, not what a command reads. The tradeoff: from a session, a `--batch` list kept outside the vault, cross-investigation search and the user's own `!` shell commands that do those things are refused. They still work from a terminal.
+
+### D258 — Every registry writer takes the registry lock; lock files are rewritten through unique temp files
+
+D245 and I7 said the session commands take the registry lock "like the commit pass does", but a post-merge review found `contradiction-add` did not, nor did `merge-entities` or the synthesis step's `apply_bundle`. Each reads `entities.json`, edits it, and writes it back seconds later. A `bark` commit landing in that gap was overwritten, losing up to a flush's worth (50 documents) of just-committed entities. All three now run under `_registry_lock` and write through `_write_json_atomic`. Separately, `locks._write_atomic` named its temp file by process id. `dig --wait`'s main thread and the heartbeat thread share a process, so a collision could stop the heartbeat for the rest of the run or crash the wait. It now uses a unique temp file per write. The tradeoff: a session's `contradiction-add` now waits for a running commit, a few seconds at most, instead of racing it.
