@@ -420,8 +420,10 @@ def _auto_approve_limit(config: dict) -> float | None:
 def _auto_approve_estimate(vault: Path, est: dict | None, *, auth_mode: str | None,
                            classify: tuple, extract: tuple, finalizers: list[tuple],
                            finishes_pending: bool) -> dict:
-    """What the auto-approve gate is allowed to rely on (D256), as `{subscription, cost_high,
-    blocker}`. A run counts as a subscription run only when every stage it calls is served by
+    """The auto-approve verdict (D256): `{"approve_subscription": True}`, `{"approve_cost": x}`
+    or `{"blocker": reason}`. Its keys deliberately differ from `cost_estimate`'s, so a raw
+    estimate handed to the gate by mistake can never approve a run. Each stage is
+    `(backend, model, effort)`. A run counts as a subscription run only when every stage it calls is served by
     the Claude Code subscription; otherwise the dollar figure must come from past complete runs on
     the models configured now (`matched_cost_high`), never from whatever model made the history.
     A pending batch this run would also finish is not in any estimate, so it always asks."""
@@ -434,18 +436,18 @@ def _auto_approve_estimate(vault: Path, est: dict | None, *, auth_mode: str | No
     if finishes_pending:
         return {"blocker": "a batch left from an earlier run will be finished too, and no estimate "
                            "covers it"}
-    if all(served_by(b) == "claude-agent-sdk" for b, _ in stages):
-        return {"subscription": True}
-    tokens = (est or {}).get("est_tokens") or 0
-    high = matched_cost_high(vault, tokens, classifier=classify[1], extractor=extract[1],
-                             finalizers={m for _, m in finalizers})
+    if all(served_by(b) == "claude-agent-sdk" for b, _, _ in stages):
+        return {"approve_subscription": True}
+    tokens = (est or {}).get("raw_tokens") or 0
+    high = matched_cost_high(vault, tokens, classifier=classify[1:], extractor=extract[1:],
+                             finalizers={f[1:] for f in finalizers})
     if high is None:
-        return {"blocker": "no past run of `watchdog add` on the models set now to estimate the "
-                           "cost from"}
-    return {"cost_high": high}
+        return {"blocker": "no past run of `watchdog add` on the models and effort set now to "
+                           "estimate the cost from"}
+    return {"approve_cost": high}
 
 
-def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dict | None = None,
+def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
                             limit: float | None = None) -> bool:
     """The point-of-no-return gate before any ingest/extract that will call the model (#426):
     shows the README's 'Public records only' warning and requires an explicit acknowledgement,
@@ -462,8 +464,8 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dic
     """
     if n_docs == 0:
         return True
-    high = (est or {}).get("cost_high")
-    subscription = bool((est or {}).get("subscription"))
+    high = (gate or {}).get("approve_cost")
+    subscription = bool((gate or {}).get("approve_subscription"))
     if limit is not None and (subscription or (high is not None and high <= limit)):
         # Within the auto-approve budget (D251): the user settled the question when they set the
         # limit, so the run goes ahead with the same one-line notice --skip-warning prints. A
@@ -473,7 +475,7 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dic
               f"{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
         return True
     if limit is not None and not skip_warning:
-        blocker = (est or {}).get("blocker")
+        blocker = (gate or {}).get("blocker")
         reason = (f"{blocker}, so the auto-approve limit can't apply" if blocker else
                   f"estimated ${high:.2f} is over your ${limit:.2f} auto-approve limit"
                   if high is not None else
@@ -501,8 +503,12 @@ def _offer_ingest(args, vault: Path) -> dict | None:
         print(models_line)
     from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
     n_docs = len(needs_extraction(vault, scan_queue(vault)))
-    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False),
-                               est=est, limit=_auto_approve_limit(load_config())):
+    limit = _auto_approve_limit(load_config())
+    if limit is not None:
+        # With an auto-approve limit, the gate needs every stage's model and the pending-batch
+        # state, which only `cmd_ingest` resolves — so it decides, not this offer (D256).
+        return cmd_ingest(args, confirm=True, skip_preview=True)
+    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
         return cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         # No leading blank line here — pick()'s own close-out already leaves one (#411).
@@ -1105,13 +1111,15 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         if limit is not None and q:
             gate_est = _auto_approve_estimate(
                 vault, est, auth_mode=a["mode"],
-                classify=(classify_backend, classify_model), extract=(extract_backend, extract_model),
-                finalizers=[(post_backend, post_model)] + [
-                    (finalizer_overrides.get(f"{s}_backend"), finalizer_overrides.get(f"{s}_model"))
+                classify=(classify_backend, classify_model, classify_effort),
+                extract=(extract_backend, extract_model, extract_effort),
+                finalizers=[(post_backend, post_model, post_effort)] + [
+                    (finalizer_overrides.get(f"{s}_backend"), finalizer_overrides.get(f"{s}_model"),
+                     post_effort)
                     for s in _FINALIZER_STAGES],
                 finishes_pending=not (is_dig or run_skip_finalize) and _orch.has_pending_finalization(vault))
         if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False),
-                                       est=gate_est, limit=limit):
+                                       gate=gate_est, limit=limit):
             _release_lock()
             # No leading blank line — pick()'s own close-out already leaves one (#411).
             print(f"  When ready, run:  {_CYAN}{pipeline_hint}{_RESET}\n")
@@ -1456,10 +1464,11 @@ def _is_hidden(path: Path, root: Path) -> bool:
 def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
     """Files named on the command line, with folders expanded to the files chew reads in them.
 
-    Never the investigation's own files: a path inside the vault is refused (files already in
-    `_INCOMING/` are picked up without being named), and a folder that contains the vault — `add
-    ~/Documents` with the vault under it — has the vault's files left out, so Watchdog's notes
-    and registry are never read back in as source documents. Hidden files and folders are skipped."""
+    Never an investigation's own files: a path inside this vault is refused (files already in
+    `_INCOMING/` are picked up without being named), and a folder that contains this or any other
+    vault — `add ~/Documents`, `add ~/Investigations` — has those vaults' files left out, so
+    Watchdog's notes and registries are never read back in as source documents. Hidden files and
+    folders are skipped."""
     from watchdog.pipeline.preprocess_batch import find_files
     vault = vault.resolve()
     out: list[Path] = []
@@ -1474,11 +1483,24 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
                      f"or move them into _INCOMING/.")
         if p.is_dir():
             found = [f for f in find_files([p]) if not _is_hidden(f, p)]
-            inside = [f for f in found if vault in f.parents]
+            vault_dirs: dict[Path, bool] = {}
+
+            def in_a_vault(f: Path) -> bool:
+                # This one or any other Watchdog investigation under `p` (`add ~/Investigations`).
+                for d in f.parents:
+                    if d == p.parent:
+                        return False
+                    if d not in vault_dirs:
+                        vault_dirs[d] = d == vault or is_vault(d)
+                    if vault_dirs[d]:
+                        return True
+                return False
+
+            inside = [f for f in found if in_a_vault(f)]
             if inside:
                 print(f"\n  {_DIM}Leaving out {len(inside)} file{'s' if len(inside) != 1 else ''} "
-                      f"from this investigation's own folder.{_RESET}")
-                found = [f for f in found if vault not in f.parents]
+                      f"that belong to a Watchdog investigation's own folder.{_RESET}")
+                found = [f for f in found if not in_a_vault(f)]
             if not found:
                 print(f"\n  {_DIM}No supported files in {_RESET}{_CYAN}{raw}{_RESET}")
             out.extend(found)

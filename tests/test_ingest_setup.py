@@ -301,7 +301,7 @@ def test_scan_queue_missing_dir_returns_empty_list(tmp_path):
 def test_cost_estimate_empty_queue(tmp_path):
     vault = _make_vault(tmp_path)
     est = cost_estimate(vault, scan_queue(vault), backend="claude-api")
-    assert est == {"documents": 0, "pages": 0, "est_tokens": 0,
+    assert est == {"documents": 0, "pages": 0, "est_tokens": 0, "raw_tokens": 0,
                     "cost_low": None, "cost_high": None, "runs_used": 0,
                     "subscription": False}
 

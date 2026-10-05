@@ -220,7 +220,9 @@ def tick_in_briefings(vault: Path, rids, ticked: bool = True) -> int:
     for md in sorted((vault / "briefings").glob("*.md")) + [vault / "requests.md"]:
         if not md.exists():
             continue
-        text = md.read_text(encoding="utf-8", errors="replace")
+        # newline="" keeps CRLF files CRLF; surrogateescape round-trips bytes that aren't UTF-8.
+        with md.open(encoding="utf-8", errors="surrogateescape", newline="") as fh:
+            text = fh.read()
         lines = text.split("\n")
         hit = False
         for i, line in enumerate(lines):
@@ -233,7 +235,10 @@ def tick_in_briefings(vault: Path, rids, ticked: bool = True) -> int:
                 changed += 1
                 hit = True
         if hit:
-            md.write_text("\n".join(lines), encoding="utf-8")
+            tmp = md.with_name(md.name + ".tmp")
+            with tmp.open("w", encoding="utf-8", errors="surrogateescape", newline="") as fh:
+                fh.write("\n".join(lines))
+            tmp.replace(md)
     return changed
 
 

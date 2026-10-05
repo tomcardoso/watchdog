@@ -32,26 +32,28 @@ def test_auto_approve_limit(config, expected):
 
 def test_within_limit_goes_ahead_without_asking(monkeypatch, capsys):
     monkeypatch.setattr(ing.interactive, "pick", _no_prompt)
-    assert ing._confirm_public_records(3, est={"cost_high": 1.2}, limit=5.0) is True
+    assert ing._confirm_public_records(3, gate={"approve_cost": 1.2}, limit=5.0) is True
     out = _plain(capsys.readouterr().out)
     assert "Auto-approved" in out and "$1.20" in out and "3 documents" in out
 
 
 def test_subscription_is_always_within_the_limit(monkeypatch, capsys):
     monkeypatch.setattr(ing.interactive, "pick", _no_prompt)
-    assert ing._confirm_public_records(1, est={"cost_high": None, "subscription": True},
+    assert ing._confirm_public_records(1, gate={"approve_subscription": True},
                                        limit=0.5) is True
     assert "subscription" in _plain(capsys.readouterr().out)
 
 
 @pytest.mark.parametrize("est, reason", [
-    ({"cost_high": 9.0}, "over your $5.00 auto-approve limit"),
-    ({"cost_high": None}, "no dollar estimate yet"),
+    ({"approve_cost": 9.0}, "over your $5.00 auto-approve limit"),
+    ({}, "no dollar estimate yet"),
+    # a raw cost_estimate dict can never approve: its keys are not the gate's
+    ({"cost_high": 0.01, "subscription": True}, "no dollar estimate yet"),
 ])
 def test_over_limit_or_unpriced_still_asks(monkeypatch, capsys, est, reason):
     asked = []
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 0)
-    assert ing._confirm_public_records(2, est=est, limit=5.0) is True
+    assert ing._confirm_public_records(2, gate=est, limit=5.0) is True
     assert asked
     out = _plain(capsys.readouterr().out)
     assert reason in out and "Public records only" in out
@@ -60,7 +62,7 @@ def test_over_limit_or_unpriced_still_asks(monkeypatch, capsys, est, reason):
 def test_no_limit_asks_as_before(monkeypatch, capsys):
     asked = []
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 1)
-    assert ing._confirm_public_records(2, est={"cost_high": 0.01}, limit=None) is False
+    assert ing._confirm_public_records(2, gate={"approve_cost": 0.01}, limit=None) is False
     assert asked
     assert "auto-approve" not in _plain(capsys.readouterr().out)
 

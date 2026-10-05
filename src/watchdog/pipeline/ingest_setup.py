@@ -268,6 +268,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     calibration = _tokens_calibration(vault, max_runs) if documents else None
     est_tokens = round(raw_tokens * calibration) if calibration else raw_tokens
     result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
+              "raw_tokens": raw_tokens,
               "cost_low": None, "cost_high": None, "runs_used": 0,
               "subscription": backend == "claude-agent-sdk"}
     if backend == "claude-agent-sdk" or not documents:
@@ -303,50 +304,56 @@ def _same_model(recorded: str | None, configured: str) -> bool:
             == canonical_id(resolve_model_id(configured)).lower())
 
 
-def matched_cost_high(vault: Path, est_tokens: int, *, classifier: str, extractor: str,
-                      finalizers: set[str], max_runs: int = 3) -> float | None:
-    """A conservative dollar figure for the auto-approve gate (D256): `est_tokens` times the
-    highest $/input-token of this vault's last `max_runs` complete runs — runs that both extracted
-    and finished a batch — whose every classify, extract and finish call used the models
-    configured now. `cost_estimate`'s ratio comes from any recent run, whatever model made it, so a
-    vault that switched to a pricier model would be priced at the old rate; this one returns None
-    rather than guess. Input tokens are summed per call with each call's own backend, so a
-    provider that reports cached tokens inside its input count is not counted twice (#617)."""
+def matched_cost_high(vault: Path, raw_tokens: int, *, classifier: tuple, extractor: tuple,
+                      finalizers: set[tuple], max_runs: int = 3) -> float | None:
+    """A dollar figure for the auto-approve gate (D256), or None when there is no basis for one.
+
+    `classifier`/`extractor` are `(model, effort)`; `finalizers` is a set of them. Only this
+    vault's complete runs count — runs that both extracted and finished a batch — and only those
+    whose every classify, extract and finish call used the model *and* effort configured now
+    (thinking bills as output, so effort changes the price). Each run is priced as its whole cost
+    over its own chars/4 document estimate (`totals.est_input_tokens`), and the queue's raw
+    chars/4 estimate is multiplied by the highest of the last `max_runs` such rates. Pricing per
+    document token, not per token the model read, keeps a large vault's finish-stage input (entity
+    synthesis, the briefing) from diluting the rate of a small run."""
     from watchdog.pipeline import orchestrate
-    if est_tokens <= 0:
+    if raw_tokens <= 0:
         return None
-    ratios: list[float] = []
+
+    def same(call, want):
+        model, effort = want
+        return _same_model(call.get("model"), model) and (call.get("effort") or None) == (effort or None)
+
+    rates: list[float] = []
     for uf in reversed(orchestrate.usage_files(vault)):
         try:
-            calls = _read_json(uf).get("calls") or []
+            data = _read_json(uf)
         except (OSError, json.JSONDecodeError):
             continue
+        calls = data.get("calls") or []
         tasks = {c.get("task") for c in calls}
         if not (tasks & _EXTRACT_TASKS) or not (tasks & orchestrate.FINALIZE_TASKS):
             continue
-        matches = True
+        ok = True
         for c in calls:
-            task, model = c.get("task"), c.get("model")
+            task = c.get("task")
             if task in _EXTRACT_TASKS:
-                ok = _same_model(model, extractor)
+                ok = same(c, extractor)
             elif task == "classify":
-                ok = _same_model(model, classifier)
+                ok = same(c, classifier)
             elif task in orchestrate.FINALIZE_TASKS:
-                ok = any(_same_model(model, f) for f in finalizers)
-            else:
-                ok = True
+                ok = any(same(c, f) for f in finalizers)
             if not ok:
-                matches = False
                 break
-        if not matches:
+        if not ok:
             continue
-        tokens = sum(_real_input_tokens(c, c.get("backend")) for c in calls)
+        est = (data.get("totals") or {}).get("est_input_tokens") or 0
         cost = sum(c.get("cost_usd") or 0 for c in calls)
-        if tokens > 0 and cost > 0:
-            ratios.append(cost / tokens)
-        if len(ratios) >= max_runs:
+        if est > 0 and cost > 0:
+            rates.append(cost / est)
+        if len(rates) >= max_runs:
             break
-    return est_tokens * max(ratios) if ratios else None
+    return raw_tokens * max(rates) if rates else None
 
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
