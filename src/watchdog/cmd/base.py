@@ -33,7 +33,6 @@ _ALIASES = {
     "version":    "about",
     "config":     "configure",
     "setting":    "configure",
-    "settings":   "configure",
     "find":       "search",
     "health":     "doctor",
     "check":      "doctor",
@@ -189,7 +188,7 @@ _CMD_HELP: dict[str, dict] = {
             'batch that was interrupted. Originals passed by path stay where they are.',
             '',
             'Stops only for the public-records acknowledgement and for a provider refusing your',
-            'key or account. Set `watchdog configure auto_approve_usd <dollars>` to skip the',
+            'key or account. Set `watchdog settings auto_approve_usd <dollars>` to skip the',
             'acknowledgement for runs estimated at or under that amount. A rate limit pauses the',
             'run until it resets.',
         ],
@@ -201,10 +200,14 @@ _CMD_HELP: dict[str, dict] = {
         "desc": 'Open an investigation vault in Obsidian',
     },
     'open': {
-        "desc": 'Open vault folder in Finder / file explorer',
+        "desc": 'Open an investigation in Obsidian',
+        "notes": [
+            'Omit the name when you are inside the investigation. With --folder, opens the',
+            'folder in Finder or your file explorer instead, as `watchdog open` did before.',
+        ],
     },
     'archive': {
-        "desc": 'Archive a completed investigation (hidden from watchdog list)',
+        "desc": 'Archive a completed investigation (hidden from watchdog projects list)',
     },
     'unarchive': {
         "desc": 'Restore an archived investigation',
@@ -288,12 +291,18 @@ _CMD_HELP: dict[str, dict] = {
         "notes": [
             'Shows each open contradiction, lead, watch-list hit and possible duplicate document',
             'in turn. For each one, mark it handled, keep it open, or open its note in Obsidian.',
-            'Handled items stop appearing in briefings, reports and the home screen; they are',
-            'stored in the same place `watchdog resolve` writes, so `watchdog unresolve <id>`',
-            'brings one back.',
+            'Handled items stop appearing in briefings, reports and the home screen;',
+            '`watchdog review unresolve <id>` brings one back.',
             '',
             'Name a kind to review only that: contradictions, leads, alerts or duplicates.',
             'Piped or run without a terminal, it prints the list with each resolution id instead.',
+            '',
+            'Related commands:',
+            '    watchdog review resolve <id…>       mark items handled by their ids (--sync, --list)',
+            '    watchdog review unresolve <id…>     bring handled items back',
+            '    watchdog review watchlist           sweep every document against watchlist.md',
+            '    watchdog review merge-entities <keep-id> <merge-id>',
+            '    watchdog review add-contradiction <entity-id>',
             '',
             'Examples:',
             '    watchdog review',
@@ -326,7 +335,7 @@ _CMD_HELP: dict[str, dict] = {
             'notes, which are pipeline-owned (D81). Once you have verified a candidate against',
             "the sources, this writes it into the entity's ## Contradictions section through the",
             "pipeline's own note builder, in the exact format extraction emits — so the callout",
-            'is tracked by the resolutions layer and `watchdog resolve` / `unresolve` work on it',
+            'is tracked by the resolutions layer and `watchdog review resolve` / `unresolve` work on it',
             'like any pipeline-emitted one. No model calls.',
             '',
             'Validates that the entity id and both document slugs exist before writing; a callout',
@@ -340,8 +349,11 @@ _CMD_HELP: dict[str, dict] = {
             "Seeded by the vault's entities, leads, and gaps, Claude conducts bounded web research",
             'and queues the sources it finds; when the session ends, watchdog downloads them into',
             '_INCOMING/ — so findings flow through the normal chew → ingest pipeline. Claude never',
-            'writes vault notes directly. After the download, run `watchdog chew` then',
-            '`watchdog dig` to fold the sources into the vault.',
+            'writes vault notes directly. After the download, run `watchdog add` to fold the',
+            'sources into the vault.',
+            '',
+            'Already have the links? `watchdog research fetch <urls or file>` downloads them',
+            'into _INCOMING/ without a research session.',
         ],
     },
     'watchlist': {
@@ -648,7 +660,7 @@ def _registered_project(name: str | None, command: str) -> dict:
                  f"into a project first.")
     info = next((v for v in load_projects().values() if Path(v["path"]).resolve() == cwd), None)
     if info is None:
-        sys.exit("Error: current directory is a vault but not registered. Run `watchdog register` first.")
+        sys.exit("Error: current directory is a vault but not registered. Run `watchdog projects register` first.")
     return info
 
 
@@ -662,7 +674,7 @@ def _find_project(name: str) -> tuple[str, dict]:
         elif len(matches) > 1:
             sys.exit(f"Ambiguous name — matches: {', '.join(sorted(matches))}")
         else:
-            sys.exit(f"Project not found: {name}\nRun 'watchdog list' to see all projects.")
+            sys.exit(f"Project not found: {name}\nRun 'watchdog projects list' to see all projects.")
     return slug, projects[slug]
 
 
@@ -782,44 +794,21 @@ def _print_banner() -> None:
     print(f"  {_DIM}Usage:  watchdog <command> [options]{_RESET}")
     print()
     groups = [
-        ("Manage investigations", [
-            ("new",        "Create a new investigation vault"),
-            ("register",   "Register an existing vault folder"),
-            ("obsidian",   "Open in Obsidian"),
-            ("open",       "Open vault folder in Finder / file explorer"),
-            ("archive",    "Archive a completed investigation"),
-            ("unarchive",  "Restore an archived investigation"),
-            ("rename",     "Rename an investigation"),
-            ("delete",     "Remove an investigation from registry"),
+        ("Get documents in", [
+            ("add",        "Add files or folders: read, extract, and write the briefing"),
         ]),
-        ("Document processing", [
-            ("add",              "Add documents to the vault — chew, dig and bark in one step"),
-            ("fetch",            "Download a batch of URLs into _INCOMING/"),
-            ("chew",             "Process documents in _INCOMING/ (step 1 of add)"),
-            ("dig",              "Extract queued documents (step 2 of add)"),
-            ("bark",             "Finish a batch — reconciliation, synthesis, briefing (step 3 of add)"),
-            ("context",          "Seed investigation context from _CONTEXT/"),
-            ("watch",            "Watch _INCOMING/ and chew files automatically"),
-        ]),
-        ("Investigate", [
+        ("Work the investigation", [
             ("ask",        "Ask questions about the vault in a Claude Code session"),
-            ("search",     "Semantic search across ingested documents"),
+            ("search",     "Search documents by meaning and exact wording"),
             ("review",     "Step through contradictions, leads, watch-list hits and duplicates"),
-            ("leads",      "Surface investigative leads from the entity graph"),
-            ("watchlist",  "Sweep the whole vault against watchlist.md"),
-            ("research",   "Research open questions on the web (downloads into _INCOMING/)"),
+            ("open",       "Open the investigation in Obsidian"),
+            ("research",   "Research open questions on the web"),
         ]),
-        ("Info", [
-            ("list",       "List all investigations"),
-            ("status",     "Show detailed status"),
-            ("usage",      "Per-call token/cost/latency breakdown for ingest runs"),
-            ("doctor",     "Check for missing or broken vaults"),
-        ]),
-        ("Settings", [
+        ("Manage", [
+            ("new",        "Create a new investigation"),
+            ("projects",   "List, rename, move, archive or delete investigations"),
+            ("settings",   "Models, keys, health checks and skills"),
             ("setup",      "Set up Watchdog after installation"),
-            ("configure",  "View or change configuration"),
-            ("auth",       "Show and change how Watchdog authenticates to model providers"),
-            ("about",      "Show version and project links"),
         ]),
     ]
     for group_name, cmds in groups:
@@ -827,3 +816,8 @@ def _print_banner() -> None:
         for cmd, desc in cmds:
             print(f"    {_CYAN}{cmd:<15}{_RESET} {desc}")
         print()
+    print(f"  {_DIM}Run{_RESET} {_CYAN}watchdog{_RESET} {_DIM}inside an investigation for what's waiting on you."
+          f"{_RESET}")
+    print(f"  {_DIM}Add --help after any command for its options;{_RESET} "
+          f"{_CYAN}watchdog help maintenance{_RESET} {_DIM}lists the rest.{_RESET}")
+    print()

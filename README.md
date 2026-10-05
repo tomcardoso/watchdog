@@ -72,7 +72,7 @@ watchdog new "Shell Company Investigation"
 cd ~/Investigations/shell-company-investigation
 
 watchdog add ~/Downloads/court-filings/
-watchdog obsidian
+watchdog open
 watchdog ask "Who are the directors of Shell Co Ltd?"
 ```
 
@@ -118,7 +118,7 @@ Please open an issue before starting significant work.
 
 ## Acknowledgements
 
-The vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici. Search is built on [fastembed](https://github.com/qdrant/fastembed) by Qdrant; the passage-window approach, `+`/`-` queries and show-the-source principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. Embedding the raw corpus separately from the knowledge graph was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro, and the structured vault index for entity lookup by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code). The ASCII dogs shown by `watchdog new` and `watchdog about` were drawn by Felix Lee and Sarah Kearsley.
+The vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici. Search is built on [fastembed](https://github.com/qdrant/fastembed) by Qdrant; the passage-window approach, `+`/`-` queries and show-the-source principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. Embedding the raw corpus separately from the knowledge graph was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro, and the structured vault index for entity lookup by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code). The ASCII dogs shown by `watchdog new` and `watchdog settings about` were drawn by Felix Lee and Sarah Kearsley.
 
 ## License
 

@@ -41,5 +41,5 @@ def cmd_contradiction_add(args) -> None:
     print(f"  {_GREEN}Added contradiction{_RESET} to {_BOLD}{result['entity_name']}{_RESET} "
           f"{_DIM}({args.entity_id}){_RESET}")
     print(f"  {_CYAN}{result['note_path']}{_RESET}")
-    print(f"  {_DIM}acknowledge with{_RESET} {_CYAN}watchdog resolve {result['rid']}{_RESET}")
+    print(f"  {_DIM}acknowledge with{_RESET} {_CYAN}watchdog review resolve {result['rid']}{_RESET}")
     print()

@@ -165,7 +165,7 @@ def cmd_research(args) -> None:
         print(f"  {_DIM}Tip: set up free Wayback Machine keys so sources you find get archived "
               f"automatically —{_RESET}")
         print(f"  {_DIM}see {_RESET}{_CYAN}https://archive.org/account/s3.php{_RESET}{_DIM}, then "
-              f"run {_RESET}{_CYAN}watchdog configure wayback_access_key{_RESET}\n")
+              f"run {_RESET}{_CYAN}watchdog settings wayback_access_key{_RESET}\n")
 
     question = (getattr(args, "question", None) or "").strip()
     if not question:

@@ -54,7 +54,7 @@ def test_ask_without_a_question_opens_an_empty_session(vault, launched):
 def test_ask_warns_when_the_query_skill_is_missing(vault, launched, capsys):
     (vault / ".claude" / "commands" / "watchdog-query.md").unlink()
     ask.cmd_ask(_args(["who", "signed?"]))
-    assert "watchdog refresh-skills" in capsys.readouterr().out
+    assert "watchdog settings refresh-skills" in capsys.readouterr().out
     assert launched == [(vault, "who signed?", None)]       # the question, not an unknown command
 
 

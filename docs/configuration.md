@@ -4,10 +4,10 @@ This page covers every Watchdog setting: what it does, what its default is, and 
 
 ## How configuration works
 
-Settings live in a single file, `~/.watchdog/config.json`, and `watchdog configure` reads and writes it. Run it with no arguments to see every setting and its current value, grouped by section:
+Settings live in a single file, `~/.watchdog/config.json`, and `watchdog settings` reads and writes it. Run it with no arguments to see every setting and its current value, grouped by section:
 
 ```bash
-watchdog configure
+watchdog settings
 ```
 
 In an interactive terminal, the listing ends with an offer to launch a configuration wizard — an arrow-key menu of every setting. Arrow to a setting, press Enter to read its help and change it, and repeat; press `q` to quit. When the terminal can't support arrow keys, the wizard falls back to a numbered prompt.
@@ -15,10 +15,10 @@ In an interactive terminal, the listing ends with an offer to launch a configura
 To set a value directly:
 
 ```bash
-watchdog configure <key> <value>
+watchdog settings <key> <value>
 ```
 
-Or run `watchdog configure <key>` with no value to see that one key's help and change it interactively.
+Or run `watchdog settings <key>` with no value to see that one key's help and change it interactively.
 
 ## The settings
 
@@ -34,7 +34,7 @@ Or run `watchdog configure <key>` with no value to see that one key's help and c
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether the table-detection model runs on PDFs; turn off to speed up text-only documents. |
 | `auto_approve_usd` | *(off)* | Dollar limit under which `watchdog add`/`dig` skip the public-records pause and go ahead with a one-line notice. A Claude subscription is always within it; a run over it, or with no dollar estimate yet, still asks. `0` turns it off — see [Controlling cost](#controlling-cost). |
-| `extract_concurrency` | `20` (`3` if `watchdog setup` or `watchdog auth` puts you on Claude subscription auth) | Documents extracted in parallel during `watchdog dig`. |
+| `extract_concurrency` | `20` (`3` if `watchdog setup` or `watchdog settings auth` puts you on Claude subscription auth) | Documents extracted in parallel during `watchdog dig`. |
 | `extract_token_budget` | `auto` | Cap on tokens per minute during `watchdog dig`. `auto` discovers it from your provider's own responses (not available on Claude subscription auth — set a number by hand there if you hit rate limits). |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
 | `default_skill` | *(unset)* | Pin one record skill for every ingested document, skipping classification. |
@@ -86,7 +86,7 @@ Watchdog decides whether a PDF's text layer is trustworthy, or needs OCR instead
 
 The `section_*` family governs very large documents at ingest. A document estimated under `section_token_threshold` tokens is extracted whole; anything larger is split into sections of roughly `section_token_budget` tokens, extracted sequentially, with `section_overlap_tokens` of overlap so entities and events spanning a boundary aren't lost. The threshold and budget default to `auto`: rather than a fixed number, `auto` resolves to a fraction of the extraction model's context window, so a large-window model (GPT-5.6 Luna's 1.05M) reads far more of a document in one call before sectioning than a 200K Claude window does — fewer calls, less orchestration overhead. `auto` also adjusts for the fact that different models count tokens differently. Watchdog estimates a document's size with a quick rule of thumb — roughly four characters per token — and each model's real count drifts from that by a fixed factor, which is measured against a fixed set of test documents and recorded in `model_catalog.yaml`. Claude Opus 4.8, Opus 5.5 and Sonnet 5 use a newer tokenizer that produces about 28 per cent more tokens per character than the estimate assumes, so their resolved number comes out *smaller* on the same context window, and a large document sections before it can overrun the real limit. Every other model runs the other way — the rule of thumb over-counts them, by around 7 per cent for Claude Haiku 4.5 and Sonnet 4.6, 9 per cent for Gemini, and about 20 per cent for the GPT-5 and DeepSeek families — so their resolved number is a little larger. Once a vault has extracted enough documents on a given model, an ingest run switches to that vault's own measured ratio for it, which reflects your documents rather than the test set. Set either key to a fixed number to override the model-aware default (an advanced escape hatch). A fixed number does not rescale when you change `extractor_model`, so set it back to `auto` (or re-check the value) if you switch to a model with a different context window.
 
-Viewing either key with `watchdog configure` shows the number `auto` currently resolves to for your configured extractor. For a plain Claude tier that reads `auto (93750 — sonnet)`; for a non-Claude backend it also names the backend, e.g. `auto (659340 — gemini:gemini-3.7-flash)`, because the backend decides which model the name resolves to. Reasoning effort is not named, because it doesn't affect the number — effort changes how much a model thinks, not how much of a document it can take in one call. This preview always reflects `model_catalog.yaml`'s published figures, never a particular vault's own measured correction (above) — `watchdog configure` has no vault to measure one from.
+Viewing either key with `watchdog settings` shows the number `auto` currently resolves to for your configured extractor. For a plain Claude tier that reads `auto (93750 — sonnet)`; for a non-Claude backend it also names the backend, e.g. `auto (659340 — gemini:gemini-3.7-flash)`, because the backend decides which model the name resolves to. Reasoning effort is not named, because it doesn't affect the number — effort changes how much a model thinks, not how much of a document it can take in one call. This preview always reflects `model_catalog.yaml`'s published figures, never a particular vault's own measured correction (above) — `watchdog settings` has no vault to measure one from.
 
 Some models charge roughly double above a certain input length — GPT-5.4, GPT-5.5, GPT-5.6 Luna and GPT-5.6 Terra above about 272,000 tokens, Gemini 3.1 Pro above 200,000. `auto` holds a call under whichever line applies, with 10 per cent to spare, so a long document is split rather than sent whole at the higher rate. This is also what keeps `watchdog dig --estimate-all` honest, since it quotes one flat rate per model. If you pin `section_token_budget` to a fixed number instead, that protection goes with it — the number you set is used as-is.
 
@@ -116,7 +116,7 @@ Both search models run entirely on your machine — no API calls, no cost, nothi
 
 The three model keys and three effort keys are the main cost controls — see [Controlling cost](#controlling-cost) below. Each model key takes a Claude tier (`haiku`, `sonnet`, `opus`) or a `backend:model` value (see [Model backends](#model-backends)), and each has a matching per-run flag on `watchdog dig` (classifier, extractor) or `watchdog bark` (finalizer). The classifier default is Haiku because picking a skill is easy work; the finalizer default is Haiku because it works from compact digests rather than raw documents. The finalizer also reconciles duplicate entities and flags contradictions between documents — the pipeline's two hardest judgements — so raise it if synthesized prose feels thin, if duplicate entities are slipping through, or if cross-document contradictions are being missed. It runs only a few times per ingest regardless of how many documents you feed it, so raising it costs far less than raising the extractor.
 
-`default_skill` pins one record skill for every document, skipping classification — for vaults that are always one document type. Run `watchdog configure default_skill` with no value to pick from the catalogue interactively.
+`default_skill` pins one record skill for every document, skipping classification — for vaults that are always one document type. Run `watchdog settings default_skill` with no value to pick from the catalogue interactively.
 
 ### Research
 
@@ -124,48 +124,48 @@ Both research keys are advisory budgets that the interactive research skill limi
 
 ### Wayback archiving
 
-With `wayback_save` on, every source that `watchdog research` or `watchdog fetch` downloads is also submitted to the Internet Archive's Wayback Machine, and the snapshot URL is recorded in the source's provenance sidecar — a citable copy that survives if the original changes or is taken down. It is a no-op until both keys are set; generate a free pair at [archive.org/account/s3.php](https://archive.org/account/s3.php). Archiving is best-effort and never blocks or fails a download.
+With `wayback_save` on, every source that `watchdog research` or `watchdog research fetch` downloads is also submitted to the Internet Archive's Wayback Machine, and the snapshot URL is recorded in the source's provenance sidecar — a citable copy that survives if the original changes or is taken down. It is a no-op until both keys are set; generate a free pair at [archive.org/account/s3.php](https://archive.org/account/s3.php). Archiving is best-effort and never blocks or fails a download.
 
 ### The telemetry record
 
 Watchdog keeps a database of every model call it makes, at `~/.watchdog/telemetry.db`. Each row records the model, the tokens used, the cost and the time taken, along with the path and name of the vault and the filename of the document the call was about. It holds no document text and never leaves your computer. It exists so cost and speed can be compared across runs and models.
 
-Because it lists the documents in every one of your investigations, treat the file as sensitive: keep it out of shared folders and backups that others can reach. To stop recording, run `watchdog configure telemetry false`. Rows already written stay until you delete the file. `watchdog delete --purge` removes a vault's rows along with the vault. Each vault's own usage files, which `watchdog usage` reads, are separate and unaffected.
+Because it lists the documents in every one of your investigations, treat the file as sensitive: keep it out of shared folders and backups that others can reach. To stop recording, run `watchdog settings telemetry false`. Rows already written stay until you delete the file. `watchdog projects delete --purge` removes a vault's rows along with the vault. Each vault's own usage files, which `watchdog usage` reads, are separate and unaffected.
 
 ## Examples
 
 ```bash
 # Switch to Tesseract on a non-Mac machine
-watchdog configure ocr_engine tesseract
+watchdog settings ocr_engine tesseract
 
 # Disable table detection for a project that is all court decisions
-watchdog configure table_structure false
+watchdog settings table_structure false
 
 # Override OCR languages for a collection of French and Arabic documents
-watchdog configure ocr_languages "fr-FR,ar-SA"
+watchdog settings ocr_languages "fr-FR,ar-SA"
 
 # Move investigation storage to an external drive
-watchdog configure projects_dir /Volumes/SecureDrive/Investigations
+watchdog settings projects_dir /Volumes/SecureDrive/Investigations
 
 # Use Haiku for extraction by default (faster and cheaper)
-watchdog configure extractor_model haiku
+watchdog settings extractor_model haiku
 
 # Spend even fewer thinking tokens on extraction than the medium default
-watchdog configure extractor_effort low
+watchdog settings extractor_effort low
 
 # Lower parallelism if you hit model rate limits
-watchdog configure extract_concurrency 2
+watchdog settings extract_concurrency 2
 
 # Route classification to a local model — documents never leave the machine for this stage
-watchdog configure local_base_url http://localhost:11434/v1
-watchdog configure classifier_model local:llama-3.3-70b
+watchdog settings local_base_url http://localhost:11434/v1
+watchdog settings classifier_model local:llama-3.3-70b
 ```
 
 ## Model backends
 
 Backend choice applies only to the ingest pipeline (`watchdog dig` and `watchdog bark`) — the bounded reasoning steps that run in your terminal. The interactive investigation commands (`/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki`, `/watchdog-context`, `/watchdog-health`) are not affected: they are open-ended, multi-turn sessions that run inside Claude Code, on Claude, always. The ingest stages are single-shot calls, which tolerate a cheaper provider far better.
 
-Within ingest, Watchdog is designed around Claude and uses it by default — no setup beyond Claude Code itself — but each stage — classification, extraction, post-ingest — can run on a different provider, and each has its own model key. See [Controlling cost](#controlling-cost) for OpenAI's GPT-5.6 Luna, the benchmark-recommended alternative for extraction. A stage's model key takes either a Claude tier (`haiku`, `sonnet`, `opus`, routed by your `watchdog auth` mode) or a `backend:model` value naming the provider and its model:
+Within ingest, Watchdog is designed around Claude and uses it by default — no setup beyond Claude Code itself — but each stage — classification, extraction, post-ingest — can run on a different provider, and each has its own model key. See [Controlling cost](#controlling-cost) for OpenAI's GPT-5.6 Luna, the benchmark-recommended alternative for extraction. A stage's model key takes either a Claude tier (`haiku`, `sonnet`, `opus`, routed by your `watchdog settings auth` mode) or a `backend:model` value naming the provider and its model:
 
 | Value | Runs on |
 |---|---|
@@ -191,14 +191,14 @@ Within ingest, Watchdog is designed around Claude and uses it by default — no 
 Point a stage at a provider — persistently or per run:
 
 ```bash
-watchdog configure extractor_model                      # interactive: pick the model, then paste the key if it's a new provider
-watchdog configure extractor_model deepseek:deepseek-flash
+watchdog settings extractor_model                      # interactive: pick the model, then paste the key if it's a new provider
+watchdog settings extractor_model deepseek:deepseek-flash
 watchdog dig --extractor-model openai:gpt-5-mini        # one-off override
 ```
 
-If you pick a model interactively from a provider you have no key for yet, `watchdog configure` asks for that key on the spot, so the stage is ready to run rather than failing on the next ingest. Setting the value directly on the command line (the second form above) does not prompt — store the key yourself with `watchdog auth`, or set the provider's environment variable.
+If you pick a model interactively from a provider you have no key for yet, `watchdog settings` asks for that key on the spot, so the stage is ready to run rather than failing on the next ingest. Setting the value directly on the command line (the second form above) does not prompt — store the key yourself with `watchdog settings auth`, or set the provider's environment variable.
 
-`watchdog setup` offers a shortcut for all of this, in two separate steps: first, how Claude Code itself signs in (subscription or API key) — required regardless of what ingestion ends up using, since the interactive investigation commands always run on Claude. Second, and independently, which provider handles ingestion — Claude is one option alongside OpenAI, DeepSeek, Gemini, local/self-hosted, and OpenRouter, not a default the rest are framed as an alternative to. Picking a non-Claude provider walks through pasting its key and choosing one model, applied to all three ingest stages in one go; picking Claude while its access mode is a subscription surfaces the token/session-limit cost as a heads-up at that point, not as a gate before you can even see the other options. Either way, setup then offers to store a key for any other provider too, just to have on hand for a later per-stage override. `watchdog auth`'s status view shows, per stage, which provider it currently resolves to and whether that provider is ready (a key is stored or its env var is set) — a stage routed to Claude also names its billing mode (`subscription` or `api-key`) — plus every stored key, Anthropic included, marked `(in use)`, `(unused)`, or, for a stored Anthropic key that the current mode can't reach, `(inactive)`.
+`watchdog setup` offers a shortcut for all of this, in two separate steps: first, how Claude Code itself signs in (subscription or API key) — required regardless of what ingestion ends up using, since the interactive investigation commands always run on Claude. Second, and independently, which provider handles ingestion — Claude is one option alongside OpenAI, DeepSeek, Gemini, local/self-hosted, and OpenRouter, not a default the rest are framed as an alternative to. Picking a non-Claude provider walks through pasting its key and choosing one model, applied to all three ingest stages in one go; picking Claude while its access mode is a subscription surfaces the token/session-limit cost as a heads-up at that point, not as a gate before you can even see the other options. Either way, setup then offers to store a key for any other provider too, just to have on hand for a later per-stage override. `watchdog settings auth`'s status view shows, per stage, which provider it currently resolves to and whether that provider is ready (a key is stored or its env var is set) — a stage routed to Claude also names its billing mode (`subscription` or `api-key`) — plus every stored key, Anthropic included, marked `(in use)`, `(unused)`, or, for a stored Anthropic key that the current mode can't reach, `(inactive)`.
 
 Each stage is independent — you can keep extraction on Claude Sonnet while routing the cheaper classification or post-ingest steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask. The effort knobs are model-specific: setting one on a stage routed to a model that doesn't support that level (or doesn't support effort at all — Claude Haiku) errors rather than running silently at a different effort than you asked for (see [Controlling cost](#controlling-cost)). DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model id (e.g. `deepseek:deepseek-flash-thinking`); extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for the judgment-heavy cases. Thinking mode also changes the extraction prompt itself: a model that can reason privately gets a short instruction to do so, while one that cannot is walked through the same steps in its visible answer, so a non-thinking DeepSeek id gets the longer, explicit form and a `-thinking` one does not. DeepSeek's effort knob works only in thinking mode, and takes `low`, `high`, or `max` — asking for effort on a non-thinking DeepSeek id errors, because there is no thinking there for it to tune, and `medium`/`xhigh` error too, since DeepSeek treats both as another name for `high` and Watchdog would rather say so than run a level you didn't ask for. Gemini has no equivalent thinking toggle — its `reasoning_effort` is driven entirely by the effort knobs.
 
@@ -209,11 +209,11 @@ Cost is one reason to run a stage on a model on your own machine or network, and
 `local` works with any server that speaks the OpenAI-compatible Chat Completions wire format — Ollama, LM Studio, llama.cpp's server, vLLM, and others. Point it at your server and pick a model:
 
 ```bash
-watchdog configure local_base_url http://localhost:11434/v1   # e.g. Ollama's default port
-watchdog configure extractor_model local:llama-3.3-70b
+watchdog settings local_base_url http://localhost:11434/v1   # e.g. Ollama's default port
+watchdog settings extractor_model local:llama-3.3-70b
 ```
 
-Most self-hosted runners don't check for an API key at all, so `local` doesn't ask for one unless you add it yourself with `watchdog auth` (some gateways in front of a local model do check). Because a self-hosted model's id carries no vendor namespace, Watchdog can't infer its context window the way it does for a hosted model — set `local_context_window` to the real figure (check your model's card or your runner's docs) so document sectioning sizes sections correctly; left unset, Watchdog assumes a conservative 8,000 tokens, which errs toward more (smaller) sections rather than risking an overrun on an unknown model.
+Most self-hosted runners don't check for an API key at all, so `local` doesn't ask for one unless you add it yourself with `watchdog settings auth` (some gateways in front of a local model do check). Because a self-hosted model's id carries no vendor namespace, Watchdog can't infer its context window the way it does for a hosted model — set `local_context_window` to the real figure (check your model's card or your runner's docs) so document sectioning sizes sections correctly; left unset, Watchdog assumes a conservative 8,000 tokens, which errs toward more (smaller) sections rather than risking an overrun on an unknown model.
 
 `watchdog usage` reports a local call's cost as $0 — genuinely accurate, since there's no per-token bill — but $0 is not the same as free: a local model spends wall-clock time instead, and a `local model` note next to the usual figures says so, so a run that took an hour doesn't read as having cost nothing.
 
@@ -223,12 +223,12 @@ OpenRouter (`openrouter:anthropic/claude-3.5-sonnet`, or any model id [OpenRoute
 
 ### Batch mode: bulk extraction at half price
 
-If you're ingesting a large dump — say, 200 pages — a batch-mode `extractor_model` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog status`) to collect the results.
+If you're ingesting a large dump — say, 200 pages — a batch-mode `extractor_model` submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so `watchdog dig` submits it and exits rather than waiting. Run `watchdog dig` again later (or check `watchdog projects status`) to collect the results.
 
 Two batch backends are available, one per provider:
 
-- `claude-batch:sonnet` (or any Claude tier) — Anthropic's Message Batches API. Requires `api-key` auth mode (switch to it with `watchdog auth`) — batching is not available on a Claude subscription.
-- `openai-batch:gpt-5.6-luna` (or any OpenAI model id) — OpenAI's Batch API. OpenAI has no subscription mode in Watchdog at all, so this just needs a stored OpenAI key (`watchdog auth`), the same as the plain `openai` backend.
+- `claude-batch:sonnet` (or any Claude tier) — Anthropic's Message Batches API. Requires `api-key` auth mode (switch to it with `watchdog settings auth`) — batching is not available on a Claude subscription.
+- `openai-batch:gpt-5.6-luna` (or any OpenAI model id) — OpenAI's Batch API. OpenAI has no subscription mode in Watchdog at all, so this just needs a stored OpenAI key (`watchdog settings auth`), the same as the plain `openai` backend.
 
 Each needs only that provider's own key — an `openai-batch` extractor needs no Anthropic key, and vice versa.
 
@@ -244,15 +244,15 @@ Classification itself is not batched — it stays one quick call per document, a
 This is also the recipe for keeping a Claude subscription's session limits for interactive work only, spending zero subscription tokens on bulk ingest:
 
 ```bash
-watchdog auth                                             # interactive: switch Claude to api-key mode
-watchdog configure classifier_model claude-api:haiku
-watchdog configure extractor_model claude-batch:sonnet
-watchdog configure finalizer_model claude-api:haiku
+watchdog settings auth                                             # interactive: switch Claude to api-key mode
+watchdog settings classifier_model claude-api:haiku
+watchdog settings extractor_model claude-batch:sonnet
+watchdog settings finalizer_model claude-api:haiku
 watchdog dig                                              # submits the batch, exits
 watchdog dig                                              # later: collects it once ready
 ```
 
-The same recipe works with `openai-batch:gpt-5.6-luna` in place of `claude-batch:sonnet` on the third line, for a corpus already routed to OpenAI — no `watchdog auth` switch needed first, since OpenAI has no subscription mode to switch from.
+The same recipe works with `openai-batch:gpt-5.6-luna` in place of `claude-batch:sonnet` on the third line, for a corpus already routed to OpenAI — no `watchdog settings auth` switch needed first, since OpenAI has no subscription mode to switch from.
 
 ## Controlling cost
 
@@ -267,10 +267,10 @@ The main levers, roughly in order of impact:
 - **Batch mode.** The [batch-mode recipe](#batch-mode-bulk-extraction-at-half-price) above halves the cost of a bulk ingest, on either Claude (metered key) or OpenAI.
 - **When you run it, if you are on DeepSeek.** DeepSeek is the one provider here that charges by the clock: every rate doubles during its peak hours, 01:00-04:00 and 06:00-10:00 UTC (21:00-00:00 and 02:00-06:00 Eastern), on Monday to Friday, and is half that the rest of the time, including all weekend. A daytime run in North America is already off-peak; an overnight batch on a weekday may not be. DeepSeek also treats Chinese public holidays as off-peak, which Watchdog does not model, so a run on one is quoted at the peak rate and the figure is an over-estimate. Watchdog prices each call at the rate in force when the call is made, so `watchdog usage` reports what you were actually billed, and `--estimate`/`--estimate-all` quote the rate in force when you ask, marking the figure when it is the peak one.
 - **Which Claude backend you're on.** A plain `sonnet` (or `haiku`/`opus`) reaches Claude one of two ways, chosen by your auth mode: a subscription goes through Claude Code's own harness, a metered key goes straight to the API. The two bill different numbers of input tokens for identical documents, so it is worth knowing which one you are on — `watchdog usage` names the backend for every stage. The API path also caches the reusable part of the prompt (the instructions and the record skill) properly, which the subscription path cannot be told to do.
-- **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. Both `watchdog setup` and `watchdog auth` already lower the default from 20 to 3 when they detect Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and the metered-path default of 20 reliably throttles it. Switching back to an API key later restores it to 20 automatically, as long as you never set your own value — `watchdog configure extract_concurrency` always overrides both directions if your plan needs something else.
+- **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. Both `watchdog setup` and `watchdog settings auth` already lower the default from 20 to 3 when they detect Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and the metered-path default of 20 reliably throttles it. Switching back to an API key later restores it to 20 automatically, as long as you never set your own value — `watchdog settings extract_concurrency` always overrides both directions if your plan needs something else.
 - **Token budget.** `extract_concurrency` caps how many *documents* run at once, but a rate limit is really a cap on *tokens* per minute — a batch of large documents can trip it well under your concurrency limit. `watchdog dig` now holds back a new document automatically once the run's own recent pace gets close to your provider's real limit, discovered from the provider's own responses — nothing to configure on the claude-api, OpenAI, DeepSeek, Gemini, local, and OpenRouter routes. Claude subscription auth doesn't report this number, so if you're on that path and still hit rate limits after lowering concurrency, set `extract_token_budget` to a number from your account's rate-limits page.
 
-**An auto-approve limit.** `watchdog configure auto_approve_usd 5` lets any run estimated at $5 or less go ahead without the public-records pause, printing a one-line notice of what it sent instead. Set it only if you already check that what you add is public record: the pause exists for that check. A run over the limit, or a metered-key vault with no past runs to estimate from, still asks; a Claude subscription has no per-run price, so its runs always count as within the limit. `0` turns it off.
+**An auto-approve limit.** `watchdog settings auto_approve_usd 5` lets any run estimated at $5 or less go ahead without the public-records pause, printing a one-line notice of what it sent instead. Set it only if you already check that what you add is public record: the pause exists for that check. A run over the limit, or a metered-key vault with no past runs to estimate from, still asks; a Claude subscription has no per-run price, so its runs always count as within the limit. `0` turns it off.
 
 Before committing to a large run, get a number:
 

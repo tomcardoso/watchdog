@@ -1776,12 +1776,12 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
         api_key = auth.resolve_auth().get("key")
         if not api_key:
             raise model_client.ModelError(
-                "claude-batch requires api-key auth mode — switch to it with `watchdog auth`")
+                "claude-batch requires api-key auth mode — switch to it with `watchdog settings auth`")
     else:
         api_key = auth.get_api_key(provider)
         if not api_key:
             raise model_client.ModelError(
-                f"the {backend} backend needs an API key — run `watchdog auth` to add one")
+                f"the {backend} backend needs an API key — run `watchdog settings auth` to add one")
 
     state = batch_extract.read_state(vault)
     if state is not None:
@@ -2965,7 +2965,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                             print()
                             _say(f"{_YELLOW}The provider refused this run{_RESET}{_DIM} — {e}{_RESET}")
                             _say(f"{_DIM}Stopping; finished documents are saved and the rest stay "
-                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog auth"
+                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog settings auth"
                                  f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}"
                                  f"{_DIM}.{_RESET}")
                             _request_stop(auth_error=str(e))
