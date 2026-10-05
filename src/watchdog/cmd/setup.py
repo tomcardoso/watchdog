@@ -15,6 +15,7 @@ from watchdog.cmd.base import (
     _LEGACY_PROMPT_HOOK_MARKER,
     _PROMPT_HOOK_COMMAND,
     _RETIRED_VAULT_PERMISSIONS,
+    _VAULT_DENY,
     _VAULT_PERMISSIONS,
     _find_project,
 )
@@ -799,6 +800,7 @@ def cmd_refresh_skills(args) -> None:
     added = []
     removed = []
     read_scope_added = False
+    deny_added = False
     hook_updated = False
     if settings_path.exists():
         try:
@@ -826,6 +828,17 @@ def cmd_refresh_skills(args) -> None:
             if "blockReadsOutsideWorkingDirectories" not in perms:
                 perms["blockReadsOutsideWorkingDirectories"] = True
                 read_scope_added = True
+            deny = perms.get("deny")
+            if isinstance(deny, str):
+                deny = [deny]                     # a single rule written as a bare string
+            elif deny is None:
+                deny = []
+            elif not isinstance(deny, list):
+                raise TypeError("permissions.deny is not a list")   # left alone, with a warning
+            missing_deny = [p for p in _VAULT_DENY if p not in deny]
+            if missing_deny:
+                perms["deny"] = deny + missing_deny
+                deny_added = True
 
             # The old inline `python3 -c` prompt hook (see base._PROMPT_HOOK_COMMAND).
             for group in (settings.get("hooks") or {}).get("UserPromptSubmit") or []:
@@ -834,10 +847,14 @@ def cmd_refresh_skills(args) -> None:
                         hook["command"] = _PROMPT_HOOK_COMMAND
                         hook_updated = True
 
-            if removed or added or read_scope_added or hook_updated:
+            if removed or added or read_scope_added or deny_added or hook_updated:
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
+            # Nothing was written, so nothing above may be reported as done.
+            added, removed = [], []
+            read_scope_added = deny_added = hook_updated = False
+            print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
+                  f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
 
     print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
     if added:
@@ -846,6 +863,8 @@ def cmd_refresh_skills(args) -> None:
         print(f"  {_GREEN}Permissions cleaned up{_RESET}  {_DIM}removed {len(removed)} retired rule{'s' if len(removed) != 1 else ''} (dead Write(...) rules, and pre-approved edits to pipeline-owned notes){_RESET}")
     if read_scope_added:
         print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
+    if deny_added:
+        print(f"  {_GREEN}Watchdog's keys protected{_RESET}  {_DIM}sessions in this vault can't read or edit ~/.watchdog{_RESET}")
     if hook_updated:
         print(f"  {_GREEN}Prompt hook updated{_RESET}  {_DIM}no longer needs python3 on PATH{_RESET}")
     for change in _migrate_vault_views(vault):

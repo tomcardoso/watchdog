@@ -27,3 +27,11 @@ def isolate_telemetry_db(tmp_path, monkeypatch):
     monkeypatch.setattr(telemetry_db_mod, "enabled", lambda: True)
     yield
     telemetry_db_mod.close()
+
+
+@pytest.fixture(autouse=True)
+def outside_a_claude_code_session(monkeypatch):
+    """Tests run as a person at a terminal. Claude Code marks its own shells with CLAUDECODE=1,
+    and `watchdog search` confines itself when it sees that, so a developer running the suite
+    from a session would otherwise get different results than CI."""
+    monkeypatch.delenv("CLAUDECODE", raising=False)
