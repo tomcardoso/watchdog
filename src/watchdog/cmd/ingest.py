@@ -1246,10 +1246,11 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
         print(f"  {_CYAN}watchdog bark{_RESET}\n")
     elif pipeline_hint == "watchdog add":
         print(f"\n  {_DIM}Next:{_RESET} {_CYAN}watchdog{_RESET}{_DIM} for what's waiting on you · "
-              f"{_RESET}{_CYAN}watchdog context{_RESET}{_DIM} to ask questions · {_RESET}"
+              f"{_RESET}{_CYAN}watchdog ask{_RESET}{_DIM} to ask questions · {_RESET}"
               f"{_CYAN}watchdog obsidian{_RESET}{_DIM} to read the notes{_RESET}\n")
     else:
-        print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
+        print(f"\n  {_DIM}Run{_RESET} {_CYAN}watchdog ask{_RESET} {_DIM}to ask investigation questions "
+              f"in a fresh Claude Code session.{_RESET}\n")
 
 
 def exit_code_for(result) -> int:

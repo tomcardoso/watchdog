@@ -133,15 +133,15 @@ For deeper network analysis in a dedicated graph tool, `watchdog export` writes 
 
 ## Ask questions in a fresh session
 
-When ingest finishes, open a **new** Claude Code session to ask investigation questions — do not reuse a session that has been sitting open. At the start of each session, Claude reads `hot.md` automatically, so it knows the current state of the investigation without re-reading the vault. A fresh session has the full working room it needs for your questions; a stale one is carrying leftover baggage that crowds that room out.
+When `watchdog add` finishes, ask your first question:
 
-From inside a Claude Code session with the vault open:
-
-```
-/watchdog-query Who are the directors of Shell Co Ltd?
+```bash
+watchdog ask "Who are the directors of Shell Co Ltd?"
 ```
 
-Claude answers using only the documents in your vault, and cites the source for every claim.
+This opens a **new** Claude Code session in the vault and starts it by answering your question. Claude answers using only the documents in your vault, and cites the source for every claim. The session stays open, so you can follow up ("what else has she signed?") until you exit with Ctrl-D. `watchdog ask` on its own opens a session ready for a question.
+
+Open a fresh session each time rather than reusing one that has been sitting open. At the start of each session, Claude reads `hot.md` automatically, so it knows the current state of the investigation without re-reading the vault. A fresh session has the full working room it needs for your questions; a stale one is carrying leftover baggage that crowds that room out.
 
 ## Where next
 

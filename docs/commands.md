@@ -235,6 +235,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 
 | Command | What it does |
 |---|---|
+| `watchdog ask ["question"]` | Open a Claude Code session on the vault, optionally starting with a question — see [below](#watchdog-ask). |
 | `watchdog search <name> "<query>"` | Search ingested documents by meaning and exact terms — see [below](#watchdog-search). |
 | `watchdog review [kind]` | Step through open contradictions, leads, watch-list hits and possible duplicate documents one at a time — see [below](#watchdog-review). |
 | `watchdog leads [name]` | Print the deterministic lead sweep over the entity graph — see [below](#watchdog-leads). |
@@ -275,6 +276,12 @@ Flags:
 - `--json` — machine-readable output.
 
 Omit the project name when running from inside the vault directory; with `--everywhere`, no project name is used at all.
+
+### watchdog ask
+
+Opens an interactive Claude Code session inside the investigation, so you can go back and forth with Claude about the documents. With a question — `watchdog ask "who signed the 2021 loan agreement?"` — the session starts by answering it through `/watchdog-query`: a cited answer from the vault, filed to `queries/` when it is substantive. The session then stays open for follow-ups until you exit with Ctrl-D. Without a question, it opens ready for one.
+
+Two options: `--project <name>` opens a vault you are not currently inside, and `--model sonnet|opus|haiku` picks the session's model (by default, Claude Code's own setting). The session runs on whatever Claude Code is signed in with — your subscription or key — not the provider set for adding documents.
 
 ### watchdog review
 
@@ -371,7 +378,7 @@ Views and changes Watchdog's settings — run it with no arguments to see everyt
 
 ## Slash commands
 
-These run inside a Claude Code session with your investigation open — they are interactive, multi-turn, and always run on Claude. Extraction is not a slash command; run `watchdog dig` in your terminal instead.
+These run inside a Claude Code session with your investigation open (`watchdog ask` opens one) — they are interactive, multi-turn, and always run on Claude. Extraction is not a slash command; run `watchdog dig` in your terminal instead.
 
 | Command | What it does |
 |---|---|

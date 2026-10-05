@@ -83,6 +83,7 @@ from watchdog.cmd.setup import (
     cmd_show_skills,
     cmd_unlock,
 )
+from watchdog.cmd.ask import cmd_ask
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
 from watchdog.cmd.merge_entities import cmd_merge_entities
@@ -253,6 +254,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
+
+    p_ask = sub.add_parser("ask", help="Open a Claude Code session to ask questions about the vault")
+    p_ask.add_argument("question", nargs="*", help="A first question (omit to open the session ready for one)")
+    p_ask.add_argument("--project", "-p", metavar="NAME", help="Investigation name or slug (default: current directory)").completer = _project_completer
+    p_ask.add_argument("--model", choices=list(_MODEL_IDS), default=None,
+                       help="Claude model for the session (default: Claude Code's own setting)")
+    p_ask.set_defaults(func=cmd_ask)
 
     p_review = sub.add_parser("review", help="Step through contradictions, leads, watch-list hits and duplicates")
     p_review.add_argument("kind", nargs="?", choices=_REVIEW_KINDS, help="Review only this kind")
