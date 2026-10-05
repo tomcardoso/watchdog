@@ -149,3 +149,30 @@ def test_pointer_prints_through_main(monkeypatch, capsys):
     monkeypatch.setattr(cli, "build_parser", lambda: _patched(parser(), "list", seen))
     _run(monkeypatch, "list")
     assert "`watchdog list` is now" in capsys.readouterr().out and seen
+
+
+@pytest.mark.parametrize("argv", [["add", "--watch", "--help"], ["ask", "--context", "-h"]])
+def test_help_reaches_the_flag_routed_command(argv):
+    assert groups.rewrite(argv)[1:] == ["--help"]
+
+
+def test_context_model_equals_form_and_one_name_only():
+    assert groups.rewrite(["ask", "--context", "--model=opus"]) == ["context", "--model=opus"]
+    with pytest.raises(SystemExit, match="takes only an investigation name"):
+        groups.rewrite(["ask", "--context", "city", "--project", "other"])
+
+
+def test_abbreviated_flags_still_run_the_right_command(monkeypatch):
+    import argparse as ap
+    import watchdog.cmd.ask as ask_mod
+    import watchdog.cmd.ingest as ing
+    seen = []
+    monkeypatch.setattr("watchdog.cmd.vault.cmd_watch", lambda a: seen.append(("watch", a.name)))
+    monkeypatch.setattr("watchdog.cmd.ingest.cmd_context", lambda a: seen.append(("context", a.name, a.model)))
+    a = cli.build_parser().parse_args(["add", "--watc", "city"])
+    ing.cmd_add(a)
+    a = cli.build_parser().parse_args(["ask", "--cont", "-p", "city"])
+    ask_mod.cmd_ask(a)
+    assert seen == [("watch", "city"), ("context", "city", "sonnet")]
+    with pytest.raises(SystemExit, match="takes no question"):
+        ask_mod.cmd_ask(ap.Namespace(context=True, question=["who"], project=None, model=None))

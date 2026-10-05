@@ -121,12 +121,20 @@ def _flag_args(cmd: str, flag: str, args: list[str]) -> list[str]:
     error here rather than being passed on to mean something different."""
     usage = {"--watch": "watchdog add --watch [name]",
              "--context": "watchdog ask --context [name] [--model M]"}[flag]
+    if any(a in ("-h", "--help") for a in args):
+        return ["--help"]
     out, positional, i = [], 0, 0
     while i < len(args):
         a = args[i]
+        if flag == "--context" and a.startswith("--model="):
+            out.append(a)
+            i += 1
+            continue
         if flag == "--context" and a in ("--project", "-p", "--model") and i + 1 < len(args):
             if a == "--model":
                 out += [a, args[i + 1]]
+            elif positional:
+                sys.exit(f"Error: {usage} takes only an investigation name — got '{args[i + 1]}'.")
             else:
                 out.append(args[i + 1])
                 positional += 1

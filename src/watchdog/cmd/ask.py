@@ -30,10 +30,23 @@ def prompt_for(question: str | None, has_skill: bool = True) -> str | None:
     question = " ".join((question or "").split())
     if not question:
         return None
-    return f"/watchdog-query {question}" if has_skill else question
+    if has_skill:
+        return f"/watchdog-query {question}"
+    # The bare question is passed to `claude` as a positional argument; one starting with "-"
+    # would be read as a flag (`-p` is print mode), so it gets a harmless prefix.
+    return f"Question: {question}" if question.startswith("-") else question
 
 
 def cmd_ask(args) -> None:
+    if getattr(args, "context", False):
+        # `ask --context` is normally rewritten to `context` before parsing (groups.rewrite); an
+        # abbreviation like `--cont` reaches here instead, and must still seed context.
+        from argparse import Namespace
+        from watchdog.cmd.ingest import cmd_context
+        if getattr(args, "question", None):
+            sys.exit("Error: watchdog ask --context [--project NAME] takes no question.")
+        return cmd_context(Namespace(name=getattr(args, "project", None),
+                                     model=getattr(args, "model", None) or "sonnet"))
     vault, name = _vault(getattr(args, "project", None))
     if not vault.is_dir():
         sys.exit(f"Error: project directory not found: {vault}")
@@ -43,9 +56,11 @@ def cmd_ask(args) -> None:
     if not has_skill:
         print(f"  {_YELLOW}This vault has no /watchdog-query command.{_RESET} "
               f"{_DIM}Run{_RESET} {_CYAN}watchdog settings refresh-skills{_RESET} {_DIM}to install it.{_RESET}")
-    if question:
+    if question and has_skill:
         print(f"  {_DIM}Claude answers from the vault with citations, then stays open for "
               f"follow-ups.{_RESET}")
+    elif question:
+        print(f"  {_DIM}Claude answers your question, then stays open for follow-ups.{_RESET}")
     else:
         print(f"  {_DIM}Ask anything about the documents — for a cited answer saved to queries/, "
               f"start with{_RESET} {_CYAN}/watchdog-query{_RESET}{_DIM}.{_RESET}")

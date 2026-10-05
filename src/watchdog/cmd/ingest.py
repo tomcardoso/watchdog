@@ -1437,6 +1437,15 @@ def cmd_add(args) -> dict | None:
     for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
     picks up whatever is waiting: files in `_INCOMING/`, queued documents, a pending batch.
     `--retry` first puts documents that failed extraction back in the queue."""
+    if getattr(args, "watch", False):
+        # `add --watch` is normally rewritten to `watch` before parsing (groups.rewrite); an
+        # abbreviation like `--watc` reaches here instead, and must still mean watch.
+        from argparse import Namespace
+        from watchdog.cmd.vault import cmd_watch
+        paths = getattr(args, "paths", None) or []
+        if len(paths) > 1:
+            sys.exit("Error: watchdog add --watch [name] takes only an investigation name.")
+        return cmd_watch(Namespace(name=paths[0] if paths else None))
     vault = Path(".").resolve()
     if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
