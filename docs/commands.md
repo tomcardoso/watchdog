@@ -267,6 +267,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog review merge-entities <keep-id> <merge-id>` | Fold a duplicate entity into another — see [below](#watchdog-review-merge-entities). |
 | `watchdog review add-contradiction <entity-id>` | Record a contradiction you have verified, so it is tracked like the ones found during ingest. |
 | `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web — see [below](#watchdog-research). |
+| `watchdog leads [name]` | Maintenance. Print the full lead sweep — see [Leads](#leads). |
 | `watchdog timeline [name]` | Maintenance. Rebuild `timeline.md` from the canonical event files; deterministic, no model call. |
 | `watchdog reindex [name]` | Maintenance. Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
 | `watchdog usage [name]` | Maintenance. Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
@@ -307,7 +308,7 @@ Name a kind to review only that: `watchdog review contradictions`, `leads`, `ale
 
 ### Leads
 
-The lead sweep is a deterministic pass over the vault's entity graph — no model call. It flags four things: entities named as a relationship target but never profiled, entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles that need verifying — either marked as inferred, or carrying a figure Watchdog could not find anywhere in the source document. The sweep runs automatically at the end of every ingest, writing `briefings/leads-<date>.md`. `watchdog review leads` steps through the open leads one at a time; piped or run without a terminal, it prints them with their resolution ids. (`watchdog leads`, the older command, prints the full sweep and is what the vault's slash commands run.) Items marked handled drop out of the list. See [Investigating](investigating.md) for how leads fit the working rhythm.
+The lead sweep is a deterministic pass over the vault's entity graph — no model call. It flags four things: entities named as a relationship target but never profiled, entities recurring across documents with no relationships, entities carrying unresolved contradiction flags, and entities carrying facts or roles that need verifying — either marked as inferred, or carrying a figure Watchdog could not find anywhere in the source document. The sweep runs automatically at the end of every ingest, writing `briefings/leads-<date>.md`. `watchdog review leads` steps through the open leads one at a time; piped or run without a terminal, it prints them with their resolution ids. (`watchdog leads`, a maintenance command, prints the full sweep; it is also what the vault's slash commands run.) Items marked handled drop out of the list. See [Investigating](investigating.md) for how leads fit the working rhythm.
 
 ### watchdog review resolve and unresolve
 

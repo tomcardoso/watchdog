@@ -337,12 +337,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_open.add_argument("--folder", action="store_true", help="Open the folder in Finder / file explorer instead")
     p_open.set_defaults(func=cmd_open)
 
+    def _group_rest_completer(group):
+        """What follows `projects <verb>`: project names, or a path for `register`/`move`.
+        Nothing is offered after `settings <key>`."""
+        def complete(prefix="", parsed_args=None, **kw):
+            verb = getattr(parsed_args, "verb", None)
+            if not verb:
+                return []
+            if group == "projects":
+                if verb in ("register", "move"):
+                    try:
+                        from argcomplete.completers import FilesCompleter
+                        return FilesCompleter()(prefix=prefix, **kw)
+                    except ImportError:
+                        return []
+                return _project_completer(prefix, parsed_args, **kw)
+            return []      # a settings value, or a settings command that takes no argument
+        return complete
+
     for group, (desc, verbs) in groups._GROUP_HELP.items():
         p_group = sub.add_parser(group, help=desc)
+        extra = list(_CONFIGURE_KEYS) if group == "settings" else []
         p_group.add_argument("verb", nargs="?", help="One of: " + ", ".join(verbs)).completer = (
-            lambda verbs=verbs, **kw: list(verbs))
+            lambda verbs=verbs, extra=extra, **kw: [*verbs, *extra])
         p_group.add_argument("rest", nargs=argparse.REMAINDER, help=argparse.SUPPRESS).completer = (
-            _project_completer if group == "projects" else (lambda **kw: list(_CONFIGURE_KEYS)))
+            _group_rest_completer(group))
         p_group.set_defaults(func=groups.cmd_group)
 
     p_delete = sub.add_parser("delete", help="Remove an investigation from registry")

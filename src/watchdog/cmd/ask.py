@@ -38,6 +38,15 @@ def prompt_for(question: str | None, has_skill: bool = True) -> str | None:
 
 
 def cmd_ask(args) -> None:
+    if getattr(args, "context", False):
+        # `ask --context` is normally rewritten to `context` before parsing (groups.rewrite); an
+        # abbreviation like `--cont` reaches here instead, and must still seed context.
+        from argparse import Namespace
+        from watchdog.cmd.ingest import cmd_context
+        if getattr(args, "question", None):
+            sys.exit("Error: watchdog ask --context [--project NAME] takes no question.")
+        return cmd_context(Namespace(name=getattr(args, "project", None),
+                                     model=getattr(args, "model", None) or "sonnet"))
     vault, name = _vault(getattr(args, "project", None))
     if not vault.is_dir():
         sys.exit(f"Error: project directory not found: {vault}")
