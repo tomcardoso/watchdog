@@ -100,3 +100,10 @@ def test_setup_off_a_terminal_keeps_an_existing_limit(tmp_path, monkeypatch):
     monkeypatch.setattr(sc.sys.stdin, "isatty", lambda: False)
     sc.run(force=True)
     assert json.loads((home / "config.json").read_text())["auto_approve_usd"] == 4.0
+
+
+@pytest.mark.parametrize("value", ["inf", "-inf", "nan", "Infinity"])
+def test_configure_rejects_non_finite_numbers(value):
+    from watchdog.cmd.setup import _ConfigError, _coerce_value
+    with pytest.raises(_ConfigError, match="finite"):
+        _coerce_value({}, "auto_approve_usd", value)

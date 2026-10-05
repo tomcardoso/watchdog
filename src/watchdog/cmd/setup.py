@@ -1075,6 +1075,8 @@ def _coerce_value(config: dict, key: str, value: str) -> str:
             v = float(value)
         except ValueError:
             raise _ConfigError(f"'{key}' must be a number (e.g. 0.85)")
+        if v != v or v in (float("inf"), float("-inf")):      # nan, inf
+            raise _ConfigError(f"'{key}' must be a finite number (e.g. 0.85)")
         lo, hi = meta.get("min"), meta.get("max")
         if lo is not None and v < lo:
             raise _ConfigError(f"'{key}' must be >= {lo}")
