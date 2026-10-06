@@ -12,6 +12,7 @@ from pathlib import Path
 
 from watchdog.pipeline.finalize_entity import apply_one
 from watchdog.pipeline.write_vault import (
+    _write_json_atomic,
     _defang,
     _extract_summary,
     _extract_analysis,
@@ -98,7 +99,7 @@ def build_bundle(vault_path: Path, shas: list[str], min_docs: int = 2) -> dict:
     return {"entities": entities}
 
 
-def apply_bundle(result_path: Path, vault_path: Path) -> dict:
+def _apply_bundle_unlocked(result_path: Path, vault_path: Path) -> dict:
     """Bulk-write synthesized prose from the model's result JSON.
 
     Validates conservatively: unknown entity ids and entries with an empty
@@ -131,9 +132,19 @@ def apply_bundle(result_path: Path, vault_path: Path) -> dict:
             skipped.append(eid)
 
     if applied:
-        entities_path.write_text(
-            json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
+        _write_json_atomic(entities_path, entities_reg)
         _update_manifest(vault_path, entities_reg)
 
     return {"applied": applied, "skipped": skipped}
+
+
+def apply_bundle(result_path: Path, vault_path: Path) -> dict:
+    """`_apply_bundle_unlocked` under the registry lock every registry writer takes (D258). It can run
+    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
+    from watchdog.pipeline.write_vault import _registry_lock
+    registry_dir = Path(vault_path) / ".watchdog" / "registry"
+    if not registry_dir.is_dir():
+        return _apply_bundle_unlocked(result_path, vault_path)
+    with _registry_lock(registry_dir):
+        return _apply_bundle_unlocked(result_path, vault_path)

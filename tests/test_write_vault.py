@@ -1606,18 +1606,19 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     ex = _real_sha_extraction(tmp_path)
 
-    real_rename = Path.rename
+    import watchdog.pipeline.write_vault as wv_mod
+    real_replace = wv_mod.os.replace
     crashed = {"done": False}
 
-    def flaky_rename(self, target):
+    def flaky_replace(src, target):
         # Fail the first atomic registry write (entities.json) — i.e. after the notes are
         # written but before any registry file is persisted.
         if not crashed["done"] and str(target).endswith("entities.json"):
             crashed["done"] = True
             raise OSError("simulated crash before registry persist")
-        return real_rename(self, target)
+        return real_replace(src, target)
 
-    monkeypatch.setattr(Path, "rename", flaky_rename)
+    monkeypatch.setattr(wv_mod.os, "replace", flaky_replace)
     with pytest.raises(OSError):
         run(ex, vault)
 
@@ -1626,7 +1627,7 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
     assert (vault / "entities" / "person" / "alice-smith.md").exists()
 
     # Repair retry (crash cleared) must converge.
-    monkeypatch.setattr(Path, "rename", real_rename)
+    monkeypatch.setattr(wv_mod.os, "replace", real_replace)
     run(_real_sha_extraction(tmp_path), vault)
 
     entities = json.loads((vault / ".watchdog/registry/entities.json").read_text())
