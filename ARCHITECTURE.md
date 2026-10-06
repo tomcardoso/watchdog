@@ -496,7 +496,7 @@ noted as such.
   serial, sha-sorted commit pass, after the pre-commit fold and merges — so a reconcile failure
   leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
   Investigation sessions don't hand-edit pipeline-owned files; they change pipeline state only
-  through deterministic commands that take the registry lock. *History: D126–D129, D245.*
+  through deterministic commands that take the registry lock. *History: D126–D129, D245, D258.*
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's

@@ -115,3 +115,28 @@ def test_only_one_of_many_racers_wins(tmp_path):
         results = pool.map(_racer, [(str(lock), f"started_at: p{i}\n") for i in range(n)])
     assert sum(1 for r in results if r) == 1
     assert lock.exists()
+
+
+def test_concurrent_lock_writers_in_one_process_never_collide(tmp_path):
+    """The heartbeat thread and `dig --wait`'s main thread both rewrite the lock (D258)."""
+    import threading
+    from watchdog.pipeline.locks import refresh_lock
+    lock = tmp_path / ".ingest-lock"
+    lock.write_text("pid: cli\nstarted_at: 2026-01-01T00:00:00Z\n")
+    errors = []
+
+    def hammer():
+        try:
+            for _ in range(500):
+                refresh_lock(lock)
+        except Exception as e:      # noqa: BLE001 — any error is the failure
+            errors.append(e)
+
+    threads = [threading.Thread(target=hammer) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    assert lock.read_text().startswith("pid: cli")
+    assert not list(tmp_path.glob("*.tmp"))

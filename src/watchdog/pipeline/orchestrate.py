@@ -2173,7 +2173,13 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
             res_path.write_text(json.dumps({"entity_syntheses": syntheses}, ensure_ascii=False),
                                 encoding="utf-8")
-            out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+            try:
+                out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+            except OSError as e:
+                # The registry lock timed out (Windows). Recording the error keeps this run's
+                # post-ingest inputs, so the next `watchdog bark` redoes the synthesis.
+                out["error"] = f"couldn't write entity syntheses: {e}"
+                _say(f"{_YELLOW}synthesis not saved{_RESET}{_DIM} — {e}{_RESET}")
         if failed:
             _log(vault, f"WARN synthesis: {failed} of {n_ents} entities not synthesized this run")
 

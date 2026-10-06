@@ -10,6 +10,7 @@ never sees an empty lock. Callers own the staleness policy on the failure branch
 """
 
 import os
+import tempfile
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -40,9 +41,17 @@ def _write_atomic(lock_file: Path, text: str) -> None:
     """Replace the lock's contents in one step. A plain truncate-and-write leaves a window where
     a concurrent reader (another invocation checking staleness) sees an empty file and reads the
     lock's age as unknown."""
-    tmp = lock_file.with_name(f"{lock_file.name}.{os.getpid()}.tmp")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, lock_file)
+    # A unique temp file per call, not per process: `dig --wait` refreshes the lock on the main
+    # thread while the heartbeat thread stamps it, and a shared name let one writer's replace
+    # move the other's file away mid-write.
+    fd, tmp = tempfile.mkstemp(prefix=f".{lock_file.name}.", suffix=".tmp", dir=lock_file.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, lock_file)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
 
 
 def refresh_lock(lock_file: Path) -> None:
