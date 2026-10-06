@@ -89,7 +89,7 @@ pipx inject watchdog-intel pytest numpy
 
 **No `pipx` available (e.g. a fresh container)?** Don't `pip install -e .[dev]` — that pulls in docling's full tree (torch, onnxruntime, …) and can take several minutes. Mirror `.github/workflows/ci.yml`'s `test` job instead: `pip install --no-deps -e .` plus the explicit lightweight dependency list from that job (pyyaml, pypdf, argcomplete, numpy, pytest, pytest-timeout, jsonschema, httpx, truststore, nh3, python-docx, python-pptx, openpyxl, Pillow, defusedxml) in a venv. Add `ruff` too if you also need to lint.
 
-Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
+Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. `CONFIG_FILE` lives in more than one module: patch `watchdog.config.CONFIG_FILE` as well as `watchdog.cmd.base`'s, or a config read falls through to the real `~/.watchdog/config.json`. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
 
 CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml` and `publish.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
 
