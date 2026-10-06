@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from watchdog.pipeline.timeline import (
@@ -577,6 +578,11 @@ def test_a_queued_force_that_has_not_run_does_not_hide_a_documents_events(tmp_pa
     collisions(vault)
     queue = vault / ".watchdog" / "queue"
     queue.mkdir(parents=True, exist_ok=True)
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    for s in (a, b):                                    # left over from a run whose briefing failed
+        (tmp / f"result_{s}.json").write_text("{}")
+        os.utime(tmp / f"result_{s}.json", (1_000_000, 1_000_000))
     for s in (a, b):
         (queue / f"{s}.json").write_text("{}")
     cmd_rebuild_timeline(vault, quiet=True)
