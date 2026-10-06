@@ -2983,3 +2983,30 @@ def test_sdk_real_auth_failure_still_stops_the_run(monkeypatch):
     _fake_agent_sdk(monkeypatch, [_result("Invalid API key · Please run /login", is_error=True)])
     with pytest.raises(mc.ProviderAuthError):
         asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))
+
+
+@pytest.mark.parametrize("text", ["Invalid API key · Please run /login",
+                                  "Credit balance is too low"])
+def test_sdk_error_result_followed_by_the_sdks_rewritten_exception_stops_the_run(monkeypatch, text):
+    """The real SDK raises after an error result, with a message that drops the result text
+    ("Claude Code returned an error result: success"); the result text must still be read."""
+    _fake_agent_sdk(monkeypatch, [_result(text, is_error=True)],
+                    raise_after=RuntimeError("Claude Code returned an error result: success"))
+    with pytest.raises(mc.ProviderAuthError):
+        asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))
+
+
+def test_sdk_billing_refusal_on_a_429_is_an_auth_failure(monkeypatch):
+    _fake_agent_sdk(monkeypatch, [_result("Credit balance is too low", is_error=True, status=429)])
+    with pytest.raises(mc.ProviderAuthError):
+        asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))
+
+
+def test_anthropic_402_is_a_billing_stop_whatever_its_message(monkeypatch):
+    import anthropic
+    import httpx
+    resp = httpx.Response(402, request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"))
+    err = anthropic.APIStatusError("billing_error: account suspended", response=resp, body=None)
+    _fake_anthropic_client(monkeypatch, error=err)
+    with pytest.raises(mc.ProviderAuthError):
+        asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))

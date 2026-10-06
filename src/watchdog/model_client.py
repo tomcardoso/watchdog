@@ -691,15 +691,22 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         # The SDK raises on a CLI error result via two paths — a ProcessError rewritten to
         # "Claude Code returned an error result: …", or a {type:error} stream message. If it
         # was a rate limit, raise a typed, actionable error instead of an opaque one.
-        # A rate limit is checked first: its notice can mention billing or a login page, and
-        # misreading it as an auth failure would stop the run instead of letting `--wait` sleep.
-        # Only the error's own text is scanned, never `out["text"]` — that can be partial model
-        # output, i.e. document content, which routinely says "billing" (D259).
-        if rejected or _looks_like_rate_limit(api_status, notice, str(e)):
+        # `out["text"]` is scanned only when the result was flagged `is_error`: then it is the
+        # CLI's own error string ("Invalid API key · Please run /login"), which the SDK's
+        # rewritten exception leaves out. Otherwise it can be partial model output, i.e.
+        # document content, which routinely says "billing" (D259). A billing refusal is checked
+        # first, then a rate limit (its notice can mention a login page, and misreading it as an
+        # auth failure would stop the run instead of letting `--wait` sleep), then other auth.
+        err_text = out["text"] if is_error else ""
+        if _looks_like_billing(str(e), err_text):
+            raise ProviderAuthError(f"Claude Code account can't pay for this call: {err_text or e}") from e
+        if rejected or _looks_like_rate_limit(api_status, notice, str(e), err_text):
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
-        if _looks_like_auth_failure(api_status, str(e)):
-            raise ProviderAuthError(f"Claude Code could not authenticate: {e}") from e
+        if _looks_like_auth_failure(api_status, str(e), err_text):
+            raise ProviderAuthError(f"Claude Code could not authenticate: {err_text or e}") from e
         raise
+    if is_error and _looks_like_billing(out["text"]):
+        raise ProviderAuthError(f"Claude Code account can't pay for this call: {out['text']}")
     if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
     if is_error and _looks_like_auth_failure(api_status, out["text"]):
@@ -849,7 +856,9 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
         raise ProviderAuthError(f"Anthropic rejected the API key: {e}") from e
     except anthropic.APIStatusError as e:
-        if _looks_like_billing(str(e)):
+        # 402 is Anthropic's `billing_error`, whatever its message says — as on the
+        # OpenAI-compatible path.
+        if getattr(e, "status_code", None) == 402 or _looks_like_billing(str(e)):
             raise ProviderAuthError(f"Anthropic account can't pay for this call: {e}") from e
         raise
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
