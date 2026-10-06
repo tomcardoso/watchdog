@@ -372,17 +372,20 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     # collision couldn't be resolved this run showed only the one document that was promoted, and
     # `watchdog timeline` couldn't bring the rest back. Only committed documents' raws are shown —
     # raws are staged at extraction, before the commit (I7) — and an event already in the canonical
-    # file isn't repeated. Until the next successful dedup a date may show near-duplicate lines.
-    committed = {sha[:7] for sha in docs_reg}
+    # file isn't repeated. A document with a queue file is staged, not committed, even when it is in
+    # documents.json: a `--force` re-extraction waiting for `bark`. Until the next successful dedup
+    # a date may show near-duplicate lines.
+    queue_dir = vault / ".watchdog" / "queue"
+    committed = {sha for sha in docs_reg if not (queue_dir / f"{sha}.json").exists()}
     seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
     raw_files = sorted(f for f in td.glob("*_*.ndjson")) if td.exists() else []
     for rf in raw_files:
-        if rf.stem.rsplit("_", 1)[-1] not in committed:
-            continue
         for line in _read_ndjson_lines(rf):
             try:
                 ev = json.loads(line)
             except json.JSONDecodeError:
+                continue
+            if ev.get("source_sha256") not in committed:
                 continue
             key = (ev.get("date"), ev.get("event"), ev.get("source_sha256"))
             if key not in seen:

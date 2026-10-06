@@ -542,3 +542,22 @@ def test_a_promoted_event_is_not_repeated_from_its_raw(tmp_path):
     (td / "2021-03-04.ndjson").write_text(raw.read_text())     # canonical and raw both present
     cmd_rebuild_timeline(vault, quiet=True)
     assert (vault / "timeline.md").read_text().count("Contract signed") == 1
+
+
+def test_a_staged_re_extraction_of_a_committed_document_stays_out_of_timeline_md(tmp_path):
+    """`--force` re-extracts a committed document and stages new raws under the same sha; until
+    `bark` commits them (its queue file is still there), they must not render (D260)."""
+    vault = _vault(tmp_path)
+    a = "a" * 64
+    _register(vault, a)
+    td = vault / ".watchdog" / "timeline"
+    td.mkdir(parents=True, exist_ok=True)
+    (td / "2021-03-04.ndjson").write_text(json.dumps(
+        {"date": "2021-03-04", "event": "Contract signed", "source_sha256": a}) + "\n")
+    stage_timeline_events(vault, _extraction([{"fact": "Contract was signed", "date": "2021-03-04"}], sha=a))
+    queue = vault / ".watchdog" / "queue"
+    queue.mkdir(parents=True, exist_ok=True)
+    (queue / f"{a}.json").write_text("{}")
+    cmd_rebuild_timeline(vault, quiet=True)
+    md = (vault / "timeline.md").read_text()
+    assert "Contract signed" in md and "Contract was signed" not in md
