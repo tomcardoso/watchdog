@@ -774,9 +774,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # setting no_finalize), the deprecated `ingest`, and `chew`'s offer to continue
     # (`_offer_ingest`). "Run it again" hints below name whichever command got the caller here.
     command = getattr(args, "command", None)
-    # `chew`'s offer to continue hints `watchdog dig` when declined, as its own decline path does.
-    pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add", "chew": "watchdog dig"}.get(
-        command, "watchdog")
+    pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add"}.get(command, "watchdog")
     is_dig = command == "dig"
     is_add = command == "add"
 
@@ -1095,7 +1093,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                                        gate=gate, enabled=auto):
             _release_lock()
             # No leading blank line — pick()'s own close-out already leaves one (#411).
-            print(f"  When ready, run:  {_CYAN}{pipeline_hint}{_RESET}\n")
+            # Declining `chew`'s offer points at `dig`, as chew's own decline path does.
+            hint = "watchdog dig" if command == "chew" else pipeline_hint
+            print(f"  When ready, run:  {_CYAN}{hint}{_RESET}\n")
             return
 
     import asyncio
