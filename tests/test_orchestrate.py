@@ -812,12 +812,14 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
         elif task == "timeline-dedup":
             parsed = {"groups": []}
         elif task == "briefing":
+            briefing_prompts.append(flat)
             parsed = {"investigation_status": "x", "what_was_ingested": []}
         else:
             parsed = {}
         return model_client.ModelResult(parsed=parsed, text="", model="m",
                                         backend="claude-agent-sdk", auth_mode="subscription",
                                         cost_usd=0.0)
+    briefing_prompts: list[str] = []
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     vault = make_vault(tmp_path)
@@ -838,6 +840,9 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
     # And it reached the briefing's flagged count — fed by reconciliation, not by any single doc.
     assert summary["post_ingest"]["contradictions"]
     assert "Contradictions flagged:** 1" in (vault / "log.md").read_text()
+    # The briefing prompt asks for both sources to be named, so the flag must carry them.
+    flags = briefing_prompts[0].split("CONTRADICTION FLAGS:\n", 1)[1].split("\n", 1)[0]
+    assert '"sources": ["doc-one.pdf", "doc-two.pdf"]' in flags
 
 
 def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
