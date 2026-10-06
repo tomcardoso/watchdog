@@ -5295,6 +5295,10 @@ def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
     ({"synthesized": 0, "error": "rate limited"}, 2),
     ({"synthesized": 0, "briefing_error": "rate limited"}, 2),
     ({"extracted": 1, "results": [], "quarantined": 3, "failed": 2}, 0),
+    # An auth/billing stop is not resumable by re-running, wherever it surfaced (D259).
+    ({"synthesized": 0, "error": "refused", "auth_error": "refused"}, 1),
+    ({"extracted": 1, "results": [], "post_ingest": {"error": "x", "auth_error": "x"}}, 1),
+    ({"extracted": 0, "results": [], "batch_pending": True, "auth_error": "x"}, 1),
 ])
 def test_exit_code_for(result, expected):
     from watchdog.cmd import ingest as ing
