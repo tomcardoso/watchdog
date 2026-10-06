@@ -33,7 +33,7 @@ Or run `watchdog settings <key>` with no value to see that one key's help and ch
 | `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether the table-detection model runs on PDFs; turn off to speed up text-only documents. |
-| `auto_approve_usd` | *(off)* | Dollar limit under which `watchdog add`/`dig` skip the public-records pause and go ahead with a one-line notice. A Claude subscription is always within it; a run over it, or with no dollar estimate yet, still asks. `0` turns it off — see [Controlling cost](#controlling-cost). |
+| `auto_approve` | `false` | Skip the public-records pause in `watchdog add`/`dig` when every step of the run uses your Claude subscription, printing a one-line notice instead. A run where any step uses a paid API key still asks — see [Auto-approve](#auto-approve). |
 | `extract_concurrency` | `20` (`3` if `watchdog setup` or `watchdog settings auth` puts you on Claude subscription auth) | Documents extracted in parallel during `watchdog dig`. |
 | `extract_token_budget` | `auto` | Cap on tokens per minute during `watchdog dig`. `auto` discovers it from your provider's own responses (not available on Claude subscription auth — set a number by hand there if you hit rate limits). |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
@@ -125,6 +125,14 @@ Both research keys are advisory budgets that the interactive research skill limi
 ### Wayback archiving
 
 With `wayback_save` on, every source that `watchdog research` or `watchdog research fetch` downloads is also submitted to the Internet Archive's Wayback Machine, and the snapshot URL is recorded in the source's provenance sidecar — a citable copy that survives if the original changes or is taken down. It is a no-op until both keys are set; generate a free pair at [archive.org/account/s3.php](https://archive.org/account/s3.php). Archiving is best-effort and never blocks or fails a download.
+
+### Auto-approve
+
+Before Watchdog sends documents to a model, it shows the public-records warning and waits for you to acknowledge it. That pause is the check that what you are sending is public record.
+
+`watchdog settings auto_approve true` skips the pause for a run where every step — classifying, extracting and the finishing steps — uses your Claude subscription. Instead of the warning, Watchdog prints one line saying how many documents it is sending. Setup asks about this, with no as the default; this setting changes it later. Turn it on only if you already check that what you add is public record.
+
+A run where any step uses a paid API key always asks, however small it is. Watchdog does not estimate a run's cost to decide this: an estimate from past runs can come out low, and the pause it would skip is the only check on what leaves your computer. `watchdog settings auto_approve false` turns it off.
 
 ### The telemetry record
 
@@ -269,8 +277,6 @@ The main levers, roughly in order of impact:
 - **Which Claude backend you're on.** A plain `sonnet` (or `haiku`/`opus`) reaches Claude one of two ways, chosen by your auth mode: a subscription goes through Claude Code's own harness, a metered key goes straight to the API. The two bill different numbers of input tokens for identical documents, so it is worth knowing which one you are on — `watchdog usage` names the backend for every stage. The API path also caches the reusable part of the prompt (the instructions and the record skill) properly, which the subscription path cannot be told to do.
 - **Concurrency.** `extract_concurrency` doesn't change total cost, but lowering it — persistently, or with `--concurrency` per run — is the fix when you hit model rate limits. Both `watchdog setup` and `watchdog settings auth` already lower the default from 20 to 3 when they detect Claude subscription auth and you keep ingestion on it: concurrent extractions on that path share one Claude Code session's rate limit, and the metered-path default of 20 reliably throttles it. Switching back to an API key later restores it to 20 automatically, as long as you never set your own value — `watchdog settings extract_concurrency` always overrides both directions if your plan needs something else.
 - **Token budget.** `extract_concurrency` caps how many *documents* run at once, but a rate limit is really a cap on *tokens* per minute — a batch of large documents can trip it well under your concurrency limit. `watchdog dig` now holds back a new document automatically once the run's own recent pace gets close to your provider's real limit, discovered from the provider's own responses — nothing to configure on the claude-api, OpenAI, DeepSeek, Gemini, local, and OpenRouter routes. Claude subscription auth doesn't report this number, so if you're on that path and still hit rate limits after lowering concurrency, set `extract_token_budget` to a number from your account's rate-limits page.
-
-**An auto-approve limit.** `watchdog settings auto_approve_usd 5` lets any run estimated at $5 or less go ahead without the public-records pause, printing a one-line notice of what it sent instead. Setup asks about this, recommending $5; this setting changes it later. Set it only if you already check that what you add is public record: the pause exists for that check. A run over the limit, or a metered-key vault with no past runs to estimate from, still asks; a Claude subscription has no per-run price, so its runs always count as within the limit. `0` turns it off.
 
 Before committing to a large run, get a number:
 

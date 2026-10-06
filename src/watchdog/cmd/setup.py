@@ -106,21 +106,18 @@ _CONFIGURE_KEYS = {
         "default": defaults.EXTRACT_CONCURRENCY,
         "min": 1,
     },
-    "auto_approve_usd": {
-        "short": "Skip the public-records pause for runs estimated at or under this many dollars (default: off)",
+    "auto_approve": {
+        "short": "Skip the public-records pause when every step runs on your Claude subscription (default: false)",
         "help": (
             "Before documents are sent to a model, Watchdog shows the 'Public records only'\n"
-            "  warning and waits for you to acknowledge it. Set a dollar amount here and a run\n"
-            "  whose estimated cost is at or under it goes ahead with a one-line notice instead.\n"
-            "  Setting it means you have already checked that what you add is public record.\n"
-            "  The estimate comes from past `watchdog add` runs on the models set now. A run where\n"
-            "  every step uses your Claude subscription has no per-run price, so it is always within\n"
-            "  the limit. A run over the limit, one with no past run on these models, or one that\n"
-            "  would also finish a batch left from an earlier run, still asks.\n"
-            "  Set to 0 to turn it off. Default: off."
+            "  warning and waits for you to acknowledge it. Set this to true and a run where every\n"
+            "  step (classify, extract and the finishing steps) uses your Claude subscription goes\n"
+            "  ahead with a one-line notice instead. Turning it on means you have already checked\n"
+            "  that what you add is public record. A run where any step uses a paid API key still\n"
+            "  asks, whatever it would cost. Default: false."
         ),
-        "type": "float",
-        "min": 0.0,
+        "type": "bool",
+        "default": False,
     },
     "extract_token_budget": {
         "short": "Cap on tokens/min during `watchdog dig`, overriding auto-discovery (default: auto)",
@@ -687,7 +684,7 @@ _CONFIGURE_SECTIONS = [
     ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
     ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["auto_approve_usd", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
+     ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),
     ("Models", "Which model runs each step, and how hard it thinks.",

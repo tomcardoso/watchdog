@@ -1,27 +1,12 @@
-"""Fixes from the post-merge review of `add`, auto-approve and `review` (D256)."""
+"""Fixes from the post-merge review of `add`, auto-approve and `review` (D263)."""
 
 import argparse
-import json
 
 import pytest
 
 import watchdog.cmd.ingest as ing
 import watchdog.cmd.review as review
-from watchdog.pipeline import ingest_setup, resolutions
-
-
-# ── the gate's cost figure comes only from runs on the models configured now ──────────────────
-
-def _usage(vault, name, calls, est_input_tokens):
-    d = vault / ".watchdog" / "registry" / "usage"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"usage-{name}.json").write_text(json.dumps(
-        {"calls": calls, "totals": {"est_input_tokens": est_input_tokens}}))
-
-
-def _call(task, model, tokens, cost, effort="high", backend="claude-api"):
-    return {"task": task, "model": model, "backend": backend, "input_tokens": tokens,
-            "cost_usd": cost, "effort": effort}
+from watchdog.pipeline import resolutions
 
 
 @pytest.fixture
@@ -33,89 +18,31 @@ def vault(tmp_path, monkeypatch):
     return v
 
 
-def _matched(vault, tokens=10_000, extractor=("opus", "high")):
-    return ingest_setup.matched_cost_high(vault, tokens, classifier=("haiku", "high"),
-                                          extractor=extractor, finalizers={("sonnet", "high")})
+# ── auto-approve only when every stage runs on the subscription (D263) ─────────────────────────
+
+@pytest.mark.parametrize("auth_mode, stages, approved", [
+    ("subscription", [None, None, None], True),                    # every stage on the default route
+    ("subscription", [None, "claude-agent-sdk", None], True),
+    ("subscription", [None, None, "openai"], False),               # one finishing stage on a paid key
+    ("subscription", ["claude-api", None, None], False),
+    ("api-key", [None, None, None], False),                        # the default route is the paid API
+    ("api-key", ["claude-agent-sdk"] * 3, True),
+])
+def test_subscription_only_when_every_stage_is_on_it(auth_mode, stages, approved):
+    verdict = ing._auto_approve_verdict(auth_mode=auth_mode, stages=stages)
+    assert ("approve" in verdict) is approved
+    if not approved:
+        assert "paid API key" in verdict["blocker"]
 
 
-def _complete_run(vault, name="2026-10-01", extract_model="opus", effort="high"):
-    # The reviewer's case: a small extraction into a large vault, where finishing the batch
-    # (synthesis over the existing corpus, the briefing) costs far more than the extraction.
-    _usage(vault, name, [_call("classify", "haiku", 1_000, 0.0, effort),
-                         _call("extract", extract_model, 10_000, 0.05, effort),
-                         _call("entity-synthesis", "sonnet", 200_000, 0.80, effort),
-                         _call("briefing", "sonnet", 30_000, 0.15, effort)], est_input_tokens=10_000)
-
-
-def test_a_small_run_into_a_large_vault_is_priced_by_its_whole_cost(vault):
-    _complete_run(vault)
-    assert _matched(vault) == pytest.approx(1.00)      # not $0.04: finishing is in the rate
-
-
-def test_history_on_another_extractor_is_not_used(vault):
-    _complete_run(vault, extract_model="haiku")
-    assert _matched(vault) is None
-
-
-def test_history_at_another_effort_is_not_used(vault):
-    _complete_run(vault, effort="low")
-    assert _matched(vault) is None
-
-
-def test_the_highest_recent_rate_wins(vault):
-    _complete_run(vault, "2026-10-01")
-    _usage(vault, "2026-10-02", [_call("extract", "opus", 10_000, 2.0),
-                                 _call("briefing", "sonnet", 1, 1.0)], est_input_tokens=10_000)
-    assert _matched(vault) == pytest.approx(3.00)
-
-
-def test_an_extraction_only_run_is_not_enough(vault):
-    _usage(vault, "2026-10-01", [_call("extract", "opus", 10_000, 5.0)], est_input_tokens=10_000)
-    assert _matched(vault) is None
-
-
-def test_no_tokens_means_no_figure(vault):
-    _complete_run(vault)
-    assert _matched(vault, tokens=0) is None
-
-
-def _gate(vault, **kw):
-    base = dict(auth_mode="api-key", classify=(None, "haiku", "high"), extract=(None, "opus", "high"),
-                finalizers=[(None, "sonnet", "high")], finishes_pending=False)
-    base.update(kw)
-    return ing._auto_approve_estimate(vault, {"raw_tokens": 10_000}, **base)
-
-
-def test_a_pending_batch_always_asks(vault):
-    assert "earlier run" in _gate(vault, finishes_pending=True)["blocker"]
-
-
-def test_subscription_only_when_every_stage_is_on_it(vault):
-    assert _gate(vault, auth_mode="subscription") == {"approve_subscription": True}
-    mixed = _gate(vault, auth_mode="subscription", finalizers=[("openai", "gpt-5.6-luna", "high")])
-    assert "approve_subscription" not in mixed and "no past run" in mixed["blocker"]
-
-
-def test_a_matching_history_gives_a_cost(vault):
-    _complete_run(vault)
-    assert _gate(vault) == {"approve_cost": pytest.approx(1.00)}
-
-
-def test_chew_with_a_limit_hands_the_decision_to_cmd_ingest(vault, monkeypatch):
+def test_chew_with_auto_approve_hands_the_decision_to_cmd_ingest(vault, monkeypatch):
     calls = []
     monkeypatch.setattr(ing, "_preview_ingest", lambda *a, **k: None)
-    monkeypatch.setattr(ing, "load_config", lambda: {"auto_approve_usd": 5})
+    monkeypatch.setattr(ing, "load_config", lambda: {"auto_approve": True})
     monkeypatch.setattr(ing, "_confirm_public_records", lambda *a, **k: pytest.fail("old gate used"))
     monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: calls.append(k))
     ing._offer_ingest(argparse.Namespace(command="chew"), vault)
     assert calls == [{"confirm": True, "skip_preview": True}]
-
-
-def test_gate_prints_the_blocker_and_asks(monkeypatch, capsys):
-    asked = []
-    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 0)
-    assert ing._confirm_public_records(2, gate={"blocker": "a reason"}, limit=5.0) is True
-    assert asked and "a reason, so the auto-approve limit can't apply" in capsys.readouterr().out
 
 
 # ── `add` never copies the investigation's own files ──────────────────────────────────────────

@@ -213,7 +213,7 @@ def tick_in_briefings(vault: Path, rids, ticked: bool = True) -> int:
     so the files agree with the store after `watchdog review` or `watchdog resolve <id>` marks an
     item handled (`ticked=True`) or `watchdog unresolve` reopens it (`ticked=False`). Without it,
     the next `watchdog resolve --sync` reads the stale box as the journalist's own change and
-    undoes the command (D256). Returns lines changed."""
+    undoes the command (D263). Returns lines changed."""
     wanted = set(rids)
     if not wanted:
         return 0

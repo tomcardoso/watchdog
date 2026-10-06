@@ -268,7 +268,6 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     calibration = _tokens_calibration(vault, max_runs) if documents else None
     est_tokens = round(raw_tokens * calibration) if calibration else raw_tokens
     result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
-              "raw_tokens": raw_tokens,
               "cost_low": None, "cost_high": None, "runs_used": 0,
               "subscription": backend == "claude-agent-sdk"}
     if backend == "claude-agent-sdk" or not documents:
@@ -291,69 +290,6 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
         result["cost_high"] = est_tokens * max(ratios)
         result["runs_used"] = len(ratios)
     return result
-
-
-_EXTRACT_TASKS = {"extract", "extract-section", "verify"}
-
-
-def _same_model(recorded: str | None, configured: str) -> bool:
-    from watchdog.model_catalog import canonical_id, resolve_model_id
-    if not recorded:
-        return False
-    return (canonical_id(resolve_model_id(recorded)).lower()
-            == canonical_id(resolve_model_id(configured)).lower())
-
-
-def matched_cost_high(vault: Path, raw_tokens: int, *, classifier: tuple, extractor: tuple,
-                      finalizers: set[tuple], max_runs: int = 3) -> float | None:
-    """A dollar figure for the auto-approve gate (D256), or None when there is no basis for one.
-
-    `classifier`/`extractor` are `(model, effort)`; `finalizers` is a set of them. Only this
-    vault's complete runs count — runs that both extracted and finished a batch — and only those
-    whose every classify, extract and finish call used the model *and* effort configured now
-    (thinking bills as output, so effort changes the price). Each run is priced as its whole cost
-    over its own chars/4 document estimate (`totals.est_input_tokens`), and the queue's raw
-    chars/4 estimate is multiplied by the highest of the last `max_runs` such rates. Pricing per
-    document token, not per token the model read, keeps a large vault's finish-stage input (entity
-    synthesis, the briefing) from diluting the rate of a small run."""
-    from watchdog.pipeline import orchestrate
-    if raw_tokens <= 0:
-        return None
-
-    def same(call, want):
-        model, effort = want
-        return _same_model(call.get("model"), model) and (call.get("effort") or None) == (effort or None)
-
-    rates: list[float] = []
-    for uf in reversed(orchestrate.usage_files(vault)):
-        try:
-            data = _read_json(uf)
-        except (OSError, json.JSONDecodeError):
-            continue
-        calls = data.get("calls") or []
-        tasks = {c.get("task") for c in calls}
-        if not (tasks & _EXTRACT_TASKS) or not (tasks & orchestrate.FINALIZE_TASKS):
-            continue
-        ok = True
-        for c in calls:
-            task = c.get("task")
-            if task in _EXTRACT_TASKS:
-                ok = same(c, extractor)
-            elif task == "classify":
-                ok = same(c, classifier)
-            elif task in orchestrate.FINALIZE_TASKS:
-                ok = any(same(c, f) for f in finalizers)
-            if not ok:
-                break
-        if not ok:
-            continue
-        est = (data.get("totals") or {}).get("est_input_tokens") or 0
-        cost = sum(c.get("cost_usd") or 0 for c in calls)
-        if est > 0 and cost > 0:
-            rates.append(cost / est)
-        if len(rates) >= max_runs:
-            break
-    return raw_tokens * max(rates) if rates else None
 
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,

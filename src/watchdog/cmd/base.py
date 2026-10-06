@@ -198,9 +198,9 @@ _CMD_HELP: dict[str, dict] = {
             'batch that was interrupted. Originals passed by path stay where they are.',
             '',
             'Stops only for the public-records acknowledgement and for a provider refusing your',
-            'key or account. Set `watchdog settings auto_approve_usd <dollars>` to skip the',
-            'acknowledgement for runs estimated at or under that amount. A rate limit pauses the',
-            'run until it resets.',
+            'key or account. `watchdog settings auto_approve true` skips the acknowledgement',
+            'when every step runs on your Claude subscription. A rate limit pauses the run until',
+            'it resets.',
         ],
     },
     'context': {

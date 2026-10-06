@@ -411,47 +411,28 @@ def _public_records_warning(n_docs: int) -> str:
     )
 
 
-def _auto_approve_limit(config: dict) -> float | None:
-    """The `auto_approve_usd` setting as a positive dollar amount, or None when it is unset or 0."""
-    try:
-        v = float(config.get("auto_approve_usd") or 0)
-    except (TypeError, ValueError):
-        return None
-    return v if v > 0 else None
+def _auto_approve_on(config: dict) -> bool:
+    """The `auto_approve` setting (D263): True only when it is explicitly on."""
+    return config.get("auto_approve") is True
 
 
-def _auto_approve_estimate(vault: Path, est: dict | None, *, auth_mode: str | None,
-                           classify: tuple, extract: tuple, finalizers: list[tuple],
-                           finishes_pending: bool) -> dict:
-    """The auto-approve verdict (D256): `{"approve_subscription": True}`, `{"approve_cost": x}`
-    or `{"blocker": reason}`. Its keys deliberately differ from `cost_estimate`'s, so a raw
-    estimate handed to the gate by mistake can never approve a run. Each stage is
-    `(backend, model, effort)`. A run counts as a subscription run only when every stage it calls is served by
-    the Claude Code subscription; otherwise the dollar figure must come from past complete runs on
-    the models configured now (`matched_cost_high`), never from whatever model made the history.
-    A pending batch this run would also finish is not in any estimate, so it always asks."""
-    from watchdog.pipeline.ingest_setup import matched_cost_high
-
+def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) -> dict:
+    """Whether this run may skip the public-records pause (D263): `{"approve": True}` only when
+    every stage it calls — classify, extract and each finishing stage, given by its configured
+    backend — runs on the Claude Code subscription, which has no per-run charge. Otherwise
+    `{"blocker": reason}`. There is deliberately no dollar estimate: an estimate from past runs
+    can come out low, and the pause it would skip is the only check on what leaves the computer."""
     def served_by(backend):
         return backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
 
-    stages = [classify, extract, *finalizers]
-    if finishes_pending:
-        return {"blocker": "a batch left from an earlier run will be finished too, and no estimate "
-                           "covers it"}
-    if all(served_by(b) == "claude-agent-sdk" for b, _, _ in stages):
-        return {"approve_subscription": True}
-    tokens = (est or {}).get("raw_tokens") or 0
-    high = matched_cost_high(vault, tokens, classifier=classify[1:], extractor=extract[1:],
-                             finalizers={f[1:] for f in finalizers})
-    if high is None:
-        return {"blocker": "no past run of `watchdog add` on the models and effort set now to "
-                           "estimate the cost from"}
-    return {"approve_cost": high}
+    if all(served_by(b) == "claude-agent-sdk" for b in stages):
+        return {"approve": True}
+    return {"blocker": "at least one step of this run uses a paid API key, and auto-approve "
+                       "applies only when every step runs on your Claude subscription"}
 
 
 def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
-                            limit: float | None = None) -> bool:
+                            enabled: bool = False) -> bool:
     """The point-of-no-return gate before any ingest/extract that will call the model (#426):
     shows the README's 'Public records only' warning and requires an explicit acknowledgement,
     defaulting to Acknowledge — the standing warning is the real safeguard; a Cancel default
@@ -463,27 +444,21 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: di
 
     `--skip-warning` (for repeated/scripted runs on an already-vetted corpus) suppresses the
     interactive pause but still prints a one-line notice, so a skipped run is never silent
-    about what it sent.
+    about what it sent. With `auto_approve` on (`enabled`), a run whose `gate` verdict approves
+    it does the same; one it doesn't says why before asking.
     """
     if n_docs == 0:
         return True
-    high = (gate or {}).get("approve_cost")
-    subscription = bool((gate or {}).get("approve_subscription"))
-    if limit is not None and (subscription or (high is not None and high <= limit)):
-        # Within the auto-approve budget (D251): the user settled the question when they set the
-        # limit, so the run goes ahead with the same one-line notice --skip-warning prints. A
-        # subscription has no per-run price, so it is always within the limit.
-        cost = "no per-run charge on your subscription" if subscription else f"estimated ${high:.2f} at most"
-        print(f"\n  {_DIM}Auto-approved ({cost}; limit ${limit:.2f}) — sending {_RESET}{_BOLD}{n_docs}"
-              f"{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
+    if enabled and (gate or {}).get("approve"):
+        # The user settled the question when they turned auto-approve on (D263), so the run goes
+        # ahead with the same one-line notice --skip-warning prints.
+        print(f"\n  {_DIM}Auto-approved (every step on your Claude subscription) — sending "
+              f"{_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a "
+              f"cloud AI model.{_RESET}")
         return True
-    if limit is not None and not skip_warning:
-        blocker = (gate or {}).get("blocker")
-        reason = (f"{blocker}, so the auto-approve limit can't apply" if blocker else
-                  f"estimated ${high:.2f} is over your ${limit:.2f} auto-approve limit"
-                  if high is not None else
-                  "no dollar estimate yet for this vault, so the auto-approve limit can't apply")
-        print(f"\n  {_DIM}Asking first: {reason}.{_RESET}")
+    if enabled and not skip_warning:
+        blocker = (gate or {}).get("blocker") or "this run could not be checked"
+        print(f"\n  {_DIM}Asking first: {blocker}.{_RESET}")
     if skip_warning:
         print(f"\n  {_DIM}Sending {_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document"
               f"{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
@@ -506,10 +481,9 @@ def _offer_ingest(args, vault: Path) -> dict | None:
         print(models_line)
     from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
     n_docs = len(needs_extraction(vault, scan_queue(vault)))
-    limit = _auto_approve_limit(load_config())
-    if limit is not None:
-        # With an auto-approve limit, the gate needs every stage's model and the pending-batch
-        # state, which only `cmd_ingest` resolves — so it decides, not this offer (D256).
+    if _auto_approve_on(load_config()):
+        # With auto-approve on, the gate needs every stage's backend, which only `cmd_ingest`
+        # resolves — so it decides, not this offer (D263).
         return cmd_ingest(args, confirm=True, skip_preview=True)
     if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
         return cmd_ingest(args, confirm=False, skip_preview=True)
@@ -1109,20 +1083,15 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
-        limit = _auto_approve_limit(config)
-        gate_est = None
-        if limit is not None and q:
-            gate_est = _auto_approve_estimate(
-                vault, est, auth_mode=a["mode"],
-                classify=(classify_backend, classify_model, classify_effort),
-                extract=(extract_backend, extract_model, extract_effort),
-                finalizers=[(post_backend, post_model, post_effort)] + [
-                    (finalizer_overrides.get(f"{s}_backend"), finalizer_overrides.get(f"{s}_model"),
-                     post_effort)
-                    for s in _FINALIZER_STAGES],
-                finishes_pending=not (is_dig or run_skip_finalize) and _orch.has_pending_finalization(vault))
+        auto = _auto_approve_on(config)
+        gate = None
+        if auto and q:
+            gate = _auto_approve_verdict(
+                auth_mode=a["mode"],
+                stages=[classify_backend, extract_backend, post_backend,
+                        *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)])
         if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False),
-                                       gate=gate_est, limit=limit):
+                                       gate=gate, enabled=auto):
             _release_lock()
             # No leading blank line — pick()'s own close-out already leaves one (#411).
             print(f"  When ready, run:  {_CYAN}{pipeline_hint}{_RESET}\n")
@@ -1519,7 +1488,7 @@ def cmd_add(args) -> dict | None:
     """`watchdog add [files or folders…]` — take documents all the way into the vault in one
     command: copy them into `_INCOMING/`, chew, extract and finalize (D251).
 
-    It stops only for the public-records acknowledgement (skipped within `auto_approve_usd`) and
+    It stops only for the public-records acknowledgement (skipped by `auto_approve` when every step runs on the Claude subscription) and
     for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
     picks up whatever is waiting: files in `_INCOMING/`, queued documents, a pending batch.
     `--retry` first puts documents that failed extraction back in the queue."""
