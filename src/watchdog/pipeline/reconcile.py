@@ -582,5 +582,6 @@ def apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[di
         if result["added"]:
             applied.append({"entity_id": eid, "entity_name": result["entity_name"],
                             "label": item.get("label", ""),
+                            "sources": result.get("sources", []),
                             "note_path": result["note_path"]})
     return applied
