@@ -16,6 +16,7 @@ from pathlib import Path
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.write_vault import (
+    _write_json_atomic,
     _extract_analysis,
     _extract_contradictions,
     _extract_notes_section,
@@ -166,7 +167,7 @@ def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int
     return remap_entity_ids(vault_path, {merge_id: keep_id})
 
 
-def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
+def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     """Perform the full `watchdog merge-entities` operation on a vault on disk:
     registry surgery (`merge`), note concatenation/redirect, timeline NDJSON entity-tag
     remap, manifest + timeline rebuild, and a best-effort search-index refresh of the two
@@ -302,9 +303,7 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         note_file.write_text(content, encoding="utf-8")
         other_notes[entry["note_path"]] = (entry["name"], content)
 
-    entities_path.write_text(
-        json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault_path, entities_reg)
     stats["timeline_records_remapped"] = _remap_timeline_ndjson(vault_path, keep_id, merge_id)
     cmd_rebuild_timeline(vault_path, quiet=True)
@@ -347,3 +346,15 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         "summary_dropped": summary_dropped,
         "backup_dir":     backup_dir,
     }
+
+
+def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
+    """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
+    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
+    from watchdog.pipeline.write_vault import _registry_lock
+    registry_dir = Path(vault_path) / ".watchdog" / "registry"
+    if not registry_dir.is_dir():
+        return _run_unlocked(vault_path, keep_id, merge_id)
+    with _registry_lock(registry_dir):
+        return _run_unlocked(vault_path, keep_id, merge_id)
