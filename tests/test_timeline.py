@@ -558,6 +558,27 @@ def test_a_staged_re_extraction_of_a_committed_document_stays_out_of_timeline_md
     queue = vault / ".watchdog" / "queue"
     queue.mkdir(parents=True, exist_ok=True)
     (queue / f"{a}.json").write_text("{}")
+    tmp = vault / ".watchdog" / "tmp"
+    tmp.mkdir(parents=True, exist_ok=True)
+    (tmp / f"result_{a}.json").write_text("{}")
     cmd_rebuild_timeline(vault, quiet=True)
     md = (vault / "timeline.md").read_text()
     assert "Contract signed" in md and "Contract was signed" not in md
+
+
+def test_a_queued_force_that_has_not_run_does_not_hide_a_documents_events(tmp_path):
+    """`ingest --force` writes the queue file before extracting; until the re-extraction runs,
+    the document's pending raws must still render."""
+    vault = _vault(tmp_path)
+    a, b = "a" * 64, "b" * 64
+    stage_timeline_events(vault, _extraction([{"fact": "Contract signed", "date": "2021-03-04"}], sha=a))
+    stage_timeline_events(vault, _extraction([{"fact": "Board approved the loan", "date": "2021-03-04"}], sha=b))
+    _register(vault, a, b)
+    collisions(vault)
+    queue = vault / ".watchdog" / "queue"
+    queue.mkdir(parents=True, exist_ok=True)
+    for s in (a, b):
+        (queue / f"{s}.json").write_text("{}")
+    cmd_rebuild_timeline(vault, quiet=True)
+    md = (vault / "timeline.md").read_text()
+    assert "Contract signed" in md and "Board approved the loan" in md

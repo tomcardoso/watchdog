@@ -372,11 +372,15 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     # collision couldn't be resolved this run showed only the one document that was promoted, and
     # `watchdog timeline` couldn't bring the rest back. Only committed documents' raws are shown —
     # raws are staged at extraction, before the commit (I7) — and an event already in the canonical
-    # file isn't repeated. A document with a queue file is staged, not committed, even when it is in
-    # documents.json: a `--force` re-extraction waiting for `bark`. Until the next successful dedup
-    # a date may show near-duplicate lines.
-    queue_dir = vault / ".watchdog" / "queue"
-    committed = {sha for sha in docs_reg if not (queue_dir / f"{sha}.json").exists()}
+    # file isn't repeated. A committed document that `--force` has re-extracted (its queue file and
+    # a fresh per-run result both exist) is staged, not committed, until `bark`. A queue file alone
+    # isn't enough: `ingest --force` writes it before extracting, and a run that never happens must
+    # not hide the document's events. Until the next successful dedup a date may show near-duplicate
+    # lines.
+    queue_dir, tmp_dir = vault / ".watchdog" / "queue", vault / ".watchdog" / "tmp"
+    committed = {sha for sha in docs_reg
+                 if not ((queue_dir / f"{sha}.json").exists()
+                         and (tmp_dir / f"result_{sha}.json").exists())}
     seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
     raw_files = sorted(f for f in td.glob("*_*.ndjson")) if td.exists() else []
     for rf in raw_files:
