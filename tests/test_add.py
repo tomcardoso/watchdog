@@ -166,7 +166,7 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
     out = _plain(home.render("Probe", s))
     for text in ("Contract went to a new firm.", "contradiction", "open lead",
                  "possible duplicate document", "watch-list hit", "file in _INCOMING/",
-                 "watchdog add"):
+                 "watchdog add", 'watchdog ask "…"'):
         assert text in out
 
 

@@ -1637,6 +1637,15 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
              f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
              f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
         return {"results": results, "batch_pending": True}
+    except model_client.ProviderAuthError as e:
+        # A repair-retry call was refused (bad key, no credit). Same as a rate limit for the
+        # vault — written documents are safe, the batch state stays for a later run — but the run
+        # reports it as an auth stop, which re-running won't fix until the key or balance is.
+        _say(f"{_YELLOW}The provider refused this run during batch collection{_RESET}{_DIM} — "
+             f"{e} {len(results)}/{len(state['shas'])} written. Fix the key or balance (see "
+             f"{_RESET}{_CYAN}watchdog settings auth{_RESET}{_DIM}), then re-run "
+             f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM}.{_RESET}")
+        return {"results": results, "batch_pending": True, "auth_error": str(e)}
 
     _log(vault, _batch_log_line(state, st, collected_at))
     batch_extract.clear_state(vault)
@@ -1776,12 +1785,12 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
         api_key = auth.resolve_auth().get("key")
         if not api_key:
             raise model_client.ModelError(
-                "claude-batch requires api-key auth mode — switch to it with `watchdog auth`")
+                "claude-batch requires api-key auth mode — switch to it with `watchdog settings auth`")
     else:
         api_key = auth.get_api_key(provider)
         if not api_key:
             raise model_client.ModelError(
-                f"the {backend} backend needs an API key — run `watchdog auth` to add one")
+                f"the {backend} backend needs an API key — run `watchdog settings auth` to add one")
 
     state = batch_extract.read_state(vault)
     if state is not None:
@@ -1891,6 +1900,26 @@ _SYNTHESIS_MAX_ENTITIES = 25
 
 # Key facts kept per document at each briefing condensation step (#696); None keeps them all.
 _BRIEFING_FACT_LEVELS = (None, 5, 1, 0)
+
+
+def _fit_briefing_alerts(neardup_alerts: list, contradiction_flags: list, budget: int
+                         ) -> tuple[list, list, int]:
+    """The alert lists ride in the briefing prompt and grow with the batch, so they come out of
+    its budget first, held to a quarter of it between them. A list cut short ends with a count of
+    what was left out, so the model knows it sees only part of it; the log entry and the entity
+    notes still carry every one. Returns the two lists and the budget left for the rest."""
+    size = chunking.json_size
+    dups, flags = neardup_alerts, contradiction_flags
+    if size(dups) + size(flags) > budget // 4:
+        def _cut(items: list) -> list:
+            kept = (chunking.pack(items, budget // 8) or [[]])[0]
+            if size(kept) > budget // 8:        # one item alone too big: pack keeps it whole
+                kept = []
+            if len(kept) < len(items):
+                kept = kept + [{"more_not_shown": len(items) - len(kept)}]
+            return kept
+        dups, flags = _cut(dups), _cut(flags)
+    return dups, flags, budget - size(dups) - size(flags)
 
 
 def _fit_briefing_inputs(results: list, scratchpads: list, budget: int
@@ -2160,6 +2189,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 # Synthesis is enrichment: leave the structured claims already in the notes
                 # rather than crashing. The staged artifacts persist, so a later finalize redoes it.
                 out["error"] = str(e)
+                if isinstance(e, model_client.ProviderAuthError):
+                    out["auth_error"] = str(e)
                 failed += len(chunk)
                 _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} for {len(chunk)} "
                      f"entit{'ies' if len(chunk) != 1 else 'y'} — {e}{_RESET}")
@@ -2173,7 +2204,13 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
             res_path.write_text(json.dumps({"entity_syntheses": syntheses}, ensure_ascii=False),
                                 encoding="utf-8")
-            out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+            try:
+                out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+            except OSError as e:
+                # The registry lock timed out (Windows). Recording the error keeps this run's
+                # post-ingest inputs, so the next `watchdog bark` redoes the synthesis.
+                out["error"] = f"couldn't write entity syntheses: {e}"
+                _say(f"{_YELLOW}synthesis not saved{_RESET}{_DIM} — {e}{_RESET}")
         if failed:
             _log(vault, f"WARN synthesis: {failed} of {n_ents} entities not synthesized this run")
 
@@ -2284,7 +2321,10 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # conflict at all. This used to be scraped off the per-document extraction results, so
         # the count could only ever include conflicts the extractor happened to be positioned to
         # notice.
-        contradiction_flags = [{"entity": c["entity_name"], "label": c["label"]}
+        # `sources` names the two documents (title, else filename), which the briefing prompt
+        # asks it to cite under anomalies.
+        contradiction_flags = [{"entity": c["entity_name"], "label": c["label"],
+                                "sources": c.get("sources", [])}
                                for c in out["contradictions"]]
         # Deterministic pointer, not a model input (D111): count this run's open document
         # requests (recorded per-document into the ledger by write_vault, at extraction time) so
@@ -2295,6 +2335,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             if any(s.get("sha256") in ok_shas for s in r.get("sources") or [])
         ])
         budget = chunking.prompt_budget_chars(briefing_model, briefing_backend, vault)
+        brief_dups, brief_flags, budget = _fit_briefing_alerts(neardup_alerts, contradiction_flags,
+                                                               budget)
         brief_results, brief_pads, condensed = _fit_briefing_inputs(ok, scratchpads, budget)
         if condensed:
             _say(f"{_DIM}   large batch — briefing input condensed ({condensed['level']}){_RESET}")
@@ -2304,13 +2346,15 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 prompt=prompts.build_briefing_prompt(
                     brief=brief, results=_with_entity_names(brief_results, _load_entity_names(vault)),
                     scratchpads=brief_pads,
-                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags,
+                    neardup_alerts=brief_dups, contradiction_flags=brief_flags,
                     condensed=condensed),
                 effort=post_effort, vault=vault)
             out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
                                               n_new_requests)
         except (model_client.RateLimitError, model_client.ProviderAuthError) as e:
             out["briefing_error"] = str(e)
+            if isinstance(e, model_client.ProviderAuthError):
+                out["auth_error"] = str(e)
             _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
         except model_client.ModelError as e:
             # Everything else (per-doc facts, entity notes, timeline) is already on disk; only the
@@ -2574,6 +2618,8 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
             # Any failed chunk defers the whole batch, exactly as the single call did: applying
             # the merges the earlier chunks found would commit half-reconciled state (I7).
             result["error"] = str(e)
+            if isinstance(e, model_client.ProviderAuthError):
+                result["auth_error"] = str(e)
             _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
             _log(vault, f"RECONCILE skipped: {e}")
             return result
@@ -2752,6 +2798,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
         out = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                "merged": [], "contradictions": [], "error": rec_result["error"],
                "committed_writes": {}, "commit_skipped": True}
+        if rec_result.get("auth_error"):
+            out["auth_error"] = rec_result["auth_error"]
         if standalone_usage:
             out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
@@ -2843,6 +2891,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         rate_limit_msg = None
         rate_limit_resets_at = None
         extra_summary = {"batch_pending": batch_out.get("batch_pending", False)}
+        if batch_out.get("auth_error"):
+            extra_summary["auth_error"] = batch_out["auth_error"]
     else:
         if not shas:
             return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
@@ -2965,7 +3015,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                             print()
                             _say(f"{_YELLOW}The provider refused this run{_RESET}{_DIM} — {e}{_RESET}")
                             _say(f"{_DIM}Stopping; finished documents are saved and the rest stay "
-                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog auth"
+                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog settings auth"
                                  f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}"
                                  f"{_DIM}.{_RESET}")
                             _request_stop(auth_error=str(e))

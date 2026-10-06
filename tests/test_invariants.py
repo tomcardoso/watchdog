@@ -31,8 +31,10 @@ Deliberately NOT guarded here, and why:
   `tests/test_file_metadata.py`. Only the defusedxml rule is guarded here, statically.
 - **I8 (transcribe, don't correct)** is a prompt instruction with no ground truth to check a
   transcribed value against, exactly like I1's summary grounding.
-- **I9's "every --json command"** is guarded at its root — the colour gate — plus the existing
-  `--json` output tests in `tests/test_cli.py`; this file does not enumerate every command.
+- **I9** is guarded at the colour gate and at the import-time colour constants every styled
+  string uses, so piped output carries no escape bytes. Its "`--json` is plain even on a real
+  terminal" half is not guarded here: that would need a pseudo-terminal at import time. The
+  `--json` output tests in `tests/test_cli.py` cover the payloads, without a terminal.
 
 I2's runtime guard was confirmed to run hermetically (the direct-text preprocessing path does
 not import Docling), so both the static and runtime layers described in the issue are present.
@@ -356,3 +358,33 @@ def test_I9_colour_is_off_whenever_stdout_is_not_a_terminal(monkeypatch):
     assert terminal._color_enabled() is True
     monkeypatch.setenv("NO_COLOR", "1")
     assert terminal._color_enabled() is False
+
+
+def test_I9_the_colour_constants_follow_the_gate_at_import():
+    """The constants styled strings use are computed once, at import, so checking
+    `_color_enabled()` alone never touches them. Import the module fresh in a subprocess — once
+    with stdout piped, once on a pseudo-terminal — so nothing is reloaded in this process."""
+    import os
+    import subprocess
+    import sys
+    code = "from watchdog import terminal; print(repr(terminal._RESET + terminal._BOLD))"
+    from pathlib import Path
+    import watchdog
+    src = str(Path(watchdog.__file__).resolve().parent.parent)     # the package under test
+    env = {**os.environ, "FORCE_COLOR": "3",
+           "PYTHONPATH": os.pathsep.join([src, os.environ.get("PYTHONPATH", "")])}
+    env.pop("NO_COLOR", None)
+    piped = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                           check=True)
+    assert piped.stdout.strip() == "''"
+    if sys.platform == "win32":
+        return
+    import pty
+    leader, follower = pty.openpty()
+    try:
+        subprocess.run([sys.executable, "-c", code], env=env, stdout=follower, check=True)
+        out = os.read(leader, 4096).decode()
+    finally:
+        os.close(leader)
+        os.close(follower)
+    assert "\\x1b[0m" in out

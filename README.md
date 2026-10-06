@@ -38,7 +38,7 @@ watchdog          reads, OCRs and converts each document, sends the extracted
 your vault        linked notes in Obsidian; ask questions in Claude Code
 ```
 
-After Watchdog has processed the documents you've given it, you read the briefing, explore the vault in Obsidian, and ask questions inside Claude Code — `/watchdog-query Who are the directors of Shell Co Ltd?` — with every answer cited back to a page.
+After Watchdog has processed the documents you've given it, you read the briefing, explore the vault in Obsidian, and ask questions in a Claude Code session — `watchdog ask "Who are the directors of Shell Co Ltd?"` — with every answer cited back to a page.
 
 For a closer look at what happens to a single document — the OCR pipeline, the information extraction process, the final summarization step — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
 
@@ -72,7 +72,8 @@ watchdog new "Shell Company Investigation"
 cd ~/Investigations/shell-company-investigation
 
 watchdog add ~/Downloads/court-filings/
-watchdog obsidian
+watchdog open
+watchdog ask "Who are the directors of Shell Co Ltd?"
 ```
 
 For a full first-investigation walkthrough, see [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md).
@@ -117,7 +118,7 @@ Please open an issue before starting significant work.
 
 ## Acknowledgements
 
-The vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici. Search is built on [fastembed](https://github.com/qdrant/fastembed) by Qdrant; the passage-window approach, `+`/`-` queries and show-the-source principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. Embedding the raw corpus separately from the knowledge graph was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro, and the structured vault index for entity lookup by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code). The ASCII dogs shown by `watchdog new` and `watchdog about` were drawn by Felix Lee and Sarah Kearsley.
+The vault structure and session-context approach were partly inspired by [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian) by Daniel Agrici. Search is built on [fastembed](https://github.com/qdrant/fastembed) by Qdrant; the passage-window approach, `+`/`-` queries and show-the-source principle are borrowed from [Semantra](https://github.com/freedmand/semantra) by Dylan Freedman. Embedding the raw corpus separately from the knowledge graph was partly informed by [obsidian-smart-connections](https://github.com/brianpetro/obsidian-smart-connections) by Brian Petro, and the structured vault index for entity lookup by [obsidian-claude-code](https://github.com/Roasbeef/obsidian-claude-code). The ASCII dogs shown by `watchdog new` and `watchdog settings about` were drawn by Felix Lee and Sarah Kearsley.
 
 ## License
 

@@ -15,6 +15,7 @@ from watchdog.cmd.base import (
     _LEGACY_PROMPT_HOOK_MARKER,
     _PROMPT_HOOK_COMMAND,
     _RETIRED_VAULT_PERMISSIONS,
+    _VAULT_DENY,
     _VAULT_PERMISSIONS,
     _find_project,
 )
@@ -95,7 +96,7 @@ _CONFIGURE_KEYS = {
             "How many documents `watchdog dig` extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
             "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
-            "  Default: 20, minimum: 1 (sequential). `watchdog setup`/`watchdog auth` set this to 3\n"
+            "  Default: 20, minimum: 1 (sequential). `watchdog setup`/`watchdog settings auth` set this to 3\n"
             "  automatically on Claude subscription auth that keeps ingestion — concurrent extractions\n"
             "  there share one Claude Code session's rate limit, and the higher metered-path default\n"
             "  reliably throttles it — and restore it to 20 automatically on switching back to an\n"
@@ -153,7 +154,7 @@ _CONFIGURE_KEYS = {
         "short": "Pin a record skill for every ingested document, skipping classification (default: unset)",
         "help": (
             "When every document in a vault is the same type, set this to a record-skill name\n"
-            "  (see `watchdog show-skills`) or a path to your own skill file, to skip per-document\n"
+            "  (see `watchdog settings skills`) or a path to your own skill file, to skip per-document\n"
             "  classification and use that one skill for all of them. Leave unset to classify\n"
             "  each document.\n"
             "  Override for one run with: watchdog dig --skill NAME (or --skill to pick one)."
@@ -661,7 +662,7 @@ _CONFIGURE_KEYS = {
             "  text; it exists so cost and speed can be compared across runs and models.\n"
             "  Because it lists the documents in every investigation, treat the file as sensitive.\n"
             "  Set to false to stop recording; existing rows stay until you delete the file.\n"
-            "  `watchdog delete --purge` removes a vault's rows along with the vault.\n"
+            "  `watchdog projects delete --purge` removes a vault's rows along with the vault.\n"
             "  Each vault's own usage files, which `watchdog usage` reads, are unaffected.\n"
             "  Default: true."
         ),
@@ -721,7 +722,7 @@ _TESSERACT_HEADERS_HINT = (
     "  Ubuntu/Debian:  sudo apt install tesseract-ocr libtesseract-dev\n"
     "  Fedora:         sudo dnf install tesseract tesseract-devel\n"
     "  macOS:          brew install tesseract\n"
-    "Then re-run: watchdog configure ocr_engine tesseract"
+    "Then re-run: watchdog settings ocr_engine tesseract"
 )
 
 
@@ -800,6 +801,7 @@ def cmd_refresh_skills(args) -> None:
     added = []
     removed = []
     read_scope_added = False
+    deny_added = False
     hook_updated = False
     if settings_path.exists():
         try:
@@ -827,6 +829,17 @@ def cmd_refresh_skills(args) -> None:
             if "blockReadsOutsideWorkingDirectories" not in perms:
                 perms["blockReadsOutsideWorkingDirectories"] = True
                 read_scope_added = True
+            deny = perms.get("deny")
+            if isinstance(deny, str):
+                deny = [deny]                     # a single rule written as a bare string
+            elif deny is None:
+                deny = []
+            elif not isinstance(deny, list):
+                raise TypeError("permissions.deny is not a list")   # left alone, with a warning
+            missing_deny = [p for p in _VAULT_DENY if p not in deny]
+            if missing_deny:
+                perms["deny"] = deny + missing_deny
+                deny_added = True
 
             # The old inline `python3 -c` prompt hook (see base._PROMPT_HOOK_COMMAND).
             for group in (settings.get("hooks") or {}).get("UserPromptSubmit") or []:
@@ -835,10 +848,14 @@ def cmd_refresh_skills(args) -> None:
                         hook["command"] = _PROMPT_HOOK_COMMAND
                         hook_updated = True
 
-            if removed or added or read_scope_added or hook_updated:
+            if removed or added or read_scope_added or deny_added or hook_updated:
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
-        except (json.JSONDecodeError, KeyError):
-            pass
+        except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
+            # Nothing was written, so nothing above may be reported as done.
+            added, removed = [], []
+            read_scope_added = deny_added = hook_updated = False
+            print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
+                  f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
 
     print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
     if added:
@@ -847,6 +864,8 @@ def cmd_refresh_skills(args) -> None:
         print(f"  {_GREEN}Permissions cleaned up{_RESET}  {_DIM}removed {len(removed)} retired rule{'s' if len(removed) != 1 else ''} (dead Write(...) rules, and pre-approved edits to pipeline-owned notes){_RESET}")
     if read_scope_added:
         print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
+    if deny_added:
+        print(f"  {_GREEN}Watchdog's keys protected{_RESET}  {_DIM}sessions in this vault can't read or edit ~/.watchdog{_RESET}")
     if hook_updated:
         print(f"  {_GREEN}Prompt hook updated{_RESET}  {_DIM}no longer needs python3 on PATH{_RESET}")
     for change in _migrate_vault_views(vault):
@@ -910,7 +929,7 @@ def cmd_show_skills(args) -> None:
         canon = name.removesuffix(".md")
         if canon not in catalog:
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} no record skill {_BOLD}{canon}{_RESET}.\n"
-                     f"  Run {_CYAN}watchdog show-skills{_RESET}{_DIM} to list them.{_RESET}\n")
+                     f"  Run {_CYAN}watchdog settings skills{_RESET}{_DIM} to list them.{_RESET}\n")
         print()
         print(Path(catalog[canon]).read_text(encoding="utf-8"))
         return
@@ -931,7 +950,7 @@ def cmd_show_skills(args) -> None:
         ver = None
     url = skills_catalog.github_skills_url("main")
     print(f"  {_DIM}Read the full text:{_RESET} {_CYAN}{url}{_RESET}")
-    print(f"  {_DIM}Print one:{_RESET} {_CYAN}watchdog show-skills <name>{_RESET}")
+    print(f"  {_DIM}Print one:{_RESET} {_CYAN}watchdog settings skills <name>{_RESET}")
     print(f"  {_DIM}Add your own:{_RESET} {_CYAN}{skills_catalog.USER_SKILLS_DIR}{_RESET}")
     if ver:
         print(f"  {_DIM}(installed watchdog-intel {ver}){_RESET}")
@@ -1334,7 +1353,7 @@ def cmd_configure(args) -> None:
         print()
         print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
         print(f"  {_DIM}Model authentication (Claude subscription/API key, other provider keys) is"
-              f" managed separately — see{_RESET} {_CYAN}watchdog auth{_RESET}{_DIM}.{_RESET}")
+              f" managed separately — see{_RESET} {_CYAN}watchdog settings auth{_RESET}{_DIM}.{_RESET}")
 
         def _print_key(k):
             meta = _CONFIGURE_KEYS[k]

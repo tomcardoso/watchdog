@@ -1606,18 +1606,19 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
     (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
     ex = _real_sha_extraction(tmp_path)
 
-    real_rename = Path.rename
+    import watchdog.pipeline.write_vault as wv_mod
+    real_replace = wv_mod.os.replace
     crashed = {"done": False}
 
-    def flaky_rename(self, target):
+    def flaky_replace(src, target):
         # Fail the first atomic registry write (entities.json) — i.e. after the notes are
         # written but before any registry file is persisted.
         if not crashed["done"] and str(target).endswith("entities.json"):
             crashed["done"] = True
             raise OSError("simulated crash before registry persist")
-        return real_rename(self, target)
+        return real_replace(src, target)
 
-    monkeypatch.setattr(Path, "rename", flaky_rename)
+    monkeypatch.setattr(wv_mod.os, "replace", flaky_replace)
     with pytest.raises(OSError):
         run(ex, vault)
 
@@ -1626,7 +1627,7 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
     assert (vault / "entities" / "person" / "alice-smith.md").exists()
 
     # Repair retry (crash cleared) must converge.
-    monkeypatch.setattr(Path, "rename", real_rename)
+    monkeypatch.setattr(wv_mod.os, "replace", real_replace)
     run(_real_sha_extraction(tmp_path), vault)
 
     entities = json.loads((vault / ".watchdog/registry/entities.json").read_text())
@@ -1683,3 +1684,22 @@ def test_drop_analysis_entry_replaces_only_matching_document():
     kept = wv._drop_analysis_entry(analysis, "documents/doc-a")
     assert "Claim A" not in kept
     assert "Claim B" in kept
+
+
+def test_replaying_a_commit_after_a_crash_reuses_its_own_original_and_note(tmp_path):
+    """A crash after the original moved into the morgue but before the registry flushed leaves
+    a file at the plain path with no registry entry. A replay must recognise it by content (the
+    same sha256) and reuse the path, not fork `Order-<sha6>.pdf` and a second note (D241)."""
+    import hashlib
+    vault = make_vault(tmp_path)
+    body = "REAL CONTENT"
+    sha = hashlib.sha256(body.encode()).hexdigest()
+    _commit_same_name(tmp_path, vault, sha, body)
+    reg_path = vault / ".watchdog" / "registry" / "documents.json"
+    first = json.loads(reg_path.read_text())[sha]
+    reg_path.write_text("{}")                       # the registry entry never flushed
+    _commit_same_name(tmp_path, vault, sha, body)
+    again = json.loads(reg_path.read_text())[sha]
+    assert again["morgue_path"] == first["morgue_path"]
+    assert again["document_note"] == first["document_note"]
+    assert len(list((vault / "morgue").rglob("Order*.pdf"))) == 1

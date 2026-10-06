@@ -274,7 +274,7 @@ def test_cmd_list_one_corrupt_registry_does_not_hide_other_projects(configured, 
     assert "Healthy Co" in out
     assert "Broken Co" in out
     assert "registry file is corrupt" in out
-    assert "watchdog doctor" in out
+    assert "watchdog settings doctor" in out
 
 
 def test_cmd_doctor_one_corrupt_registry_reports_instead_of_crashing(configured, wdg_home, capsys):
@@ -703,7 +703,7 @@ def test_cmd_open_opens_vault_folder(configured, monkeypatch):
     calls = []
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
-    cli.cmd_open(args(name="My Story"))
+    cli.cmd_open(args(name="My Story", folder=True))
     assert len(calls) == 1
     assert calls[0] == ["open", str(vault)]
 
@@ -715,7 +715,7 @@ def test_cmd_open_infers_project_from_cwd(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     monkeypatch.chdir(vault)
-    cli.cmd_open(args(name=None))
+    cli.cmd_open(args(name=None, folder=True))
     assert len(calls) == 1
     assert calls[0] == ["open", str(vault)]
 
@@ -725,7 +725,14 @@ def test_cmd_open_exits_on_failure(configured, monkeypatch):
     monkeypatch.setattr("watchdog.cmd.vault.subprocess.run", lambda cmd, **kw: type("R", (), {"returncode": 1})())
     monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "darwin")
     with pytest.raises(SystemExit):
-        cli.cmd_open(args(name="My Story"))
+        cli.cmd_open(args(name="My Story", folder=True))
+
+
+def test_cmd_open_defaults_to_obsidian(configured, monkeypatch):
+    seen = []
+    monkeypatch.setattr("watchdog.cmd.vault.cmd_obsidian", lambda a: seen.append(a.name))
+    cli.cmd_open(args(name="My Story", folder=False))
+    assert seen == ["My Story"]
 
 
 # ── cmd_list ──────────────────────────────────────────────────────────────────
@@ -1400,7 +1407,6 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("version",  "about"),
     ("config",   "configure"),
     ("setting",  "configure"),
-    ("settings", "configure"),
     ("find",      "search"),
     ("process",   "chew"),
     ("preprocess", "chew"),
@@ -1914,6 +1920,67 @@ def test_cmd_delete_purge_removes_the_vaults_telemetry_rows(configured, monkeypa
         conn.close()
 
 
+def _telemetry_names():
+    from watchdog import telemetry_db
+    conn = sqlite3.connect(telemetry_db.DB_PATH)
+    try:
+        return sorted(r[0] for r in conn.execute("SELECT vault_name FROM calls"))
+    finally:
+        conn.close()
+
+
+def _record_telemetry(vault):
+    from watchdog import telemetry_db
+    record = {"task": "extract", "model": "m", "backend": "claude-api", "input_tokens": 1,
+              "output_tokens": 1, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    telemetry_db.record_call(record, vault=vault, run_id="r", benchmark_arm_id=None,
+                             prompt_hash=None, config_snapshot=None)
+
+
+def test_cmd_delete_purge_removes_telemetry_when_the_folder_is_already_gone(configured, monkeypatch):
+    """A vault deleted by hand before `delete --purge` used to keep its telemetry rows."""
+    import shutil
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_new(args(name="Other Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    _record_telemetry(configured / "other-co")
+    shutil.rmtree(configured / "shell-co")
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    assert _telemetry_names() == ["other-co"]
+
+
+def test_cmd_delete_purge_keeps_rows_another_investigation_at_that_path_owns(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    projects = cli.load_projects()
+    projects["other"] = {**projects["shell-co"], "name": "Other"}
+    cli.save_projects(projects)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    assert _telemetry_names() == ["shell-co"]
+    assert (configured / "shell-co").is_dir()      # the other investigation's files stay too
+
+
+def test_cmd_rename_then_purge_removes_the_renamed_vaults_telemetry(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+    assert _telemetry_names() == ["oil-co"]
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Oil Co", purge=True))
+    assert _telemetry_names() == []
+
+
+def test_cmd_move_relocates_the_vaults_telemetry(configured):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    new_path = configured / "new-location"
+    cli.cmd_move(args(name="Shell Co", path=str(new_path)))
+    from watchdog import telemetry_db
+    assert telemetry_db.purge_vault(new_path) == 1
+
+
 def test_cmd_delete_purge_removes_the_vault_without_a_pointless_backup(configured, monkeypatch, capsys):
     """--purge used to snapshot the registry *inside* the folder it then deleted, and print a
     paragraph explaining the snapshot couldn't undo anything. It just deletes now."""
@@ -2278,6 +2345,29 @@ def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
     monkeypatch.chdir(vault)
     with pytest.raises(SystemExit, match="not found"):
         cli.cmd_chew(args(file="/no/such/file.pdf", chew_workers=None))
+
+
+def test_cmd_chew_with_a_folder_exits_cleanly(configured, monkeypatch, tmp_path):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    monkeypatch.chdir(configured / "shell-co")
+    folder = tmp_path / "a-folder"
+    folder.mkdir()
+    with pytest.raises(SystemExit, match="is a folder"):
+        cli.cmd_chew(args(file=str(folder), chew_workers=None))
+
+
+def test_load_config_with_invalid_utf8_exits_cleanly(wdg_home):
+    (wdg_home / "config.json").write_bytes(b'{"x": "\xff\xfe"}')
+    with pytest.raises(SystemExit, match="config file is corrupt"):
+        _base.load_config()
+    with pytest.raises(SystemExit, match="config file is corrupt"):
+        _base._projects_dir()
+
+
+def test_load_projects_with_invalid_utf8_exits_cleanly(wdg_home):
+    (wdg_home / "projects.json").write_bytes(b'{"x": "\xff\xfe"}')
+    with pytest.raises(SystemExit, match="projects file is corrupt"):
+        _base.load_projects()
 
 
 # ── _offer_ingest (post-chew prompt) ──────────────────────────────────────────
@@ -3119,7 +3209,7 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
     assert calls[0].get("skip_finalize") is True
     out = capsys.readouterr().out
     assert "watchdog bark" in out
-    assert "Open a fresh Claude Code session" not in out
+    assert "to ask investigation questions" not in out
 
 
 def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_path, monkeypatch):
@@ -3867,7 +3957,7 @@ def test_cmd_finalize_estimate_nothing_pending(wdg_home, tmp_path, monkeypatch, 
 
     ing.cmd_finalize(args(estimate=True))
 
-    assert "Nothing to finalize" in capsys.readouterr().out
+    assert "Nothing to finish" in capsys.readouterr().out
 
 
 def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home, tmp_path, monkeypatch, capsys):
@@ -5228,6 +5318,10 @@ def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
     ({"synthesized": 0, "error": "rate limited"}, 2),
     ({"synthesized": 0, "briefing_error": "rate limited"}, 2),
     ({"extracted": 1, "results": [], "quarantined": 3, "failed": 2}, 0),
+    # An auth/billing stop is not resumable by re-running, wherever it surfaced (D259).
+    ({"synthesized": 0, "error": "refused", "auth_error": "refused"}, 1),
+    ({"extracted": 1, "results": [], "post_ingest": {"error": "x", "auth_error": "x"}}, 1),
+    ({"extracted": 0, "results": [], "batch_pending": True, "auth_error": "x"}, 1),
 ])
 def test_exit_code_for(result, expected):
     from watchdog.cmd import ingest as ing

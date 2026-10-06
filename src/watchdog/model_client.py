@@ -315,11 +315,13 @@ class ProviderAuthError(RuntimeError):
 # (skip synthesis, keep the timeline untouched) rather than crash a run whose documents are saved.
 CALL_FAILURES = (ModelError, RateLimitError, ProviderAuthError)
 
-# Body text that marks a 400/402/429 as an account problem rather than a bad request or a rate
-# limit: Anthropic's "credit balance is too low", OpenAI's `insufficient_quota` (sent as a 429,
-# which would otherwise read as a rate limit and have `--wait` sleep on it forever).
-_BILLING_HINTS = ("credit balance", "insufficient_quota", "billing", "quota exceeded",
-                  "exceeded your current quota", "payment required")
+# Body text that marks an error as an account problem rather than a bad request or a rate limit:
+# Anthropic's "credit balance is too low", OpenAI's `insufficient_quota` code (sent as a 429,
+# which would otherwise read as a rate limit and have `--wait` sleep on it forever). Only explicit
+# account signals (D259): ordinary per-minute rate limits also say "quota" and "billing" — Gemini's
+# 429 reads "You exceeded your current quota, please check your plan and billing details", OpenAI's
+# free-tier 429 links to its billing page — and must stay rate limits, which `--wait` sleeps on.
+_BILLING_HINTS = ("credit balance", "insufficient_quota", "payment required")
 
 
 def _looks_like_billing(*texts: str) -> bool:
@@ -689,15 +691,28 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         # The SDK raises on a CLI error result via two paths — a ProcessError rewritten to
         # "Claude Code returned an error result: …", or a {type:error} stream message. If it
         # was a rate limit, raise a typed, actionable error instead of an opaque one.
-        if _looks_like_auth_failure(api_status, out["text"], str(e)):
-            raise ProviderAuthError(f"Claude Code could not authenticate: {out['text'] or e}") from e
-        if rejected or _looks_like_rate_limit(api_status, notice, out["text"], str(e)):
+        # `out["text"]` is scanned only when the result was flagged `is_error`: then it is the
+        # CLI's own error string ("Invalid API key · Please run /login"), which the SDK's
+        # rewritten exception leaves out. Otherwise it can be partial model output, i.e.
+        # document content, which routinely says "billing" (D259). An explicit rate-limit
+        # rejection event wins; then a billing refusal, then a rate limit (its notice can mention a login page, and misreading it as an
+        # auth failure would stop the run instead of letting `--wait` sleep), then other auth.
+        err_text = out["text"] if is_error else ""
+        if rejected:
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
+        if _looks_like_billing(str(e), err_text):
+            raise ProviderAuthError(f"Claude Code account can't pay for this call: {err_text or e}") from e
+        if _looks_like_rate_limit(api_status, notice, str(e), err_text):
+            raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
+        if _looks_like_auth_failure(api_status, str(e), err_text):
+            raise ProviderAuthError(f"Claude Code could not authenticate: {err_text or e}") from e
         raise
-    if is_error and _looks_like_auth_failure(api_status, out["text"]):
-        raise ProviderAuthError(f"Claude Code could not authenticate: {out['text']}")
+    if not rejected and is_error and _looks_like_billing(out["text"]):
+        raise ProviderAuthError(f"Claude Code account can't pay for this call: {out['text']}")
     if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
+    if is_error and _looks_like_auth_failure(api_status, out["text"]):
+        raise ProviderAuthError(f"Claude Code could not authenticate: {out['text']}")
     return out
 
 
@@ -843,7 +858,9 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     except (anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
         raise ProviderAuthError(f"Anthropic rejected the API key: {e}") from e
     except anthropic.APIStatusError as e:
-        if _looks_like_billing(str(e)):
+        # 402 is Anthropic's `billing_error`, whatever its message says — as on the
+        # OpenAI-compatible path.
+        if getattr(e, "status_code", None) == 402 or _looks_like_billing(str(e)):
             raise ProviderAuthError(f"Anthropic account can't pay for this call: {e}") from e
         raise
     text = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), "")
@@ -1100,12 +1117,16 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     import truststore
     ssl_context = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     async with httpx.AsyncClient(timeout=600, verify=ssl_context) as client:
-        # Bounded retry on 5xx and on transport failures (a dropped connection, a timeout) —
+        # Bounded retry on 5xx and on transport failures (a dropped connection, a connect timeout — not a read timeout) —
         # parity with the Anthropic SDK's built-in transient retry (#354). 429 is excluded: it
         # raises RateLimitError below on the first response.
         for attempt in range(_TRANSIENT_RETRIES + 1):
             try:
                 resp = await client.post(url, headers=headers, json=body)
+            except httpx.ReadTimeout:
+                # The provider had the whole request and was generating for the full client
+                # timeout: a retry would run (and likely bill) the same long call again (D259).
+                raise
             except httpx.TransportError:
                 if attempt == _TRANSIENT_RETRIES:
                     raise
@@ -1252,7 +1273,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if chosen == "claude-api" and not api_key:
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
-                f"'{auth_mode}' — run `watchdog auth` to switch to api-key mode, or use the claude-agent-sdk backend")
+                f"'{auth_mode}' — run `watchdog settings auth` to switch to api-key mode, or use the claude-agent-sdk backend")
         return chosen, provider, api_key, auth_mode, None
 
     base_url = None
@@ -1261,11 +1282,11 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if not base_url:
             raise ModelError(
                 f"the {chosen} backend needs a base URL — run "
-                f"`watchdog configure {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
+                f"`watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
 
     api_key = auth.get_api_key(provider)
     if auth.provider_requires_key(provider) and not api_key:
-        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog auth` to add one")
+        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog settings auth` to add one")
     return chosen, provider, api_key, "api-key", base_url
 
 

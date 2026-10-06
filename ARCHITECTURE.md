@@ -84,7 +84,7 @@ that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together.
 **Code:** `pipeline/ingest_setup.py`, `pipeline/locks.py`, `cmd/ingest.py`.
 
 A run resolves auth, takes the run lock, scans the queue, and runs `orchestrate.run` in-process.
-Models, efforts, concurrency and classification come from `watchdog configure` or per-run flags;
+Models, efforts, concurrency and classification come from `watchdog settings` or per-run flags;
 their defaults live in `watchdog/defaults.py`.
 
 - **Locks (D66, D69).** The ingest, finalize and chew locks are created with `O_CREAT|O_EXCL`. A
@@ -454,7 +454,7 @@ journalist's step (I5).
   re-fetch them.
 - **Wayback (optional).** With `wayback_save` and keys set, each source is also submitted to Save
   Page Now; failures never block a download.
-- **`watchdog fetch`** downloads a given list of links through the same path, without a session.
+- **`watchdog research fetch`** downloads a given list of links through the same path, without a session.
 - Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
   advisory; only the egress checks are enforced. Web tools are granted by the skill's own
   `allowed-tools`, not the vault-wide permissions.
@@ -487,13 +487,16 @@ noted as such.
   *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** XML goes through
   `defusedxml`, never the stdlib parsers; metadata is allowlisted and length-capped; a failing
-  reader yields `{}`; document text in a note is defanged. *History: D78, D110, D154, D241.*
+  reader yields `{}`; document text in a note is defanged. A command a vault's session runs without a
+  prompt reaches only that vault: under `CLAUDECODE`, `search` and `write-entity` refuse other
+  investigations and files outside it, and the vault denies its sessions `~/.watchdog`.
+  *History: D78, D110, D154, D241, D257.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction stages
   `.watchdog/extracted/<sha>.json` and touches no committed state. Every vault write happens in the
   serial, sha-sorted commit pass, after the pre-commit fold and merges — so a reconcile failure
   leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
   Investigation sessions don't hand-edit pipeline-owned files; they change pipeline state only
-  through deterministic commands that take the registry lock. *History: D126–D129, D245.*
+  through deterministic commands that take the registry lock. *History: D126–D129, D245, D258.*
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's

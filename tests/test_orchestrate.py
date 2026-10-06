@@ -812,12 +812,14 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
         elif task == "timeline-dedup":
             parsed = {"groups": []}
         elif task == "briefing":
+            briefing_prompts.append(flat)
             parsed = {"investigation_status": "x", "what_was_ingested": []}
         else:
             parsed = {}
         return model_client.ModelResult(parsed=parsed, text="", model="m",
                                         backend="claude-agent-sdk", auth_mode="subscription",
                                         cost_usd=0.0)
+    briefing_prompts: list[str] = []
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     vault = make_vault(tmp_path)
@@ -838,6 +840,9 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
     # And it reached the briefing's flagged count — fed by reconciliation, not by any single doc.
     assert summary["post_ingest"]["contradictions"]
     assert "Contradictions flagged:** 1" in (vault / "log.md").read_text()
+    # The briefing prompt asks for both sources to be named, so the flag must carry them.
+    flags = briefing_prompts[0].split("CONTRADICTION FLAGS:\n", 1)[1].split("\n", 1)[0]
+    assert '"sources": ["doc-one.pdf", "doc-two.pdf"]' in flags
 
 
 def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
@@ -5667,3 +5672,32 @@ def test_timeline_dedup_splits_a_crowded_date_into_bounded_calls(tmp_path, monke
     kept = [json.loads(line)["event"] for line in (td / f"{date}.ndjson").read_text().splitlines()]
     assert kept == ["Alpha", "Beta"]
     assert not (td / f"{date}_newdoc1.ndjson").exists()
+
+
+def test_resume_batch_stops_cleanly_on_an_auth_failure(tmp_path, monkeypatch):
+    """A refused repair call during collection leaves the batch for a later run and reports an
+    auth stop, instead of escaping as an uncaught exception (D259)."""
+    vault = make_vault(tmp_path)
+    _queue_doc(vault, sha="sha1", filename="a.pdf")
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
+             "skill_label": "financial-statements", "effort": None, "backend": "claude-batch"}
+    batch_extract.write_state(vault, state)
+
+    async def fake_status(batch_id, api_key, backend=None):
+        return {"processing_status": "ended", "request_counts": {"succeeded": 1}}
+
+    async def fake_collect(batch_id, api_key, model_id, backend=None):
+        return {"sha1": {"ok": True, "parsed": {}, "usage": {}, "cost_usd": 0.0, "error": None}}
+
+    async def refused(*a, **k):
+        raise model_client.ProviderAuthError("credit balance is too low")
+
+    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
+    monkeypatch.setattr(orchestrate.batch_extract, "collect", fake_collect)
+    monkeypatch.setattr(orchestrate, "_finish_batch_item", refused)
+    skill_file = tmp_path / "pinned.md"
+    skill_file.write_text("SKILL")
+
+    out = asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk"))
+    assert out["batch_pending"] is True and "credit balance" in out["auth_error"]
+    assert batch_extract.read_state(vault) is not None       # kept for a later run

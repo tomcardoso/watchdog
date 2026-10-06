@@ -72,7 +72,7 @@ You don't have to remember to check: a bare `watchdog dig` with nothing new to r
 
 If a run stops with "the provider refused the credentials or account", every document is still queued — nothing was set aside in `queue/_failed/`. The model provider turned the request down: the API key is wrong, revoked, or lacks access to the model, or the account has run out of credit or quota. The message includes the provider's own explanation.
 
-Check the key with `watchdog auth`, or top up the account on the provider's site, then run `watchdog dig` again. A run that stops this way exits with code `1`, not `2`, because re-running it unchanged would fail the same way.
+Check the key with `watchdog settings auth`, or top up the account on the provider's site, then run `watchdog dig` again. A run that stops this way exits with code `1`, not `2`, because re-running it unchanged would fail the same way.
 
 ## Hitting rate limits
 
@@ -91,13 +91,13 @@ watchdog dig --concurrency 2
 Or set it permanently:
 
 ```bash
-watchdog configure extract_concurrency 2
+watchdog settings extract_concurrency 2
 ```
 
 On Claude subscription auth specifically, you can also set a manual token budget — check the Claude Console's rate-limits page for your account's tokens-per-minute figure:
 
 ```bash
-watchdog configure extract_token_budget 40000
+watchdog settings extract_token_budget 40000
 ```
 
 When a rate limit stops a run, the notice reports the tokens-per-minute this run was actually sustaining, plus (when the provider sends it) how many tokens it had left before the stop — real numbers to size a lower `extract_concurrency` against, instead of guessing.
@@ -115,10 +115,10 @@ Without `--wait`, dig stops cleanly on a rate limit. Nothing is lost: every docu
 `the local backend needs a base URL` means `local_base_url` isn't set yet — point it at your model server:
 
 ```bash
-watchdog configure local_base_url http://localhost:11434/v1
+watchdog settings local_base_url http://localhost:11434/v1
 ```
 
-A connection error (refused, timed out) means the server named in `local_base_url` isn't running, isn't reachable from this machine, or the port is wrong — check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM, ...) is actually up and listening on that address before retrying. Most local runners don't need an API key at all; if yours does (some gateways in front of a local model do), add one with `watchdog auth`. See [Configuration](configuration.md#local-and-self-hosted-models).
+A connection error (refused, timed out) means the server named in `local_base_url` isn't running, isn't reachable from this machine, or the port is wrong — check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM, ...) is actually up and listening on that address before retrying. Most local runners don't need an API key at all; if yours does (some gateways in front of a local model do), add one with `watchdog settings auth`. See [Configuration](configuration.md#local-and-self-hosted-models).
 
 ## Ingest interrupted after extraction
 
@@ -156,7 +156,7 @@ When you upgrade Watchdog (`pipx upgrade watchdog-intel`, or `uv tool upgrade wa
 
 ```bash
 cd ~/Investigations/your-investigation
-watchdog refresh-skills
+watchdog settings refresh-skills
 ```
 
 The same command also updates the vault's Claude Code settings and its dashboard and graph views to match the new version.
@@ -166,29 +166,29 @@ The same command also updates the vault's Claude Code settings and its dashboard
 If you've reorganized your files and Watchdog can no longer find a vault, start with a health check of every registered investigation:
 
 ```bash
-watchdog doctor
+watchdog settings doctor
 ```
 
 It lists any vault whose folder is missing or broken and suggests the fix. To point the registry at a vault's new location — or to have Watchdog move the folder for you if you haven't moved it yet:
 
 ```bash
-watchdog move <name> /new/path/to/parent-folder
+watchdog projects move <name> /new/path/to/parent-folder
 ```
 
 If a vault folder exists on disk but Watchdog doesn't know about it at all, register it:
 
 ```bash
-watchdog register /path/to/the/vault-folder
+watchdog projects register /path/to/the/vault-folder
 ```
 
 ## Obsidian says "Vault not found"
 
-You ran `watchdog obsidian <name>` and Obsidian popped up a "Vault not found" error. This happens because Obsidian only reads its list of vaults when it starts up, so a vault created while Obsidian was already running is invisible to it until you restart.
+You ran `watchdog open <name>` and Obsidian popped up a "Vault not found" error. This happens because Obsidian only reads its list of vaults when it starts up, so a vault created while Obsidian was already running is invisible to it until you restart.
 
 Quit Obsidian completely (not just close the window — use **Quit** so no Obsidian process is left running), then run the command again:
 
 ```bash
-watchdog obsidian <name>
+watchdog open <name>
 ```
 
 Newer versions of Watchdog detect this situation and tell you to restart Obsidian instead of showing the confusing error.

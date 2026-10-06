@@ -17,6 +17,7 @@ are folded by the finalize-time dedup call. Resolution is manual (a ticked box o
 
 import datetime
 import json
+import os
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
@@ -45,7 +46,7 @@ def _save(vault: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.rename(path)
+    os.replace(tmp, path)   # rename() fails on Windows when the target exists
 
 
 def record(vault: Path, items: list, *, sha256: str, filename: str, document_note: str) -> list[str]:
@@ -146,7 +147,7 @@ def _format(open_: list[dict]) -> str:
     lines = [
         "# Documents to request\n",
         "*Regenerated on each ingest — lists only what is still outstanding.*\n",
-        "*Tick a box and run `watchdog resolve --sync` (or `watchdog resolve <id>`) once you "
+        "*Tick a box and run `watchdog review resolve --sync` (or `watchdog review resolve <id>`) once you "
         "have the document.*\n",
     ]
     for dtype in sorted(by_type):

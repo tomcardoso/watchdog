@@ -171,7 +171,7 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
     readable as the catalog grows. `rows` is already sorted by `cost` ascending."""
     if not rows:
         return (f"  {_DIM}Not enough usage history yet to project other models — run an ingest "
-                f"or finalize first, then re-run with {_RESET}{_CYAN}--estimate-all{_RESET}"
+                f"or bark first, then re-run with {_RESET}{_CYAN}--estimate-all{_RESET}"
                 f"{_DIM}.{_RESET}")
     name_w = max(len(r["name"]) for r in rows)
     lines = [f"  {_DIM}Projected list price by model, cheapest first {_RESET}{_DIM}(every input "
@@ -375,6 +375,9 @@ def cmd_chew(args) -> dict | None:
         f = Path(file_arg).resolve()
         if not f.exists():
             sys.exit(f"Error: file not found: {f}")
+        if not f.is_file():
+            sys.exit(f"Error: {f} is a folder — `watchdog chew` takes one file. To read a whole "
+                     f"folder, use `watchdog add {f}`.")
         f = _into_incoming(vault, f)
         run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f],
                    show_ingest_hint=False)
@@ -930,8 +933,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         if is_dig:
             # `dig` never finalizes, so there's nothing to decide: the staged batch waits for the
             # next `watchdog bark`, which finalizes it together with whatever this run extracts.
-            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM} — "
-                  f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} will finalize it together with "
+            print(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — "
+                  f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} will finish it together with "
                   f"this run.{_RESET}")
             if not new_docs:
                 print(f"  {_DIM}Nothing new to extract.{_RESET}\n")
@@ -939,26 +942,26 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         elif not new_docs:
             # Bare `watchdog` (or the deprecated `ingest`) with nothing new to read: the only work
             # left is the finalize, so do it rather than extracting nothing and stopping.
-            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM} — "
-                  f"finalizing it now.{_RESET}")
+            print(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — "
+                  f"finishing it now.{_RESET}")
             return _run_finalize(vault, post_model, post_effort, post_backend,
                                  skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
         elif is_add:
             # `add` takes documents all the way through, so a pending batch is simply finalized
             # together with the new documents — the choice the pick below defaults to.
-            print(f"\n  {_DIM}A previous batch is pending finalization{_RESET}{detail}{_DIM} — it "
-                  f"will be finalized together with the new documents.{_RESET}")
+            print(f"\n  {_DIM}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — it "
+                  f"will be finished together with the new documents.{_RESET}")
         else:
             # A programmatic caller must never block on the pick below — it has no way to answer
             # it (#494). Fail loud instead of hanging on an invisible prompt.
             if non_interactive:
-                sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is pending finalization in "
+                sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is waiting to be finished in "
                          f"this vault — refusing to prompt for a decision in a non-interactive run.\n"
-                         f"  Run {_CYAN}watchdog bark{_RESET} to finalize it, then retry.\n")
-            print(f"\n  {_YELLOW}A previous batch is pending finalization{_RESET}{detail}{_DIM}.{_RESET}")
+                         f"  Run {_CYAN}watchdog bark{_RESET} to finish it, then retry.\n")
+            print(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM}.{_RESET}")
             options = [
                 f"Finalize it together with the new documents {_DIM}— extract the new docs, then "
-                f"finalize everything in one pass{_RESET}",
+                f"finish everything in one pass{_RESET}",
                 f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
                 f"the briefing); ingest the new docs after{_RESET}",
             ]
@@ -1057,7 +1060,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # is extraction, which is where the 50% discount is worth having.
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
-                     f"(it needs a metered key) — switch to it with {_CYAN}watchdog auth{_RESET}.\n")
+                     f"(it needs a metered key) — switch to it with {_CYAN}watchdog settings auth{_RESET}.\n")
     # openai-batch (#530) needs no equivalent check — OpenAI has no subscription auth mode in
     # this codebase, so it's already covered by the ordinary api-key resolution above.
     # The verification pass (#535): flag beats config, config beats off. Off is the default
@@ -1289,15 +1292,16 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
     elif summary.get("finalize_skipped"):
         print(f"\n  {_DIM}Extraction staged, post-processing skipped{_RESET} "
               f"{_DIM}({_RESET}{_BOLD}{ext}{_RESET}{_DIM} document{'s' if ext != 1 else ''} on disk).{_RESET}")
-        print(f"  {_DIM}Finalize when ready — run it once for the vault as-is, or copy the vault "
+        print(f"  {_DIM}Finish when ready — run it once for the vault as-is, or copy the vault "
               f"folder to try more than one finalizer:{_RESET}")
         print(f"  {_CYAN}watchdog bark{_RESET}\n")
     elif pipeline_hint == "watchdog add":
         print(f"\n  {_DIM}Next:{_RESET} {_CYAN}watchdog{_RESET}{_DIM} for what's waiting on you · "
-              f"{_RESET}{_CYAN}watchdog context{_RESET}{_DIM} to ask questions · {_RESET}"
-              f"{_CYAN}watchdog obsidian{_RESET}{_DIM} to read the notes{_RESET}\n")
+              f"{_RESET}{_CYAN}watchdog ask{_RESET}{_DIM} to ask questions · {_RESET}"
+              f"{_CYAN}watchdog open{_RESET}{_DIM} to read the notes{_RESET}\n")
     else:
-        print(f"\n  {_DIM}Open a fresh Claude Code session to ask investigation questions.{_RESET}\n")
+        print(f"\n  {_DIM}Run{_RESET} {_CYAN}watchdog ask{_RESET} {_DIM}to ask investigation questions "
+              f"in a fresh Claude Code session.{_RESET}\n")
 
 
 def exit_code_for(result) -> int:
@@ -1316,7 +1320,7 @@ def exit_code_for(result) -> int:
     keep getting the dict back, not a `SystemExit`."""
     if not isinstance(result, dict):
         return 0
-    if result.get("auth_error"):
+    if result.get("auth_error") or (result.get("post_ingest") or {}).get("auth_error"):
         return 1   # not resumable by re-running — the key or the account needs fixing first
     if result.get("rate_limited") or result.get("batch_pending"):
         return 2
@@ -1352,7 +1356,7 @@ def cmd_finalize(args) -> dict | None:
 
     from watchdog.pipeline import orchestrate
     if not orchestrate.has_pending_finalization(vault):
-        print(f"\n  {_DIM}Nothing to finalize — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} first.{_RESET}\n")
+        print(f"\n  {_DIM}Nothing to finish — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} first.{_RESET}\n")
         return
 
     config = load_config()
@@ -1420,11 +1424,11 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     if not acquire_or_take_stale(lock, f"pid: cli-finalize\nstarted_at: {_iso_now()}\n", STALE_SECONDS):
         ts = lock_started_at(lock)
         when = f" (lock acquired {ts})" if ts else ""
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or finalize is already running{when}.\n"
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or bark is already running{when}.\n"
                  f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
     stages = "entity reconciliation + synthesis + timeline" if skip_briefing else \
         "entity reconciliation + synthesis + timeline + briefing"
-    print(f"\n  {_DIM}Finalizing — {stages} (model: {_RESET}"
+    print(f"\n  {_DIM}Finishing the batch — {stages} (model: {_RESET}"
           f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
     try:
         import asyncio
@@ -1442,7 +1446,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
 
     if out.get("error") or out.get("briefing_error"):
         reason = out.get("error") or out.get("briefing_error")
-        print(f"\n  {_YELLOW}Finalize didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
+        print(f"\n  {_YELLOW}The batch didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
         print(f"  {_DIM}Nothing is lost — re-run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} once the "
               f"cause above is fixed (for a rate limit, once it resets).{_RESET}\n")
         return out
@@ -1452,7 +1456,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         parts.append(f"briefing {_CYAN}{out['briefing']}{_RESET}")
     elif out.get("briefing_skipped"):
         parts.append("briefing skipped")
-    print(f"\n  {_GREEN}Finalized{_RESET}  " + ", ".join(parts) + "\n")
+    print(f"\n  {_GREEN}Finished{_RESET}  " + ", ".join(parts) + "\n")
     return out
 
 
@@ -1519,6 +1523,15 @@ def cmd_add(args) -> dict | None:
     for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
     picks up whatever is waiting: files in `_INCOMING/`, queued documents, a pending batch.
     `--retry` first puts documents that failed extraction back in the queue."""
+    if getattr(args, "watch", False):
+        # `add --watch` is normally rewritten to `watch` before parsing (groups.rewrite); an
+        # abbreviation like `--watc` reaches here instead, and must still mean watch.
+        from argparse import Namespace
+        from watchdog.cmd.vault import cmd_watch
+        paths = getattr(args, "paths", None) or []
+        if len(paths) > 1:
+            sys.exit("Error: watchdog add --watch [name] takes only an investigation name.")
+        return cmd_watch(Namespace(name=paths[0] if paths else None))
     vault = Path(".").resolve()
     if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")

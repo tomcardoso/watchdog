@@ -259,6 +259,24 @@ def test_rewrite_staged_ids_remaps_morgue_entity_id_and_key_facts_entities(tmp_p
     assert staged["entities"][0]["id"] == "alice-smith"
 
 
+def test_rewrite_staged_ids_scans_the_timeline_only_for_artifacts_that_named_the_merged_id(tmp_path, monkeypatch):
+    """Each remap globs the whole timeline folder; doing it for every document in the batch on
+    every merge cost minutes at scale. Only an artifact that carried `merge_id` has events to remap."""
+    vault = make_vault(tmp_path)
+    ex = vault / ".watchdog" / "extracted"
+    ex.mkdir(parents=True, exist_ok=True)
+    named = {"document": {"sha256": "sha-c", "key_facts": []},
+             "entities": [_touch("a-smith-duplicate", "A Smith Duplicate", "Person")]}
+    other = {"document": {"sha256": "sha-d", "key_facts": []},
+             "entities": [_touch("bob-jones", "Bob Jones", "Person")]}
+    (ex / "sha-c.json").write_text(json.dumps(named))
+    (ex / "sha-d.json").write_text(json.dumps(other))
+    calls = []
+    monkeypatch.setattr(reconcile, "remap_entity_ids", lambda v, m, sha=None: calls.append(sha))
+    reconcile._rewrite_staged_ids(vault, ["sha-c", "sha-d"], "a-smith-duplicate", "alice-smith")
+    assert calls == ["sha-c"]
+
+
 # ── apply_merges: driving merge_entities / the staged rewrite safely ──────────
 #
 # `apply_merges(vault, shas, parsed, bundle, warn)` replaces `_apply_merges` — these tests drive

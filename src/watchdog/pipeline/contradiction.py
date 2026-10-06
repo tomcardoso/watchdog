@@ -20,6 +20,7 @@ from pathlib import Path
 from watchdog.pipeline import resolutions
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
+    _write_json_atomic,
     _defang,
     _extract_analysis,
     _extract_contradictions,
@@ -76,9 +77,9 @@ def _resolve_doc(doc_index: dict, doc_arg: str) -> tuple[str, dict]:
     return slug, entry
 
 
-def run(vault: Path, entity_id: str, label: str,
-        a_value: str, a_doc: str, a_page,
-        b_value: str, b_doc: str, b_page) -> dict:
+def _run_unlocked(vault: Path, entity_id: str, label: str,
+                  a_value: str, a_doc: str, a_page,
+                  b_value: str, b_doc: str, b_page) -> dict:
     """Write a verified contradiction callout into an entity's note and registry ledger.
 
     Validates that the entity id and both document slugs exist, builds the callout, folds it
@@ -104,11 +105,9 @@ def run(vault: Path, entity_id: str, label: str,
     a_slug, a_entry = _resolve_doc(doc_index, a_doc)
     b_slug, b_entry = _resolve_doc(doc_index, b_doc)
 
-    callout = build_callout(
-        label,
-        a_value, a_slug, a_entry.get("title") or a_entry.get("filename", a_slug), a_page,
-        b_value, b_slug, b_entry.get("title") or b_entry.get("filename", b_slug), b_page,
-    )
+    a_title = a_entry.get("title") or a_entry.get("filename", a_slug)
+    b_title = b_entry.get("title") or b_entry.get("filename", b_slug)
+    callout = build_callout(label, a_value, a_slug, a_title, a_page, b_value, b_slug, b_title, b_page)
     rid = resolutions.contradiction_id(callout)
 
     entry = entities_reg[entity_id]
@@ -124,7 +123,7 @@ def run(vault: Path, entity_id: str, label: str,
     entry["contradictions"] = all_callouts
 
     if already_present:
-        return {"added": False, "rid": rid, "entity_name": entry["name"],
+        return {"added": False, "rid": rid, "entity_name": entry["name"], "sources": [a_title, b_title],
                 "note_path": entry["note_path"] + ".md"}
 
     entry["date_last_updated"] = _today()
@@ -155,10 +154,22 @@ def run(vault: Path, entity_id: str, label: str,
     except Exception as e:
         print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
-    entities_path.write_text(
-        json.dumps(entities_reg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault, entities_reg)
 
-    return {"added": True, "rid": rid, "entity_name": entry["name"],
+    return {"added": True, "rid": rid, "entity_name": entry["name"], "sources": [a_title, b_title],
             "note_path": entry["note_path"] + ".md"}
+
+
+def run(vault: Path, entity_id: str, label: str,
+        a_value: str, a_doc: str, a_page,
+        b_value: str, b_doc: str, b_page) -> dict:
+    """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
+    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
+    from watchdog.pipeline.write_vault import _registry_lock
+    registry_dir = Path(vault) / ".watchdog" / "registry"
+    if not registry_dir.is_dir():
+        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
+    with _registry_lock(registry_dir):
+        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
