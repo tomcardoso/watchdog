@@ -262,6 +262,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D253** — `watchdog ask` opens an interactive Claude Code session, not a one-shot answer
 - **D254** — `--help` shows ten commands; old names stay as the stable interface for scripts and skills
 - **D257** — Commands a vault session runs without a prompt confine themselves to that vault
+- **D260** — timeline.md shows committed documents' events a failed dedup left pending
 
 </details>
 
@@ -2386,3 +2387,7 @@ The CLI had grown to more than 40 top-level commands at one level, most of them 
 ### D257 — Commands a vault session runs without a prompt confine themselves to that vault
 
 A post-merge review of D245 found that `Bash(watchdog search *)`, pre-approved so /watchdog-query never prompts, let a session read any file: `search --batch` echoes each line of the file as a term, so `~/.watchdog/credentials.json` printed API keys. A project name or `--everywhere` searched other investigations, and `write-entity --vault` could write into another one. Sessions read adversarial documents (I6), so each of these was reachable by prompt injection with no prompt. Both commands now check `CLAUDECODE`, which Claude Code sets in its shells; when it is set, they refuse anything outside the vault the session runs in. `search` never looks other investigations up, and every refusal reads the same, so the error can't be used to list them. Vault settings also deny `Read`/`Edit` of `~/.watchdog/**`, and `refresh-skills` adds the rule to existing vaults. The guard is in the commands rather than the permission rules, because a rule pattern can't express "no `--batch` outside the vault", and deny rules only govern Claude Code's own file tools, not what a command reads. The tradeoff: from a session, a `--batch` list kept outside the vault, cross-investigation search and the user's own `!` shell commands that do those things are refused. They still work from a terminal.
+
+### D260 — timeline.md shows committed documents' events a failed dedup left pending
+
+A post-merge review of D240 found that when several documents share a date, the first is promoted to the date's canonical file and the rest wait as raw files for a dedup call. If that call failed, for example on a rate limit, the raws stayed, and `timeline.md`, which rendered canonical files only, dropped those documents' events. `watchdog timeline` couldn't bring them back, and before D240 they had always been shown. `cmd_rebuild_timeline` now also renders raw files whose document is committed, skipping events already in the canonical file. Raws are written at extraction, before the commit, so an uncommitted document's events stay out (I7). The tradeoff: until the next successful dedup, a date can show two near-identical lines for one event, the price of never silently losing an event.

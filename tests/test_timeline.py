@@ -496,3 +496,49 @@ def test_postflight_stages_timeline_files(tmp_path):
     raw = vault / ".watchdog" / "timeline" / "2020-03-15_post123.ndjson"
     assert raw.exists()
     assert _read_ndjson(raw)[0]["event"] == "Appointed"
+
+
+def _register(vault: Path, *shas: str) -> None:
+    reg = vault / ".watchdog" / "registry"
+    reg.mkdir(parents=True, exist_ok=True)
+    (reg / "documents.json").write_text(json.dumps(
+        {s: {"filename": f"{s[:4]}.pdf", "document_note": f"documents/{s[:4]}"} for s in shas}))
+
+
+def test_a_failed_dedup_does_not_hide_the_other_documents_events(tmp_path):
+    """Two committed documents share a date; one is promoted, the other's raw stays because the
+    dedup call failed. timeline.md still shows both (D260)."""
+    vault = _vault(tmp_path)
+    a, b = "a" * 64, "b" * 64
+    stage_timeline_events(vault, _extraction([{"fact": "Contract signed", "date": "2021-03-04"}], sha=a))
+    stage_timeline_events(vault, _extraction([{"fact": "Board approved the loan", "date": "2021-03-04"}], sha=b))
+    _register(vault, a, b)
+    collisions(vault)                       # promotes one; the other raw is left for dedup
+    # …and the dedup call fails, so nothing else happens before the rebuild.
+    cmd_rebuild_timeline(vault, quiet=True)
+    md = (vault / "timeline.md").read_text()
+    assert "Contract signed" in md and "Board approved the loan" in md
+
+
+def test_uncommitted_documents_stay_out_of_timeline_md(tmp_path):
+    vault = _vault(tmp_path)
+    a, staged = "a" * 64, "c" * 64
+    stage_timeline_events(vault, _extraction([{"fact": "Contract signed", "date": "2021-03-04"}], sha=a))
+    stage_timeline_events(vault, _extraction([{"fact": "Not yet committed", "date": "2021-03-04"}], sha=staged))
+    _register(vault, a)
+    collisions(vault)
+    cmd_rebuild_timeline(vault, quiet=True)
+    md = (vault / "timeline.md").read_text()
+    assert "Not yet committed" not in md
+
+
+def test_a_promoted_event_is_not_repeated_from_its_raw(tmp_path):
+    vault = _vault(tmp_path)
+    a = "a" * 64
+    stage_timeline_events(vault, _extraction([{"fact": "Contract signed", "date": "2021-03-04"}], sha=a))
+    _register(vault, a)
+    td = vault / ".watchdog" / "timeline"
+    raw = next(td.glob("*_*.ndjson"))
+    (td / "2021-03-04.ndjson").write_text(raw.read_text())     # canonical and raw both present
+    cmd_rebuild_timeline(vault, quiet=True)
+    assert (vault / "timeline.md").read_text().count("Contract signed") == 1

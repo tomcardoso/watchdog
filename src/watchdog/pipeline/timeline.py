@@ -337,7 +337,8 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:
 
 
 def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
-    """Read all canonical {date}.ndjson files and render timeline.md.
+    """Read all canonical {date}.ndjson files, plus committed documents' raw files a failed dedup
+    left behind, and render timeline.md.
 
     The single global-timeline renderer (#237): reads the cross-document-deduped canonical
     NDJSON and resolves each record's ``source_sha256`` / ``page`` / ``entity_ids`` into
@@ -366,6 +367,27 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
                 events.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
+
+    # Raw per-document files a failed dedup left behind (D260). Without them, a date whose
+    # collision couldn't be resolved this run showed only the one document that was promoted, and
+    # `watchdog timeline` couldn't bring the rest back. Only committed documents' raws are shown —
+    # raws are staged at extraction, before the commit (I7) — and an event already in the canonical
+    # file isn't repeated. Until the next successful dedup a date may show near-duplicate lines.
+    committed = {sha[:7] for sha in docs_reg}
+    seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
+    raw_files = sorted(f for f in td.glob("*_*.ndjson")) if td.exists() else []
+    for rf in raw_files:
+        if rf.stem.rsplit("_", 1)[-1] not in committed:
+            continue
+        for line in _read_ndjson_lines(rf):
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            key = (ev.get("date"), ev.get("event"), ev.get("source_sha256"))
+            if key not in seen:
+                seen.add(key)
+                events.append(ev)
 
     if not events:
         _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")
