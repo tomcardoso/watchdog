@@ -1956,11 +1956,10 @@ def test_cmd_delete_purge_keeps_rows_another_investigation_at_that_path_owns(con
     projects = cli.load_projects()
     projects["other"] = {**projects["shell-co"], "name": "Other"}
     cli.save_projects(projects)
-    import shutil
-    shutil.rmtree(configured / "shell-co")
     monkeypatch.setattr("builtins.input", lambda _: "y")
     cli.cmd_delete(args(name="Shell Co", purge=True))
     assert _telemetry_names() == ["shell-co"]
+    assert (configured / "shell-co").is_dir()      # the other investigation's files stay too
 
 
 def test_cmd_rename_then_purge_removes_the_renamed_vaults_telemetry(configured, monkeypatch):

@@ -685,13 +685,16 @@ def cmd_delete(args) -> None:
         # Before the folder is gone, so symlinks still resolve. A folder already deleted by hand
         # (or on an unmounted drive) still has its telemetry rows purged (D261).
         resolved = vault.resolve()
-        if vault.exists():
+        # Another registered investigation at the same path owns the folder and its rows now.
+        shared = any(Path(info.get("path", "")).expanduser().resolve() == resolved
+                     for info in projects.values() if info.get("path"))
+        if shared:
+            print(f"  {_YELLOW}Kept the files:{_RESET} another investigation in the list uses "
+                  f"{vault}.")
+        elif vault.exists():
             if not is_vault(vault):
                 sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
             shutil.rmtree(vault)
-        # Another registered investigation at the same path owns those rows now.
-        shared = any(Path(info.get("path", "")).expanduser().resolve() == resolved
-                     for info in projects.values() if info.get("path"))
         try:
             from watchdog import telemetry_db
             if not shared:
