@@ -337,7 +337,8 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:
 
 
 def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
-    """Read all canonical {date}.ndjson files and render timeline.md.
+    """Read all canonical {date}.ndjson files, plus committed documents' raw files a failed dedup
+    left behind, and render timeline.md.
 
     The single global-timeline renderer (#237): reads the cross-document-deduped canonical
     NDJSON and resolves each record's ``source_sha256`` / ``page`` / ``entity_ids`` into
@@ -366,6 +367,41 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
                 events.append(json.loads(line))
             except json.JSONDecodeError:
                 continue
+
+    # Raw per-document files a failed dedup left behind (D260). Without them, a date whose
+    # collision couldn't be resolved this run showed only the one document that was promoted, and
+    # `watchdog timeline` couldn't bring the rest back. Only committed documents' raws are shown —
+    # raws are staged at extraction, before the commit (I7) — and an event already in the canonical
+    # file isn't repeated. A committed document that `--force` has re-extracted is staged, not
+    # committed, until `bark`: its queue file is waiting and its per-run result was written after
+    # it. A queue file alone isn't enough — `ingest --force` writes it before extracting, and a
+    # result can outlive an earlier run whose briefing failed — and a run that never happens must
+    # not hide the document's events. Until the next successful dedup a date may show
+    # near-duplicate lines.
+    queue_dir, tmp_dir = vault / ".watchdog" / "queue", vault / ".watchdog" / "tmp"
+
+    def _re_extracted(sha: str) -> bool:
+        try:
+            return ((tmp_dir / f"result_{sha}.json").stat().st_mtime
+                    >= (queue_dir / f"{sha}.json").stat().st_mtime)
+        except OSError:
+            return False
+
+    committed = {sha for sha in docs_reg if not _re_extracted(sha)}
+    seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
+    raw_files = sorted(f for f in td.glob("*_*.ndjson")) if td.exists() else []
+    for rf in raw_files:
+        for line in _read_ndjson_lines(rf):
+            try:
+                ev = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if ev.get("source_sha256") not in committed:
+                continue
+            key = (ev.get("date"), ev.get("event"), ev.get("source_sha256"))
+            if key not in seen:
+                seen.add(key)
+                events.append(ev)
 
     if not events:
         _write_timeline_md(vault, _TIMELINE_HEADER + "*No events yet.*\n")

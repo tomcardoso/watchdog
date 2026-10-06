@@ -194,6 +194,7 @@ def test_extract_prompt_forbids_silent_date_correction():
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
     text = _flat(p)
     assert "TRANSCRIBE, DON'T CORRECT" in text
+    assert "never quietly swap in the date you infer was intended" in text
 
 
 def test_extract_prompt_warns_about_conversion_artifacts():
@@ -525,6 +526,7 @@ def test_extract_prompt_tags_a_computed_figure_as_inferred():
     p = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[])
     text = _flat(p)
+    assert "the fact carrying it is `inferred`, so tag it AND name the figure's components" in text
     assert "Naming the components is not a substitute for the tag" in text
 
 
@@ -536,6 +538,10 @@ def test_reconcile_prompt_does_not_gate_contradictions_on_basis():
     facts, so the derivations the model never declared were being compared all along."""
     p = prompts.build_reconcile_prompt({"pairs": [], "entities": []})
     assert "A claim's basis is **not** a reason to withhold" in p
+    # the three suppression clauses are gone, not merely softened
+    assert "both** sides are directly stated" not in p
+    assert "is a reasoning error, not a finding" not in p
+    assert "so the conflict is between a value the extractor computed" not in p
 
 
 def test_synthesis_prompt_weighs_a_derived_figure_like_an_inferred_claim():
