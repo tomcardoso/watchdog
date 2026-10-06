@@ -1684,3 +1684,22 @@ def test_drop_analysis_entry_replaces_only_matching_document():
     kept = wv._drop_analysis_entry(analysis, "documents/doc-a")
     assert "Claim A" not in kept
     assert "Claim B" in kept
+
+
+def test_replaying_a_commit_after_a_crash_reuses_its_own_original_and_note(tmp_path):
+    """A crash after the original moved into the morgue but before the registry flushed leaves
+    a file at the plain path with no registry entry. A replay must recognise it by content (the
+    same sha256) and reuse the path, not fork `Order-<sha6>.pdf` and a second note (D241)."""
+    import hashlib
+    vault = make_vault(tmp_path)
+    body = "REAL CONTENT"
+    sha = hashlib.sha256(body.encode()).hexdigest()
+    _commit_same_name(tmp_path, vault, sha, body)
+    reg_path = vault / ".watchdog" / "registry" / "documents.json"
+    first = json.loads(reg_path.read_text())[sha]
+    reg_path.write_text("{}")                       # the registry entry never flushed
+    _commit_same_name(tmp_path, vault, sha, body)
+    again = json.loads(reg_path.read_text())[sha]
+    assert again["morgue_path"] == first["morgue_path"]
+    assert again["document_note"] == first["document_note"]
+    assert len(list((vault / "morgue").rglob("Order*.pdf"))) == 1
