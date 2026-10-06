@@ -1637,6 +1637,15 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
              f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
              f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
         return {"results": results, "batch_pending": True}
+    except model_client.ProviderAuthError as e:
+        # A repair-retry call was refused (bad key, no credit). Same as a rate limit for the
+        # vault — written documents are safe, the batch state stays for a later run — but the run
+        # reports it as an auth stop, which re-running won't fix until the key or balance is.
+        _say(f"{_YELLOW}The provider refused this run during batch collection{_RESET}{_DIM} — "
+             f"{e} {len(results)}/{len(state['shas'])} written. Fix the key or balance (see "
+             f"{_RESET}{_CYAN}watchdog settings auth{_RESET}{_DIM}), then re-run "
+             f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM}.{_RESET}")
+        return {"results": results, "batch_pending": True, "auth_error": str(e)}
 
     _log(vault, _batch_log_line(state, st, collected_at))
     batch_extract.clear_state(vault)
@@ -2160,6 +2169,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 # Synthesis is enrichment: leave the structured claims already in the notes
                 # rather than crashing. The staged artifacts persist, so a later finalize redoes it.
                 out["error"] = str(e)
+                if isinstance(e, model_client.ProviderAuthError):
+                    out["auth_error"] = str(e)
                 failed += len(chunk)
                 _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} for {len(chunk)} "
                      f"entit{'ies' if len(chunk) != 1 else 'y'} — {e}{_RESET}")
@@ -2311,6 +2322,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                                               n_new_requests)
         except (model_client.RateLimitError, model_client.ProviderAuthError) as e:
             out["briefing_error"] = str(e)
+            if isinstance(e, model_client.ProviderAuthError):
+                out["auth_error"] = str(e)
             _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
         except model_client.ModelError as e:
             # Everything else (per-doc facts, entity notes, timeline) is already on disk; only the
@@ -2574,6 +2587,8 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
             # Any failed chunk defers the whole batch, exactly as the single call did: applying
             # the merges the earlier chunks found would commit half-reconciled state (I7).
             result["error"] = str(e)
+            if isinstance(e, model_client.ProviderAuthError):
+                result["auth_error"] = str(e)
             _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
             _log(vault, f"RECONCILE skipped: {e}")
             return result
@@ -2752,6 +2767,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
         out = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                "merged": [], "contradictions": [], "error": rec_result["error"],
                "committed_writes": {}, "commit_skipped": True}
+        if rec_result.get("auth_error"):
+            out["auth_error"] = rec_result["auth_error"]
         if standalone_usage:
             out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
@@ -2843,6 +2860,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         rate_limit_msg = None
         rate_limit_resets_at = None
         extra_summary = {"batch_pending": batch_out.get("batch_pending", False)}
+        if batch_out.get("auth_error"):
+            extra_summary["auth_error"] = batch_out["auth_error"]
     else:
         if not shas:
             return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}

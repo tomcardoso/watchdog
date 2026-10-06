@@ -2888,3 +2888,98 @@ def test_anthropic_client_is_reused_within_a_loop_and_not_across_loops():
     assert a is b and c is not a
     asyncio.run(two_calls())
     assert made == ["k1", "k2", "k1", "k2"]   # a new loop gets new clients
+
+
+# ── D259: ordinary rate limits that mention quota or billing stay rate limits ──────────────────
+
+@pytest.mark.parametrize("body", [
+    # Gemini's per-minute limit
+    '{"error": {"code": 429, "message": "You exceeded your current quota, please check your plan '
+    'and billing details. Quota exceeded for metric: generate_content_requests. Please retry in 21s.",'
+    ' "status": "RESOURCE_EXHAUSTED"}}',
+    # OpenAI's free-tier requests-per-minute limit
+    '{"error": {"code": "rate_limit_exceeded", "message": "Rate limit reached for requests per '
+    'minute. Visit https://platform.openai.com/account/billing to increase your limit."}}',
+])
+def test_a_rate_limit_that_mentions_billing_is_still_a_rate_limit(monkeypatch, body):
+    _fake_httpx_sequence(monkeypatch, [429], bodies={429: body})
+    _no_sleep(monkeypatch)
+    with pytest.raises(mc.RateLimitError):
+        asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk", 8000,
+                                              base_url="https://api.openai.com/v1"))
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Your credit balance is too low to access the Anthropic API.", True),
+    ('{"error": {"code": "insufficient_quota"}}', True),
+    ("payment required", True),
+    ("You exceeded your current quota, please check your plan and billing details.", False),
+    ("Quota exceeded for metric generate_content_requests", False),
+])
+def test_billing_needs_an_explicit_account_signal(text, expected):
+    assert mc._looks_like_billing(text) is expected
+
+
+def test_a_read_timeout_is_not_retried(monkeypatch):
+    import httpx
+    calls = []
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, headers=None, json=None):
+            calls.append(url)
+            raise httpx.ReadTimeout("timed out")
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    _no_sleep(monkeypatch)
+    with pytest.raises(httpx.ReadTimeout):
+        asyncio.run(mc._openai_complete_async("p", "gpt-5-mini", SCHEMA, "sk", 8000,
+                                              base_url="https://api.openai.com/v1"))
+    assert len(calls) == 1
+
+
+def _fake_agent_sdk(monkeypatch, messages, raise_after=None):
+    """Stand in for claude_agent_sdk.query: yield `messages`, then optionally raise."""
+    import sys
+    import types
+
+    async def query(prompt, options):
+        for m in messages:
+            yield m
+        if raise_after is not None:
+            raise raise_after
+
+    mod = types.SimpleNamespace(query=query, ClaudeAgentOptions=lambda **kw: kw)
+    monkeypatch.setitem(sys.modules, "claude_agent_sdk", mod)
+    monkeypatch.setattr(mc, "_agent_supports_tools", lambda: False)
+    monkeypatch.setattr(mc, "_agent_supports_thinking", lambda: False)
+
+
+def _result(text, is_error=False, status=None):
+    return type("ResultMessage", (), {"result": text, "total_cost_usd": None, "usage": {},
+                                      "is_error": is_error, "api_error_status": status})()
+
+
+def test_sdk_model_output_that_says_billing_is_not_an_auth_failure(monkeypatch):
+    # A document about an invoice: the model's own partial output mentions billing and a login
+    # page, then the CLI fails for an unrelated reason.
+    _fake_agent_sdk(monkeypatch, [_result("the billing address on the /login page is …")],
+                    raise_after=RuntimeError("Claude Code returned an error result: overloaded"))
+    with pytest.raises(RuntimeError) as e:
+        asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))
+    assert not isinstance(e.value, mc.ProviderAuthError)
+
+
+def test_sdk_rate_limit_notice_that_mentions_login_is_a_rate_limit(monkeypatch):
+    msg = "You've hit your session limit · resets 10:10am (UTC) · /login to switch accounts"
+    _fake_agent_sdk(monkeypatch, [_result(msg, is_error=True)])
+    with pytest.raises(mc.RateLimitError):
+        asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))
+
+
+def test_sdk_real_auth_failure_still_stops_the_run(monkeypatch):
+    _fake_agent_sdk(monkeypatch, [_result("Invalid API key · Please run /login", is_error=True)])
+    with pytest.raises(mc.ProviderAuthError):
+        asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))

@@ -1269,7 +1269,7 @@ def exit_code_for(result) -> int:
     keep getting the dict back, not a `SystemExit`."""
     if not isinstance(result, dict):
         return 0
-    if result.get("auth_error"):
+    if result.get("auth_error") or (result.get("post_ingest") or {}).get("auth_error"):
         return 1   # not resumable by re-running — the key or the account needs fixing first
     if result.get("rate_limited") or result.get("batch_pending"):
         return 2
