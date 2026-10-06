@@ -490,6 +490,14 @@ def test_refresh_skills_backs_up_a_claude_md_from_before_the_markers(configured,
     assert (path.parent / "CLAUDE.md.before-refresh-2").read_text() == old
 
 
+def test_refresh_skills_backs_up_a_claude_md_that_is_not_utf8(configured):
+    path = _vault_claude_md(configured)
+    path.write_bytes(b"# Notes \xff\xfe in another encoding\n")
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    assert "# City Hall Probe — Watchdog" in path.read_text()
+    assert (path.parent / "CLAUDE.md.before-refresh").read_bytes() == b"# Notes \xff\xfe in another encoding\n"
+
+
 def test_refresh_skills_writes_a_missing_claude_md(configured):
     path = _vault_claude_md(configured)
     path.unlink()

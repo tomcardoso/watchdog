@@ -905,7 +905,11 @@ def _refresh_vault_claude_md(vault: Path) -> str | None:
     as anyone can tell, so it is saved beside itself before being replaced. Returns a description
     of what changed, or None when nothing did."""
     path = vault / ".claude" / "CLAUDE.md"
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
+    raw = path.read_bytes() if path.exists() else b""
+    try:
+        current = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        current = ""            # unreadable: treated as a file without markers, backed up byte for byte
     block = _render_template("CLAUDE.md", name=_vault_display_name(vault, current)).rstrip("\n")
     begin, end = current.find(_CLAUDE_MD_BEGIN), current.find(_CLAUDE_MD_END)
     if not path.exists():
@@ -923,7 +927,7 @@ def _refresh_vault_claude_md(vault: Path) -> str | None:
     while backup.exists():
         n += 1
         backup = path.with_name(f"CLAUDE.md.before-refresh-{n}")
-    backup.write_text(current, encoding="utf-8")
+    backup.write_bytes(raw)
     path.write_text(block + "\n", encoding="utf-8")
     return (f".claude/CLAUDE.md replaced; the old copy is at .claude/{backup.name}. Copy any "
             f"notes of your own from it to below the end marker.")
