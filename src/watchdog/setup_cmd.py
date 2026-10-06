@@ -144,6 +144,49 @@ def _ask_projects_dir() -> Path:
     return chosen
 
 
+_AUTO_APPROVE_DEFAULT = 5.0
+
+
+def _ask_auto_approve(current: float | None = None) -> float | None:
+    """Ask whether small runs may skip the public-records pause, and up to what estimated cost.
+    Returns the limit in dollars, or None for "always ask" (the default). Off a terminal it
+    keeps `current` without asking."""
+    print()
+    print(f"  {_BOLD}Auto-approve{_RESET}")
+    print(f"  {_DIM}Before sending documents to a model, Watchdog pauses to show the estimated cost "
+          f"and asks you{_RESET}")
+    print(f"  {_DIM}to confirm they are public records. You can skip that pause for runs estimated "
+          f"at or under a{_RESET}")
+    print(f"  {_DIM}dollar limit — only do this if you already check that what you add is public "
+          f"record.{_RESET}")
+    print(f"  {_DIM}On a Claude subscription a run has no per-run price, so every run counts as "
+          f"within the limit.{_RESET}")
+    if not sys.stdin.isatty():
+        print(f"  {_DIM}Non-interactive — set this later with{_RESET} "
+              f"{_CYAN}watchdog settings auto_approve_usd <dollars>{_RESET}{_DIM}.{_RESET}")
+        return current
+    print()
+    if not interactive.confirm("  Skip the pause for small runs?", default=current is not None):
+        return None
+    default = current if current is not None else _AUTO_APPROVE_DEFAULT
+    while True:
+        try:
+            raw = input(f"  Limit in dollars {_DIM}(Enter for ${default:g}"
+                        f"{', recommended' if default == _AUTO_APPROVE_DEFAULT else ''}){_RESET}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return current
+        if not raw:
+            return default
+        try:
+            value = float(raw.lstrip("$"))
+        except ValueError:
+            value = -1.0
+        if 0 < value < float("inf"):          # also rejects "nan", which compares false
+            return value
+        print(f"  {_YELLOW}Enter an amount above zero, such as 5 or 2.50.{_RESET}")
+
+
 def _detect_shell() -> tuple[str | None, Path | None]:
     shell_bin = os.environ.get("SHELL", "")
     if "zsh" in shell_bin:
@@ -385,7 +428,22 @@ def run(force: bool = False) -> None:
     from watchdog.cmd.auth import setup_auth_interactive
     setup_auth_interactive()
 
-    # 10. Done
+    # 10. Auto-approve budget (D255)
+    config = json.loads(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
+    try:
+        current = float(config.get("auto_approve_usd") or 0) or None
+    except (TypeError, ValueError):
+        current = None
+    limit = _ask_auto_approve(current)
+    if limit is None:
+        config.pop("auto_approve_usd", None)
+        _ok("Auto-approve off — every run asks before sending documents")
+    else:
+        config["auto_approve_usd"] = limit
+        _ok(f"Auto-approve: runs estimated at ${limit:.2f} or less go ahead without asking")
+    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+
+    # 11. Done
     reload_hint = f"{_CYAN}source {profile}{_RESET}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")
