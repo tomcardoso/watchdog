@@ -694,18 +694,20 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         # `out["text"]` is scanned only when the result was flagged `is_error`: then it is the
         # CLI's own error string ("Invalid API key · Please run /login"), which the SDK's
         # rewritten exception leaves out. Otherwise it can be partial model output, i.e.
-        # document content, which routinely says "billing" (D259). A billing refusal is checked
-        # first, then a rate limit (its notice can mention a login page, and misreading it as an
+        # document content, which routinely says "billing" (D259). An explicit rate-limit
+        # rejection event wins; then a billing refusal, then a rate limit (its notice can mention a login page, and misreading it as an
         # auth failure would stop the run instead of letting `--wait` sleep), then other auth.
         err_text = out["text"] if is_error else ""
+        if rejected:
+            raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         if _looks_like_billing(str(e), err_text):
             raise ProviderAuthError(f"Claude Code account can't pay for this call: {err_text or e}") from e
-        if rejected or _looks_like_rate_limit(api_status, notice, str(e), err_text):
+        if _looks_like_rate_limit(api_status, notice, str(e), err_text):
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         if _looks_like_auth_failure(api_status, str(e), err_text):
             raise ProviderAuthError(f"Claude Code could not authenticate: {err_text or e}") from e
         raise
-    if is_error and _looks_like_billing(out["text"]):
+    if not rejected and is_error and _looks_like_billing(out["text"]):
         raise ProviderAuthError(f"Claude Code account can't pay for this call: {out['text']}")
     if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
