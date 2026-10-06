@@ -90,6 +90,9 @@ def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH, timeout=0.5, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=500")
+    # Overwrite deleted rows' content rather than leaving it in free pages, so a purged vault's
+    # filenames aren't recoverable from the file. Many builds default this off (D261).
+    conn.execute("PRAGMA secure_delete=ON")
     conn.executescript(_SCHEMA)
     _conn, _conn_path = conn, DB_PATH
     return conn
@@ -112,14 +115,38 @@ def close() -> None:
 
 def purge_vault(vault: Path) -> int:
     """Delete every row recorded for `vault`; returns how many. A no-op when the store doesn't
-    exist — purging must never create it."""
+    exist — purging must never create it. Waits longer for the write lock than a recorded call
+    does: a purge someone asked for must not be dropped because a run elsewhere was writing."""
     if not DB_PATH.exists():
         return 0
     with _lock:
         conn = _connect()
-        cur = conn.execute("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
-        conn.commit()
-        return cur.rowcount
+        conn.execute("PRAGMA busy_timeout=10000")
+        try:
+            cur = conn.execute("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
+            conn.commit()
+            return cur.rowcount
+        finally:
+            conn.execute("PRAGMA busy_timeout=500")
+
+
+def relocate_vault(old: Path, new: Path) -> int:
+    """Point a renamed or moved vault's rows at its new path (D261), so a later `delete --purge`
+    still finds them. `old` must be resolved before the folder moves. Returns rows updated; a
+    no-op when the store doesn't exist."""
+    if not DB_PATH.exists():
+        return 0
+    with _lock:
+        conn = _connect()
+        conn.execute("PRAGMA busy_timeout=10000")
+        try:
+            cur = conn.execute(
+                "UPDATE calls SET vault_path = ?, vault_name = ? WHERE vault_path = ?",
+                (str(new.resolve()), new.name, str(old)))
+            conn.commit()
+            return cur.rowcount
+        finally:
+            conn.execute("PRAGMA busy_timeout=500")
 
 
 def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str | None,

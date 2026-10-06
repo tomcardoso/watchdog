@@ -262,6 +262,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D253** — `watchdog ask` opens an interactive Claude Code session, not a one-shot answer
 - **D254** — `--help` shows ten commands; old names stay as the stable interface for scripts and skills
 - **D257** — Commands a vault session runs without a prompt confine themselves to that vault
+- **D261** — The telemetry store follows a vault when it is renamed or moved, and a purge never depends on the folder still existing
 
 </details>
 
@@ -2386,3 +2387,7 @@ The CLI had grown to more than 40 top-level commands at one level, most of them 
 ### D257 — Commands a vault session runs without a prompt confine themselves to that vault
 
 A post-merge review of D245 found that `Bash(watchdog search *)`, pre-approved so /watchdog-query never prompts, let a session read any file: `search --batch` echoes each line of the file as a term, so `~/.watchdog/credentials.json` printed API keys. A project name or `--everywhere` searched other investigations, and `write-entity --vault` could write into another one. Sessions read adversarial documents (I6), so each of these was reachable by prompt injection with no prompt. Both commands now check `CLAUDECODE`, which Claude Code sets in its shells; when it is set, they refuse anything outside the vault the session runs in. `search` never looks other investigations up, and every refusal reads the same, so the error can't be used to list them. Vault settings also deny `Read`/`Edit` of `~/.watchdog/**`, and `refresh-skills` adds the rule to existing vaults. The guard is in the commands rather than the permission rules, because a rule pattern can't express "no `--batch` outside the vault", and deny rules only govern Claude Code's own file tools, not what a command reads. The tradeoff: from a session, a `--batch` list kept outside the vault, cross-investigation search and the user's own `!` shell commands that do those things are refused. They still work from a terminal.
+
+### D261 — The telemetry store follows a vault when it is renamed or moved, and a purge never depends on the folder still existing
+
+A post-merge review of the telemetry purge found three ways `projects delete --purge` left a vault's rows behind. Rows are keyed on the vault's resolved path, and `rename` and `move` never updated it, so a renamed vault's rows no longer matched. A vault whose folder was already gone (deleted by hand, or on an unmounted drive) skipped the purge entirely. And the purge waited only half a second for the write lock, so a run writing elsewhere could make it fail. `rename` and `move` now rewrite the rows' path and name, the purge runs whether or not the folder exists, and purges and moves wait up to ten seconds for the lock. Connections also turn on SQLite's `secure_delete`, so purged rows are overwritten rather than left readable in the file's free pages. The tradeoff: deletes write more, and rows from before an upgrade, for a vault renamed before this change, still carry the old path and are only removed by deleting the file.
