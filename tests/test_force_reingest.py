@@ -276,6 +276,7 @@ def wdg_home(tmp_path, monkeypatch):
     monkeypatch.setattr(_base,  "CONFIG_FILE",    home / "config.json")
     monkeypatch.setattr(_setup, "WATCHDOG_HOME",  home)
     monkeypatch.setattr(_setup, "CONFIG_FILE",    home / "config.json")
+    monkeypatch.setattr("watchdog.config.CONFIG_FILE", home / "config.json")
     return home
 
 
