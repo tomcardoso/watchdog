@@ -576,7 +576,7 @@ def apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[di
                 item.get("a_value", ""), item.get("a_doc", ""), item.get("a_page"),
                 item.get("b_value", ""), item.get("b_doc", ""), item.get("b_page"),
             )
-        except ValueError as e:
+        except (ValueError, OSError) as e:      # OSError: the registry lock timed out (Windows)
             warn(f"reconcile: contradiction on '{eid}' skipped — {e}")
             continue
         if result["added"]:
