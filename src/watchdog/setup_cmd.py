@@ -158,8 +158,9 @@ def _ask_auto_approve(current: bool = False) -> bool:
           f"that uses a paid{_RESET}")
     print(f"  {_DIM}API key for any step always asks.{_RESET}")
     if not sys.stdin.isatty():
-        print(f"  {_DIM}Non-interactive — set this later with{_RESET} "
-              f"{_CYAN}watchdog settings auto_approve true{_RESET}{_DIM}.{_RESET}")
+        if not current:
+            print(f"  {_DIM}Non-interactive — set this later with{_RESET} "
+                  f"{_CYAN}watchdog settings auto_approve true{_RESET}{_DIM}.{_RESET}")
         return current
     print()
     return interactive.confirm("  Skip the pause for subscription runs?", default=current)

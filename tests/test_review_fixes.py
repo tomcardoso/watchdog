@@ -26,7 +26,9 @@ def vault(tmp_path, monkeypatch):
     ("subscription", [None, None, "openai"], False),               # one finishing stage on a paid key
     ("subscription", ["claude-api", None, None], False),
     ("api-key", [None, None, None], False),                        # the default route is the paid API
-    ("api-key", ["claude-agent-sdk"] * 3, True),
+    # on a paid key, even an explicit claude-agent-sdk stage is billed to the key
+    ("api-key", ["claude-agent-sdk"] * 3, False),
+    (None, [None, None, None], False),
 ])
 def test_subscription_only_when_every_stage_is_on_it(auth_mode, stages, approved):
     verdict = ing._auto_approve_verdict(auth_mode=auth_mode, stages=stages)

@@ -80,7 +80,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 It stops for you only to show the public-records warning (see [`watchdog dig`](#watchdog-dig)) and when a provider refuses your key or account. A rate limit pauses the run until it resets, as `--wait` does for `dig`. A batch left pending from an earlier run is finished together with the new documents.
 
 - `--retry` — first put documents that failed extraction back in the queue (the same as `watchdog requeue`).
-- **Auto-approve.** With `auto_approve` on, a run where every step uses your Claude subscription skips the warning pause and prints a one-line notice instead. A run where any step uses a paid API key still asks. See [Configuration](configuration.md#auto-approve).
+- **Auto-approve.** With `auto_approve` on, a run where every step uses your Claude subscription skips the warning pause and prints a one-line notice instead. A run where any step uses a paid API key still asks, after a line saying why. See [Configuration](configuration.md#auto-approve).
 - Every flag of [`dig`](#watchdog-dig) and [`bark`](#watchdog-bark) — models, efforts, `--verify`, `--concurrency`, `--skill`, `--estimate`, `--skip-warning`, `--skip-briefing` and the rest — works the same way here.
 
 ### watchdog dig

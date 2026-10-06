@@ -103,7 +103,7 @@ If you choose the subscription, setup also warns that ingesting more than a few 
 
 If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. `watchdog settings auth` applies the same tune-down if you switch to subscription auth later, and undoes it automatically if you later switch back to an API key — no need to raise it back by hand unless you set your own value.
 
-4. **Whether to auto-approve subscription runs.** Before sending documents to a model, Watchdog normally pauses and asks you to confirm they are public records. Setup asks whether to skip that pause for runs where every step uses your Claude subscription. The default is no, so every run asks; re-running setup with it already on defaults to keeping it. Say yes only if you already check that what you add is public record. A run that uses a paid API key for any step always asks. See [Auto-approve](configuration.md#auto-approve) to change it later.
+4. **Whether to auto-approve subscription runs.** Before sending documents to a model, Watchdog normally pauses and asks you to confirm they are public records. Setup asks whether to skip that pause for runs where you are signed in with your Claude subscription and every step uses it. The default is no, so every run asks; re-running setup with it already on defaults to keeping it. Say yes only if you already check that what you add is public record. A run that uses a paid API key for any step always asks. See [Auto-approve](configuration.md#auto-approve) to change it later.
 
 When setup finishes, reload your shell so tab completion takes effect:
 

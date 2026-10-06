@@ -33,7 +33,7 @@ Or run `watchdog settings <key>` with no value to see that one key's help and ch
 | `chunk_workers` | `auto` | Parallel subprocesses for large-PDF chunks. |
 | `chunk_timeout` | `300` | Seconds before a chunk subprocess is killed. |
 | `table_structure` | `true` | Whether the table-detection model runs on PDFs; turn off to speed up text-only documents. |
-| `auto_approve` | `false` | Skip the public-records pause in `watchdog add`/`dig` when every step of the run uses your Claude subscription, printing a one-line notice instead. A run where any step uses a paid API key still asks — see [Auto-approve](#auto-approve). |
+| `auto_approve` | `false` | Skip the public-records pause when you are signed in with your Claude subscription and every step of the run uses it, printing a one-line notice instead. Applies to every command that sends documents. A run where any step uses a paid API key still asks — see [Auto-approve](#auto-approve). |
 | `extract_concurrency` | `20` (`3` if `watchdog setup` or `watchdog settings auth` puts you on Claude subscription auth) | Documents extracted in parallel during `watchdog dig`. |
 | `extract_token_budget` | `auto` | Cap on tokens per minute during `watchdog dig`. `auto` discovers it from your provider's own responses (not available on Claude subscription auth — set a number by hand there if you hit rate limits). |
 | `classify_pages` | `5` | Leading pages of each document shown to the classifier. |
@@ -130,9 +130,9 @@ With `wayback_save` on, every source that `watchdog research` or `watchdog resea
 
 Before Watchdog sends documents to a model, it shows the public-records warning and waits for you to acknowledge it. That pause is the check that what you are sending is public record.
 
-`watchdog settings auto_approve true` skips the pause for a run where every step — classifying, extracting and the finishing steps — uses your Claude subscription. Instead of the warning, Watchdog prints one line saying how many documents it is sending. Setup asks about this, with no as the default; this setting changes it later. Turn it on only if you already check that what you add is public record.
+`watchdog settings auto_approve true` skips the pause when you are signed in with your Claude subscription and every step of the run — classifying, extracting and the finishing steps — uses it. This applies to every command that sends documents: `watchdog add`, `watchdog dig`, bare `watchdog`, and the offer to continue after `watchdog chew`. Instead of the warning, Watchdog prints one line saying how many documents it is sending. Setup asks about this, with no as the default; this setting changes it later. Turn it on only if you already check that what you add is public record.
 
-A run where any step uses a paid API key always asks, however small it is. Watchdog does not estimate a run's cost to decide this: an estimate from past runs can come out low, and the pause it would skip is the only check on what leaves your computer. `watchdog settings auto_approve false` turns it off.
+A run where any step uses a paid API key always asks, however small it is, and first prints one line saying why. Watchdog does not estimate a run's cost to decide this: an estimate from past runs can come out low, and the pause it would skip is the only check on what leaves your computer. `watchdog settings auto_approve false` turns it off.
 
 ### The telemetry record
 

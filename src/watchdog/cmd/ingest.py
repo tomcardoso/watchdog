@@ -418,14 +418,13 @@ def _auto_approve_on(config: dict) -> bool:
 
 def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) -> dict:
     """Whether this run may skip the public-records pause (D263): `{"approve": True}` only when
-    every stage it calls — classify, extract and each finishing stage, given by its configured
-    backend — runs on the Claude Code subscription, which has no per-run charge. Otherwise
-    `{"blocker": reason}`. There is deliberately no dollar estimate: an estimate from past runs
-    can come out low, and the pause it would skip is the only check on what leaves the computer."""
-    def served_by(backend):
-        return backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
-
-    if all(served_by(b) == "claude-agent-sdk" for b in stages):
+    the auth mode is the Claude subscription and every stage it calls — classify, extract and each
+    finishing stage, given by its configured backend — runs on it, which has no per-run charge.
+    Otherwise `{"blocker": reason}`. An explicit `claude-agent-sdk` stage is not enough on its
+    own: on API-key auth that backend is handed the paid key. There is deliberately no dollar
+    estimate: an estimate from past runs can come out low, and the pause it would skip is the only
+    check on what leaves the computer."""
+    if auth_mode == "subscription" and all(b in (None, "claude-agent-sdk") for b in stages):
         return {"approve": True}
     return {"blocker": "at least one step of this run uses a paid API key, and auto-approve "
                        "applies only when every step runs on your Claude subscription"}
@@ -775,8 +774,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # setting no_finalize), the deprecated `ingest`, and `chew`'s offer to continue
     # (`_offer_ingest`). "Run it again" hints below name whichever command got the caller here.
     command = getattr(args, "command", None)
-    pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add"}.get(command, "watchdog")
-    is_dig = pipeline_hint == "watchdog dig"
+    # `chew`'s offer to continue hints `watchdog dig` when declined, as its own decline path does.
+    pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add", "chew": "watchdog dig"}.get(
+        command, "watchdog")
+    is_dig = command == "dig"
     is_add = command == "add"
 
     raw_force = getattr(args, "force", False)
