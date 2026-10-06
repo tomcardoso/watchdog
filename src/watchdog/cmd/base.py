@@ -481,7 +481,7 @@ def load_projects() -> dict:
     with open(PROJECTS_FILE) as f:
         try:
             return json.load(f)
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             sys.exit(f"Error: projects file is corrupt — {e}\nRun 'watchdog setup --force'.")
 
 
@@ -504,7 +504,7 @@ def load_config() -> dict:
         return {}
     try:
         data = _read_json(CONFIG_FILE)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
         sys.exit(f"Error: config file is corrupt — {e}\nFix or remove {CONFIG_FILE}, or run "
                  f"'watchdog setup --force'.")
     return data if isinstance(data, dict) else {}
@@ -515,7 +515,7 @@ def _projects_dir() -> Path:
     if CONFIG_FILE.exists():
         try:
             config = _read_json(CONFIG_FILE)
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, UnicodeDecodeError) as e:
             sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog setup --force'.")
         # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a
         # config written before that key existed, or hand-edited to set only one other knob) —

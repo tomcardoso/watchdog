@@ -2347,6 +2347,29 @@ def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
         cli.cmd_chew(args(file="/no/such/file.pdf", chew_workers=None))
 
 
+def test_cmd_chew_with_a_folder_exits_cleanly(configured, monkeypatch, tmp_path):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    monkeypatch.chdir(configured / "shell-co")
+    folder = tmp_path / "a-folder"
+    folder.mkdir()
+    with pytest.raises(SystemExit, match="is a folder"):
+        cli.cmd_chew(args(file=str(folder), chew_workers=None))
+
+
+def test_load_config_with_invalid_utf8_exits_cleanly(wdg_home):
+    (wdg_home / "config.json").write_bytes(b'{"x": "\xff\xfe"}')
+    with pytest.raises(SystemExit, match="config file is corrupt"):
+        _base.load_config()
+    with pytest.raises(SystemExit, match="config file is corrupt"):
+        _base._projects_dir()
+
+
+def test_load_projects_with_invalid_utf8_exits_cleanly(wdg_home):
+    (wdg_home / "projects.json").write_bytes(b'{"x": "\xff\xfe"}')
+    with pytest.raises(SystemExit, match="projects file is corrupt"):
+        _base.load_projects()
+
+
 # ── _offer_ingest (post-chew prompt) ──────────────────────────────────────────
 
 def _vault_with_queue(configured):

@@ -375,6 +375,9 @@ def cmd_chew(args) -> dict | None:
         f = Path(file_arg).resolve()
         if not f.exists():
             sys.exit(f"Error: file not found: {f}")
+        if not f.is_file():
+            sys.exit(f"Error: {f} is a folder — `watchdog chew` takes one file. To read a whole "
+                     f"folder, use `watchdog add {f}`.")
         f = _into_incoming(vault, f)
         run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f],
                    show_ingest_hint=False)

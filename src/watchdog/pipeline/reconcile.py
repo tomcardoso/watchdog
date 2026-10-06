@@ -452,10 +452,14 @@ def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: st
                 fact["entities"] = [keep_id if t == merge_id else t for t in tags]
                 changed = True
         if changed:
+            # Timeline events were staged at extraction time with the pre-merge id (D243), and
+            # only from this artifact's own tags — so an artifact that never named `merge_id`
+            # has nothing to remap, and skipping it saves a timeline-folder scan per document
+            # per merge. Remapped before the artifact is rewritten, so a crash in between
+            # leaves `merge_id` in the artifact and a re-run remaps again.
+            remap_entity_ids(vault, {merge_id: keep_id}, sha=sha)
             artifact_path.write_text(
                 json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
-        # Timeline events were staged at extraction time with the pre-merge id (D243).
-        remap_entity_ids(vault, {merge_id: keep_id}, sha=sha)
     return merge_name
 
 
