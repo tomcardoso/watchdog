@@ -119,13 +119,31 @@ def purge_vault(vault: Path) -> int:
     does: a purge someone asked for must not be dropped because a run elsewhere was writing."""
     if not DB_PATH.exists():
         return 0
+    n = _write("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
+    # secure_delete doesn't reach frames already in the -wal file; a truncating checkpoint copies
+    # them into the main file (where they are overwritten) and empties the log. Best-effort: a
+    # reader elsewhere can block it, and the next checkpoint then does the same.
+    with _lock:
+        try:
+            _connect().execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
+    return n
+
+
+def _write(sql: str, params: tuple) -> int:
+    """Run one write statement under a longer lock wait than a recorded call's, rolling back on
+    failure so the shared connection isn't left inside an open transaction."""
     with _lock:
         conn = _connect()
         conn.execute("PRAGMA busy_timeout=10000")
         try:
-            cur = conn.execute("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
+            cur = conn.execute(sql, params)
             conn.commit()
             return cur.rowcount
+        except BaseException:
+            conn.rollback()
+            raise
         finally:
             conn.execute("PRAGMA busy_timeout=500")
 
@@ -136,17 +154,8 @@ def relocate_vault(old: Path, new: Path) -> int:
     no-op when the store doesn't exist."""
     if not DB_PATH.exists():
         return 0
-    with _lock:
-        conn = _connect()
-        conn.execute("PRAGMA busy_timeout=10000")
-        try:
-            cur = conn.execute(
-                "UPDATE calls SET vault_path = ?, vault_name = ? WHERE vault_path = ?",
-                (str(new.resolve()), new.name, str(old)))
-            conn.commit()
-            return cur.rowcount
-        finally:
-            conn.execute("PRAGMA busy_timeout=500")
+    return _write("UPDATE calls SET vault_path = ?, vault_name = ? WHERE vault_path = ?",
+                  (str(new.resolve()), new.name, str(old)))
 
 
 def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str | None,

@@ -1950,6 +1950,19 @@ def test_cmd_delete_purge_removes_telemetry_when_the_folder_is_already_gone(conf
     assert _telemetry_names() == ["other-co"]
 
 
+def test_cmd_delete_purge_keeps_rows_another_investigation_at_that_path_owns(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    projects = cli.load_projects()
+    projects["other"] = {**projects["shell-co"], "name": "Other"}
+    cli.save_projects(projects)
+    import shutil
+    shutil.rmtree(configured / "shell-co")
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    assert _telemetry_names() == ["shell-co"]
+
+
 def test_cmd_rename_then_purge_removes_the_renamed_vaults_telemetry(configured, monkeypatch):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     _record_telemetry(configured / "shell-co")

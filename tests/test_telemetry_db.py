@@ -227,3 +227,15 @@ def test_connection_overwrites_deleted_content(tmp_path):
     telemetry_db.record_call(_MINIMAL_RECORD, vault=vault, run_id="r", benchmark_arm_id=None,
                              prompt_hash=None, config_snapshot=None)
     assert telemetry_db._connect().execute("PRAGMA secure_delete").fetchone()[0] == 1
+
+
+def test_purged_rows_leave_no_trace_in_the_database_or_its_wal(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    record = {**_MINIMAL_RECORD, "filename": "zq-unmistakable-filename.pdf"}
+    telemetry_db.record_call(record, vault=vault, run_id="r", benchmark_arm_id=None,
+                             prompt_hash=None, config_snapshot=None)
+    assert telemetry_db.purge_vault(vault) == 1
+    for p in (telemetry_db.DB_PATH, telemetry_db.DB_PATH.with_name(telemetry_db.DB_PATH.name + "-wal")):
+        if p.exists():
+            assert b"zq-unmistakable-filename" not in p.read_bytes(), p.name

@@ -689,9 +689,13 @@ def cmd_delete(args) -> None:
             if not is_vault(vault):
                 sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
             shutil.rmtree(vault)
+        # Another registered investigation at the same path owns those rows now.
+        shared = any(Path(info.get("path", "")).expanduser().resolve() == resolved
+                     for info in projects.values() if info.get("path"))
         try:
             from watchdog import telemetry_db
-            telemetry_db.purge_vault(resolved)
+            if not shared:
+                telemetry_db.purge_vault(resolved)
         except Exception as e:
             print(f"  {_YELLOW}Warning:{_RESET} could not remove this vault's rows from the "
                   f"telemetry store: {e}")
