@@ -20,6 +20,7 @@ from pathlib import Path
 from watchdog.pipeline import resolutions
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
+    _write_json_atomic,
     _defang,
     _extract_analysis,
     _extract_contradictions,
@@ -77,8 +78,8 @@ def _resolve_doc(doc_index: dict, doc_arg: str) -> tuple[str, dict]:
 
 
 def _run_unlocked(vault: Path, entity_id: str, label: str,
-        a_value: str, a_doc: str, a_page,
-        b_value: str, b_doc: str, b_page) -> dict:
+                  a_value: str, a_doc: str, a_page,
+                  b_value: str, b_doc: str, b_page) -> dict:
     """Write a verified contradiction callout into an entity's note and registry ledger.
 
     Validates that the entity id and both document slugs exist, builds the callout, folds it
@@ -155,7 +156,6 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
     except Exception as e:
         print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
 
-    from watchdog.pipeline.write_vault import _write_json_atomic
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault, entities_reg)
 
@@ -175,4 +175,3 @@ def run(vault: Path, entity_id: str, label: str,
         return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
     with _registry_lock(registry_dir):
         return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
-

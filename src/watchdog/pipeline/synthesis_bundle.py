@@ -12,6 +12,7 @@ from pathlib import Path
 
 from watchdog.pipeline.finalize_entity import apply_one
 from watchdog.pipeline.write_vault import (
+    _write_json_atomic,
     _defang,
     _extract_summary,
     _extract_analysis,
@@ -131,7 +132,6 @@ def _apply_bundle_unlocked(result_path: Path, vault_path: Path) -> dict:
             skipped.append(eid)
 
     if applied:
-        from watchdog.pipeline.write_vault import _write_json_atomic
         _write_json_atomic(entities_path, entities_reg)
         _update_manifest(vault_path, entities_reg)
 
@@ -148,4 +148,3 @@ def apply_bundle(result_path: Path, vault_path: Path) -> dict:
         return _apply_bundle_unlocked(result_path, vault_path)
     with _registry_lock(registry_dir):
         return _apply_bundle_unlocked(result_path, vault_path)
-

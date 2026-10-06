@@ -27,6 +27,11 @@ def cmd_contradiction_add(args) -> None:
             args.a, args.a_doc, args.a_page,
             args.b, args.b_doc, args.b_page,
         )
+    except OSError as e:
+        # The registry lock (D258) — on Windows `msvcrt` gives up after ~10s while another
+        # watchdog command (usually `bark` committing a batch) holds it.
+        sys.exit(f"Error: couldn't write the registry ({e}). If `watchdog bark` or another "
+                 f"watchdog command is running in this vault, wait for it to finish and retry.")
     except ValueError as e:
         sys.exit(f"Error: {e}")
 

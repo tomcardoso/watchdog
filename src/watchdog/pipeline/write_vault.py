@@ -46,6 +46,7 @@ into per-entity `evidence_fragments`/`timeline_events` (D26). The model itself e
 
 import hashlib
 import json
+import os
 import re
 import shutil
 import sys
@@ -452,7 +453,7 @@ def _registry_lock(registry_dir: Path):
 def _write_json_atomic(path: Path, data) -> None:
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.rename(path)
+    os.replace(tmp, path)   # rename() fails on Windows when the target exists
 
 
 class RegistryBatch:

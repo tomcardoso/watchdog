@@ -16,6 +16,7 @@ from pathlib import Path
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.write_vault import (
+    _write_json_atomic,
     _extract_analysis,
     _extract_contradictions,
     _extract_notes_section,
@@ -302,7 +303,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         note_file.write_text(content, encoding="utf-8")
         other_notes[entry["note_path"]] = (entry["name"], content)
 
-    from watchdog.pipeline.write_vault import _write_json_atomic
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault_path, entities_reg)
     stats["timeline_records_remapped"] = _remap_timeline_ndjson(vault_path, keep_id, merge_id)
@@ -358,4 +358,3 @@ def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
         return _run_unlocked(vault_path, keep_id, merge_id)
     with _registry_lock(registry_dir):
         return _run_unlocked(vault_path, keep_id, merge_id)
-

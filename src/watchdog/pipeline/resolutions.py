@@ -30,6 +30,7 @@ Three ways to acknowledge, all landing in the same JSON: ``watchdog resolve <id>
 import datetime
 import hashlib
 import json
+import os
 import re
 from pathlib import Path
 
@@ -134,7 +135,7 @@ def save(vault: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.rename(path)
+    os.replace(tmp, path)   # rename() fails on Windows when the target exists
 
 
 def resolve(vault: Path, rids, label: str = "") -> list[str]:

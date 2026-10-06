@@ -173,3 +173,29 @@ def test_add_waits_for_the_registry_lock_and_keeps_a_concurrent_commit(tmp_path)
     ents = json.loads((registry / "entities.json").read_text())
     assert "committed-meanwhile" in ents          # the commit survived
     assert ents["alice-smith"]["contradictions"]  # and so did the contradiction
+
+
+@pytest.mark.parametrize("module, fn, args", [
+    ("watchdog.pipeline.merge_entities", "run", ("keep", "merge")),
+    ("watchdog.pipeline.synthesis_bundle", "apply_bundle", None),
+])
+def test_other_registry_writers_take_the_lock(tmp_path, monkeypatch, module, fn, args):
+    """merge-entities and the synthesis apply hold the registry lock around their unlocked body."""
+    import importlib
+    from contextlib import contextmanager
+    mod = importlib.import_module(module)
+    vault = tmp_path / "v"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    events = []
+
+    @contextmanager
+    def recording_lock(registry_dir):
+        events.append("acquire")
+        yield
+        events.append("release")
+
+    monkeypatch.setattr("watchdog.pipeline.write_vault._registry_lock", recording_lock)
+    monkeypatch.setattr(mod, f"_{fn}_unlocked", lambda *a: events.append("body") or {})
+    call_args = (vault, *args) if args else (tmp_path / "result.json", vault)
+    getattr(mod, fn)(*call_args)
+    assert events == ["acquire", "body", "release"]
