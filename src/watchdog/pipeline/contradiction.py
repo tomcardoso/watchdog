@@ -105,11 +105,9 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
     a_slug, a_entry = _resolve_doc(doc_index, a_doc)
     b_slug, b_entry = _resolve_doc(doc_index, b_doc)
 
-    callout = build_callout(
-        label,
-        a_value, a_slug, a_entry.get("title") or a_entry.get("filename", a_slug), a_page,
-        b_value, b_slug, b_entry.get("title") or b_entry.get("filename", b_slug), b_page,
-    )
+    a_title = a_entry.get("title") or a_entry.get("filename", a_slug)
+    b_title = b_entry.get("title") or b_entry.get("filename", b_slug)
+    callout = build_callout(label, a_value, a_slug, a_title, a_page, b_value, b_slug, b_title, b_page)
     rid = resolutions.contradiction_id(callout)
 
     entry = entities_reg[entity_id]
@@ -125,7 +123,7 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
     entry["contradictions"] = all_callouts
 
     if already_present:
-        return {"added": False, "rid": rid, "entity_name": entry["name"],
+        return {"added": False, "rid": rid, "entity_name": entry["name"], "sources": [a_title, b_title],
                 "note_path": entry["note_path"] + ".md"}
 
     entry["date_last_updated"] = _today()
@@ -159,7 +157,7 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault, entities_reg)
 
-    return {"added": True, "rid": rid, "entity_name": entry["name"],
+    return {"added": True, "rid": rid, "entity_name": entry["name"], "sources": [a_title, b_title],
             "note_path": entry["note_path"] + ".md"}
 
 

@@ -2301,7 +2301,10 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # conflict at all. This used to be scraped off the per-document extraction results, so
         # the count could only ever include conflicts the extractor happened to be positioned to
         # notice.
-        contradiction_flags = [{"entity": c["entity_name"], "label": c["label"]}
+        # `sources` names the two documents (title, else filename), which the briefing prompt
+        # asks it to cite under anomalies.
+        contradiction_flags = [{"entity": c["entity_name"], "label": c["label"],
+                                "sources": c.get("sources", [])}
                                for c in out["contradictions"]]
         # Deterministic pointer, not a model input (D111): count this run's open document
         # requests (recorded per-document into the ledger by write_vault, at extraction time) so
