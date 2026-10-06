@@ -2299,6 +2299,14 @@ def test_load_config_with_invalid_utf8_exits_cleanly(wdg_home):
     (wdg_home / "config.json").write_bytes(b'{"x": "\xff\xfe"}')
     with pytest.raises(SystemExit, match="config file is corrupt"):
         _base.load_config()
+    with pytest.raises(SystemExit, match="config file is corrupt"):
+        _base._projects_dir()
+
+
+def test_load_projects_with_invalid_utf8_exits_cleanly(wdg_home):
+    (wdg_home / "projects.json").write_bytes(b'{"x": "\xff\xfe"}')
+    with pytest.raises(SystemExit, match="projects file is corrupt"):
+        _base.load_projects()
 
 
 # ── _offer_ingest (post-chew prompt) ──────────────────────────────────────────

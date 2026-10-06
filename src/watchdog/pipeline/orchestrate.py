@@ -1913,6 +1913,8 @@ def _fit_briefing_alerts(neardup_alerts: list, contradiction_flags: list, budget
     if size(dups) + size(flags) > budget // 4:
         def _cut(items: list) -> list:
             kept = (chunking.pack(items, budget // 8) or [[]])[0]
+            if size(kept) > budget // 8:        # one item alone too big: pack keeps it whole
+                kept = []
             if len(kept) < len(items):
                 kept = kept + [{"more_not_shown": len(items) - len(kept)}]
             return kept

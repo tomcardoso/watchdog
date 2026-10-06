@@ -250,6 +250,12 @@ def test_briefing_alerts_come_out_of_the_budget_and_are_capped():
     assert fit_dups == dups                       # a short list is kept whole
 
 
+def test_briefing_alerts_drop_a_single_oversized_flag_to_a_count():
+    flags = [{"entity": "E", "label": "x" * 20_000}] + [{"entity": "F", "label": "y"}]
+    _, fit_flags, _ = orchestrate._fit_briefing_alerts([], flags, 40_000)
+    assert fit_flags == [{"more_not_shown": 2}]
+
+
 def test_briefing_alerts_untouched_when_small():
     flags = [{"entity": "Acme", "label": "x"}]
     assert orchestrate._fit_briefing_alerts([], flags, 40_000)[:2] == ([], flags)
