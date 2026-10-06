@@ -605,16 +605,17 @@ def test_no_prompt_or_skill_contains_a_benchmark_answer_key_term():
     from pathlib import Path
     root = Path(__file__).resolve().parent.parent
     keys = sorted(root.glob("benchmarks/keys/**/*.yaml"))
-    if not keys:
-        pytest.skip("benchmark answer keys are not in this checkout")
+    assert keys, "benchmark answer keys not found — update this test if benchmarks/keys moved"
     names, values = set(), set()
     for f in keys:
         text = f.read_text(encoding="utf-8")
         for e in (yaml.safe_load(text) or {}).get("entities") or []:
             names.update(n for n in [e.get("name"), *(e.get("aliases") or [])] if n and len(n) >= 5)
         values.update(re.findall(r"\$\d{1,3}(?:,\d{3})+", text))
-        values.update(re.findall(r"(?:January|February|March|April|May|June|July|August|September|"
-                                 r"October|November|December) \d{1,2}, \d{4}", text))
+        months = (r"(?:January|February|March|April|May|June|July|August|September|October|"
+                  r"November|December)")
+        values.update(re.findall(months + r" \d{1,2}, \d{4}", text))     # March 4, 2016
+        values.update(re.findall(r"\b\d{1,2} " + months + r" \d{4}", text))  # 4 March 2016
     src = root / "src" / "watchdog"
     files = [Path(p) for pattern in ("prompts/*.md", "skills/**/*.md", "templates/**/*.md")
              for p in glob.glob(str(src / pattern), recursive=True)]
