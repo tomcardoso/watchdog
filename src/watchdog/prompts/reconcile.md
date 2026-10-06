@@ -16,7 +16,7 @@ Merge when the pair is one thing under two names:
 
 Do NOT merge when the names merely resemble each other:
 - two people who share a surname, or a parent and child with the same name — a shared surname is not identity
-- a parent company and its subsidiary, a company and its pension plan, a court and a case before it — these are *related*, not the same, and merging them destroys the relationship
+- a parent company and its subsidiary, a city and its transit authority, a court and a case before it — these are *related*, not the same, and merging them destroys the relationship
 - two entities whose claims place them in incompatible roles or places
 - anything you are merely guessing at
 
