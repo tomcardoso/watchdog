@@ -1,3 +1,4 @@
+<!-- watchdog:begin — `watchdog settings refresh-skills` rewrites everything down to the end marker. Put your own notes below it. -->
 # {name} — Watchdog
 
 At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about. If the user asks about documents that haven't appeared yet, `watchdog status` in their terminal shows anything still waiting to be chewed, extracted (`watchdog dig`) or finalized (`watchdog bark`).
@@ -76,3 +77,4 @@ An investigation compounds when findings are written down instead of re-derived 
 | `inferred` | Fact reasoned from the document rather than stated outright — a lead to verify, not a finding (rendered as *(inferred)*) |
 
 A fact that *conflicts* with another source is not a basis level — it is captured by a `[!contradiction]` callout in the entity's note.
+<!-- watchdog:end -->

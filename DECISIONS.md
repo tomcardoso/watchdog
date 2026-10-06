@@ -266,6 +266,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D259** — Only explicit account signals stop a run as billing, and they are checked before rate limits; read timeouts are not retried
 - **D260** — timeline.md shows committed documents' events a failed dedup left pending
 - **D261** — The telemetry store follows a vault when it is renamed or moved, and a purge never depends on the folder still existing
+- **D264** — `refresh-skills` rewrites Watchdog's part of a vault's `CLAUDE.md`, between markers; an older file is backed up and replaced
 
 </details>
 
@@ -2406,3 +2407,7 @@ A post-merge review of D240 found that when several documents share a date, the 
 ### D261 — The telemetry store follows a vault when it is renamed or moved, and a purge never depends on the folder still existing
 
 A post-merge review of the telemetry purge found three ways `projects delete --purge` left a vault's rows behind. Rows are keyed on the vault's resolved path, and `rename` and `move` never updated it, so a renamed vault's rows no longer matched. A vault whose folder was already gone (deleted by hand, or on an unmounted drive) skipped the purge entirely. And the purge waited only half a second for the write lock, so a run writing elsewhere could make it fail. `rename` and `move` now rewrite the rows' path and name, the purge runs whether or not the folder exists, and purges and moves wait up to ten seconds for the lock. Connections also turn on SQLite's `secure_delete`, and a purge ends with a truncating write-ahead-log checkpoint, so purged rows are overwritten rather than left readable in the file's free pages or its log. A purge leaves the folder and its rows alone when another registered investigation still points to that path. The tradeoff: deletes write more, and rows from before an upgrade, for a vault renamed before this change, still carry the old path and are only removed by deleting the file.
+
+### D264 — `refresh-skills` rewrites Watchdog's part of a vault's `CLAUDE.md`, between markers; an older file is backed up and replaced
+
+A vault's `.claude/CLAUDE.md` tells Claude Code how to work in it, and was written once, at `watchdog new`. When D245 narrowed what a session may do, existing vaults kept instructions saying that editing the registry, `hot.md` and `log.md` was allowed, and naming commands that no longer exist. The permissions themselves were enforced, but a session told it could do something it couldn't would try, fail and look for a way round. `refresh-skills` now rewrites the file. The template opens and closes with marker comments; only the text between them is Watchdog's and is replaced, and anything outside them is kept. A file from before the markers existed can't be split that way, so it is saved beside itself as `CLAUDE.md.before-refresh` (numbered if one exists) and replaced whole. The tradeoff: notes a user added to an older file inside its body must be copied back by hand from the backup, and anything written between the markers in a new file is overwritten on the next refresh.
