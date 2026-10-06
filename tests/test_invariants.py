@@ -360,27 +360,31 @@ def test_I9_colour_is_off_whenever_stdout_is_not_a_terminal(monkeypatch):
     assert terminal._color_enabled() is False
 
 
-def test_I9_the_colour_constants_follow_the_gate_at_import(monkeypatch):
-    """The constants styled strings use are computed once, at import. Checking `_color_enabled()`
-    alone never touches them, so reload the module under each condition and check the values."""
-    import importlib
-    import io
+def test_I9_the_colour_constants_follow_the_gate_at_import():
+    """The constants styled strings use are computed once, at import, so checking
+    `_color_enabled()` alone never touches them. Import the module fresh in a subprocess — once
+    with stdout piped, once on a pseudo-terminal — so nothing is reloaded in this process."""
+    import os
+    import subprocess
     import sys
-    from watchdog import terminal
-
-    class _Tty(io.StringIO):
-        def isatty(self):
-            return True
-
-    monkeypatch.delenv("NO_COLOR", raising=False)
-    monkeypatch.setenv("FORCE_COLOR", "3")
+    code = "from watchdog import terminal; print(repr(terminal._RESET + terminal._BOLD))"
+    from pathlib import Path
+    import watchdog
+    src = str(Path(watchdog.__file__).resolve().parent.parent)     # the package under test
+    env = {**os.environ, "FORCE_COLOR": "3",
+           "PYTHONPATH": os.pathsep.join([src, os.environ.get("PYTHONPATH", "")])}
+    env.pop("NO_COLOR", None)
+    piped = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
+                           check=True)
+    assert piped.stdout.strip() == "''"
+    if sys.platform == "win32":
+        return
+    import pty
+    leader, follower = pty.openpty()
     try:
-        monkeypatch.setattr(sys, "stdout", io.StringIO())
-        importlib.reload(terminal)
-        assert terminal._BOLD == terminal._RESET == terminal._CYAN == ""
-        monkeypatch.setattr(sys, "stdout", _Tty())
-        importlib.reload(terminal)
-        assert terminal._RESET == "\033[0m"
+        subprocess.run([sys.executable, "-c", code], env=env, stdout=follower, check=True)
+        out = os.read(leader, 4096).decode()
     finally:
-        monkeypatch.undo()
-        importlib.reload(terminal)
+        os.close(leader)
+        os.close(follower)
+    assert "\\x1b[0m" in out
