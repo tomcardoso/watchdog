@@ -504,7 +504,7 @@ def load_config() -> dict:
         return {}
     try:
         data = _read_json(CONFIG_FILE)
-    except json.JSONDecodeError as e:
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
         sys.exit(f"Error: config file is corrupt — {e}\nFix or remove {CONFIG_FILE}, or run "
                  f"'watchdog setup --force'.")
     return data if isinstance(data, dict) else {}

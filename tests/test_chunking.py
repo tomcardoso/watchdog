@@ -236,6 +236,25 @@ def test_briefing_inputs_fall_back_to_a_tally_for_a_huge_batch():
     assert condensed["documents"] == 5000
 
 
+def test_briefing_alerts_come_out_of_the_budget_and_are_capped():
+    """#697 review: near-dup alerts and contradiction flags were sent unmeasured, so a large
+    batch could overflow the call even after its results were condensed."""
+    flags = [{"entity": f"Entity {i}", "label": "Date of incorporation"} for i in range(2000)]
+    dups = [{"filename": f"doc-{i}.pdf", "similarity": 0.97} for i in range(10)]
+    budget = 40_000
+    fit_dups, fit_flags, left = orchestrate._fit_briefing_alerts(dups, flags, budget)
+    used = chunking.json_size(fit_dups) + chunking.json_size(fit_flags)
+    assert used <= budget // 4 + 200
+    assert left == budget - used
+    assert fit_flags[-1] == {"more_not_shown": 2000 - (len(fit_flags) - 1)}
+    assert fit_dups == dups                       # a short list is kept whole
+
+
+def test_briefing_alerts_untouched_when_small():
+    flags = [{"entity": "Acme", "label": "x"}]
+    assert orchestrate._fit_briefing_alerts([], flags, 40_000)[:2] == ([], flags)
+
+
 def test_briefing_prompt_tells_the_model_its_view_is_partial():
     p = prompts.build_briefing_prompt(brief=None, results=[], scratchpads=[], neardup_alerts=[],
                                       contradiction_flags=[],

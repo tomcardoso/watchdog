@@ -1893,6 +1893,24 @@ _SYNTHESIS_MAX_ENTITIES = 25
 _BRIEFING_FACT_LEVELS = (None, 5, 1, 0)
 
 
+def _fit_briefing_alerts(neardup_alerts: list, contradiction_flags: list, budget: int
+                         ) -> tuple[list, list, int]:
+    """The alert lists ride in the briefing prompt and grow with the batch, so they come out of
+    its budget first, held to a quarter of it between them. A list cut short ends with a count of
+    what was left out, so the model knows it sees only part of it; the log entry and the entity
+    notes still carry every one. Returns the two lists and the budget left for the rest."""
+    size = chunking.json_size
+    dups, flags = neardup_alerts, contradiction_flags
+    if size(dups) + size(flags) > budget // 4:
+        def _cut(items: list) -> list:
+            kept = (chunking.pack(items, budget // 8) or [[]])[0]
+            if len(kept) < len(items):
+                kept = kept + [{"more_not_shown": len(items) - len(kept)}]
+            return kept
+        dups, flags = _cut(dups), _cut(flags)
+    return dups, flags, budget - size(dups) - size(flags)
+
+
 def _fit_briefing_inputs(results: list, scratchpads: list, budget: int
                          ) -> tuple[list, list, dict | None]:
     """Shrink the briefing's input until it fits one call of `budget` characters (#696).
@@ -2301,6 +2319,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             if any(s.get("sha256") in ok_shas for s in r.get("sources") or [])
         ])
         budget = chunking.prompt_budget_chars(briefing_model, briefing_backend, vault)
+        brief_dups, brief_flags, budget = _fit_briefing_alerts(neardup_alerts, contradiction_flags,
+                                                               budget)
         brief_results, brief_pads, condensed = _fit_briefing_inputs(ok, scratchpads, budget)
         if condensed:
             _say(f"{_DIM}   large batch — briefing input condensed ({condensed['level']}){_RESET}")
@@ -2310,7 +2330,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 prompt=prompts.build_briefing_prompt(
                     brief=brief, results=_with_entity_names(brief_results, _load_entity_names(vault)),
                     scratchpads=brief_pads,
-                    neardup_alerts=neardup_alerts, contradiction_flags=contradiction_flags,
+                    neardup_alerts=brief_dups, contradiction_flags=brief_flags,
                     condensed=condensed),
                 effort=post_effort, vault=vault)
             out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
