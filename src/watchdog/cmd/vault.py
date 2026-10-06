@@ -506,6 +506,15 @@ def cmd_open(args) -> None:
     print(f"\n  {_GREEN}Opened:{_RESET} {_CYAN}{vault}{_RESET}\n")
 
 
+def _relocate_telemetry(old_resolved: Path, new: Path) -> None:
+    try:
+        from watchdog import telemetry_db
+        telemetry_db.relocate_vault(old_resolved, new)
+    except Exception as e:
+        print(f"  {_YELLOW}Warning:{_RESET} could not update this vault's rows in the telemetry "
+              f"store: {e}")
+
+
 def cmd_rename(args) -> None:
     first    = args.project
     new_name = args.name.strip() if args.name else None
@@ -567,7 +576,9 @@ def cmd_rename(args) -> None:
     if slug != new_slug:
         if new_vault.exists():
             sys.exit(f"Error: {new_vault} already exists.")
+        old_resolved = vault.resolve()
         vault.rename(new_vault)
+        _relocate_telemetry(old_resolved, new_vault)
 
         # Update Obsidian registry (path changed)
         cfg = _obsidian_config_path()
@@ -670,14 +681,24 @@ def cmd_delete(args) -> None:
     del projects[slug]
     save_projects(projects)
 
-    if args.purge and vault.exists():
-        if not is_vault(vault):
-            sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
-        resolved = vault.resolve()   # before the folder is gone, so symlinks still resolve
-        shutil.rmtree(vault)
+    if args.purge:
+        # Before the folder is gone, so symlinks still resolve. A folder already deleted by hand
+        # (or on an unmounted drive) still has its telemetry rows purged (D261).
+        resolved = vault.resolve()
+        # Another registered investigation at the same path owns the folder and its rows now.
+        shared = any(Path(info.get("path", "")).expanduser().resolve() == resolved
+                     for info in projects.values() if info.get("path"))
+        if shared:
+            print(f"  {_YELLOW}Kept the files:{_RESET} another investigation in the list uses "
+                  f"{vault}.")
+        elif vault.exists():
+            if not is_vault(vault):
+                sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
+            shutil.rmtree(vault)
         try:
             from watchdog import telemetry_db
-            telemetry_db.purge_vault(resolved)
+            if not shared:
+                telemetry_db.purge_vault(resolved)
         except Exception as e:
             print(f"  {_YELLOW}Warning:{_RESET} could not remove this vault's rows from the "
                   f"telemetry store: {e}")
@@ -713,6 +734,7 @@ def cmd_move(args) -> None:
         dst = dst / src.name
 
     moved = False
+    src_resolved = src.resolve()      # before the move, so a symlinked path still resolves
     if src.exists():
         try:
             shutil.move(str(src), str(dst))
@@ -732,6 +754,7 @@ def cmd_move(args) -> None:
     projects = load_projects()
     projects[slug]["path"] = str(dst)
     save_projects(projects)
+    _relocate_telemetry(src_resolved, dst)
 
     # Update Obsidian registry
     cfg = _obsidian_config_path()

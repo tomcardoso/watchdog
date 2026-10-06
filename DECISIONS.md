@@ -265,6 +265,7 @@ The dated record of architectural decisions, each operating within the **Invaria
 - **D258** — Every CLI command that rewrites entities.json takes the registry lock; lock files are rewritten through unique temp files
 - **D259** — Only explicit account signals stop a run as billing, and they are checked before rate limits; read timeouts are not retried
 - **D260** — timeline.md shows committed documents' events a failed dedup left pending
+- **D261** — The telemetry store follows a vault when it is renamed or moved, and a purge never depends on the folder still existing
 
 </details>
 
@@ -2401,3 +2402,7 @@ A post-merge review of D242 found its billing check matched words ordinary rate 
 ### D260 — timeline.md shows committed documents' events a failed dedup left pending
 
 A post-merge review of D240 found that when several documents share a date, the first is promoted to the date's canonical file and the rest wait as raw files for a dedup call. If that call failed, for example on a rate limit, the raws stayed, and `timeline.md`, which rendered canonical files only, dropped those documents' events. `watchdog timeline` couldn't bring them back, and before D240 they had always been shown. `cmd_rebuild_timeline` now also renders raw files whose document is committed, skipping events already in the canonical file. Raws are written at extraction, before the commit, so an uncommitted document's events stay out (I7). That includes a committed document that `--force` has re-extracted: while its queue file waits for `bark` with a result written after it, its new raws are not shown. A queue file alone doesn't hide them, because `ingest --force` writes it before extracting, and neither does a result left from an earlier run. The tradeoff: until the next successful dedup, a date can show two near-identical lines for one event, the price of never silently losing an event.
+
+### D261 — The telemetry store follows a vault when it is renamed or moved, and a purge never depends on the folder still existing
+
+A post-merge review of the telemetry purge found three ways `projects delete --purge` left a vault's rows behind. Rows are keyed on the vault's resolved path, and `rename` and `move` never updated it, so a renamed vault's rows no longer matched. A vault whose folder was already gone (deleted by hand, or on an unmounted drive) skipped the purge entirely. And the purge waited only half a second for the write lock, so a run writing elsewhere could make it fail. `rename` and `move` now rewrite the rows' path and name, the purge runs whether or not the folder exists, and purges and moves wait up to ten seconds for the lock. Connections also turn on SQLite's `secure_delete`, and a purge ends with a truncating write-ahead-log checkpoint, so purged rows are overwritten rather than left readable in the file's free pages or its log. A purge leaves the folder and its rows alone when another registered investigation still points to that path. The tradeoff: deletes write more, and rows from before an upgrade, for a vault renamed before this change, still carry the old path and are only removed by deleting the file.

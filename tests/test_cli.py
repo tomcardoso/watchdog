@@ -1920,6 +1920,67 @@ def test_cmd_delete_purge_removes_the_vaults_telemetry_rows(configured, monkeypa
         conn.close()
 
 
+def _telemetry_names():
+    from watchdog import telemetry_db
+    conn = sqlite3.connect(telemetry_db.DB_PATH)
+    try:
+        return sorted(r[0] for r in conn.execute("SELECT vault_name FROM calls"))
+    finally:
+        conn.close()
+
+
+def _record_telemetry(vault):
+    from watchdog import telemetry_db
+    record = {"task": "extract", "model": "m", "backend": "claude-api", "input_tokens": 1,
+              "output_tokens": 1, "cache_read_tokens": 0, "cache_write_tokens": 0}
+    telemetry_db.record_call(record, vault=vault, run_id="r", benchmark_arm_id=None,
+                             prompt_hash=None, config_snapshot=None)
+
+
+def test_cmd_delete_purge_removes_telemetry_when_the_folder_is_already_gone(configured, monkeypatch):
+    """A vault deleted by hand before `delete --purge` used to keep its telemetry rows."""
+    import shutil
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    cli.cmd_new(args(name="Other Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    _record_telemetry(configured / "other-co")
+    shutil.rmtree(configured / "shell-co")
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    assert _telemetry_names() == ["other-co"]
+
+
+def test_cmd_delete_purge_keeps_rows_another_investigation_at_that_path_owns(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    projects = cli.load_projects()
+    projects["other"] = {**projects["shell-co"], "name": "Other"}
+    cli.save_projects(projects)
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Shell Co", purge=True))
+    assert _telemetry_names() == ["shell-co"]
+    assert (configured / "shell-co").is_dir()      # the other investigation's files stay too
+
+
+def test_cmd_rename_then_purge_removes_the_renamed_vaults_telemetry(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+    assert _telemetry_names() == ["oil-co"]
+    monkeypatch.setattr("builtins.input", lambda _: "y")
+    cli.cmd_delete(args(name="Oil Co", purge=True))
+    assert _telemetry_names() == []
+
+
+def test_cmd_move_relocates_the_vaults_telemetry(configured):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    _record_telemetry(configured / "shell-co")
+    new_path = configured / "new-location"
+    cli.cmd_move(args(name="Shell Co", path=str(new_path)))
+    from watchdog import telemetry_db
+    assert telemetry_db.purge_vault(new_path) == 1
+
+
 def test_cmd_delete_purge_removes_the_vault_without_a_pointless_backup(configured, monkeypatch, capsys):
     """--purge used to snapshot the registry *inside* the folder it then deleted, and print a
     paragraph explaining the snapshot couldn't undo anything. It just deletes now."""

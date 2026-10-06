@@ -130,7 +130,7 @@ With `wayback_save` on, every source that `watchdog research` or `watchdog resea
 
 Watchdog keeps a database of every model call it makes, at `~/.watchdog/telemetry.db`. Each row records the model, the tokens used, the cost and the time taken, along with the path and name of the vault and the filename of the document the call was about. It holds no document text and never leaves your computer. It exists so cost and speed can be compared across runs and models.
 
-Because it lists the documents in every one of your investigations, treat the file as sensitive: keep it out of shared folders and backups that others can reach. To stop recording, run `watchdog settings telemetry false`. Rows already written stay until you delete the file. `watchdog projects delete --purge` removes a vault's rows along with the vault. Each vault's own usage files, which `watchdog usage` reads, are separate and unaffected.
+Because it lists the documents in every one of your investigations, treat the file as sensitive: keep it out of shared folders and backups that others can reach. To stop recording, run `watchdog settings telemetry false`. Rows already written stay until you delete the file. `watchdog projects delete --purge` removes a vault's rows along with the vault, even if you have already deleted its folder yourself. Renaming or moving an investigation with `watchdog projects rename` or `watchdog projects move` carries its rows along, so a later purge still finds them. Each vault's own usage files, which `watchdog usage` reads, are separate and unaffected.
 
 ## Examples
 
