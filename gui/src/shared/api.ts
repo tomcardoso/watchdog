@@ -344,6 +344,7 @@ export interface AuthStatus {
   claude: { mode: string; logged_in: boolean; reason: string | null }
   stages: { stage: string; value: string; provider: string; ready: boolean; billing: string | null }[]
   keys: { provider: string; masked: string; in_use: string; source: 'stored' | 'env' }[]
+  providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
 }
 export interface SkillInfo { name: string; description: string; source: 'package' | 'user' }
 export interface SetupCheck {
@@ -511,10 +512,19 @@ export interface Events {
   'chat.status': { session: string; state: 'thinking' | 'idle' | 'closed' | 'error'; detail: string | null; cost_usd: number | null }
   'menu.command': { command: string }
   'files.dropped': { paths: string[] }
+  'update.state': UpdateState
   'engine.progress': EngineProgress
   'claude.signin': { url: string | null }
 }
 export type EventName = keyof Events
+
+/** The in-app updater's state (main/updater.ts). */
+export interface UpdateState {
+  state: 'idle' | 'available' | 'downloading' | 'ready'
+  version: string | null
+  percent: number | null
+  error: string | null
+}
 
 export interface BackendStatus {
   state: 'starting' | 'ready' | 'error' | 'stopped'
@@ -610,5 +620,11 @@ export interface WatchdogBridge {
     set(key: string, value: unknown): Promise<void>
   }
   notify(title: string, body: string): void
+  updates: {
+    get(): Promise<UpdateState>
+    check(): Promise<void>
+    download(): Promise<void>
+    install(): Promise<void>
+  }
   platform: string
 }

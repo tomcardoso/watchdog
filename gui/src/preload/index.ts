@@ -79,6 +79,12 @@ const bridge: WatchdogBridge = {
     set: (key, value) => ipcRenderer.invoke('prefs:set', key, value)
   },
   notify: (title, body) => ipcRenderer.send('notify', title, body),
+  updates: {
+    get: () => ipcRenderer.invoke('update:get'),
+    check: () => ipcRenderer.invoke('update:check'),
+    download: () => ipcRenderer.invoke('update:download'),
+    install: () => ipcRenderer.invoke('update:install')
+  },
   platform: process.platform
 }
 

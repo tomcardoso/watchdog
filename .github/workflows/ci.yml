@@ -47,3 +47,31 @@ jobs:
           cache: pip
 
       - uses: ./.github/actions/run-tests
+
+  app:
+    # The desktop app: typecheck (including the no-colour-literals check) and a production build.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: gui
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+
+      - run: npm run typecheck
+
+      - run: npx electron-vite build
+
