@@ -147,8 +147,8 @@
   max-height: 330px;
   overflow: hidden;
   padding: 0 22px;
-  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
-  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  -webkit-mask-image: linear-gradient(to bottom, var(--mask-opaque) 72%, transparent);
+  mask-image: linear-gradient(to bottom, var(--mask-opaque) 72%, transparent);
 }
 .home-briefing-body + * {
   margin-top: 0;

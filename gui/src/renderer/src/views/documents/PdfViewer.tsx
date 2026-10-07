@@ -6,7 +6,7 @@
 import { ChevronDown, ChevronUp, Maximize2, Search, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button, Callout, Spinner } from '@renderer/components/ui'
-import { openPdf, pdfjs } from '@renderer/lib/pdf'
+import { cssVar, openPdf, pdfjs } from '@renderer/lib/pdf'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 
 export interface JumpTarget {
@@ -121,7 +121,7 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
         next.height = Math.floor(vp.height)
         const ctx = next.getContext('2d')
         if (!ctx) return
-        ctx.fillStyle = '#ffffff'
+        ctx.fillStyle = cssVar('--pdf-page')
         ctx.fillRect(0, 0, next.width, next.height)
         task = page.render({ canvasContext: ctx, viewport: vp, canvas: next })
         await task.promise

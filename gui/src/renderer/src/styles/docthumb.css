@@ -6,7 +6,7 @@
   border-radius: 6px;
   background: var(--paper);
   border: 1px solid var(--border);
-  box-shadow: 0 1px 2px rgba(40, 30, 10, 0.08), 0 6px 16px -8px rgba(40, 30, 10, 0.2);
+  box-shadow: var(--thumb-shadow);
 }
 .doc-thumb img {
   display: block;
@@ -25,7 +25,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 10% 11%;
-  color: #2a2620;
+  color: var(--paper-text);
   font-family: var(--font-read);
 }
 .doc-thumb-paper .paper-head {
@@ -36,7 +36,7 @@
   font-size: 9px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: #9a8f7e;
+  color: var(--paper-text-3);
 }
 .doc-thumb-paper .paper-head svg {
   width: 12px;
@@ -54,7 +54,7 @@
 .doc-thumb-paper .paper-body {
   font-size: 8.5px;
   line-height: 1.45;
-  color: #5b5348;
+  color: var(--paper-text-2);
   display: -webkit-box;
   -webkit-line-clamp: 6;
   -webkit-box-orient: vertical;
@@ -69,5 +69,5 @@
 .doc-thumb-paper .paper-lines span {
   height: 3px;
   border-radius: 2px;
-  background: #ebe5da;
+  background: var(--paper-rule);
 }

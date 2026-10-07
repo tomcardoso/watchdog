@@ -27,95 +27,165 @@
   --dur: 160ms;
 }
 
+/* Palette: "Highlighter" — near-monochrome graphite with a marker-yellow accent. In light mode the
+   primary accent is ink-black and yellow is the highlight (soft fills, selection, focus); in dark
+   mode yellow is the accent itself. Text on an accent fill uses --accent-contrast. */
+
 :root,
 :root[data-theme='light'] {
   color-scheme: light;
-  --bg: #f7f5f0;
-  --bg-sidebar: #efebe3;
+  --bg: #f4f4f5;
+  --bg-sidebar: #ebebed;
   --surface: #ffffff;
-  --surface-2: #fbfaf7;
-  --surface-sunken: #f2efe9;
-  --hover: rgba(60, 45, 20, 0.055);
-  --active: rgba(60, 45, 20, 0.09);
-  --border: #e5e0d6;
-  --border-strong: #d4cdbf;
-  --text: #1c1a17;
-  --text-2: #57524a;
-  --text-3: #8b857a;
+  --surface-2: #fafafa;
+  --surface-sunken: #efeff1;
+  --hover: rgba(0, 0, 0, 0.045);
+  --active: rgba(0, 0, 0, 0.08);
+  --border: #e2e2e5;
+  --border-strong: #cdcdd2;
+  --text: #141416;
+  --text-2: #4f4f57;
+  --text-3: #85858e;
   --text-inverse: #ffffff;
 
-  --accent: #c4471a;
-  --accent-hover: #a93b13;
-  --accent-soft: #fbe8de;
-  --accent-text: #a23912;
-  --focus-ring: 0 0 0 3px rgba(196, 71, 26, 0.28);
+  --accent: #18181b;
+  --accent-hover: #000000;
+  --accent-contrast: #ffffff;
+  --accent-soft: #fff3b0;
+  --accent-text: #594700;
+  --marker: #facc15;
+  --focus-ring: 0 0 0 2px var(--surface), 0 0 0 4px rgba(202, 138, 4, 0.75);
 
-  --success: #2e7a4e;
-  --success-soft: #e2f0e7;
-  --warning: #a86c12;
-  --warning-soft: #faeed6;
-  --danger: #bd3627;
-  --danger-soft: #f8e1dd;
-  --info: #2a62a8;
-  --info-soft: #e1eaf6;
+  --success: #2b7a4b;
+  --success-soft: #e1f0e6;
+  --warning: #a46110;
+  --warning-soft: #fbefd6;
+  --danger: #c0322b;
+  --danger-soft: #f9e1df;
+  --info: #2d62b0;
+  --info-soft: #e2eaf7;
 
-  --person: #2e66c4;
-  --organization: #7347bd;
-  --public-body: #0d837f;
-  --place: #2d8549;
-  --asset: #b4740b;
-  --proceeding: #bb3d29;
+  --person: #2f66c4;
+  --organization: #7d4cc4;
+  --public-body: #0f7f84;
+  --place: #2e8546;
+  --asset: #b06c10;
+  --proceeding: #c23838;
 
-  --shadow-sm: 0 1px 2px rgba(40, 30, 10, 0.06);
-  --shadow-md: 0 2px 6px rgba(40, 30, 10, 0.06), 0 8px 24px rgba(40, 30, 10, 0.06);
-  --shadow-lg: 0 12px 48px rgba(30, 20, 5, 0.16), 0 2px 8px rgba(30, 20, 5, 0.08);
-  --scrim: rgba(28, 24, 18, 0.32);
+  --shadow-sm: 0 1px 2px rgba(10, 10, 15, 0.06);
+  --shadow-md: 0 2px 6px rgba(10, 10, 15, 0.06), 0 8px 24px rgba(10, 10, 15, 0.06);
+  --shadow-lg: 0 12px 48px rgba(10, 10, 15, 0.16), 0 2px 8px rgba(10, 10, 15, 0.08);
+  --scrim: rgba(10, 10, 12, 0.35);
   --paper: #ffffff;
-  --highlight: rgba(255, 196, 0, 0.38);
+  --highlight: rgba(250, 204, 21, 0.45);
+  --brand-from: #2c2c31;
+  --brand-to: #0c0c0e;
+  --brand-edge: rgba(255, 255, 255, 0.1);
+  --brand-shadow: rgba(0, 0, 0, 0.45);
 }
 
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --bg: #141312;
-  --bg-sidebar: #191816;
-  --surface: #1d1c1a;
-  --surface-2: #22201d;
-  --surface-sunken: #171614;
-  --hover: rgba(255, 245, 225, 0.05);
-  --active: rgba(255, 245, 225, 0.09);
-  --border: #2d2a26;
-  --border-strong: #3d3933;
-  --text: #ece8e0;
-  --text-2: #b2aca1;
-  --text-3: #7d776d;
-  --text-inverse: #141312;
+  --bg: #111113;
+  --bg-sidebar: #151517;
+  --surface: #1b1b1e;
+  --surface-2: #202024;
+  --surface-sunken: #141416;
+  --hover: rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.09);
+  --border: #29292e;
+  --border-strong: #3a3a40;
+  --text: #ececef;
+  --text-2: #acacb4;
+  --text-3: #76767f;
+  --text-inverse: #111113;
 
-  --accent: #ee6c3a;
-  --accent-hover: #ff8250;
-  --accent-soft: rgba(238, 108, 58, 0.14);
-  --accent-text: #ff9365;
-  --focus-ring: 0 0 0 3px rgba(238, 108, 58, 0.35);
+  --accent: #facc15;
+  --accent-hover: #fde047;
+  --accent-contrast: #141416;
+  --accent-soft: rgba(250, 204, 21, 0.14);
+  --accent-text: #fcd34d;
+  --marker: #facc15;
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px rgba(250, 204, 21, 0.6);
 
   --success: #5cba84;
   --success-soft: rgba(92, 186, 132, 0.13);
-  --warning: #e0a446;
-  --warning-soft: rgba(224, 164, 70, 0.14);
-  --danger: #ef6b5b;
-  --danger-soft: rgba(239, 107, 91, 0.14);
-  --info: #6aa4ee;
-  --info-soft: rgba(106, 164, 238, 0.14);
+  --warning: #e8a64a;
+  --warning-soft: rgba(232, 166, 74, 0.14);
+  --danger: #ef6b5f;
+  --danger-soft: rgba(239, 107, 95, 0.14);
+  --info: #6ea4ee;
+  --info-soft: rgba(110, 164, 238, 0.14);
 
-  --person: #6b9ff0;
-  --organization: #a688e8;
-  --public-body: #3fc0b9;
-  --place: #63bf7f;
-  --asset: #e3a445;
-  --proceeding: #ee7a64;
+  --person: #6ea0f2;
+  --organization: #ac8aea;
+  --public-body: #43bfc4;
+  --place: #66c180;
+  --asset: #e3a24b;
+  --proceeding: #ef7468;
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 16px 56px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
   --scrim: rgba(0, 0, 0, 0.5);
-  --paper: #f4f1ea;
-  --highlight: rgba(255, 190, 40, 0.3);
+  --paper: #f2f2f3;
+  --highlight: rgba(250, 204, 21, 0.32);
+  --brand-from: #2c2c31;
+  --brand-to: #0c0c0e;
+  --brand-edge: rgba(255, 255, 255, 0.1);
+  --brand-shadow: rgba(0, 0, 0, 0.6);
+}
+
+/* ── Component colours ────────────────────────────────────────────────────────────────
+   Every colour the app paints lives in this file — components and views reference these
+   variables and never a literal value, so the palette changes in one place. */
+
+:root,
+:root[data-theme='light'] {
+  /* Text and fills on strong backgrounds */
+  --on-strong: #ffffff;
+  --danger-contrast: #ffffff;
+  --overlay: rgba(20, 20, 24, 0.66);
+  --mask-opaque: #000000; /* alpha masks only: the colour itself is never drawn */
+
+  /* Paper: PDF pages, thumbnails and the extracted-text reader stay paper-white in both themes */
+  --pdf-page: #ffffff;
+  --paper-text: #26262b;
+  --paper-text-2: #55555d;
+  --paper-text-3: #8f8f97;
+  --paper-rule: #e6e6ea;
+  --paper-shadow: 0 0 0 1px rgba(10, 10, 15, 0.07), 0 2px 4px rgba(10, 10, 15, 0.08), 0 14px 32px -10px rgba(10, 10, 15, 0.28);
+  --thumb-shadow: 0 1px 2px rgba(10, 10, 15, 0.08), 0 6px 16px -8px rgba(10, 10, 15, 0.2);
+
+  /* PDF text selection and find-in-document */
+  --pdf-selection: rgba(60, 110, 230, 0.3);
+  --find-hit: rgba(250, 204, 21, 0.45);
+  --find-current: rgba(250, 204, 21, 0.9);
+  --find-current-ring: rgba(161, 98, 7, 0.95);
+
+  /* Controls */
+  --switch-knob: #ffffff;
+  --switch-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+
+  /* The Watchdog mark (start-up screen and onboarding); its tile uses --brand-* above */
+  --logo-eye: var(--marker);
+  --logo-glint: #141416;
+
+  /* Investigation monograms: eight muted pairs, picked per investigation by a hash of its slug */
+  --mark-text: #ffffff;
+  --mark-ring: rgba(255, 255, 255, 0.15);
+  --mark-1a: #4a4a52; --mark-1b: #1c1c20;
+  --mark-2a: #4f6fa8; --mark-2b: #2b3f66;
+  --mark-3a: #7a5aa8; --mark-3b: #47336a;
+  --mark-4a: #3f8a86; --mark-4b: #22524f;
+  --mark-5a: #5b8a4a; --mark-5b: #33522a;
+  --mark-6a: #b08a2e; --mark-6b: #6b5218;
+  --mark-7a: #a8584f; --mark-7b: #66312b;
+  --mark-8a: #6a7280; --mark-8b: #3a404a;
+}
+
+:root[data-theme='dark'] {
+  --overlay: rgba(0, 0, 0, 0.66);
+  --paper-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 36px -10px rgba(0, 0, 0, 0.7);
+  --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px -8px rgba(0, 0, 0, 0.6);
 }

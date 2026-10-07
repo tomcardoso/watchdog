@@ -7,6 +7,11 @@ import type { PDFDocumentProxy } from 'pdfjs-dist'
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 export { pdfjs }
 
+/** A colour token's current value, for canvas drawing (which can't use CSS variables). */
+export function cssVar(name: string): string {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
+}
+
 const docs = new Map<string, Promise<PDFDocumentProxy>>()
 
 /** Open (and memoize) a PDF by absolute path. */
@@ -58,7 +63,7 @@ export function renderThumb(absPath: string, width: number): Promise<string> {
     canvas.width = Math.ceil(vp.width)
     canvas.height = Math.ceil(vp.height)
     const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#ffffff'
+    ctx.fillStyle = cssVar('--pdf-page')
     ctx.fillRect(0, 0, canvas.width, canvas.height)
     await page.render({ canvasContext: ctx, viewport: vp, canvas }).promise
     return canvas.toDataURL('image/png')

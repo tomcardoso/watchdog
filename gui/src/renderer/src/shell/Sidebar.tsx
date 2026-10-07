@@ -10,18 +10,17 @@ import { Route, useApp, ViewName } from '@renderer/lib/store'
 import { plural } from '@renderer/lib/format'
 import type { Project } from '@shared/api'
 
-/** Two-letter monogram and a stable hue per investigation, so each one is recognizable. */
+/** Two-letter monogram and a stable colour pair per investigation, so each one is recognizable. */
 export function ProjectMark({ project, size = 32 }: { project: Pick<Project, 'name' | 'slug'>; size?: number }) {
   const words = project.name.split(/\s+/).filter(Boolean)
   const initials = (words.length > 1 ? words[0][0] + words[1][0] : project.name.slice(0, 2)).toUpperCase()
   let h = 0
-  for (const c of project.slug) h = (h * 31 + c.charCodeAt(0)) % 360
-  const hues = [18, 200, 262, 160, 330, 40, 222, 4]
-  const hue = hues[h % hues.length]
+  for (const c of project.slug) h = (h * 31 + c.charCodeAt(0)) % 997
+  const n = (h % 8) + 1 // one of the eight --mark-N pairs in tokens.css
   return (
     <span
       className="project-mark"
-      style={{ width: size, height: size, fontSize: size * 0.4, '--mark-a': `hsl(${hue} 62% 52%)`, '--mark-b': `hsl(${(hue + 20) % 360} 64% 36%)` } as CSSProperties}
+      style={{ width: size, height: size, fontSize: size * 0.4, '--mark-a': `var(--mark-${n}a)`, '--mark-b': `var(--mark-${n}b)` } as CSSProperties}
     >
       {initials}
     </span>

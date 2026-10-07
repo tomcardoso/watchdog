@@ -67,8 +67,11 @@ xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calde
   view; class names are prefixed with the area (`.docs-grid`, `.entity-hero`).
 - **Design system first.** Use `components/ui` (Button, Card, Tabs, Modal, Badge, Field, Switch,
   Segmented, Dropdown, Empty, Callout, Progress, Skeleton, Stat…) and the tokens in
-  `styles/tokens.css`. Never hard-code a colour, radius or shadow: use the CSS variables, which is
-  what makes dark mode work. Entity types use `lib/entityTypes` (`typeMeta(type).color`, `.icon`)
+  `styles/tokens.css`. Never hard-code a colour, radius or shadow: every colour the app paints is a
+  variable in `tokens.css` (add one there if none fits), which is what makes dark mode work and lets
+  the palette change in one place. Canvas code reads tokens with `cssVar()` from `lib/pdf.ts`.
+  `npm run typecheck` runs `scripts/check-colours.mjs`, which fails on a colour literal anywhere
+  else. Entity types use `lib/entityTypes` (`typeMeta(type).color`, `.icon`)
   and `components/EntityChip`.
 - **Data.** `useRpc(method, params)` for reads (react-query; pass `null` params to skip),
   `call(method, params)` for one-off calls, `invalidate('vault.')` after a change. Jobs:

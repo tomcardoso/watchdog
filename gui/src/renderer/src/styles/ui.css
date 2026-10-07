@@ -40,7 +40,7 @@
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
 }
 .btn-primary:hover {
   background: var(--accent-hover);
@@ -60,7 +60,7 @@
 .btn-danger {
   background: var(--danger);
   border-color: var(--danger);
-  color: #fff;
+  color: var(--danger-contrast);
 }
 .btn-danger:hover {
   filter: brightness(0.95);
@@ -202,8 +202,8 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  background: var(--switch-knob);
+  box-shadow: var(--switch-knob-shadow);
   transition: transform var(--dur) var(--ease);
 }
 .switch[aria-checked='true'] {
@@ -412,7 +412,7 @@
   padding: 0 6px;
   border-radius: var(--r-full);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
   font-size: 10.5px;
   font-weight: 700;
   display: inline-flex;

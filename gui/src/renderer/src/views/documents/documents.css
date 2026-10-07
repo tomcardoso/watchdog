@@ -168,8 +168,8 @@
   height: 20px;
   padding: 0 7px;
   border-radius: var(--r-full);
-  background: rgba(20, 18, 15, 0.66);
-  color: #fff;
+  background: var(--overlay);
+  color: var(--on-strong);
   font-size: 10.5px;
   font-weight: 600;
   display: inline-flex;
@@ -657,10 +657,10 @@
   flex: none;
   background: var(--paper);
   border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(40, 30, 10, 0.07), 0 2px 4px rgba(40, 30, 10, 0.08), 0 14px 32px -10px rgba(40, 30, 10, 0.28);
+  box-shadow: var(--paper-shadow);
 }
 :root[data-theme='dark'] .pdf-slot {
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 36px -10px rgba(0, 0, 0, 0.7);
+  box-shadow: var(--paper-shadow);
 }
 .pdf-canvas-host {
   position: absolute;
@@ -759,7 +759,7 @@
   display: contents;
 }
 .textLayer ::selection {
-  background: rgba(60, 110, 230, 0.3);
+  background: var(--pdf-selection);
   color: transparent;
 }
 .textLayer .endOfContent {
@@ -775,14 +775,14 @@
 }
 .textLayer mark.pdf-hit {
   color: transparent;
-  background: rgba(255, 196, 0, 0.45);
+  background: var(--find-hit);
   border-radius: 2px;
   padding: 0;
   margin: 0;
 }
 .textLayer mark.pdf-hit.current {
-  background: rgba(255, 130, 0, 0.65);
-  outline: 2px solid rgba(255, 130, 0, 0.9);
+  background: var(--find-current);
+  outline: 2px solid var(--find-current-ring);
 }
 
 /* Image viewer */
@@ -798,7 +798,7 @@
   display: block;
   background: var(--paper);
   border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(40, 30, 10, 0.07), 0 2px 4px rgba(40, 30, 10, 0.08), 0 14px 32px -10px rgba(40, 30, 10, 0.28);
+  box-shadow: var(--paper-shadow);
   max-width: none;
   flex: none;
 }
@@ -806,7 +806,7 @@
   flex: 1;
   min-height: 0;
   border: none;
-  background: #fff;
+  background: var(--pdf-page);
 }
 
 /* Extracted-text reader (formats without a page viewer) */
@@ -826,9 +826,9 @@
   margin: 0 auto 18px;
   padding: 44px 56px 48px;
   background: var(--paper);
-  color: #2a2620;
+  color: var(--paper-text);
   border-radius: 2px;
-  box-shadow: 0 0 0 1px rgba(40, 30, 10, 0.07), 0 2px 4px rgba(40, 30, 10, 0.08), 0 14px 32px -10px rgba(40, 30, 10, 0.28);
+  box-shadow: var(--paper-shadow);
   font-family: var(--font-read);
   font-size: 15.5px;
   line-height: 1.65;
@@ -858,7 +858,7 @@
   font-weight: 650;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: #9a8f7e;
+  color: var(--paper-text-3);
 }
 
 /* ── Facts ────────────────────────────────────────────────────────────────── */
