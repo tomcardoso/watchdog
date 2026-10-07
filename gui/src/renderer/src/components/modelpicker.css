@@ -144,3 +144,4 @@
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
+.mp-search input:focus-visible { box-shadow: none; }

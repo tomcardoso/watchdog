@@ -35,3 +35,6 @@
 .set-check { display: flex; gap: 12px; padding: 11px 0; border-top: 1px solid var(--border); align-items: flex-start; }
 .set-check:first-child { border-top: none; }
 .set-check > svg { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.set-disclose { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; border: none; background: none; padding: 2px 0; color: var(--text-2); font-weight: 560; font-size: var(--fs-sm); cursor: pointer; }
+.set-disclose svg { width: 14px; height: 14px; transition: transform var(--dur); }
+.set-disclose[aria-expanded='true'] svg { transform: rotate(90deg); }

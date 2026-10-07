@@ -120,7 +120,7 @@ export function SettingField({ setting, models, efforts }: { setting: SettingKey
         <div className="set-field-short">{setting.short}</div>
         {setting.help && (
           <>
-            <button className="act-disclose" aria-expanded={more} onClick={() => setMore(!more)} style={{ marginTop: 2 }}>
+            <button className="set-disclose" aria-expanded={more} onClick={() => setMore(!more)} style={{ marginTop: 2 }}>
               <ChevronRight /> More
             </button>
             {more && <div className="set-help selectable">{setting.help}</div>}
