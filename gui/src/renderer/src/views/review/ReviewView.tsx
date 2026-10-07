@@ -555,7 +555,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
             }}
           >
             <ArrowUpRight />
-            {stripMd(item.note)}
+            {noteLabel(stripMd(item.note))}
           </button>
         )}
         {focused && (
@@ -797,3 +797,10 @@ function WatchlistTab({ vault }: { vault: string }) {
   )
 }
 
+/** A friendly label for the note an item links to, instead of its vault path. */
+function noteLabel(path: string): string {
+  if (path.startsWith('entities/')) return 'Open entity page'
+  if (path.startsWith('documents/')) return 'Open document'
+  if (path.startsWith('briefings/')) return 'Open briefing'
+  return 'Open note'
+}

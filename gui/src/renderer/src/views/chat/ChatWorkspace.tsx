@@ -357,7 +357,10 @@ export default function ChatWorkspace(p: Props) {
 
   const rows = (sessions.data ?? []).filter((r) => p.modes.includes(r.mode))
   const cc = info.data?.claude_code
-  const blocked = cc && (!cc.installed || !cc.logged_in)
+  // A hint, not a gate: the sign-in check is best-effort (an API key in the environment, or the
+  // Agent SDK's bundled Claude Code, can work where it says no), and a session that really can't
+  // start reports why through chat.status.
+  const signinWarning = cc && (!cc.installed || !cc.logged_in)
   const conversation = msgs.length > 0 || !!active
   const thinking = state === 'thinking'
 
@@ -418,9 +421,9 @@ export default function ChatWorkspace(p: Props) {
         </header>
         {model !== 'default' && active && <div className="chat-model-note">The model applies to new conversations. This one keeps the model it started with.</div>}
 
-        {blocked && (
-          <Callout tone="warning" title={!cc!.installed ? 'Claude Code is not installed' : 'Claude Code is not signed in'} style={{ margin: '12px 20px 0' }} action={<Button size="sm" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Open settings</Button>}>
-            This screen runs Claude Code in your investigation, so it has to be {!cc!.installed ? 'installed (claude.ai/download)' : 'signed in (run claude in a terminal once)'}. You can open the same session in a terminal instead once it is.
+        {signinWarning && (
+          <Callout tone="warning" title={!cc!.installed ? 'Claude Code may not be installed' : 'Claude Code may not be signed in'} style={{ margin: '12px 20px 0' }} action={<Button size="sm" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Open settings</Button>}>
+            This screen runs Claude Code in your investigation, so it needs to be {!cc!.installed ? 'installed (claude.ai/download)' : 'signed in (run claude in a terminal once)'}. If a question fails to start, that is why; you can also open the same session in a terminal.
           </Callout>
         )}
         {p.strip?.(api)}
@@ -489,7 +492,6 @@ export default function ChatWorkspace(p: Props) {
                 ref={composer}
                 rows={1}
                 value={text}
-                disabled={!!blocked}
                 placeholder={p.placeholder}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -504,7 +506,7 @@ export default function ChatWorkspace(p: Props) {
                   Stop
                 </Button>
               ) : (
-                <Button variant="primary" icon={ArrowUp} disabled={!text.trim() || busy || !!blocked} loading={busy} onClick={send} tip="Send (Enter)" />
+                <Button variant="primary" icon={ArrowUp} disabled={!text.trim() || busy} loading={busy} onClick={send} tip="Send (Enter)" />
               )}
             </div>
             <div className="chat-hint">
