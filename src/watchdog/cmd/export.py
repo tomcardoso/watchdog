@@ -42,6 +42,7 @@ def _forward_edges(entities: dict) -> tuple[list[dict], int]:
                 "page": role.get("page"),
                 "basis": role.get("basis", "stated"),
                 "date_range": role.get("date_range") or "",
+                "source_sha256": role.get("source_sha256"),   # unused by the exporters; the GUI graph reads it
             })
     return edges, dangling
 

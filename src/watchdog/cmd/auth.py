@@ -233,9 +233,73 @@ _INGEST_STAGES = (("classifier_model", defaults.CLASSIFIER_MODEL),
 
 # ── command surface ───────────────────────────────────────────────────────────
 
-def _status() -> None:
+def status_data() -> dict:
+    """What `watchdog auth` reports, as data — the printer below and the desktop app both read it.
+
+    `claude` is Claude Code's own access mode (`logged_in` only in subscription mode, `key_masked`
+    and `key_source` only in api-key mode). `stages` says which provider each pipeline stage is
+    routed to and whether it can run; `keys` lists every provider with a key available (masked —
+    the key itself never leaves this function); `base_urls` the user-supplied endpoints."""
     state = _load_state()
     mode = state.get("mode")
+    meta = _PROVIDERS["anthropic"]
+    env_set = bool(os.environ.get(meta["env"]))
+
+    claude = {"mode": mode, "logged_in": None, "env_key_set": env_set,
+              "key_masked": None, "key_source": None}
+    if mode == "subscription":
+        claude["logged_in"] = claude_code_logged_in()
+    elif mode is not None:   # api-key
+        key = get_api_key()
+        if key:
+            claude["key_masked"] = _mask(key)
+            claude["key_source"] = "env" if env_set else "stored"
+
+    # Ingestion: which provider each pipeline stage is actually routed to, and whether that
+    # provider is ready — the thing that actually determines whether `watchdog dig`/`watchdog
+    # bark` will work, independent of Claude's mode above (#325).
+    from watchdog.cmd.base import CONFIG_FILE
+    config: dict = {}
+    if CONFIG_FILE.exists():
+        config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
+
+    stages = []
+    for stage_key, default in _INGEST_STAGES:
+        value = config.get(stage_key) or default
+        provider = _ingest_stage_provider(value)
+        ready = (mode == "subscription" or bool(get_api_key("anthropic"))) if provider == "anthropic" \
+            else provider_ready(provider)
+        stages.append({"stage": stage_key[: -len("_model")], "config_key": stage_key,
+                       "value": value, "provider": provider, "ready": ready})
+
+    # Every provider with a key available, whether or not a stage is routed to it — the
+    # definitive list of what's stored, Anthropic included (#482). A stored Anthropic key is
+    # only ever actually used while Claude Code mode above is api-key, so it's flagged inactive
+    # rather than silently vanishing from the list while on subscription.
+    shown_providers = {_ingest_stage_provider(config.get(k) or d) for k, d in _INGEST_STAGES}
+    keys = []
+    for p in _PROVIDERS:
+        key = get_api_key(p)
+        if not key:
+            continue
+        if p == "anthropic" and mode != "api-key":
+            status = f"inactive — {mode} mode" if mode else "inactive — not configured"
+        else:
+            status = "in use" if p in shown_providers else "unused"
+        keys.append({"provider": p, "masked": _mask(key), "status": status,
+                     "source": "env" if os.environ.get(_PROVIDERS[p]["env"]) else "stored"})
+
+    # Providers with a user-supplied base URL (local, openrouter — #380), whichever is set.
+    base_urls = [{"provider": p, "url": u}
+                 for p, u in ((p, get_base_url(p)) for p, m in _PROVIDERS.items() if m.get("base_url_key"))
+                 if u]
+    return {"claude": claude, "stages": stages, "keys": keys, "base_urls": base_urls}
+
+
+def _status() -> None:
+    d = status_data()
+    claude = d["claude"]
+    mode = claude["mode"]
     meta = _PROVIDERS["anthropic"]
 
     print()
@@ -251,69 +315,40 @@ def _status() -> None:
         print(f"  {_YELLOW}Not configured.{_RESET}")
         print(f"  {_DIM}Answer the prompt below, or run{_RESET} {_CYAN}watchdog setup{_RESET}{_DIM}.{_RESET}")
     elif mode == "subscription":
-        cc = claude_code_logged_in()
-        cc_str = f"{_GREEN}detected{_RESET}" if cc else f"{_YELLOW}not detected{_RESET}"
+        cc_str = f"{_GREEN}detected{_RESET}" if claude["logged_in"] else f"{_YELLOW}not detected{_RESET}"
         print(f"  {_DIM}mode{_RESET}  {_CYAN}subscription{_RESET}  {_DIM}(Claude Code login {_RESET}{cc_str}{_DIM}){_RESET}")
-        if os.environ.get(meta["env"]):
+        if claude["env_key_set"]:
             print(f"  {_YELLOW}Warning:{_RESET} ${meta['env']} is set — the Agent SDK uses it before the")
             print(f"  {_DIM}subscription login, so runs would be metered. Unset it to use the subscription.{_RESET}")
     else:  # api-key
-        key = get_api_key()
-        if key:
-            where = f"${meta['env']}" if os.environ.get(meta["env"]) else "stored"
-            print(f"  {_DIM}mode{_RESET}  {_CYAN}api-key{_RESET}  {_DIM}({_RESET}{_CYAN}{_mask(key)}{_RESET}{_DIM}, {where}){_RESET}")
+        if claude["key_masked"]:
+            where = f"${meta['env']}" if claude["key_source"] == "env" else "stored"
+            print(f"  {_DIM}mode{_RESET}  {_CYAN}api-key{_RESET}  {_DIM}({_RESET}{_CYAN}{claude['key_masked']}{_RESET}{_DIM}, {where}){_RESET}")
         else:
             print(f"  {_DIM}mode{_RESET}  {_CYAN}api-key{_RESET}  {_YELLOW}(no key set — add one below){_RESET}")
     print()
 
-    # Ingestion: which provider each pipeline stage is actually routed to, and whether that
-    # provider is ready — the thing that actually determines whether `watchdog dig`/`watchdog
-    # bark` will work, independent of Claude's mode above (#325).
-    from watchdog.cmd.base import CONFIG_FILE
-    config: dict = {}
-    if CONFIG_FILE.exists():
-        config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
-
     print(f"  {_BOLD}Ingestion{_RESET}  {_DIM}— classifier / extractor / finalizer{_RESET}")
-    for stage_key, default in _INGEST_STAGES:
-        value = config.get(stage_key) or default
-        provider = _ingest_stage_provider(value)
-        ready = (mode == "subscription" or bool(get_api_key("anthropic"))) if provider == "anthropic" \
-            else provider_ready(provider)
-        mark = f"{_GREEN}✓{_RESET}" if ready else f"{_YELLOW}✗{_RESET}"
-        label = stage_key[: -len("_model")]
+    for st in d["stages"]:
+        mark = f"{_GREEN}✓{_RESET}" if st["ready"] else f"{_YELLOW}✗{_RESET}"
         # Anthropic is the one provider with a mode of its own — name it inline here so a
         # Claude-routed stage's actual billing (subscription vs. metered) is visible without
         # cross-referencing the Claude Code section above.
-        detail = f"{provider} · {mode}" if provider == "anthropic" and mode else provider
-        print(f"  {mark} {_DIM}{label:<11}{_RESET}{_CYAN}{value}{_RESET}  {_DIM}({detail}){_RESET}")
+        detail = f"{st['provider']} · {mode}" if st["provider"] == "anthropic" and mode else st["provider"]
+        print(f"  {mark} {_DIM}{st['stage']:<11}{_RESET}{_CYAN}{st['value']}{_RESET}  {_DIM}({detail}){_RESET}")
     print()
 
-    # Every provider with a key available, whether or not a stage is routed to it — the
-    # definitive list of what's stored, Anthropic included (#482). A stored Anthropic key is
-    # only ever actually used while Claude Code mode above is api-key, so it's flagged inactive
-    # rather than silently vanishing from the list while on subscription.
-    shown_providers = {_ingest_stage_provider(config.get(k) or d) for k, d in _INGEST_STAGES}
-    keyed = [(p, get_api_key(p)) for p in _PROVIDERS]
-    keyed = [(p, key) for p, key in keyed if key]
-    if keyed:
+    if d["keys"]:
         print(f"  {_DIM}Providers{_RESET}")
-        for p, key in keyed:
-            where = f"${_PROVIDERS[p]['env']}" if os.environ.get(_PROVIDERS[p]["env"]) else "stored"
-            if p == "anthropic" and mode != "api-key":
-                status = f"inactive — {mode} mode" if mode else "inactive — not configured"
-            else:
-                status = "in use" if p in shown_providers else "unused"
-            print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{_mask(key)}{_RESET} {_DIM}({where}, {status}){_RESET}")
+        for k in d["keys"]:
+            where = f"${_PROVIDERS[k['provider']]['env']}" if k["source"] == "env" else "stored"
+            print(f"  {_DIM}{k['provider']:<13}{_RESET}{_CYAN}{k['masked']}{_RESET} {_DIM}({where}, {k['status']}){_RESET}")
         print()
 
-    # Providers with a user-supplied base URL (local, openrouter — #380), whichever is set.
-    urled = [(p, get_base_url(p)) for p, m in _PROVIDERS.items() if m.get("base_url_key")]
-    urled = [(p, u) for p, u in urled if u]
-    if urled:
+    if d["base_urls"]:
         print(f"  {_DIM}Base URLs{_RESET}")
-        for p, u in urled:
-            print(f"  {_DIM}{p:<13}{_RESET}{_CYAN}{u}{_RESET}")
+        for b in d["base_urls"]:
+            print(f"  {_DIM}{b['provider']:<13}{_RESET}{_CYAN}{b['url']}{_RESET}")
         print()
 
 

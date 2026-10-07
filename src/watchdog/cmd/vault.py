@@ -1097,12 +1097,10 @@ def cmd_status(args) -> None:
     print()
 
 
-def cmd_doctor(args) -> None:
-    all_projects = load_projects()
-    if not all_projects:
-        print("\n  No registered investigations.\n")
-        return
-
+def doctor_findings(all_projects: dict) -> tuple[list, list, list]:
+    """The three kinds of problem `watchdog doctor` reports, as `(struct_issues, schema_issues,
+    corrupt_registries)` lists of `(slug, info[, detail])` tuples, in project-name order. Shared
+    with the desktop app, which presents the same findings without the terminal layout."""
     struct_issues  = []
     schema_issues  = []
     corrupt_registries = []
@@ -1118,6 +1116,16 @@ def cmd_doctor(args) -> None:
                 continue
             if reg and reg.get("schema_version") != VAULT_SCHEMA_VERSION:
                 schema_issues.append((slug, info, reg.get("schema_version", "unversioned")))
+    return struct_issues, schema_issues, corrupt_registries
+
+
+def cmd_doctor(args) -> None:
+    all_projects = load_projects()
+    if not all_projects:
+        print("\n  No registered investigations.\n")
+        return
+
+    struct_issues, schema_issues, corrupt_registries = doctor_findings(all_projects)
 
     total   = len(all_projects)
     n_issues = len(struct_issues) + len(schema_issues) + len(corrupt_registries)
@@ -1258,27 +1266,16 @@ def _manifest_matches(manifest: dict, term: str) -> list[dict]:
     return hits
 
 
-def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
-    """`watchdog search --batch <file>`: one report per term (#110) — every N names in a
-    leaked roster, sanctions list, or donor list against manifest entities (structured
-    name/alias matches) and the full-text index (#109, every literal occurrence in the
-    corpus and every note). Deliberately skips the semantic/embedding lane: a batch is
-    routinely hundreds of terms, and embedding + rerank per term doesn't scale the way an
-    in-process SQLite query does — manifest + FTS is the fast, exhaustive combination the
-    issue calls a "clear no-hits for misses" for.
-    """
+def batch_report(vault: Path, terms: list[str], limit: int) -> tuple[list[dict], int]:
+    """One entry per term — `{term, entities, hits, error}` — from the vault's manifest (name and
+    alias matches) and its full-text index, plus how many exact-match lookups failed. A failed
+    lookup carries its `error` and must never be read as "no hits". Shared with the desktop app."""
     from watchdog.pipeline import fulltext
-    terms = _read_batch_terms(Path(batch_file))
-    if not terms:
-        sys.exit(f"Error: no terms found in {batch_file}")
-
     manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
     manifest = {}
     if manifest_path.exists():
         manifest = _read_json_or(manifest_path, {}, catch=(json.JSONDecodeError,))
 
-    as_json = getattr(args, "json", False)
-    limit = args.top_n
     report = []
     failures = 0
     for term in terms:
@@ -1289,6 +1286,24 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
             hits, error = [], str(e)
             failures += 1
         report.append({"term": term, "entities": entities, "hits": hits, "error": error})
+    return report, failures
+
+
+def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
+    """`watchdog search --batch <file>`: one report per term (#110) — every N names in a
+    leaked roster, sanctions list, or donor list against manifest entities (structured
+    name/alias matches) and the full-text index (#109, every literal occurrence in the
+    corpus and every note). Deliberately skips the semantic/embedding lane: a batch is
+    routinely hundreds of terms, and embedding + rerank per term doesn't scale the way an
+    in-process SQLite query does — manifest + FTS is the fast, exhaustive combination the
+    issue calls a "clear no-hits for misses" for.
+    """
+    terms = _read_batch_terms(Path(batch_file))
+    if not terms:
+        sys.exit(f"Error: no terms found in {batch_file}")
+
+    as_json = getattr(args, "json", False)
+    report, failures = batch_report(vault, terms, args.top_n)
     if failures:
         # A failed lookup must never read as "no hits" — for a sanctions or donor list that is a
         # false negative presented as a result.
@@ -1329,6 +1344,44 @@ def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
         print()
 
 
+def everywhere_report(all_projects: dict, terms: list[str], limit: int) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Every active (non-archived) investigation's manifest and full-text matches for `terms`:
+    `(results, skipped)`, where each result is `{slug, name, path, entities, hits, error}` in
+    project-name order and `skipped` lists `(slug, problem)` for investigations whose folder is
+    missing or isn't a vault. Shared with the desktop app."""
+    from watchdog.pipeline import fulltext
+
+    active = {k: v for k, v in all_projects.items() if not v.get("archived")}
+    results = []
+    skipped = []
+    for slug, info in sorted(active.items(), key=lambda x: x[1]["name"]):
+        problem = _check_project_health(info)
+        if problem:
+            skipped.append((slug, problem))
+            continue
+        vault = Path(info["path"])
+
+        manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
+        manifest = {}
+        if manifest_path.exists():
+            manifest = _read_json_or(manifest_path, {}, catch=(json.JSONDecodeError,))
+
+        entities_by_id = {}
+        hits = []
+        error = None
+        for term in terms:
+            for e in _manifest_matches(manifest, term):
+                entities_by_id[e["id"]] = e
+            try:
+                hits.extend(fulltext.search(vault, term, limit=limit))
+            except Exception as e:
+                error = str(e)
+
+        results.append({"slug": slug, "name": info["name"], "path": info["path"],
+                        "entities": list(entities_by_id.values()), "hits": hits, "error": error})
+    return results, skipped
+
+
 def cmd_search_everywhere(args) -> None:
     """`watchdog search --everywhere <query>` (and `--everywhere --batch <file>`, #272): the
     cheap first slice of #67 (global entity registry) — "have I seen this name in *any* of
@@ -1338,8 +1391,6 @@ def cmd_search_everywhere(args) -> None:
     rerank doesn't scale the way in-process SQLite queries do. Vaults with a broken/missing
     path are skipped, same tolerance as `watchdog doctor`.
     """
-    from watchdog.pipeline import fulltext
-
     batch_file = getattr(args, "batch", None)
     if batch_file:
         if args.project or args.query:
@@ -1360,37 +1411,10 @@ def cmd_search_everywhere(args) -> None:
     if not all_projects:
         print("\n  No registered investigations.\n")
         return
-    active = {k: v for k, v in all_projects.items() if not v.get("archived")}
 
     as_json = getattr(args, "json", False)
-    limit = args.top_n
-
-    results = []
-    n_skipped = 0
-    for slug, info in sorted(active.items(), key=lambda x: x[1]["name"]):
-        if _check_project_health(info):
-            n_skipped += 1
-            continue
-        vault = Path(info["path"])
-
-        manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
-        manifest = {}
-        if manifest_path.exists():
-            manifest = _read_json_or(manifest_path, {}, catch=(json.JSONDecodeError,))
-
-        entities_by_id = {}
-        hits = []
-        error = None
-        for term in terms:
-            for e in _manifest_matches(manifest, term):
-                entities_by_id[e["id"]] = e
-            try:
-                hits.extend(fulltext.search(vault, term, limit=limit))
-            except Exception as e:
-                error = str(e)
-
-        results.append({"slug": slug, "name": info["name"],
-                        "entities": list(entities_by_id.values()), "hits": hits, "error": error})
+    results, skipped = everywhere_report(all_projects, terms, args.top_n)
+    n_skipped = len(skipped)
 
     if as_json:
         print(json.dumps({
