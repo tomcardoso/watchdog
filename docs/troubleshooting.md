@@ -34,21 +34,21 @@ Setup refuses to continue until its required tools are installed. Install the mi
 watchdog setup
 ```
 
-## A file landed in _INCOMING/_FAILED/
+## A file landed in incoming/failed/
 
-The file couldn't be processed during `watchdog chew`. It sits in `_INCOMING/_FAILED/` alongside an explanation of what went wrong. Common causes:
+The file couldn't be processed during `watchdog chew`. It sits in `incoming/failed/` alongside an explanation of what went wrong. Common causes:
 
 - **Password-protected PDF** — remove the password and try again.
 - **Corrupted file** — try re-downloading or re-exporting it.
 - **Unsupported format** — check the [supported file types](vault.md#supported-file-types).
 
-To retry, fix the problem, move the file from `_INCOMING/_FAILED/` back into `_INCOMING/` (in your file manager, or with `mv`), then run:
+To retry, fix the problem, move the file from `incoming/failed/` back into `incoming/` (in your file manager, or with `mv`), then run:
 
 ```bash
 watchdog chew
 ```
 
-## A file landed in _INCOMING/_SKIPPED/
+## A file landed in incoming/skipped/
 
 Two things send a file here, and neither is an error:
 

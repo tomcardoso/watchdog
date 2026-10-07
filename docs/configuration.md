@@ -62,7 +62,7 @@ Or run `watchdog settings <key>` with no value to see that one key's help and ch
 | `embed_model` | `BAAI/bge-small-en-v1.5` | Local embedding model that indexes passages and notes for `watchdog search`. |
 | `rerank_model` | `BAAI/bge-reranker-base` | Local model that reranks search results for precision; `none` turns reranking off. |
 | `research_max_rounds` | `3` | Search rounds a standard `watchdog research` run makes before checking in. |
-| `research_max_fetches` | `25` | Roughly how many web sources a standard research run captures into `_INCOMING/`. |
+| `research_max_fetches` | `25` | Roughly how many web sources a standard research run captures into `incoming/`. |
 | `wayback_save` | `false` | Also submit every research source to the Internet Archive's Wayback Machine. |
 | `wayback_access_key` | *(unset)* | archive.org access key for `wayback_save`; masked in the listing. |
 | `wayback_secret_key` | *(unset)* | archive.org secret key, paired with the access key. |

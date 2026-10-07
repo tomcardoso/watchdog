@@ -43,7 +43,7 @@ You will see an empty vault with the folder structure in place. Content comes af
 
 Before dropping in records, it helps to tell Watchdog what you are investigating. This is especially useful for large or long-running investigations.
 
-First, copy any background material into the `_CONTEXT/` folder inside the vault — prior published stories, notes, screenshots of relevant web pages, anything that describes the investigation's scope. Then, from inside the vault directory, run:
+First, copy any background material into the `context/` folder inside the vault — prior published stories, notes, screenshots of relevant web pages, anything that describes the investigation's scope. Then, from inside the vault directory, run:
 
 ```bash
 watchdog ask --context
@@ -55,10 +55,10 @@ This step is optional, but it noticeably improves the quality of extracted summa
 
 ## Drop in documents
 
-Copy public records into the `_INCOMING/` folder inside your vault:
+Copy public records into the `incoming/` folder inside your vault:
 
 ```
-~/Investigations/shell-company-investigation/_INCOMING/
+~/Investigations/shell-company-investigation/incoming/
 ```
 
 Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, images, web pages, plain text, and — with an optional install — audio and video; see the [supported file types](vault.md#supported-file-types) table for the full list.
@@ -82,11 +82,11 @@ notes: Check the director change on page 12.
 
 This context is merged into the document record and preserved through ingest. The [vault guide](vault.md#supported-file-types) covers the sidecar format in full.
 
-**Duplicates are handled automatically.** A document that is byte-identical to one already ingested — even under a new name — is set aside in `_INCOMING/_SKIPPED/` rather than processed twice. A separate near-duplicate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them. It compares each file against everything already in the investigation and against the other files in the same drop, so two copies of one filing arriving together are caught too.
+**Duplicates are handled automatically.** A document that is byte-identical to one already ingested — even under a new name — is set aside in `incoming/skipped/` rather than processed twice. A separate near-duplicate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them. It compares each file against everything already in the investigation and against the other files in the same drop, so two copies of one filing arriving together are caught too.
 
 ## Run the pipeline
 
-From the vault directory, add documents with `watchdog add`. Name files or folders and they are copied in (the originals stay where they are); with nothing named, it adds whatever you dropped into `_INCOMING/`:
+From the vault directory, add documents with `watchdog add`. Name files or folders and they are copied in (the originals stay where they are); with nothing named, it adds whatever you dropped into `incoming/`:
 
 ```bash
 cd ~/Investigations/shell-company-investigation

@@ -12,10 +12,10 @@ The vault is also safe to edit. Watchdog's internal registries — machine-reada
 
 ```
 my-investigation/
-├── _INCOMING/              ← drop public records here
-│   ├── _FAILED/            ← files that could not be processed
-│   └── _SKIPPED/           ← exact duplicates and empty-text files, set aside
-├── _CONTEXT/               ← background material (prior stories, notes)
+├── incoming/               ← drop public records here
+│   ├── failed/             ← files that could not be processed
+│   └── skipped/            ← exact duplicates and empty-text files, set aside
+├── context/                ← background material (prior stories, notes)
 ├── morgue/                 ← original files after ingest, each beside its full extracted text
 ├── .watchdog/              ← internal state: processing queue, staging area,
 │                             registries — do not edit
@@ -44,9 +44,11 @@ my-investigation/
 
 ## Folder by folder
 
-**`_INCOMING/`** is where you put documents. Everything you drop here gets processed by `watchdog chew` — see [Getting started](getting-started.md) for the workflow. Two subfolders catch problems: `_FAILED/` holds files that could not be processed (password-protected, corrupted, or an unsupported format), and `_SKIPPED/` holds exact duplicates of documents already ingested, plus files in which no text could be found. [Troubleshooting](troubleshooting.md) covers what to do with each.
+**`incoming/`** is where you put documents. Everything you drop here gets processed by `watchdog chew` — see [Getting started](getting-started.md) for the workflow. Two subfolders catch problems: `failed/` holds files that could not be processed (password-protected, corrupted, or an unsupported format), and `skipped/` holds exact duplicates of documents already ingested, plus files in which no text could be found. [Troubleshooting](troubleshooting.md) covers what to do with each.
 
-**`_CONTEXT/`** holds background material — prior published stories, your notes, screenshots. Files here are not ingested as records; they feed the context interview that writes `context.md`, described in [Getting started](getting-started.md).
+**`context/`** holds background material — prior published stories, your notes, screenshots. Files here are not ingested as records; they feed the context interview that writes `context.md`, described in [Getting started](getting-started.md).
+
+Vaults created by earlier versions of Watchdog called these folders `_INCOMING/` and `_CONTEXT/`. They are renamed automatically, with nothing deleted, the first time the vault is opened in the app or used from the command line.
 
 **`morgue/`** is where original files land after a successful ingest, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Obsidian or the terminal. Nothing is ever discarded: the file you dropped in is the file in the morgue.
 
@@ -163,7 +165,7 @@ obtained: 2026-06-05
 notes: Check the director change on page 12.
 ```
 
-Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog research fetch` and web research arrive in `_INCOMING/` with a provenance sidecar already attached.
+Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog research fetch` and web research arrive in `incoming/` with a provenance sidecar already attached.
 
 Edit a sidecar before running `chew`: chew reads it once, and the file is gone afterward, so an edit made between `chew` and `ingest` has no effect. Re-run `chew` if you need to change one.
 

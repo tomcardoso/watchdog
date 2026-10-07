@@ -77,7 +77,7 @@ def test_both_exist_merges_without_overwriting(tmp_path):
     assert (v / "incoming" / "skipped" / "dup.pdf").read_text() == "dup"
     assert (v / "context" / "brief.txt").read_text() == "NEW brief"
     assert (v / "context" / "brief-migrated.txt").read_text() == "brief"
-    assert sum(1 for p in v.rglob("*") if p.is_file()) == before + 3    # three new files, none lost
+    assert sum(1 for p in v.rglob("*") if p.is_file()) == before    # nothing lost
     assert migrate_folder_names(v) == []
 
 

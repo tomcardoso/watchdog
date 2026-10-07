@@ -346,11 +346,21 @@ export interface AuthStatus {
 }
 export interface SkillInfo { name: string; description: string; source: 'package' | 'user' }
 export interface SetupCheck {
-  deps: { label: string; ok: boolean; hint: string | null }[]
+  deps: { label: string; ok: boolean; hint: string | null; required?: boolean }[]
   playwright: boolean
   gliner_model: boolean
   projects_dir: string | null
   config_exists: boolean
+}
+
+/** Which local models are on disk (`setup.models`). `reranker` is null when it is switched off. */
+export interface SetupModels {
+  docling: boolean
+  gliner: boolean
+  embedding: boolean
+  reranker: boolean | null
+  ocr: string | null
+  claude_cli: string | null
 }
 
 // ── usage ────────────────────────────────────────────────────────────────────
@@ -462,6 +472,9 @@ export interface Methods {
   'skills.list': [Record<string, never>, { skills: SkillInfo[]; user_dir: string }]
   'skills.read': [{ name: string }, { name: string; text: string }]
   'setup.check': [Record<string, never>, SetupCheck]
+  'setup.models': [Record<string, never>, SetupModels]
+  'setup.complete': [{ projects_dir?: string; auto_approve?: boolean }, { projects_dir: string; ocr_engine: string | null; auto_approve: boolean }]
+  'auth.routeIngestion': [{ provider: string; model: string }, AuthStatus]
 
   'usage.runs': [{ vault: string }, { runs: UsageRunRow[]; corpus: { documents: number; pages: number } | null }]
   'usage.run': [{ vault: string; ts?: string }, UsageRun]
@@ -496,6 +509,8 @@ export interface Events {
   'chat.status': { session: string; state: 'thinking' | 'idle' | 'closed' | 'error'; detail: string | null; cost_usd: number | null }
   'menu.command': { command: string }
   'files.dropped': { paths: string[] }
+  'engine.progress': EngineProgress
+  'claude.signin': { url: string | null }
 }
 export type EventName = keyof Events
 
@@ -505,6 +520,44 @@ export interface BackendStatus {
   source: string | null // where the python was found: env | settings | pipx | path | dev
   message: string | null
   stderrTail: string[]
+  /** No Python that can run Watchdog was found, and the app can build its own (the engine). */
+  needsEngine?: boolean
+}
+
+// ── the managed engine (built by the main process; see src/main/engine.ts) ───
+export type EngineState = 'idle' | 'running' | 'done' | 'failed' | 'cancelled'
+export interface EngineStep {
+  id: string
+  label: string
+  optional: boolean
+  state: 'pending' | 'running' | 'done' | 'warning' | 'failed' | 'skipped'
+  detail: string | null
+}
+/** One snapshot of an install run; `log` carries only the lines added since the last event. */
+export interface EngineProgress {
+  id: number
+  state: EngineState
+  steps: EngineStep[]
+  log: string[]
+  error: string | null
+}
+export interface EngineStatus {
+  /** 'installing' while a run is in progress; otherwise the run's failed/cancelled state or the engine's own. */
+  state: 'missing' | 'outdated' | 'ready' | 'installing' | 'failed' | 'cancelled'
+  engine: 'missing' | 'outdated' | 'ready'
+  dir: string
+  installedVersion: string | null
+  bundledVersion: string | null
+  modelsDone: boolean
+  modelResults: Record<string, 'ok' | 'warn'> | null
+  canInstall: boolean
+  /** The Python the backend runs on when it is not the managed engine. */
+  usingExternal: string | null
+  /** WATCHDOG_FORCE_ONBOARDING: "1" or the id of the step to start on. */
+  forceOnboarding: string | null
+  simulated: boolean
+  /** The current (or last) run, so a screen opened mid-install can catch up. */
+  run: { id: number; state: EngineState; steps: EngineStep[]; log: string[]; error: string | null }
 }
 
 // ── the bridge exposed on window.watchdog by the preload script ──────────────
@@ -515,6 +568,18 @@ export interface WatchdogBridge {
     status(): Promise<BackendStatus>
     restart(): Promise<BackendStatus>
     choosePython(): Promise<BackendStatus>
+  }
+  engine: {
+    status(): Promise<EngineStatus>
+    install(opts?: { fresh?: boolean }): Promise<EngineStatus>
+    cancel(): Promise<void>
+    reinstall(): Promise<EngineStatus>
+  }
+  claude: {
+    status(): Promise<{ installed: boolean; loggedIn: boolean }>
+    /** Opens the browser; resolves when the person has signed in, or with the reason it did not. */
+    signIn(): Promise<{ ok: boolean; message: string | null }>
+    cancel(): Promise<void>
   }
   dialog: {
     openFiles(opts?: { title?: string; folders?: boolean; multi?: boolean }): Promise<string[]>

@@ -187,7 +187,7 @@ watchdog research shell-company-investigation -q "Who controls Acme Holdings?"
 
 This opens Claude Code on the research skill. Seeded by your vault's entities, leads, and gaps, Claude proposes a research mission, confirms how wide to cast the net — quick, standard, or deep — then researches in rounds, checking in with you between each. It writes a research memo to `briefings/` when it is done.
 
-Crucially, web research **never writes vault notes**. Instead, Claude queues every source it decides to keep — the URL, a reliability tag, and why it matters. When you exit the session, Watchdog downloads the queued sources into `_INCOMING/`, validating each one, so the findings flow through the same chew-and-ingest pipeline as documents you obtained yourself: deduplicated, entity-extracted, and cited. A scraped blog post is never confused with a primary document. After the download, fold the findings in the normal way:
+Crucially, web research **never writes vault notes**. Instead, Claude queues every source it decides to keep — the URL, a reliability tag, and why it matters. When you exit the session, Watchdog downloads the queued sources into `incoming/`, validating each one, so the findings flow through the same chew-and-ingest pipeline as documents you obtained yourself: deduplicated, entity-extracted, and cited. A scraped blog post is never confused with a primary document. After the download, fold the findings in the normal way:
 
 ```bash
 watchdog
@@ -211,26 +211,26 @@ watchdog research fetch https://example.gov/filing https://news.example/article
 watchdog research fetch links.txt
 ```
 
-A links file has one URL per line. Each URL is validated, size-capped, and saved into `_INCOMING/` with a provenance sidecar — the same hygiene as research sources — then you chew and ingest as normal.
+A links file has one URL per line. Each URL is validated, size-capped, and saved into `incoming/` with a provenance sidecar — the same hygiene as research sources — then you chew and ingest as normal.
 
-For clipping pages as you browse, install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension, point it at your investigation vault, and set the destination folder to `_INCOMING`. Any web page — a news article, a company profile, a government announcement — then goes into the ingest pipeline with one click.
+For clipping pages as you browse, install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension, point it at your investigation vault, and set the destination folder to `incoming`. Any web page — a news article, a company profile, a government announcement — then goes into the ingest pipeline with one click.
 
 ## Ongoing rhythm
 
 After the first ingest, the typical loop is:
 
-1. **Drop new documents** into `_INCOMING/`
+1. **Drop new documents** into `incoming/`
 2. **`watchdog`** from the vault directory — the guided front door: it offers to chew and then ingest whatever is new, confirming before each step
 3. **Read the briefing** — pay particular attention to connections with entities already in the vault
 4. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
 
-Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of `watchdog add` — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog add --watch` monitors `_INCOMING/` and chews new files automatically as they arrive — press Ctrl+C to stop.
+Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of `watchdog add` — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog add --watch` monitors `incoming/` and chews new files automatically as they arrive — press Ctrl+C to stop.
 
 ## Managing investigations
 
 Each investigation is a separate vault; create as many as you need. The commands below keep them organized — the [command reference](commands.md) has the full flag-by-flag detail.
 
-**Status.** `watchdog projects status shell-company-investigation` shows document and entity counts, pending files in `_INCOMING/`, files awaiting extraction, and the last-updated date. Omit the name to see all investigations.
+**Status.** `watchdog projects status shell-company-investigation` shows document and entity counts, pending files in `incoming/`, files awaiting extraction, and the last-updated date. Omit the name to see all investigations.
 
 **History.** `watchdog projects log shell-company-investigation` shows the ingest history; `--lines 50` shows the last 50 lines.
 

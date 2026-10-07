@@ -33,7 +33,7 @@ vault/registry layout or an invariant updates this file in the same change (see
 ## 2. Pipeline overview
 
 ```
-_INCOMING/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watchdog/extracted/<sha>.json ─▶ bark ─▶ vault
+incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watchdog/extracted/<sha>.json ─▶ bark ─▶ vault
  (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
 ```
 
@@ -62,7 +62,7 @@ that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together.
   rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
   (default 40), converted in parallel subprocesses and spliced back by page number.
 - **Exact duplicates are skipped before OCR (D27)** — sha256 against the registry, the queue and
-  the current batch. A match goes to `_INCOMING/_SKIPPED/`.
+  the current batch. A match goes to `incoming/skipped/`.
 - **Near-duplicates (D10).** Word shingles (`shingle_size`) reduced to a MinHash signature,
   compared against committed, queued and same-batch documents in one vectorized index
   (`NearDupIndex`). Matches at or above `dup_threshold` (0.85) are flagged, never discarded. The
@@ -336,6 +336,8 @@ lists them as "Possible duplicate documents".
 ## 12. Vault & registry layout
 
 ```
+incoming/                    drop zone for chew; incoming/failed/ and incoming/skipped/ are set aside (D266)
+context/                     background material for the context interview (D266)
 entities/<type>/<id>.md      entity notes; <type> is the closed vocabulary (D105)
 documents/<slug>.md          document notes (slug gains -<sha6> when another document owns it, D241)
 morgue/<entity>/<type>/…     originals + a <name>.md full-text sibling (D26); same -<sha6> rule
@@ -363,6 +365,11 @@ queries/ wiki/               session-written findings and threads
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
     .ingest-lock .write-lock
 ```
+
+**Folder names (D266).** `vault_paths.py` is the one place the `incoming/` and `context/` names live, with
+helpers for every path under them. `migrate_folder_names` renames an older vault's `_INCOMING/` and
+`_CONTEXT/` (never deleting a file) and runs at the start of each command that touches them and when the
+app opens a vault (`require_vault`).
 
 Every model call is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
 filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` removes a vault's rows
@@ -437,7 +444,7 @@ same content to the user's own model server; every other backend sends it to tha
 
 `watchdog research` opens a Claude Code session on `/watchdog-research`, which proposes a mission,
 researches in rounds and appends kept sources to `.watchdog/research/queue.tsv`. When the session
-ends, Python downloads the queued URLs into `_INCOMING/` (after a confirm); chew and dig remain the
+ends, Python downloads the queued URLs into `incoming/` (after a confirm); chew and dig remain the
 journalist's step (I5).
 
 - **The skill curates; Python fetches.** `research.py` validates each URL before connecting
@@ -512,7 +519,7 @@ noted as such.
   the same model at the same effort. Continuing a truncated response is not escalation. The
   verification pass's model is fixed to `extractor_model` (it reads that model's cache); its effort
   is configurable. *History: D20, D36, D104, D137, D172, D181, D221, D222.*
-- **I5 — Research output re-enters through `_INCOMING/`,** never as a direct vault write.
+- **I5 — Research output re-enters through `incoming/`,** never as a direct vault write.
   *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** XML goes through
   `defusedxml`, never the stdlib parsers; metadata is allowlisted and length-capped; a failing

@@ -1,7 +1,7 @@
 // The only surface the renderer has onto the machine: window.watchdog (see WatchdogBridge).
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { BackendStatus, WatchdogBridge } from '@shared/api'
+import type { BackendStatus, EngineStatus, WatchdogBridge } from '@shared/api'
 
 type Listener = (data: unknown) => void
 const listeners = new Map<string, Set<Listener>>()
@@ -42,6 +42,17 @@ const bridge: WatchdogBridge = {
     status: () => ipcRenderer.invoke('backend:status') as Promise<BackendStatus>,
     restart: () => ipcRenderer.invoke('backend:restart') as Promise<BackendStatus>,
     choosePython: () => ipcRenderer.invoke('backend:choosePython') as Promise<BackendStatus>
+  },
+  engine: {
+    status: () => ipcRenderer.invoke('engine:status') as Promise<EngineStatus>,
+    install: (opts) => ipcRenderer.invoke('engine:install', opts ?? {}) as Promise<EngineStatus>,
+    cancel: () => ipcRenderer.invoke('engine:cancel') as Promise<void>,
+    reinstall: () => ipcRenderer.invoke('engine:reinstall') as Promise<EngineStatus>
+  },
+  claude: {
+    status: () => ipcRenderer.invoke('claude:status'),
+    signIn: () => ipcRenderer.invoke('claude:signIn'),
+    cancel: () => ipcRenderer.invoke('claude:cancel')
   },
   dialog: {
     openFiles: (opts) => ipcRenderer.invoke('dialog:openFiles', opts),

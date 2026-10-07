@@ -288,6 +288,8 @@ export class Engine {
     for (const k of Object.keys(env)) if (k.startsWith('UV_') || k === 'VIRTUAL_ENV' || k === 'PYTHONPATH' || k === 'PYTHONHOME') delete env[k]
     Object.assign(env, {
       UV_PYTHON_INSTALL_DIR: join(this.dir, 'python'),
+      UV_PYTHON_BIN_DIR: join(this.dir, 'bin'),
+      UV_TOOL_DIR: join(this.dir, 'tools'),
       UV_CACHE_DIR: join(this.dir, 'cache'),
       UV_PYTHON_PREFERENCE: 'only-managed',
       UV_PYTHON_DOWNLOADS: 'automatic',
@@ -420,7 +422,7 @@ export class Engine {
       this.setStep('python', 'running', 'Downloading Python')
       if (!this.venvWorks()) {
         rmSync(this.venvDir(), { recursive: true, force: true })
-        await this.runOrThrow('Installing Python', uv, ['python', 'install', PYTHON_VERSION], env, 'python')
+        await this.runOrThrow('Installing Python', uv, ['python', 'install', PYTHON_VERSION, '--no-bin'], env, 'python')
         await this.runOrThrow('Creating the environment', uv, ['venv', this.venvDir(), '--python', PYTHON_VERSION, '--seed'], env, 'python')
       }
       python = this.venvPython()

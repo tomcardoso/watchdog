@@ -5,7 +5,11 @@ import { join } from 'node:path'
 import { buildMenu } from './menu'
 import { getPref, setPref } from './prefs'
 import { handleProtocol, registerSchemePrivileges } from './protocol'
-import { PythonBackend } from './python'
+import { PythonBackend, bundledSource } from './python'
+import { Engine } from './engine'
+import { ClaudeSignIn } from './claude'
+import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { loadRoots, registerIpc } from './ipc'
 
 registerSchemePrivileges()
@@ -13,10 +17,38 @@ app.setName('Watchdog')
 
 let win: BrowserWindow | null = null
 
-const backend = new PythonBackend(
-  (event, data) => win?.webContents.send('event', event, data),
-  (status) => win?.webContents.send('event', 'backend.status', status)
-)
+const send = (event: string, data: unknown) => win?.webContents.send('event', event, data)
+
+const engine = new Engine({
+  userData: app.getPath('userData'),
+  // Packaged: electron-builder puts bin/ and python-wheel/ under process.resourcesPath.
+  resources: app.isPackaged ? process.resourcesPath : join(__dirname, '..', '..', 'resources'),
+  isPackaged: app.isPackaged,
+  repoRoot: existsSync(join(__dirname, '..', '..', '..', 'pyproject.toml')) ? join(__dirname, '..', '..', '..') : null,
+  emit: (e) => send('engine.progress', e)
+})
+
+const backend = new PythonBackend((event, data) => send(event, data), (status) => send('backend.status', status), engine)
+
+/** Path to the Claude Code program inside the engine's claude-agent-sdk, asked of the running Python. */
+const cliCache = new Map<string, string | null>()
+function claudeCli(): string | null {
+  const python = backend.status.python ?? engine.managedPython()
+  if (!python) return null
+  if (cliCache.has(python)) return cliCache.get(python)!
+  const found = lookupClaudeCli(python)
+  if (found) cliCache.set(python, found)
+  return found
+}
+function lookupClaudeCli(python: string): string | null {
+  const r = spawnSync(python, ['-m', 'watchdog.gui.engine_setup', 'claude-path'], {
+    encoding: 'utf8',
+    timeout: 30000,
+    env: { ...process.env, ...(engine.isDev && bundledSource() ? { PYTHONPATH: bundledSource()! } : {}) }
+  })
+  return r.status === 0 && r.stdout.trim() ? r.stdout.trim() : null
+}
+const claude = new ClaudeSignIn(claudeCli, (url) => send('claude.signin', { url }), () => process.env, !!engine.simulate)
 
 interface Bounds { x?: number; y?: number; width: number; height: number; maximized?: boolean }
 
@@ -75,7 +107,7 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(async () => {
   handleProtocol()
-  registerIpc(backend, () => win)
+  registerIpc(backend, engine, claude, () => win)
   buildMenu(() => win)
   await createWindow()
   await backend.start()

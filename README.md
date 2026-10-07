@@ -28,7 +28,7 @@ Never use it with confidential source communications, leaked or unpublished mate
 A few steps, all run from your terminal:
 
 ```
-drop files into _INCOMING/
+drop files into incoming/
         ↓
 watchdog          reads, OCRs and converts each document, sends the extracted
                   text to the AI model to pull out entities, facts and timeline

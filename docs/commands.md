@@ -62,11 +62,11 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 
 | Command | What it does |
 |---|---|
-| `watchdog add [PATH…]` | Add documents: copy the named files or folders into `_INCOMING/`, then chew, dig and bark in one run — see [below](#watchdog-add). |
-| `watchdog add --watch [name]` | Watch `_INCOMING/` and chew files automatically as they arrive, starting with any already waiting there. |
-| `watchdog research fetch <url…>` | Download one or more URLs (or a links file) into `_INCOMING/` — see [below](#watchdog-research-fetch). |
-| `watchdog ask --context [name]` | Open Claude Code with the context-seeding skill, which reads `_CONTEXT/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
-| `watchdog chew` | Maintenance. Convert everything in `_INCOMING/` into extracted text queued for ingest — see [below](#watchdog-chew). |
+| `watchdog add [PATH…]` | Add documents: copy the named files or folders into `incoming/`, then chew, dig and bark in one run — see [below](#watchdog-add). |
+| `watchdog add --watch [name]` | Watch `incoming/` and chew files automatically as they arrive, starting with any already waiting there. |
+| `watchdog research fetch <url…>` | Download one or more URLs (or a links file) into `incoming/` — see [below](#watchdog-research-fetch). |
+| `watchdog ask --context [name]` | Open Claude Code with the context-seeding skill, which reads `context/`, interviews you, and writes `context.md`; `--model` picks `sonnet`, `opus`, or `haiku` (default: `sonnet`). |
+| `watchdog chew` | Maintenance. Convert everything in `incoming/` into extracted text queued for ingest — see [below](#watchdog-chew). |
 | `watchdog dig` | Maintenance. Classify and extract queued documents into staged artifacts — see [below](#watchdog-dig). |
 | `watchdog bark` | Maintenance. Complete the post-ingest step (merging duplicate entities, flagging contradictions between documents, entity synthesis, timeline, briefing) for a batch staged by `watchdog dig`, or one an interruption left half-done; takes `--finalizer-model` (and its four per-stage overrides), `--finalizer-effort`, `--estimate`, `--estimate-all`, and `--skip-briefing` — see [below](#watchdog-bark). |
 | `watchdog requeue [name]` | Maintenance. Move documents quarantined in `queue/_failed/` back into the active queue without running them; `watchdog add --retry` requeues and runs them in one step. |
@@ -75,7 +75,7 @@ Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
 
 ### watchdog add
 
-`watchdog add` takes documents all the way into the vault in one run. Pass files or folders and they are copied into `_INCOMING/` (the originals, and any `.yml` sidecars beside them, stay where they are); pass nothing and it adds whatever is already waiting — files in `_INCOMING/`, documents chewed but not extracted, or a batch an interruption left unfinished. It then chews, extracts and finishes the batch, ending with the briefing.
+`watchdog add` takes documents all the way into the vault in one run. Pass files or folders and they are copied into `incoming/` (the originals, and any `.yml` sidecars beside them, stay where they are); pass nothing and it adds whatever is already waiting — files in `incoming/`, documents chewed but not extracted, or a batch an interruption left unfinished. It then chews, extracts and finishes the batch, ending with the briefing.
 
 It stops for you only to show the public-records warning (see [`watchdog dig`](#watchdog-dig)) and when a provider refuses your key or account. A rate limit pauses the run until it resets, as `--wait` does for `dig`. A batch left pending from an earlier run is finished together with the new documents.
 
@@ -225,26 +225,26 @@ watchdog ingest --force report.pdf disclosure-2024.pdf
 
 ### watchdog chew
 
-`watchdog chew` does the local preprocessing: it converts each file in `_INCOMING/` to structured text, applies OCR to the pages that need it, splits large PDFs into chunks processed in parallel, and checks for duplicates. The extracted text is queued in `.watchdog/queue/` and the original file moves to `.watchdog/staging/`. Nothing is sent to a model during chewing.
+`watchdog chew` does the local preprocessing: it converts each file in `incoming/` to structured text, applies OCR to the pages that need it, splits large PDFs into chunks processed in parallel, and checks for duplicates. The extracted text is queued in `.watchdog/queue/` and the original file moves to `.watchdog/staging/`. Nothing is sent to a model during chewing.
 
 ```bash
-watchdog chew                        # everything in _INCOMING/
+watchdog chew                        # everything in incoming/
 watchdog chew path/to/file.pdf       # one specific file
 watchdog chew a.pdf b.docx folder/   # several files, or every supported file in a folder
 ```
 
-A file you name that isn't already in `_INCOMING/` is copied there first, so chewing a document from your Downloads folder (or from the vault's own `_CONTEXT/`) never moves the original away from where you keep it. A folder is read the same way `watchdog add` reads one: its supported files are copied in, hidden files are skipped, and the files of any Watchdog investigation inside it are left out.
+A file you name that isn't already in `incoming/` is copied there first, so chewing a document from your Downloads folder (or from the vault's own `context/`) never moves the original away from where you keep it. A folder is read the same way `watchdog add` reads one: its supported files are copied in, hidden files are skipped, and the files of any Watchdog investigation inside it are left out.
 
 Two flags override the persistent parallelism settings for a single run:
 
 - `--chew-workers N` — files processed in parallel (the `chew_workers` setting; default: adaptive).
 - `--chunk-workers N` — parallel chunks per large PDF (the `chunk_workers` setting; default: adaptive).
 
-Press Ctrl+C to cancel a chew in progress — the lock is cleaned up automatically and unfinished files remain in `_INCOMING/` for the next run. When the batch completes, Watchdog sends a desktop notification (macOS only) and offers to extract right away, so you can move straight to extraction without typing the next command — that offer is the same public-records acknowledgement gate described under [`watchdog dig`](#watchdog-dig) above, not a separate confirmation.
+Press Ctrl+C to cancel a chew in progress — the lock is cleaned up automatically and unfinished files remain in `incoming/` for the next run. When the batch completes, Watchdog sends a desktop notification (macOS only) and offers to extract right away, so you can move straight to extraction without typing the next command — that offer is the same public-records acknowledgement gate described under [`watchdog dig`](#watchdog-dig) above, not a separate confirmation.
 
 ### watchdog research fetch
 
-`watchdog research fetch` downloads a batch of URLs into `_INCOMING/` — for when you already have the links and don't need a research session. Each URL is validated, size-capped, and saved with a provenance sidecar, and Wayback Machine archiving applies if you have [configured it](configuration.md).
+`watchdog research fetch` downloads a batch of URLs into `incoming/` — for when you already have the links and don't need a research session. Each URL is validated, size-capped, and saved with a provenance sidecar, and Wayback Machine archiving applies if you have [configured it](configuration.md).
 
 ```bash
 watchdog research fetch https://example.gov/filing https://news.example/article
@@ -340,7 +340,7 @@ Rebuilds the vault's semantic and full-text search indexes from what is already 
 
 ### watchdog research
 
-Opens Claude Code to research the vault's open questions on the web. Claude queues the sources it finds rather than writing anything to the vault; when the session ends, Watchdog downloads them into `_INCOMING/` so the findings flow through the normal chew-and-ingest pipeline. `--question "<q>"` (or `-q`) seeds a research question, and `--model` picks the Claude model for the session (`sonnet`, `opus`, `haiku`, or an explicit version such as `sonnet-4.6`; default: `sonnet`). The full treatment — effort tiers, interrupted-session recovery, what research deliberately does not do — is in [Investigating](investigating.md).
+Opens Claude Code to research the vault's open questions on the web. Claude queues the sources it finds rather than writing anything to the vault; when the session ends, Watchdog downloads them into `incoming/` so the findings flow through the normal chew-and-ingest pipeline. `--question "<q>"` (or `-q`) seeds a research question, and `--model` picks the Claude model for the session (`sonnet`, `opus`, `haiku`, or an explicit version such as `sonnet-4.6`; default: `sonnet`). The full treatment — effort tiers, interrupted-session recovery, what research deliberately does not do — is in [Investigating](investigating.md).
 
 ### watchdog review watchlist
 
@@ -427,9 +427,9 @@ These run inside a Claude Code session with your investigation open (`watchdog a
 | `/watchdog-surface` | Find connections and anomalies across the full vault. |
 | `/watchdog-entity [id…]` | Refresh an entity's Summary and Timeline from all its source documents. |
 | `/watchdog-wiki` | Create or update investigation thread pages in `wiki/`. |
-| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` (launch with `watchdog ask --context`). |
+| `/watchdog-context` | Seed `context.md` from background files in `context/` (launch with `watchdog ask --context`). |
 | `/watchdog-health` | Check vault integrity — orphaned notes, broken links, registry mismatches, unresolved contradictions, unreviewed near-duplicates. |
-| `/watchdog-research [question]` | Research open questions on the web, queuing sources for download into `_INCOMING/` (launch with `watchdog research`). |
+| `/watchdog-research [question]` | Research open questions on the web, queuing sources for download into `incoming/` (launch with `watchdog research`). |
 
 Query examples:
 

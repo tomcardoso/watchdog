@@ -8,6 +8,7 @@ import { delimiter, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { BackendStatus } from '@shared/api'
 import { getPref } from './prefs'
+import { Engine, versionAtLeast } from './engine'
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; method: string }
 
@@ -21,15 +22,14 @@ export class RpcError extends Error {
   }
 }
 
-interface Candidate { python: string; source: string }
+interface Candidate { python: string; source: string; external?: boolean }
 
-/** Directory holding the `watchdog` package source to run instead of the installed copy:
- * the repo checkout in development, the copy bundled into the app when packaged. */
+/** Directory holding the `watchdog` package source to run instead of an installed copy: the repo
+ * checkout, in development only. A packaged app runs the managed engine, which is the matching
+ * version already (the wheel is built from the same source), so it overlays nothing. */
 export function bundledSource(): string | null {
   const fromEnv = process.env.WATCHDOG_SRC
   if (fromEnv && existsSync(join(fromEnv, 'watchdog', 'gui', 'server.py'))) return fromEnv
-  const packaged = join(process.resourcesPath ?? '', 'python')
-  if (existsSync(join(packaged, 'watchdog', 'gui', 'server.py'))) return packaged
   // Development: gui/out/main → repo/src
   const dev = join(__dirname, '..', '..', '..', 'src')
   if (existsSync(join(dev, 'watchdog', 'gui', 'server.py'))) return dev
@@ -60,11 +60,15 @@ function which(cmd: string): string | null {
   return null
 }
 
-async function candidates(): Promise<Candidate[]> {
+async function candidates(engine: Engine): Promise<Candidate[]> {
   const out: Candidate[] = []
-  if (process.env.WATCHDOG_PYTHON) out.push({ python: process.env.WATCHDOG_PYTHON, source: 'env' })
+  if (process.env.WATCHDOG_PYTHON) out.push({ python: process.env.WATCHDOG_PYTHON, source: 'env', external: true })
   const chosen = await getPref<string>('pythonPath')
-  if (chosen) out.push({ python: chosen, source: 'settings' })
+  if (chosen) out.push({ python: chosen, source: 'settings', external: true })
+  // The managed engine comes first in a packaged app. A development checkout keeps its own Python
+  // and uses the managed engine only as the last resort.
+  const managed = engine.managedPython()
+  if (managed && !engine.isDev && engine.engineState() === 'ready') out.push({ python: managed, source: 'managed' })
   // pipx installs Watchdog into its own venv; the `watchdog` launcher's shebang names that python.
   const home = homedir()
   const pipxVenvs = [
@@ -75,7 +79,7 @@ async function candidates(): Promise<Candidate[]> {
   ].filter(Boolean) as string[]
   for (const venv of pipxVenvs) {
     const py = process.platform === 'win32' ? join(venv, 'Scripts', 'python.exe') : join(venv, 'bin', 'python')
-    if (existsSync(py)) out.push({ python: py, source: 'pipx' })
+    if (existsSync(py)) out.push({ python: py, source: 'pipx', external: true })
   }
   // GUI apps on macOS start with a minimal PATH, so also look in the usual install places.
   const extraDirs = [join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']
@@ -83,32 +87,39 @@ async function candidates(): Promise<Candidate[]> {
   const launcher = which('watchdog')
   if (launcher) {
     const py = shebangPython(launcher)
-    if (py) out.push({ python: py, source: 'path' })
+    if (py) out.push({ python: py, source: 'path', external: true })
   }
   for (const name of process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python']) {
     const p = which(name)
-    if (p) out.push({ python: p, source: 'path' })
+    if (p) out.push({ python: p, source: 'path', external: true })
   }
+  if (managed && engine.isDev) out.push({ python: managed, source: 'managed' })
   return out
 }
 
-function pythonPathEnv(src: string | null): NodeJS.ProcessEnv {
+function pythonPathEnv(src: string | null, engine?: Engine, managed = false): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
   if (src) env.PYTHONPATH = [src, process.env.PYTHONPATH].filter(Boolean).join(delimiter)
+  if (engine) {
+    const uv = engine.uvPath()
+    if (uv) env.WATCHDOG_UV = uv
+    // Commands the app and Claude run by name (`watchdog search …`) resolve to the managed engine.
+    if (managed) env.PATH = [engine.venvBin(), process.env.PATH ?? ''].join(delimiter)
+  }
   return env
 }
 
 /** Whether `python` can import Watchdog (and its GUI server) with `src` first on the path. */
-function probe(python: string, src: string | null): { ok: boolean; message: string } {
-  const r = spawnSync(python, ['-c', 'import watchdog.gui.server, watchdog.cli; print("ok")'], {
+function probe(python: string, src: string | null): { ok: boolean; message: string; version: string } {
+  const r = spawnSync(python, ['-c', 'import watchdog.gui.server, watchdog.cli, watchdog; print("ok", watchdog.__version__)'], {
     env: pythonPathEnv(src),
     encoding: 'utf8',
     timeout: 30000
   })
-  if (r.error) return { ok: false, message: r.error.message }
-  if (r.status === 0 && r.stdout.includes('ok')) return { ok: true, message: '' }
+  if (r.error) return { ok: false, message: r.error.message, version: '' }
+  if (r.status === 0 && r.stdout.includes('ok')) return { ok: true, message: '', version: r.stdout.trim().split(/\s+/)[1] ?? '' }
   const err = (r.stderr || '').trim().split('\n').slice(-1)[0] || `exit ${r.status}`
-  return { ok: false, message: err }
+  return { ok: false, message: err, version: '' }
 }
 
 export class PythonBackend {
@@ -121,7 +132,8 @@ export class PythonBackend {
 
   constructor(
     private onEvent: (event: string, data: unknown) => void,
-    private onStatus: (s: BackendStatus) => void
+    private onStatus: (s: BackendStatus) => void,
+    private engine: Engine
   ) {}
 
   private setStatus(patch: Partial<BackendStatus>): void {
@@ -134,19 +146,28 @@ export class PythonBackend {
 
   async start(): Promise<BackendStatus> {
     this.stop()
-    this.setStatus({ state: 'starting', message: 'Looking for Watchdog…' })
-    const src = bundledSource()
+    this.setStatus({ state: 'starting', message: 'Looking for Watchdog…', needsEngine: false })
     const tried: string[] = []
-    for (const c of await candidates()) {
+    const bundled = this.engine.bundledVersion()
+    for (const c of await candidates(this.engine)) {
+      // Only the development checkout's source is laid over a Python; the managed engine needs none.
+      const src = c.source === 'managed' ? null : bundledSource()
       const res = probe(c.python, src)
+      if (res.ok && c.external && !this.engine.isDev && !src && bundled && res.version && !versionAtLeast(res.version, bundled)) {
+        tried.push(`${c.python} (${c.source}): Watchdog ${res.version} is older than the version this app needs (${bundled})`)
+        continue
+      }
       if (res.ok) {
+        this.engine.externalPython = c.source === 'managed' ? null : c.python
         this.launch(c, src)
         return this.status
       }
       tried.push(`${c.python} (${c.source}): ${res.message}`)
     }
+    this.engine.externalPython = null
     this.setStatus({
       state: 'error',
+      needsEngine: this.engine.canInstall(),
       python: null,
       source: null,
       message:
@@ -159,7 +180,7 @@ export class PythonBackend {
 
   private launch(c: Candidate, src: string | null): void {
     const proc = spawn(c.python, ['-m', 'watchdog.gui.server'], {
-      env: pythonPathEnv(src),
+      env: pythonPathEnv(src, this.engine, c.source === 'managed'),
       stdio: ['pipe', 'pipe', 'pipe']
     })
     this.proc = proc
@@ -229,6 +250,28 @@ export class PythonBackend {
       this.pending.set(id, { resolve, reject, method })
       proc.stdin.write(JSON.stringify({ id, method, params: params ?? {} }) + '\n')
     })
+  }
+
+  /** Stop the backend and wait for it to exit, so its files can be replaced (an engine repair).
+   * The app shows the engine screen while it is suspended. */
+  async suspend(reason: string): Promise<void> {
+    const proc = this.proc
+    this.stop()
+    if (proc && proc.exitCode === null) {
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(() => {
+          proc.kill()
+          resolve()
+        }, 4000)
+        proc.once('exit', () => {
+          clearTimeout(t)
+          resolve()
+        })
+      })
+    }
+    for (const [, p] of this.pending) p.reject(new RpcError('The Watchdog backend stopped.', 'backend_stopped', null))
+    this.pending.clear()
+    this.setStatus({ state: 'error', python: null, source: null, message: reason, needsEngine: true })
   }
 
   stop(): void {

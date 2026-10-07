@@ -46,7 +46,7 @@ What `watchdog` on its own shows in the terminal: the headline from the latest b
 **Add documents** (top right, or drop files on the window) is `watchdog add`, in four steps:
 
 1. **Choose.** Pick files or folders. The dialog also shows anything already waiting, and offers to retry documents that failed before (`--retry`). **Options** holds every setting `watchdog add` accepts for one run — models, effort, verification, the record skill and the rest — and **Estimate cost** gives the same estimate as `--estimate`.
-2. **Read.** The files are copied into `_INCOMING/` (the originals stay where they are) and converted to text on your computer. Nothing is sent anywhere during this step.
+2. **Read.** The files are copied into `incoming/` (the originals stay where they are) and converted to text on your computer. Nothing is sent anywhere during this step.
 3. **Confirm.** The public-records warning, with the exact number of documents about to be sent and which model receives them. Nothing is sent until you acknowledge it. With `auto_approve` on and every step running on your Claude subscription, this step is skipped with a one-line notice, as in the terminal — see [Auto-approve](configuration.md#auto-approve).
 4. **Add.** Extraction and the finishing steps run, with each document's progress shown as it goes. You can close the dialog; the run continues, and its progress stays visible in the corner of the window.
 
@@ -84,7 +84,7 @@ Everything Watchdog writes for you to read: the briefing from each run, lead swe
 
 **Ask Claude** is `watchdog ask` inside the app: a conversation with Claude Code about the investigation, with the same `/watchdog-query`, `/watchdog-surface`, `/watchdog-wiki` and other commands, which are offered as buttons. Links in Claude's answers open the entity or document they name. When Claude wants to do something the investigation's settings don't already allow, the app asks you first. Past conversations are listed on the left and can be picked up again. **Seed investigation context** is `watchdog ask --context`.
 
-**Web research** is `watchdog research`. Claude proposes a research mission, works through it with you, and queues the sources it keeps. When you're done, **Download** saves them into `_INCOMING/`, from where you add them like any other document.
+**Web research** is `watchdog research`. Claude proposes a research mission, works through it with you, and queues the sources it keeps. When you're done, **Download** saves them into `incoming/`, from where you add them like any other document.
 
 Both run on whatever Claude Code is signed in with, like the terminal commands. **Open in Terminal** starts the same session in a terminal instead, if you prefer.
 

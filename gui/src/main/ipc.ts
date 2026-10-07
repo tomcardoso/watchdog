@@ -5,11 +5,13 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPref, setPref } from './prefs'
 import { PythonBackend, RpcError, bundledSource } from './python'
+import { Engine } from './engine'
+import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
 import { getThumb, putThumb } from './thumbs'
 import { openTerminal } from './terminal'
 
-export function registerIpc(backend: PythonBackend, getWindow: () => BrowserWindow | null): void {
+export function registerIpc(backend: PythonBackend, engine: Engine, claude: ClaudeSignIn, getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('rpc', async (_e, method: string, params: unknown) => {
     try {
       const result = await backend.call(method, params)
@@ -39,6 +41,26 @@ export function registerIpc(backend: PythonBackend, getWindow: () => BrowserWind
     void loadRoots(backend)
     return s
   })
+
+  // Installing, repairing and cancelling the managed engine. Progress arrives as 'engine.progress'
+  // events; these calls return the final status.
+  const runInstall = async (fresh: boolean) => {
+    const external = !fresh && backend.status.state === 'ready' && engine.externalPython ? engine.externalPython : null
+    if (!external) await backend.suspend(fresh ? 'Reinstalling the engine…' : 'Installing the engine…')
+    const state = await engine.install({ external, fresh })
+    if (!external && state === 'done') {
+      await backend.start()
+      void loadRoots(backend)
+    }
+    return engine.status()
+  }
+  ipcMain.handle('engine:status', () => engine.status())
+  ipcMain.handle('engine:install', (_e, opts: { fresh?: boolean } = {}) => runInstall(!!opts.fresh))
+  ipcMain.handle('engine:reinstall', () => runInstall(true))
+  ipcMain.handle('engine:cancel', () => engine.cancel())
+  ipcMain.handle('claude:status', () => claude.status())
+  ipcMain.handle('claude:signIn', () => claude.signIn())
+  ipcMain.handle('claude:cancel', () => claude.cancel())
 
   ipcMain.handle('dialog:openFiles', async (_e, opts: { title?: string; folders?: boolean; multi?: boolean } = {}) => {
     const props: ('openFile' | 'openDirectory' | 'multiSelections')[] = [opts.folders ? 'openDirectory' : 'openFile']
