@@ -1,0 +1,41 @@
+appId: com.github.tomcardoso.watchdog
+productName: Watchdog
+copyright: Copyright © Tom Cardoso
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+  - resources/icon.png
+# The app runs the watchdog package source it ships with, ahead of whatever version is installed,
+# so the app and its Python backend can never drift apart (see src/main/python.ts).
+extraResources:
+  - from: ../src/watchdog
+    to: python/watchdog
+    filter:
+      - '**/*'
+      - '!**/__pycache__/**'
+      - '!**/*.pyc'
+asarUnpack:
+  - out/renderer/assets/*.mjs
+mac:
+  category: public.app-category.productivity
+  target:
+    - dmg
+    - zip
+  hardenedRuntime: true
+  darkModeSupport: true
+dmg:
+  title: Watchdog
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  maintainer: Tom Cardoso

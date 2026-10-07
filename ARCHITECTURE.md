@@ -463,6 +463,35 @@ See D45–D48.
 
 ---
 
+## 14.5. Desktop app
+
+**Code:** `gui/` (Electron main, preload, React renderer), `watchdog/gui/` (server, `api/*.py`,
+`jobs.py`, `chat.py`, `demo.py`), `watchdog/progress.py`. **Contract:** `gui/API.md`.
+
+- **One program, two front ends (D265).** The app starts `python -m watchdog.gui.server` and speaks
+  line-delimited JSON-RPC over its stdio. Reads run in-process; `sys.stdout` is pointed at stderr so
+  a library `print()` can't corrupt the protocol.
+- **Mutations are CLI commands.** `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
+  `merge-entities`…) and `action.run` (quick ones: `projects rename`, `unlock`…) run
+  `python -m watchdog <args>` in the vault with stdin closed, `NO_COLOR=1` and
+  `WATCHDOG_PROGRESS=1`. `progress.emit` then writes prefixed JSON lines (chew files, per-document
+  extraction states, finalize stages) that the server turns into `job.progress` events; without the
+  variable it writes nothing. The few in-process writes go through the CLI's own library functions
+  (`resolutions`, `_coerce_value`/`_persist`, auth state, a note's `## Notes` body).
+- **The public-records gate** runs in the app after chew and before the model call, from
+  `ingest.preflight` (count, models, `auto_approve` verdict, the warning text), then `add
+  --skip-warning`.
+- **Claude sessions** (`chat.*`) use the Claude Agent SDK with `cwd` set to the vault and project
+  settings loaded, so the vault's permissions and `/watchdog-*` commands apply; transcripts are kept
+  under `~/.watchdog/gui/chats/`.
+- **Files.** The renderer reads vault files only through `wdfile://`, which the main process limits
+  to registered vault folders. Thumbnails are cached in the app's user-data folder.
+- **Interpreter.** `WATCHDOG_PYTHON`, the user's choice, pipx's `watchdog-intel` venv, the
+  `watchdog` launcher's shebang, then `python3`; the bundled package source goes first on
+  `PYTHONPATH`. `watchdog gui` launches the app.
+
+---
+
 ## 15. Invariants
 
 The governing rules. Changing one needs a new numbered decision that supersedes it. Mechanically
@@ -503,3 +532,7 @@ noted as such.
   `page` citation, D177, is not covered: a citation is checkable.) *History: D167, D177.*
 - **I9 — Styling is a terminal affordance.** `--json` output, and any output off a real terminal,
   carries no escape bytes; diagnostics go to stderr in every mode. *History: D174.*
+- **I10 — The app adds no pipeline behaviour.** Every vault mutation the desktop app makes runs the
+  CLI command that makes it in the terminal, or the library function that command calls; the app
+  keeps the CLI's gates (the public-records acknowledgement, confirmations before irreversible
+  operations). *History: D265.*

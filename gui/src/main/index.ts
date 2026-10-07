@@ -32,6 +32,8 @@ async function createWindow(): Promise<void> {
     minHeight: 640,
     show: false,
     title: 'Watchdog',
+    // macOS and Windows take the icon from the app bundle; Linux window managers need it here.
+    icon: process.platform === 'linux' ? join(app.getAppPath(), 'resources', 'icon.png') : undefined,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#141312' : '#f7f5f0',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
