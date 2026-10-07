@@ -8,8 +8,27 @@ import { Button, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate } from '@renderer/lib/rpc'
 
+// Labels for keys whose plain spelling-out reads badly; every other key is spelled out, with
+// acronyms capitalized. The key itself stays visible in small print beside the label.
+const LABELS: Record<string, string> = {
+  projects_dir: 'Investigations folder',
+  garbled_threshold: 'Garbled-text threshold',
+  auto_approve: 'Auto-approve',
+  extract_concurrency: 'Extraction concurrency',
+  extract_token_budget: 'Extraction token budget',
+  empty_extraction_min_words: 'Empty-extraction minimum words',
+  local_base_url: 'Local model URL',
+  openrouter_base_url: 'OpenRouter URL',
+  dup_threshold: 'Duplicate threshold',
+  embed_model: 'Embedding model',
+  rerank_model: 'Reranker model',
+  wayback_save: 'Save to the Wayback Machine'
+}
+const ACRONYMS: Record<string, string> = { ocr: 'OCR', url: 'URL', pdf: 'PDF', api: 'API' }
+
 export const humanize = (key: string) => {
-  const s = key.replace(/_/g, ' ')
+  if (LABELS[key]) return LABELS[key]
+  const s = key.split('_').map((w) => ACRONYMS[w] ?? w).join(' ')
   return s.charAt(0).toUpperCase() + s.slice(1)
 }
 const asText = (v: unknown) => (v === null || v === undefined ? '' : String(v))
@@ -111,6 +130,7 @@ export function SettingField({ setting, models, efforts }: { setting: SettingKey
       <div className="set-field-text">
         <div className="set-field-label">
           {humanize(key)}
+          <span className="set-field-key mono">{key}</span>
           {done && (
             <span className="set-saved">
               <Check /> Saved

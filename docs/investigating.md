@@ -50,6 +50,8 @@ Two filings rarely cite the same document in identical words. When a run adds a 
 
 When you have the document in hand, or decide not to pursue it, mark the request handled.
 
+<a id="the-watchlist"></a>
+
 ### The watch list
 
 The **Watch list** tab is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
@@ -57,6 +59,8 @@ The **Watch list** tab is where you keep terms you want flagged whenever they ap
 The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Watch-list hits** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
 
 Because the automatic scan only sees new documents, a term added after documents are already in is never checked against them. **Check every document now** sweeps everything already added against the current list. No model is called.
+
+<a id="resolving-items"></a>
 
 ### Handled items and the briefing files
 

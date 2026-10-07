@@ -15,6 +15,7 @@
 .set-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 24px; padding: 16px 18px; border-top: 1px solid var(--border); align-items: start; }
 .set-card > div:first-child > .set-field:first-child { border-top: none; }
 .set-field-label { font-weight: 600; display: flex; align-items: center; gap: 10px; }
+.set-field-key { font-weight: 400; font-size: 11px; color: var(--text-3); }
 .set-field-short { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; margin-top: 2px; }
 .set-help { margin-top: 8px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-sm); line-height: 1.55; color: var(--text-2); white-space: pre-wrap; }
 .set-field-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

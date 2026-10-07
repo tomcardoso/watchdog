@@ -43,7 +43,7 @@ Check every non-trivial change against this list in one pass before calling it f
 - [ ] **`ARCHITECTURE.md`** updated if the change alters the pipeline's structure, the code/model split, or the vault/registry layout ([Architecture](#architecture))
 - [ ] **`DECISIONS.md`** has a new `D<n>` entry (ascending order, newest last) if the change forecloses a future option or would read as a bug without the rationale ([Architecture](#architecture))
 - [ ] **Invariants** (`ARCHITECTURE.md` §15) updated if a governing rule was established or revised ([Architecture](#architecture))
-- [ ] The canonical **`docs/`** page updated for any user-facing change — CLI flag, `configure` key, command, default, workflow step ([Documentation](#documentation))
+- [ ] The canonical **`docs/`** page updated for any user-facing change — app screen or control, setting, default, workflow step, CLI flag ([Documentation](#documentation))
 - [ ] **`README.md`** left alone unless the pitch, requirements, install two-liner, or quick start changed ([Documentation](#documentation))
 
 ## Architecture
@@ -54,12 +54,12 @@ Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Documentation
 
-**When a change adds, removes, or modifies anything user-facing — CLI flags, `watchdog configure` keys, CLI commands, default values, or workflow steps — update the affected pages under `docs/` in the same change.** Every topic has exactly one canonical page; update that page and let the others keep linking to it, rather than re-explaining the topic in several places:
+**When a change adds, removes, or modifies anything user-facing — an app screen or control, a setting, a default value, a workflow step, or (for the retiring command line) a command or flag — update the affected pages under `docs/` in the same change.** Every topic has exactly one canonical page; update that page and let the others keep linking to it, rather than re-explaining the topic in several places:
 
-- `docs/commands.md` — CLI commands, flags, and slash commands (the reference)
-- `docs/configuration.md` — `watchdog configure` keys, defaults, model backends, cost
-- `docs/install.md` — install steps, prerequisites, optional installs
-- `docs/app.md` — the desktop app: installing it, what each screen does, how it maps to the CLI
+- `docs/commands.md` — the command line, being retired (D267): commands, flags and slash commands, kept as a reference for existing users
+- `docs/configuration.md` — Settings: every tab and field, defaults, model backends, cost
+- `docs/install.md` — downloading and installing the app, first-run setup, updating, uninstalling
+- `docs/app.md` — the desktop app: what each screen does, folder access, updates
 - `docs/getting-started.md` / `docs/investigating.md` — workflow walkthroughs
 - `docs/methodology.md` — plain-English account of what chew/dig/bark do and why, and what the
   auxiliary local models (Docling, GLiNER, the embedding/reranker pair) are for — zero code
@@ -68,7 +68,7 @@ Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)
 - `docs/skills.md` — the record-skill catalog (update when adding a skill)
 - `docs/troubleshooting.md` — failure modes and fixes
 
-`README.md` is a deliberately slim front door (~120 lines) — it names capabilities but documents nothing in detail; it only changes when the pitch, requirements, install two-liner, or quick start change. Do not add command tables, configuration keys, or workflow detail back into it. The docs are written for working journalists who may never have used a terminal: serious, precise, conversational — no exclamation marks, no hype, short paragraphs, jargon defined at first use, Canadian English. Doc updates are an item on the [definition of done](#definition-of-done).
+`README.md` is a deliberately slim front door (~120 lines) — it names capabilities but documents nothing in detail; it only changes when the pitch, requirements, install two-liner, or quick start change. Do not add command tables, configuration keys, or workflow detail back into it. The docs describe the desktop app; users are never told to open a terminal. They are written for working journalists who may never have used one: serious, precise, conversational — no exclamation marks, no hype, short paragraphs, jargon defined at first use, Canadian English. Doc updates are an item on the [definition of done](#definition-of-done).
 
 ## Testing
 
@@ -151,7 +151,7 @@ See the `authoring-record-skills` skill (`.claude/skills/authoring-record-skills
 
 ## Ingest workflow
 
-Ingest runs entirely in the terminal — the Python orchestrator (`pipeline/orchestrate.py`) drives extraction, synthesis, and the briefing via direct model calls. No Claude Code session is involved (the orchestrator replaced the old `/watchdog-ingest` skill).
+Ingest runs in Python with no Claude Code session involved. Users start it from the desktop app (Add documents), which runs the same `watchdog add` command as a subprocess (D265, I10); the command line itself is being retired from users' view (D267). The Python orchestrator (`pipeline/orchestrate.py`) drives extraction, synthesis, and the briefing via direct model calls (the orchestrator replaced the old `/watchdog-ingest` skill).
 
 **Intended workflow:**
 
