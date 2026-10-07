@@ -2,7 +2,7 @@
 // sweeps, watch-list alerts and research memos, plus the three living files (current state,
 // ingest history, investigation context) pinned above them.
 
-import { Activity, Bell, FileText, History, Lightbulb, MessageCircle, Pencil, Save, Search, Target, X } from 'lucide-react'
+import { Activity, Bell, FileText, History, Lightbulb, MessageCircle, MessageSquareQuote, Network, Pencil, Save, Search, Target, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { BriefingRow } from '@shared/api'
@@ -36,7 +36,10 @@ export default function BriefingsView() {
   const routePath = route.view === 'briefings' ? route.path : undefined
   const list = useRpc('vault.briefings', vault ? { vault } : null)
   const rows = list.data ?? []
+  const pages = useRpc('vault.notes', vault ? { vault } : null)
   const [filter, setFilter] = useState('')
+  const f = filter.trim().toLowerCase()
+  const notes = (pages.data ?? []).filter((n) => !f || n.title.toLowerCase().includes(f))
 
   const newest = rows.find((r) => r.kind === 'briefing') ?? rows[0]
   const selected = routePath ?? newest?.path ?? PINNED[0].path
@@ -92,6 +95,20 @@ export default function BriefingsView() {
               ))}
             </div>
           ))}
+          {notes.length > 0 && (
+            <div>
+              <div className="bf-group-label">Saved answers and threads <span className="faint tnum">{notes.length}</span></div>
+              {notes.map((n) => (
+                <button key={n.path} className={cx('bf-item', selected === n.path && 'active')} onClick={() => pick(n.path)}>
+                  {n.kind === 'wiki' ? <Network /> : <MessageSquareQuote />}
+                  <span className="bf-item-text">
+                    <span className="bf-item-title truncate">{n.title}</span>
+                    <span className="bf-item-sub">{n.kind === 'wiki' ? 'Wiki thread' : 'Saved answer'} · {fmtDate(n.modified)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {list.data && !rows.length && <div className="faint" style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)' }}>No briefings yet. The first is written when an ingest finishes.</div>}
         </div>
       </aside>

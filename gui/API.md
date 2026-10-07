@@ -104,6 +104,7 @@ EntityRow = {
 | `vault.resolveLink` | `{vault, target}` | `{path\|null, kind: "document"\|"entity"\|"briefing"\|"query"\|"wiki"\|"note"\|"original"\|"fulltext"\|"missing", sha\|null, page\|null}` — what a wikilink target points at (bare names resolve like Obsidian: entity id/name/alias, document slug/title/filename, top-level note) (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
 | `vault.pipeline` | `{vault}` | `PipelineState` (below) |
 | `vault.briefings` | `{vault}` | `[{path, name, kind: "briefing"\|"leads"\|"alerts"\|"research", date, title}]`, newest first |
+| `vault.notes` | `{vault}` | `[{path, kind: "query"\|"wiki", title, modified}]` — pages Claude sessions saved in `queries/` and `wiki/`, most recently modified first |
 | `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `hot.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md` |
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |

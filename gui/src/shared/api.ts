@@ -420,6 +420,7 @@ export interface Methods {
   'vault.resolveLink': [{ vault: string; target: string }, ResolvedLink]
   'vault.pipeline': [{ vault: string }, PipelineState]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
+  'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]
   'vault.readFile': [{ vault: string; path: string }, { text: string; exists: boolean }]
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]

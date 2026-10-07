@@ -678,6 +678,28 @@ def briefings(vault: str) -> list[dict]:
     return out
 
 
+@method("vault.notes")
+def notes(vault: str) -> list[dict]:
+    """Pages Claude sessions write: saved answers in `queries/` and thread pages in `wiki/`,
+    most recently modified first."""
+    v = require_vault(vault)
+    out = []
+    for folder, kind in (("queries", "query"), ("wiki", "wiki")):
+        d = v / folder
+        if not d.is_dir():
+            continue
+        for f in d.rglob("*.md"):
+            if any(part.startswith(".") for part in f.relative_to(d).parts):
+                continue
+            fm, body = vaultio.split_frontmatter(vaultio.read_text(f))
+            modified = datetime.datetime.fromtimestamp(f.stat().st_mtime, datetime.timezone.utc)
+            out.append({"path": f.relative_to(v).as_posix(), "kind": kind,
+                        "title": vaultio.note_title(fm, body) or f.stem,
+                        "modified": modified.isoformat(timespec="seconds")})
+    out.sort(key=lambda n: n["modified"], reverse=True)
+    return out
+
+
 # ── journalist-owned files ───────────────────────────────────────────────────────
 
 def _normalise_rel(path: str) -> str:

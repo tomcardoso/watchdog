@@ -443,6 +443,21 @@ def test_briefings_newest_first_with_kinds(rich_vault):
     assert rows[2]["date"] == "2026-03-03"
 
 
+def test_notes_lists_queries_and_wiki_pages_newest_first(rich_vault):
+    import os
+    (rich_vault / "queries").mkdir(exist_ok=True)
+    (rich_vault / "wiki").mkdir(exist_ok=True)
+    old = rich_vault / "queries" / "who-signed.md"
+    old.write_text("# Who signed the loan?\n\nAnswer.\n")
+    os.utime(old, (1_700_000_000, 1_700_000_000))
+    (rich_vault / "wiki" / "thread.md").write_text("---\ntitle: The land deal\n---\nBody\n")
+    (rich_vault / "wiki" / ".hidden.md").write_text("x")
+    rows = call("vault.notes", vault=V(rich_vault))
+    assert [(r["path"], r["kind"], r["title"]) for r in rows] == [
+        ("wiki/thread.md", "wiki", "The land deal"),
+        ("queries/who-signed.md", "query", "Who signed the loan?")]
+
+
 def test_read_file_allow_list(rich_vault):
     ok = ["context.md", "watchlist.md", "requests.md", "hot.md", "log.md", "timeline.md", "index.md",
           "briefings/leads-2026-03-03.md", "queries/x.md", "wiki/y.md"]
