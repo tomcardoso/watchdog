@@ -580,3 +580,51 @@ def test_prompt_templates_not_in_skills_catalog():
     # word, which can legitimately appear inside a skill description.
     assert "`extract_instructions.md`" not in index
     assert "`briefing.md`" not in index
+
+
+# ── prompts never carry benchmark answers (D246, D262) ────────────────────────
+
+# Terms the scan finds that are allowed on purpose. Add to this only after checking the term is
+# genuine domain knowledge a live investigation would need, not something the corpus taught.
+_KEY_TERM_ALLOWLIST = {
+    "$10,000",            # a standard procurement threshold in government-contracts.md
+    "the Court",          # a generic alias, not a corpus entity
+    "Financial Services Regulatory Authority of Ontario",   # a real regulator the insurance
+    "Financial Services Regulatory Authority",              # skill names as a source to check
+}
+
+
+def test_no_prompt_or_skill_contains_a_benchmark_answer_key_term():
+    """A prompt example drawn from the corpus means benchmark recall partly measures whether the
+    model remembers its own prompt — the extraction prompt once restated a scored answer-key item
+    nearly word for word. Every entity name, alias, dollar figure and full date in the answer keys
+    is checked against every file a model call can see."""
+    import glob
+    import re
+    import yaml
+    from pathlib import Path
+    root = Path(__file__).resolve().parent.parent
+    keys = sorted(root.glob("benchmarks/keys/**/*.yaml"))
+    assert keys, "benchmark answer keys not found — update this test if benchmarks/keys moved"
+    names, values = set(), set()
+    for f in keys:
+        text = f.read_text(encoding="utf-8")
+        for e in (yaml.safe_load(text) or {}).get("entities") or []:
+            names.update(n for n in [e.get("name"), *(e.get("aliases") or [])] if n and len(n) >= 5)
+        values.update(re.findall(r"\$\d{1,3}(?:,\d{3})+", text))
+        months = (r"(?:January|February|March|April|May|June|July|August|September|October|"
+                  r"November|December)")
+        values.update(re.findall(months + r" \d{1,2}, \d{4}", text))     # March 4, 2016
+        values.update(re.findall(r"\b\d{1,2} " + months + r" \d{4}", text))  # 4 March 2016
+    src = root / "src" / "watchdog"
+    files = [Path(p) for pattern in ("prompts/*.md", "skills/**/*.md", "templates/**/*.md")
+             for p in glob.glob(str(src / pattern), recursive=True)]
+    assert files
+    leaks = []
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        for n in names - _KEY_TERM_ALLOWLIST:
+            if re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", text):
+                leaks.append(f"{f.relative_to(src)}: {n}")
+        leaks += [f"{f.relative_to(src)}: {v}" for v in values - _KEY_TERM_ALLOWLIST if v in text]
+    assert not leaks, "answer-key terms in prompts or skills:\n" + "\n".join(sorted(leaks))
