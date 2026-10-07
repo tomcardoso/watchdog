@@ -265,7 +265,7 @@ def test_missing_cli_and_not_signed_in_are_clear_errors(env, monkeypatch):
     monkeypatch.setattr(chat, "make_client", Boom)
     api.start(str(vault), "ask", prompt="x")
     err = _wait_state(events, states=("error",))[0]["data"]
-    assert "Install it" in err["detail"]
+    assert "Repair the engine" in err["detail"]
 
     monkeypatch.setattr(chat, "make_client", FakeClient)
     FakeClient.scripts = [[_result(is_error=True, text="Invalid API key · Please run /login")]]

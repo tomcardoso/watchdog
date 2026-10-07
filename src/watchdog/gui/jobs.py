@@ -152,6 +152,7 @@ class JobManager:
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
     def start(self, vault: Path | None, args: list[str], label: str, kind: str | None) -> Job:
+        _require_granted_cwd(vault)
         job = Job(vault, args, label, kind)
         env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "PYTHONUNBUFFERED": "1",
                "PYTHONIOENCODING": "utf-8"}
@@ -255,8 +256,18 @@ class JobManager:
 MANAGER = JobManager()
 
 
+def _require_granted_cwd(vault: Path | None) -> None:
+    """A command runs in a folder only once the user has allowed it (watchdog/access.py). The
+    subprocess enforces the same rule on every write; refusing up front gives a clear message
+    instead of a failed run."""
+    if vault is not None:
+        from watchdog.gui.vaultio import require_granted
+        require_granted(Path(vault))
+
+
 def run_action(vault: Path | None, args: list[str], timeout: float) -> dict:
     """A short command run to completion: `{code, stdout, stderr}` with colour codes removed."""
+    _require_granted_cwd(vault)
     env = {**os.environ, "NO_COLOR": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
     env.pop("WATCHDOG_PROGRESS", None)
     try:

@@ -27,9 +27,9 @@ from watchdog.gui import rpc
 from watchdog.gui.rpc import RpcError
 
 MODES = ("ask", "context", "research")
-_AUTH_HINT = ("Claude Code is not signed in. Open a terminal, run `claude` and sign in, then try again.")
-_MISSING_HINT = ("Claude Code could not be started. Install it from https://claude.ai/download, then "
-                 "try again.")
+_AUTH_HINT = ("Claude is not signed in. Sign in under Settings → Models & keys, then try again.")
+_MISSING_HINT = ("Claude Code, which comes with Watchdog's engine, could not be started. Repair the "
+                 "engine under Settings → Setup, then try again.")
 
 
 def _now() -> str:
@@ -62,7 +62,50 @@ def build_options(session: "Session", can_use_tool):
         kwargs["model"] = resolve_model_id(session.model)
     if session.sdk_session_id:
         kwargs["resume"] = session.sdk_session_id
+    from claude_agent_sdk import HookMatcher
+    kwargs["hooks"] = {"PreToolUse": [HookMatcher(matcher="|".join(_EDIT_TOOLS),
+                                                  hooks=[_vault_only_edits(session.vault)])]}
     return ClaudeAgentOptions(**kwargs)
+
+
+# Claude Code's file-editing tools and the input key naming the file each one changes.
+_EDIT_TOOLS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_path",
+               "NotebookEdit": "notebook_path"}
+
+
+def edit_outside_vault(vault: Path, tool: str, tool_input: dict) -> str | None:
+    """Why `tool` may not run, or None. A session edits files only inside its own investigation
+    folder, and only when the user has allowed Watchdog there (watchdog/access.py) — whatever the
+    vault's settings or an "always allow" answer would otherwise permit. A document that tries to
+    steer the session into writing elsewhere is refused here."""
+    from watchdog import access
+    key = _EDIT_TOOLS.get(tool)
+    raw = (tool_input or {}).get(key) if key else None
+    if not key:
+        return None
+    if not isinstance(raw, str) or not raw:
+        return f"{tool} needs a file path inside the investigation folder."
+    target = Path(raw) if Path(raw).is_absolute() else Path(vault) / raw
+    real_target = Path(os.path.realpath(target))
+    root = Path(os.path.realpath(vault))
+    if real_target != root and root not in real_target.parents:
+        return (f"Watchdog only lets a session change files inside this investigation's folder; "
+                f"{raw} is outside it.")
+    if access.enforced() and not access.is_granted(root):
+        return "Watchdog hasn't been allowed to work in this investigation's folder."
+    return None
+
+
+def _vault_only_edits(vault: Path):
+    async def hook(input_data, tool_use_id, context):
+        reason = edit_outside_vault(vault, input_data.get("tool_name", ""),
+                                    input_data.get("tool_input") or {})
+        if reason is None:
+            return {}
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                       "permissionDecision": "deny",
+                                       "permissionDecisionReason": reason}}
+    return hook
 
 
 def first_prompt(vault: Path, mode: str, text: str | None) -> str | None:

@@ -26,7 +26,7 @@ def test_project_shape_and_stats(rich_vault, wdg_home):
     (p,) = call("projects.list")
     assert p == {
         "slug": "rich", "name": "Rich Case", "description": "A test case", "path": str(rich_vault),
-        "archived": False, "created": "2026-01-02T03:04:05", "health": None,
+        "archived": False, "created": "2026-01-02T03:04:05", "health": None, "access": True,
         "stats": {"documents": 3, "entities": 3, "last_ingest": "2026-03-03T08:00:00Z",
                   "incoming": 2, "awaiting": 2, "failed": 1},
     }

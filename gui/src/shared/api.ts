@@ -35,6 +35,7 @@ export interface Project {
   archived: boolean
   created: string | null
   health: string | null
+  access: boolean // the user has allowed Watchdog to work in this folder
   stats: ProjectStats
 }
 export interface ProjectStatus {
@@ -408,6 +409,7 @@ export interface ChatSessionRow { session: string; mode: ChatMode; title: string
 
 // ── the method table: name → [params, result] ────────────────────────────────
 export interface Methods {
+  'access.list': [Record<string, never>, { enforced: boolean; file: string; folders: { path: string; label: string; granted: string | null }[] }]
   'app.ping': [Record<string, never>, { ok: boolean }]
   'app.info': [Record<string, never>, AppInfo]
 
@@ -556,6 +558,8 @@ export interface EngineStatus {
   /** WATCHDOG_FORCE_ONBOARDING: "1" or the id of the step to start on. */
   forceOnboarding: string | null
   simulated: boolean
+  /** ~/.watchdog/config.json exists: the existing signal that setup has been done. */
+  setupConfigExists: boolean
   /** The current (or last) run, so a screen opened mid-install can catch up. */
   run: { id: number; state: EngineState; steps: EngineStep[]; log: string[]; error: string | null }
 }
@@ -592,7 +596,6 @@ export interface WatchdogBridge {
     showItemInFolder(path: string): void
     openExternal(url: string): Promise<void>
     openInObsidian(vault: string, note?: string): Promise<boolean>
-    openTerminal(cwd: string, args: string[]): Promise<boolean>
   }
   files: {
     pathForFile(file: File): string

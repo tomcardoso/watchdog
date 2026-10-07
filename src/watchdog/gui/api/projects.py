@@ -58,6 +58,9 @@ def project_dict(slug: str, info: dict) -> dict:
         "archived": bool(info.get("archived")),
         "created": info.get("created_at") or None,
         "health": health,
+        # Whether the user has allowed Watchdog to work in this folder (watchdog/access.py);
+        # always true when the app isn't enforcing access.
+        "access": _access_granted(vault),
         "stats": {
             "documents": int(reg.get("document_count") or 0),
             "entities": int(reg.get("entity_count") or 0),
@@ -173,3 +176,8 @@ def doctor() -> dict:
                            "the next dig or bark."),
         })
     return {"issues": issues}
+
+
+def _access_granted(vault) -> bool:
+    from watchdog import access
+    return not access.enforced() or access.is_granted(vault)

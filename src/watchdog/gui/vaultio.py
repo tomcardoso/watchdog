@@ -174,6 +174,15 @@ def date_sort_key(date: str | None) -> str:
 
 # ── vault and path validation ────────────────────────────────────────────────────
 
+def require_granted(path: Path) -> None:
+    """`RpcError(code="not_granted")` when the app enforces folder access (watchdog/access.py) and
+    the user hasn't allowed Watchdog to work in `path`. The app answers it by asking the user."""
+    from watchdog import access
+    if access.enforced() and not access.is_granted(path):
+        raise RpcError(f"Watchdog hasn't been allowed to work in {path} yet.", code="not_granted",
+                       data={"path": str(path)})
+
+
 def require_vault(path: Any) -> Path:
     """The vault folder `path` names, or `RpcError(code="not_a_vault")`."""
     if not isinstance(path, str) or not path.strip():
@@ -183,6 +192,7 @@ def require_vault(path: Any) -> Path:
         raise RpcError("The investigation folder must be an absolute path.", code="not_a_vault")
     if not p.is_dir() or not is_vault(p):
         raise RpcError(f"{p} is not a Watchdog investigation folder.", code="not_a_vault")
+    require_granted(p)
     ensure_current_layout_once(p)       # an older vault's folders are renamed on first open (D266)
     return p
 
