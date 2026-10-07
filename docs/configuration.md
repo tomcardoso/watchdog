@@ -40,21 +40,21 @@ This matters because a lot of what Watchdog reads is dense: financial tables, ta
 
 **The decision is made page by page, and OCR is applied only to the pages that need it.** Every page is scored, not a sample of the first few. Reading a page's text and fonts is cheap and local, around a hundred pages a second, against seconds per page for the conversion itself. Pages whose text layer is sound keep it, and pages with no text layer or a broken one are OCR'd in a second pass and stitched back in. This matters for a mixed document, such as a 200-page filing with two scanned exhibits bound into it. One verdict for the whole document would mean either OCRing all 200 pages and losing table fidelity on the 198 that were fine, or leaving the two exhibits unread.
 
-### Chew
+### Pre-processing
 
-Local preprocessing: parallelism and large-PDF handling. "Chew" is the first stage, where files are converted to text on your computer; see [Methodology](methodology.md).
+Local conversion: parallelism and large-PDF handling. Pre-processing is the first stage, where files are converted to text on your computer; see [Methodology](methodology.md).
 
 | Field | Default | What it controls |
 |---|---|---|
-| Chew workers | `auto` | Files processed in parallel while reading; `auto` adapts to the batch, or set a fixed number. |
+| Pre-processing workers | `auto` | Files processed in parallel while reading; `auto` adapts to the batch, or set a fixed number. |
 | Chunk size | `40` | Pages per chunk when a large PDF is split for parallel processing. |
 | Chunk workers | `auto` | Parallel workers for the chunks of a large PDF. |
 | Chunk timeout | `300` | Seconds before a chunk is stopped. |
 | Table structure | on | Whether the table-detection model runs on PDFs. Turn it off to speed up text-only documents. |
 
-Chew workers and Chunk workers both default to `auto`: Watchdog scans the batch before starting and picks values based on how large the documents are. They multiply, so a batch of large PDFs runs roughly Chew workers times Chunk workers processes at once. Pin them to small numbers on a modest computer.
+Pre-processing workers and Chunk workers both default to `auto`: Watchdog scans the batch before starting and picks values based on how large the documents are. They multiply, so a batch of large PDFs runs roughly Pre-processing workers times Chunk workers processes at once. Pin them to small numbers on a modest computer.
 
-### Ingest
+### Processing
 
 The extraction run: parallelism, classification, skill pinning and sectioning.
 
@@ -87,7 +87,7 @@ You generally do not need to touch any of these. Watchdog will not accept a trun
 
 #### Extraction safeguards
 
-Empty-extraction minimum words catches a quiet failure: a model call that comes back with no errors but nothing in it, zero extracted facts, on a document that plainly has substantial text. Watchdog measures the actual chewed text, not the page count, since page count is a poor stand-in for how much there is to extract (an exhibit-heavy filing can run long but be mostly blank scans, and a short order can be dense). Past the threshold with zero facts, the document gets one automatic retry, then fails loudly instead of silently succeeding with nothing in it. Raise the value if you routinely add long documents with legitimately sparse content, such as cover pages or signature-only filings padding out the page count. Lower it if your documents tend to be short but substantive.
+Empty-extraction minimum words catches a quiet failure: a model call that comes back with no errors but nothing in it, zero extracted facts, on a document that plainly has substantial text. Watchdog measures the actual pre-processed text, not the page count, since page count is a poor stand-in for how much there is to extract (an exhibit-heavy filing can run long but be mostly blank scans, and a short order can be dense). Past the threshold with zero facts, the document gets one automatic retry, then fails loudly instead of silently succeeding with nothing in it. Raise the value if you routinely add long documents with legitimately sparse content, such as cover pages or signature-only filings padding out the page count. Lower it if your documents tend to be short but substantive.
 
 #### The verification pass
 
@@ -97,7 +97,7 @@ It exists because of what a close look at missed facts showed: they were almost 
 
 Cost is roughly 15 per cent more per run on the Claude API path, where the re-read reuses the extraction call's cached prompt at a fraction of the price, so most of the increase is the second call's own thinking (what Verifier effort controls). On an OpenAI model the re-read does not get that discount, so expect a larger increase. A provider only charges the reduced rate when a new request opens with exactly the same text as an earlier one, and OpenAI puts a description of the answer format right at the front, different for the verification call than for the extraction call. That difference disqualifies everything after it, the document included, so the second call pays full price to read the document again. Low is the default effort either way and where the pass is meant to live: comparing a list against a document in front of it is a lookup, not a judgement call. The pass always uses the extractor model, deliberately, because on Claude the discount depends on reusing that model's cached prompt, and a cache belongs to one model.
 
-Two limits are worth knowing. It is not available with a batch extractor model (`claude-batch`, `openai-batch`), whose results come back hours later, long after there is anything live to check them against. And it is tuned to over-list rather than under-list, so it can add a restatement of a fact you already had, or a true detail too minor to be worth a line. That trade-off is why it is off by default. To try it on one batch, set **Second-read check** to On in the Options of the Add documents dialog (or the Dig card), read the resulting facts once with fresh eyes, and decide.
+Two limits are worth knowing. It is not available with a batch extractor model (`claude-batch`, `openai-batch`), whose results come back hours later, long after there is anything live to check them against. And it is tuned to over-list rather than under-list, so it can add a restatement of a fact you already had, or a true detail too minor to be worth a line. That trade-off is why it is off by default. To try it on one batch, set **Second-read check** to On in the Options of the Add documents dialog (or the Processing card), read the resulting facts once with fresh eyes, and decide.
 
 #### Auto-approve
 
@@ -134,7 +134,7 @@ The classifier default is Haiku because picking a skill is easy work. The finali
 
 When choosing among models, [Benchmarks](benchmarks.md) shows how each model and effort level actually performs on real documents, not just its price.
 
-For one batch only, the Options in the **Add documents** dialog and on the Dig and Bark cards under Activity → Maintenance override these fields without changing them.
+For one batch only, the Options in the **Add documents** dialog and on the Processing and Post-processing cards under Activity → Maintenance override these fields without changing them.
 
 ### Deduplication
 
@@ -206,9 +206,9 @@ How Watchdog signs in to Claude and to each model provider.
 - **Subscription.** Uses your Claude subscription, which is not metered. A Pro plan (US$20 a month) is enough for most journalism work. If you add hundreds of documents at a time, a Max plan gives higher session limits.
 - **API key.** Bills per token to your Anthropic account. Paste the key when asked.
 
-If Claude Code is not installed, the tab says so; it ships with the engine, and **Settings → Setup** can repair it. Switching to subscription mode and keeping ingestion on it lowers Extraction concurrency from 20 to 3, because concurrent extractions on that path share one Claude Code session's rate limit. Switching back to an API key restores it to 20 automatically, as long as you never set your own value.
+If Claude Code is not installed, the tab says so; it ships with the engine, and **Settings → Setup** can repair it. Switching to subscription mode and keeping processing on it lowers Extraction concurrency from 20 to 3, because concurrent extractions on that path share one Claude Code session's rate limit. Switching back to an API key restores it to 20 automatically, as long as you never set your own value.
 
-**Ingestion stages** is a read-only table: for each step, which model it uses, which provider that is, whether the provider is ready (a key is stored, or its environment variable is set), and how it is billed. Change the models themselves under the **Models** tab.
+**Processing stages** is a read-only table: for each step, which model it uses, which provider that is, whether the provider is ready (a key is stored, or its environment variable is set), and how it is billed. Change the models themselves under the **Models** tab.
 
 **Provider keys** lists each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model) with the key stored for it, shown masked. **Add** or **Replace** a key, or delete a stored one. Keys are kept on your computer in a file only you can read, and are never shown in full. A key set in your environment (for example `OPENAI_API_KEY`) always takes precedence over a stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode. Each badge says whether a key is in use.
 
@@ -251,10 +251,10 @@ The installed version, and links to the project's page, the issue tracker and th
 
 - **Use a different OCR engine.** Settings → OCR → OCR engine.
 - **Move new investigations to an external drive.** Settings → Vaults → Investigations folder, then choose the folder.
-- **Speed up a batch of text-only documents.** Settings → Chew → turn off Table structure.
+- **Speed up a batch of text-only documents.** Settings → Pre-processing → turn off Table structure.
 - **Use Haiku for extraction** (faster and cheaper). Settings → Models → Extractor model.
 - **Spend fewer thinking tokens on extraction.** Settings → Models → Extractor effort → `low`.
-- **Hit model rate limits.** Settings → Ingest → lower Extraction concurrency.
+- **Hit model rate limits.** Settings → Processing → lower Extraction concurrency.
 - **Keep classification on your own computer.** Settings → Models → set Local model URL, then choose a `local:` model as the Classifier model. See [Local and self-hosted models](#local-and-self-hosted-models).
 
 ## Model backends
@@ -284,7 +284,7 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 | `local:llama-3.3-70b` | A model on your own computer or network: Ollama, LM Studio, llama.cpp's server, vLLM, or anything else speaking the OpenAI-compatible wire format. Requires Local model URL; usually no key. |
 | `openrouter:anthropic/claude-3.5-sonnet` | [OpenRouter](https://openrouter.ai): one key routes to many hosted models, named exactly as OpenRouter itself lists them. |
 
-To point a step at a provider, open **Settings → Models**, open that step's model picker, and choose a model, or type a `backend:model` value into its search box and press Enter. If you pick a model from a provider you have no key for yet, add the key under **Settings → Models & keys → Provider keys**; the Ingestion stages table there shows whether each step is ready. First-run setup walks through the same choices: first how Claude Code itself signs in (required regardless of what ingestion uses, because Ask Claude always runs on Claude), then, independently, which provider handles ingestion. For one batch only, use the model pickers in the Options of the **Add documents** dialog.
+To point a step at a provider, open **Settings → Models**, open that step's model picker, and choose a model, or type a `backend:model` value into its search box and press Enter. If you pick a model from a provider you have no key for yet, add the key under **Settings → Models & keys → Provider keys**; the Processing stages table there shows whether each step is ready. First-run setup walks through the same choices: first how Claude Code itself signs in (required regardless of what processing uses, because Ask Claude always runs on Claude), then, independently, which provider handles processing. For one batch only, use the model pickers in the Options of the **Add documents** dialog.
 
 Each step is independent: you can keep extraction on Claude Sonnet while routing the cheaper classification or finishing steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask.
 
@@ -306,7 +306,7 @@ OpenRouter is the same mechanism with a fixed, hosted endpoint and a required ke
 
 ### Batch mode: bulk extraction at half price
 
-If you are adding a large dump, say 200 pages or more, a batch-mode Extractor model submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so the run submits it and ends rather than waiting. Run **Dig** again later (the Overview shows when documents are waiting) to collect the results.
+If you are adding a large dump, say 200 pages or more, a batch-mode Extractor model submits every whole-document extraction as one bulk batch at 50 per cent off every token. The tradeoff is latency, not cost: a batch typically finishes within an hour but can take up to 24, so the run submits it and ends rather than waiting. Run **Processing** again later (the Overview shows when documents are waiting) to collect the results.
 
 Two batch backends are available, one per provider:
 
@@ -328,8 +328,8 @@ This is also the recipe for keeping a Claude subscription's session limits for i
 
 1. In **Settings → Models & keys**, switch **How Claude is billed** to API key.
 2. In **Settings → Models**, set Classifier model to `claude-api:haiku`, Extractor model to `claude-batch:sonnet` and Finalizer model to `claude-api:haiku`.
-3. Under **Activity → Maintenance**, choose **Run dig…** on the Dig card. It submits the batch and ends.
-4. Later, run Dig again to collect the batch once it is ready.
+3. Under **Activity → Maintenance**, choose **Run processing…** on the Processing card. It submits the batch and ends.
+4. Later, run Processing again to collect the batch once it is ready.
 
 The same recipe works with `openai-batch:gpt-5.6-luna` in place of `claude-batch:sonnet`, for a corpus already routed to OpenAI. Step 1 is not needed, since OpenAI has no subscription mode to switch from.
 
@@ -346,10 +346,10 @@ The main levers, roughly in order of impact:
 - **Batch mode.** The [batch-mode recipe](#batch-mode-bulk-extraction-at-half-price) halves the cost of a bulk run, on either Claude (metered key) or OpenAI.
 - **When you run it, if you are on DeepSeek.** DeepSeek is the one provider here that charges by the clock: every rate doubles during its peak hours, 01:00 to 04:00 and 06:00 to 10:00 UTC (21:00 to 00:00 and 02:00 to 06:00 Eastern), Monday to Friday, and is half that the rest of the time, including all weekend. A daytime run in North America is already off-peak; an overnight batch on a weekday may not be. DeepSeek also treats Chinese public holidays as off-peak, which Watchdog does not model, so a run on one is quoted at the peak rate and the figure is an over-estimate. Watchdog prices each call at the rate in force when the call is made, so Usage reports what you were actually billed, and estimates quote the rate in force when you ask, marking the figure when it is the peak one.
 - **Which Claude backend you are on.** A plain `sonnet` (or `haiku` or `opus`) reaches Claude one of two ways, chosen by your billing mode: a subscription goes through Claude Code's own harness, and a metered key goes straight to the API. The two bill different numbers of input tokens for identical documents, so it is worth knowing which one you are on; Usage names the backend for every stage. The API path also caches the reusable part of the prompt (the instructions and the record skill) properly, which the subscription path cannot be told to do.
-- **Concurrency.** Extraction concurrency does not change total cost, but lowering it (in Settings, or per batch with **Documents at once** in the Options) is the fix when you hit model rate limits. The app lowers the default from 20 to 3 when you keep ingestion on Claude subscription sign-in, since concurrent extractions on that path share one Claude Code session's rate limit. Setting your own value always overrides both directions.
+- **Concurrency.** Extraction concurrency does not change total cost, but lowering it (in Settings, or per batch with **Documents at once** in the Options) is the fix when you hit model rate limits. The app lowers the default from 20 to 3 when you keep processing on Claude subscription sign-in, since concurrent extractions on that path share one Claude Code session's rate limit. Setting your own value always overrides both directions.
 - **Token budget.** Extraction concurrency caps how many documents run at once, but a rate limit is really a cap on tokens per minute, and a batch of large documents can trip it well under your concurrency limit. Watchdog holds back a new document automatically once the run's own recent pace gets close to your provider's real limit, discovered from the provider's own responses. There is nothing to configure on the Claude API, OpenAI, DeepSeek, Gemini, local and OpenRouter routes. Claude subscription sign-in does not report this number, so if you are on that path and still hit rate limits after lowering concurrency, set Extraction token budget to a number from your account's rate-limits page.
 
-Before committing to a large run, get a number. In the **Add documents** dialog, **Estimate cost** quotes the batch before anything is sent; the **Dig** and **Bark** cards under Activity → Maintenance have **Estimate** buttons too. The estimate gives a token count for the queue. On a metered key with prior runs in the investigation, it adds a rough dollar range projected from your own usage history; on a subscription, only the token estimate is shown. Use it to decide whether to split a batch. **Compare all models** projects the same estimate across every model in the catalogue.
+Before committing to a large run, get a number. In the **Add documents** dialog, **Estimate cost** quotes the batch before anything is sent; the **Processing** and **Post-processing** cards under Activity → Maintenance have **Estimate** buttons too. The estimate gives a token count for the queue. On a metered key with prior runs in the investigation, it adds a rough dollar range projected from your own usage history; on a subscription, only the token estimate is shown. Use it to decide whether to split a batch. **Compare all models** projects the same estimate across every model in the catalogue.
 
 A failed document never sinks a batch: it is set aside and the rest completes. But for very large collections, add documents in groups anyway. For an unattended overnight batch on a subscription, switch on **Wait out rate limits** in the Options of the Add documents dialog, which sleeps through rate limits and resumes. If you would rather not wait at all, Anthropic's own [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) let a Pro or Max plan keep going past its session or weekly limit at standard API rates once you enable them (Settings → Usage on claude.ai, payment method required). That is an account-wide setting, not something Watchdog configures, but Watchdog's rate-limit handling only fires on an actual rejection, so it will not interfere once credits are covering the overage.
 

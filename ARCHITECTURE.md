@@ -32,6 +32,8 @@ vault/registry layout or an invariant updates this file in the same change (see
 
 ## 2. Pipeline overview
 
+In the app and the docs the three stages are called pre-processing (`chew`), processing (`dig`) and post-processing (`bark`), and the whole flow is "adding documents"; code, commands, settings keys and RPC names keep the original words (D275).
+
 ```
 incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watchdog/extracted/<sha>.json ─▶ bark ─▶ vault
  (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
