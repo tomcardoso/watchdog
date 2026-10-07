@@ -20,6 +20,10 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   can never disagree about what a command does. Thin in-process mutations are used only where the
   CLI's own code is already a library function (resolutions, settings, auth keys, the `## Notes`
   section of a note).
+- **Folder access (D268).** When the app starts the server with `WATCHDOG_ENFORCE_ACCESS=1`, any
+  call naming a vault outside the folders in `~/.watchdog/access.json`, and any `jobs.start` or
+  `action.run` there, fails with `RpcError(code="not_granted", data={"path"})`. The server only
+  reads that file (`access.list`); grants are made by the main process (`window.watchdog.access`).
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by reused
   CLI code is converted to an error with its message (leading `Error:` stripped).
 
@@ -32,13 +36,20 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 | `app.ping` | — | `{ok: true}` |
 | `app.info` | — | `{version, python, python_version, platform, watchdog_home, config_file, setup_complete, projects_dir, claude_code: {installed, logged_in}, obsidian_installed}` |
 
+## access
+
+| Method | Params | Result |
+|---|---|---|
+| `access.list` | — | `{enforced: bool, file, folders: [{path, label, granted}]}` — read-only |
+
 ## projects
 
 ```
 Project = {
   slug, name, description|null, path, archived: bool, created|null,
   health: null | "missing" | "not_a_vault" | "registry_corrupt",   // _check_project_health
-  stats: { documents, entities, last_ingest|null, incoming, awaiting, failed }
+  stats: { documents, entities, last_ingest|null, incoming, awaiting, failed },
+  access: bool   // false when folder access is enforced and the vault isn't in an allowed folder
 }
 ```
 
