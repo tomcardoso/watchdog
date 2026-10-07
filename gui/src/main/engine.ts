@@ -291,6 +291,7 @@ export class Engine {
       UV_PYTHON_INSTALL_DIR: join(this.dir, 'python'),
       UV_PYTHON_BIN_DIR: join(this.dir, 'bin'),
       UV_TOOL_DIR: join(this.dir, 'tools'),
+      UV_CREDENTIALS_DIR: join(this.dir, 'credentials'),
       UV_CACHE_DIR: join(this.dir, 'cache'),
       UV_PYTHON_PREFERENCE: 'only-managed',
       UV_PYTHON_DOWNLOADS: 'automatic',

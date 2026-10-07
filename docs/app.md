@@ -8,24 +8,29 @@ You can switch between the two freely. An investigation created in the app opens
 
 ## Installing it
 
-The app is new and does not yet have a downloadable installer. For now it runs from a copy of Watchdog's source code. You need:
+Install the app like any other. The first time it opens, it walks you through setup; you never need a terminal.
 
-- **Watchdog itself**, installed and set up as described in the [installation guide](install.md). The app uses that installation's Python and models, so `watchdog setup` must have run.
-- **Node.js** version 20 or later, from [nodejs.org](https://nodejs.org). This is only needed to run the app from source.
-- **Claude Code**, signed in, for the Ask Claude and Web research screens — the same requirement as `watchdog ask`.
+1. **Welcome.** A short explanation of what Watchdog does, and the public-records rule.
+2. **Install the engine.** The app downloads Python, Watchdog's libraries and the models that run on your computer (document conversion, name detection and search). This is a one-time download of about 5 GB and needs about 7 GB of free space and an internet connection. The app keeps everything in its own folder, so nothing else on your computer changes. You can watch each stage, open the details, cancel, and try again; whatever was already downloaded is kept. If you close the app part-way, it picks up at the same step when you reopen it.
+3. **Where your investigations live.** The folder where each investigation gets its own folder. The default is `Investigations` in your home folder.
+4. **Connect a model.** Sign in with a Claude subscription (no per-run charge), paste an Anthropic API key (billed per use), or use another provider such as OpenAI, Gemini, DeepSeek, OpenRouter or a model on your own computer. The Ask Claude screens always need a Claude sign-in; if you pick another provider, setup offers that sign-in as an optional extra.
+5. **Confirm what you send.** Whether to skip the public-records pause for runs that use only your Claude subscription. The default is to ask every time.
+6. **Ready.** Create your first investigation or open the app.
 
-Then, in a terminal:
+When a new version of the app needs a newer engine, the app updates it on its own at the next start and shows its progress. To repair a damaged engine, or to download a model that failed, open **Settings → Setup**: **Repair or reinstall the engine** keeps your investigations, settings and models.
+
+### Running the app from source
+
+This is for developers. You need Node.js 20 or later and, to run against your own checkout, a Python with Watchdog's dependencies:
 
 ```bash
 git clone https://github.com/tomcardoso/watchdog.git
 cd watchdog/gui
 npm install
-npm run dev
+WATCHDOG_PYTHON=/path/to/python npm run dev
 ```
 
-The first `npm install` downloads the app's components and takes a few minutes. After that, `npm run dev` starts the app. If the `watchdog` command was installed from this same copy of the source, `watchdog gui` does the same thing.
-
-When the app starts, it looks for the Python that has Watchdog installed — pipx's copy first, then the one the `watchdog` command uses. If it can't find one, it says so and offers a **Choose Python…** button, so you can point it at the right one. Settings → Appearance shows which Python it is using.
+Without `WATCHDOG_PYTHON`, the app looks for an existing Watchdog installation and, if it finds none, offers the same setup as above. Settings → Appearance shows which Python it is using.
 
 ## Finding your way around
 
@@ -94,7 +99,7 @@ Everything the app has run, with the full output of each — the same text the t
 
 ### Settings
 
-Every setting from `watchdog settings`, grouped and explained, with each one's default. **Models & keys** is `watchdog settings auth`, **Record skills** lists the skills (`watchdog settings skills`), and **Setup** checks what `watchdog setup` installs.
+Every setting from `watchdog settings`, grouped and explained, with each one's default. **Models & keys** is `watchdog settings auth`, **Record skills** lists the skills (`watchdog settings skills`), and **Setup** shows the state of the engine, the local models and the optional helper tools, and repairs them.
 
 ## Obsidian
 
@@ -102,9 +107,10 @@ You don't need Obsidian to use the app. Investigations are still ordinary Obsidi
 
 ## When something goes wrong
 
-- **"Watchdog needs its engine."** The app couldn't find a Python with Watchdog installed. Install Watchdog as in the [installation guide](install.md), then **Try again**, or **Choose Python…** and point it at the right one — with pipx, usually `~/.local/pipx/venvs/watchdog-intel/bin/python`.
+- **"Watchdog could not start its engine."** Choose **Try again**. If it keeps failing, **Repair the engine** reinstalls it; your investigations and settings are not touched.
+- **The installation stops or fails.** The usual cause is the connection: a VPN or a firewall can block the downloads. Choose **Try again**; the app resumes where it stopped.
 - **A run failed.** Open **Activity** and select it to see its full output; the fixes in [Troubleshooting](troubleshooting.md) apply unchanged.
-- **Ask Claude says Claude Code may not be signed in.** Run `claude` once in a terminal and sign in. The app's check is approximate, so a question may still work; if one fails to start, this is why.
+- **Ask Claude says Claude Code may not be signed in.** Sign in again from **Settings → Models & keys**. The app's check is approximate, so a question may still work; if one fails to start, this is why.
 
 ---
 

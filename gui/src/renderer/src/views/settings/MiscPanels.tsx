@@ -132,7 +132,7 @@ export function DoctorPanel() {
 
 const HELPER_NOTES: Record<string, string> = {
   qpdf: 'Optional. Used only to repair damaged or protected PDFs. Without it, Watchdog skips that fallback.',
-  Ghostscript: 'Optional. Used only to re-render problem PDFs. Without it, Watchdog skips that fallback.',
+  ghostscript: 'Optional. Used only to re-render problem PDFs. Without it, Watchdog skips that fallback.',
   'Tesseract OCR': 'Optional. Watchdog reads scanned pages with its own built-in engine.'
 }
 const MODEL_LABELS: [keyof SetupModels, string, string][] = [

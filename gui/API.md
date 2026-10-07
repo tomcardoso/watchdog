@@ -253,7 +253,10 @@ sweeps and `leads` run as jobs.
 | `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result — an empty `url` removes it |
 | `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
 | `skills.read` | `{name}` | `{name, text}` |
-| `setup.check` | — | `{deps: [{label, ok, hint\|null}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` |
+| `setup.check` | — | `{deps: [{label, ok, hint\|null, required: false}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` — no dependency blocks the app |
+| `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null}` — what is on disk, no network |
+| `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes what `watchdog setup` writes; an existing config file is the "set up" signal |
+| `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
 
 ```
 SettingKey = {key, short, help, is_set: bool, default, current (null for secrets), display, kind: "bool"|"int"|"float"|"choice"|"model"|"effort"|"path"|"text"|"secret", choices: string[]|null}

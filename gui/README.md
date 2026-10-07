@@ -26,10 +26,37 @@ User documentation is in [docs/app.md](../docs/app.md). This page is for develop
   events (`WATCHDOG_PROGRESS=1`, see `src/watchdog/progress.py`).
 - **Claude sessions** (`ask`, `ask --context`, `research`) run through the Claude Agent SDK in the
   vault folder, so the vault's own `.claude/` settings and `/watchdog-*` commands apply.
-- The main process finds Python in this order: `WATCHDOG_PYTHON`, the interpreter chosen in the
-  app, pipx's `watchdog-intel` venv, the `watchdog` launcher's shebang, then `python3`. It runs the
-  `watchdog` package source bundled with the app (or the repo's `src/` in development) ahead of
-  the installed copy, so the app and its backend are always the same version.
+- The main process finds Python in this order. A packaged app: `WATCHDOG_PYTHON`, the interpreter
+  chosen in the app, **the managed engine**, then pipx's `watchdog-intel` venv, the `watchdog`
+  launcher's shebang and `python3` (an external install is used only if it is at least the version
+  the app bundles). Development (unpackaged, or `WATCHDOG_SRC` set): the same, with the managed
+  engine last, and the repo's `src/` laid ahead of the Python on `PYTHONPATH`. The managed engine
+  needs no overlay: its wheel is built from the same source.
+
+## The managed engine
+
+A journalist never opens a terminal. On first run the app installs Watchdog itself
+(`src/main/engine.ts`, shown by `src/renderer/src/views/onboarding/`):
+
+1. `uv python install 3.12`, `uv venv --seed` into `<userData>/engine/` (`python/`, `cache/`, `venv/`;
+   `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR` and `UV_PYTHON_BIN_DIR` all point inside it, so nothing
+   lands in the user's home).
+2. `uv pip install <bundled wheel>`; on Linux x86 with PyTorch's CPU index, which avoids about
+   2.5 GB of unused NVIDIA libraries. `engine.json` records the wheel's version and digest; a
+   different bundled wheel at a later launch triggers an automatic update.
+3. `python -m watchdog.gui.engine_setup models`: Docling, GLiNER, the embedding model, the reranker
+   and an OCR check. Failures are warnings (each model is fetched again on first use).
+
+`uv` ships in the app (`scripts/fetch-uv.mjs`: pinned version, sha256 verified, into
+`resources/bin/<os>-<arch>/`) and the wheel is built at packaging time (`scripts/build-wheel.mjs`,
+into `resources/python-wheel/`); `npm run dist*` runs both (`predist*`). Measured on a clean Linux
+install: about 0.6 GB of libraries, 4.1 GB of models, 6 GB on disk.
+
+Developer switches: `WATCHDOG_FORCE_ONBOARDING=1` (or a step id: `welcome`, `engine`, `folder`,
+`provider`, `approve`, `done`) shows setup even when it is complete;
+`WATCHDOG_ENGINE_SIMULATE=1` (`slow`, `fail:<step>`) plays a fake install and sign-in without
+downloading anything. `node scripts/engine-cli.mjs --user-data /tmp/x --verbose` runs the real
+installer headless.
 
 ## Developing
 
@@ -91,5 +118,5 @@ xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calde
 
 `npm run dist` builds installers with electron-builder (`electron-builder.yml`): a `.dmg` on
 macOS, an NSIS installer on Windows, an AppImage and `.deb` on Linux. The `watchdog` Python package
-source is bundled under `resources/python`; the app still needs a Python environment with
-Watchdog's dependencies, which `pipx install watchdog-intel` provides (the first-run screen says so).
+is built into a wheel and bundled with `uv`; the app installs them into its own engine on first run (see
+"The managed engine"). `npm run engine:prepare` produces both for this computer.
