@@ -1,257 +1,197 @@
 # Investigating
 
-This guide covers the day-to-day work of an investigation once documents are in — asking questions, searching, chasing leads, researching on the web, and keeping several investigations organized. Read [getting started](getting-started.md) first if you have not run your first ingest yet.
+This guide covers the day-to-day work of an investigation once documents are in: checking what Watchdog flagged, asking questions, searching, chasing leads, researching on the web, and keeping several investigations organized. Read [Getting started](getting-started.md) first if you have not added your first documents yet, and [The desktop app](app.md) for a tour of each screen.
 
-## How a session starts
+Everything here happens in the Watchdog app. The sidebar groups the screens: **Overview**, **Documents**, **Entities**, **Timeline** and **Network** under Investigation, and **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work. **Activity** and **Settings** sit below them.
 
-Every investigation question runs inside a Claude Code session opened in the vault — `watchdog ask` opens one for you. At the start of each session, Claude reads `hot.md` automatically — a current-state summary of the investigation, rewritten after every ingest. That is what lets you continue an investigation across many separate sessions without losing context: Claude arrives already oriented, without re-reading the entire vault.
+## The rhythm of an investigation
 
-A session stays inside its own investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude, so a session can't read Watchdog's settings and keys, and the commands it runs without asking you only reach this investigation. Searching across all your investigations (`watchdog search --everywhere`) works from your own terminal, not from a session.
+After the first batch, the typical loop is:
 
-## Asking questions
+1. **Add documents.** Choose **Add documents** (or drop files onto the window). Watchdog reads them on your computer, asks you to confirm the public-records warning, then extracts and cross-checks them.
+2. **Read the briefing.** The Overview shows the latest one. Pay particular attention to connections with entities already in the investigation.
+3. **Work through Review.** The sidebar shows how many items are waiting on you. See [Review](#review).
+4. **Ask questions.** In **Ask Claude**, run `/watchdog-surface` after a substantial batch to look for connections you did not think to ask about.
 
-Start a session with your question:
+Watchdog does not need to be doing anything else while you work. If you would rather read documents now and extract them later, **Activity → Maintenance** runs each stage on its own; see [Maintenance runs](#maintenance-runs).
 
-```bash
-watchdog ask "Who are the directors of Shell Co Ltd?"
+## Review
+
+**Review** is where everything Watchdog flagged for a person waits. It has one tab for each kind of item, with a count on each, plus a tab for what you have already handled and one for your watch list. Open items move through the same few steps: read the item, open its note if you need more detail, then mark it handled, or keep it open and move on.
+
+Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. The **Handled** tab lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
+
+### Contradictions
+
+When a new document disagrees with something already in the investigation, the entity's note gets a contradiction callout with both sources cited, and the item appears on the **Contradictions** tab. A contradiction is often newsworthy in itself: two official records that disagree can be the story. Open the note to read both claims side by side, decide which source to trust (or note the conflict), then mark it handled. **Ask Claude** on an item opens a conversation already pointed at it.
+
+If you spot a conflict that Watchdog missed, open the entity and choose **Record a contradiction…** from its **⋯** menu. You give a short label for the disputed fact, then each side's claim, source document and (optionally) page.
+
+### Leads
+
+At the end of every run, Watchdog sweeps the whole entity graph with plain code, no AI call, and lists what it finds on the **Leads** tab. It flags four things:
+
+- **Named but never profiled.** An entity named as a relationship target (a company someone is director of, say) that has no documents of its own. A lead: go find records on it.
+- **Mentioned often but unconnected.** An entity that recurs across several documents yet has no relationships at all. Why does this name keep coming up in isolation?
+- **Unresolved contradictions.** Entities carrying contradiction flags, listed so they do not sit unreviewed.
+- **Inferred facts to verify.** Entities carrying facts or roles the extractor flagged as inferred rather than read, or figures that could not be found on the cited page. Leads to verify, not findings.
+
+The lists are read when you open the tab. **Run full lead sweep** rereads every entity note and refreshes them. The same sweep is on the Maintenance screen, and its written copy is saved under **Briefings** as a lead sweep.
+
+### Possible duplicates
+
+The **Duplicates** tab shows documents the pipeline judged to be near-copies of one already in the investigation, side by side. Watchdog never discards them. Compare the pair, then confirm they are the same record or that the difference matters. Marking a pair handled only hides it from the list and from reports; both documents stay, and the later one remains flagged on its own page.
+
+### Document requests
+
+Some documents refer to other documents you do not have yet: the transcript a hearing order cites, the regulation it enforces, an exhibit that was filed but never attached. Watchdog lists these on the **Requests** tab, apart from the open-ended leads, because each one names a specific thing known to exist. Each request carries the reason it matters, where it can plausibly be obtained, and a link back to the document that named it. The written list is `requests.md` in the investigation's folder, rewritten after every run.
+
+Two filings rarely cite the same document in identical words. When a run adds a new request while others are open, Watchdog asks a model to compare the open requests with each other and merge any it judges to be the same real document. This is the one place where requests are read back into a model call, and only to compare them with each other. It is deliberately cautious, but it can be wrong. If a request you expected seems to be missing, check whether it was merged into a differently worded one still open.
+
+When you have the document in hand, or decide not to pursue it, mark the request handled.
+
+### The watch list
+
+The **Watch list** tab is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
+
+The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Watch-list hits** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
+
+Because the automatic scan only sees new documents, a term added after documents are already in is never checked against them. **Check every document now** sweeps everything already added against the current list. No model is called.
+
+### Handled items and the briefing files
+
+Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** on the **Handled** tab to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
+
+## Entities
+
+**Entities** lists every person, organization, public body, place, asset and proceeding Watchdog found, filterable by type, with the number of documents each appears in. Search it by name or alias, and sort it by most documents, name, most recent update or most contradictions. Filters narrow it to entities with contradictions, entities with no summary written yet, and single-source entities.
+
+Open an entity to see its summary, analysis, contradictions, timeline and relationships, and thumbnails of the documents it appears in. Every fact links to the page it came from. The **Notes** section is yours; Watchdog never writes to it, so anything you type there survives every run.
+
+### Duplicate entities
+
+Sometimes the same real-world person or company ends up extracted as two entities, most often because a name is spelled differently across documents. Watchdog merges the pairs it is confident about when it finishes a batch; the ones it leaves are worth checking by hand.
+
+The **Single-source** filter is the best place to look, since a duplicate usually appears in only one document. A pair of near-duplicate documents on the Duplicates tab often produces two copies of the same entities as well. To fold one entity into the other, select the two on the Entities screen and choose **Merge…**, or open one and choose **Merge into another entity…** from its **⋯** menu.
+
+The dialog shows both entities (name, type, document and relationship counts) before you commit, and asks you to tick that you understand the merge cannot be undone from the app. The duplicate's aliases, documents, relationships and timeline events all combine onto the survivor, and every relationship elsewhere that pointed at the duplicate follows. A snapshot is taken first.
+
+When it finishes, the dialog offers **Rebuild search index**, which drops the merged entity's stale entries from Search. The merge keeps only one of the two written summaries, so when both entities had one, open the survivor and choose **Refresh summary from all sources** from its **⋯** menu. That asks Claude to rewrite its Summary and Timeline from every source.
+
+## Timeline and Network
+
+**Timeline** lays out every dated event by year and month, each linked to the page it came from. Filter it by entity, entity type, year range or a word in the event. A bar chart at the top shows how many events fall in each year; click a bar to jump there. The **⋯** menu has **Rebuild timeline.md…**, which regenerates the written timeline file from the underlying records. Nothing is lost if the file is deleted or edited by mistake, because it is generated output.
+
+**Network** draws the entities as a graph. Each dot is an entity, sized by how many documents name it and coloured by type, and each line is a relationship. Hover over a dot to see its connections, click it to see details, and double-click to open it. A slider sets the minimum number of documents an entity must appear in to be drawn, and **Show unconnected entities** adds the ones with no relationships. Only relationships stated in the documents are drawn.
+
+## Search
+
+**Search** covers everything in the investigation without involving Claude. Results come in three separate sections:
+
+- **Exact matches.** Every literal occurrence of your words across source documents and notes, each with a page link back to the source.
+- **Source passages.** What the documents say, ranked by how close they are in meaning to your query.
+- **Notes.** What the investigation has concluded, drawn from entity notes and saved answers.
+
+The ranking is a hybrid: passages are scored both by meaning and by exact terms, then re-ranked on your computer for precision. Searching for "conflict of interest" surfaces passages about recusals or related-party dealings even when the phrase never appears, while an exact token such as a case number or a dollar figure still finds its passage.
+
+On a large investigation, the first search after new documents are added takes longer than the rest, because Watchdog rebuilds a saved copy of the index then. If Search reports that the index is empty, it offers a button to rebuild it.
+
+**Search syntax** (under the search box) explains how to steer results. Lead a phrase with `-` to push away from it, or `+` to pull towards another idea. The whole phrase up to the next sign is one term; no quotes are needed. Put quotes around words that must appear together for an exact phrase match.
+
+```
+shell company -real estate
+consulting fee +offshore -salary
 ```
 
-The session opens, answers that question, and stays open for follow-ups. Inside it, type further questions in plain language, or use `/watchdog-query` for a cited answer filed to `queries/`:
+**Options** holds the results per section, **Hide weak matches** (a score threshold), **Re-rank passages** and **Show full passages**.
 
-```
-/watchdog-query Who are the directors of Shell Co Ltd?
-/watchdog-query Which companies share the address 123 Main St?
-/watchdog-query What happened in 2019 involving Alice Smith?
-```
+Two other modes sit at the top of the screen:
 
-Claude answers using only the documents and entities in your vault, and cites the source for every claim.
+- **Every investigation** answers "have I seen this name in any of my investigations?" It checks every registered, non-archived investigation and groups hits by investigation. Only entity lookups and exact matches run in this mode, because meaning-based search does not scale across investigations, so a name variant with no recorded alias and no literal occurrence will not surface. Investigations whose folder is missing are skipped and listed rather than failing the search.
+- **Check a list of names** checks a whole list against the investigation (a board roster, a sanctions list, a list of donors). Type or load one name per line and you get a report of what each name hit. A name that could not be checked is shown as "Not checked", never as "No hits". It can run across every investigation at once.
 
-Substantive answers do not vanish into the chat. Anything that synthesizes across documents or surfaces a connection is filed to `queries/<slug>.md` with its citations preserved, so your explorations accumulate instead of being re-derived each session. Trivial one-off lookups are skipped.
+## Ask Claude
 
-When a finding grows into a real angle — two or more entities tied together by two or more documents — it graduates to a thread page in `wiki/` via `/watchdog-wiki`. Over a long investigation, `queries/` and `wiki/` become the compounding record of what you have worked out.
+**Ask Claude** is a conversation with Claude Code about the investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, and asks you before doing anything the investigation's settings do not already allow.
 
-## Searching from the terminal
+Each conversation starts fresh, but Claude reads `hot.md` first: a current-state summary of the investigation, rewritten after every run. That is what lets you continue across many separate conversations without losing context. Past conversations are listed on the left and can be picked up again.
 
-You can search the whole document set without opening Claude Code:
+Type a question in plain language, or start from one of the shortcuts on the empty screen:
 
-```bash
-watchdog search shell-company-investigation "offshore account transfers"
-```
+- `/watchdog-query` answers a question from the investigation, with a source for every claim. Substantive answers are filed to `queries/` with their citations, so your explorations accumulate instead of being re-derived. Trivial lookups are skipped.
+- `/watchdog-surface` runs a connection analysis across the whole investigation: addresses shared by entities with no other relationship, people in unusual roles, entities mentioned across many unrelated documents, chronological anomalies and contradictions. Run it after each significant batch.
+- `/watchdog-entity` refreshes an entity's summary and timeline from all its source documents.
+- `/watchdog-wiki` creates or updates thread pages in `wiki/`. When a finding grows into a real angle (two or more entities tied together by two or more documents), it graduates to a thread page. Over a long investigation, `queries/` and `wiki/` become the record of what you have worked out.
+- `/watchdog-health` checks integrity: orphaned notes, broken links, registry mismatches, open contradictions.
+- `/watchdog-context` and **Seed investigation context** tell Watchdog what the story is. Claude reads the background files in `context/`, interviews you where they fall short, and writes `context.md`. An existing one is updated, not replaced.
 
-Omit the investigation name when you are inside the vault directory. Results come in three sections:
+A selector at the top of the screen chooses the Claude model for new conversations: Default (Claude Code's own setting), Sonnet, Opus or Haiku. The cost so far is shown beside it; on a subscription this is what it would cost at published rates, not what you are billed.
 
-- **Exact matches** — every literal occurrence of the term or phrase across source documents and notes, each with a page link back to the source
-- **Source passages** — what the documents say, ranked by relevance to your query
-- **Notes** — what the investigation has concluded, drawn from entity notes and saved answers
+Ask Claude needs Claude Code signed in. If a question will not start, check **Settings → Models & keys**.
 
-The ranking is a hybrid: passages are scored both by *meaning* and by *exact terms*, then re-ranked locally on your machine for precision. In practice, that means searching for `"conflict of interest"` surfaces passages about recusals or related-party dealings even when the phrase never appears — while an exact token like a case number or a dollar figure still lands its passage.
+## Web research
 
-On a large investigation, the first search after an ingest takes longer than the rest: Watchdog rebuilds a saved copy of the search index then, so that every later search can load it in a second or two instead of re-reading thousands of documents. On a set of about 5,000 ten-page documents, that first search takes around half a minute.
+When the investigation raises a question its own documents cannot answer (a director you cannot profile, a contradiction you cannot resolve, a company you need background on), **Web research** can look it up. Enter a research question, or leave the box blank to let Claude propose one from the investigation's entities, leads and gaps, then choose **Start research**.
 
-You can steer results with `+` and `-` phrases — lead a phrase with `-` to push away from it, `+` to pull toward another idea. The whole phrase up to the next sign is one term; no quotes needed:
+Claude proposes a research mission, confirms how wide to cast the net (quick, standard or deep), then researches in rounds, checking in with you between each. It writes a research memo to `briefings/` when it is done, which you can read under **Briefings**.
 
-```bash
-watchdog search shell-company-investigation "shell company -real estate"
-watchdog search shell-company-investigation "consulting fee +offshore -salary"
-```
-
-Wrap a phrase in quotes (`"jane doe"`) for an exact phrase match in the exact-matches section. Add `--threshold 0.5` to hide weak semantic matches, or `--full` to print complete passages instead of snippets.
-
-Two special modes are worth knowing:
-
-- **Checking a list.** To check a whole list of names or terms against the vault — a board roster, a sanctions list, a list of donors — put one term per line in a text file and pass `--batch`:
-
-  ```bash
-  watchdog search shell-company-investigation --batch names-to-check.txt
-  ```
-
-  You get a report of what each term hit, instead of a ranking for a single query.
-
-- **Checking every investigation.** If you work across several investigations, `--everywhere` answers "have I seen this name in any of my vaults?" Drop the project name and it checks every registered, non-archived investigation, reporting hits grouped by investigation:
-
-  ```bash
-  watchdog search --everywhere "acme holdings"
-  ```
-
-  It combines with `--batch` to check a term list across every vault. Two limits: only entity lookups and exact matches run in this mode (meaning-based search does not scale across vaults), so a name variant with no recorded alias and no literal occurrence will not surface. Investigations with a broken or missing vault path are skipped rather than failing the scan.
-
-The remaining flags and the full query syntax are in the [command reference](commands.md).
-
-## Finding connections
-
-```
-/watchdog-surface
-```
-
-This runs a full connection analysis across the entire vault. Claude looks for:
-
-- Addresses shared by entities with no other apparent relationship
-- People appearing in unusual roles — director of one company, beneficiary of another
-- Entities mentioned across many unrelated documents
-- Chronological anomalies in timelines
-- Relationships that were flagged as contradictions
-
-Run it after each significant batch of ingest. The connections it surfaces are often the leads that require the most follow-up.
-
-## Leads
-
-At the end of every ingest, Watchdog runs a deterministic sweep over the whole entity graph — plain code, no AI call — and writes what it finds to `briefings/leads-<date>.md`, printing a one-line count in the terminal. It flags four things:
-
-- **Named but never profiled** — an entity named as a relationship target (a company someone is director of, say) that has no documents of its own. A lead: go find records on it.
-- **Mentioned often but unconnected** — an entity that recurs across several documents yet has no relationships at all. Why does this name keep coming up in isolation?
-- **Unresolved contradictions** — entities carrying contradiction flags recorded at ingest, listed so they do not sit unreviewed.
-- **Inferred facts to verify** — entities carrying facts or roles the extractor flagged as inferred rather than read. Leads to verify, not findings.
-
-Work through the open leads one at a time:
-
-```bash
-watchdog review leads
-```
-
-To print the whole sweep instead, as it appears in the briefing file, run `watchdog leads`.
-
-Running `watchdog` on its own inside the vault shows how many leads are open, alongside contradictions, watch-list hits and possible duplicate documents. `watchdog review` walks through them one at a time — see [Resolving items](#resolving-items).
-
-## Document requests
-
-Some documents refer to other documents you don't have yet — the transcript a hearing order cites, the regulation it enforces, an exhibit that was filed but never attached. Watchdog surfaces these as document requests: a concrete artifact to go and get, filed apart from the open-ended leads described above because it names a specific known-to-exist thing rather than a thread to chase.
-
-Requests are written to `requests.md` in the vault root, grouped by document type, each carrying the reason it matters, where it can plausibly be obtained, and a link back to the document (or documents) that named it — if two different documents refer to the same artifact in the same words, that's one entry with both links, not two to resolve separately. The file is regenerated after every ingest, so it always reflects what is still outstanding — a routine document that names nothing worth chasing simply adds nothing to it.
-
-Two filings rarely cite the same document in identical words, though — a court order and an affidavit both naming "the Monitor's Pre-Filing Report" and "the Pre-Filing Report of Ernst & Young Inc." are the same thing to go and get, described differently. When an ingest adds a new request and other requests are already open, Watchdog runs one extra check: a model reviews the currently open requests and consolidates any it judges to be the same real document into one entry. This is the one exception to requests never being read back into a later model call — it only ever compares requests against each other to decide what is duplicate, never reads them as context for anything else. It is deliberately cautious about it (a genuinely different document sharing a date, a person's name, or a document type is kept separate, not merged), but it can occasionally be wrong; if a request you were expecting to see seems to be missing, check whether it was consolidated into a differently-worded entry still open in `requests.md`.
-
-Resolve a request the same way as a lead, once you have the document in hand:
-
-```bash
-watchdog review resolve --sync
-```
-
-## The watchlist
-
-`watchlist.md` in the vault root is a list of terms you want flagged whenever they appear in new documents — one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word; wrap a line in `/.../` to use a regular expression (a pattern-matching syntax) instead. An empty watchlist does nothing.
-
-The scan runs automatically at the end of every ingest, over that run's new documents. On a match, Watchdog prints a terminal alert and writes the details — document, page, surrounding text, and a link to the matching entity if it resolved to one — to `briefings/alerts-<date>.md`.
-
-Because the automatic scan only ever sees new documents, a term added after documents are already in the vault is never checked against them. To sweep everything already ingested against the current watchlist:
-
-```bash
-watchdog review watchlist
-```
-
-It writes to the same `briefings/alerts-<date>.md`.
-
-## Resolving items
-
-Once you have dealt with a lead, a watchlist alert, a contradiction, a possible duplicate document or a document request, mark it done so it stops reappearing. The easiest way is to work through them in one sitting:
-
-```bash
-watchdog review
-```
-
-It shows one item at a time, with the surrounding detail, and lets you mark it handled, keep it open, or open its note in Obsidian to check it first. Add `contradictions`, `leads`, `alerts` or `duplicates` to review just one kind.
-
-You can also resolve items directly. Every item in the leads, alerts, and requests files carries a short resolution id, printed next to it:
-
-```bash
-watchdog review resolve lead:isolated:acme
-```
-
-Or tick the item's `- [x]` checkbox in the briefing file (or `requests.md`) and import your ticks:
-
-```bash
-watchdog review resolve --sync
-```
-
-Resolved items drop out of the next sweep, so `watchdog review leads` and `watchdog review watchlist` become a shrinking to-do list rather than an ever-growing wall. `watchdog review resolve --list` shows what you have acknowledged; `watchdog review unresolve <id>` brings an item back. Acknowledgments follow an entity through a merge.
-
-## Duplicate entities
-
-Sometimes the same real-world person or company ends up extracted as two separate entities — most often because a name is spelled differently across documents. Watchdog merges the pairs it is confident about when it finalizes a batch; the ones it leaves are worth checking by hand. The dashboard's "Single-source entities" table is a good place to look, since a duplicate usually appears in only one document. So is any pair of near-duplicate documents `/watchdog-health` reports, which often produce two copies of the same entities. Once you have confirmed two entries are the same, fold one into the other:
-
-```bash
-watchdog review merge-entities <keep-id> <merge-id>
-```
-
-The duplicate's aliases, documents, relationships, and timeline events all combine onto the surviving entity, and every relationship elsewhere in the vault that pointed at the losing id follows the merge. Before doing anything, Watchdog prints both entities — name, type, document and relationship counts — and asks for confirmation, because a merge is irreversible.
-
-Afterward, run `watchdog reindex` to drop the merged entity's stale search-index entries. The merge keeps only one of the two prose summaries, so when both notes had one, Watchdog prints a reminder to run `/watchdog-entity <keep-id>` in a Claude Code session — that re-synthesizes the survivor's Summary and Timeline from every merged source.
-
-## Researching on the web
-
-When the vault raises a question its own documents cannot answer — a director you cannot profile, a contradiction you cannot resolve, a company you need background on — Watchdog can research it on the web:
-
-```bash
-watchdog research shell-company-investigation
-watchdog research shell-company-investigation -q "Who controls Acme Holdings?"
-```
-
-This opens Claude Code on the research skill. Seeded by your vault's entities, leads, and gaps, Claude proposes a research mission, confirms how wide to cast the net — quick, standard, or deep — then researches in rounds, checking in with you between each. It writes a research memo to `briefings/` when it is done.
-
-Crucially, web research **never writes vault notes**. Instead, Claude queues every source it decides to keep — the URL, a reliability tag, and why it matters. When you exit the session, Watchdog downloads the queued sources into `incoming/`, validating each one, so the findings flow through the same chew-and-ingest pipeline as documents you obtained yourself: deduplicated, entity-extracted, and cited. A scraped blog post is never confused with a primary document. After the download, fold the findings in the normal way:
-
-```bash
-watchdog
-```
-
-Then open a fresh session to investigate what came back.
+Web research **never writes notes to the investigation**. Claude queues every source it decides to keep, with its address, a reliability tag and why it matters. A strip at the top shows how many sources are queued, and nothing is downloaded until you choose the **Download** button, which reads "Download 5 sources into incoming" for five queued sources. Each source is checked and saved in `incoming/`, so findings go through the same read-and-extract steps as documents you obtained yourself: deduplicated, entity-extracted and cited. A scraped blog post is never confused with a primary document. After the download, choose **Add documents** to fold the findings in, then ask your questions in a fresh conversation.
 
 A few things worth knowing:
 
-- **Interrupted sessions lose nothing.** The queued links are held durably in the vault's internal state, so even a long deep run keeps what it queued if it is cut off. If a session dies before the download runs, `watchdog`, `watchdog chew`, and `watchdog projects status` all warn that sources are queued but not downloaded; re-run `watchdog research` (which offers to download the leftover queue) or run `watchdog research-fetch` to finish.
-- **Already-captured sources are skipped.** Across repeated research on the same investigation, Claude skips sources the vault has already captured — unless you ask it to re-check one for updates.
-- **Page snapshots.** HTML pages are captured as full rendered snapshots — images, styles, client-rendered content — when the optional capture browser is installed, falling back to a sanitized plain fetch otherwise. See the [installation guide](install.md) for the optional install.
-- **Wayback archiving.** Optionally, each downloaded source can also be saved to the Internet Archive's Wayback Machine, with the snapshot URL recorded in the source's provenance record — a citable public copy that survives if the original is later changed or taken down. It is off by default and never blocks a download; the [configuration guide](configuration.md) covers the keys to set.
+- **Interrupted sessions lose nothing.** Queued sources are held in the investigation's internal state. If a session ends before you download, the Web research screen reminds you that sources from an earlier session are queued, with a **Download now** button. Choose **End session** to leave; queued sources stay queued.
+- **Already-captured sources are skipped.** Across repeated research, Claude skips sources the investigation already holds, unless you ask it to re-check one.
+- **Page snapshots.** Web pages are captured as full snapshots (images, styles, client-rendered content) when the optional capture browser is installed, and as sanitized text otherwise. See the [installation guide](install.md).
+- **Wayback archiving.** Optionally, each downloaded source can also be saved to the Internet Archive's Wayback Machine, with the snapshot address recorded in the source's provenance record, so there is a citable copy if the original changes or disappears. It is off by default and never blocks a download. The keys are under **Web archiving** in [Settings](configuration.md#web-archiving).
 
-### Already have the URLs?
+### Already have the links?
 
-If you already have a batch of links — from a spreadsheet, a colleague, or your own browsing — you do not need a research session. Hand them straight to `watchdog research fetch`:
+If you already have a batch of links from a spreadsheet, a colleague or your own browsing, you do not need a research session. Choose **File → Fetch Links…**, paste one address per line (or choose **Use a links file…** for a text file with one per line), and Watchdog downloads them. Each is validated, size-capped and saved into `incoming/` with a provenance record, the same as research sources. Then choose **Add documents** as usual.
 
-```bash
-watchdog research fetch https://example.gov/filing https://news.example/article
-watchdog research fetch links.txt
-```
+For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension can save pages straight into a folder. Point it at your investigation's folder and set the destination folder to `incoming`.
 
-A links file has one URL per line. Each URL is validated, size-capped, and saved into `incoming/` with a provenance sidecar — the same hygiene as research sources — then you chew and ingest as normal.
+## Briefings
 
-For clipping pages as you browse, install the [Obsidian Web Clipper](https://obsidian.md/clipper) browser extension, point it at your investigation vault, and set the destination folder to `incoming`. Any web page — a news article, a company profile, a government announcement — then goes into the ingest pipeline with one click.
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Ingest briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (`hot.md`), **Ingest history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
 
-## Ongoing rhythm
+## Maintenance runs
 
-After the first ingest, the typical loop is:
+**Activity → Maintenance** has a card for each step that **Add documents** runs for you, plus repairs. Reach for them to run one step at a time, to check an extraction before it reaches the investigation, or to fix something that stopped. Each card says what it does, and anything that sends text to a model shows the public-records warning first.
 
-1. **Drop new documents** into `incoming/`
-2. **`watchdog`** from the vault directory — the guided front door: it offers to chew and then ingest whatever is new, confirming before each step
-3. **Read the briefing** — pay particular attention to connections with entities already in the vault
-4. **`/watchdog-surface`** in a fresh Claude Code session, if the new batch was substantial
+| Card | What it does |
+|---|---|
+| **Watch incoming for new files** | Reads files as they land in `incoming/`, starting with any already waiting. Nothing is sent to a model. |
+| **Chew** | Converts every file in `incoming/` to text on your computer, applying OCR to pages that need it, and checks for duplicates. |
+| **Dig** | Extracts facts, entities and dates from each document with a model, and stages the result. **Estimate** and **Compare all models** quote the cost first. |
+| **Bark** | Finishes a batch: merges duplicate entities, flags contradictions, writes entity summaries, reconciles the timeline and writes the briefing. Safe to run again if it stops partway. |
+| **Requeue failed documents** | Moves documents that failed extraction back into the queue so a later Dig tries them again. |
+| **Lead sweep** | Runs the full lead sweep, with no model call. |
+| **Rebuild the timeline** | Regenerates the written timeline from the underlying records. |
+| **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
+| **Usage** | Opens token, cost and timing figures for each run. |
+| **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. |
+| **Release a stuck lock** | An interrupted run can leave a lock that stops the next one starting. This releases a stale one; a recent-looking lock is left alone unless you force it. |
+| **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude Code settings after you update Watchdog. |
 
-Claude Code does not need to be open while you are chewing; the queue accumulates until you are ready to extract. If you would rather run each step yourself instead of `watchdog add` — chewing now and extracting later, say — run `watchdog chew`, `watchdog dig`, and `watchdog bark` directly; running `dig` and `bark` separately (rather than back to back) is also how you compare finalizer models against the same extraction. See the [command reference](commands.md) for all of it. If you are dropping files into a vault over a period of time, `watchdog add --watch` monitors `incoming/` and chews new files automatically as they arrive — press Ctrl+C to stop.
+Running Dig and Bark separately, rather than back to back, is also how you compare finishing models against the same extraction. The **Ingest history** tab beside Maintenance shows what each run added.
 
 ## Managing investigations
 
-Each investigation is a separate vault; create as many as you need. The commands below keep them organized — the [command reference](commands.md) has the full flag-by-flag detail.
+Each investigation is a separate folder; create as many as you need. **All investigations** (the first item when you click the investigation's name at the top of the sidebar) lists them with their document and entity counts and anything that needs attention. The **⋯** menu on each covers:
 
-**Status.** `watchdog projects status shell-company-investigation` shows document and entity counts, pending files in `incoming/`, files awaiting extraction, and the last-updated date. Omit the name to see all investigations.
+- **Rename…**, **Edit description…** and **Move to another folder…**. Renaming and moving are blocked while a run is in progress.
+- **Archive** and **Unarchive.** Archiving hides an investigation from the list and from cross-investigation search without deleting anything.
+- **Show in folder** and **Open in Obsidian**, for the investigation's files on disk.
+- **Ingest history**, which shows what each run added.
+- **Remove from Watchdog…**, which takes it off the list but leaves its files on disk.
+- **Remove and delete files…**, which permanently deletes the folder and its usage records, and asks you to type the investigation's name first. Use Archive instead if you might want it later.
 
-**History.** `watchdog projects log shell-company-investigation` shows the ingest history; `--lines 50` shows the last 50 lines.
-
-**List.** `watchdog projects list` shows every active investigation; `--all` includes archived ones.
-
-**Archive.** When an investigation concludes, `watchdog projects archive shell-company-investigation` hides it from the list without deleting anything. `watchdog projects unarchive` restores it.
-
-**Rename.** `watchdog projects rename shell-company-investigation "Oil Company Investigation"` renames the vault folder and updates the registry and the Obsidian vault entry. Blocked while a chew or ingest is in progress.
-
-**Describe.** `watchdog projects describe shell-company-investigation "One-line summary"` sets or updates the description; omit the text to be prompted.
-
-**Move.** `watchdog projects move shell-company-investigation /Volumes/Archive/Investigations` moves the vault to a new location and updates the registry. If you have already moved the files by hand, it just updates the registry.
-
-**Delete.** `watchdog projects delete shell-company-investigation` removes an investigation from the registry but leaves the vault files on disk. Adding `--purge` also permanently deletes all vault files — it requires explicit confirmation, and it is permanent. Use `archive` instead if you might want the vault later.
-
-**Register.** `watchdog projects register` adds an existing vault folder to the registry; run it from inside the vault directory, or pass the path.
+To bring an existing investigation folder back, choose **Add existing folder…** on the All investigations screen. (**File → Open Investigation…** takes you to that list.) **Settings → Check vaults** looks for investigations whose folder has moved or been deleted, and suggests a fix for each.
 
 ## Trusting what you read
 
-Every extracted fact is either stated — read directly from a document — or inferred, which is marked `(inferred)` in the notes and is a lead to verify, not a finding. When a new document contradicts something already in the vault, the entity note gets a contradiction callout with both sources cited — and the contradiction itself is often newsworthy. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
+Every extracted fact is either stated (read directly from a document) or inferred, which is marked *(inferred)* in the notes and is a lead to verify, not a finding. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
 
 ## Where next
 
-The [command reference](commands.md) documents every command and flag. The [vault guide](vault.md) explains what Watchdog builds on disk and how to read it.
+[The desktop app](app.md) describes every screen. [The vault guide](vault.md) explains what Watchdog builds on disk and how to read it. [Settings](configuration.md) covers models, keys and cost. If you still use the older command line, [its reference](commands.md) remains available.
