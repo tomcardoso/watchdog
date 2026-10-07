@@ -100,7 +100,7 @@ def test_job_streams_log_and_progress(sink, fake_cli, tmp_path):
     job = _wait(started["id"])
     assert job.state == "done" and job.exit_code == 0
     got = api.get(started["id"])
-    texts = [(l["stream"], l["text"]) for l in got["log"]]
+    texts = [(ln["stream"], ln["text"]) for ln in got["log"]]
     assert ("out", "hello") in texts and ("out", "between") in texts and ("err", "oops") in texts
     assert not any(progress.PREFIX.strip() in t for _, t in texts)       # progress stays out of the log
     assert got["progress"]["stage"] == "dig"
@@ -108,8 +108,8 @@ def test_job_streams_log_and_progress(sink, fake_cli, tmp_path):
     names = [e["event"] for e in sink]
     assert names[0] == "job.started" and names[-1] == "job.finished"
     assert names.count("job.progress") == 3
-    logged = [l for e in sink if e["event"] == "job.log" for l in e["data"]["lines"]]
-    assert {l["text"] for l in logged} >= {"hello", "between", "oops"}
+    logged = [ln for e in sink if e["event"] == "job.log" for ln in e["data"]["lines"]]
+    assert {ln["text"] for ln in logged} >= {"hello", "between", "oops"}
     assert sink[-1]["data"]["job"]["state"] == "done"
     assert any(j["id"] == started["id"] for j in api.list_jobs())
 
@@ -126,7 +126,7 @@ def test_env_and_cwd(sink, fake_cli, tmp_path):
               "os.environ['WATCHDOG_PROGRESS'], os.environ['PYTHONIOENCODING']); "
               "print(repr(sys.stdin.read()))")
     job = _wait(api.start(vault=str(tmp_path), args=[script], label="env")["id"])
-    out = [l["text"] for l in job.log]
+    out = [ln["text"] for ln in job.log]
     assert out[0] == str(tmp_path.resolve()) or out[0] == str(tmp_path)
     assert out[1] == "1 1 utf-8" and out[2] == "''"                       # stdin is closed
 
@@ -150,7 +150,7 @@ def test_cancel_sends_sigint_then_kills(sink, fake_cli):
     api.cancel(started["id"])
     job = _wait(started["id"])
     assert job.state == "cancelled" and job.exit_code == 130
-    assert "stopping gracefully" in [l["text"] for l in job.log]
+    assert "stopping gracefully" in [ln["text"] for ln in job.log]
 
     stubborn = ("import signal,time\nsignal.signal(signal.SIGINT, signal.SIG_IGN)\n"
                 "print('ready', flush=True)\ntime.sleep(30)")
@@ -174,7 +174,7 @@ def test_log_is_a_ring_buffer(sink, fake_cli):
 
 
 def test_log_events_are_batched(sink, fake_cli):
-    job = _wait(api.start(args=["for i in range(2000): print(i)"], label="batch")["id"])
+    _wait(api.start(args=["for i in range(2000): print(i)"], label="batch")["id"])
     batches = [e for e in sink if e["event"] == "job.log"]
     assert 0 < len(batches) < 200
     assert sum(len(e["data"]["lines"]) for e in batches) == 2000
