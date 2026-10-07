@@ -1,0 +1,121 @@
+/* Design tokens. Every colour, radius, shadow and type size in the app comes from here, so the
+   light and dark themes are each one block. Components never use raw hex values. */
+
+:root {
+  --font-ui: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-read: 'Source Serif 4 Variable', 'Iowan Old Style', Georgia, serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --fs-xs: 11px;
+  --fs-sm: 12.5px;
+  --fs-md: 13.5px;
+  --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-2xl: 23px;
+  --fs-3xl: 30px;
+  --fs-read: 16.5px;
+
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+  --r-full: 999px;
+
+  --sidebar-w: 236px;
+  --topbar-h: 52px;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur: 160ms;
+}
+
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f7f5f0;
+  --bg-sidebar: #efebe3;
+  --surface: #ffffff;
+  --surface-2: #fbfaf7;
+  --surface-sunken: #f2efe9;
+  --hover: rgba(60, 45, 20, 0.055);
+  --active: rgba(60, 45, 20, 0.09);
+  --border: #e5e0d6;
+  --border-strong: #d4cdbf;
+  --text: #1c1a17;
+  --text-2: #57524a;
+  --text-3: #8b857a;
+  --text-inverse: #ffffff;
+
+  --accent: #c4471a;
+  --accent-hover: #a93b13;
+  --accent-soft: #fbe8de;
+  --accent-text: #a23912;
+  --focus-ring: 0 0 0 3px rgba(196, 71, 26, 0.28);
+
+  --success: #2e7a4e;
+  --success-soft: #e2f0e7;
+  --warning: #a86c12;
+  --warning-soft: #faeed6;
+  --danger: #bd3627;
+  --danger-soft: #f8e1dd;
+  --info: #2a62a8;
+  --info-soft: #e1eaf6;
+
+  --person: #2e66c4;
+  --organization: #7347bd;
+  --public-body: #0d837f;
+  --place: #2d8549;
+  --asset: #b4740b;
+  --proceeding: #bb3d29;
+
+  --shadow-sm: 0 1px 2px rgba(40, 30, 10, 0.06);
+  --shadow-md: 0 2px 6px rgba(40, 30, 10, 0.06), 0 8px 24px rgba(40, 30, 10, 0.06);
+  --shadow-lg: 0 12px 48px rgba(30, 20, 5, 0.16), 0 2px 8px rgba(30, 20, 5, 0.08);
+  --scrim: rgba(28, 24, 18, 0.32);
+  --paper: #ffffff;
+  --highlight: rgba(255, 196, 0, 0.38);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #141312;
+  --bg-sidebar: #191816;
+  --surface: #1d1c1a;
+  --surface-2: #22201d;
+  --surface-sunken: #171614;
+  --hover: rgba(255, 245, 225, 0.05);
+  --active: rgba(255, 245, 225, 0.09);
+  --border: #2d2a26;
+  --border-strong: #3d3933;
+  --text: #ece8e0;
+  --text-2: #b2aca1;
+  --text-3: #7d776d;
+  --text-inverse: #141312;
+
+  --accent: #ee6c3a;
+  --accent-hover: #ff8250;
+  --accent-soft: rgba(238, 108, 58, 0.14);
+  --accent-text: #ff9365;
+  --focus-ring: 0 0 0 3px rgba(238, 108, 58, 0.35);
+
+  --success: #5cba84;
+  --success-soft: rgba(92, 186, 132, 0.13);
+  --warning: #e0a446;
+  --warning-soft: rgba(224, 164, 70, 0.14);
+  --danger: #ef6b5b;
+  --danger-soft: rgba(239, 107, 91, 0.14);
+  --info: #6aa4ee;
+  --info-soft: rgba(106, 164, 238, 0.14);
+
+  --person: #6b9ff0;
+  --organization: #a688e8;
+  --public-body: #3fc0b9;
+  --place: #63bf7f;
+  --asset: #e3a445;
+  --proceeding: #ee7a64;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 16px 56px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+  --scrim: rgba(0, 0, 0, 0.5);
+  --paper: #f4f1ea;
+  --highlight: rgba(255, 190, 40, 0.3);
+}

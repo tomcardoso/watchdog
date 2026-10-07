@@ -1,0 +1,525 @@
+// TypeScript mirror of gui/API.md — the contract with `python -m watchdog.gui.server`.
+// Keep the two in step: a shape changed in one is changed in the other.
+
+export type EntityType = 'person' | 'organization' | 'public-body' | 'place' | 'asset' | 'proceeding'
+export const ENTITY_TYPES: EntityType[] = ['person', 'organization', 'public-body', 'place', 'asset', 'proceeding']
+
+// ── app ──────────────────────────────────────────────────────────────────────
+export interface AppInfo {
+  version: string
+  python: string
+  python_version: string
+  platform: string
+  watchdog_home: string
+  config_file: string
+  setup_complete: boolean
+  projects_dir: string | null
+  claude_code: { installed: boolean; logged_in: boolean }
+  obsidian_installed: boolean
+}
+
+// ── projects ─────────────────────────────────────────────────────────────────
+export interface ProjectStats {
+  documents: number
+  entities: number
+  last_ingest: string | null
+  incoming: number
+  awaiting: number
+  failed: number
+}
+export interface Project {
+  slug: string
+  name: string
+  description: string | null
+  path: string
+  archived: boolean
+  created: string | null
+  health: string | null
+  stats: ProjectStats
+}
+export interface ProjectStatus {
+  project: Project
+  by_type: Record<string, number>
+  documents_by_type: Record<string, number>
+  locks: { chew: boolean; ingest: boolean }
+  pending_finalization: { docs: number; entities: number } | null
+  size_bytes: number
+}
+export interface DoctorIssue { slug: string; name: string; path: string; problem: string; suggestion: string }
+
+// ── vault ────────────────────────────────────────────────────────────────────
+export interface DocumentRow {
+  sha: string
+  filename: string
+  title: string | null
+  document_type: string | null
+  date_of_document: string | null
+  page_count: number | null
+  record_skill: string | null
+  ingested_at: string | null
+  near_duplicate_of: string | null
+  note: string | null
+  original: string | null
+  fulltext: string | null
+  ext: string
+  entity_count: number
+  source: string | null
+  obtained: string | null
+  summary: string | null
+}
+
+export interface EntityRef { id: string; name: string; type: EntityType | string }
+
+export interface EntityRow {
+  id: string
+  name: string
+  type: EntityType | string
+  aliases: string[]
+  doc_count: number
+  role_count: number
+  contradiction_count: number
+  first_seen: string | null
+  last_updated: string | null
+  note: string | null
+  has_summary: boolean
+  summary: string | null
+}
+
+export interface Summary {
+  name: string
+  path: string
+  briefing: { path: string; name: string; date: string | null } | null
+  headline: string | null
+  contradictions: number
+  leads: number
+  near_duplicates: number
+  alerts: number
+  incoming: number
+  awaiting_dig: number
+  awaiting_bark: number
+  pending_finalize: boolean
+  failed: number
+  research_urls: number
+  context_unseeded: boolean
+  has_work: boolean
+  totals: { documents: number; entities: number; pages: number; events: number }
+  recent_documents: DocumentRow[]
+  top_entities: EntityRow[]
+}
+
+export interface Fact {
+  fact: string
+  page: number | null
+  basis: 'stated' | 'inferred' | string
+  date: string | null
+  quote: string | null
+  entities: EntityRef[]
+  figure_note: string | null
+  added_by: string | null
+}
+
+export interface DocumentDetail extends DocumentRow {
+  frontmatter: Record<string, unknown>
+  body: string
+  facts: Fact[]
+  entities: (EntityRef & { role: string | null })[]
+  pages: { page: number; text: string }[]
+  file_metadata: Record<string, unknown>
+  sidecar: Record<string, unknown> | null
+  metadata: Record<string, unknown> | null
+  extract_model: string | null
+  extract_effort: string | null
+  record_skill_hash: string | null
+  duplicates: { sha: string; filename: string; note: string | null }[]
+}
+
+export interface TimelineEvent {
+  date: string
+  precision: 'day' | 'month' | 'year' | null
+  text: string
+  entities: EntityRef[]
+  sha: string | null
+  filename: string | null
+  page: number | null
+  note: string | null
+}
+
+export interface Relationship {
+  role: string
+  target_id: string
+  target_name: string | null
+  target_type: string | null
+  direction: 'out' | 'in'
+  docs: string[]
+}
+
+export interface EntityDetail extends EntityRow {
+  frontmatter: Record<string, unknown>
+  body: string
+  sections: {
+    summary: string | null
+    analysis: string | null
+    contradictions: string | null
+    timeline: string | null
+    relationships: string | null
+    notes: string | null
+  }
+  documents: DocumentRow[]
+  relationships: Relationship[]
+  contradictions: { rid: string; summary: string; text: string; resolved: boolean }[]
+  timeline: TimelineEvent[]
+}
+
+export interface GraphData {
+  nodes: { id: string; name: string; type: string; doc_count: number }[]
+  edges: { source: string; target: string; role: string; docs: string[] }[]
+}
+
+export type NoteKind = 'entity' | 'document' | 'briefing' | 'query' | 'wiki' | 'other'
+export interface Note {
+  path: string
+  exists: boolean
+  frontmatter: Record<string, unknown>
+  body: string
+  title: string | null
+  kind: NoteKind
+}
+
+export interface ResolvedLink { path: string | null; kind: string; sha: string | null; page: number | null }
+
+export interface PipelineState {
+  incoming: { name: string; path: string; size: number; modified: string; sidecar: boolean }[]
+  chew_failed: { name: string; path: string; size: number }[]
+  skipped: { name: string; path: string; size: number; reason: string | null }[]
+  queued: { sha: string; filename: string; page_count: number | null; est_tokens: number | null; staged: boolean }[]
+  failed: { sha: string; filename: string; reason: string | null }[]
+  pending_finalization: { docs: number; entities: number } | null
+  locks: { chew: boolean; ingest: boolean }
+  research_urls: number
+  batch_pending: Record<string, unknown> | null
+}
+
+export interface BriefingRow {
+  path: string
+  name: string
+  kind: 'briefing' | 'leads' | 'alerts' | 'research'
+  date: string | null
+  title: string | null
+}
+
+export interface DocumentRequest { rid: string; what: string; why: string | null; likely_source: string | null; cited_in: string[] }
+
+// ── ingest ───────────────────────────────────────────────────────────────────
+export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export interface RunOptions {
+  extractor_model?: string
+  classifier_model?: string
+  finalizer_model?: string
+  finalizer_reconciliation_model?: string
+  finalizer_synthesis_model?: string
+  finalizer_timeline_model?: string
+  finalizer_briefing_model?: string
+  extractor_effort?: Effort
+  classifier_effort?: Effort
+  finalizer_effort?: Effort
+  concurrency?: number
+  classify_pages?: number
+  skill?: string
+  limit?: number
+  verify?: boolean | null
+  force?: boolean
+  wait?: boolean
+  skip_briefing?: boolean
+  chew_workers?: number
+  chunk_workers?: number
+}
+
+export interface Preflight {
+  documents_to_send: number
+  incoming: number
+  queued: number
+  staged: number
+  failed: number
+  pending_finalization: { docs: number; entities: number } | null
+  auth: { mode: 'subscription' | 'api-key' | 'none' | null; ok: boolean; reason: string | null }
+  models: { stage: string; backend: string | null; model: string; effort: string | null; label: string }[]
+  auto_approve: { enabled: boolean; approve: boolean; blocker: string | null }
+  warning_text: string
+}
+
+export interface Estimate {
+  text: string
+  estimate: Record<string, unknown> | null
+  all_models: { label: string; provider: string; cost_usd: number; note: string | null }[] | null
+}
+
+// ── jobs ─────────────────────────────────────────────────────────────────────
+export type JobState = 'running' | 'done' | 'failed' | 'cancelled'
+export interface DocProgress { filename: string; state: string; detail: string | null }
+export interface ProgressState {
+  stage: string | null
+  done: number | null
+  total: number | null
+  current: string | null
+  docs: Record<string, DocProgress>
+}
+export interface Job {
+  id: string
+  label: string
+  kind: string
+  vault: string | null
+  args: string[]
+  state: JobState
+  exit_code: number | null
+  started: string
+  finished: string | null
+  progress: ProgressState
+}
+export interface LogLine { t: string; stream: 'out' | 'err'; text: string }
+export interface ActionResult { code: number; stdout: string; stderr: string }
+
+// ── search ───────────────────────────────────────────────────────────────────
+export interface SearchPassage { filename: string; page: number | null; text: string; score: number; sha?: string | null; note?: string | null; original?: string | null }
+export interface SearchNote { note_path: string; preview: string; score: number }
+export interface SearchExact { kind: string; title: string | null; path: string | null; page: number | null; text: string; sha?: string | null; note?: string | null; original?: string | null }
+export interface SearchResult {
+  query: string
+  index_empty: boolean
+  exact_error: string | null
+  exact: SearchExact[]
+  passages: SearchPassage[]
+  notes: SearchNote[]
+}
+export interface BatchResult {
+  terms: { term: string; checked: boolean; hits: { vault_name?: string; kind: string; title: string | null; note: string | null; page: number | null; text: string }[] }[]
+}
+export interface EverywhereResult {
+  vaults: { slug: string; name: string; path: string; entity_hits: { id: string; name: string; type: string; note: string | null }[]; exact: SearchExact[] }[]
+  skipped: { slug: string; reason: string }[]
+}
+
+// ── review ───────────────────────────────────────────────────────────────────
+export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates'
+export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates']
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null }
+
+// ── settings ─────────────────────────────────────────────────────────────────
+export type SettingKind = 'bool' | 'int' | 'float' | 'choice' | 'model' | 'effort' | 'path' | 'text' | 'secret'
+export interface SettingKey {
+  key: string
+  short: string
+  help: string
+  default: unknown
+  current: unknown
+  display: string
+  kind: SettingKind
+  choices: string[] | null
+}
+export interface SettingsSchema { sections: { title: string; blurb: string; keys: SettingKey[] }[] }
+export interface ModelChoice {
+  value: string
+  label: string
+  provider: string
+  backend: string | null
+  input_per_mtok: number | null
+  output_per_mtok: number | null
+  context_window: number | null
+  efforts: string[]
+  notes: string | null
+}
+export interface AuthStatus {
+  claude: { mode: string; logged_in: boolean; reason: string | null }
+  stages: { stage: string; value: string; provider: string; ready: boolean; billing: string | null }[]
+  keys: { provider: string; masked: string; in_use: string; source: 'stored' | 'env' }[]
+}
+export interface SkillInfo { name: string; description: string; source: 'package' | 'user' }
+export interface SetupCheck {
+  deps: { label: string; ok: boolean; hint: string | null }[]
+  playwright: boolean
+  gliner_model: boolean
+  projects_dir: string | null
+  config_exists: boolean
+}
+
+// ── usage ────────────────────────────────────────────────────────────────────
+export interface UsageRunRow {
+  ts: string
+  file: string
+  calls: number
+  input_tokens: number
+  output_tokens: number
+  cost_usd: number
+  backends: string
+  subscription: boolean
+  stages: string[] | Record<string, unknown>
+}
+export interface UsageRun {
+  ts: string
+  stages: { stage: string; model: string; backend: string; calls: Record<string, unknown>[]; totals: Record<string, number>; wall_seconds: number | null }[]
+  totals: Record<string, number>
+  subscription_note: string | null
+}
+
+// ── research ─────────────────────────────────────────────────────────────────
+export interface ResearchStatus {
+  queued: { url: string; title: string | null; source_type: string | null; relevance: string | null }[]
+  wayback_configured: boolean
+}
+
+// ── chat ─────────────────────────────────────────────────────────────────────
+export type ChatMode = 'ask' | 'context' | 'research'
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'tool' | 'system'
+  text: string
+  tool?: { name: string; input: unknown; result: string | null; is_error: boolean }
+  ts: string
+}
+export interface ChatSessionRow { session: string; mode: ChatMode; title: string; started: string; updated: string; model: string | null }
+
+// ── the method table: name → [params, result] ────────────────────────────────
+export interface Methods {
+  'app.ping': [Record<string, never>, { ok: boolean }]
+  'app.info': [Record<string, never>, AppInfo]
+
+  'projects.list': [{ all?: boolean }, Project[]]
+  'projects.get': [{ slug: string }, Project]
+  'projects.forPath': [{ path: string }, Project | null]
+  'projects.status': [{ slug: string }, ProjectStatus]
+  'projects.log': [{ slug: string; lines?: number }, { lines: string[] }]
+  'projects.doctor': [Record<string, never>, { issues: DoctorIssue[] }]
+
+  'vault.summary': [{ vault: string }, Summary]
+  'vault.documents': [{ vault: string }, DocumentRow[]]
+  'vault.document': [{ vault: string; sha: string }, DocumentDetail]
+  'vault.entities': [{ vault: string }, EntityRow[]]
+  'vault.entity': [{ vault: string; id: string }, EntityDetail]
+  'vault.graph': [{ vault: string }, GraphData]
+  'vault.timeline': [{ vault: string }, { events: TimelineEvent[] }]
+  'vault.note': [{ vault: string; path: string }, Note]
+  'vault.saveNotes': [{ vault: string; path: string; text: string }, { ok: boolean }]
+  'vault.resolveLink': [{ vault: string; target: string }, ResolvedLink]
+  'vault.pipeline': [{ vault: string }, PipelineState]
+  'vault.briefings': [{ vault: string }, BriefingRow[]]
+  'vault.readFile': [{ vault: string; path: string }, { text: string; exists: boolean }]
+  'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
+  'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
+  'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
+
+  'ingest.preflight': [{ vault: string; options?: RunOptions }, Preflight]
+  'ingest.estimate': [{ vault: string; stage: 'dig' | 'bark'; all_models?: boolean; options?: RunOptions }, Estimate]
+
+  'jobs.start': [{ vault: string | null; args: string[]; label: string; kind?: string }, Job]
+  'jobs.cancel': [{ id: string }, { ok: boolean }]
+  'jobs.list': [Record<string, never>, Job[]]
+  'jobs.get': [{ id: string }, Job & { log: LogLine[] }]
+  'jobs.flags': [{ command: 'add' | 'dig' | 'bark' | 'chew'; options: RunOptions }, { args: string[] }]
+  'action.run': [{ vault: string | null; args: string[]; timeout?: number }, ActionResult]
+
+  'search.query': [{ vault: string; query: string; top?: number; threshold?: number | null; rerank?: boolean }, SearchResult]
+  'search.batch': [{ vault: string | null; terms: string[]; everywhere?: boolean }, BatchResult]
+  'search.everywhere': [{ query: string; top?: number }, EverywhereResult]
+  'search.status': [{ vault: string }, { total: number; documents: number; notes: number }]
+
+  'review.items': [{ vault: string; kinds?: ReviewKind[] }, { items: ReviewItem[]; counts: Record<ReviewKind, number> }]
+  'review.resolve': [{ vault: string; rids: string[] }, { resolved: string[] }]
+  'review.unresolve': [{ vault: string; rids: string[] }, { unresolved: string[] }]
+  'review.resolved': [{ vault: string }, { items: { rid: string; label: string; resolved_at: string; kind: string }[] }]
+  'review.sync': [{ vault: string }, { resolved: string[]; unresolved: string[] }]
+  'review.leads': [{ vault: string }, Record<string, unknown>]
+  'review.watchlist': [{ vault: string }, { terms: string[]; text: string }]
+  'review.mergePreview': [{ vault: string; keep: string; merge: string }, { keep: EntityRow; merge: EntityRow; both_have_summary: boolean }]
+
+  'settings.schema': [Record<string, never>, SettingsSchema]
+  'settings.set': [{ key: string; value: string }, { key: string; value: unknown; display: string }]
+  'settings.models': [Record<string, never>, { models: ModelChoice[]; efforts: string[] }]
+  'auth.status': [Record<string, never>, AuthStatus]
+  'auth.setAnthropicMode': [{ mode: 'subscription' | 'api-key'; key?: string }, AuthStatus]
+  'auth.setKey': [{ provider: string; key: string }, AuthStatus]
+  'auth.deleteKey': [{ provider: string }, AuthStatus]
+  'auth.setBaseUrl': [{ provider: 'local' | 'openrouter'; url: string }, AuthStatus]
+  'skills.list': [Record<string, never>, { skills: SkillInfo[]; user_dir: string }]
+  'skills.read': [{ name: string }, { name: string; text: string }]
+  'setup.check': [Record<string, never>, SetupCheck]
+
+  'usage.runs': [{ vault: string }, { runs: UsageRunRow[]; corpus: { documents: number; pages: number } | null }]
+  'usage.run': [{ vault: string; ts?: string }, UsageRun]
+
+  'research.status': [{ vault: string }, ResearchStatus]
+
+  'chat.start': [{ vault: string; mode: ChatMode; model?: string | null; prompt?: string }, { session: string }]
+  'chat.send': [{ session: string; text: string }, { ok: boolean }]
+  'chat.interrupt': [{ session: string }, { ok: boolean }]
+  'chat.close': [{ session: string }, { ok: boolean; research_queued: number }]
+  'chat.permission': [{ session: string; request_id: string; allow: boolean; always?: boolean }, { ok: boolean }]
+  'chat.list': [{ vault: string }, ChatSessionRow[]]
+  'chat.get': [{ session: string }, { session: string; mode: ChatMode; title: string; messages: ChatMessage[] }]
+  'chat.resume': [{ session: string }, { session: string }]
+  'chat.delete': [{ session: string }, { ok: boolean }]
+}
+export type MethodName = keyof Methods
+export type Params<M extends MethodName> = Methods[M][0]
+export type Result<M extends MethodName> = Methods[M][1]
+
+// ── events (server → app, plus a few from the Electron main process) ─────────
+export interface Events {
+  'server.ready': { protocol: number; pid: number; methods: string[] }
+  'backend.status': BackendStatus
+  'job.started': { job: Job }
+  'job.log': { id: string; lines: LogLine[] }
+  'job.progress': { id: string; progress: ProgressState; event: Record<string, unknown> }
+  'job.finished': { job: Job }
+  'chat.delta': { session: string; message_id: string; text: string }
+  'chat.message': { session: string; message: ChatMessage }
+  'chat.permission': { session: string; request_id: string; tool: string; input: unknown; description: string | null }
+  'chat.status': { session: string; state: 'thinking' | 'idle' | 'closed' | 'error'; detail: string | null; cost_usd: number | null }
+  'menu.command': { command: string }
+  'files.dropped': { paths: string[] }
+}
+export type EventName = keyof Events
+
+export interface BackendStatus {
+  state: 'starting' | 'ready' | 'error' | 'stopped'
+  python: string | null
+  source: string | null // where the python was found: env | settings | pipx | path | dev
+  message: string | null
+  stderrTail: string[]
+}
+
+// ── the bridge exposed on window.watchdog by the preload script ──────────────
+export interface WatchdogBridge {
+  rpc<M extends MethodName>(method: M, params?: Params<M>): Promise<Result<M>>
+  on<E extends EventName>(event: E, cb: (data: Events[E]) => void): () => void
+  backend: {
+    status(): Promise<BackendStatus>
+    restart(): Promise<BackendStatus>
+    choosePython(): Promise<BackendStatus>
+  }
+  dialog: {
+    openFiles(opts?: { title?: string; folders?: boolean; multi?: boolean }): Promise<string[]>
+    openFolder(opts?: { title?: string }): Promise<string | null>
+    saveFile(opts?: { title?: string; defaultPath?: string }): Promise<string | null>
+    confirm(opts: { title: string; message: string; detail?: string; confirm: string; destructive?: boolean }): Promise<boolean>
+  }
+  shell: {
+    openPath(path: string): Promise<string>
+    showItemInFolder(path: string): void
+    openExternal(url: string): Promise<void>
+    openInObsidian(vault: string, note?: string): Promise<boolean>
+    openTerminal(cwd: string, args: string[]): Promise<boolean>
+  }
+  files: {
+    pathForFile(file: File): string
+    url(absPath: string): string
+  }
+  thumbs: {
+    get(key: string): Promise<string | null> // data URL or null
+    put(key: string, dataUrl: string): Promise<void>
+  }
+  prefs: {
+    get<T = unknown>(key: string): Promise<T | null>
+    set(key: string, value: unknown): Promise<void>
+  }
+  notify(title: string, body: string): void
+  platform: string
+}
