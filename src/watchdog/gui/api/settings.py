@@ -10,6 +10,7 @@ auto-tune helpers. Secrets never travel back to the app: a stored key is returne
 from __future__ import annotations
 
 import os
+import re
 import shutil
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -71,8 +72,8 @@ def _setting(key: str, meta: dict, config: dict) -> dict:
     choices = meta.get("choices") if kind in ("choice", "effort") else None
     return {
         "key": key,
-        "short": meta.get("short") or "",
-        "help": _help(meta),
+        "short": app_text(meta.get("short") or ""),
+        "help": app_text(_help(meta)),
         "default": meta.get("default"),
         "current": None if kind == "secret" else value,
         "display": _display(key, value, config),
@@ -80,6 +81,55 @@ def _setting(key: str, meta: dict, config: dict) -> dict:
         "choices": list(choices) if choices else None,
         "is_set": value is not None and value != "",
     }
+
+
+# The settings' help text is shared with the command line, which names commands. The app shows it
+# with those references put in app terms, and with sentences that only make sense in a terminal
+# (one-run overrides, setup commands) left out.
+_APP_TERMS = [
+    (re.compile(r"`watchdog search`"), "Search"),
+    (re.compile(r"`watchdog research`"), "Web research"),
+    (re.compile(r"`watchdog new`"), "Watchdog"),
+    (re.compile(r"\(see `watchdog settings skills`\)"), "(see Settings → Record skills)"),
+    (re.compile(r"run `watchdog reindex`"), "rebuild the search index under Activity → Maintenance"),
+    (re.compile(r"`watchdog setup`/`watchdog settings auth` set this"), "Watchdog sets this"),
+    (re.compile(r"Pre-downloaded by `watchdog setup`"), "Downloaded during setup"),
+    (re.compile(r"— and restore it to 20"), "— and restores it to 20"),
+    (re.compile(r"Each vault's own usage files, which `watchdog usage` reads,"),
+     "Each investigation's own usage files, which Activity → Usage reads,"),
+]
+_TERMINAL_ONLY = re.compile(r"`?watchdog [a-z-]+|--[a-z]")
+
+
+def app_text(text: str | None) -> str | None:
+    if not text:
+        return text
+    for pattern, repl in _APP_TERMS:
+        text = pattern.sub(repl, text)
+    # The text is hard-wrapped for a terminal: rejoin wrapped prose so a sentence can be judged
+    # whole, keeping column-aligned lines (lists of models) as they are.
+    out: list[str] = []
+    prose: list[str] = []
+
+    def flush():
+        if prose:
+            sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z`(])", " ".join(prose))
+            kept = " ".join(x for x in sentences if not _TERMINAL_ONLY.search(x))
+            if kept:
+                out.append(kept)
+            prose.clear()
+
+    for line in text.split("\n"):
+        if not line.strip():
+            flush()
+            out.append("")
+        elif re.search(r"\S {2,}\S", line):
+            flush()
+            out.append(line)
+        else:
+            prose.append(line.strip())
+    flush()
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(out)).strip()
 
 
 @method("settings.schema")
