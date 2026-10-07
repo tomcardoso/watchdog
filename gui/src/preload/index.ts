@@ -64,8 +64,7 @@ const bridge: WatchdogBridge = {
     openPath: (p) => ipcRenderer.invoke('shell:openPath', p),
     showItemInFolder: (p) => ipcRenderer.send('shell:showItemInFolder', p),
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
-    openInObsidian: (vault, note) => ipcRenderer.invoke('shell:openInObsidian', vault, note),
-    openTerminal: (cwd, args) => ipcRenderer.invoke('shell:openTerminal', cwd, args)
+    openInObsidian: (vault, note) => ipcRenderer.invoke('shell:openInObsidian', vault, note)
   },
   files: {
     pathForFile: (file) => webUtils.getPathForFile(file),

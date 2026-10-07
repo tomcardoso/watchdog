@@ -4,12 +4,11 @@ import { BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPref, setPref } from './prefs'
-import { PythonBackend, RpcError, bundledSource } from './python'
+import { PythonBackend, RpcError } from './python'
 import { Engine } from './engine'
 import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
 import { getThumb, putThumb } from './thumbs'
-import { openTerminal } from './terminal'
 
 export function registerIpc(backend: PythonBackend, engine: Engine, claude: ClaudeSignIn, getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('rpc', async (_e, method: string, params: unknown) => {
@@ -106,9 +105,6 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
       return false
     }
   })
-  ipcMain.handle('shell:openTerminal', (_e, cwd: string, args: string[]) =>
-    openTerminal(cwd, args, backend.status.python, bundledSource())
-  )
 
   ipcMain.handle('thumbs:get', (_e, key: string) => getThumb(key))
   ipcMain.handle('thumbs:put', (_e, key: string, dataUrl: string) => putThumb(key, dataUrl))

@@ -243,6 +243,7 @@ export class Engine {
       usingExternal: this.externalPython,
       forceOnboarding: this.env.WATCHDOG_FORCE_ONBOARDING ?? null,
       simulated: !!this.simulate,
+      setupConfigExists: existsSync(join(homedir(), '.watchdog', 'config.json')),
       run: { id: this.runId, state: this.state, steps: this.steps, log: this.log.slice(-400), error: this.error }
     }
   }
