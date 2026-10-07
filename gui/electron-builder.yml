@@ -39,3 +39,5 @@ linux:
     - deb
   category: Office
   maintainer: Tom Cardoso
+# No auto-update feed yet: installers are built locally, not published.
+publish: null
