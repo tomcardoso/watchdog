@@ -2,6 +2,8 @@
 // renderer, which owns navigation and dialogs.
 
 import { BrowserWindow, Menu, MenuItemConstructorOptions, app, shell } from 'electron'
+import log from 'electron-log/main'
+import { checkForUpdatesFromMenu } from './updater'
 
 export function buildMenu(getWindow: () => BrowserWindow | null): void {
   const send = (command: string) => () => getWindow()?.webContents.send('event', 'menu.command', { command })
@@ -12,6 +14,7 @@ export function buildMenu(getWindow: () => BrowserWindow | null): void {
           label: app.name,
           submenu: [
             { role: 'about' },
+            { label: 'Check for Updates…', click: () => checkForUpdatesFromMenu() },
             { type: 'separator' },
             { label: 'Settings…', accelerator: 'Cmd+,', click: send('settings') },
             { type: 'separator' },
@@ -69,7 +72,13 @@ export function buildMenu(getWindow: () => BrowserWindow | null): void {
       role: 'help',
       submenu: [
         { label: 'Watchdog Documentation', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/tree/main/docs') },
-        { label: 'Report an Issue', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/issues') }
+        { label: 'Report an Issue', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/issues') },
+        { label: 'Show Log File', click: () => shell.showItemInFolder(log.transports.file.getFile().path) },
+        ...(isMac ? [] : [
+          { type: 'separator' } as MenuItemConstructorOptions,
+          { label: 'Check for Updates…', click: () => checkForUpdatesFromMenu() },
+          { role: 'about' } as MenuItemConstructorOptions
+        ])
       ]
     }
   ]

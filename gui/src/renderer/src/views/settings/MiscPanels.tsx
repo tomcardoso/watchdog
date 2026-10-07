@@ -87,7 +87,7 @@ export function AppearancePanel() {
         <dl className="kv" style={{ padding: '4px 18px 8px' }}>
           <dt>Python</dt><dd className="mono selectable">{i?.python ?? be?.python ?? '—'}</dd>
           <dt>Version</dt><dd>{i?.python_version ?? '—'}</dd>
-          <dt>Found through</dt><dd>{be?.source ? { env: 'WATCHDOG_PYTHON', settings: 'your choice in this app', managed: 'Watchdog’s own engine', pipx: 'pipx install', path: 'the system path', dev: 'development checkout' }[be.source] ?? be.source : '—'}</dd>
+          <dt>Found through</dt><dd>{be?.source ? { env: 'WATCHDOG_PYTHON', settings: 'your choice in this app', managed: 'Watchdog’s own engine', pipx: 'a separate Watchdog installation', path: 'the system path', dev: 'development checkout' }[be.source] ?? be.source : '—'}</dd>
           <dt>Platform</dt><dd>{i?.platform ?? '—'}</dd>
           <dt>Settings file</dt><dd className="mono selectable">{i?.config_file ?? '—'}</dd>
           <dt>Data folder</dt><dd className="mono selectable">{i?.watchdog_home ?? '—'}</dd>

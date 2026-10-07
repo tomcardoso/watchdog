@@ -42,7 +42,6 @@ function StateBadge({ job }: { job: Job }) {
   return <Badge tone="danger" icon={XCircle}>Failed</Badge>
 }
 
-const quote = (a: string) => (/[\s"'$]/.test(a) ? JSON.stringify(a) : a)
 
 function LogView({ job }: { job: Job & { log: LogLine[] } }) {
   const ref = useRef<HTMLDivElement>(null)
@@ -110,7 +109,7 @@ function JobDetail({ job }: { job: Job & { log: LogLine[] } }) {
       const ok = await window.watchdog.dialog.confirm({
         title: 'Stop immediately?',
         message: 'This ends the process without letting it save.',
-        detail: 'Documents already finished are kept; the one in progress stays queued and starts again next time. A lock may be left behind — Maintenance › Release a stuck lock clears it.',
+        detail: 'Documents already finished are kept; the one in progress stays queued and starts again next time. A lock may be left behind; Activity → Maintenance → Release a stuck lock clears it.',
         confirm: 'Stop immediately',
         destructive: true
       })
@@ -141,10 +140,6 @@ function JobDetail({ job }: { job: Job & { log: LogLine[] } }) {
         <div className="row" style={{ gap: 10 }}>
           <h2 className="act-detail-title grow truncate">{job.label}</h2>
           <StateBadge job={job} />
-        </div>
-        <div className="act-cmd mono selectable">
-          <Terminal />
-          <span className="truncate">watchdog {job.args.map(quote).join(' ')}</span>
         </div>
         <div className="act-meta">
           <span>Started {fmtDateTime(job.started)}</span>
@@ -188,7 +183,7 @@ function JobDetail({ job }: { job: Job & { log: LogLine[] } }) {
         </div>
         {running && stopCount > 0 && (
           <div className="act-note">
-            Stop sends Ctrl+C, so Watchdog finishes the document it is on, saves its place and exits. Pressing Stop again ends it immediately; finished work is kept and the rest stays queued.
+            Stop asks Watchdog to finish the document it is on, save its place and stop. Pressing Stop again ends it immediately; finished work is kept and the rest stays queued.
           </div>
         )}
       </div>

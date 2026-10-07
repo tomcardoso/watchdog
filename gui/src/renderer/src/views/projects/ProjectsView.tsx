@@ -407,7 +407,7 @@ async function deleteProject(p: Project, purge: boolean): Promise<void> {
   const args = ['projects', 'delete', p.slug, '--yes', ...(purge ? ['--purge'] : [])]
   await runAction(args)
   const left = await call('projects.list', { all: true })
-  if (left.some((x) => x.slug === p.slug)) throw new Error('The command did not remove the investigation. Nothing was deleted.')
+  if (left.some((x) => x.slug === p.slug)) throw new Error('Watchdog did not remove the investigation. Nothing was deleted.')
 }
 
 function RemoveDialog({ p, purge, onClose }: { p: Project; purge: boolean; onClose: () => void }) {

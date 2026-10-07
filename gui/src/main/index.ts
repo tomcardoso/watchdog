@@ -11,9 +11,19 @@ import { ClaudeSignIn } from './claude'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { loadRoots, registerIpc } from './ipc'
+import { registerUpdater } from './updater'
 
 registerSchemePrivileges()
 app.setName('Watchdog')
+
+// One copy of the app at a time: two would run two backends over the same investigations and race
+// on the same files. A second launch focuses the window that's already open.
+if (!app.requestSingleInstanceLock()) app.quit()
+app.on('second-instance', () => {
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+})
 
 let win: BrowserWindow | null = null
 
@@ -66,7 +76,8 @@ async function createWindow(): Promise<void> {
     title: 'Watchdog',
     // macOS and Windows take the icon from the app bundle; Linux window managers need it here.
     icon: process.platform === 'linux' ? join(app.getAppPath(), 'resources', 'icon.png') : undefined,
-    backgroundColor: nativeTheme.shouldUseDarkColors ? '#141312' : '#f7f5f0',
+    // --bg from the renderer's tokens.css, so the window doesn't flash another colour while it loads.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#111113' : '#f4f4f5',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     trafficLightPosition: { x: 16, y: 18 },
     webPreferences: {
@@ -107,7 +118,14 @@ async function createWindow(): Promise<void> {
 
 app.whenReady().then(async () => {
   handleProtocol()
+  app.setAboutPanelOptions({
+    applicationName: 'Watchdog',
+    applicationVersion: app.getVersion(),
+    website: 'https://github.com/tomcardoso/watchdog',
+    copyright: `© ${new Date().getFullYear()} Tom Cardoso. MIT licence.`
+  })
   registerIpc(backend, engine, claude, () => win)
+  registerUpdater()
   buildMenu(() => win)
   await createWindow()
   await backend.start()

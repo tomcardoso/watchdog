@@ -412,7 +412,7 @@ export default function ChatWorkspace(p: Props) {
 
         {signinWarning && (
           <Callout tone="warning" title={!cc!.installed ? 'Claude Code may not be installed' : 'Claude Code may not be signed in'} style={{ margin: '12px 20px 0' }} action={<Button size="sm" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Open settings</Button>}>
-            This screen runs Claude Code in your investigation, so it needs to be {!cc!.installed ? 'installed (claude.ai/download)' : 'signed in (run claude in a terminal once)'}. If a question fails to start, that is why.
+            This screen runs Claude Code in your investigation, so it needs to be {!cc!.installed ? 'installed (claude.ai/download)' : 'signed in (see Settings → Models & keys)'}. If a question fails to start, that is why.
           </Callout>
         )}
         {p.strip?.(api)}

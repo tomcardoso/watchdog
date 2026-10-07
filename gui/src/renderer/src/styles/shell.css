@@ -432,3 +432,12 @@
   line-height: 1.6;
   margin: 0;
 }
+
+/* The top bar's update download, shown in place of the update button while it runs. */
+.update-progress {
+  font-size: 12px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  padding: 0 6px;
+  white-space: nowrap;
+}

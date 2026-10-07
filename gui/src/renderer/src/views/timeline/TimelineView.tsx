@@ -268,7 +268,7 @@ export default function TimelineView() {
         }
       >
         <p style={{ margin: 0, lineHeight: 1.55, color: 'var(--text-2)' }}>
-          This is the same as running <span className="mono">watchdog timeline</span>. It makes no model call and costs nothing. Use it if timeline.md was deleted or edited by mistake; nothing is lost, because the note is a generated output and the events themselves are stored separately. This screen reads the events directly and is unaffected.
+          The timeline note is rebuilt from the saved events. It makes no model call and costs nothing. Use it if timeline.md was deleted or edited by mistake; nothing is lost, because the note is a generated output and the events themselves are stored separately. This screen reads the events directly and is unaffected.
         </p>
       </Modal>
     </div>

@@ -742,7 +742,7 @@ function EverywhereList({ data, terms, query }: { data: EverywhereResult; terms:
       )}
       {data.skipped.length > 0 && (
         <Callout tone="warning" title={`${plural(data.skipped.length, 'investigation')} skipped`}>
-          {data.skipped.map((s) => `${s.slug}: ${s.reason}`).join(' · ')}. Open Settings or run <code>watchdog doctor</code> to repair a broken folder path.
+          {data.skipped.map((s) => `${s.slug}: ${s.reason}`).join(' · ')}. Use Check vaults under Settings to repair a broken folder path.
         </Callout>
       )}
     </div>
@@ -867,7 +867,7 @@ function BatchMode() {
               </div>
               {counts.unchecked > 0 && (
                 <Callout tone="warning" title={`${plural(counts.unchecked, 'name')} not checked`}>
-                  The exact-match search failed for these, so they were not compared with the document text. Rebuild the search index (<code>watchdog reindex</code>) and check again.
+                  The exact-match search failed for these, so they were not compared with the document text. Rebuild the search index under Activity → Maintenance (open the investigation first) and check again.
                 </Callout>
               )}
               <div className="srch-batch-list">

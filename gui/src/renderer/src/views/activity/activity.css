@@ -9,8 +9,6 @@
 .act-detail { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .act-detail-head { display: flex; flex-direction: column; gap: 8px; }
 .act-detail-title { font-size: var(--fs-xl); font-weight: 650; letter-spacing: -0.01em; margin: 0; }
-.act-cmd { display: flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: var(--r-md); background: var(--surface-sunken); border: 1px solid var(--border); color: var(--text-2); min-width: 0; }
-.act-cmd svg { width: 14px; height: 14px; flex: none; color: var(--text-3); }
 .act-meta { display: flex; gap: 8px; flex-wrap: wrap; font-size: var(--fs-sm); color: var(--text-3); min-width: 0; }
 .act-note { font-size: var(--fs-sm); color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r-md); padding: 8px 12px; line-height: 1.5; }
 .act-log-wrap { position: relative; }

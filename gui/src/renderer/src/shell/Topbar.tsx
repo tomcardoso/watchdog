@@ -2,6 +2,7 @@ import { ArrowLeft, ArrowRight, FilePlus2, Moon, Search, Sun } from 'lucide-reac
 import { Button, Kbd } from '@renderer/components/ui'
 import { useApp } from '@renderer/lib/store'
 import { routeTitle } from './titles'
+import { UpdateButton } from '@renderer/components/UpdateButton'
 
 export function Topbar() {
   const { route, back, forward, goBack, goForward, project, setPalette, openAdd, theme, setTheme } = useApp()
@@ -21,6 +22,7 @@ export function Topbar() {
         <span className="truncate">{routeTitle(route)}</span>
       </div>
       <div className="spacer" style={{ WebkitAppRegion: 'drag', alignSelf: 'stretch' } as React.CSSProperties} />
+      <UpdateButton />
       <button className="search-trigger" onClick={() => setPalette(true)}>
         <Search />
         <span>{project ? 'Search or jump to…' : 'Jump to…'}</span>

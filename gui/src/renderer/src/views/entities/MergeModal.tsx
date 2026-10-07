@@ -51,7 +51,7 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
         invalidate('vault.', 'review.')
         setStage('done')
       } else {
-        setError(done.state === 'cancelled' ? 'The merge was stopped before it finished.' : 'The merge did not finish. Open Activity to see what the command reported.')
+        setError(done.state === 'cancelled' ? 'The merge was stopped before it finished.' : 'The merge did not finish. Open Activity to see what the run reported.')
         setStage('failed')
       }
     } catch (e) {
@@ -173,7 +173,7 @@ function FormBody({ keep, merge, setKeep, setMerge, preview }: { keep: string | 
       )}
       {preview.data?.both_have_summary && (
         <Callout tone="info" title="Both entities have a written summary">
-          The survivor keeps its own summary. Afterwards, refresh it from all sources with “Refresh summary from all sources” on the entity page (the <span className="mono">/watchdog-entity</span> command) so it reflects both.
+          The survivor keeps its own summary. Afterwards, refresh it from all sources with “Refresh summary from all sources” on the entity page so it reflects both.
         </Callout>
       )}
 

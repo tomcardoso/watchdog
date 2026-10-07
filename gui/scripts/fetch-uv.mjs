@@ -1,6 +1,6 @@
 // Downloads the pinned `uv` release (https://github.com/astral-sh/uv) for the platforms the app is
 // being built for, verifies its sha256, and unpacks the binary into resources/bin/<os>-<arch>/.
-// electron-builder ships that folder as extraResources (see electron-builder.yml), and the app's
+// electron-builder ships that folder as extraResources (see electron-builder.config.cjs), and the app's
 // installer uses it to build the managed Python engine on a user's computer (src/main/engine.ts).
 //
 //   node scripts/fetch-uv.mjs                         # this computer's platform and architecture

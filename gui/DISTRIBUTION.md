@@ -34,8 +34,10 @@ are unsigned.
 `resources/entitlements.mac.plist`.
 
 **Windows** — signed through Azure Trusted Signing. Repository secrets: `AZURE_TENANT_ID`,
-`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET` and `AZURE_PUBLISHER_NAME`; the signing account and
-certificate profile names are in `electron-builder.config.cjs`.
+`AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_PUBLISHER_NAME`, `AZURE_SIGNING_ENDPOINT` (the
+region's endpoint, such as `https://eus.codesigning.azure.net`), `AZURE_SIGNING_ACCOUNT` (the
+Trusted Signing account name) and `AZURE_CERTIFICATE_PROFILE`. `electron-builder.config.cjs` signs
+only when all four of the last ones are set, so a partial set builds unsigned rather than failing.
 
 An unsigned macOS build opens only after the user allows it in System Settings → Privacy &
 Security, and an unsigned Windows installer shows a SmartScreen warning; the in-app updater also

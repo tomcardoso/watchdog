@@ -116,7 +116,7 @@ xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calde
 
 ## Packaging
 
-`npm run dist` builds installers with electron-builder (`electron-builder.yml`): a `.dmg` on
+`npm run dist` builds installers with electron-builder (`electron-builder.config.cjs`): a `.dmg` on
 macOS, an NSIS installer on Windows, an AppImage and `.deb` on Linux. The `watchdog` Python package
 is built into a wheel and bundled with `uv`; the app installs them into its own engine on first run (see
 "The managed engine"). `npm run engine:prepare` produces both for this computer.

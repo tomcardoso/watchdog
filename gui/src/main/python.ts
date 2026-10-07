@@ -2,6 +2,7 @@
 // `python -m watchdog.gui.server`, and routing JSON-RPC requests and events over its stdio.
 
 import { app } from 'electron'
+import log from 'electron-log/main'
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -204,6 +205,9 @@ export class PythonBackend {
     createInterface({ input: proc.stderr }).on('line', (line) => {
       this.stderrTail.push(line)
       if (this.stderrTail.length > 400) this.stderrTail.splice(0, 200)
+      // Kept in the app's log file too (Help → Show Log File), so a backend failure a user reports
+      // can be diagnosed after the window has closed.
+      log.info('[py]', line)
       if (process.env.WATCHDOG_GUI_DEBUG) console.error('[py]', line)
     })
     proc.on('exit', (code, signal) => {

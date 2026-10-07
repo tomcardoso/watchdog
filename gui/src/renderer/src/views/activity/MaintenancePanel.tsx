@@ -1,4 +1,4 @@
-// Maintenance: every `watchdog help maintenance` command as a card — what it does, its options,
+// Maintenance: every maintenance step as a card — what it does, its options,
 // and a Run button. Anything that sends text to a model goes through the public-records gate.
 
 import {
@@ -50,7 +50,7 @@ async function launch(args: string[], label: string, kind?: string) {
   }
 }
 
-function MCard({ icon: Icon, title, command, note, children, options, footer }: { icon: LucideIcon; title: string; command: string; note?: ReactNode; children: ReactNode; options?: ReactNode; footer: ReactNode }) {
+function MCard({ icon: Icon, title, note, children, options, footer }: { icon: LucideIcon; title: string; note?: ReactNode; children: ReactNode; options?: ReactNode; footer: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="card act-mcard">
@@ -60,7 +60,6 @@ function MCard({ icon: Icon, title, command, note, children, options, footer }: 
         </div>
         <div className="grow">
           <div className="card-title">{title}</div>
-          <div className="mono faint" style={{ fontSize: 11.5 }}>{command}</div>
         </div>
         {note}
       </div>
@@ -197,7 +196,6 @@ function ChewCard({ incoming }: { incoming: number | null }) {
     <MCard
       icon={ScanText}
       title="Chew"
-      command="watchdog chew"
       note={incoming ? <Badge tone="accent">{plural(incoming, 'file')} waiting</Badge> : undefined}
       options={
         <>
@@ -246,7 +244,6 @@ function DigCard({ queued, models }: { queued: number | null; models: ReturnType
     <MCard
       icon={Hammer}
       title="Dig"
-      command="watchdog dig"
       note={queued ? <Badge tone="accent">{plural(queued, 'document')} queued</Badge> : undefined}
       options={
         <>
@@ -325,7 +322,6 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
     <MCard
       icon={Sparkles}
       title="Bark"
-      command="watchdog bark"
       note={pending ? <Badge tone="warning">{plural(pending.docs, 'document')} to finish</Badge> : undefined}
       options={
         <>
@@ -368,13 +364,12 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
   )
 }
 
-function SimpleCard({ icon, title, command, text, label, onRun, tone }: { icon: LucideIcon; title: string; command: string; text: ReactNode; label: string; onRun: () => Promise<void>; tone?: ReactNode }) {
+function SimpleCard({ icon, title, text, label, onRun, tone }: { icon: LucideIcon; title: string; text: ReactNode; label: string; onRun: () => Promise<void>; tone?: ReactNode }) {
   const [busy, setBusy] = useState(false)
   return (
     <MCard
       icon={icon}
       title={title}
-      command={command}
       note={tone}
       footer={
         <Button
@@ -414,7 +409,6 @@ function ExportCard() {
     <MCard
       icon={Network}
       title="Export the graph"
-      command="watchdog export"
       options={
         <Row label="Format" hint={format === 'csv' ? 'nodes.csv and relationships.csv, for Neo4j import or Gephi.' : 'One graph.cypher of MERGE statements. Needs Neo4j 4.4 or later.'}>
           <Segmented value={format} onChange={setFormat} options={[{ value: 'csv', label: 'CSV' }, { value: 'cypher', label: 'Cypher' }]} />
@@ -455,7 +449,6 @@ function UnlockCard({ locks }: { locks: { chew: boolean; ingest: boolean } | nul
     <SimpleCard
       icon={Lock}
       title="Release a stuck lock"
-      command="watchdog unlock"
       tone={locks ? <Badge tone={held ? 'warning' : 'success'}>{held ? `${[locks.chew && 'chew', locks.ingest && 'ingest'].filter(Boolean).join(' and ')} lock held` : 'No locks'}</Badge> : undefined}
       text={
         <>
@@ -505,9 +498,8 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={Undo2}
           title="Requeue failed documents"
-          command="watchdog requeue"
           tone={p ? <Badge tone={p.failed.length ? 'danger' : undefined}>{plural(p.failed.length, 'failed document')}</Badge> : undefined}
-          text="Moves documents that failed extraction back into the queue without running them, so a later dig tries them again. A failure from a temporary cause, such as a rate limit, is worth retrying; one that fails repeatedly may need a different model."
+          text="Moves documents that failed extraction back into the queue without running them, so a later extraction run tries them again. A failure from a temporary cause, such as a rate limit, is worth retrying; one that fails repeatedly may need a different model."
           label="Requeue"
           onRun={async () => {
             const out = await runAction(['requeue'])
@@ -518,15 +510,13 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={Telescope}
           title="Lead sweep"
-          command="watchdog leads"
-          text="Prints the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and facts that still need verifying. Step through them in Review."
+          text="Runs the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and facts that still need verifying. Step through them in Review."
           label="Run lead sweep"
           onRun={() => launch(['leads'], 'Lead sweep', 'leads')}
         />
         <SimpleCard
           icon={RefreshCw}
           title="Rebuild the timeline"
-          command="watchdog timeline"
           text="Regenerates timeline.md from the canonical event files. Deterministic, no model call. Useful if the note was deleted or edited by mistake: nothing is lost, because it is generated output."
           label="Rebuild timeline"
           onRun={() => launch(['timeline'], 'Rebuild timeline', 'timeline')}
@@ -534,7 +524,6 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={Cpu}
           title="Rebuild the search index"
-          command="watchdog reindex"
           text="Rebuilds the semantic and full-text indexes from what is already on disk: no OCR, no model calls, no tokens. Run it after changing the embedding model in Settings, since vectors from two models cannot be mixed, or after merging entities."
           label="Reindex"
           onRun={() => launch(['reindex'], 'Reindex', 'reindex')}
@@ -542,7 +531,6 @@ export default function MaintenancePanel() {
         <MCard
           icon={Coins}
           title="Usage"
-          command="watchdog usage"
           footer={<Button size="sm" onClick={() => navigate({ view: 'activity', tab: 'usage' })}>Open Usage</Button>}
         >
           Tokens, cost and timing for each ingest run, by stage. It only reads recorded files, so it is free to look.
@@ -551,17 +539,16 @@ export default function MaintenancePanel() {
         <UnlockCard locks={status.data?.locks ?? null} />
         <SimpleCard
           icon={BookOpen}
-          title="Refresh Claude commands"
-          command="watchdog settings refresh-skills"
+          title="Refresh Claude setup"
           text={
             <>
-              Updates this vault’s <span className="mono">/watchdog-*</span> commands, session instructions and Claude Code settings after you upgrade Watchdog. Your own notes below the end marker in <span className="mono">.claude/CLAUDE.md</span> are kept. Record skills are global and never need this.
+              Updates this investigation’s shortcuts, Claude instructions and Claude Code settings after you upgrade Watchdog. Your own notes below the end marker in <span className="mono">.claude/CLAUDE.md</span> are kept. Record skills are global and never need this.
             </>
           }
           label="Refresh now"
           onRun={async () => {
             const out = await runAction(['settings', 'refresh-skills'])
-            toast({ kind: 'success', title: 'Claude commands updated', body: out.trim().split('\n').pop() || undefined })
+            toast({ kind: 'success', title: 'Claude setup updated', body: out.trim().split('\n').pop() || undefined })
           }}
         />
       </div>
