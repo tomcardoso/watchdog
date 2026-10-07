@@ -1,5 +1,5 @@
 // Web research: a Claude Code session that queues sources, then a deterministic download into
-// _INCOMING/ — replaces `watchdog research`.
+// incoming/ — replaces `watchdog research`.
 
 import { Download, ExternalLink, Globe, Inbox } from 'lucide-react'
 import { useState } from 'react'
@@ -24,9 +24,9 @@ function useDownload() {
     setBusy(true)
     try {
       const job = await startJob(['research-fetch'], `Download ${plural(n, 'source')}`, 'research-fetch')
-      toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked, saved with a provenance note and placed in _INCOMING.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
+      toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked, saved with a provenance note and placed in incoming.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
       void waitForJob(job.id).then((j) => {
-        if (j.state === 'done') toast({ kind: 'success', title: 'Sources are in _INCOMING', body: 'Add them to read and extract them.', action: { label: 'Add them', run: () => useApp.getState().openAdd() } })
+        if (j.state === 'done') toast({ kind: 'success', title: 'Sources are in incoming', body: 'Add them to read and extract them.', action: { label: 'Add them', run: () => useApp.getState().openAdd() } })
       })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the download', body: errorMessage(e) })
@@ -54,7 +54,7 @@ function Strip({ api }: { api: WorkspaceApi }) {
         <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>Nothing is downloaded until you say so.</span>
         <span className="spacer" />
         <Button size="sm" variant="primary" icon={Download} loading={dl.busy} onClick={() => void dl.go(n)}>
-          Download {n} {n === 1 ? 'source' : 'sources'} into _INCOMING
+          Download {n} {n === 1 ? 'source' : 'sources'} into incoming
         </Button>
       </div>
       {open && (
@@ -85,7 +85,7 @@ function Empty({ api }: { api: WorkspaceApi }) {
     <div className="chat-empty">
       <h2>Research the open questions on the web</h2>
       <p>
-        Seeded by your vault, Claude does bounded web research and queues the sources it finds. When you are ready, Watchdog downloads them into <span className="mono">_INCOMING/</span>, so findings go through the same read-and-extract steps as any document. Claude never writes vault notes directly. In the session it will:
+        Seeded by your vault, Claude does bounded web research and queues the sources it finds. When you are ready, Watchdog downloads them into <span className="mono">incoming/</span>, so findings go through the same read-and-extract steps as any document. Claude never writes vault notes directly. In the session it will:
       </p>
       <ol className="chat-steps">
         {STEPS.map((s, i) => (

@@ -65,7 +65,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field():
     own values win on all of them — sha256, filename, original_path, page_count, record_skill,
     record_skill_hash, extract_model, extract_effort, source/obtained (from the sidecar), and
     the derived morgue_document_type/morgue_entity_id."""
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
+    pf = {"filename": "real.pdf", "original_path": "incoming/real.pdf",
           "page_count": 7, "pages": [{}],
           "sidecar": "source: FOI A-2026-001\nobtained: 2026-01-02\n"}
 
@@ -73,7 +73,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field():
         "document": {
             "sha256": "0" * 64,                       # model's fabricated hash
             "filename": "totally-different.pdf",
-            "original_path": "_INCOMING/elsewhere.pdf",
+            "original_path": "incoming/elsewhere.pdf",
             "page_count": 999,
             "record_skill": "wrong-skill.md",
             "record_skill_hash": "deadbeefdead",
@@ -95,7 +95,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field():
     d = lied_extraction["document"]
     assert d["sha256"] == "realsha256"
     assert d["filename"] == "real.pdf"
-    assert d["original_path"] == "_INCOMING/real.pdf"
+    assert d["original_path"] == "incoming/real.pdf"
     assert d["page_count"] == 7
     assert d["record_skill"] == "court-documents.md"
     assert d["record_skill_hash"] != "deadbeefdead"
@@ -244,13 +244,13 @@ def test_I4_retry_after_invalid_json_keeps_same_model_and_effort(monkeypatch):
     assert len(efforts) == 1, f"effort changed across retry attempts: {backend.calls}"
 
 
-# ── I5 — research output re-enters via _INCOMING/, never a direct vault write ─────────
+# ── I5 — research output re-enters via incoming/, never a direct vault write ─────────
 
 def test_I5_research_deposit_never_writes_outside_incoming(tmp_path):
     """pipeline/research.py is the deterministic egress gate behind /watchdog-research — its
     model boundary is a separate, uncapturable Claude Code session (nothing to mock in-process),
     so this guards the Python side: deposit_one's only writes are the source document and its
-    .yml sidecar under _INCOMING/. Pre-seed vault notes research must never touch, run a deposit,
+    .yml sidecar under incoming/. Pre-seed vault notes research must never touch, run a deposit,
     and assert none of them changed."""
     vault = tmp_path / "vault"
     sentinels = {
@@ -270,7 +270,7 @@ def test_I5_research_deposit_never_writes_outside_incoming(tmp_path):
     path = research.deposit_one(vault, "https://example.com/doc", title="A Doc",
                                 fetcher=_fetch)
 
-    assert path.parent == vault / "_INCOMING"
+    assert path.parent == vault / "incoming"
     for rel, content in sentinels.items():
         assert (vault / rel).read_text(encoding="utf-8") == content, \
             f"{rel} was modified by a research deposit"

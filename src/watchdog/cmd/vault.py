@@ -10,12 +10,13 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
+from watchdog.vault_paths import CONTEXT_NAME, INCOMING_NAME, incoming_dir, is_vault
 from watchdog import interactive
 from watchdog.cmd.base import (
     VAULT_SCHEMA_VERSION,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _check_project_health,
+    _ensure_layout,
     _check_vault_locks,
     _count_awaiting_bark,
     _count_awaiting_dig,
@@ -327,8 +328,8 @@ def cmd_new(args) -> None:
     today = datetime.now().strftime("%Y-%m-%d")
 
     for d in [
-        "_INCOMING",
-        "_CONTEXT",
+        INCOMING_NAME,
+        CONTEXT_NAME,
         "morgue",
         ".watchdog/registry",
         ".watchdog/queue",
@@ -424,9 +425,9 @@ def cmd_new(args) -> None:
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()
     print(f"  {_BOLD}Next steps{_RESET}")
-    print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/_CONTEXT/{_RESET} and run {_CYAN}watchdog ask --context{_RESET}")
+    print(f"    1. {_DIM}(optional){_RESET} Drop background material into {_CYAN}{vault}/context/{_RESET} and run {_CYAN}watchdog ask --context{_RESET}")
     print(f"    2. Run {_CYAN}watchdog add <files or folders>{_RESET} to add documents "
-          f"{_DIM}(or drop them into _INCOMING/ and run {_RESET}{_CYAN}watchdog add{_RESET}{_DIM}){_RESET}")
+          f"{_DIM}(or drop them into incoming/ and run {_RESET}{_CYAN}watchdog add{_RESET}{_DIM}){_RESET}")
     print(f"    3. Run {_CYAN}watchdog open {slug}{_RESET} to open the vault in Obsidian")
     print()
 
@@ -849,19 +850,20 @@ def cmd_watch(args) -> None:
     vault = Path(info["path"])
     if not vault.exists():
         sys.exit(f"Error: project directory not found: {vault}")
+    _ensure_layout(vault)
 
     from watchdog.pipeline.preprocess_batch import run_ingest, find_files
     import time as _time
 
-    incoming = vault / "_INCOMING"
-    print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}_INCOMING/{_RESET} — press Ctrl+C to stop.\n")
+    incoming = incoming_dir(vault)
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}incoming/{_RESET} — press Ctrl+C to stop.\n")
 
     # Files already waiting are chewed on the first stable poll, like any new arrival — they used
     # to be ignored until some other file happened to arrive.
     known: set = set()
     waiting = len(find_files([incoming]))
     if waiting:
-        print(f"  {_DIM}{waiting} file{'s' if waiting != 1 else ''} already in _INCOMING/ — chewing "
+        print(f"  {_DIM}{waiting} file{'s' if waiting != 1 else ''} already in incoming/ — chewing "
               f"them first.{_RESET}\n")
     pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
 
@@ -1059,7 +1061,7 @@ def cmd_status(args) -> None:
               f"{last_usage['output_tokens']:,} out tokens{cost}{_RESET}")
 
     if incoming_n:
-        print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}_INCOMING/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
+        print(f"  {_YELLOW}{incoming_n} file{'s' if incoming_n != 1 else ''}{_RESET} in {_CYAN}incoming/{_RESET} {_DIM}— run{_RESET} {_CYAN}watchdog chew{_RESET}")
     if awaiting_dig_n:
         print(f"  {_YELLOW}{awaiting_dig_n} file{'s' if awaiting_dig_n != 1 else ''}{_RESET} chewed and awaiting {_CYAN}watchdog dig{_RESET}")
     if awaiting_bark_n:

@@ -24,7 +24,7 @@ function ContextCard({ api }: { api: WorkspaceApi }) {
         <Button variant="primary" onClick={() => void api.begin('', 'context')} loading={api.busy}>Start</Button>
       </div>
       <p className="chat-ctx-text">
-        Claude reads the background files in <span className="mono">_CONTEXT/</span> (briefs, earlier reporting, notes you already hold), interviews you where they fall short, and writes <span className="mono">context.md</span> at the top of the vault.
+        Claude reads the background files in <span className="mono">context/</span> (briefs, earlier reporting, notes you already hold), interviews you where they fall short, and writes <span className="mono">context.md</span> at the top of the vault.
         An existing <span className="mono">context.md</span> is updated, not replaced. {list.length === 0 ? 'The folder is empty, so Claude will interview you instead.' : 'Files it will read:'}
       </p>
       {list.length > 0 && (

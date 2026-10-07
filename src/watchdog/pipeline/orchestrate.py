@@ -552,7 +552,7 @@ def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
     document types without `--skill` forcing a single pin across the whole run (D120: benchmarking
     a corpus that spans more than one skill needed this without a second `chew`/`ingest` pass per
     skill). `sidecar_text` is already filtered/allowlisted at chew time (pipeline/sidecar.py,
-    D121) — nothing here reads `_INCOMING/` again."""
+    D121) — nothing here reads `incoming/` again."""
     value = sidecar.skill_pin(sidecar_text)
     if not value:
         return None
@@ -591,7 +591,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     doc["page_count"] = pf.get("page_count") or len(pf["pages"])
     doc.update(sidecar.provenance(pf.get("sidecar")))
     # The filtered sidecar text itself (D121) — carried onto the document so write_vault can
-    # re-materialize a .yml in morgue without ever reading _INCOMING/ again.
+    # re-materialize a .yml in morgue without ever reading incoming/ again.
     doc["sidecar"] = pf.get("sidecar")
     # File-intrinsic embedded metadata (#369) — captured deterministically at chew time and
     # stamped here, same posture as sha256/filename above: a claim the file makes about itself,

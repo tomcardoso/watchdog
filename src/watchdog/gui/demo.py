@@ -14,7 +14,7 @@ database land there instead of in the real `~/.watchdog`.
 The ingest is run as two batches, the way a reporter would: `add` for the first four documents, then
 `dig` and `bark` separately for the other ten. That leaves two briefings, three usage records and
 cross-batch contradictions and near-duplicates in the vault. Afterwards the vault is given the
-loose ends a working investigation has: files waiting in `_INCOMING/`, one failed document, context
+loose ends a working investigation has: files waiting in `incoming/`, one failed document, context
 files and a queued research URL.
 """
 
@@ -33,6 +33,7 @@ import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
+from watchdog.vault_paths import context_dir, incoming_dir
 
 PROJECT_NAME = "Port Calder Waterfront"
 PROJECT_DESCRIPTION = (
@@ -411,7 +412,7 @@ def _loose_ends(vault: Path) -> None:
     from watchdog.pipeline import research
     from watchdog.pipeline import orchestrate
 
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     demo_pdf.write_pdf(
         incoming / "pier-9-change-order-3.pdf",
         [[("letterhead", "City of Port Calder", "Procurement and Real Property Division"),
@@ -430,7 +431,7 @@ def _loose_ends(vault: Path) -> None:
         [["Item", "Owner", "Due"], ["Confirm direct payment of Tideway invoices", "Harbourline", "2022-09-21"],
          ["Updated dredging schedule", "Tideway", "2022-09-28"]])
 
-    context = vault / "_CONTEXT"
+    context = context_dir(vault)
     (context / "interview-notes-harbour-authority.md").write_text(CONTEXT_NOTE, encoding="utf-8")
     (context / "harbourfront-timeline.txt").write_text(CONTEXT_TIMELINE, encoding="utf-8")
 

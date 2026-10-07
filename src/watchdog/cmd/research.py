@@ -2,7 +2,7 @@
 download the sources it queued (#186).
 
 The `/watchdog-research` skill curates URLs into a links file; this command launches that
-session and, when it ends, downloads the queued sources into `_INCOMING/` through the
+session and, when it ends, downloads the queued sources into `incoming/` through the
 deterministic egress gate in `pipeline.research` (validate URL → fetch → sanitize → write +
 `.yml` sidecar). All outbound *archival* fetching thus happens here, in the user's terminal —
 never granted to the interactive skill, whose only web access is WebSearch/WebFetch for its own
@@ -20,6 +20,7 @@ from watchdog.cmd.base import (
     _BOLD,
     _CYAN,
     _DIM,
+    _ensure_layout,
     _GREEN,
     _MODEL_IDS,
     _RESET,
@@ -76,7 +77,7 @@ def _report_deposits(results: list, *, wayback, requeued_failures: bool) -> int:
     failed = [r for r in results if not r.path]
     print()
     print(f"  {_GREEN}Downloaded{_RESET} {_BOLD}{len(deposited)}{_RESET} of {len(results)} "
-          f"into {_CYAN}_INCOMING/{_RESET}")
+          f"into {_CYAN}incoming/{_RESET}")
     if wayback and deposited:
         print(f"  {_DIM}Archived each to the Wayback Machine — snapshot URL in every source's sidecar.{_RESET}")
     for r in deposited:
@@ -104,7 +105,7 @@ def _print_progress(i: int, total: int, url: str) -> None:
 
 
 def _run_download(vault: Path, source_file: Path | None = None) -> int:
-    """Download every queued source into `_INCOMING/`, continuing past failures. Returns the number
+    """Download every queued source into `incoming/`, continuing past failures. Returns the number
     deposited. With no `source_file`, consumes the durable worklist — downloaded rows drop out;
     rows that failed stay queued for a later retry so a transient failure is never silently lost.
     An explicit `source_file` (recovery) is read but left untouched."""
@@ -132,6 +133,7 @@ def cmd_research(args) -> None:
         else:
             sys.exit("Error: not inside a Watchdog project. cd into your investigation first, "
                      "or pass the investigation name.")
+    _ensure_layout(vault)
     model = getattr(args, "model", None) or "sonnet"
     if model not in _MODEL_IDS:
         sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku")
@@ -149,13 +151,13 @@ def cmd_research(args) -> None:
         them = "them" if stale != 1 else "it"
         print(f"\n  {_YELLOW}{stale} source{s} from a previous research session "
               f"{'are' if stale != 1 else 'is'} queued and not downloaded.{_RESET}")
-        if _confirm(f"  Download {them} into _INCOMING/ now?"):
+        if _confirm(f"  Download {them} into incoming/ now?"):
             _run_download(vault)
 
     print(f"\n  {_BOLD}Web research — {name}{_RESET}\n")
     print(f"  {_DIM}Seeded by your vault, Claude conducts bounded web research and queues the{_RESET}")
     print(f"  {_DIM}sources it finds. When the session ends, watchdog downloads them into{_RESET}")
-    print(f"  {_RESET}{_CYAN}_INCOMING/{_RESET}{_DIM} — so findings flow through the normal chew → ingest pipeline.{_RESET}")
+    print(f"  {_RESET}{_CYAN}incoming/{_RESET}{_DIM} — so findings flow through the normal chew → ingest pipeline.{_RESET}")
     print(f"  {_DIM}Claude never writes vault notes directly. In the session it will:{_RESET}\n")
     print(f"    {_DIM}1.{_RESET} propose a research mission from the vault's open gaps and leads")
     print(f"    {_DIM}2.{_RESET} confirm the question and how wide to cast the net (quick / standard / deep)")
@@ -197,7 +199,7 @@ def cmd_research(args) -> None:
     s = "s" if found != 1 else ""
     them = "them" if found != 1 else "it"
     print(f"\n  {_BOLD}{found}{_RESET} source{s} queued for download.")
-    if _confirm(f"  Download {them} into _INCOMING/ now?"):
+    if _confirm(f"  Download {them} into incoming/ now?"):
         count = _run_download(vault)
         if count:
             print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
@@ -208,15 +210,17 @@ def cmd_research(args) -> None:
 
 def cmd_research_seen(args) -> None:
     """Internal: print URLs already captured (one per line), so /watchdog-research can skip
-    re-fetching them. Derived from documents.json + in-flight _INCOMING/ sidecars (research.seen_urls)."""
+    re-fetching them. Derived from documents.json + in-flight incoming/ sidecars (research.seen_urls)."""
     _, _info, vault = _resolve_vault(getattr(args, "project", None))
+    _ensure_layout(vault)
     for url in sorted(research.seen_urls(vault)):
         print(url)
 
 
 def cmd_research_fetch(args) -> None:
-    """Internal: download the queued research sources into _INCOMING/ (manual / recovery path)."""
+    """Internal: download the queued research sources into incoming/ (manual / recovery path)."""
     _, _info, vault = _resolve_vault(getattr(args, "project", None))
+    _ensure_layout(vault)
     source_file = Path(args.file) if getattr(args, "file", None) else None
     if source_file is not None:
         if not source_file.exists() or not research.parse_worklist(source_file.read_text(encoding="utf-8")):
@@ -228,11 +232,12 @@ def cmd_research_fetch(args) -> None:
 
 
 def cmd_fetch(args) -> None:
-    """`watchdog fetch <file | urls…>` — download a batch of URLs into `_INCOMING/`, independent of
+    """`watchdog fetch <file | urls…>` — download a batch of URLs into `incoming/`, independent of
     the agentic research flow (#197). Each URL goes through the same egress gate as research sources
     (validate → fetch → sanitize → `.yml` sidecar), and Wayback archiving applies if configured. The
     input is either a links/TSV file (one URL per line) or URLs given directly on the command line."""
     _, _info, vault = _resolve_vault(getattr(args, "project", None))
+    _ensure_layout(vault)
     targets = args.targets
 
     # A single argument that names a file is a links file; anything else is treated as URLs.

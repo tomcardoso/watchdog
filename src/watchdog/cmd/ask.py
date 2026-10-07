@@ -8,7 +8,7 @@ whatever Claude Code is signed in with, not the ingest provider."""
 import sys
 from pathlib import Path
 
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET, _YELLOW, _find_project, _launch_claude, load_projects
+from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _RESET, _YELLOW, _ensure_layout, _find_project, _launch_claude, load_projects
 from watchdog.vault_paths import is_vault
 
 
@@ -50,6 +50,7 @@ def cmd_ask(args) -> None:
     vault, name = _vault(getattr(args, "project", None))
     if not vault.is_dir():
         sys.exit(f"Error: project directory not found: {vault}")
+    _ensure_layout(vault)
     question = " ".join(getattr(args, "question", None) or [])
     print(f"\n  {_BOLD}Opening Claude Code in {name}…{_RESET}")
     has_skill = (vault / ".claude" / "commands" / "watchdog-query.md").exists()

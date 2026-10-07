@@ -1,9 +1,9 @@
 ---
-description: Bounded web research, seeded by the vault, that queues findings for _INCOMING/
+description: Bounded web research, seeded by the vault, that queues findings for incoming/
 allowed-tools: WebSearch, WebFetch, Bash(watchdog leads), Bash(watchdog research-seen)
 ---
 
-# /watchdog-research — Bounded web research that re-enters via _INCOMING/
+# /watchdog-research — Bounded web research that re-enters via incoming/
 
 > **Web access is scoped to this skill.** `WebSearch` and `WebFetch` — which you use to *read* the
 > web and follow leads — are pre-approved by this skill's `allowed-tools` frontmatter, granted only
@@ -12,7 +12,7 @@ allowed-tools: WebSearch, WebFetch, Bash(watchdog leads), Bash(watchdog research
 > after this session ends. A vault of sensitive material thus carries no standing outbound-fetch
 > permission, and every archived source passes the same egress hygiene on the way in.
 
-Conduct focused web research, seeded by what the vault already knows, and **deposit the sources you find into `_INCOMING/`** so they flow through the normal `chew → ingest` pipeline. You do **not** write entity notes, document notes, or `context.md` — the deterministic pipeline is the single writer. Your job is to *find and capture sources*; Watchdog extracts, dedupes, and synthesizes them when the journalist next runs ingest.
+Conduct focused web research, seeded by what the vault already knows, and **deposit the sources you find into `incoming/`** so they flow through the normal `chew → ingest` pipeline. You do **not** write entity notes, document notes, or `context.md` — the deterministic pipeline is the single writer. Your job is to *find and capture sources*; Watchdog extracts, dedupes, and synthesizes them when the journalist next runs ingest.
 
 The research focus, if the journalist gave one, is: **$ARGUMENTS**
 
@@ -20,7 +20,7 @@ The research focus, if the journalist gave one, is: **$ARGUMENTS**
 
 ## What this mode is — and is not
 
-- **The product is captured sources, not a report.** Each source you keep is recorded in a links file, downloaded into `_INCOMING/` when this session ends, and becomes vault knowledge only after the journalist runs `watchdog chew` then `watchdog dig`. A free-floating prose summary is *not* the deliverable and must never be written into the vault as fact.
+- **The product is captured sources, not a report.** Each source you keep is recorded in a links file, downloaded into `incoming/` when this session ends, and becomes vault knowledge only after the journalist runs `watchdog chew` then `watchdog dig`. A free-floating prose summary is *not* the deliverable and must never be written into the vault as fact.
 - **You curate URLs; Watchdog downloads them.** You read the web the way effective deep research does — scan search results, fetch and read *selectively* to follow the thread, never exhaustively read every page. When a source is worth keeping, **record its URL in the links file** (below). You do *not* download it — `watchdog research` fetches every queued URL deterministically after the session, server-side, applying egress hygiene, and the pipeline does the deep extraction later. So judge a source enough to decide *whether to keep it*; let ingest do the heavy reading.
 - **Findings re-enter as documents, never as direct vault writes.** This preserves dedup, provenance, and registry bookkeeping. Anything on the open web is already public — but a *scraped* source is never a *primary* source, so every queued source carries a reliability tag (below).
 
@@ -70,7 +70,7 @@ Before spending anything, confirm two things with the journalist:
 
 ## 3. Open the links file
 
-Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and `watchdog`, `watchdog chew`, and `watchdog status` all warn that they're still pending. `watchdog research` downloads every row into `_INCOMING/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
+Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and `watchdog`, `watchdog chew`, and `watchdog status` all warn that they're still pending. `watchdog research` downloads every row into `incoming/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
 
 Write it with the Write tool (rewriting the whole file as it grows — keep the running list in mind and update the file whenever you add a source). A row looks like:
 
@@ -117,7 +117,7 @@ date: <today>
 <What gap this round targeted and why.>
 
 ## Sources queued
-<Each queued source: title, source_type, and the one-line relevance. These are in the links file, to be downloaded into _INCOMING/ when the session ends. Cite the URL.>
+<Each queued source: title, source_type, and the one-line relevance. These are in the links file, to be downloaded into incoming/ when the session ends. Cite the URL.>
 
 ## Leads not queued
 <Paywalled / login-walled / database / physical-record follow-ups worth pursuing, one line each.>
@@ -126,7 +126,7 @@ date: <today>
 <New questions or refinements this round surfaced. One line each.>
 
 ## Next step
-Watchdog downloads the queued sources into `_INCOMING/`; then run `watchdog chew` and `watchdog dig` to fold them into the vault.
+Watchdog downloads the queued sources into `incoming/`; then run `watchdog chew` and `watchdog dig` to fold them into the vault.
 ```
 
 ---
@@ -135,7 +135,7 @@ Watchdog downloads the queued sources into `_INCOMING/`; then run `watchdog chew
 
 **Do not run `chew` or `ingest` yourself, and do not download the sources.** End the session and tell the journalist:
 
-> Queued <N> sources. When you exit, `watchdog research` will offer to download them into `_INCOMING/`; then run `watchdog chew` and `watchdog dig` to fold them in — and open a fresh session to investigate. The research memo is at `briefings/research-<date>.md`.
+> Queued <N> sources. When you exit, `watchdog research` will offer to download them into `incoming/`; then run `watchdog chew` and `watchdog dig` to fold them in — and open a fresh session to investigate. The research memo is at `briefings/research-<date>.md`.
 
 This keeps the human in the loop and matches the fire-and-forget ingest workflow: the queued sources become knowledge only when the journalist runs the download and the pipeline.
 

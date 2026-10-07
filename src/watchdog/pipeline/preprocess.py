@@ -319,26 +319,34 @@ def pdf_preprocess(src: Path) -> "Path | None":
     os.close(fd2)
     qpdf_tmp = Path(qpdf_tmp_str)
     preprocess_timeout = _config_get("preprocess_timeout", 120)
+    r = None
     try:
-        r = subprocess.run(
-            ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
-            capture_output=True,
-            timeout=preprocess_timeout,
-        )
-        if r.returncode == 0 and qpdf_tmp.exists():
-            mid = qpdf_tmp
+        # qpdf and Ghostscript are optional helpers: where one is not installed the step is
+        # skipped (the app ships without them), and no cleaned copy is offered.
+        try:
+            r = subprocess.run(
+                ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
+                capture_output=True,
+                timeout=preprocess_timeout,
+            )
+            if r.returncode == 0 and qpdf_tmp.exists():
+                mid = qpdf_tmp
+        except FileNotFoundError:
+            pass
 
-        r = subprocess.run(
-            ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
-             "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
-            capture_output=True,
-            timeout=preprocess_timeout,
-        )
+        try:
+            r = subprocess.run(
+                ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
+                 "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
+                capture_output=True,
+                timeout=preprocess_timeout,
+            )
+        except FileNotFoundError:
+            r = None
     finally:
-        if mid != src and mid.exists():
-            mid.unlink()
+        qpdf_tmp.unlink(missing_ok=True)
 
-    if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
+    if r is not None and r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
         return tmp
     if tmp.exists():
         tmp.unlink()

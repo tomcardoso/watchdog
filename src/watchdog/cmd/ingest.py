@@ -11,11 +11,12 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
+from watchdog.vault_paths import context_dir, incoming_dir, is_vault
 from watchdog import defaults, interactive
 from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _count_queued,
+    _ensure_layout,
     _find_project,
     _launch_claude,
     load_config,
@@ -316,32 +317,32 @@ def _run_preprocess(
     show_ingest_hint: bool = True,
 ) -> None:
     from watchdog.pipeline.preprocess_batch import run_ingest, find_files
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     queue    = vault / ".watchdog" / "queue"
     if not incoming.is_dir():
-        sys.exit(f"Error: _INCOMING/ not found in {vault}")
+        sys.exit(f"Error: incoming/ not found in {vault}")
     if confirm:
         files = find_files([incoming])
         if not files:
             queued = len(list(queue.glob("*.json"))) if queue.exists() else 0
             if queued:
-                print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}.{_RESET}\n")
+                print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}.{_RESET}\n")
             else:
-                print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
+                print(f"\n  {_DIM}incoming/ is empty — nothing to chew.{_RESET}\n")
             return
         n = len(files)
         label = f"{n} file{'s' if n != 1 else ''}"
-        if not interactive.confirm(f"\n  Found {_BOLD}{label}{_RESET} in _INCOMING/. Chew now?", default=True):
+        if not interactive.confirm(f"\n  Found {_BOLD}{label}{_RESET} in incoming/. Chew now?", default=True):
             return
     run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
 
 
 def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
     """The path chew should process for `watchdog chew <file>`: `f` itself when it is already in
-    `_INCOMING/`, else a copy placed there. Chew *moves* what it processes into the vault, so
-    chewing a file from anywhere else — `~/Downloads`, or the vault's own `_CONTEXT/` — would
+    `incoming/`, else a copy placed there. Chew *moves* what it processes into the vault, so
+    chewing a file from anywhere else — `~/Downloads`, or the vault's own `context/` — would
     silently take it away from where the user keeps it."""
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     if f.is_relative_to(incoming.resolve()):
         return f
     incoming.mkdir(exist_ok=True)
@@ -355,7 +356,7 @@ def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
     if sidecar.exists():
         shutil.copy2(sidecar, dest.with_name(f"{dest.name}.yml"))
     if not quiet:
-        print(f"\n  {_DIM}Copied {_RESET}{_CYAN}{f.name}{_RESET}{_DIM} into _INCOMING/ — the original "
+        print(f"\n  {_DIM}Copied {_RESET}{_CYAN}{f.name}{_RESET}{_DIM} into incoming/ — the original "
               f"stays where it is.{_RESET}")
     return dest
 
@@ -364,6 +365,7 @@ def cmd_chew(args) -> dict | None:
     vault = Path(".").resolve()
     if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+    _ensure_layout(vault)
 
     _warn_pending_research(vault)
     queued_before = _count_queued(vault)
@@ -377,9 +379,9 @@ def cmd_chew(args) -> dict | None:
     if paths:
         from watchdog.pipeline.preprocess_batch import run_ingest
         from watchdog.pipeline.preprocess_batch import find_files
-        # A path already in _INCOMING/ is read where it is (a folder there, everything in it);
+        # A path already in incoming/ is read where it is (a folder there, everything in it);
         # anything else is expanded and copied in, exactly as `watchdog add` does.
-        incoming = (vault / "_INCOMING").resolve()
+        incoming = incoming_dir(vault).resolve()
         inside, outside = [], []
         for raw in paths:
             p = Path(raw).expanduser().resolve()
@@ -783,6 +785,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     vault = Path(".").resolve()
     if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
+    _ensure_layout(vault)
 
     # This function backs `add` (the whole pipeline), `dig` (extract only, via cmd_extract
     # setting no_finalize), the deprecated `ingest`, and `chew`'s offer to continue
@@ -835,7 +838,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 print(f"\n  {_quarantine_notice(failed)}{_DIM} Nothing else is queued.{_RESET}\n")
             else:
                 print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
-                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
+                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n")
             return
         # Claude's auth mode only matters for the estimate when the extractor is actually
         # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
@@ -992,11 +995,11 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 print(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
                       f"{_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} again.{_RESET}\n")
             elif is_add:
-                print(f"\n  {_DIM}Nothing new to add. Drop files in {_RESET}{_CYAN}_INCOMING/{_RESET}"
+                print(f"\n  {_DIM}Nothing new to add. Drop files in {_RESET}{_CYAN}incoming/{_RESET}"
                       f"{_DIM}, or pass them: {_RESET}{_CYAN}watchdog add <files or folders>{_RESET}\n")
             else:
                 print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
-                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in _INCOMING/ first.{_RESET}\n")
+                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n")
             return
 
     only_shas = None
@@ -1337,6 +1340,7 @@ def cmd_finalize(args) -> dict | None:
     vault = Path(".").resolve()
     if not is_vault(vault):
         sys.exit("Error: must be run from inside a Watchdog vault directory")
+    _ensure_layout(vault)
 
     from watchdog.pipeline import orchestrate
     if not orchestrate.has_pending_finalization(vault):
@@ -1453,7 +1457,7 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
     """Files named on the command line, with folders expanded to the files chew reads in them.
 
     Never an investigation's own files: a path inside this vault is refused (files already in
-    `_INCOMING/` are picked up without being named), and a folder that contains this or any other
+    `incoming/` are picked up without being named), and a folder that contains this or any other
     vault — `add ~/Documents`, `add ~/Investigations` — has those vaults' files left out, so
     Watchdog's notes and registries are never read back in as source documents. Hidden files and
     folders are skipped."""
@@ -1465,10 +1469,10 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
         if not p.exists():
             sys.exit(f"Error: not found: {raw}")
         if p == vault or vault in p.parents:
-            if p == vault / "_INCOMING" or (vault / "_INCOMING") in p.parents:
+            if p == incoming_dir(vault) or incoming_dir(vault) in p.parents:
                 continue   # already waiting; added below without copying
             sys.exit(f"Error: {raw} is inside this investigation. Name files from outside it, "
-                     f"or move them into _INCOMING/.")
+                     f"or move them into incoming/.")
         if p.is_dir():
             found = [f for f in find_files([p]) if not _is_hidden(f, p)]
             vault_dirs: dict[Path, bool] = {}
@@ -1501,11 +1505,11 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
 
 def cmd_add(args) -> dict | None:
     """`watchdog add [files or folders…]` — take documents all the way into the vault in one
-    command: copy them into `_INCOMING/`, chew, extract and finalize (D251).
+    command: copy them into `incoming/`, chew, extract and finalize (D251).
 
     It stops only for the public-records acknowledgement (skipped by `auto_approve` when every step runs on the Claude subscription) and
     for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
-    picks up whatever is waiting: files in `_INCOMING/`, queued documents, a pending batch.
+    picks up whatever is waiting: files in `incoming/`, queued documents, a pending batch.
     `--retry` first puts documents that failed extraction back in the queue."""
     if getattr(args, "watch", False):
         # `add --watch` is normally rewritten to `watch` before parsing (groups.rewrite); an
@@ -1519,6 +1523,7 @@ def cmd_add(args) -> dict | None:
     vault = Path(".").resolve()
     if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
+    _ensure_layout(vault)
     args.command = "add"
     if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
         # Read-only, like `dig --estimate`: nothing is copied, retried or chewed.
@@ -1539,10 +1544,10 @@ def cmd_add(args) -> dict | None:
     copied = sum(1 for f in files if _into_incoming(vault, f, quiet=True) != f)
     if copied:
         print(f"\n  {_DIM}Copied {_RESET}{_BOLD}{copied}{_RESET}{_DIM} file{'s' if copied != 1 else ''} "
-              f"into _INCOMING/ — the originals stay where they are.{_RESET}")
+              f"into incoming/ — the originals stay where they are.{_RESET}")
 
     from watchdog.pipeline.preprocess_batch import find_files
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     if incoming.is_dir() and find_files([incoming]):
         _run_preprocess(vault, workers=getattr(args, "chew_workers", None),
                         chunk_workers=getattr(args, "chunk_workers", None),
@@ -1576,6 +1581,7 @@ def cmd_context(args) -> None:
             vault = Path(info["path"])
         else:
             sys.exit("Error: not inside a Watchdog project. cd into your investigation first, or pass the investigation name.")
+    _ensure_layout(vault)
     model = getattr(args, "model", None) or "sonnet"
     if model not in _MODEL_IDS:
         sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku")
@@ -1584,16 +1590,16 @@ def cmd_context(args) -> None:
     info = next((v for v in projects.values() if Path(v["path"]).resolve() == vault.resolve()), None)
     name = info["name"] if info else vault.name
 
-    context_dir = vault / "_CONTEXT"
-    context_files = sorted(context_dir.iterdir()) if context_dir.is_dir() else []
+    ctx_dir = context_dir(vault)
+    context_files = sorted(ctx_dir.iterdir()) if ctx_dir.is_dir() else []
     context_exists = (vault / "context.md").exists()
 
     print(f"\n  {_BOLD}{name}{_RESET}")
     if context_files:
         n = len(context_files)
-        print(f"  {_DIM}{n} file{'s' if n != 1 else ''} in{_RESET} {_CYAN}_CONTEXT/{_RESET}")
+        print(f"  {_DIM}{n} file{'s' if n != 1 else ''} in{_RESET} {_CYAN}context/{_RESET}")
     else:
-        print(f"  {_YELLOW}_CONTEXT/ is empty{_RESET}{_DIM} — Claude will interview you instead{_RESET}")
+        print(f"  {_YELLOW}context/ is empty{_RESET}{_DIM} — Claude will interview you instead{_RESET}")
     if context_exists:
         print(f"  {_DIM}existing context.md will be updated{_RESET}")
 

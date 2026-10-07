@@ -72,6 +72,6 @@ def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
         "file_metadata": queue.get("file_metadata", {}),
         "processing": queue.get("metadata", {}),
         # Already filtered/allowlisted at chew time (pipeline/sidecar.py) — raw text or None,
-        # never read from _INCOMING again past this point (D121).
+        # never read from incoming again past this point (D121).
         "sidecar": queue.get("sidecar"),
     }

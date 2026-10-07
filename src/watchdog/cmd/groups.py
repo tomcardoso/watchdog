@@ -77,7 +77,7 @@ MOVED: dict[str, str] = {
 }
 
 MAINTENANCE = [
-    ("chew", "Read documents in _INCOMING/ (step 1 of add)"),
+    ("chew", "Read documents in incoming/ (step 1 of add)"),
     ("dig", "Extract chewed documents (step 2 of add)"),
     ("bark", "Finish a batch: reconciliation, synthesis, briefing (step 3 of add)"),
     ("requeue", "Put failed documents back in the queue without running them"),

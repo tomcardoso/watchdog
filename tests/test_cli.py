@@ -147,7 +147,7 @@ def test_color_enabled_stream_whose_isatty_raises(monkeypatch):
 # ── _count_incoming ───────────────────────────────────────────────────────────
 
 def test_count_incoming_empty_dir(tmp_path):
-    (tmp_path / "_INCOMING").mkdir()
+    (tmp_path / "incoming").mkdir()
     assert cli._count_incoming(tmp_path) == 0
 
 
@@ -156,7 +156,7 @@ def test_count_incoming_no_dir(tmp_path):
 
 
 def test_count_incoming_counts_files(tmp_path):
-    incoming = tmp_path / "_INCOMING"
+    incoming = tmp_path / "incoming"
     incoming.mkdir()
     (incoming / "doc.pdf").write_text("")
     (incoming / "report.docx").write_text("")
@@ -164,7 +164,7 @@ def test_count_incoming_counts_files(tmp_path):
 
 
 def test_count_incoming_ignores_dotfiles(tmp_path):
-    incoming = tmp_path / "_INCOMING"
+    incoming = tmp_path / "incoming"
     incoming.mkdir()
     (incoming / ".DS_Store").write_text("")
     (incoming / "real.pdf").write_text("")
@@ -172,7 +172,7 @@ def test_count_incoming_ignores_dotfiles(tmp_path):
 
 
 def test_count_incoming_ignores_sidecar_yml(tmp_path):
-    incoming = tmp_path / "_INCOMING"
+    incoming = tmp_path / "incoming"
     incoming.mkdir()
     (incoming / "doc.pdf").write_text("")
     (incoming / "doc.yml").write_text("")
@@ -180,8 +180,8 @@ def test_count_incoming_ignores_sidecar_yml(tmp_path):
 
 
 def test_count_incoming_excludes_failed(tmp_path):
-    incoming = tmp_path / "_INCOMING"
-    failed = incoming / "_FAILED"
+    incoming = tmp_path / "incoming"
+    failed = incoming / "failed"
     failed.mkdir(parents=True)
     (incoming / "pending.pdf").write_text("")
     (failed / "broken.pdf").write_text("")
@@ -189,20 +189,20 @@ def test_count_incoming_excludes_failed(tmp_path):
 
 
 def test_count_incoming_not_fooled_by_failed_in_vault_path(tmp_path):
-    # The vault path itself contains "_FAILED" — should still count files correctly.
+    # The vault path itself contains "failed" — should still count files correctly.
     vault = tmp_path / "_FAILED_projects" / "investigation"
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     incoming.mkdir(parents=True)
     (incoming / "real.pdf").write_text("")
     assert cli._count_incoming(vault) == 1
 
 
 def test_count_incoming_excludes_skipped(tmp_path):
-    # A duplicate chew moves files to _SKIPPED/ — status must not count them as pending,
+    # A duplicate chew moves files to skipped/ — status must not count them as pending,
     # or the user is sent in a status -> chew -> status loop chasing files chew already
     # decided to skip (#255).
-    incoming = tmp_path / "_INCOMING"
-    skipped = incoming / "_SKIPPED"
+    incoming = tmp_path / "incoming"
+    skipped = incoming / "skipped"
     skipped.mkdir(parents=True)
     (incoming / "pending.pdf").write_text("")
     (skipped / "duplicate.pdf").write_text("")
@@ -212,10 +212,11 @@ def test_count_incoming_excludes_skipped(tmp_path):
 def test_count_incoming_matches_find_files_exclusions(tmp_path):
     # _count_incoming (status) and find_files (chew) must exclude the same directories,
     # or a file can be simultaneously "pending" per status and invisible to chew (#255).
-    from watchdog.pipeline.preprocess_batch import find_files, SKIP_DIRS
+    from watchdog.pipeline.preprocess_batch import find_files
+    from watchdog.vault_paths import SET_ASIDE_NAMES
 
-    incoming = tmp_path / "_INCOMING"
-    for d in SKIP_DIRS:
+    incoming = tmp_path / "incoming"
+    for d in sorted(SET_ASIDE_NAMES):
         skip_dir = incoming / d
         skip_dir.mkdir(parents=True, exist_ok=True)  # case-insensitive filesystems collide _FAILED/_failed
         (skip_dir / "file.pdf").write_text("")
@@ -303,7 +304,7 @@ def test_cmd_new_creates_vault(configured, tmp_path):
 def test_cmd_new_vault_structure(configured):
     cli.cmd_new(args(name="My Story", dir=str(configured)))
     vault = configured / "my-story"
-    for d in ["_INCOMING", "morgue", "entities", "documents", "briefings", "wiki", "queries",
+    for d in ["incoming", "morgue", "entities", "documents", "briefings", "wiki", "queries",
               ".watchdog/queue",
               ".watchdog/staging"]:
         assert (vault / d).is_dir(), f"Missing: {d}"
@@ -978,12 +979,12 @@ def test_cmd_status_shows_type_breakdown(configured, capsys):
 def test_cmd_status_pending_files(configured, capsys):
     cli.cmd_new(args(name="Test Proj", dir=str(configured)))
     vault = configured / "test-proj"
-    (vault / "_INCOMING" / "pending.pdf").write_text("")
-    (vault / "_INCOMING" / "also.pdf").write_text("")
+    (vault / "incoming" / "pending.pdf").write_text("")
+    (vault / "incoming" / "also.pdf").write_text("")
     cli.cmd_status(args(name="Test Proj"))
     out = _strip_ansi(capsys.readouterr().out)
     assert "2 files" in out
-    assert "_INCOMING/" in out
+    assert "incoming/" in out
 
 
 def test_cmd_status_warns_pending_research(configured, capsys):
@@ -2207,7 +2208,7 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
     import watchdog.pipeline.preprocess_batch as ppb
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
-    f = vault / "_INCOMING" / "doc.pdf"
+    f = vault / "incoming" / "doc.pdf"
     f.write_bytes(b"")
 
     calls = []
@@ -2223,7 +2224,7 @@ def test_cmd_chew_with_specific_file(configured, monkeypatch):
 
 def test_cmd_chew_copies_a_file_from_outside_incoming(configured, monkeypatch, tmp_path):
     """Chew moves what it processes into the vault — a file named from anywhere else (Downloads,
-    the vault's own _CONTEXT/) must be copied in, not taken away from where the user keeps it."""
+    the vault's own context/) must be copied in, not taken away from where the user keeps it."""
     import watchdog.pipeline.preprocess_batch as ppb
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
@@ -2237,7 +2238,7 @@ def test_cmd_chew_copies_a_file_from_outside_incoming(configured, monkeypatch, t
     cli.cmd_chew(args(file=str(outside), chew_workers=None))
     assert outside.exists()
     copied = calls[0][0]
-    assert copied.parent == (vault / "_INCOMING").resolve() or copied.parent == vault / "_INCOMING"
+    assert copied.parent == (vault / "incoming").resolve() or copied.parent == vault / "incoming"
     assert copied.read_bytes() == b"%PDF original"
     assert copied.with_name("doc.pdf.yml").exists()
 
@@ -2421,7 +2422,7 @@ def test_cmd_chew_reads_several_files_and_folders(configured, monkeypatch, tmp_p
     monkeypatch.chdir(vault)
     cli.cmd_chew(args(paths=[str(folder), str(single)], chew_workers=None))
     assert sorted(f.name for f in calls[0]) == ["one.pdf", "three.pdf", "two.txt"]
-    assert all(f.parent.resolve() == (vault / "_INCOMING").resolve() for f in calls[0])
+    assert all(f.parent.resolve() == (vault / "incoming").resolve() for f in calls[0])
     assert single.exists() and (folder / "one.pdf").exists()
 
 
@@ -2913,7 +2914,7 @@ def _vault_with_queued_doc(tmp_path):
         "pages": [{"page": 1, "markdown": "text"}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING").mkdir(exist_ok=True)
+    (vault / "incoming").mkdir(exist_ok=True)
     return vault
 
 
@@ -4147,7 +4148,7 @@ def _vault_with_failed_doc(tmp_path):
         "pages": [{"page": 1, "markdown": "text"}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING").mkdir(exist_ok=True)
+    (vault / "incoming").mkdir(exist_ok=True)
     return vault
 
 
@@ -4743,7 +4744,7 @@ def _fake_deposit_many(monkeypatch, captured):
     def fake(vault, entries, **kw):
         captured["entries"] = entries
         captured["wayback"] = kw.get("wayback")
-        return [Deposit(e["url"], vault / "_INCOMING" / "x.html") for e in entries]
+        return [Deposit(e["url"], vault / "incoming" / "x.html") for e in entries]
 
     monkeypatch.setattr("watchdog.pipeline.research.deposit_many", fake)
 

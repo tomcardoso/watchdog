@@ -10,7 +10,7 @@ Never add confidential source material, leaked documents, private correspondence
 
 ## How to use it
 
-1. Drop documents into `_INCOMING/`.
+1. Drop documents into `incoming/`.
 2. From this folder in your terminal:
    - `watchdog chew` — OCR and prepare the documents
    - `watchdog dig` — extract entities, relationships, and timelines
@@ -23,7 +23,7 @@ In your terminal, from this folder:
 
 | Command | What it does |
 |---------|--------------|
-| `watchdog chew` | Process the files in `_INCOMING/` |
+| `watchdog chew` | Process the files in `incoming/` |
 | `watchdog dig` | Extract from the chewed documents |
 | `watchdog bark` | Finish post-processing if an ingest was interrupted |
 | `watchdog status` | Vault stats, plus anything queued or pending |
@@ -41,8 +41,8 @@ In a Claude Code session opened on this folder:
 
 | Path | Purpose |
 |------|---------|
-| `_INCOMING/` | Drop zone for new documents |
-| `_CONTEXT/` | Background material (prior stories, notes) that seeds the investigation |
+| `incoming/` | Drop zone for new documents |
+| `context/` | Background material (prior stories, notes) that seeds the investigation |
 | `entities/` | One note per person, company, address… |
 | `documents/` | One note per ingested document |
 | `briefings/` | Post-ingest summaries of what was found |

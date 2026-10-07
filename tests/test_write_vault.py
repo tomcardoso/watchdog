@@ -15,7 +15,7 @@ def make_vault(tmp_path: Path) -> Path:
     vault = tmp_path / "vault"
     reg_dir = vault / ".watchdog" / "registry"
     reg_dir.mkdir(parents=True)
-    (vault / "_INCOMING").mkdir()
+    (vault / "incoming").mkdir()
     (vault / "entities" / "person").mkdir(parents=True)
     (vault / "entities" / "organization").mkdir(parents=True)
     (vault / "documents").mkdir()
@@ -34,7 +34,7 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
         "document": {
             "sha256": "abc123",
             "filename": "test-doc.pdf",
-            "original_path": "_INCOMING/test-doc.pdf",
+            "original_path": "incoming/test-doc.pdf",
             "title": "Test Document",
             "document_type": "Annual Report",
             "date_of_document": "2024-01-15",
@@ -111,7 +111,7 @@ def _deep_update(base: dict, overrides: dict) -> None:
 
 def test_new_entity_note_created(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     note = vault / "entities" / "person" / "alice-smith.md"
@@ -123,7 +123,7 @@ def test_new_entity_note_created(tmp_path):
 
 def test_entity_note_has_h1_heading(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -132,7 +132,7 @@ def test_entity_note_has_h1_heading(tmp_path):
 
 def test_new_entity_note_has_summary_section(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -142,7 +142,7 @@ def test_new_entity_note_has_summary_section(tmp_path):
 
 def test_entity_note_has_analysis_section(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -152,7 +152,7 @@ def test_entity_note_has_analysis_section(tmp_path):
 
 def test_entity_note_analysis_omitted_when_null(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     # acme-corp has no evidence_fragments
@@ -164,7 +164,7 @@ def test_slim_role_target_resolved_from_id(tmp_path):
     """A role emitted with target_id only (no target_name/target_type) is re-inflated from the
     batch's entities, so its relationship link renders with the resolved name + type."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"entities": [
         {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
          "summary": "A director.", "timeline_events": [],
@@ -181,7 +181,7 @@ def test_omitted_basis_renders_unmarked(tmp_path):
     """basis is omittable on the wire (absent ⇒ stated); a stated fact renders with no marker —
     only the rare inferred fact gets an *(inferred)* tag."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {
         "document": {"key_facts": [{"fact": "Revenue was $1M.", "page": 3}]},          # no basis ⇒ stated
         "entities": [
@@ -205,7 +205,7 @@ def test_inferred_fact_renders_marker(tmp_path):
     """An inferred timeline event is tagged *(inferred)* in the note — the one marked exception
     (the default fixture's 'Continued as director' event is inferred)."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     lines = (vault / "entities" / "person" / "alice-smith.md").read_text().splitlines()
@@ -217,7 +217,7 @@ def test_inferred_fact_renders_marker(tmp_path):
 
 def test_new_entity_note_has_relationships_section(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -229,7 +229,7 @@ def test_new_entity_note_has_relationships_section(tmp_path):
 
 def test_relationship_line_uses_pretty_link(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -240,7 +240,7 @@ def test_relationship_line_uses_pretty_link(tmp_path):
 def test_resolved_contradiction_dropped_from_note_body(tmp_path):
     from watchdog.pipeline import resolutions
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     callout = "> [!contradiction] Address differs from d3"
     overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
                                "contradictions": [callout]}]}
@@ -263,7 +263,7 @@ def test_unresolve_restores_contradiction_to_note(tmp_path):
     # must bring it back on the next touch.
     from watchdog.pipeline import resolutions
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     callout = "> [!contradiction] Address differs from d3"
     overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
                                "contradictions": [callout]}]}
@@ -286,7 +286,7 @@ def test_multiblock_callout_fully_resolved_not_left_in_fragments(tmp_path):
     # behind. Registry items are never re-split, so resolving must drop it whole.
     from watchdog.pipeline import resolutions
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     callout = (
         "> [!contradiction] Address differs\n>\n"
         "> Filed as 123 Main St in 2022, 456 Oak Ave in 2024."
@@ -310,7 +310,7 @@ def test_note_only_contradiction_backfilled_into_registry(tmp_path):
     # into the registry entry the first time the entity is touched by an ingest, not left
     # stranded where the lead sweep and unresolve can never see it.
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     note = vault / "entities" / "person" / "alice-smith.md"
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text(
@@ -336,7 +336,7 @@ def test_note_only_contradiction_backfilled_into_registry(tmp_path):
 
 def test_relationship_line_includes_source_doc_link(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -345,7 +345,7 @@ def test_relationship_line_includes_source_doc_link(tmp_path):
 
 def test_appears_in_uses_pretty_link(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -354,7 +354,7 @@ def test_appears_in_uses_pretty_link(tmp_path):
 
 def test_existing_entity_notes_section_preserved(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_note = vault / "entities" / "person" / "alice-smith.md"
     existing_note.write_text(
@@ -385,7 +385,7 @@ def test_existing_entity_notes_section_preserved(tmp_path):
 
 def test_analysis_accumulates_across_ingests(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_note = vault / "entities" / "person" / "alice-smith.md"
     existing_note.write_text(
@@ -421,7 +421,7 @@ def test_analysis_accumulates_across_ingests(tmp_path):
 
 def test_summary_replaced_on_reingest(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_note = vault / "entities" / "person" / "alice-smith.md"
     existing_note.write_text(
@@ -457,7 +457,7 @@ def test_summary_replaced_on_reingest(tmp_path):
 
 def test_merge_adds_new_alias(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_entities = {
         "alice-smith": {
@@ -484,7 +484,7 @@ def test_merge_adds_new_alias(tmp_path):
 
 def test_merge_adds_sha_to_appears_in(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_entities = {
         "alice-smith": {
@@ -514,7 +514,7 @@ def test_merge_adds_sha_to_appears_in(tmp_path):
 
 def test_merge_deduplicates_roles(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_entities = {
         "alice-smith": {
@@ -560,7 +560,7 @@ def test_new_entity_persists_contradictions_to_registry(tmp_path):
     # #252: the registry entry must carry the contradiction callouts so leads.find_leads
     # (which reads them straight from entities.json) isn't a structurally dead signal.
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     callout = "> [!contradiction] Address differs from prior filing"
     overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
                                "contradictions": [callout]}]}
@@ -575,7 +575,7 @@ def test_new_entity_persists_contradictions_to_registry(tmp_path):
 
 def test_merge_deduplicates_contradictions(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     callout = "> [!contradiction] Address differs from prior filing"
     existing_entities = {
@@ -611,7 +611,7 @@ def test_merge_deduplicates_contradictions(tmp_path):
 
 def test_reverse_relationship_written_to_target(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "organization" / "acme-corp.md").read_text()
@@ -623,7 +623,7 @@ def test_reverse_relationship_written_to_target(tmp_path):
 
 def test_document_note_created(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     doc_note = vault / "documents" / "test-doc.md"
@@ -636,7 +636,7 @@ def test_document_note_created(tmp_path):
 
 def test_document_note_links_entities_with_pretty_names(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "documents" / "test-doc.md").read_text()
@@ -648,7 +648,7 @@ def test_document_note_links_entities_with_pretty_names(tmp_path):
 
 def test_documents_json_updated(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     docs = json.loads(
@@ -664,7 +664,7 @@ def test_documents_json_persists_file_metadata(tmp_path):
     provenance evidence (shared producer/author strings across documents are a cluster signal)
     — but never rendered into the document note body."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     fm = {"author": "Jane Doe", "producer": "Acrobat Distiller", "created": "2023-01-15T12:00:00-05:00"}
     run(make_extraction(tmp_path, {"document": {"file_metadata": fm}}), vault)
 
@@ -677,7 +677,7 @@ def test_documents_json_persists_file_metadata(tmp_path):
 
 def test_documents_json_defaults_file_metadata_to_empty_dict_when_absent(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
@@ -686,7 +686,7 @@ def test_documents_json_defaults_file_metadata_to_empty_dict_when_absent(tmp_pat
 
 def test_entities_json_updated(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
@@ -698,7 +698,7 @@ def test_entities_json_updated(tmp_path):
 
 def test_registry_json_counts_updated(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     reg = json.loads(
@@ -710,7 +710,7 @@ def test_registry_json_counts_updated(tmp_path):
 
 def test_ingest_log_appended(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     log = (vault / ".watchdog" / "registry" / "ingest.log").read_text()
@@ -723,7 +723,7 @@ def test_ingest_log_appended(tmp_path):
 
 def test_manifest_created_on_ingest(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     manifest_path = vault / ".watchdog" / "registry" / "manifest.json"
@@ -735,7 +735,7 @@ def test_manifest_created_on_ingest(tmp_path):
 
 def test_manifest_contains_only_lookup_fields(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     manifest = json.loads(
@@ -751,7 +751,7 @@ def test_manifest_contains_only_lookup_fields(tmp_path):
 
 def test_manifest_includes_aliases(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     manifest = json.loads(
@@ -762,7 +762,7 @@ def test_manifest_includes_aliases(tmp_path):
 
 def test_manifest_note_path_is_correct(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     manifest = json.loads(
@@ -775,7 +775,7 @@ def test_manifest_note_path_is_correct(tmp_path):
 
 def test_source_file_moved_to_morgue(tmp_path):
     vault = make_vault(tmp_path)
-    source = vault / "_INCOMING" / "test-doc.pdf"
+    source = vault / "incoming" / "test-doc.pdf"
     source.write_text("dummy")
 
     run(make_extraction(tmp_path), vault)
@@ -786,7 +786,7 @@ def test_source_file_moved_to_morgue(tmp_path):
 
 def test_staging_dir_pruned_after_move_to_morgue(tmp_path):
     """Documents preprocessed via preprocess_batch.py land in .watchdog/staging/<sha>/ rather
-    than _INCOMING/ — that now-empty per-doc dir must be pruned too, or it accumulates forever,
+    than incoming/ — that now-empty per-doc dir must be pruned too, or it accumulates forever,
     one per ingested document (#265)."""
     vault = make_vault(tmp_path)
     staging_dir = vault / ".watchdog" / "staging" / "abc123"
@@ -806,7 +806,7 @@ def test_sidecar_written_to_morgue_from_extraction(tmp_path):
     carried onto doc["sidecar"] through extraction. write_vault re-materializes it in morgue
     from that text, not by moving a file off disk."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     run(make_extraction(tmp_path, {"document": {"sidecar": "source: SEDAR\n"}}), vault)
 
@@ -817,7 +817,7 @@ def test_sidecar_written_to_morgue_from_extraction(tmp_path):
 
 def test_no_sidecar_file_written_when_extraction_has_none(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     run(make_extraction(tmp_path), vault)
 
@@ -828,7 +828,7 @@ def test_no_sidecar_file_written_when_extraction_has_none(tmp_path):
 
 def test_sidecar_written_to_morgue_regardless_of_staging_source(tmp_path):
     """Re-guards the #396 bug: the morgue sidecar write must not depend on where the source file
-    currently sits (staging vs. _INCOMING/), only on doc["sidecar"]."""
+    currently sits (staging vs. incoming/), only on doc["sidecar"]."""
     vault = make_vault(tmp_path)
     staging_dir = vault / ".watchdog" / "staging" / "abc123"
     staging_dir.mkdir(parents=True)
@@ -858,7 +858,7 @@ def test_missing_source_file_does_not_raise(tmp_path):
 
 def test_entity_note_has_timeline_section(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -868,7 +868,7 @@ def test_entity_note_has_timeline_section(tmp_path):
 
 def test_timeline_day_precision_rendered(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -877,7 +877,7 @@ def test_timeline_day_precision_rendered(tmp_path):
 
 def test_timeline_year_precision_rendered(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -887,7 +887,7 @@ def test_timeline_year_precision_rendered(tmp_path):
 
 def test_timeline_sorted_chronologically(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -898,7 +898,7 @@ def test_timeline_sorted_chronologically(tmp_path):
 
 def test_timeline_events_stored_in_registry(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     entities = json.loads(
@@ -911,7 +911,7 @@ def test_timeline_events_stored_in_registry(tmp_path):
 
 def test_timeline_events_deduplicated(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_entities = {
         "alice-smith": {
@@ -953,7 +953,7 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
     would treat these two events as one and silently drop the second — the opening clause is
     identical, but who the property went to (the material fact) differs after the shared part."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     shared_opening = ("On March 3, 2019, Acme Holdings Ltd. transferred beneficial ownership of the "
                        "Cayman Islands shell company, via an intermediary numbered offshore company, to ")
@@ -1014,7 +1014,7 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
 
 def test_document_note_has_source_file_link(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "documents" / "test-doc.md").read_text()
@@ -1023,7 +1023,7 @@ def test_document_note_has_source_file_link(tmp_path):
 
 def test_document_note_key_facts_have_page_links(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "documents" / "test-doc.md").read_text()
@@ -1032,7 +1032,7 @@ def test_document_note_key_facts_have_page_links(tmp_path):
 
 def test_document_note_key_fact_quote_renders_as_blockquote(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "documents" / "test-doc.md").read_text()
@@ -1042,7 +1042,7 @@ def test_document_note_key_fact_quote_renders_as_blockquote(tmp_path):
 
 def test_key_fact_without_quote_has_no_blockquote(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
         "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated"}],
     }}), vault)
@@ -1054,7 +1054,7 @@ def test_key_fact_without_quote_has_no_blockquote(tmp_path):
 
 def test_document_note_flags_unverified_quote(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
         "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
                        "quote": "Total revenue for the year was $1,000,000.",
@@ -1067,7 +1067,7 @@ def test_document_note_flags_unverified_quote(tmp_path):
 
 def test_document_note_notes_quote_found_on_different_page(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
         "key_facts": [{"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
                        "quote": "Total revenue for the year was $1,000,000.",
@@ -1083,7 +1083,7 @@ def test_document_note_omits_found_page_note_once_citation_is_corrected(tmp_path
     document-wide, leaving the two equal. The "not the cited page" note must not fire once
     they agree — it would otherwise contradict the citation shown right next to it."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
         "key_facts": [{"fact": "Revenue was $1M.", "page": 4, "basis": "stated",
                        "quote": "Total revenue for the year was $1,000,000.",
@@ -1097,7 +1097,7 @@ def test_document_note_omits_found_page_note_once_citation_is_corrected(tmp_path
 
 def test_document_note_notes_quote_spans_pages(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
         "key_facts": [{"fact": "Revenue was $1M.", "page": 2, "basis": "stated",
                        "quote": "Total revenue for the year, spanning the page break, was $1,000,000.",
@@ -1110,7 +1110,7 @@ def test_document_note_notes_quote_spans_pages(tmp_path):
 
 def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -1130,7 +1130,7 @@ def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
 
 def test_path_traversal_entity_id_rejected(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     extraction = make_extraction(tmp_path, {"entities": [
         {"id": "../../../ESCAPED", "name": "Evil Corp", "type": "Person", "aliases": [],
          "timeline_events": [], "roles": []},
@@ -1148,7 +1148,7 @@ def test_path_traversal_entity_type_rejected(tmp_path):
     """type is not slugified upstream (it stays a display value), so _type_dir itself must
     strip traversal characters rather than just lowercasing them."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     extraction = make_extraction(tmp_path, {"entities": [
         {"id": "alice-smith", "name": "Alice Smith", "type": "../../../person", "aliases": [],
          "timeline_events": [], "roles": []},
@@ -1166,7 +1166,7 @@ def test_path_traversal_entity_type_rejected(tmp_path):
 
 def test_entity_name_bracket_injection_defanged_in_heading(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     hostile_name = "Acme]] [[entities/company/acme-corp|cleared"
     run(make_extraction(tmp_path, {"entities": [
         {"id": "alice-smith", "name": hostile_name, "type": "Person", "aliases": [],
@@ -1185,7 +1185,7 @@ def test_entity_name_bracket_injection_defanged_in_heading(tmp_path):
 
 def test_document_title_bracket_injection_defanged_in_role_line(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     hostile_title = "Report]] [[entities/company/acme-corp|Cleared"
     run(make_extraction(tmp_path, {"document": {"title": hostile_title}}), vault)
 
@@ -1195,7 +1195,7 @@ def test_document_title_bracket_injection_defanged_in_role_line(tmp_path):
 
 def test_document_note_entity_mention_name_defanged(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     hostile_name = "Acme]] [[entities/company/rival|Rival Corp"
     run(make_extraction(tmp_path, {"entities": [
         {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
@@ -1277,7 +1277,7 @@ def test_evidence_fragment_without_figure_flags_renders_no_note():
 
 def test_document_note_flags_a_figure_missing_from_the_document(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"document": {
         "key_facts": [{"fact": "Stayed $430,000 across two payments.", "page": 3,
                        "basis": "stated", "figures_unverified": ["430000"]}],
@@ -1298,7 +1298,7 @@ def test_figure_note_pluralizes_and_joins_both_classes():
 
 def test_entity_timeline_has_page_link(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -1308,7 +1308,7 @@ def test_entity_timeline_has_page_link(tmp_path):
 
 def test_entity_role_has_page_link(tmp_path):
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
@@ -1320,12 +1320,12 @@ def test_entity_role_has_page_link(tmp_path):
 
 def test_empty_incoming_subdirs_removed_after_ingest(tmp_path):
     vault = make_vault(tmp_path)
-    subdir = vault / "_INCOMING" / "David Sam KASSEM"
+    subdir = vault / "incoming" / "David Sam KASSEM"
     subdir.mkdir()
     (subdir / "test-doc.pdf").write_text("dummy")
 
     extraction = make_extraction(tmp_path, overrides={
-        "document": {"original_path": "_INCOMING/David Sam KASSEM/test-doc.pdf"}
+        "document": {"original_path": "incoming/David Sam KASSEM/test-doc.pdf"}
     })
     run(extraction, vault)
 
@@ -1334,13 +1334,13 @@ def test_empty_incoming_subdirs_removed_after_ingest(tmp_path):
 
 def test_nonempty_incoming_subdirs_preserved(tmp_path):
     vault = make_vault(tmp_path)
-    subdir = vault / "_INCOMING" / "David Sam KASSEM"
+    subdir = vault / "incoming" / "David Sam KASSEM"
     subdir.mkdir()
     (subdir / "test-doc.pdf").write_text("dummy")
     (subdir / "other.pdf").write_text("also here")
 
     extraction = make_extraction(tmp_path, overrides={
-        "document": {"original_path": "_INCOMING/David Sam KASSEM/test-doc.pdf"}
+        "document": {"original_path": "incoming/David Sam KASSEM/test-doc.pdf"}
     })
     run(extraction, vault)
 
@@ -1370,14 +1370,14 @@ def test_slug_collision_appends_sha_prefix(tmp_path, capsys):
     # Ingest first document
     run(make_extraction(tmp_path, overrides={
         "document": {"sha256": "aaa111", "filename": "annual-report.pdf",
-                     "original_path": "_INCOMING/annual-report.pdf"}
+                     "original_path": "incoming/annual-report.pdf"}
     }), vault)
 
     # Ingest a second document that slugifies to the same name but is a different file
-    (vault / "_INCOMING" / "annual-report.docx").write_text("dummy")
+    (vault / "incoming" / "annual-report.docx").write_text("dummy")
     run(make_extraction(tmp_path, overrides={
         "document": {"sha256": "bbb222", "filename": "annual-report.docx",
-                     "original_path": "_INCOMING/annual-report.docx"}
+                     "original_path": "incoming/annual-report.docx"}
     }), vault)
 
     notes = list((vault / "documents").iterdir())
@@ -1455,8 +1455,8 @@ def test_document_note_defangs_fact_quote_and_summary(tmp_path):
 def test_two_sequential_runs_merge_shared_entity(tmp_path):
     """Two documents mentioning the same entity must produce a merged registry entry."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     dir_a = tmp_path / "a"
     dir_a.mkdir()
@@ -1466,7 +1466,7 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
     run(make_extraction(dir_a, overrides={
         "document": {
             "sha256": "sha-a", "filename": "doc-a.pdf",
-            "original_path": "_INCOMING/doc-a.pdf",
+            "original_path": "incoming/doc-a.pdf",
         },
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person",
@@ -1481,7 +1481,7 @@ def test_two_sequential_runs_merge_shared_entity(tmp_path):
     run(make_extraction(dir_b, overrides={
         "document": {
             "sha256": "sha-b", "filename": "doc-b.pdf",
-            "original_path": "_INCOMING/doc-b.pdf",
+            "original_path": "incoming/doc-b.pdf",
         },
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person",
@@ -1522,7 +1522,7 @@ def _company_extraction(dirpath, sha, filename, eid, name):
     return make_extraction(dirpath, overrides={
         "document": {
             "sha256": sha, "filename": filename,
-            "original_path": f"_INCOMING/{filename}",
+            "original_path": f"incoming/{filename}",
         },
         "entities": [{
             "id": eid, "name": name, "type": "Company",
@@ -1543,8 +1543,8 @@ def _company_extraction(dirpath, sha, filename, eid, name):
 def test_distinct_same_type_entities_not_merged(tmp_path):
     """Reconciliation must not collapse genuinely different entities of the same type."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
     dir_a, dir_b = tmp_path / "a", tmp_path / "b"
     dir_a.mkdir()
     dir_b.mkdir()
@@ -1561,7 +1561,7 @@ def test_canonical_type_drives_entity_folder(tmp_path):
     """A model-invented type collapses onto its bucket before it becomes the folder segment:
     a ``Financial Institution`` is written under ``entities/organization/``, not a new folder."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("dummy")
+    (vault / "incoming" / "doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {"entities": [
         {"id": "td-bank", "name": "Toronto-Dominion Bank", "type": "Financial Institution",
          "aliases": [], "summary": "A bank.", "timeline_events": [], "roles": []},
@@ -1587,7 +1587,7 @@ def test_reingest_same_document_is_idempotent(tmp_path):
     """Running write_vault twice for the same document must replace its contribution, not
     double it — the ## Analysis block stays singular."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(_real_sha_extraction(tmp_path), vault)
     # Second run re-reads the same extraction (the source has moved to the morgue, but the
     # note write must still converge on the already-present contribution).
@@ -1603,7 +1603,7 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
     """Crash between the note writes and the registry persist: the registries stay untouched
     (the commit never landed), and a repair retry converges instead of doubling claims (#259)."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     ex = _real_sha_extraction(tmp_path)
 
     import watchdog.pipeline.write_vault as wv_mod

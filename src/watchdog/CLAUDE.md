@@ -10,7 +10,7 @@ The constants are gated on terminal detection (`cmd.base._color_enabled`, #499):
 |----------|---------|
 | `_BOLD` | Project names, important counts, section headers |
 | `_DIM` | Secondary metadata: dates, slugs, path labels, quiet prompts |
-| `_CYAN` | Actionable items: file paths, commands the user should type, directory names like `_INCOMING/` |
+| `_CYAN` | Actionable items: file paths, commands the user should type, directory names like `incoming/` |
 | `_GREEN` | Success states (`Created:`) |
 | `_YELLOW` | Warnings (pending files, things that need attention) |
 | `_RESET` | Always close every coloured span |
@@ -22,7 +22,7 @@ The constants are gated on terminal detection (`cmd.base._color_enabled`, #499):
 - **Cyan for paths, never dim** — file system paths and `watchdog …` commands the user should run are always `_CYAN`, not `_DIM`. Dim is for decorative/secondary text only.
 - **Section headers: bold, no trailing colon** — e.g. `  **Documents by type**` not `Documents by type:`. The colon was dropped in the consistency pass.
 - **Dim labels, normal counts** — in type-breakdown tables, the label is `_DIM`, the count is unstyled (so it reads at normal brightness).
-- **No trailing colons on "Pending in" lines** — format is `Pending in _CYAN__INCOMING/_RESET  <label>`.
+- **No trailing colons on "Pending in" lines** — format is `Pending in {_CYAN}incoming/{_RESET}  <label>`.
 
 ## Adding a new command
 

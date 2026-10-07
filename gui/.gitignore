@@ -5,3 +5,5 @@ test-results/
 playwright-report/
 *.log
 *.tsbuildinfo
+resources/bin/
+resources/python-wheel/

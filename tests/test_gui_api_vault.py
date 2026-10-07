@@ -400,9 +400,9 @@ def test_resolve_link(rich_vault, target, expected):
 def test_pipeline_state(rich_vault):
     p = call("vault.pipeline", vault=V(rich_vault))
     assert [(f["name"], f["path"], f["sidecar"]) for f in p["incoming"]] == [
-        ("new-file.pdf", "_INCOMING/new-file.pdf", True), ("nested.docx", "_INCOMING/sub/nested.docx", False)]
+        ("new-file.pdf", "incoming/new-file.pdf", True), ("nested.docx", "incoming/sub/nested.docx", False)]
     assert p["incoming"][0]["size"] == 8 and p["incoming"][0]["modified"]
-    assert p["chew_failed"] == [{"name": "bad.pdf", "path": "_INCOMING/_FAILED/bad.pdf", "size": 3}]
+    assert p["chew_failed"] == [{"name": "bad.pdf", "path": "incoming/failed/bad.pdf", "size": 3}]
     assert [(s["name"], s["reason"]) for s in p["skipped"]] == [("dup.pdf", "already ingested"),
                                                                 ("empty.pdf", None)]
     assert [(q["filename"], q["staged"], q["page_count"]) for q in p["queued"]] == [
@@ -501,8 +501,8 @@ def test_requests(rich_vault):
 
 
 def test_context_files_skip_hidden(rich_vault):
-    (rich_vault / "_CONTEXT" / "sub").mkdir()
-    (rich_vault / "_CONTEXT" / "sub" / "b.pdf").write_bytes(b"1234")
+    (rich_vault / "context" / "sub").mkdir()
+    (rich_vault / "context" / "sub" / "b.pdf").write_bytes(b"1234")
     rows = call("vault.contextFiles", vault=V(rich_vault))
     assert [r["name"] for r in rows] == ["background.txt", "sub/b.pdf"]
     assert rows[1]["size"] == 4 and rows[1]["modified"]

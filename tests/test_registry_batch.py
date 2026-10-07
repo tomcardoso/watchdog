@@ -19,7 +19,7 @@ def _extraction(tmp_path, n):
     sub = tmp_path / f"x{n}"
     sub.mkdir()
     return make_extraction(sub, {"document": {"sha256": f"sha{n}", "filename": f"doc{n}.pdf",
-                                              "original_path": f"_INCOMING/doc{n}.pdf",
+                                              "original_path": f"incoming/doc{n}.pdf",
                                               "title": f"Doc {n}"}})
 
 
@@ -91,7 +91,7 @@ def test_rollback_undoes_a_failed_documents_registry_edits(tmp_path, monkeypatch
         (tmp_path / "x9").mkdir()
         extra = make_extraction(tmp_path / "x9", {
             "document": {"sha256": "sha9", "filename": "doc9.pdf",
-                         "original_path": "_INCOMING/doc9.pdf"},
+                         "original_path": "incoming/doc9.pdf"},
             "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "organization",
                           "aliases": ["Acme New Alias"], "roles": []},
                          {"id": "bob-new", "name": "Bob New", "type": "Person",

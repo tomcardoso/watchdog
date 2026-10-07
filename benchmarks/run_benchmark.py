@@ -233,7 +233,7 @@ def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, roo
         _deregister_benchmark_vault(name)
         _deregister_obsidian_vault(vault)
 
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     for doc in docs:
         shutil.copy2(doc, incoming / doc.name)
         if with_sidecars:

@@ -111,12 +111,12 @@ def test_timeline_briefings_and_review_queues(demo_vault):
 
 def test_pipeline_state_left_for_the_app(demo_vault):
     vault, home, stdout = demo_vault
-    assert sorted(p.name for p in (vault / "_INCOMING").iterdir()) == [
+    assert sorted(p.name for p in (vault / "incoming").iterdir()) == [
         "pier-9-change-order-3.pdf", "site-meeting-notes-2022-09-14.docx"]
     assert len(list((vault / ".watchdog" / "queue" / "_failed").glob("*.json"))) == 1
     log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
     assert "FAILED scanned-memo-illegible.pdf" in log
-    assert len(list((vault / "_CONTEXT").iterdir())) >= 2
+    assert len(list((vault / "context").iterdir())) >= 2
     queue = (vault / ".watchdog" / "research" / "queue.tsv").read_text(encoding="utf-8")
     assert queue.startswith("https://")
     assert len(list((vault / ".watchdog" / "registry" / "usage").glob("usage-*.json"))) >= 2

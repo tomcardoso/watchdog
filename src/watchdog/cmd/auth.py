@@ -631,6 +631,25 @@ def _route_ingestion_to_claude(state: dict) -> None:
         _maybe_restore_concurrency_from_subscription()
 
 
+def route_stages_to_model(config: dict, provider: str, value: str) -> None:
+    """Point classifier/extractor/finalizer_model at `value` (a `provider:model` id) and apply
+    each stage's generic schema-default effort wherever the model supports it. Mutates `config`;
+    the caller persists it. Shared by the interactive setup and the desktop app's first-run
+    setup, so both route a provider's models identically."""
+    from watchdog.cmd.setup import _CONFIGURE_KEYS
+    from watchdog.model_client import effort_supported
+
+    config["classifier_model"] = value
+    config["extractor_model"] = value
+    config["finalizer_model"] = value
+
+    model_id = value.removeprefix(f"{provider}:")
+    for key in ("classifier_effort", "extractor_effort", "finalizer_effort"):
+        default_effort = _CONFIGURE_KEYS[key]["default"]
+        if effort_supported(provider, model_id, default_effort):
+            config[key] = default_effort
+
+
 def _route_ingestion_to_provider(state: dict, provider: str) -> None:
     """A non-Claude provider picked for ingestion in `_choose_ingestion_provider`: store its key
     (or base URL, for local/self-hosted and OpenRouter — #380), then route
@@ -659,8 +678,7 @@ def _route_ingestion_to_provider(state: dict, provider: str) -> None:
         return
 
     from watchdog.cmd.base import CONFIG_FILE, WATCHDOG_HOME
-    from watchdog.cmd.setup import _CONFIGURE_KEYS, _pick_model_interactive
-    from watchdog.model_client import effort_supported
+    from watchdog.cmd.setup import _pick_model_interactive
     config: dict = {}
     if CONFIG_FILE.exists():
         config = _read_json_or(CONFIG_FILE, {}, catch=(json.JSONDecodeError,))
@@ -670,15 +688,7 @@ def _route_ingestion_to_provider(state: dict, provider: str) -> None:
           f" elsewhere anytime with watchdog settings){_RESET}")
     value = _pick_model_interactive(config.get("extractor_model"), only_provider=provider)
     if value:
-        config["classifier_model"] = value
-        config["extractor_model"] = value
-        config["finalizer_model"] = value
-
-        model_id = value.removeprefix(f"{provider}:")
-        for key in ("classifier_effort", "extractor_effort", "finalizer_effort"):
-            default_effort = _CONFIGURE_KEYS[key]["default"]
-            if effort_supported(provider, model_id, default_effort):
-                config[key] = default_effort
+        route_stages_to_model(config, provider, value)
 
     WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     write_private_json(CONFIG_FILE, config)

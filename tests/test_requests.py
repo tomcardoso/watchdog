@@ -261,8 +261,8 @@ def test_write_vault_records_requests_from_an_extraction(tmp_path):
     from watchdog.pipeline import write_vault
 
     vault = _vault(tmp_path)
-    (vault / "_INCOMING").mkdir()
-    (vault / "_INCOMING" / "order.pdf").write_text("x", encoding="utf-8")
+    (vault / "incoming").mkdir()
+    (vault / "incoming" / "order.pdf").write_text("x", encoding="utf-8")
     extraction = {
         "document": {"sha256": SHA, "filename": "order.pdf", "title": "Order",
                      "document_type": "Court order", "summary": "An order.", "key_facts": []},

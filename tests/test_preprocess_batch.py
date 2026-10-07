@@ -47,8 +47,10 @@ def test_ds_store_excluded(tmp_path):
 
 
 def test_failed_subdir_excluded(tmp_path):
+    tmp_path = tmp_path / "incoming"
+    tmp_path.mkdir()
     ok = tmp_path / "ok.pdf"
-    failed_dir = tmp_path / "_FAILED"
+    failed_dir = tmp_path / "failed"
     failed_dir.mkdir()
     bad = failed_dir / "bad.pdf"
     ok.write_bytes(b"")
@@ -354,7 +356,7 @@ def test_chew_refuses_when_a_fresh_chew_lock_exists(tmp_path):
     import time
     vault = tmp_path / "vault"
     (vault / ".watchdog").mkdir(parents=True)
-    (vault / "_INCOMING").mkdir()
+    (vault / "incoming").mkdir()
     lock = vault / ".watchdog" / ".chew-lock"
     fresh = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     lock.write_text(f"started_at: {fresh}\npid: 999\n")
@@ -438,7 +440,7 @@ def test_page_label_case_insensitive(tmp_path):
 
 def _make_vault(tmp_path):
     vault    = tmp_path / "vault"
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
     incoming.mkdir(parents=True)
@@ -458,7 +460,7 @@ def test_empty_doc_moves_to_skipped(tmp_path, monkeypatch):
 
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
-    assert (incoming / "_SKIPPED" / "photo.jpg").exists()
+    assert (incoming / "skipped" / "photo.jpg").exists()
     assert not f.exists()
     assert list(queue.glob("*.json")) == []
 
@@ -490,7 +492,7 @@ def test_nonempty_doc_still_queued(tmp_path, monkeypatch):
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (queue / "aabbcc.json").exists()
-    assert not (incoming / "_SKIPPED").exists()
+    assert not (incoming / "skipped").exists()
 
 
 def test_summary_includes_skipped_count(tmp_path, monkeypatch, capsys):
@@ -580,8 +582,8 @@ def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (queue / "gg00.json").exists()
-    assert not (incoming / "_SKIPPED").exists()
-    assert not (incoming / "_FAILED").exists()
+    assert not (incoming / "skipped").exists()
+    assert not (incoming / "failed").exists()
 
 
 # ── sidecar handling (D121) ─────────────────────────────────────────────────────
@@ -653,7 +655,7 @@ def test_sidecar_moved_to_failed_alongside_source(tmp_path, monkeypatch):
 
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
-    assert (incoming / "_FAILED" / "broken.pdf.yml").exists()
+    assert (incoming / "failed" / "broken.pdf.yml").exists()
     assert not (incoming / "broken.pdf.yml").exists()
 
 
@@ -669,7 +671,7 @@ def test_sidecar_moved_to_skipped_alongside_source(tmp_path, monkeypatch):
 
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
-    assert (incoming / "_SKIPPED" / "blank.jpg.yml").exists()
+    assert (incoming / "skipped" / "blank.jpg.yml").exists()
     assert not (incoming / "blank.jpg.yml").exists()
 
 
@@ -745,12 +747,12 @@ def test_near_dup_flags_a_match_still_in_the_queue(tmp_path):
 
 
 def test_chew_flags_near_duplicates_dropped_together(tmp_path, monkeypatch):
-    """End to end: two near-identical filings dropped into one `_INCOMING/` — the later-staged one
+    """End to end: two near-identical filings dropped into one `incoming/` — the later-staged one
     names the earlier as its near-duplicate in its queue file."""
     from watchdog.pipeline import preprocess_batch as ppb
     monkeypatch.setenv("HOME", str(tmp_path))
     vault = _empty_vault(tmp_path)
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     incoming.mkdir()
     for name in ("a.pdf", "b.pdf"):
         (incoming / name).write_bytes(name.encode())
@@ -814,11 +816,30 @@ def test_tty_run_shows_inflight_row_and_progress(tmp_path, monkeypatch):
 
 
 def test_skipped_subdir_excluded_from_find_files(tmp_path):
-    incoming = tmp_path
-    (incoming / "_SKIPPED").mkdir()
-    (incoming / "_SKIPPED" / "photo.jpg").write_bytes(b"")
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    (incoming / "skipped").mkdir()
+    (incoming / "skipped" / "photo.jpg").write_bytes(b"")
     (incoming / "doc.pdf").write_bytes(b"")
-    result = find_files([str(tmp_path)])
+    result = find_files([str(incoming)])
     names = [f.name for f in result]
     assert "doc.pdf" in names
     assert "photo.jpg" not in names
+
+
+def test_failed_and_skipped_excluded_only_directly_under_incoming(tmp_path):
+    # A folder of the user's own that happens to be called "failed" is still read (D266); only
+    # incoming/failed and incoming/skipped are set aside. Chewing the set-aside folder itself
+    # explicitly (to retry its files) still works.
+    incoming = tmp_path / "incoming"
+    for sub in ("failed", "skipped", "mine/failed"):
+        (incoming / sub).mkdir(parents=True)
+        (incoming / sub / "x.pdf").write_bytes(b"")
+    (incoming / "ok.pdf").write_bytes(b"")
+    names = sorted(str(f.relative_to(incoming)) for f in find_files([incoming]))
+    assert names == ["mine/failed/x.pdf", "ok.pdf"]
+    assert [f.name for f in find_files([incoming / "failed"])] == ["x.pdf"]
+    legacy = tmp_path / "_INCOMING"
+    (legacy / "_FAILED").mkdir(parents=True)
+    (legacy / "_FAILED" / "y.pdf").write_bytes(b"")
+    assert find_files([legacy]) == []

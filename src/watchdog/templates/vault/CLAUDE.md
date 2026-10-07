@@ -9,9 +9,9 @@ The vault is written by Watchdog's pipeline, which runs in the terminal — not 
 
 | Path | Purpose |
 |------|---------|
-| `_INCOMING/` | Drop zone — drag files here, then run `watchdog chew` in your terminal |
-| `_INCOMING/_FAILED/`, `_INCOMING/_SKIPPED/` | Files that couldn't be processed, or exact duplicates of something already in the vault |
-| `_CONTEXT/` | Background material (prior stories, notes) — `/watchdog-context` reads it to seed `context.md` |
+| `incoming/` | Drop zone — drag files here, then run `watchdog chew` in your terminal |
+| `incoming/failed/`, `incoming/skipped/` | Files that couldn't be processed, or exact duplicates of something already in the vault |
+| `context/` | Background material (prior stories, notes) — `/watchdog-context` reads it to seed `context.md` |
 | `entities/` | One note per real-world entity, filed by type (person, organization, public-body, place, asset, proceeding) |
 | `documents/` | One note per ingested document |
 | `morgue/` | Original files after ingest, each beside a markdown copy of its full text |
@@ -55,7 +55,7 @@ Use the Read, Glob and Grep tools for files rather than shell pipelines, and pat
 
 | Command | Action |
 |---------|--------|
-| `/watchdog-context` | Seed `context.md` from background files in `_CONTEXT/` and an interview |
+| `/watchdog-context` | Seed `context.md` from background files in `context/` and an interview |
 | `/watchdog-query <question>` | Answer a question from the vault; file substantive answers to `queries/` |
 | `/watchdog-surface` | Find connections and anomalies across the vault |
 | `/watchdog-wiki <angle>` | Create or update investigation thread pages |

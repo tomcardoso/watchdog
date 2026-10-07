@@ -1,7 +1,7 @@
 """
 Watchdog batch preprocessor — run from the CLI, not from Claude Code.
 
-Chews all files in _INCOMING/, writes per-file results to
+Chews all files in incoming/, writes per-file results to
 .watchdog/queue/<sha256>.json, moves originals to .watchdog/staging/<sha256>/,
 and prints a Claude Code handoff message when done.
 """
@@ -21,6 +21,7 @@ from watchdog.pipeline import sidecar
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
+from watchdog.vault_paths import INCOMING_NAME, LEGACY_INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir, incoming_skipped_dir
 
 DEFAULT_FILE_TIMEOUT = 600
 
@@ -144,7 +145,8 @@ _cancel_event = threading.Event()
 
 SKIP_NAMES    = {".ds_store", ".ingest-lock", "thumbs.db", "desktop.ini"}
 SKIP_SUFFIXES = {".yml"}
-SKIP_DIRS     = {"_failed", "_FAILED", "_skipped", "_SKIPPED"}
+# Folders directly under incoming/ that chew never reads (incoming/failed, incoming/skipped, and
+# their pre-D266 spellings); see vault_paths.is_set_aside.
 _OS_JUNK      = {".ds_store", "thumbs.db", "desktop.ini"}
 
 _BAR_WIDTH = 28
@@ -187,7 +189,12 @@ def _count_pdf_pages(path: Path) -> int:
             return int(r.stdout.strip())
     except Exception:
         pass
-    return 1
+    # qpdf is optional (the app ships without it): count with pypdf instead.
+    try:
+        from pypdf import PdfReader
+        return max(1, len(PdfReader(str(path)).pages))
+    except Exception:
+        return 1
 
 
 def _adaptive_workers(files: list[Path]) -> tuple[int, int, dict]:
@@ -272,6 +279,17 @@ def _prune_empty_dirs(root: Path) -> None:
                 pass
 
 
+def _in_set_aside_folder(root: Path, f: Path) -> bool:
+    """True if `f` sits inside an `incoming/failed` or `incoming/skipped` folder below `root`
+    (`root` itself may be one — chewing it explicitly retries its files)."""
+    parts = f.relative_to(root).parts
+    for i, part in enumerate(parts[:-1]):
+        parent = root.joinpath(*parts[:i]).name
+        if part in SET_ASIDE_NAMES and parent in (INCOMING_NAME, LEGACY_INCOMING_NAME):
+            return True
+    return False
+
+
 def find_files(paths: list[Path]) -> list[Path]:
     files = []
     for p in paths:
@@ -287,7 +305,7 @@ def find_files(paths: list[Path]) -> list[Path]:
                     continue
                 if f.suffix.lower() in SKIP_SUFFIXES:
                     continue
-                if any(part.lower() in SKIP_DIRS for part in f.relative_to(p).parts):
+                if _in_set_aside_folder(p, f):
                     continue
                 files.append(f)
     return files
@@ -344,7 +362,7 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
 
     Each file's sha256 is checked against the document registry (already ingested) and the pending
     queue (already chewed this round, awaiting ingest), plus the shas seen earlier in this same
-    batch (intra-batch duplicates). A match is moved to ``_INCOMING/_SKIPPED/`` with a warning
+    batch (intra-batch duplicates). A match is moved to ``incoming/skipped/`` with a warning
     rather than re-OCR'd and re-queued — the journalist keeps the file, it just isn't processed
     again. (Exact bytes only; a near-duplicate has a different sha and is handled by the MinHash
     check at ingest.)
@@ -377,14 +395,14 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
             seen.add(sha)
             keep.append(f)
             continue
-        skipped_dir = incoming / "_SKIPPED"
+        skipped_dir = incoming_skipped_dir(vault)
         skipped_dir.mkdir(exist_ok=True)
         try:
             f.rename(skipped_dir / f.name)
         except OSError:
             pass
         print(f"  {_YELLOW}⚠ duplicate{_RESET}  {f.name}  "
-              f"{_DIM}{reason} → _INCOMING/_SKIPPED/{_RESET}")
+              f"{_DIM}{reason} → incoming/skipped/{_RESET}")
         progress.emit("chew", state="file", name=f.name, outcome="duplicate", pages=None)
     return keep
 
@@ -401,7 +419,7 @@ def run_ingest(
     known — bypasses `_filter_already_seen`'s dedup for exactly them, and excludes each from its
     own near-duplicate comparison. Used by `ingest --force <selector>` to regenerate a queue entry
     from a committed document's morgue original; every other caller leaves this unset."""
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
     queue.mkdir(parents=True, exist_ok=True)
@@ -452,9 +470,9 @@ def _run_ingest_inner(
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
-            print(f"\n  {_DIM}_INCOMING/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM}.{_RESET}\n")
+            print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM}.{_RESET}\n")
         else:
-            print(f"\n  {_DIM}_INCOMING/ is empty — nothing to chew.{_RESET}\n")
+            print(f"\n  {_DIM}incoming/ is empty — nothing to chew.{_RESET}\n")
         return
 
     total = len(files)
@@ -556,7 +574,7 @@ def _run_ingest_inner(
             sidecar_path = path.with_name(path.name + ".yml")
 
             if is_err:
-                failed_dir = incoming / "_FAILED"
+                failed_dir = incoming_failed_dir(vault)
                 failed_dir.mkdir(exist_ok=True)
                 try:
                     path.rename(failed_dir / path.name)
@@ -567,10 +585,10 @@ def _run_ingest_inner(
                         sidecar_path.rename(failed_dir / sidecar_path.name)
                     except OSError:
                         pass
-                live.note(f"       {_YELLOW}→ _INCOMING/_FAILED/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
+                live.note(f"       {_YELLOW}→ incoming/failed/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
             elif is_empty:
                 skipped += 1
-                skipped_dir = incoming / "_SKIPPED"
+                skipped_dir = incoming_skipped_dir(vault)
                 skipped_dir.mkdir(exist_ok=True)
                 try:
                     path.rename(skipped_dir / path.name)
@@ -581,7 +599,7 @@ def _run_ingest_inner(
                         sidecar_path.rename(skipped_dir / sidecar_path.name)
                     except OSError:
                         pass
-                live.note(f"       {_DIM}→ _INCOMING/_SKIPPED/  no text content extracted{_RESET}")
+                live.note(f"       {_DIM}→ incoming/skipped/  no text content extracted{_RESET}")
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
@@ -622,7 +640,7 @@ def _run_ingest_inner(
         pool.shutdown(wait=True, cancel_futures=True)
         _prune_empty_dirs(incoming)
         live.stop()
-        print(f"\n  {_DIM}Cancelled — {done} of {total} files processed. Unfinished files remain in _INCOMING/.{_RESET}\n")
+        print(f"\n  {_DIM}Cancelled — {done} of {total} files processed. Unfinished files remain in incoming/.{_RESET}\n")
         return
     else:
         pool.shutdown(wait=False)

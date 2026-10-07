@@ -18,6 +18,7 @@ import asyncio
 import datetime
 import json
 import os
+import sys
 import threading
 import uuid
 from pathlib import Path
@@ -51,6 +52,12 @@ def build_options(session: "Session", can_use_tool):
     from watchdog.model_catalog import resolve_model_id
     kwargs = dict(cwd=str(session.vault), setting_sources=["project"], include_partial_messages=True,
                   system_prompt={"type": "preset", "preset": "claude_code"}, can_use_tool=can_use_tool)
+    # The session's `watchdog …` commands (the vault's slash commands call them) must resolve to
+    # the engine this server runs in, and Claude Code must be the copy bundled with the SDK.
+    kwargs["env"] = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")])}
+    from watchdog.gui.engine_setup import bundled_claude_path
+    if bundled_claude_path():
+        kwargs["cli_path"] = bundled_claude_path()
     if session.model:
         kwargs["model"] = resolve_model_id(session.model)
     if session.sdk_session_id:

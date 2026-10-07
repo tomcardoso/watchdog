@@ -13,7 +13,7 @@ from watchdog.pipeline import resolutions
 def vault(tmp_path, monkeypatch):
     v = tmp_path / "probe"
     (v / ".watchdog" / "queue").mkdir(parents=True)
-    (v / "_INCOMING").mkdir()
+    (v / "incoming").mkdir()
     monkeypatch.chdir(v)
     return v
 
@@ -58,8 +58,8 @@ def test_a_path_inside_the_vault_is_refused(vault):
 
 
 def test_incoming_is_accepted_without_copying(vault):
-    (vault / "_INCOMING" / "a.pdf").write_bytes(b"x")
-    assert ing._expand_paths([str(vault / "_INCOMING")], vault) == []
+    (vault / "incoming" / "a.pdf").write_bytes(b"x")
+    assert ing._expand_paths([str(vault / "incoming")], vault) == []
 
 
 def test_a_folder_holding_the_vault_leaves_its_files_out(vault, tmp_path, capsys):
@@ -88,10 +88,10 @@ def test_add_estimate_changes_nothing(vault, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: calls.append("estimate"))
     doc = tmp_path / "a.pdf"
     doc.write_bytes(b"%PDF")
-    (vault / "_INCOMING" / "waiting.pdf").write_bytes(b"x")
+    (vault / "incoming" / "waiting.pdf").write_bytes(b"x")
     ing.cmd_add(argparse.Namespace(paths=[str(doc)], retry=True, estimate=True))
     assert calls == ["estimate"]
-    assert not (vault / "_INCOMING" / "a.pdf").exists()
+    assert not (vault / "incoming" / "a.pdf").exists()
     assert "covers the current queue only" in capsys.readouterr().out
 
 

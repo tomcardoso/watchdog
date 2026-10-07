@@ -606,7 +606,7 @@ _CONFIGURE_KEYS = {
     "research_max_fetches": {
         "short": "Default sources captured per `watchdog research` standard run (default: 25)",
         "help": (
-            "About how many web sources the /watchdog-research skill captures into _INCOMING/ in a\n"
+            "About how many web sources the /watchdog-research skill captures into incoming/ in a\n"
             "  default (standard-effort) run. An advisory budget the interactive skill self-limits to;\n"
             "  the 'quick' and 'deep' effort tiers scale it down or up per run. Each captured source\n"
             "  is later read by the local pipeline, not in the research session, so this bounds scope\n"
@@ -711,7 +711,7 @@ _OCR_ENGINE_PACKAGES = {
     # engine → (import_name, pip_package) or None if bundled with docling
     "apple_vision": ("ocrmac",               "ocrmac"),
     "tesseract":    ("tesserocr",            "tesserocr"),
-    "rapidocr":     ("rapidocr_onnxruntime", "rapidocr-onnxruntime"),
+    "rapidocr":     ("rapidocr",             "rapidocr"),   # docling >= 2.5x depends on it already
     "easyocr":      None,
     "auto":         None,
 }
@@ -793,6 +793,9 @@ def cmd_refresh_skills(args) -> None:
         if not is_vault(vault):
             sys.exit("Error: not inside a watchdog project. cd into a vault or pass a project name.")
     from watchdog.setup_cmd import install_skills
+    from watchdog.vault_paths import migrate_folder_names
+    for change in migrate_folder_names(vault):       # before the permissions pass below (D266)
+        print(f"  {_GREEN}Renamed{_RESET}  {_DIM}{change}{_RESET}")
     commands_dir = vault / ".claude" / "commands"
     install_skills(commands_dir)
 

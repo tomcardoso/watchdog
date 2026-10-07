@@ -1,6 +1,6 @@
 """Tests for the web research egress gate (pipeline/research.py, #186).
 
-The security-critical guarantee — nothing reaches `_INCOMING/` without passing URL validation
+The security-critical guarantee — nothing reaches `incoming/` without passing URL validation
 and content sanitization — is enforced here, so these tests exercise the hygiene directly. The
 network is never touched: `fetch` is unit-tested only for its pure helpers, and `deposit_*` take
 an injected fake fetcher."""
@@ -172,7 +172,7 @@ def test_deposit_one_writes_document_and_sidecar(tmp_path):
                                 fetcher=fetcher)
     assert path.exists()
     assert path.suffix == ".html"
-    assert path.parent == vault / "_INCOMING"
+    assert path.parent == vault / "incoming"
     # Script was stripped from the deposited body.
     assert b"script" not in path.read_bytes()
     # Sidecar sits beside it under the `<name>.html.yml` convention the ingest path reads.
@@ -214,7 +214,7 @@ def test_deposit_name_is_stable_per_url(tmp_path):
     p2 = research.deposit_one(vault, "https://e.com/x", title="T", fetcher=f)
     # Re-pulling the same URL overwrites the same file (idempotent recovery), never duplicates.
     assert p1 == p2
-    assert len(list((vault / "_INCOMING").glob("*.html"))) == 1
+    assert len(list((vault / "incoming").glob("*.html"))) == 1
 
 
 def test_parse_worklist_skips_comments_and_blanks():
@@ -244,7 +244,7 @@ def test_deposit_many_continues_past_failures(tmp_path):
     results = research.deposit_many(vault, entries, fetcher=_fetch)
     assert [bool(r.path) for r in results] == [True, False, True]
     assert results[1].error and "simulated" in results[1].error
-    assert len(list((vault / "_INCOMING").glob("*.html"))) == 2
+    assert len(list((vault / "incoming").glob("*.html"))) == 2
 
 
 def test_deposit_many_calls_on_progress_before_each_entry(tmp_path):
@@ -325,7 +325,7 @@ def test_seen_urls_unions_documents_and_incoming_sidecars(tmp_path):
         "sha2": {"source": None},        # a non-web document — no source
         "sha3": {},                      # missing source key
     }))
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     incoming.mkdir()
     (incoming / "a.html.yml").write_text("source: https://inflight.example/downloaded\ntitle: t\n")
     (incoming / "b.pdf.yml").write_text("title: no-source-here\n")
@@ -337,7 +337,7 @@ def test_seen_urls_unions_documents_and_incoming_sidecars(tmp_path):
 
 def test_seen_urls_includes_chewed_not_yet_ingested_queue_entries(tmp_path):
     """Chew deletes a document's .yml once it filters it into the queue JSON (D121) — for that
-    in-between state there is no file left in _INCOMING/ to find, only the queue's own copy."""
+    in-between state there is no file left in incoming/ to find, only the queue's own copy."""
     vault = tmp_path / "v"
     queue = vault / ".watchdog" / "queue"
     queue.mkdir(parents=True)

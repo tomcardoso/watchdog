@@ -19,8 +19,8 @@ export const SLASH: SlashCommand[] = [
   { name: '/watchdog-entity', hint: '[id…]', takesInput: true, text: 'Refresh an entity’s summary and timeline from all its source documents.' },
   { name: '/watchdog-wiki', hint: '', takesInput: false, text: 'Create or update investigation thread pages in wiki/.' },
   { name: '/watchdog-health', hint: '', takesInput: false, text: 'Check vault integrity: orphaned notes, broken links, registry mismatches, open contradictions.' },
-  { name: '/watchdog-context', hint: '', takesInput: false, text: 'Seed context.md from the background files in _CONTEXT/.' },
-  { name: '/watchdog-research', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources for download into _INCOMING/.' }
+  { name: '/watchdog-context', hint: '', takesInput: false, text: 'Seed context.md from the background files in context/.' },
+  { name: '/watchdog-research', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources for download into incoming/.' }
 ]
 
 const KEYS = ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'prompt', 'description']

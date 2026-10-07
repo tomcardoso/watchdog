@@ -127,8 +127,8 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
 
           {p.incoming.length > 0 && (
             <div className="pipe-group">
-              <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting in _INCOMING <span className="n">{p.incoming.length}</span></div>
-              <p>Files in the investigation's _INCOMING folder that haven't been read yet.</p>
+              <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting in incoming <span className="n">{p.incoming.length}</span></div>
+              <p>Files in the investigation's incoming folder that haven't been read yet.</p>
               <FileList rows={p.incoming.map((f) => ({ key: f.path, name: f.name, why: [fmtBytes(f.size), f.sidecar ? 'with sidecar' : ''].filter(Boolean).join(' · ') }))} />
               <div className="pipe-actions"><Button size="sm" variant="primary" onClick={() => openAdd()}>Add them</Button></div>
             </div>
@@ -173,7 +173,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
             <div className="pipe-group">
               <div className="pipe-group-head"><FileWarning style={{ color: 'var(--warning)' }} />Couldn't be read <span className="n">{p.chew_failed.length}</span></div>
               <p>
-                These landed in _INCOMING/_FAILED when chewing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into _INCOMING.
+                These landed in incoming/failed when chewing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into incoming.
               </p>
               <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: fmtBytes(f.size) }))} />
             </div>

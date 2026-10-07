@@ -66,7 +66,7 @@ def test_with_auto_approve_off_an_approving_verdict_still_asks(monkeypatch, caps
 def vault(tmp_path, monkeypatch):
     v = tmp_path / "probe"
     (v / ".watchdog" / "queue").mkdir(parents=True)
-    (v / "_INCOMING").mkdir()
+    (v / "incoming").mkdir()
     monkeypatch.chdir(v)
     monkeypatch.setattr("watchdog.pipeline.research.pending_count", lambda vault: 0)
     return v
@@ -91,7 +91,7 @@ def test_add_copies_files_and_folders_then_runs_the_pipeline(vault, tmp_path, mo
 
     ing.cmd_add(argparse.Namespace(paths=[str(src), str(single)], retry=False))
 
-    incoming = sorted(p.name for p in (vault / "_INCOMING").iterdir())
+    incoming = sorted(p.name for p in (vault / "incoming").iterdir())
     assert incoming == ["a.pdf", "a.pdf.yml", "b.txt", "c.txt"]
     assert (src / "a.pdf").exists() and single.exists()          # originals stay put
     assert calls == ["chew", ("ingest", "add")]
@@ -149,7 +149,7 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
     (reg / "entities.json").write_text(json.dumps({
         "acme": {"name": "Acme", "roles": [{"target_id": "ghost", "target_name": "Ghost Co"}],
                  "contradictions": ["> [!contradiction] date\n> a vs b"], "appears_in": ["s1"]}}))
-    (vault / "_INCOMING" / "new.pdf").write_bytes(b"x")
+    (vault / "incoming" / "new.pdf").write_bytes(b"x")
 
     s = home.summary(vault)
     assert s["briefing"].name == "2026-10-03-16-12.md"
@@ -158,7 +158,7 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
     assert home.has_work(s)
     out = _plain(home.render("Probe", s))
     for text in ("Contract went to a new firm.", "contradiction", "open lead",
-                 "possible duplicate document", "watch-list hit", "file in _INCOMING/",
+                 "possible duplicate document", "watch-list hit", "file in incoming/",
                  "watchdog add", 'watchdog ask "…"'):
         assert text in out
 
@@ -170,6 +170,6 @@ def test_home_offers_add_only_when_there_is_work(vault, monkeypatch):
     monkeypatch.setattr(home.interactive, "confirm", _no_prompt)
     assert home.cmd_home(argparse.Namespace()) is None          # nothing waiting: no prompt
 
-    (vault / "_INCOMING" / "new.pdf").write_bytes(b"x")
+    (vault / "incoming" / "new.pdf").write_bytes(b"x")
     monkeypatch.setattr(home.interactive, "confirm", lambda *a, **k: False)
     assert home.cmd_home(argparse.Namespace()) is None          # declined

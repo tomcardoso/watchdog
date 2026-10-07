@@ -60,6 +60,7 @@ import yaml
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json_or
+from watchdog.vault_paths import incoming_dir, modernize_path
 
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
@@ -1071,7 +1072,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "sha256":           doc_sha256,
             "filename":         doc["filename"],
             "title":            doc_title,
-            "original_path":    doc.get("original_path", f"_INCOMING/{doc['filename']}"),
+            "original_path":    doc.get("original_path", f"incoming/{doc['filename']}"),
             "document_note":    f"documents/{slug}",
             "ingested_at":      _now_iso(),
             "page_count":       doc.get("page_count"),
@@ -1228,7 +1229,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     )
     morgue_dir.mkdir(parents=True, exist_ok=True)
 
-    source = vault_path / doc.get("original_path", f"_INCOMING/{doc['filename']}")
+    source = vault_path / modernize_path(doc.get("original_path", f"incoming/{doc['filename']}"))
     if source.exists():
         morgue_name = Path(morgue_relative).name
         shutil.move(str(source), str(morgue_dir / morgue_name))
@@ -1242,9 +1243,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # the vault — extraction now indexes this substrate rather than restating it (#140).
         _write_morgue_markdown(vault_path, doc_sha256, morgue_dir, Path(morgue_name).stem)
 
-        incoming_dir = vault_path / "_INCOMING"
+        incoming_root = incoming_dir(vault_path)
         parent = source.parent
-        while parent != incoming_dir and parent.is_relative_to(incoming_dir):
+        while parent != incoming_root and parent.is_relative_to(incoming_root):
             try:
                 parent.rmdir()
                 parent = parent.parent

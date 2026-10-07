@@ -513,7 +513,7 @@ def _full_vault(tmp_path: Path) -> Path:
     reg.mkdir(parents=True)
     (vault / ".watchdog" / "tmp").mkdir()
     (vault / ".watchdog" / "queue").mkdir()
-    (vault / "_INCOMING").mkdir()
+    (vault / "incoming").mkdir()
     (vault / "documents").mkdir()
     (reg / "entities.json").write_text("{}\n")
     (reg / "documents.json").write_text("{}\n")
@@ -525,7 +525,7 @@ def _full_vault(tmp_path: Path) -> Path:
 def _extraction(sha="sha777aaa"):
     return {
         "document": {
-            "sha256": sha, "filename": "doc.pdf", "original_path": "_INCOMING/doc.pdf",
+            "sha256": sha, "filename": "doc.pdf", "original_path": "incoming/doc.pdf",
             "title": "Doc", "document_type": "Order", "page_count": 2,
             "summary": "A court order.",
             "key_facts": [
@@ -546,7 +546,7 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
     """The staged artifact — not a vault note (#403 phase 1: post-flight no longer writes to the
     vault) — carries each entity's fanned-out evidence_fragments/timeline_events."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
     ext_path.write_text(json.dumps(_extraction()), encoding="utf-8")
 
@@ -569,7 +569,7 @@ def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, cap
     """A non-ISO-shaped key_facts.date (#262) must not reach timeline.py's
     {date}_{sha7}.ndjson filename construction — it's dropped with a visible warning instead."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext = _extraction()
     ext["document"]["key_facts"][1]["date"] = "2024/03"   # bad shape: contains a slash
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
@@ -592,7 +592,7 @@ def test_postflight_does_not_write_morgue_and_leaves_queue_file_in_place(tmp_pat
     the corpus indexer) is left untouched. See tests/test_orchestrate.py for the commit pass
     actually writing the morgue markdown from this same queue file."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     queue_file = vault / ".watchdog" / "queue" / "sha777aaa.json"
     queue_file.write_text(json.dumps({
         "pages": [{"page": 1, "markdown": "# Heading one"},
@@ -612,7 +612,7 @@ def test_postflight_run_rejects_and_does_not_stage_empty_extraction_on_substanti
     """#507/#510 end-to-end: a document with substantial source text but zero key_facts must be
     rejected by postflight (feeding the caller's repair-retry loop), not silently staged as 'ok'."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": p, "markdown": " ".join(["word"] * 500)} for p in range(1, 18)],
     }))
@@ -635,7 +635,7 @@ def test_postflight_annotates_ungrounded_figure_on_fact_and_fragment(tmp_path, c
     `resolve_quotes` (which may move the page it reads) but before `explode_key_facts`, or the
     entity's fragment is fanned out before the annotation exists."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8% was confirmed."},
                   {"page": 3, "markdown": "Payments of $250,000 and $180,000 were stayed."}],
@@ -663,7 +663,7 @@ def test_postflight_annotates_ungrounded_figure_on_fact_and_fragment(tmp_path, c
 
 def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "Nothing about ratios here."},
                   {"page": 3, "markdown": "Also nothing relevant."}],
@@ -686,7 +686,7 @@ def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
 
 def test_postflight_verifies_exact_quote_without_warning(tmp_path, capsys):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8%. was confirmed."},
                   {"page": 3, "markdown": "A $842,018.34 payment was stayed."}],
@@ -713,7 +713,7 @@ def test_postflight_resolves_quote_locator_into_full_quote(tmp_path, capsys):
     """End-to-end: a `quote_locator` on a key_fact, plus the chew-time queue descriptor's page
     text, produces a resolved `quote` on the staged extraction."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "The transfer ratio set at 65.8% was confirmed by the board."},
                   {"page": 3, "markdown": "A $842,018.34 payment was stayed."}],
@@ -739,7 +739,7 @@ def test_postflight_resolves_quote_locator_into_full_quote(tmp_path, capsys):
 
 def test_postflight_warns_on_file_metadata_date_mismatch(tmp_path, capsys):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [], "metadata": {"ocr_used": False, "source_type": "direct_text"},
     }))
@@ -761,7 +761,7 @@ def test_postflight_silent_on_date_mismatch_when_ocr_used(tmp_path, capsys):
     describes the scan, not the original, so the check must stay silent — otherwise every
     scanned exhibit in the vault produces a false lead."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [], "metadata": {"ocr_used": True, "source_type": "docling"},
     }))
@@ -793,7 +793,7 @@ def test_postflight_persists_coverage_gap_on_document_registry_record(tmp_path):
     commit time, #403 phase 1) carries it into `documents.json` unchanged, since it just persists
     whatever `document` dict it's handed."""
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
     ext_path.write_text(json.dumps(_gappy_extraction()), encoding="utf-8")
 
@@ -806,7 +806,7 @@ def test_postflight_persists_coverage_gap_on_document_registry_record(tmp_path):
 
 def test_postflight_persists_none_coverage_gap_for_clean_extraction(tmp_path):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
     # The default fixture's page_count (2) is under the 8-page minimum — never assessable as a gap.
     ext_path.write_text(json.dumps(_extraction()), encoding="utf-8")
@@ -821,7 +821,7 @@ def test_postflight_persists_none_coverage_gap_for_clean_extraction(tmp_path):
 
 def test_postflight_coverage_gap_warning_reaches_warn_callback(tmp_path):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
     ext_path.write_text(json.dumps(_gappy_extraction()), encoding="utf-8")
 
@@ -835,7 +835,7 @@ def test_postflight_coverage_gap_warning_reaches_warn_callback(tmp_path):
 
 def test_postflight_flags_invented_figure_and_warns(tmp_path, capsys):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "The transfer ratio was set at 65.8%."},
                   {"page": 3, "markdown": "Transfers of $250,000 and $180,000 were recorded."}],
@@ -854,7 +854,7 @@ def test_postflight_flags_invented_figure_and_warns(tmp_path, capsys):
 
 def test_postflight_does_not_flag_inferred_figure(tmp_path, capsys):
     vault = _full_vault(tmp_path)
-    (vault / "_INCOMING" / "doc.pdf").write_text("pdf")
+    (vault / "incoming" / "doc.pdf").write_text("pdf")
     (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
         "pages": [{"page": 2, "markdown": "The transfer ratio was set at 65.8%."},
                   {"page": 3, "markdown": "Nothing about payments here."}],

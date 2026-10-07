@@ -369,7 +369,7 @@ def test_ensure_master_vault_passes_shadow_root_to_cmd_new(monkeypatch, tmp_path
         # Real cmd_new would build the full vault layout on disk; recreate just enough for the
         # existence checks ensure_master_vault performs right after.
         (Path(args.dir) / args.name / ".watchdog" / "queue").mkdir(parents=True)
-        (Path(args.dir) / args.name / "_INCOMING").mkdir(parents=True)
+        (Path(args.dir) / args.name / "incoming").mkdir(parents=True)
 
     monkeypatch.setattr(wd_vault, "cmd_new", _fake_cmd_new)
     monkeypatch.setattr(rb, "_deregister_benchmark_vault",

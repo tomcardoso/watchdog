@@ -425,6 +425,7 @@ export interface Methods {
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
+  'vault.migrate': [{ vault: string }, { changes: string[] }]
 
   'ingest.preflight': [{ vault: string; options?: RunOptions }, Preflight]
   'ingest.estimate': [{ vault: string; stage: 'dig' | 'bark'; all_models?: boolean; options?: RunOptions }, Estimate]

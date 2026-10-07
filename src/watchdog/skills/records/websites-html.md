@@ -3,7 +3,7 @@ description: an HTML file or a downloaded/captured website page
 ---
 # Domain knowledge — Websites and HTML pages
 
-This skill is loaded by Watchdog for any HTML document or captured website page, including those deposited into `_INCOMING/` by `watchdog research` or `watchdog fetch`. It does not cover news articles, wire stories, or press releases (see `news-clippings`), WHOIS/DNS/infrastructure records (see `dns-whois`), or audio/video transcripts (see `audio-video`) — those document types are owned by their own skills even when the underlying file is HTML.
+This skill is loaded by Watchdog for any HTML document or captured website page, including those deposited into `incoming/` by `watchdog research` or `watchdog fetch`. It does not cover news articles, wire stories, or press releases (see `news-clippings`), WHOIS/DNS/infrastructure records (see `dns-whois`), or audio/video transcripts (see `audio-video`) — those document types are owned by their own skills even when the underlying file is HTML.
 
 An HTML document carries two layers a reporter can read: the **presentation content** (the text, images, and structure a visitor sees) and the **markup and code beneath it** (tags, scripts, comments, embedded identifiers, links). The second layer can be revealing and is easy to skip over — this skill explores both.
 

@@ -10,6 +10,7 @@ from watchdog.cmd.base import (
     _count_awaiting_bark, _count_awaiting_dig, _count_incoming, load_projects,
 )
 from watchdog.links import note_link
+from watchdog.vault_paths import context_dir
 
 # Briefing files that aren't ingest briefings.
 _NOT_INGEST_BRIEFINGS = ("leads-", "alerts-", "research-")
@@ -57,7 +58,7 @@ def summary(vault: Path) -> dict:
 
     resolved = resolutions.resolved_ids(vault)
     found = leads.scan(vault)
-    context_dir = vault / "_CONTEXT"
+    ctx_dir = context_dir(vault)
     return {
         "vault": vault,
         "briefing": _latest_briefing(vault),
@@ -72,7 +73,7 @@ def summary(vault: Path) -> dict:
         "pending_finalize": orchestrate.has_pending_finalization(vault),
         "failed": _failed(vault),
         "research_urls": research.pending_count(vault),
-        "context_unseeded": bool(context_dir.is_dir() and find_files([context_dir])
+        "context_unseeded": bool(ctx_dir.is_dir() and find_files([ctx_dir])
                                  and not (vault / "context.md").exists()),
     }
 
@@ -112,7 +113,7 @@ def render(name: str, s: dict) -> str:
         lines.append(f"\n  {_BOLD}Waiting on you{_RESET}")
         lines.extend(_row(*w) for w in waiting)
 
-    progress = [(s["incoming"], "file in _INCOMING/|files in _INCOMING/", "watchdog add"),
+    progress = [(s["incoming"], "file in incoming/|files in incoming/", "watchdog add"),
                 (s["awaiting_dig"] + s["awaiting_bark"],
                  "document not yet finished|documents not yet finished", "watchdog add"),
                 (s["failed"], "document that failed|documents that failed", "watchdog add --retry"),

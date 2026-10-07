@@ -107,12 +107,12 @@ def test_write_entity_cannot_target_another_vault(session, monkeypatch):
     from watchdog.pipeline import write_entity
     here, root, _ = session
     other = root / "secret-probe-acme"
-    (other / "_INCOMING").mkdir()
-    (other / "_INCOMING" / "doc.json").write_text(json.dumps({"entity_id": "bob"}))
+    (other / "incoming").mkdir()
+    (other / "incoming" / "doc.json").write_text(json.dumps({"entity_id": "bob"}))
     written = []
     monkeypatch.setattr(write_entity, "run", lambda *a: written.append(a))
     monkeypatch.setattr(sys, "argv", ["write-entity", "--entity-id", "bob", "--vault", str(other),
-                                      "--extraction", str(other / "_INCOMING" / "doc.json")])
+                                      "--extraction", str(other / "incoming" / "doc.json")])
     with pytest.raises(SystemExit, match="only writes to this investigation"):
         write_entity.main()
     assert not written

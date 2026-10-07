@@ -350,7 +350,10 @@ def setup_check() -> dict:
     deps = []
     for binary, label, hint in setup_cmd._DEPS:
         ok = shutil.which(binary) is not None
-        deps.append({"label": label, "ok": ok, "hint": None if ok else hint})
+        # None of these blocks the app: qpdf and Ghostscript are only fallbacks for damaged PDFs,
+        # Tesseract is one of several OCR engines (the engine ships a pip-installable one), and
+        # Claude Code comes bundled with the engine.
+        deps.append({"label": label, "ok": ok, "hint": None if ok else hint, "required": False})
     try:
         from watchdog.pipeline import capture
         playwright = bool(capture.render_available())

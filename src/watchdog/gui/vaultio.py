@@ -25,7 +25,7 @@ import yaml
 
 from watchdog.gui.rpc import RpcError
 from watchdog.pipeline.json_io import _read_json_or
-from watchdog.vault_paths import is_vault
+from watchdog.vault_paths import ensure_current_layout_once, is_vault
 
 # ── small text helpers ───────────────────────────────────────────────────────────
 
@@ -183,6 +183,7 @@ def require_vault(path: Any) -> Path:
         raise RpcError("The investigation folder must be an absolute path.", code="not_a_vault")
     if not p.is_dir() or not is_vault(p):
         raise RpcError(f"{p} is not a Watchdog investigation folder.", code="not_a_vault")
+    ensure_current_layout_once(p)       # an older vault's folders are renamed on first open (D266)
     return p
 
 

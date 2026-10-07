@@ -10,7 +10,7 @@ from watchdog.pipeline.preprocess_batch import _filter_already_seen
 
 def _vault(tmp_path: Path) -> Path:
     v = tmp_path / "vault"
-    (v / "_INCOMING").mkdir(parents=True)
+    (v / "incoming").mkdir(parents=True)
     (v / ".watchdog" / "queue").mkdir(parents=True)
     (v / ".watchdog" / "registry").mkdir(parents=True)
     return v
@@ -18,7 +18,7 @@ def _vault(tmp_path: Path) -> Path:
 
 def test_filter_skips_ingested_queued_and_intrabatch(tmp_path):
     v = _vault(tmp_path)
-    incoming = v / "_INCOMING"
+    incoming = v / "incoming"
     queue = v / ".watchdog" / "queue"
 
     ingested = incoming / "ingested.txt"
@@ -39,16 +39,16 @@ def test_filter_skips_ingested_queued_and_intrabatch(tmp_path):
     kept = _filter_already_seen([ingested, queued, fresh, dup1, dup2], v, incoming, queue)
 
     assert {f.name for f in kept} == {"fresh.txt", "dup1.txt"}        # first occurrence survives
-    assert {p.name for p in (incoming / "_SKIPPED").glob("*")} == {
+    assert {p.name for p in (incoming / "skipped").glob("*")} == {
         "ingested.txt", "queued.txt", "dup2.txt"}
-    # Kept files stay put in _INCOMING; skipped ones are moved out.
+    # Kept files stay put in incoming; skipped ones are moved out.
     assert fresh.exists() and dup1.exists()
     assert not ingested.exists() and not queued.exists() and not dup2.exists()
 
 
 def test_filter_keeps_everything_when_nothing_seen(tmp_path):
     v = _vault(tmp_path)
-    incoming = v / "_INCOMING"
+    incoming = v / "incoming"
     queue = v / ".watchdog" / "queue"
     a = incoming / "a.txt"
     a.write_text("one")
@@ -57,7 +57,7 @@ def test_filter_keeps_everything_when_nothing_seen(tmp_path):
 
     kept = _filter_already_seen([a, b], v, incoming, queue)
     assert {f.name for f in kept} == {"a.txt", "b.txt"}
-    assert not (incoming / "_SKIPPED").exists()
+    assert not (incoming / "skipped").exists()
 
 
 def test_filter_force_shas_bypasses_already_ingested_but_not_others(tmp_path):
@@ -65,7 +65,7 @@ def test_filter_force_shas_bypasses_already_ingested_but_not_others(tmp_path):
     "already ingested" by design — that sha must be bypassed, but any other already-ingested file
     in the same batch must still be skipped as usual."""
     v = _vault(tmp_path)
-    incoming = v / "_INCOMING"
+    incoming = v / "incoming"
     queue = v / ".watchdog" / "queue"
 
     forced = incoming / "forced.txt"
@@ -84,4 +84,4 @@ def test_filter_force_shas_bypasses_already_ingested_but_not_others(tmp_path):
                                 force_shas={forced_sha})
 
     assert {f.name for f in kept} == {"forced.txt"}
-    assert {p.name for p in (incoming / "_SKIPPED").glob("*")} == {"other.txt"}
+    assert {p.name for p in (incoming / "skipped").glob("*")} == {"other.txt"}

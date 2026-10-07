@@ -261,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_ask.add_argument("question", nargs="*", help="A first question (omit to open the session ready for one)")
     p_ask.add_argument("--project", "-p", metavar="NAME", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_ask.add_argument("--context", action="store_true",
-                       help="Read _CONTEXT/ and seed context.md instead (runs `watchdog context`)")
+                       help="Read context/ and seed context.md instead (runs `watchdog context`)")
     p_ask.add_argument("--model", choices=list(_MODEL_IDS), default=None,
                        help="Claude model for the session (default: Claude Code's own setting)")
     p_ask.set_defaults(func=cmd_ask)
@@ -297,7 +297,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_watchlist.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_watchlist.set_defaults(func=cmd_watchlist)
 
-    p_fetch = sub.add_parser("fetch", help="Download a batch of URLs (or a links file) into _INCOMING/")
+    p_fetch = sub.add_parser("fetch", help="Download a batch of URLs (or a links file) into incoming/")
     p_fetch.add_argument("targets", nargs="+", metavar="URL|FILE",
                          help="One or more URLs, or the path to a links file (one URL per line, or the "
                               "tab-separated url⇥title⇥source_type⇥relevance form)")
@@ -321,9 +321,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_configure.add_argument("value", nargs="?", help="Value to set")
     p_configure.set_defaults(func=cmd_configure)
 
-    p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
+    p_chew = sub.add_parser("chew", help="Process documents in incoming/ and prepare them for ingestion")
     p_chew.add_argument("paths", nargs="*", default=None, metavar="PATH",
-                        help="Files or folders to chew, copied into _INCOMING/ first (omit to chew all of _INCOMING/)")
+                        help="Files or folders to chew, copied into incoming/ first (omit to chew all of incoming/)")
     p_chew.add_argument("--chew-workers", type=_positive_int, default=None, metavar="N",
                         dest="chew_workers",
                         help="Parallel file workers (see chew_workers in watchdog settings)")
@@ -395,7 +395,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Number of lines to show (default: all)")
     p_log.set_defaults(func=cmd_log)
 
-    p_watch = sub.add_parser("watch", help="Watch _INCOMING/ and chew files automatically")
+    p_watch = sub.add_parser("watch", help="Watch incoming/ and chew files automatically")
     p_watch.add_argument("name", nargs="?", help="Investigation name or slug (omit when inside the project directory)").completer = _project_completer
     p_watch.set_defaults(func=cmd_watch)
 
@@ -512,14 +512,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_add = sub.add_parser("add", help="Add documents to the vault — chew, extract and finish in one step")
     p_add.add_argument("paths", nargs="*", metavar="PATH",
-                       help="Files or folders to add (copied into _INCOMING/; originals stay put). "
+                       help="Files or folders to add (copied into incoming/; originals stay put). "
                             "Omit to add whatever is already waiting.")
     p_add.add_argument("--retry", action="store_true", default=False,
                        help="First put documents that failed extraction back in the queue")
     _add_extract_flags(p_add, "add")
     _add_finalize_flags(p_add)
     p_add.add_argument("--watch", action="store_true",
-                       help="Watch _INCOMING/ and chew files as they arrive (runs `watchdog watch`)")
+                       help="Watch incoming/ and chew files as they arrive (runs `watchdog watch`)")
     p_add.set_defaults(func=cmd_add)
 
     p_ingest = sub.add_parser("ingest", help="[deprecated] Extract and finalize queued documents in one run — "
@@ -557,7 +557,7 @@ def build_parser() -> argparse.ArgumentParser:
                                  "choosing one")
     p_finalize.set_defaults(func=cmd_finalize)
 
-    p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from _CONTEXT/")
+    p_context = sub.add_parser("context", help="Open Claude Code to seed investigation context from context/")
     p_context.add_argument("name", nargs="?", help="Investigation name or slug (default: current directory)").completer = _project_completer
     p_context.add_argument("--model", choices=_model_choices, default="sonnet",
                            help="Model to use (default: sonnet)")

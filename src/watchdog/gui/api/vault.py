@@ -16,10 +16,10 @@ from pathlib import Path
 from watchdog.gui import vaultio
 from watchdog.gui.rpc import RpcError, method
 from watchdog.gui.vaultio import require_vault, resolve_in_vault
+from watchdog.vault_paths import SET_ASIDE_NAMES, context_dir, incoming_dir, incoming_failed_dir, incoming_skipped_dir
 
 _BRIEFING_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})(?:-\d+)?$")
 _DATE_IN_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})")
-_SKIP_DIRS = {"_failed", "_skipped"}
 _NOTES_PLACEHOLDER = {
     "documents": "<!-- Reserved for journalist annotations — never overwritten by ingestion. -->",
     "entities": "<!-- Journalist annotations — never overwritten by ingestion. -->",
@@ -548,14 +548,16 @@ def _files(directory: Path) -> list[Path]:
 
 
 def _incoming_files(incoming: Path) -> list[Path]:
-    """Everything chew would pick up: files anywhere under `_INCOMING/` except in the `_FAILED`
-    and `_SKIPPED` folders (the same rule `cmd.base._count_incoming` counts by)."""
+    """Everything chew would pick up: files anywhere under `incoming/` except in its `failed`
+    and `skipped` folders (the same rule `cmd.base._count_incoming` counts by)."""
     import os
     out: list[Path] = []
     if not incoming.is_dir():
         return out
     for root, dirs, files in os.walk(incoming):
-        dirs[:] = sorted(d for d in dirs if d.lower() not in _SKIP_DIRS and not d.startswith("."))
+        top = Path(root) == incoming
+        dirs[:] = sorted(d for d in dirs
+                         if not (top and d in SET_ASIDE_NAMES) and not d.startswith("."))
         for name in sorted(files):
             if name.startswith(".") or name.endswith(".yml"):
                 continue
@@ -595,26 +597,19 @@ def pipeline(vault: str) -> dict:
 
     v = require_vault(vault)
     docs = vaultio.load_documents(v)
-    incoming_dir = v / "_INCOMING"
+    inc_dir = incoming_dir(v)
 
     incoming = [{"name": f.name, "path": vaultio.rel_posix(v, f), "size": _size(f),
                  "modified": _iso_mtime(f), "sidecar": f.with_name(f.name + ".yml").exists()}
-                for f in _incoming_files(incoming_dir)]
-
-    def child(name: str) -> Path:
-        if incoming_dir.is_dir():
-            for d in incoming_dir.iterdir():
-                if d.is_dir() and d.name.lower() == name:
-                    return d
-        return incoming_dir / name
+                for f in _incoming_files(inc_dir)]
 
     chew_failed = [{"name": f.name, "path": vaultio.rel_posix(v, f), "size": _size(f)}
-                   for f in _files(child("_failed"))]
+                   for f in _files(incoming_failed_dir(v))]
 
     queued_shas = {p.stem for p in (v / ".watchdog" / "queue").glob("*.json")} \
         if (v / ".watchdog" / "queue").is_dir() else set()
     skipped = []
-    for f in _files(child("_skipped")):
+    for f in _files(incoming_skipped_dir(v)):
         sha = _sha256_of(f) if _size(f) <= 512 * 1024 * 1024 else None
         reason = ("already ingested" if sha in docs else "already queued" if sha in queued_shas else None)
         skipped.append({"name": f.name, "path": vaultio.rel_posix(v, f), "size": _size(f),
@@ -759,7 +754,7 @@ def requests_(vault: str) -> dict:
 @method("vault.contextFiles")
 def context_files(vault: str) -> list[dict]:
     v = require_vault(vault)
-    d = v / "_CONTEXT"
+    d = context_dir(v)
     out = []
     if d.is_dir():
         for f in sorted(d.rglob("*")):
@@ -769,3 +764,12 @@ def context_files(vault: str) -> list[dict]:
             out.append({"name": rel.as_posix(), "size": _size(f), "modified": _iso_mtime(f)})
     out.sort(key=lambda x: x["name"].lower())
     return out
+
+
+@method("vault.migrate")
+def migrate(vault: str) -> dict:
+    """Bring an older vault's folder names up to date (`_INCOMING` -> `incoming`, `_CONTEXT` ->
+    `context`; D266). Opening a vault already does this once per process; this is the explicit
+    call. Returns `{changes: [str]}` — empty when the vault was already current."""
+    from watchdog.vault_paths import ensure_current_layout
+    return {"changes": ensure_current_layout(require_vault(vault))}

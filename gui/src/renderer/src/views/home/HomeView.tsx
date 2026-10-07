@@ -250,7 +250,7 @@ function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
       : 'A batch is waiting to be finished'
   const sub =
     n > 0
-      ? [s.incoming && `${plural(s.incoming, 'file')} in _INCOMING`, s.awaiting_dig && `${s.awaiting_dig} to extract`, s.awaiting_bark && `${s.awaiting_bark} to finish`].filter(Boolean).join(' · ')
+      ? [s.incoming && `${plural(s.incoming, 'file')} in incoming`, s.awaiting_dig && `${s.awaiting_dig} to extract`, s.awaiting_bark && `${s.awaiting_bark} to finish`].filter(Boolean).join(' · ')
       : 'The documents are extracted. The finishing step writes the entity summaries, timeline and briefing.'
   return (
     <div className="home-banner">
@@ -331,7 +331,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
       {action}
     </div>
   )
-  if (s.incoming) rows.push(row('inc', <Inbox />, <><b className="tnum">{s.incoming}</b> {s.incoming === 1 ? 'file' : 'files'} in _INCOMING</>, <Button size="sm" onClick={add}>Add</Button>))
+  if (s.incoming) rows.push(row('inc', <Inbox />, <><b className="tnum">{s.incoming}</b> {s.incoming === 1 ? 'file' : 'files'} in incoming</>, <Button size="sm" onClick={add}>Add</Button>))
   if (awaiting) rows.push(row('await', <Hourglass />, <><b className="tnum">{awaiting}</b> {awaiting === 1 ? 'document' : 'documents'} not yet finished</>, <Button size="sm" onClick={add}>Continue</Button>))
   if (s.pending_finalize && !awaiting) rows.push(row('batch', <Hourglass />, <>A batch is waiting to be finished</>, <Button size="sm" onClick={add}>Finish</Button>))
   if (s.failed)

@@ -108,7 +108,8 @@ EntityRow = {
 | `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `hot.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md` |
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
-| `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `_CONTEXT/` |
+| `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
+| `vault.migrate` | `{vault}` | `{changes: string[]}` — renames an older vault's `_INCOMING/`/`_CONTEXT/` folders to `incoming/`/`context/` (D266); opening a vault does this once automatically |
 
 ```
 DocumentDetail = DocumentRow & {
@@ -140,9 +141,9 @@ TimelineEvent = {
 }
 
 PipelineState = {
-  incoming:  [{name, path, size, modified, sidecar: bool}],   // _INCOMING/, excluding _FAILED/_SKIPPED
-  chew_failed: [{name, path, size}],                          // _INCOMING/_FAILED/
-  skipped:   [{name, path, size, reason|null}],               // _INCOMING/_SKIPPED/
+  incoming:  [{name, path, size, modified, sidecar: bool}],   // incoming/, excluding failed/skipped
+  chew_failed: [{name, path, size}],                          // incoming/failed/
+  skipped:   [{name, path, size, reason|null}],               // incoming/skipped/
   queued:    [{sha, filename, page_count|null, est_tokens|null, staged: bool}],  // chewed; staged = extracted awaiting bark
   failed:    [{sha, filename, reason|null}],                  // queue/_failed/
   pending_finalization: {docs, entities}|null,

@@ -96,7 +96,7 @@ def make_rich_vault(tmp_path: Path) -> Path:
             entities=("jane-doe", "acme-corp")):
         return {
             "sha256": sha, "filename": filename, "title": title,
-            "original_path": f"_INCOMING/{filename}", "document_note": note,
+            "original_path": f"incoming/{filename}", "document_note": note,
             "ingested_at": ingested, "page_count": pages, "document_type": "Annual Report",
             "record_skill": "general-records", "record_skill_hash": "abc123def456",
             "extract_model": "claude-sonnet-5-5", "extract_effort": "medium",
@@ -250,21 +250,21 @@ def make_rich_vault(tmp_path: Path) -> Path:
     _write(vault / "log.md", "# Log\n")
 
     # Pipeline state: incoming files, a chew failure, a skipped duplicate, a queue, a failed doc.
-    inc = vault / "_INCOMING"
+    inc = vault / "incoming"
     (inc / "new-file.pdf").write_bytes(b"new file")
     (inc / "new-file.pdf.yml").write_text("source: somewhere\n")
     (inc / "sub").mkdir()
     (inc / "sub" / "nested.docx").write_bytes(b"nested")
-    (inc / "_FAILED").mkdir()
-    (inc / "_FAILED" / "bad.pdf").write_bytes(b"bad")
-    (inc / "_SKIPPED").mkdir()
+    (inc / "failed").mkdir()
+    (inc / "failed" / "bad.pdf").write_bytes(b"bad")
+    (inc / "skipped").mkdir()
     dup_bytes = b"already in the registry"
-    (inc / "_SKIPPED" / "dup.pdf").write_bytes(dup_bytes)
+    (inc / "skipped" / "dup.pdf").write_bytes(dup_bytes)
     dup_sha = hashlib.sha256(dup_bytes).hexdigest()
     docs[dup_sha] = {**docs[SHA2], "sha256": dup_sha, "filename": "dup-original.pdf",
                      "document_note": "documents/dup-original", "morgue_path": None}
     (reg / "documents.json").write_text(json.dumps(docs, indent=2))
-    (inc / "_SKIPPED" / "empty.pdf").write_bytes(b"no text")
+    (inc / "skipped" / "empty.pdf").write_bytes(b"no text")
 
     queue = vault / ".watchdog" / "queue"
     queue.mkdir(exist_ok=True)
@@ -284,8 +284,8 @@ def make_rich_vault(tmp_path: Path) -> Path:
     (vault / ".watchdog" / "research").mkdir(exist_ok=True)
     (vault / ".watchdog" / "research" / "queue.tsv").write_text(
         "https://example.org/a\tA page\tnews\tcontext\nhttps://example.org/b\n")
-    _write(vault / "_CONTEXT" / "background.txt", "background")
-    (vault / "_CONTEXT" / ".hidden").write_text("x")
+    _write(vault / "context" / "background.txt", "background")
+    (vault / "context" / ".hidden").write_text("x")
     return vault
 
 

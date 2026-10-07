@@ -7,7 +7,7 @@ import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
+from watchdog.vault_paths import incoming_dir, is_set_aside, is_vault
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
@@ -192,9 +192,9 @@ _CMD_HELP: dict[str, dict] = {
         "desc": '[deprecated] Extract queued documents (runs the Python pipeline) — use `watchdog add`, or `watchdog dig` then `watchdog bark` instead',
     },
     'add': {
-        "desc": 'Add documents to the vault: copy them into _INCOMING/, chew, extract and finish the batch in one step',
+        "desc": 'Add documents to the vault: copy them into incoming/, chew, extract and finish the batch in one step',
         "notes": [
-            'With no files, add whatever is waiting: files in _INCOMING/, chewed documents, or a',
+            'With no files, add whatever is waiting: files in incoming/, chewed documents, or a',
             'batch that was interrupted. Originals passed by path stay where they are.',
             '',
             'Stops only for the public-records acknowledgement and for a provider refusing your',
@@ -204,7 +204,7 @@ _CMD_HELP: dict[str, dict] = {
         ],
     },
     'context': {
-        "desc": 'Open Claude Code to seed investigation context from _CONTEXT/',
+        "desc": 'Open Claude Code to seed investigation context from context/',
     },
     'obsidian': {
         "desc": 'Open an investigation vault in Obsidian',
@@ -235,10 +235,10 @@ _CMD_HELP: dict[str, dict] = {
         "desc": 'Remove an investigation from registry',
     },
     'chew': {
-        "desc": 'Process documents in _INCOMING/ and prepare them for ingestion',
+        "desc": 'Process documents in incoming/ and prepare them for ingestion',
     },
     'watch': {
-        "desc": 'Watch _INCOMING/ and chew files automatically as they arrive',
+        "desc": 'Watch incoming/ and chew files automatically as they arrive',
     },
     'log': {
         "desc": 'Show ingest history for an investigation',
@@ -358,12 +358,12 @@ _CMD_HELP: dict[str, dict] = {
         "notes": [
             "Seeded by the vault's entities, leads, and gaps, Claude conducts bounded web research",
             'and queues the sources it finds; when the session ends, watchdog downloads them into',
-            '_INCOMING/ — so findings flow through the normal chew → ingest pipeline. Claude never',
+            'incoming/ — so findings flow through the normal chew → ingest pipeline. Claude never',
             'writes vault notes directly. After the download, run `watchdog add` to fold the',
             'sources into the vault.',
             '',
             'Already have the links? `watchdog research fetch <urls or file>` downloads them',
-            'into _INCOMING/ without a research session.',
+            'into incoming/ without a research session.',
         ],
     },
     'watchlist': {
@@ -380,7 +380,7 @@ _CMD_HELP: dict[str, dict] = {
         ],
     },
     'fetch': {
-        "desc": 'Download a batch of URLs (or a links file) into _INCOMING/',
+        "desc": 'Download a batch of URLs (or a links file) into incoming/',
         "notes": [
             'For when you already have a list of links — from a spreadsheet, a colleague, your own',
             'browsing — and just want them pulled into the pipeline, no research session needed. Each',
@@ -590,14 +590,21 @@ def _load_registry(vault: Path) -> dict | None:
     return json.loads(reg.read_text())
 
 
+def _ensure_layout(vault: Path) -> None:
+    """Rename an older vault's `_INCOMING/` and `_CONTEXT/` folders (D266) the first time a
+    command touches it, with a one-line note. Quiet and cheap once the vault is current."""
+    from watchdog.vault_paths import ensure_current_layout_once
+    ensure_current_layout_once(vault, say=lambda msg: print(f"\n  {_DIM}{msg}{_RESET}"))
+
+
 def _count_incoming(vault: Path) -> int:
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     if not incoming.exists():
         return 0
     count = 0
     for root, dirs, files in os.walk(incoming):
         rel_parts = Path(root).relative_to(incoming).parts
-        if any(p in ("_FAILED", "_failed", "_SKIPPED", "_skipped") for p in rel_parts):
+        if is_set_aside(rel_parts):
             dirs.clear()
             continue
         count += sum(1 for f in files if not f.startswith(".") and not f.endswith(".yml"))

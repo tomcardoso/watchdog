@@ -40,7 +40,7 @@ def _ext(*, title, summary, fact_text, entity_summary):
     check replace-vs-append behaviour against."""
     return {
         "document": {
-            "sha256": SHA, "filename": "alpha.pdf", "original_path": "_INCOMING/alpha.pdf",
+            "sha256": SHA, "filename": "alpha.pdf", "original_path": "incoming/alpha.pdf",
             "title": title, "document_type": "Annual Report",
             "date_of_document": "2024-01-15", "page_count": 1, "source": None, "obtained": None,
             "near_duplicate_of": None, "summary": summary,
@@ -131,7 +131,7 @@ def test_force_reingest_replaces_committed_note_and_registry_entry_in_place(tmp_
 
 def _pf_dict(*, already_extracted=False, already_staged=False):
     return {
-        "sha256": SHA, "filename": "alpha.pdf", "original_path": "_INCOMING/alpha.pdf",
+        "sha256": SHA, "filename": "alpha.pdf", "original_path": "incoming/alpha.pdf",
         "page_count": 1, "already_extracted": already_extracted, "already_staged": already_staged,
         "pages": [{"page": 1, "markdown": "Acme Corp filed an annual report."}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
@@ -261,7 +261,7 @@ def _vault_with_queued_doc(tmp_path):
         "pages": [{"page": 1, "markdown": "text"}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING").mkdir(exist_ok=True)
+    (vault / "incoming").mkdir(exist_ok=True)
     return vault
 
 

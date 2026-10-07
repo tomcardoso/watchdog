@@ -122,7 +122,7 @@ export function AddDialog() {
           const log = useApp.getState().jobs[j.id]?.log ?? []
           const text = log.map((l) => l.text).join('\n')
           if (p && /is a folder/i.test(text)) dirs.push(p)
-          else issues.push(`${p ? basename(p) : 'Documents in _INCOMING'}: ${lastError(log) || 'could not be read'}`)
+          else issues.push(`${p ? basename(p) : 'Documents in incoming'}: ${lastError(log) || 'could not be read'}`)
         }
       }
       setFolders(dirs)
@@ -327,7 +327,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
     }
   }
   const waiting = pf ? [
-    pf.incoming > 0 && `${plural(pf.incoming, 'file')} in _INCOMING`,
+    pf.incoming > 0 && `${plural(pf.incoming, 'file')} in incoming`,
     pf.queued - pf.staged > 0 && `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`,
     pf.staged > 0 && `${plural(pf.staged, 'document')} extracted, waiting to be finished`,
     pf.pending_finalization && 'a batch waiting to be finished'
@@ -539,7 +539,7 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
         <Callout tone="warning" title="Some files could not be read">
           <ul className="add-issues">
             {issues.map((i) => <li key={i}>{i}</li>)}
-            {blocked.map((b) => <li key={b.name}>{b.name}{b.reason ? `: ${b.reason}` : ' was set aside in _INCOMING/_FAILED'}</li>)}
+            {blocked.map((b) => <li key={b.name}>{b.name}{b.reason ? `: ${b.reason}` : ' was set aside in incoming/failed'}</li>)}
           </ul>
         </Callout>
       )}

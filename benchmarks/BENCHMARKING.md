@@ -273,16 +273,16 @@ cd <projects_dir>/bench-ex-sonnet-high
 # 2. All six documents, one pass — each PDF's own .yml sidecar pins its record skill (D120),
 #    so no --skill flag is needed and nothing gets classified under the wrong one. The glob
 #    below grabs each PDF and its same-named sidecar together.
-cp "<corpus>/Laurentian Pre-Filing Report of the Proposed Monitor.pdf"* _INCOMING/
-cp "<corpus>/CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"* _INCOMING/
-cp "<corpus>/Laurentian First Report of the Monitor.pdf"* _INCOMING/
-cp "<corpus>/Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF"* _INCOMING/
-cp "<corpus>/Annual-Financial-Report-19-20.pdf"* _INCOMING/
-cp "<corpus>/Annual-Financial-Report-20-21.pdf"* _INCOMING/
+cp "<corpus>/Laurentian Pre-Filing Report of the Proposed Monitor.pdf"* incoming/
+cp "<corpus>/CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"* incoming/
+cp "<corpus>/Laurentian First Report of the Monitor.pdf"* incoming/
+cp "<corpus>/Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF"* incoming/
+cp "<corpus>/Annual-Financial-Report-19-20.pdf"* incoming/
+cp "<corpus>/Annual-Financial-Report-20-21.pdf"* incoming/
 watchdog chew
 ```
 
-Confirm the sidecars landed before trusting the run: `ls _INCOMING/*.yml` should list six files.
+Confirm the sidecars landed before trusting the run: `ls incoming/*.yml` should list six files.
 Classification is skipped for every document (each is pinned by its own sidecar), so this is one
 `chew`/`dig` pass instead of the two the corpus used to need — see `keys/README.md` for why.
 

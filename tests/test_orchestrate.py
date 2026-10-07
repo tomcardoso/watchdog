@@ -25,18 +25,18 @@ def _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="Acme Corp fil
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / f"{sha}.json").write_text(json.dumps({
-        "sha256": sha, "filename": filename, "source_path": f"_INCOMING/{filename}",
+        "sha256": sha, "filename": filename, "source_path": f"incoming/{filename}",
         "page_count": page_count, "pages": [{"page": 1, "markdown": text}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "sidecar": sidecar,
     }))
-    (vault / "_INCOMING" / filename).write_text("dummy source bytes")
+    (vault / "incoming" / filename).write_text("dummy source bytes")
 
 
 def _extraction(sha="abc123", filename="test-doc.pdf", *, valid=True):
     ext = {
         "document": {
-            "sha256": sha, "filename": filename, "original_path": f"_INCOMING/{filename}",
+            "sha256": sha, "filename": filename, "original_path": f"incoming/{filename}",
             "title": "Acme Annual Report", "document_type": "Annual Report",
             "date_of_document": "2024-01-15", "page_count": 1, "source": None, "obtained": None,
             "near_duplicate_of": None, "summary": "Acme's annual report.",
@@ -566,14 +566,14 @@ def test_apply_request_dedup_falls_back_to_nothing_on_bad_input(tmp_path):
 
 def test_stamp_document_overwrites_model_identity():
     """Identity fields are stamped from Python, overriding whatever the model emitted."""
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
+    pf = {"filename": "real.pdf", "original_path": "incoming/real.pdf",
           "page_count": 7, "pages": [{}]}
     ext = {"document": {"sha256": "WRONGSHA", "filename": "wrong.pdf", "page_count": 999}}
     orchestrate._stamp_document(ext, sha="realsha", pf=pf, skill_label="court-documents")
     d = ext["document"]
     assert d["sha256"] == "realsha"
     assert d["filename"] == "real.pdf"
-    assert d["original_path"] == "_INCOMING/real.pdf"
+    assert d["original_path"] == "incoming/real.pdf"
     assert d["page_count"] == 7
     assert d["record_skill"] == "court-documents"
 
@@ -684,7 +684,7 @@ def test_sidecar_skill_unknown_name_warns_and_falls_back(capsys):
 
 
 def test_stamp_document_applies_sidecar_provenance():
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf", "page_count": 1,
+    pf = {"filename": "real.pdf", "original_path": "incoming/real.pdf", "page_count": 1,
           "pages": [{}], "sidecar": "source: FOI A-2026-001\nobtained: 2026-06-05\n"}
     ext = {"document": {}}   # model emitted no source/obtained
     orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="foi-responses")
@@ -783,7 +783,7 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
-                         "original_path": f"_INCOMING/{filename}",
+                         "original_path": f"incoming/{filename}",
                          "title": filename, "document_type": "Filing",
                          "date_of_document": "2024-01-15", "page_count": 1,
                          "source": None, "obtained": None, "near_duplicate_of": None,
@@ -857,7 +857,7 @@ def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
-                         "original_path": f"_INCOMING/{filename}",
+                         "original_path": f"incoming/{filename}",
                          "title": filename, "document_type": "Filing",
                          "date_of_document": "2024-01-15", "page_count": 1,
                          "source": None, "obtained": None, "near_duplicate_of": None,
@@ -1294,11 +1294,11 @@ def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
     qdir.mkdir(parents=True, exist_ok=True)
     pages = [{"page": i, "markdown": f"distinctword{i}"} for i in (1, 2, 3)]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 3, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1326,12 +1326,12 @@ def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 1, "pages": [{"page": 1, "markdown": "opaque table"}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "sidecar": "source: https://example.gov/lobby-registry\nnotes: sidecarhint\n",
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1360,13 +1360,13 @@ def test_extractor_sees_file_metadata_and_processing_facts(tmp_path, monkeypatch
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 1, "pages": [{"page": 1, "markdown": "Acme Corp filed an annual report."}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "metadata": {"ocr_used": True, "source_type": "docling"},
         "file_metadata": {"author": "Jane Doe", "producer": "Acrobat Distiller"},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1397,11 +1397,11 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     calls = {"extract": 0, "section": 0}
     sec_first = {
@@ -1455,11 +1455,11 @@ def test_sectioned_repairs_missing_morgue_entity_id_with_no_entities_to_fall_bac
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first_broken = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1516,11 +1516,11 @@ def test_sectioned_repair_gives_up_after_one_attempt(tmp_path, monkeypatch):
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first_broken = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1568,11 +1568,11 @@ def test_sectioned_extraction_falls_back_when_morgue_entity_id_missing(tmp_path,
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1625,11 +1625,11 @@ def test_sectioned_does_not_repair_unrelated_postflight_errors(tmp_path, monkeyp
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first_bad_fact = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1740,7 +1740,7 @@ def _checkpoint_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf", n=3):
                          "pages_path": f".watchdog/tmp/section_{sha}_{i:02d}.md"})
     plan = {"sectioned": True, "page_count": n, "sections": sections}
     pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
-         "page_count": n, "original_path": f"_INCOMING/{filename}"}
+         "page_count": n, "original_path": f"incoming/{filename}"}
     return plan, pf
 
 
@@ -1932,7 +1932,7 @@ def _resplit_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
          "pages_path": f".watchdog/tmp/section_{sha}_02.md"},
     ]}
     pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
-         "page_count": 5, "original_path": f"_INCOMING/{filename}"}
+         "page_count": 5, "original_path": f"incoming/{filename}"}
     return plan, pf
 
 
@@ -2312,11 +2312,11 @@ def test_ingest_retry_resumes_sectioned_extraction_after_a_crash(tmp_path, monke
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / f"{sha}.json").write_text(json.dumps({
-        "sha256": sha, "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": sha, "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)
 
     sec1 = {
@@ -3799,7 +3799,7 @@ def test_finalize_after_skip_finalize_consumes_staged_inputs(tmp_path, monkeypat
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
-                         "original_path": f"_INCOMING/{filename}",
+                         "original_path": f"incoming/{filename}",
                          "title": filename, "document_type": "Filing",
                          "date_of_document": "2024-01-15", "page_count": 1,
                          "source": None, "obtained": None, "near_duplicate_of": None,
@@ -4086,7 +4086,7 @@ def _sectioned_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
          "pages_path": f".watchdog/tmp/section_{sha}_01.md"},
     ]}
     pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
-          "page_count": 1, "original_path": f"_INCOMING/{filename}"}
+          "page_count": 1, "original_path": f"incoming/{filename}"}
     return plan, pf
 
 
@@ -4930,7 +4930,7 @@ def _stage_extracted(vault, tmp_path, sha, filename, overrides=None):
     `tmp_path` just needs to be a scratch dir distinct per call (make_extraction always writes
     to `<tmp_path>/extraction.json`)."""
     overrides = dict(overrides or {})
-    doc_overrides = {"sha256": sha, "filename": filename, "original_path": f"_INCOMING/{filename}"}
+    doc_overrides = {"sha256": sha, "filename": filename, "original_path": f"incoming/{filename}"}
     doc_overrides.update(overrides.pop("document", {}))
     overrides["document"] = doc_overrides
     (tmp_path).mkdir(parents=True, exist_ok=True)
@@ -4957,8 +4957,8 @@ def test_parallel_slug_variants_reconciled(tmp_path):
     """Two docs coining different slugs for the same entity must collapse to one, folded before
     either commits (sha-a < sha-b, so sha-a's slug is the one that survives, per D126)."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # First-sorted-sha wins the slug; the other coins a near-duplicate id + name variant.
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
@@ -4979,8 +4979,8 @@ def test_parallel_slug_variants_reconciled(tmp_path):
 def test_reconcile_remaps_role_target_in_same_document(tmp_path):
     """A role pointing at a reconciled entity in the same extraction is remapped too."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # Doc A establishes the canonical company slug.
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
@@ -5016,8 +5016,8 @@ def test_reconcile_remaps_role_target_in_same_document(tmp_path):
 def test_reconcile_matches_against_existing_alias(tmp_path):
     """A new slug matching an existing entity's *alias* (not its name) reconciles."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # Doc A establishes the entity with an alias.
     _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
@@ -5041,8 +5041,8 @@ def test_reconcile_matches_against_existing_alias(tmp_path):
 def test_reconcile_does_not_merge_across_types(tmp_path):
     """Same normalized name but different entity types must stay separate."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # A Person and a Company that normalize to the same key.
     _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
@@ -5064,8 +5064,8 @@ def test_drifting_type_synonyms_reconcile_to_one_entity(tmp_path):
     a single id/folder instead of forking — both collapse to the ``organization`` bucket, so
     the reconciliation key matches where free-text types used to miss."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # Doc A: the bank labelled a plain "Company".
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
@@ -5092,8 +5092,8 @@ def test_batch_fold_collapses_staged_duplicates_before_commit(tmp_path):
     earliest-sha document's — in the staged JSON on disk *before* `_batch_exact_fold` returns,
     i.e. before either has been committed to the vault."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
                    "ernst-and-young-inc", "Ernst & Young Inc.")
@@ -5119,8 +5119,8 @@ def test_batch_fold_remaps_morgue_entity_id_and_key_facts_entities(tmp_path):
     to `entities[].id`, or doc-b ends up filed at `morgue/ernst-young-inc/...` even though that
     entity's note now lives under the winning id."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
                    "ernst-and-young-inc", "Ernst & Young Inc.")

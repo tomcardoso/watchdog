@@ -1,6 +1,6 @@
 """Web research capture — the deterministic egress gate for /watchdog-research (D45, I5).
 
-The research skill curates URLs; this module turns each into a sanitized file under `_INCOMING/`,
+The research skill curates URLs; this module turns each into a sanitized file under `incoming/`,
 so web findings go through chew and dig like any other document.
 
 - **URLs are validated before any connection**: http/https only, and no host that resolves to
@@ -34,6 +34,7 @@ from watchdog.pipeline import sidecar
 from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.preprocess import DIRECT_TEXT_SUFFIXES, DOCLING_SUFFIXES
 from watchdog.pipeline.write_vault import slugify
+from watchdog.vault_paths import incoming_dir
 
 
 class ResearchError(Exception):
@@ -260,7 +261,7 @@ class Deposit:
 
 def _deposit_name(url: str, title: str) -> str:
     """A filesystem-safe, stable-per-URL stem: `<slug>-<sha1[:8]>`. Stability makes re-pulling a
-    worklist idempotent (a re-pull overwrites the same _INCOMING file rather than duplicating)."""
+    worklist idempotent (a re-pull overwrites the same incoming file rather than duplicating)."""
     base = slugify(title) or slugify(Path(urlsplit(url).path).stem) or "web-source"
     digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:8]
     return f"{base[:60]}-{digest}"
@@ -272,7 +273,7 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
                 wayback: tuple[str, str] | None = None,
                 retrieved_by: str = "research-mode", browser_factory=None) -> Path:
     """Validate, fetch, sanitize, and write a source document + its `.yml` sidecar to
-    `_INCOMING/`. Returns the deposited document path; raises ResearchError on rejection. HTML
+    `incoming/`. Returns the deposited document path; raises ResearchError on rejection. HTML
     deposits first try a rendered Chromium capture (`pipeline/capture.py`, #200) — script-stripped,
     assets inlined as data URIs; when Playwright isn't installed or the render fails for any reason,
     falls back to the plain, nh3-sanitized fetch body. Either way the sidecar's `capture` field
@@ -297,7 +298,7 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
 
     archived = save_to_wayback(final_url, wayback[0], wayback[1]) or "" if wayback else ""
 
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     incoming.mkdir(parents=True, exist_ok=True)
     name = _deposit_name(final_url, title)
     doc_path = incoming / f"{name}{ext}"
@@ -363,9 +364,9 @@ def deposit_many(vault: Path, entries: list[dict], *, max_bytes: int = _MAX_BYTE
 
 # ── Durable worklist store (#196) ──────────────────────────────────────────────
 # The pending-download list is the one URL-specific piece of state: a queued URL has no file yet,
-# so — unlike a pending PDF, which is tracked by its presence in _INCOMING/ — it needs an explicit
+# so — unlike a pending PDF, which is tracked by its presence in incoming/ — it needs an explicit
 # store. It lives under `.watchdog/research/` (durable), not `.watchdog/tmp/` (swept by setup), so a
-# crashed session's queued URLs survive. Once downloaded a URL becomes an _INCOMING/ file and is
+# crashed session's queued URLs survive. Once downloaded a URL becomes an incoming/ file and is
 # tracked like any pending document; once ingested it lands in documents.json `source`. There is no
 # separate "done" ledger — done-ness is derived from those artifacts (see `seen_urls`).
 
@@ -423,10 +424,10 @@ def retain_pending(vault: Path, keep: list[dict]) -> None:
 def seen_urls(vault: Path) -> set[str]:
     """URLs already captured — so research can skip re-fetching them. Derived, not stored: the
     union of every ingested document's `source` (documents.json), every in-flight
-    `_INCOMING/**.yml` sidecar `source` (fetched, not yet chewed), and every chewed-but-not-yet-
+    `incoming/**.yml` sidecar `source` (fetched, not yet chewed), and every chewed-but-not-yet-
     ingested queue entry's embedded sidecar `source`. The last of those exists because chew
     deletes the `.yml` once it's filtered into the queue JSON (D121) — there is no file left in
-    `_INCOMING/` for that state, only the queue's own copy. Mirrors how chew dedups against the
+    `incoming/` for that state, only the queue's own copy. Mirrors how chew dedups against the
     registry."""
     urls: set[str] = set()
 
@@ -440,7 +441,7 @@ def seen_urls(vault: Path) -> set[str]:
         except (OSError, json.JSONDecodeError, AttributeError):
             pass
 
-    incoming = vault / "_INCOMING"
+    incoming = incoming_dir(vault)
     if incoming.is_dir():
         for sidecar_path in incoming.rglob("*.yml"):
             try:

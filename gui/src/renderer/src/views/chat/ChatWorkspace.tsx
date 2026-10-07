@@ -278,7 +278,7 @@ export default function ChatWorkspace(p: Props) {
         void call('chat.close', { session: id })
           .then((r) => {
             invalidate('research.', 'chat.list')
-            if (r.research_queued) toast({ kind: 'info', title: `${r.research_queued} ${r.research_queued === 1 ? 'source' : 'sources'} queued`, body: 'Open Web research to download them into _INCOMING.' })
+            if (r.research_queued) toast({ kind: 'info', title: `${r.research_queued} ${r.research_queued === 1 ? 'source' : 'sources'} queued`, body: 'Open Web research to download them into incoming.' })
           })
           .catch(() => undefined)
       }

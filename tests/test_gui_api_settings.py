@@ -409,7 +409,7 @@ def test_setup_check(wdg_home, monkeypatch, tmp_path):
     r = call("setup.check")
     assert [d["label"] for d in r["deps"]] == [d[1] for d in setup_cmd._DEPS]
     qpdf = r["deps"][0]
-    assert qpdf == {"label": "qpdf", "ok": True, "hint": None}
+    assert qpdf == {"label": "qpdf", "ok": True, "hint": None, "required": False}
     gs = r["deps"][1]
     assert gs["ok"] is False and "ghostscript" in gs["hint"]
     assert r["playwright"] is True and r["gliner_model"] is False

@@ -181,7 +181,7 @@ def test_write_vault_persists_contradictions_findable_by_leads(tmp_path):
     from tests.test_write_vault import make_vault, make_extraction
 
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     callout = "> [!contradiction] Address differs from prior filing"
     overrides = {"entities": [{"id": "alice-smith", "name": "Alice Smith", "type": "Person",
                                "contradictions": [callout]}]}

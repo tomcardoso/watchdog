@@ -455,7 +455,7 @@ def _full_vault(tmp_path: Path) -> Path:
     reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (vault / ".watchdog" / "tmp").mkdir()
-    (vault / "_INCOMING").mkdir()
+    (vault / "incoming").mkdir()
     (vault / "documents").mkdir()
     (reg / "entities.json").write_text("{}\n")
     (reg / "documents.json").write_text("{}\n")
@@ -472,7 +472,7 @@ def test_postflight_stages_timeline_files(tmp_path):
         "document": {
             "sha256": "post123abc",
             "filename": "doc.pdf",
-            "original_path": "_INCOMING/doc.pdf",
+            "original_path": "incoming/doc.pdf",
             "title": "Doc",
             "document_type": "Report",
             "date_of_document": "2024-01-15",

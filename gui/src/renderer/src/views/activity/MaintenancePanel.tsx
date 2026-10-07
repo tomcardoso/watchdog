@@ -161,7 +161,7 @@ function WatchCard() {
   const toggle = async (on: boolean) => {
     setBusy(true)
     try {
-      if (on) await startJob(['watch'], 'Watching _INCOMING', 'watch')
+      if (on) await startJob(['watch'], 'Watching incoming', 'watch')
       else if (running) await call('jobs.cancel', { id: running.id })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not change watching', body: errorMessage(e) })
@@ -175,9 +175,9 @@ function WatchCard() {
         <Eye />
       </div>
       <div className="grow">
-        <div className="card-title">Watch _INCOMING for new files</div>
+        <div className="card-title">Watch incoming for new files</div>
         <div className="act-mcard-text" style={{ margin: '2px 0 0' }}>
-          While this is on, files that land in <span className="mono">_INCOMING/</span> are chewed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
+          While this is on, files that land in <span className="mono">incoming/</span> are chewed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
         </div>
       </div>
       {running && (
@@ -185,7 +185,7 @@ function WatchCard() {
           Show output
         </Button>
       )}
-      <Switch checked={!!running} disabled={busy} onChange={(v) => void toggle(v)} label="Watch _INCOMING" />
+      <Switch checked={!!running} disabled={busy} onChange={(v) => void toggle(v)} label="Watch incoming" />
     </div>
   )
 }
@@ -220,7 +220,7 @@ function ChewCard({ incoming }: { incoming: number | null }) {
         </Button>
       }
     >
-      Converts every file in <span className="mono">_INCOMING/</span> to text, applying OCR to pages that need it, splitting large PDFs into parallel chunks and checking for duplicates. It happens entirely on this computer: nothing is sent to a model. Press Stop to cancel; unfinished files stay in <span className="mono">_INCOMING/</span>.
+      Converts every file in <span className="mono">incoming/</span> to text, applying OCR to pages that need it, splitting large PDFs into parallel chunks and checking for duplicates. It happens entirely on this computer: nothing is sent to a model. Press Stop to cancel; unfinished files stay in <span className="mono">incoming/</span>.
     </MCard>
   )
 }
