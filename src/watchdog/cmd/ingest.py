@@ -411,17 +411,27 @@ def _public_records_warning(n_docs: int) -> str:
     )
 
 
-def _auto_approve_limit(config: dict) -> float | None:
-    """The `auto_approve_usd` setting as a positive dollar amount, or None when it is unset or 0."""
-    try:
-        v = float(config.get("auto_approve_usd") or 0)
-    except (TypeError, ValueError):
-        return None
-    return v if v > 0 else None
+def _auto_approve_on(config: dict) -> bool:
+    """The `auto_approve` setting (D263): True only when it is explicitly on."""
+    return config.get("auto_approve") is True
 
 
-def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dict | None = None,
-                            limit: float | None = None) -> bool:
+def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) -> dict:
+    """Whether this run may skip the public-records pause (D263): `{"approve": True}` only when
+    the auth mode is the Claude subscription and every stage it calls — classify, extract and each
+    finishing stage, given by its configured backend — runs on it, which has no per-run charge.
+    Otherwise `{"blocker": reason}`. An explicit `claude-agent-sdk` stage is not enough on its
+    own: on API-key auth that backend is handed the paid key. There is deliberately no dollar
+    estimate: an estimate from past runs can come out low, and the pause it would skip is the only
+    check on what leaves the computer."""
+    if auth_mode == "subscription" and all(b in (None, "claude-agent-sdk") for b in stages):
+        return {"approve": True}
+    return {"blocker": "at least one step of this run uses a paid API key, and auto-approve "
+                       "applies only when every step runs on your Claude subscription"}
+
+
+def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
+                            enabled: bool = False) -> bool:
     """The point-of-no-return gate before any ingest/extract that will call the model (#426):
     shows the README's 'Public records only' warning and requires an explicit acknowledgement,
     defaulting to Acknowledge — the standing warning is the real safeguard; a Cancel default
@@ -433,25 +443,21 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, est: dic
 
     `--skip-warning` (for repeated/scripted runs on an already-vetted corpus) suppresses the
     interactive pause but still prints a one-line notice, so a skipped run is never silent
-    about what it sent.
+    about what it sent. With `auto_approve` on (`enabled`), a run whose `gate` verdict approves
+    it does the same; one it doesn't says why before asking.
     """
     if n_docs == 0:
         return True
-    high = (est or {}).get("cost_high")
-    subscription = bool((est or {}).get("subscription"))
-    if limit is not None and (subscription or (high is not None and high <= limit)):
-        # Within the auto-approve budget (D251): the user settled the question when they set the
-        # limit, so the run goes ahead with the same one-line notice --skip-warning prints. A
-        # subscription has no per-run price, so it is always within the limit.
-        cost = "no per-run charge on your subscription" if subscription else f"estimated ${high:.2f} at most"
-        print(f"\n  {_DIM}Auto-approved ({cost}; limit ${limit:.2f}) — sending {_RESET}{_BOLD}{n_docs}"
-              f"{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
+    if enabled and (gate or {}).get("approve"):
+        # The user settled the question when they turned auto-approve on (D263), so the run goes
+        # ahead with the same one-line notice --skip-warning prints.
+        print(f"\n  {_DIM}Auto-approved (every step on your Claude subscription) — sending "
+              f"{_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a "
+              f"cloud AI model.{_RESET}")
         return True
-    if limit is not None and not skip_warning:
-        reason = (f"estimated ${high:.2f} is over your ${limit:.2f} auto-approve limit"
-                  if high is not None else
-                  "no dollar estimate yet for this vault, so the auto-approve limit can't apply")
-        print(f"\n  {_DIM}Asking first: {reason}.{_RESET}")
+    if enabled and not skip_warning:
+        blocker = (gate or {}).get("blocker") or "this run could not be checked"
+        print(f"\n  {_DIM}Asking first: {blocker}.{_RESET}")
     if skip_warning:
         print(f"\n  {_DIM}Sending {_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document"
               f"{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
@@ -474,8 +480,11 @@ def _offer_ingest(args, vault: Path) -> dict | None:
         print(models_line)
     from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
     n_docs = len(needs_extraction(vault, scan_queue(vault)))
-    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False),
-                               est=est, limit=_auto_approve_limit(load_config())):
+    if _auto_approve_on(load_config()):
+        # With auto-approve on, the gate needs every stage's backend, which only `cmd_ingest`
+        # resolves — so it decides, not this offer (D263).
+        return cmd_ingest(args, confirm=True, skip_preview=True)
+    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
         return cmd_ingest(args, confirm=False, skip_preview=True)
     else:
         # No leading blank line here — pick()'s own close-out already leaves one (#411).
@@ -766,7 +775,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # (`_offer_ingest`). "Run it again" hints below name whichever command got the caller here.
     command = getattr(args, "command", None)
     pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add"}.get(command, "watchdog")
-    is_dig = pipeline_hint == "watchdog dig"
+    is_dig = command == "dig"
     is_add = command == "add"
 
     raw_force = getattr(args, "force", False)
@@ -1073,11 +1082,20 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
 
     if confirm:
+        auto = _auto_approve_on(config)
+        gate = None
+        if auto and q:
+            gate = _auto_approve_verdict(
+                auth_mode=a["mode"],
+                stages=[classify_backend, extract_backend, post_backend,
+                        *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)])
         if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False),
-                                       est=est, limit=_auto_approve_limit(config)):
+                                       gate=gate, enabled=auto):
             _release_lock()
             # No leading blank line — pick()'s own close-out already leaves one (#411).
-            print(f"  When ready, run:  {_CYAN}{pipeline_hint}{_RESET}\n")
+            # Declining `chew`'s offer points at `dig`, as chew's own decline path does.
+            hint = "watchdog dig" if command == "chew" else pipeline_hint
+            print(f"  When ready, run:  {_CYAN}{hint}{_RESET}\n")
             return
 
     import asyncio
@@ -1412,21 +1430,56 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     return out
 
 
-def _expand_paths(paths: list[str]) -> list[Path]:
-    """Files named on the command line, with folders expanded to the files chew supports in them."""
+def _is_hidden(path: Path, root: Path) -> bool:
+    """A dotfile or a file inside a dot-folder below `root` (`.git/`, `.obsidian/`, macOS `._x`)."""
+    return any(part.startswith(".") for part in path.relative_to(root).parts)
+
+
+def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
+    """Files named on the command line, with folders expanded to the files chew reads in them.
+
+    Never an investigation's own files: a path inside this vault is refused (files already in
+    `_INCOMING/` are picked up without being named), and a folder that contains this or any other
+    vault — `add ~/Documents`, `add ~/Investigations` — has those vaults' files left out, so
+    Watchdog's notes and registries are never read back in as source documents. Hidden files and
+    folders are skipped."""
     from watchdog.pipeline.preprocess_batch import find_files
+    vault = vault.resolve()
     out: list[Path] = []
     for raw in paths:
         p = Path(raw).expanduser().resolve()
         if not p.exists():
             sys.exit(f"Error: not found: {raw}")
+        if p == vault or vault in p.parents:
+            if p == vault / "_INCOMING" or (vault / "_INCOMING") in p.parents:
+                continue   # already waiting; added below without copying
+            sys.exit(f"Error: {raw} is inside this investigation. Name files from outside it, "
+                     f"or move them into _INCOMING/.")
         if p.is_dir():
-            found = find_files([p])
+            found = [f for f in find_files([p]) if not _is_hidden(f, p)]
+            vault_dirs: dict[Path, bool] = {}
+
+            def in_a_vault(f: Path) -> bool:
+                # This one or any other Watchdog investigation under `p` (`add ~/Investigations`).
+                for d in f.parents:
+                    if d == p.parent:
+                        return False
+                    if d not in vault_dirs:
+                        vault_dirs[d] = d == vault or is_vault(d)
+                    if vault_dirs[d]:
+                        return True
+                return False
+
+            inside = [f for f in found if in_a_vault(f)]
+            if inside:
+                print(f"\n  {_DIM}Leaving out {len(inside)} file{'s' if len(inside) != 1 else ''} "
+                      f"that belong to a Watchdog investigation's own folder.{_RESET}")
+                found = [f for f in found if not in_a_vault(f)]
             if not found:
                 print(f"\n  {_DIM}No supported files in {_RESET}{_CYAN}{raw}{_RESET}")
             out.extend(found)
-        elif p.name.endswith(".yml"):
-            continue   # a sidecar travels with its document
+        elif p.name.endswith(".yml") or p.name.startswith("."):
+            continue   # a sidecar travels with its document; hidden files are never documents
         else:
             out.append(p)
     return out
@@ -1436,7 +1489,7 @@ def cmd_add(args) -> dict | None:
     """`watchdog add [files or folders…]` — take documents all the way into the vault in one
     command: copy them into `_INCOMING/`, chew, extract and finalize (D251).
 
-    It stops only for the public-records acknowledgement (skipped within `auto_approve_usd`) and
+    It stops only for the public-records acknowledgement (skipped by `auto_approve` when every step runs on the Claude subscription) and
     for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
     picks up whatever is waiting: files in `_INCOMING/`, queued documents, a pending batch.
     `--retry` first puts documents that failed extraction back in the queue."""
@@ -1453,6 +1506,13 @@ def cmd_add(args) -> dict | None:
     if not is_vault(vault):
         sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
     args.command = "add"
+    if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
+        # Read-only, like `dig --estimate`: nothing is copied, retried or chewed.
+        if getattr(args, "paths", None) or getattr(args, "retry", False):
+            print(f"\n  {_DIM}--estimate changes nothing, so the named files are not copied in "
+                  f"and failed documents are not retried; this estimate covers the current queue "
+                  f"only.{_RESET}")
+        return cmd_ingest(args)
     _warn_pending_research(vault)
 
     if getattr(args, "retry", False):
@@ -1461,7 +1521,7 @@ def cmd_add(args) -> dict | None:
             print(f"\n  {_DIM}Retrying {_RESET}{_BOLD}{n}{_RESET}{_DIM} document"
                   f"{'s' if n != 1 else ''} that failed before.{_RESET}")
 
-    files = _expand_paths(getattr(args, "paths", None) or [])
+    files = _expand_paths(getattr(args, "paths", None) or [], vault)
     copied = sum(1 for f in files if _into_incoming(vault, f, quiet=True) != f)
     if copied:
         print(f"\n  {_DIM}Copied {_RESET}{_BOLD}{copied}{_RESET}{_DIM} file{'s' if copied != 1 else ''} "

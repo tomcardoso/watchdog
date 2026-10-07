@@ -67,6 +67,7 @@ def cmd_resolve(args) -> None:
         sys.exit("Error: give one or more resolution ids, or use --sync / --list")
 
     added = resolutions.resolve(vault, args.ids, label="manual")
+    resolutions.tick_in_briefings(vault, args.ids)
     skipped = len(args.ids) - len(added)
     print()
     print(f"  {_GREEN}Resolved{_RESET} {_BOLD}{len(added)}{_RESET} "
@@ -78,6 +79,7 @@ def cmd_resolve(args) -> None:
 def cmd_unresolve(args) -> None:
     vault = _vault()
     removed = resolutions.unresolve(vault, args.ids)
+    resolutions.tick_in_briefings(vault, args.ids, ticked=False)
     missing = len(args.ids) - len(removed)
     print()
     print(f"  {_GREEN}Reopened{_RESET} {_BOLD}{len(removed)}{_RESET} "

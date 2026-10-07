@@ -93,7 +93,7 @@ Setup checks that qpdf and Ghostscript are installed, enables tab completion in 
 
 Switching OCR engines (`watchdog settings ocr_engine tesseract`) works the same way: Watchdog installs the faster Tesseract binding for you automatically, provided the system Tesseract headers from the platform install steps above are already in place.
 
-Along the way it asks three questions:
+Along the way it asks four questions:
 
 1. **Where to store your investigation projects.** Press Return to accept the default (`~/Investigations`), or type a different path.
 2. **Whether to install the optional capture browser** for full page snapshots (an extra ~150 MB). The default is no; see [Full page snapshots](#optional-full-page-snapshots) below.
@@ -102,6 +102,8 @@ Along the way it asks three questions:
 If you choose the subscription, setup also warns that ingesting more than a few documents at once can be token-heavy for a Pro plan's session limits, and offers to route ingestion to a cheaper metered provider instead — OpenAI's GPT-5.6 Luna is named first, since it benchmarked strongest against real filings (see [Benchmarks](benchmarks.md)), alongside DeepSeek and Gemini — walking you through picking that provider, pasting its key, and choosing a model for each ingest stage. This is entirely optional; declining leaves everything on your Claude Code subscription, same as before. See [Model backends](configuration.md#model-backends) for the full picture, including changing this later with `watchdog settings auth` or `watchdog settings`.
 
 If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. `watchdog settings auth` applies the same tune-down if you switch to subscription auth later, and undoes it automatically if you later switch back to an API key — no need to raise it back by hand unless you set your own value.
+
+4. **Whether to auto-approve subscription runs.** Before sending documents to a model, Watchdog normally pauses and asks you to confirm they are public records. Setup asks whether to skip that pause for runs where you are signed in with your Claude subscription and every step uses it. The default is no, so every run asks; re-running setup with it already on defaults to keeping it. Say yes only if you already check that what you add is public record. A run that uses a paid API key for any step always asks. See [Auto-approve](configuration.md#auto-approve) to change it later.
 
 When setup finishes, reload your shell so tab completion takes effect:
 

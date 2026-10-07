@@ -144,6 +144,28 @@ def _ask_projects_dir() -> Path:
     return chosen
 
 
+def _ask_auto_approve(current: bool = False) -> bool:
+    """Ask whether runs entirely on the Claude subscription may skip the public-records pause
+    (D263). Returns the answer; the default is `current`, so a first setup defaults to no. Off a
+    terminal it keeps `current` without asking."""
+    print()
+    print(f"  {_BOLD}Auto-approve{_RESET}")
+    print(f"  {_DIM}Before sending documents to a model, Watchdog pauses and asks you to confirm "
+          f"they are public{_RESET}")
+    print(f"  {_DIM}records. You can skip that pause for runs where every step uses your Claude "
+          f"subscription —{_RESET}")
+    print(f"  {_DIM}only do this if you already check that what you add is public record. A run "
+          f"that uses a paid{_RESET}")
+    print(f"  {_DIM}API key for any step always asks.{_RESET}")
+    if not sys.stdin.isatty():
+        if not current:
+            print(f"  {_DIM}Non-interactive — set this later with{_RESET} "
+                  f"{_CYAN}watchdog settings auto_approve true{_RESET}{_DIM}.{_RESET}")
+        return current
+    print()
+    return interactive.confirm("  Skip the pause for subscription runs?", default=current)
+
+
 def _detect_shell() -> tuple[str | None, Path | None]:
     shell_bin = os.environ.get("SHELL", "")
     if "zsh" in shell_bin:
@@ -385,7 +407,17 @@ def run(force: bool = False) -> None:
     from watchdog.cmd.auth import setup_auth_interactive
     setup_auth_interactive()
 
-    # 10. Done
+    # 10. Auto-approve (D263)
+    config = json.loads(CONFIG_FILE.read_text()) if CONFIG_FILE.exists() else {}
+    if _ask_auto_approve(config.get("auto_approve") is True):
+        config["auto_approve"] = True
+        _ok("Auto-approve on — runs entirely on your Claude subscription go ahead without asking")
+    else:
+        config.pop("auto_approve", None)
+        _ok("Auto-approve off — every run asks before sending documents")
+    CONFIG_FILE.write_text(json.dumps(config, indent=2) + "\n")
+
+    # 11. Done
     reload_hint = f"{_CYAN}source {profile}{_RESET}" if profile else "reload your shell"
     print()
     print(f"{_GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{_RESET}")

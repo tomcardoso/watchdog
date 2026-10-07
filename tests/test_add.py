@@ -1,4 +1,4 @@
-"""`watchdog add`, the auto-approve budget, and the bare-`watchdog` home screen (D251)."""
+"""`watchdog add`, auto-approve (D263), and the bare-`watchdog` home screen (D251)."""
 
 import argparse
 import json
@@ -20,49 +20,44 @@ def _no_prompt(*a, **k):
     raise AssertionError("prompted when it should not have")
 
 
-# ── auto-approve gate ────────────────────────────────────────────────────────
+# ── auto-approve gate (D263) ─────────────────────────────────────────────────
 
 @pytest.mark.parametrize("config, expected", [
-    ({}, None), ({"auto_approve_usd": 0}, None), ({"auto_approve_usd": "junk"}, None),
-    ({"auto_approve_usd": 5}, 5.0), ({"auto_approve_usd": 2.5}, 2.5),
+    ({}, False), ({"auto_approve": False}, False), ({"auto_approve": "true"}, False),
+    ({"auto_approve_usd": 5}, False), ({"auto_approve": True}, True),
 ])
-def test_auto_approve_limit(config, expected):
-    assert ing._auto_approve_limit(config) == expected
+def test_auto_approve_is_on_only_when_explicitly_true(config, expected):
+    assert ing._auto_approve_on(config) is expected
 
 
-def test_within_limit_goes_ahead_without_asking(monkeypatch, capsys):
+def test_an_approved_run_goes_ahead_without_asking(monkeypatch, capsys):
     monkeypatch.setattr(ing.interactive, "pick", _no_prompt)
-    assert ing._confirm_public_records(3, est={"cost_high": 1.2}, limit=5.0) is True
+    assert ing._confirm_public_records(3, gate={"approve": True}, enabled=True) is True
     out = _plain(capsys.readouterr().out)
-    assert "Auto-approved" in out and "$1.20" in out and "3 documents" in out
+    assert "Auto-approved" in out and "subscription" in out and "3 documents" in out
 
 
-def test_subscription_is_always_within_the_limit(monkeypatch, capsys):
-    monkeypatch.setattr(ing.interactive, "pick", _no_prompt)
-    assert ing._confirm_public_records(1, est={"cost_high": None, "subscription": True},
-                                       limit=0.5) is True
-    assert "subscription" in _plain(capsys.readouterr().out)
-
-
-@pytest.mark.parametrize("est, reason", [
-    ({"cost_high": 9.0}, "over your $5.00 auto-approve limit"),
-    ({"cost_high": None}, "no dollar estimate yet"),
+@pytest.mark.parametrize("gate, reason", [
+    ({"blocker": "a paid key is involved"}, "a paid key is involved"),
+    (None, "could not be checked"),
+    # a raw cost_estimate dict can never approve: its keys are not the gate's
+    ({"cost_high": 0.01, "subscription": True}, "could not be checked"),
 ])
-def test_over_limit_or_unpriced_still_asks(monkeypatch, capsys, est, reason):
+def test_an_unapproved_run_says_why_and_asks(monkeypatch, capsys, gate, reason):
     asked = []
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 0)
-    assert ing._confirm_public_records(2, est=est, limit=5.0) is True
+    assert ing._confirm_public_records(2, gate=gate, enabled=True) is True
     assert asked
     out = _plain(capsys.readouterr().out)
     assert reason in out and "Public records only" in out
 
 
-def test_no_limit_asks_as_before(monkeypatch, capsys):
+def test_with_auto_approve_off_an_approving_verdict_still_asks(monkeypatch, capsys):
     asked = []
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 1)
-    assert ing._confirm_public_records(2, est={"cost_high": 0.01}, limit=None) is False
+    assert ing._confirm_public_records(2, gate={"approve": True}, enabled=False) is False
     assert asked
-    assert "auto-approve" not in _plain(capsys.readouterr().out)
+    assert "auto-approve" not in _plain(capsys.readouterr().out).lower()
 
 
 # ── watchdog add ─────────────────────────────────────────────────────────────
