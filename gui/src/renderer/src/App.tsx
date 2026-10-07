@@ -45,9 +45,14 @@ function runCommand(name: string): void {
       return void window.watchdog.shell.openPath(s.project!.path)
     case 'open-obsidian':
       return void window.watchdog.shell.openInObsidian(s.project!.path)
-    default:
-      // new-investigation, fetch-links: handled by GlobalDialogs
+    case 'new-investigation':
+    case 'fetch-links':
+      // Handled by GlobalDialogs. Only these two are re-dispatched: the wd:command listener
+      // below hands every other name back here, so re-dispatching an unknown one would loop.
       window.dispatchEvent(new CustomEvent('wd:command', { detail: name }))
+      return
+    default:
+      console.warn('Unknown command', name)
   }
 }
 

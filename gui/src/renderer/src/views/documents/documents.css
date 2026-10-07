@@ -1173,3 +1173,19 @@
     display: none;
   }
 }
+
+.docv-pane-right .tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.docv-pane-right .tab {
+  padding-left: 9px;
+  padding-right: 9px;
+  flex: none;
+}
+.docv-pane-right .tab svg {
+  display: none;
+}
+.docv-right-body {
+  overflow-x: hidden;
+}

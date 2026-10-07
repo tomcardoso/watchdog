@@ -238,6 +238,7 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
   const scroller = useRef<HTMLDivElement>(null)
   const root = useRef<HTMLDivElement>(null)
   const anchor = useRef({ page: 1, frac: 0 })
+  const pendingJump = useRef<{ page: number; until: number } | null>(null)
   const textCache = useRef(new Map<number, Promise<TextContent>>())
 
   // find
@@ -368,7 +369,8 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
       return
     }
     lastScale.current = scale
-    const { page, frac } = anchor.current
+    const pj = pendingJump.current
+    const { page, frac } = pj && pj.until > Date.now() ? { page: pj.page, frac: 0 } : anchor.current
     scroller.current.scrollTop = offs[page - 1] + frac * sizes[page - 1].h * scale
   }, [scale, offs, sizes, n])
 
@@ -388,6 +390,7 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
   useEffect(() => {
     if (!target || !pdf || !cw || target.nonce === handled.current) return
     handled.current = target.nonce
+    pendingJump.current = { page: Math.min(n, Math.max(1, target.page)), until: Date.now() + 1200 }
     goTo(target.page, true)
     setFlash({ page: Math.min(n, Math.max(1, target.page)), n: target.nonce })
     const t = setTimeout(() => setFlash(null), 1700)

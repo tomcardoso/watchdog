@@ -9,7 +9,6 @@ import {
   CheckCheck,
   CheckCircle2,
   ClipboardList,
-  Copy,
   FileQuestion,
   GitCompare,
   Lightbulb,
@@ -21,9 +20,9 @@ import {
   Undo2,
   Zap
 } from 'lucide-react'
-import { CSSProperties, Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentRequest, DocumentRow, ReviewItem, ReviewKind } from '@shared/api'
-import { Badge, Button, Callout, Empty, ErrorNote, Kbd, Skeleton, Tabs, cx } from '@renderer/components/ui'
+import { Button, Callout, Empty, ErrorNote, Kbd, Skeleton, Tabs, cx } from '@renderer/components/ui'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { Markdown, useOpenWikilink } from '@renderer/components/Markdown'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
@@ -183,8 +182,8 @@ export default function ReviewView() {
             { value: 'contradictions', label: 'Contradictions', icon: Swords, count: counts.contradictions },
             { value: 'leads', label: 'Leads', icon: Lightbulb, count: counts.leads },
             { value: 'alerts', label: 'Watch-list hits', icon: Bell, count: counts.alerts },
-            { value: 'duplicates', label: 'Possible duplicates', icon: GitCompare, count: counts.duplicates },
-            { value: 'requests', label: 'Document requests', icon: FileQuestion, count: counts.requests },
+            { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
+            { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests },
             { value: 'handled', label: 'Handled', icon: CheckCheck },
             { value: 'watchlist', label: 'Watch list', icon: ScanSearch }
           ]}
@@ -235,7 +234,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
   const [flash, setFlash] = useState<{ text: string; undo: boolean } | null>(null)
   const [handledHere, setHandledHere] = useState(0)
   const [sweeping, setSweeping] = useState(false)
-  const flashTimer = useRef<ReturnType<typeof setTimeout>>()
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const docs = useRpc('vault.documents', kind === 'duplicates' && vault ? { vault } : null)
 
   const liveItems = visible.filter((i) => !leaving.has(i.rid))
@@ -536,11 +535,14 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
         {cited.length > 0 && (
           <div className="rv-cited">
             <span className="faint">Cited in</span>
-            {cited.slice(0, focused ? 12 : 3).map((c) => (
-              <button key={c} className="rv-cite" onClick={() => void openLink(stripMd(c.replace(/^\[\[|\]\]$/g, '').split('|')[0]))}>
-                {c.replace(/^\[\[|\]\]$/g, '').split('|').pop()?.split('/').pop()}
-              </button>
-            ))}
+            {cited.slice(0, focused ? 12 : 3).map((c, ci) => {
+              const o = c
+              return (
+                <button key={ci} className="rv-cite" onClick={() => (o.sha ? navigate({ view: 'document', sha: o.sha }) : o.note && void openLink(stripMd(o.note)))}>
+                  {o.filename ?? o.note}
+                </button>
+              )
+            })}
             {!focused && cited.length > 3 && <span className="faint">+{cited.length - 3}</span>}
           </div>
         )}
@@ -596,7 +598,9 @@ function DuplicatePair({ item, docs }: { item: QItem; docs?: DocumentRow[] }) {
   const mine = docs?.find((d) => d.sha.startsWith(prefix))
   const link = mine?.near_duplicate_of ?? null
   const target = link ? stripMd(link.replace(/^\[\[|\]\]$/g, '').split('|')[0]) : null
-  const other = docs?.find((d) => d.sha !== mine?.sha && (target ? stripMd(d.note ?? '') === target || d.note === target : d.filename === link))
+  const linkText = link?.replace(/^\[\[|\]\]$/g, '').split('|').pop() ?? null
+  const stem = (d: DocumentRow) => stripMd(d.note ?? '').replace(/^.*?(documents\/)/, '$1')
+  const other = docs?.find((d) => d.sha !== mine?.sha && ((target && stem(d) === target) || d.filename === linkText || d.filename === link))
   return (
     <>
       <div className="rv-pair">
@@ -793,6 +797,3 @@ function WatchlistTab({ vault }: { vault: string }) {
   )
 }
 
-// silence unused-import lint for icons referenced only in types
-void Copy
-void (null as unknown as CSSProperties)

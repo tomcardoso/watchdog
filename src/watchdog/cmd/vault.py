@@ -665,7 +665,9 @@ def cmd_delete(args) -> None:
     print(f"  {_CYAN}{vault}{_RESET}")
     print()
 
-    if args.purge:
+    if getattr(args, "yes", False):
+        answer = True
+    elif args.purge:
         print(f"  {_YELLOW}Warning: --purge will permanently delete all vault files from disk.{_RESET}")
         print(f"  {_YELLOW}This cannot be undone.{_RESET}")
         print()

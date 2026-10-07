@@ -162,6 +162,7 @@ export default function ProjectsView() {
 function healthText(p: Project): string {
   if (p.health === 'missing') return 'The folder is no longer where Watchdog last saw it.'
   if (p.health === 'not_a_vault') return 'The folder exists but is not a Watchdog vault.'
+  if (p.health === 'registry_corrupt') return 'The investigation\u2019s registry file is damaged. Run Check vaults for details.'
   return p.health ?? ''
 }
 

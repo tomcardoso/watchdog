@@ -2,11 +2,11 @@
 // its headline, what is waiting on the journalist, what is in progress, and ways in to explore.
 
 import {
-  Bell, BookOpenText, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
+  Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Layers, Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
-import { Button, Callout, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
+import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar } from '@renderer/components/EntityChip'
 import { Markdown } from '@renderer/components/Markdown'
@@ -20,7 +20,7 @@ import './home.css'
 
 /** A briefing's first screenful: whole paragraphs up to roughly `max` characters. */
 function excerpt(body: string, max = 1500): string {
-  const clean = body.replace(/<!--[\s\S]*?-->/g, '').trim()
+  const clean = body.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*# .*\n+/, '').trim()
   if (clean.length <= max) return clean
   const paras = clean.split(/\n{2,}/)
   let out = ''
@@ -33,7 +33,6 @@ function excerpt(body: string, max = 1500): string {
 
 export default function HomeView() {
   const vault = useVault()
-  const project = useApp((s) => s.project)!
   const { data: s, error, isLoading, refetch } = useRpc('vault.summary', { vault }, { refetchInterval: 20_000 })
   const { data: pipe } = useRpc('vault.pipeline', { vault }, { refetchInterval: 20_000 })
   const briefingPath = s?.briefing?.path
@@ -368,7 +367,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
       )
     )
   if (s.context_unseeded)
-    rows.push(row('ctx', <FileSearch />, <>Background folder not yet read</>, <Button size="sm" onClick={() => navigate({ view: 'ask', prompt: '' })}>Read it</Button>))
+    rows.push(row('ctx', <FileSearch />, <>Background folder not yet read</>, <Button size="sm" onClick={() => navigate({ view: 'ask', mode: 'context' })}>Read it</Button>))
 
   if (!rows.length) return null
   return (

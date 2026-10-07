@@ -318,8 +318,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_configure.set_defaults(func=cmd_configure)
 
     p_chew = sub.add_parser("chew", help="Process documents in _INCOMING/ and prepare them for ingestion")
-    p_chew.add_argument("file", nargs="?", default=None,
-                        help="Specific file to chew (omit to chew all of _INCOMING/)")
+    p_chew.add_argument("paths", nargs="*", default=None, metavar="PATH",
+                        help="Files or folders to chew, copied into _INCOMING/ first (omit to chew all of _INCOMING/)")
     p_chew.add_argument("--chew-workers", type=_positive_int, default=None, metavar="N",
                         dest="chew_workers",
                         help="Parallel file workers (see chew_workers in watchdog settings)")
@@ -368,6 +368,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_delete.add_argument("name", help="Investigation name or slug").completer = _project_completer
     p_delete.add_argument("--purge", action="store_true",
                           help="Also permanently delete all vault files from disk")
+    p_delete.add_argument("--yes", action="store_true",
+                          help="Skip the confirmation (for scripts and the desktop app, which asks first)")
     p_delete.set_defaults(func=cmd_delete)
 
     p_move = sub.add_parser("move", help="Update vault path in registry")

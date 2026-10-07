@@ -53,7 +53,7 @@ Run `watchdog` on its own inside an investigation to see the latest briefing, wh
 | `watchdog projects move <name> <path>` | Move the vault to a new path and update the registry; if the files are already at the new path, it just updates the registry. |
 | `watchdog projects archive <name>` | Mark an investigation complete, hiding it from `watchdog projects list`. |
 | `watchdog projects unarchive <name>` | Restore an archived investigation. |
-| `watchdog projects delete <name>` | Remove an investigation from the registry, leaving the vault files on disk; `--purge` also permanently deletes the files. |
+| `watchdog projects delete <name>` | Remove an investigation from the registry, leaving the vault files on disk; `--purge` also permanently deletes the files. It asks you to confirm first; `--yes` skips that question, for scripts. |
 | `watchdog projects log [name]` | Show the ingest history; `--lines N` shows only the last N lines. |
 
 Investigation names tab-complete in zsh and bash once `watchdog setup` has run.
@@ -230,9 +230,10 @@ watchdog ingest --force report.pdf disclosure-2024.pdf
 ```bash
 watchdog chew                        # everything in _INCOMING/
 watchdog chew path/to/file.pdf       # one specific file
+watchdog chew a.pdf b.docx folder/   # several files, or every supported file in a folder
 ```
 
-A file you name that isn't already in `_INCOMING/` is copied there first, so chewing a document from your Downloads folder (or from the vault's own `_CONTEXT/`) never moves the original away from where you keep it.
+A file you name that isn't already in `_INCOMING/` is copied there first, so chewing a document from your Downloads folder (or from the vault's own `_CONTEXT/`) never moves the original away from where you keep it. A folder is read the same way `watchdog add` reads one: its supported files are copied in, hidden files are skipped, and the files of any Watchdog investigation inside it are left out.
 
 Two flags override the persistent parallelism settings for a single run:
 

@@ -159,11 +159,11 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
             <div className="pipe-group">
               <div className="pipe-group-head"><AlertTriangle style={{ color: 'var(--danger)' }} />Failed extraction <span className="n">{p.failed.length}</span></div>
               <p>
-                These were set aside so the rest of the batch could finish. Requeue moves them back into the queue without running them. Retry opens Add documents so you can run them again.
+                These were set aside so the rest of the batch could finish. Requeue moves them back into the queue without running them. Retry puts them back and runs them again, the same as watchdog add --retry.
               </p>
               <FileList rows={p.failed.map((f) => ({ key: f.sha, name: f.filename, why: f.reason ?? 'No reason recorded. See Activity for the run output.', err: true }))} />
               <div className="pipe-actions">
-                <Button size="sm" variant="primary" icon={RotateCw} onClick={() => openAdd()}>Retry</Button>
+                <Button size="sm" variant="primary" icon={RotateCw} onClick={() => window.dispatchEvent(new CustomEvent('wd:add', { detail: { retry: true } }))}>Retry</Button>
                 <Button size="sm" loading={busy === 'requeue'} onClick={requeue}>Requeue</Button>
               </div>
             </div>

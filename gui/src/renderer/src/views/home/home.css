@@ -104,7 +104,7 @@
   gap: 20px;
   min-width: 0;
 }
-@media (max-width: 1020px) {
+@media (max-width: 1180px) {
   .home-cols {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -122,8 +122,8 @@
 .home-pull p {
   margin: 6px 0 0;
   font-family: var(--font-read);
-  font-size: 22px;
-  line-height: 1.42;
+  font-size: 20px;
+  line-height: 1.45;
   letter-spacing: -0.005em;
   color: var(--text);
   text-wrap: pretty;

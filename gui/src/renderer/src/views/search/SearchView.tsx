@@ -447,6 +447,11 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
           Exact matches could not be searched ({d.exact_error}). Treat the absence of exact matches below as unknown, not as “none”. Rebuilding the index usually fixes this.
         </Callout>
       )}
+      {d.semantic_error && (
+        <div className="faint srch-hint" style={{ marginTop: -14 }}>
+          Ranking by meaning was unavailable ({d.semantic_error}), so only exact matches are shown.
+        </div>
+      )}
       {nothing && !d.exact_error && (
         <Empty icon={SearchX} title={`No results for “${d.query}”`}>
           Nothing in the documents or notes matched, by wording or by meaning. Try fewer words, or remove the threshold in Options.
@@ -826,13 +831,13 @@ function BatchMode() {
             placeholder={'Harbour Point Holdings\nJane Whitcombe\n14 Quay Street'}
             spellCheck={false}
           />
-          <div className="row">
-            <span className="faint">{terms.length ? plural(terms.length, 'name') : 'Blank lines and lines starting with # are ignored.'}</span>
-            <span className="spacer" />
+          <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{terms.length ? plural(terms.length, 'name') : 'Blank lines and lines starting with # are ignored.'}</span>
+          <div className="row wrap">
             <label className="row" style={{ gap: 8 }}>
               <Switch checked={everywhere} onChange={setEverywhere} label="Search every investigation" />
               <span className="muted">Every investigation</span>
             </label>
+            <span className="spacer" />
             <Button variant="primary" icon={ListChecks} disabled={!terms.length} loading={busy} onClick={() => void check()}>
               Check {terms.length ? plural(terms.length, 'name') : 'names'}
             </Button>

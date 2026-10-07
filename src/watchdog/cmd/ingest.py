@@ -367,19 +367,33 @@ def cmd_chew(args) -> dict | None:
 
     _warn_pending_research(vault)
     queued_before = _count_queued(vault)
-    file_arg = getattr(args, "file", None)
+    # `chew` used to take one file as `file`; it now takes any number of files and folders as
+    # `paths` (the desktop app reads several dropped files at once). Accept either.
+    paths = list(getattr(args, "paths", None) or [])
+    if not paths and getattr(args, "file", None):
+        paths = [args.file]
     chew_workers  = getattr(args, "chew_workers", None)
     chunk_workers = getattr(args, "chunk_workers", None)
-    if file_arg:
+    if paths:
         from watchdog.pipeline.preprocess_batch import run_ingest
-        f = Path(file_arg).resolve()
-        if not f.exists():
-            sys.exit(f"Error: file not found: {f}")
-        if not f.is_file():
-            sys.exit(f"Error: {f} is a folder — `watchdog chew` takes one file. To read a whole "
-                     f"folder, use `watchdog add {f}`.")
-        f = _into_incoming(vault, f)
-        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=[f],
+        from watchdog.pipeline.preprocess_batch import find_files
+        # A path already in _INCOMING/ is read where it is (a folder there, everything in it);
+        # anything else is expanded and copied in, exactly as `watchdog add` does.
+        incoming = (vault / "_INCOMING").resolve()
+        inside, outside = [], []
+        for raw in paths:
+            p = Path(raw).expanduser().resolve()
+            (inside if p == incoming or incoming in p.parents else outside).append(p)
+        files: list[Path] = []
+        for p in inside:
+            if not p.exists():
+                sys.exit(f"Error: file not found: {p}")
+            files += find_files([p]) if p.is_dir() else [p]
+        files += [_into_incoming(vault, f) for f in _expand_paths([str(p) for p in outside], vault)]
+        if not files:
+            print(f"\n  {_DIM}No supported files to read.{_RESET}\n")
+            return None
+        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=files,
                    show_ingest_hint=False)
     else:
         _run_preprocess(vault, workers=chew_workers, chunk_workers=chunk_workers,

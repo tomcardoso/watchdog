@@ -166,7 +166,7 @@ function FormBody({ keep, merge, setKeep, setMerge, preview }: { keep: string | 
 
       {sameId && <Callout tone="warning">Choose two different entities.</Callout>}
       {preview.isError && <ErrorNote error={preview.error} retry={() => void preview.refetch()} />}
-      {preview.data && preview.data.keep.type !== preview.data.merge.type && (
+      {preview.data && ((preview.data as { type_mismatch?: boolean }).type_mismatch ?? preview.data.keep.type !== preview.data.merge.type) && (
         <Callout tone="warning" title="These entities have different types">
           {typeMeta(preview.data.keep.type).label} and {typeMeta(preview.data.merge.type).label}. Merging is usually right only when both are the same kind of thing. Check before you go on.
         </Callout>

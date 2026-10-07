@@ -197,7 +197,7 @@ export default function DocumentsView() {
     })
     ro.observe(el)
     return () => ro.disconnect()
-  })
+  }, [layout, virtual, rows.length === 0])
   const cols = layout === 'grid' ? Math.max(1, Math.floor((width + GAP) / (MIN_CARD + GAP))) : 1
   const cardW = (width - GAP * (cols - 1)) / cols
   const lines = Math.ceil(rows.length / cols)

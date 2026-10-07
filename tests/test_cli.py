@@ -2404,13 +2404,41 @@ def test_cmd_chew_with_nonexistent_file_exits(configured, monkeypatch):
         cli.cmd_chew(args(file="/no/such/file.pdf", chew_workers=None))
 
 
-def test_cmd_chew_with_a_folder_exits_cleanly(configured, monkeypatch, tmp_path):
+def test_cmd_chew_reads_several_files_and_folders(configured, monkeypatch, tmp_path):
+    """`chew` takes any number of files and folders, expanding folders as `add` does; the desktop
+    app reads several dropped files in one run."""
+    import watchdog.pipeline.preprocess_batch as ppb
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
-    monkeypatch.chdir(configured / "shell-co")
+    vault = configured / "shell-co"
     folder = tmp_path / "a-folder"
     folder.mkdir()
-    with pytest.raises(SystemExit, match="is a folder"):
-        cli.cmd_chew(args(file=str(folder), chew_workers=None))
+    (folder / "one.pdf").write_bytes(b"%PDF one")
+    (folder / "two.txt").write_text("two")
+    single = tmp_path / "three.pdf"
+    single.write_bytes(b"%PDF three")
+    calls = []
+    monkeypatch.setattr(ppb, "run_ingest", lambda v, files=None, **k: calls.append(files))
+    monkeypatch.chdir(vault)
+    cli.cmd_chew(args(paths=[str(folder), str(single)], chew_workers=None))
+    assert sorted(f.name for f in calls[0]) == ["one.pdf", "three.pdf", "two.txt"]
+    assert all(f.parent.resolve() == (vault / "_INCOMING").resolve() for f in calls[0])
+    assert single.exists() and (folder / "one.pdf").exists()
+
+
+def test_cmd_chew_refuses_a_path_inside_the_vault(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    monkeypatch.chdir(vault)
+    with pytest.raises(SystemExit, match="inside this investigation"):
+        cli.cmd_chew(args(paths=[str(vault / "documents")], chew_workers=None))
+
+
+def test_cmd_delete_yes_skips_the_confirmation(configured, monkeypatch):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    monkeypatch.setattr(cli.interactive, "confirm", lambda *a, **k: pytest.fail("asked"))
+    cli.cmd_delete(args(name="shell-co", purge=False, yes=True))
+    assert "shell-co" not in cli.load_projects()
+    assert (configured / "shell-co").is_dir()
 
 
 def test_load_config_with_invalid_utf8_exits_cleanly(wdg_home):

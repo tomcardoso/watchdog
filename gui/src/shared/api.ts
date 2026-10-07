@@ -447,7 +447,7 @@ export interface Methods {
   'review.sync': [{ vault: string }, { resolved: string[]; unresolved: string[] }]
   'review.leads': [{ vault: string }, Record<string, unknown>]
   'review.watchlist': [{ vault: string }, { terms: string[]; text: string }]
-  'review.mergePreview': [{ vault: string; keep: string; merge: string }, { keep: EntityRow; merge: EntityRow; both_have_summary: boolean }]
+  'review.mergePreview': [{ vault: string; keep: string; merge: string }, { keep: EntityRow; merge: EntityRow; both_have_summary: boolean; type_mismatch?: boolean }]
 
   'settings.schema': [Record<string, never>, SettingsSchema]
   'settings.set': [{ key: string; value: string }, { key: string; value: unknown; display: string }]

@@ -18,7 +18,7 @@ export type Route =
   | { view: 'review'; kind?: ReviewKind | 'handled' | 'watchlist' | 'requests' }
   | { view: 'briefings'; path?: string }
   | { view: 'note'; path: string }
-  | { view: 'ask'; session?: string; prompt?: string }
+  | { view: 'ask'; session?: string; prompt?: string; mode?: 'ask' | 'context' }
   | { view: 'research'; session?: string }
   | { view: 'activity'; job?: string; tab?: string }
   | { view: 'settings'; tab?: string }
