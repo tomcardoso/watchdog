@@ -130,7 +130,6 @@ export default function ResearchView() {
       title="Web research"
       placeholder="Reply to Claude, or add a direction for the research…"
       session={r.session}
-      terminalArgs={(t) => (t.trim() && !t.startsWith('/') ? ['research', '-q', t.trim()] : ['research'])}
       empty={(api) => <Empty api={api} />}
       strip={(api) => <Strip api={api} />}
     />

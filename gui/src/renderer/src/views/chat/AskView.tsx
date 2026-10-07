@@ -85,7 +85,6 @@ export default function AskView() {
       session={r.session}
       prompt={r.prompt}
       autoStart={'mode' in r && r.mode === 'context' ? 'context' : undefined}
-      terminalArgs={(t) => (t.trim() && !t.startsWith('/') ? ['ask', t.trim()] : ['ask'])}
       empty={(api) => <Empty api={api} name={project.name} />}
     />
   )

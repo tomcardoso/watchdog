@@ -574,7 +574,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _retirement_notice() -> None:
+    """The command line is being retired in favour of the desktop app (D267). A person typing a
+    `watchdog` command at a terminal gets one line saying so; the app's own subprocesses, Claude
+    Code sessions running the vault's commands, scripts and pipes don't — for them the CLI is the
+    engine, not the interface."""
+    import os
+    if (os.environ.get("WATCHDOG_PROGRESS") or os.environ.get("WATCHDOG_ENFORCE_ACCESS")
+            or os.environ.get("CLAUDECODE") or os.environ.get("WATCHDOG_NO_RETIREMENT_NOTICE")):
+        return
+    if not (sys.stdin.isatty() and sys.stderr.isatty()):
+        return
+    if len(sys.argv) >= 2 and sys.argv[1] == "gui":
+        return
+    print(f"\n  {_DIM}The watchdog command is being retired in favour of the Watchdog app. It "
+          f"keeps working for now; open the app with{_RESET} {_CYAN}watchdog gui{_RESET}{_DIM}.{_RESET}",
+          file=sys.stderr)
+
+
 def main() -> None:
+    _retirement_notice()
     if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
         cmd_about(None)
         return

@@ -1,7 +1,7 @@
 // The conversation screen shared by Ask and Research: past sessions on the left, the live
 // conversation on the right, a composer, permissions, tool calls and cost.
 
-import { ArrowUp, Plus, Square, Terminal, Trash2 } from 'lucide-react'
+import { ArrowUp, Plus, Square, Trash2 } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage, ChatMode, ChatSessionRow } from '@shared/api'
 import { Badge, Button, Callout, Segmented, Skeleton, cx } from '@renderer/components/ui'
@@ -33,7 +33,6 @@ interface Props {
   mode: ChatMode
   title: string
   placeholder: string
-  terminalArgs: (firstText: string) => string[]
   /** Shown when there is no conversation yet. */
   empty: (api: WorkspaceApi) => ReactNode
   /** Rendered between the header and the messages (research sources, for example). */
@@ -78,7 +77,6 @@ export default function ChatWorkspace(p: Props) {
   const stick = useRef(true)
   const composer = useRef<HTMLTextAreaElement>(null)
   const handledPrompt = useRef(false)
-  const firstText = useRef('')
 
   // ── event application ──────────────────────────────────────────────────────
   const applyDelta = useCallback((d: { message_id: string; text: string }) => {
@@ -191,7 +189,6 @@ export default function ChatWorkspace(p: Props) {
           reset()
           startingRef.current = true
           buf.current = []
-          firstText.current = t
           const mode = startMode ?? p.mode
           // A plain first question goes in as the prompt, which the server wraps for the query
           // skill as `watchdog ask` does. A prompt that is already a slash command is sent as a
@@ -410,20 +407,12 @@ export default function ChatWorkspace(p: Props) {
               { value: 'haiku', label: 'Haiku' }
             ]}
           />
-          <Button
-            size="sm"
-            icon={Terminal}
-            tip="Open the same session in your terminal instead"
-            onClick={() => void window.watchdog.shell.openTerminal(vault, p.terminalArgs(firstText.current || text))}
-          >
-            Open in Terminal
-          </Button>
         </header>
         {model !== 'default' && active && <div className="chat-model-note">The model applies to new conversations. This one keeps the model it started with.</div>}
 
         {signinWarning && (
           <Callout tone="warning" title={!cc!.installed ? 'Claude Code may not be installed' : 'Claude Code may not be signed in'} style={{ margin: '12px 20px 0' }} action={<Button size="sm" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Open settings</Button>}>
-            This screen runs Claude Code in your investigation, so it needs to be {!cc!.installed ? 'installed (claude.ai/download)' : 'signed in (run claude in a terminal once)'}. If a question fails to start, that is why; you can also open the same session in a terminal.
+            This screen runs Claude Code in your investigation, so it needs to be {!cc!.installed ? 'installed (claude.ai/download)' : 'signed in (run claude in a terminal once)'}. If a question fails to start, that is why.
           </Callout>
         )}
         {p.strip?.(api)}
@@ -463,12 +452,12 @@ export default function ChatWorkspace(p: Props) {
                 tone="danger"
                 title="The session hit a problem"
                 action={
-                  <Button size="sm" icon={Terminal} onClick={() => void window.watchdog.shell.openTerminal(vault, p.terminalArgs(firstText.current || text))}>
-                    Open in Terminal
+                  <Button size="sm" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>
+                    Check sign-in
                   </Button>
                 }
               >
-                <span className="selectable">{failure}</span> If it keeps happening, check that Claude Code is installed and signed in, or use the terminal.
+                <span className="selectable">{failure}</span> If it keeps happening, check that Claude is signed in under Settings → Models & keys.
               </Callout>
             )}
           </div>

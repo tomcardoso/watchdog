@@ -5538,3 +5538,26 @@ def test_search_links_passages_to_their_document_note_on_a_terminal(configured, 
             assert "obsidian://open?path=" in out and "doc.md" in out
         else:
             assert "obsidian://" not in out      # ambiguous filename: no link rather than a wrong one
+
+
+# ── the command line's retirement notice (D267) ──────────────────────────────
+
+@pytest.mark.parametrize("env,tty,argv,shown", [
+    ({}, True, ["watchdog", "projects"], True),
+    ({}, False, ["watchdog", "projects"], False),                       # piped or scripted
+    ({"WATCHDOG_PROGRESS": "1"}, True, ["watchdog", "add"], False),     # the app's own jobs
+    ({"WATCHDOG_ENFORCE_ACCESS": "1"}, True, ["watchdog", "add"], False),
+    ({"CLAUDECODE": "1"}, True, ["watchdog", "search", "x"], False),    # a vault's Claude session
+    ({}, True, ["watchdog", "gui"], False),
+])
+def test_retirement_notice_only_for_a_person_at_a_terminal(monkeypatch, capsys, env, tty, argv, shown):
+    for var in ("WATCHDOG_PROGRESS", "WATCHDOG_ENFORCE_ACCESS", "CLAUDECODE",
+                "WATCHDOG_NO_RETIREMENT_NOTICE"):
+        monkeypatch.delenv(var, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    monkeypatch.setattr(cli.sys, "argv", argv)
+    monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: tty)
+    monkeypatch.setattr(cli.sys.stderr, "isatty", lambda: tty)
+    cli._retirement_notice()
+    assert ("being retired" in capsys.readouterr().err) is shown
