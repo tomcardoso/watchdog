@@ -54,7 +54,7 @@ HOME=/tmp/wd-demo-home npm run dev
 
 ```bash
 npm run build
-xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calder \
+xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calder-waterfront \
   --out /tmp/shots --shot home='{"view":"home"}' --shot docs='{"view":"documents"}'
 ```
 

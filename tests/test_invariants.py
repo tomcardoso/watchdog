@@ -1,4 +1,4 @@
-"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I9), #349.
+"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I10), #349.
 
 Each test name starts with the invariant id it guards (`test_I1_...`, `test_I2_...`, etc.), so
 a failing rule shows up as a specific, named red bar instead of relying on code review to catch
@@ -35,6 +35,9 @@ Deliberately NOT guarded here, and why:
   string uses, so piped output carries no escape bytes. Its "`--json` is plain even on a real
   terminal" half is not guarded here: that would need a pseudo-terminal at import time. The
   `--json` output tests in `tests/test_cli.py` cover the payloads, without a terminal.
+- **I10** is guarded statically: no module of the desktop app's backend calls a pipeline entry
+  point that writes a vault. Its other half — the app keeps the CLI's gates — lives in the app's
+  own code (gui/) and its end-to-end test, not here.
 
 I2's runtime guard was confirmed to run hermetically (the direct-text preprocessing path does
 not import Docling), so both the static and runtime layers described in the issue are present.
@@ -388,3 +391,23 @@ def test_I9_the_colour_constants_follow_the_gate_at_import():
         os.close(leader)
         os.close(follower)
     assert "\\x1b[0m" in out
+
+
+# ── I10 — the desktop app adds no pipeline behaviour ─────────────────────────
+
+def test_I10_the_app_backend_never_calls_a_vault_writing_entry_point():
+    """The app changes a vault only by running the CLI command (`watchdog.gui.jobs`) or through
+    the library functions the CLI itself calls. Calling the pipeline's writers directly would let
+    the app behave differently from the terminal. `demo*.py` is exempt: it builds the fictional
+    demo investigation by running the real pipeline, which is the point of it."""
+    import re
+    from pathlib import Path
+    import watchdog.gui as gui
+    writers = re.compile(r"\b(?:orchestrate\.(?:run|finalize)|write_vault\.run|merge_entities\.run|"
+                         r"contradiction\.run|_commit_pending|write_entity\.run)\s*\(")
+    root = Path(gui.__file__).parent
+    offenders = [f"{p.relative_to(root)}: {m.group(0)}"
+                 for p in sorted(root.rglob("*.py")) if not p.name.startswith("demo")
+                 for m in writers.finditer(p.read_text(encoding="utf-8"))]
+    assert not offenders, offenders
+
