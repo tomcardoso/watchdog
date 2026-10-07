@@ -24,7 +24,7 @@ import type { EngineProgress, EngineState, EngineStatus, EngineStep } from '../s
 
 export const PYTHON_VERSION = '3.12'
 const PROGRESS_PREFIX = '\x1eWDP '
-const MIN_FREE_BYTES = 7 * 1024 ** 3
+const MIN_FREE_BYTES = 8 * 1024 ** 3
 
 const STEP_DEFS: { id: string; label: string; optional: boolean }[] = [
   { id: 'python', label: 'Python', optional: false },
@@ -378,7 +378,10 @@ export class Engine {
         this.error = friendlyError(msg)
         this.addLog(`error: ${msg}`)
         const running = this.steps.find((s) => s.state === 'running')
-        if (running) running.state = 'failed'
+        if (running) {
+          running.state = 'failed'
+          running.detail = null
+        }
       }
     } finally {
       this.running = false

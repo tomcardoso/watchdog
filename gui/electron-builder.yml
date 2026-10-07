@@ -8,15 +8,21 @@ files:
   - out/**
   - package.json
   - resources/icon.png
-# The app runs the watchdog package source it ships with, ahead of whatever version is installed,
-# so the app and its Python backend can never drift apart (see src/main/python.ts).
+# The managed engine: the app installs Watchdog into a private Python environment on first run
+# (src/main/engine.ts). It needs two things from the package: the uv binary for the platform being
+# built (scripts/fetch-uv.mjs, into resources/bin/<os>-<arch>/) and a wheel of this repository
+# (scripts/build-wheel.mjs, into resources/python-wheel/). Both are produced by the `predist*`
+# npm scripts. `${os}` and `${arch}` are electron-builder's macros for the target being built.
 extraResources:
-  - from: ../src/watchdog
-    to: python/watchdog
+  - from: resources/bin/${os}-${arch}
+    to: bin
     filter:
-      - '**/*'
-      - '!**/__pycache__/**'
-      - '!**/*.pyc'
+      - uv
+      - uv.exe
+  - from: resources/python-wheel
+    to: python-wheel
+    filter:
+      - '*.whl'
 asarUnpack:
   - out/renderer/assets/*.mjs
 mac:

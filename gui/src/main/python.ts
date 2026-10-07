@@ -158,7 +158,7 @@ export class PythonBackend {
         continue
       }
       if (res.ok) {
-        this.engine.externalPython = c.source === 'managed' ? null : c.python
+        this.engine.externalPython = c.source === 'managed' || this.engine.simulate ? null : c.python
         this.launch(c, src)
         return this.status
       }

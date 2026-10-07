@@ -3,7 +3,7 @@
 // answer the auto-approve question, then start. Progress is remembered (preferences 'onboarding'),
 // so closing the app part-way and reopening returns to the right step.
 
-import { ArrowLeft, Check, CheckCircle2, ExternalLink, FolderOpen, KeyRound, Search, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, FolderOpen, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import type { AuthStatus, BackendStatus, ModelChoice } from '@shared/api'
 import { Button, Callout, Field, Spinner, cx } from '@renderer/components/ui'
@@ -521,5 +521,3 @@ export default function OnboardingView({ backend, mode, forceStep, onDone, onBac
     </Frame>
   )
 }
-
-export { Search as _unusedSearchIcon, ExternalLink as _unusedExternalIcon }

@@ -8,8 +8,8 @@ import { Button, Callout, Progress, Spinner, cx } from '@renderer/components/ui'
 import { useEvent } from '@renderer/lib/rpc'
 
 /** What the download costs, in words. Measured on a clean install (see gui/README.md). */
-export const ENGINE_DOWNLOAD_TEXT = 'about 2 GB'
-export const ENGINE_DISK_TEXT = 'about 6 GB'
+export const ENGINE_DOWNLOAD_TEXT = 'about 5 GB'
+export const ENGINE_DISK_TEXT = 'about 7 GB'
 
 // How much of the bar each stage is worth; the model downloads are the slow part.
 const WEIGHT: Record<string, number> = { python: 1, packages: 5, docling: 2, gliner: 6, embedding: 1, reranker: 3, ocr: 1 }
@@ -112,7 +112,7 @@ export function EngineProgressView({ eng, backend }: { eng: EngineRun; backend?:
       )}
       {backend?.state === 'error' && backend.message && run.state === 'done' && <Callout tone="danger">{backend.message}</Callout>}
       <div>
-        <button className="set-disclose" aria-expanded={open} onClick={() => setOpen(!open)}>
+        <button className="onb-disclose" aria-expanded={open} onClick={() => setOpen(!open)}>
           <ChevronRight /> {open ? 'Hide details' : 'Show details'}
         </button>
         {open && (

@@ -1,8 +1,8 @@
 // Skills, appearance, vault check, setup and about.
 
-import { BookOpen, CheckCircle2, ExternalLink, FolderOpen, Monitor, Moon, RefreshCw, Search, Sun, Terminal, XCircle } from 'lucide-react'
+import { BookOpen, CheckCircle2, ExternalLink, FolderOpen, MinusCircle, Monitor, Moon, RefreshCw, Search, Sun, Wrench, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { BackendStatus } from '@shared/api'
+import type { BackendStatus, EngineStatus, SetupModels } from '@shared/api'
 import { Badge, Button, Callout, Empty, ErrorNote, Modal, Segmented, Skeleton, Spinner } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
 import { toast, useApp, Theme } from '@renderer/lib/store'
@@ -87,7 +87,7 @@ export function AppearancePanel() {
         <dl className="kv" style={{ padding: '4px 18px 8px' }}>
           <dt>Python</dt><dd className="mono selectable">{i?.python ?? be?.python ?? '—'}</dd>
           <dt>Version</dt><dd>{i?.python_version ?? '—'}</dd>
-          <dt>Found through</dt><dd>{be?.source ? { env: 'WATCHDOG_PYTHON', settings: 'your choice in this app', pipx: 'pipx install', path: 'the system path', dev: 'development checkout' }[be.source] ?? be.source : '—'}</dd>
+          <dt>Found through</dt><dd>{be?.source ? { env: 'WATCHDOG_PYTHON', settings: 'your choice in this app', managed: 'Watchdog’s own engine', pipx: 'pipx install', path: 'the system path', dev: 'development checkout' }[be.source] ?? be.source : '—'}</dd>
           <dt>Platform</dt><dd>{i?.platform ?? '—'}</dd>
           <dt>Settings file</dt><dd className="mono selectable">{i?.config_file ?? '—'}</dd>
           <dt>Data folder</dt><dd className="mono selectable">{i?.watchdog_home ?? '—'}</dd>
@@ -130,40 +130,89 @@ export function DoctorPanel() {
   )
 }
 
+const HELPER_NOTES: Record<string, string> = {
+  qpdf: 'Optional. Used only to repair damaged or protected PDFs. Without it, Watchdog skips that fallback.',
+  Ghostscript: 'Optional. Used only to re-render problem PDFs. Without it, Watchdog skips that fallback.',
+  'Tesseract OCR': 'Optional. Watchdog reads scanned pages with its own built-in engine.'
+}
+const MODEL_LABELS: [keyof SetupModels, string, string][] = [
+  ['docling', 'Document conversion models (Docling)', 'Reads PDFs and scans. Downloaded the first time a document is converted if missing.'],
+  ['gliner', 'Name-detection model (GLiNER)', 'Finds people, organizations and places on your computer. Downloaded on first use if missing.'],
+  ['embedding', 'Search embedding model', 'Ranks passages by meaning. Downloaded on first use if missing.'],
+  ['reranker', 'Search reranker', 'Orders the best matches. Downloaded on first use if missing.']
+]
+
 export function SetupPanel() {
   const q = useRpc('setup.check', {})
-  const info = useRpc('app.info', {})
+  const models = useRpc('setup.models', {})
+  const [eng, setEng] = useState<EngineStatus | null>(null)
+  useEffect(() => {
+    void window.watchdog.engine.status().then(setEng)
+  }, [])
   if (q.isLoading) return <Skeleton h={300} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const c = q.data!
-  const Item = ({ ok, label, hint }: { ok: boolean; label: string; hint?: string | null }) => (
+  const m = models.data
+  const Item = ({ ok, label, hint, optional }: { ok: boolean; label: string; hint?: string | null; optional?: boolean }) => (
     <div className="set-check">
-      {ok ? <CheckCircle2 style={{ color: 'var(--success)' }} /> : <XCircle style={{ color: 'var(--danger)' }} />}
+      {ok ? <CheckCircle2 style={{ color: 'var(--success)' }} /> : optional ? <MinusCircle style={{ color: 'var(--text-3)' }} /> : <XCircle style={{ color: 'var(--danger)' }} />}
       <div className="grow">
         <div style={{ fontWeight: 560 }}>{label}</div>
         {!ok && hint && <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 2 }}>{hint}</div>}
       </div>
     </div>
   )
+  const repair = async () => {
+    const yes = await window.watchdog.dialog.confirm({
+      title: 'Repair or reinstall the engine?',
+      message: 'Watchdog will remove its private Python environment and install it again.',
+      detail: 'Your investigations, settings and downloaded models are not touched. This needs an internet connection and can take several minutes.',
+      confirm: 'Reinstall'
+    })
+    if (yes) void window.watchdog.engine.reinstall()
+  }
+  const fetchModels = async () => {
+    await window.watchdog.engine.install()
+    void models.refetch()
+  }
   return (
     <div className="col" style={{ gap: 18 }}>
       <section className="card set-card">
-        <div className="set-card-head"><div className="card-title">Required tools</div></div>
-        <div style={{ padding: '0 18px 10px' }}>{c.deps.map((d) => <Item key={d.label} ok={d.ok} label={d.label} hint={d.hint} />)}</div>
+        <div className="set-card-head">
+          <div><div className="card-title">Engine</div><div className="card-sub">The private Python environment Watchdog runs in, installed and kept up to date by the app.</div></div>
+        </div>
+        <dl className="kv" style={{ padding: '4px 18px 8px' }}>
+          <dt>Status</dt><dd>{eng?.engine === 'ready' ? 'Installed' : eng?.usingExternal ? 'Using another Watchdog installation' : eng?.engine === 'outdated' ? 'Needs an update' : 'Not installed'}</dd>
+          <dt>Version</dt><dd>{eng?.installedVersion ?? '—'}</dd>
+          <dt>Location</dt><dd className="mono selectable">{eng?.usingExternal ?? eng?.dir ?? '—'}</dd>
+        </dl>
+        <div className="row wrap" style={{ padding: '4px 18px 18px', gap: 8 }}>
+          <Button icon={Wrench} disabled={!eng?.canInstall} onClick={() => void repair()}>Repair or reinstall the engine</Button>
+          <Button icon={RefreshCw} disabled={!eng?.canInstall} onClick={() => void fetchModels()}>Download missing models</Button>
+        </div>
+      </section>
+      <section className="card set-card">
+        <div className="set-card-head"><div className="card-title">Local models</div></div>
+        <div style={{ padding: '0 18px 10px' }}>
+          {MODEL_LABELS.map(([key, label, hint]) => (m ? <Item key={key} ok={m[key] !== false} label={label} hint={hint} optional /> : null))}
+          {m && <Item ok={!!m.ocr} label={m.ocr ? `Text recognition for scans (${m.ocr})` : 'Text recognition for scans'} hint="No OCR engine is installed. Repair the engine to add one." />}
+          {m && <Item ok={!!m.claude_cli} label="Claude Code (for Ask Claude and Research)" hint="Comes with the engine. Repair the engine if it is missing." />}
+        </div>
+      </section>
+      <section className="card set-card">
+        <div className="set-card-head"><div className="card-title">Helper tools</div></div>
+        <div style={{ padding: '0 18px 10px' }}>
+          {c.deps.filter((d) => d.label !== 'Claude Code').map((d) => <Item key={d.label} ok={d.ok} label={d.ok ? d.label : `${d.label} is not installed`} hint={HELPER_NOTES[d.label] ?? d.hint} optional />)}
+        </div>
       </section>
       <section className="card set-card">
         <div className="set-card-head"><div className="card-title">Optional and downloaded pieces</div></div>
         <div style={{ padding: '0 18px 10px' }}>
-          <Item ok={c.playwright} label="Capture browser" hint="Optional. Lets web pages be saved as full snapshots, with images and client-rendered content. Without it, pages are saved as sanitized text." />
-          <Item ok={c.gliner_model} label="Name-detection model (GLiNER)" hint="Downloaded on first use of chew, or by running full setup. Detects people and organizations locally." />
-          <Item ok={!!c.projects_dir} label={c.projects_dir ? `Investigations folder: ${c.projects_dir}` : 'Investigations folder'} hint="Not chosen yet. Set it in Vaults under Settings." />
-          <Item ok={c.config_exists} label="Settings file" hint="Created the first time you save a setting or run setup." />
+          <Item ok={c.playwright} optional label="Capture browser" hint="Optional. Lets web pages be saved as full snapshots, with images and client-rendered content. Without it, pages are saved as sanitized text." />
+          <Item ok={!!c.projects_dir} label={c.projects_dir ? `Investigations folder: ${c.projects_dir}` : 'Investigations folder'} hint="Not chosen yet. Set it under General in Settings." />
+          <Item ok={c.config_exists} label="Settings file" hint="Created the first time you save a setting." />
         </div>
       </section>
-      <div className="row" style={{ gap: 10 }}>
-        <Button icon={Terminal} disabled={!info.data} onClick={() => info.data && void window.watchdog.shell.openTerminal(info.data.watchdog_home, ['setup', '--force'])}>Run full setup in Terminal</Button>
-        <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>Opens a terminal and runs <span className="mono">watchdog setup --force</span>, which can install the pieces above.</span>
-      </div>
     </div>
   )
 }
