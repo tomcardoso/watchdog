@@ -110,7 +110,7 @@ def run(vault: str, ts: str | None = None) -> dict:
     v = require_vault(vault)
     files = usage_files(v)
     if not files:
-        raise RpcError("No ingest runs are recorded for this investigation yet.", code="no_runs")
+        raise RpcError("No processing runs are recorded for this investigation yet.", code="no_runs")
     if ts:
         matches = [f for f in files if ts in f.stem]
         if not matches:

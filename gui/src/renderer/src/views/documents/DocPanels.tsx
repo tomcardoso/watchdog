@@ -261,7 +261,7 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
             ['Pages', d.page_count ?? '—'],
             ['Source', d.source || '—'],
             ['Obtained', d.obtained ? fmtDate(d.obtained) : '—'],
-            ['Ingested', d.ingested_at ? fmtDateTime(d.ingested_at) : '—']
+            ['Added', d.ingested_at ? fmtDateTime(d.ingested_at) : '—']
           ]}
         />
       </section>
@@ -361,7 +361,7 @@ export function NotesTab({ d }: { d: DocumentDetail }) {
   return (
     <div className="notes-editor">
       <Callout tone="info">
-        These notes are yours. Watchdog never writes to this section, so what you put here survives every ingest. They are saved to the document's note in the vault, and show up in Obsidian too.
+        These notes are yours. Watchdog never writes to this section, so what you put here survives every run. They are saved to the document's note in the vault, and show up in Obsidian too.
       </Callout>
       <textarea
         className="textarea"

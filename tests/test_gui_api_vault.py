@@ -439,7 +439,7 @@ def test_briefings_newest_first_with_kinds(rich_vault):
         ("2026-03-03-08-00", "briefing"), ("leads-2026-03-03", "leads"),
         ("2026-03-01-10-30", "briefing"), ("research-2026-02-01", "research")]
     assert rows[0]["kind"] == "alerts" and rows[0]["path"].startswith("briefings/alerts-")
-    assert rows[1]["title"] == "Ingest briefing — 2026-03-03" and rows[1]["date"] == "2026-03-03T08:00:00"
+    assert rows[1]["title"] == "Briefing — 2026-03-03" and rows[1]["date"] == "2026-03-03T08:00:00"
     assert rows[2]["date"] == "2026-03-03"
 
 

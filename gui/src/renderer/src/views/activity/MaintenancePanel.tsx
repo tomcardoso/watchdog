@@ -176,7 +176,7 @@ function WatchCard() {
       <div className="grow">
         <div className="card-title">Watch incoming for new files</div>
         <div className="act-mcard-text" style={{ margin: '2px 0 0' }}>
-          While this is on, files that land in <span className="mono">incoming/</span> are chewed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
+          While this is on, files that land in <span className="mono">incoming/</span> are pre-processed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
         </div>
       </div>
       {running && (
@@ -195,7 +195,7 @@ function ChewCard({ incoming }: { incoming: number | null }) {
   return (
     <MCard
       icon={ScanText}
-      title="Chew"
+      title="Pre-processing"
       note={incoming ? <Badge tone="accent">{plural(incoming, 'file')} waiting</Badge> : undefined}
       options={
         <>
@@ -211,10 +211,10 @@ function ChewCard({ incoming }: { incoming: number | null }) {
             const o: RunOptions = {}
             if (workers) o.chew_workers = Number(workers)
             if (chunks) o.chunk_workers = Number(chunks)
-            await launch(await argsFor('chew', o), 'Chew', 'chew')
+            await launch(await argsFor('chew', o), 'Pre-processing', 'chew')
           }}
         >
-          Run chew
+          Run pre-processing
         </Button>
       }
     >
@@ -243,7 +243,7 @@ function DigCard({ queued, models }: { queued: number | null; models: ReturnType
   return (
     <MCard
       icon={Hammer}
-      title="Dig"
+      title="Processing"
       note={queued ? <Badge tone="accent">{plural(queued, 'document')} queued</Badge> : undefined}
       options={
         <>
@@ -273,8 +273,8 @@ function DigCard({ queued, models }: { queued: number | null; models: ReturnType
       footer={
         <div className="col" style={{ gap: 10, width: '100%' }}>
           <div className="row wrap" style={{ gap: 8 }}>
-            <Button icon={Play} variant="primary" size="sm" loading={gate.busy} onClick={() => void gate.request({ args: ['dig', ...(limit ? ['--limit', limit] : []), ...(force ? ['--force'] : [])], label: 'Dig', kind: 'dig', options: build() }).catch(() => undefined)}>
-              Run dig…
+            <Button icon={Play} variant="primary" size="sm" loading={gate.busy} onClick={() => void gate.request({ args: ['dig', ...(limit ? ['--limit', limit] : []), ...(force ? ['--force'] : [])], label: 'Processing', kind: 'dig', options: build() }).catch(() => undefined)}>
+              Run processing…
             </Button>
             <Button icon={Gauge} size="sm" loading={e.busy === 'one'} onClick={() => void e.run(false)}>
               Estimate
@@ -287,7 +287,7 @@ function DigCard({ queued, models }: { queued: number | null; models: ReturnType
         </div>
       }
     >
-      Reads the queue and extracts facts, entities and dates from each document with a model, then stages the result. It sends the extracted text of every queued document to a cloud model, so it asks you to confirm the documents are public records first. Nothing is written to the vault until bark finishes the batch.
+      Reads the queue and extracts facts, entities and dates from each document with a model, then stages the result. It sends the extracted text of every queued document to a cloud model, so it asks you to confirm the documents are public records first. Nothing is written to the vault until post-processing finishes the batch.
       {gate.modal}
     </MCard>
   )
@@ -321,7 +321,7 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
   return (
     <MCard
       icon={Sparkles}
-      title="Bark"
+      title="Post-processing"
       note={pending ? <Badge tone="warning">{plural(pending.docs, 'document')} to finish</Badge> : undefined}
       options={
         <>
@@ -345,8 +345,8 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
       footer={
         <div className="col" style={{ gap: 10, width: '100%' }}>
           <div className="row wrap" style={{ gap: 8 }}>
-            <Button icon={Play} variant="primary" size="sm" onClick={async () => void launch(await argsFor('bark', build()), 'Bark', 'bark')}>
-              Run bark
+            <Button icon={Play} variant="primary" size="sm" onClick={async () => void launch(await argsFor('bark', build()), 'Post-processing', 'bark')}>
+              Run post-processing
             </Button>
             <Button icon={Gauge} size="sm" loading={e.busy === 'one'} onClick={() => void e.run(false)}>
               Estimate
@@ -359,7 +359,7 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
         </div>
       }
     >
-      Finishes a batch that dig staged, or one an interruption left half-done: merges duplicate entities, flags contradictions between documents, writes entity summaries, reconciles the timeline and writes the briefing. Documents land in the vault at the start of this step. Safe to run again if it stops partway.
+      Finishes a batch that processing staged, or one an interruption left half-done: merges duplicate entities, flags contradictions between documents, writes entity summaries, reconciles the timeline and writes the briefing. Documents land in the vault at the start of this step. Safe to run again if it stops partway.
     </MCard>
   )
 }
@@ -449,10 +449,10 @@ function UnlockCard({ locks }: { locks: { chew: boolean; ingest: boolean } | nul
     <SimpleCard
       icon={Lock}
       title="Release a stuck lock"
-      tone={locks ? <Badge tone={held ? 'warning' : 'success'}>{held ? `${[locks.chew && 'chew', locks.ingest && 'ingest'].filter(Boolean).join(' and ')} lock held` : 'No locks'}</Badge> : undefined}
+      tone={locks ? <Badge tone={held ? 'warning' : 'success'}>{held ? `${[locks.chew && 'pre-processing', locks.ingest && 'processing'].filter(Boolean).join(' and ')} lock held` : 'No locks'}</Badge> : undefined}
       text={
         <>
-          An interrupted run can leave a lock that stops the next one starting. This releases a stale chew or ingest lock; one that looks recent is left alone unless you force it.
+          An interrupted run can leave a lock that stops the next one starting. This releases a stale pre-processing or processing lock; one that looks recent is left alone unless you force it.
           <span className="act-force">
             <Switch checked={force} onChange={setForce} label="Force" />
             <span>Remove it even if recent. Only do this if nothing is running.</span>
@@ -533,7 +533,7 @@ export default function MaintenancePanel() {
           title="Usage"
           footer={<Button size="sm" onClick={() => navigate({ view: 'activity', tab: 'usage' })}>Open Usage</Button>}
         >
-          Tokens, cost and timing for each ingest run, by stage. It only reads recorded files, so it is free to look.
+          Tokens, cost and timing for each processing run, by stage. It only reads recorded files, so it is free to look.
         </MCard>
         <ExportCard />
         <UnlockCard locks={status.data?.locks ?? null} />

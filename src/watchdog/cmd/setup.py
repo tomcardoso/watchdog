@@ -78,11 +78,11 @@ _CONFIGURE_KEYS = {
         "min": 0.0,
         "max": 1.0,
     },
-    # ── Processing ────────────────────────────────────────────────────────────
+    # ── Pre-processing ────────────────────────────────────────────────────────────
     "chew_workers": {
-        "short": "Parallel files during chewing ('auto' for adaptive, or a fixed number)",
+        "short": "Parallel files during pre-processing ('auto' for adaptive, or a fixed number)",
         "help": (
-            "Number of files chewed simultaneously by `watchdog chew`.\n"
+            "Number of files converted simultaneously during pre-processing.\n"
             "  'auto' (default): Watchdog scans the batch before starting and sets this based on\n"
             "  median document length — more workers for short-doc batches, fewer for large PDFs.\n"
             "  Set to a whole number to pin the value regardless of batch content.\n"
@@ -93,13 +93,13 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
     "extract_concurrency": {
-        "short": "Documents extracted in parallel during `watchdog dig` (default: 20)",
+        "short": "Documents extracted in parallel during processing (default: 20)",
         "help": (
-            "How many documents `watchdog dig` extracts simultaneously. Each runs a model\n"
+            "How many documents processing extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
             "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
             "  Default: 20, minimum: 1 (sequential). `watchdog setup`/`watchdog settings auth` set this to 3\n"
-            "  automatically on Claude subscription auth that keeps ingestion — concurrent extractions\n"
+            "  automatically on Claude subscription auth that keeps processing — concurrent extractions\n"
             "  there share one Claude Code session's rate limit, and the higher metered-path default\n"
             "  reliably throttles it — and restore it to 20 automatically on switching back to an\n"
             "  API key, unless you've set your own value."
@@ -122,9 +122,9 @@ _CONFIGURE_KEYS = {
         "default": False,
     },
     "extract_token_budget": {
-        "short": "Cap on tokens/min during `watchdog dig`, overriding auto-discovery (default: auto)",
+        "short": "Cap on tokens/min during processing, overriding auto-discovery (default: auto)",
         "help": (
-            "`watchdog dig` now holds back new documents when the run's own recent tokens/min\n"
+            "Processing now holds back new documents when the run's own recent tokens/min\n"
             "  gets close to your provider's limit, discovered automatically from the provider's own\n"
             "  responses — no lookup needed on the claude-api, OpenAI, DeepSeek, Gemini, local, and\n"
             "  OpenRouter routes. Claude subscription auth never reports this number, so if you're on\n"
@@ -138,7 +138,7 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
     "classify_pages": {
-        "short": "Pages shown to the document classifier during `watchdog dig` (default: 5)",
+        "short": "Pages shown to the document classifier during processing (default: 5)",
         "help": (
             "How many leading pages of each document the classifier reads to pick a record skill.\n"
             "  Uses min(page_count, this). More pages classify ambiguous documents better (e.g. a\n"
@@ -150,7 +150,7 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
     "default_skill": {
-        "short": "Pin a record skill for every ingested document, skipping classification (default: unset)",
+        "short": "Pin a record skill for every added document, skipping classification (default: unset)",
         "help": (
             "When every document in a vault is the same type, set this to a record-skill name\n"
             "  (see `watchdog settings skills`) or a path to your own skill file, to skip per-document\n"
@@ -178,7 +178,7 @@ _CONFIGURE_KEYS = {
         "help": (
             "Number of parallel subprocesses used when splitting large PDFs (>chunk_size pages).\n"
             "  'auto' (default): set adaptively based on median document length in the batch.\n"
-            "  Works in tandem with chew_workers: total subprocess load for large-PDF batches\n"
+            "  Works in tandem with chew_workers (pre-processing workers): total subprocess load for large-PDF batches\n"
             "  is approximately chew_workers × chunk_workers.\n"
             "  Set to 1 to disable within-file parallelism."
         ),
@@ -202,7 +202,7 @@ _CONFIGURE_KEYS = {
         "short": "Run table detection model on PDFs (default: true)",
         "help": (
             "When enabled, Docling runs a dedicated ML model to detect and reconstruct tables.\n"
-            "  Disable to speed up ingestion of text-only documents (court decisions, contracts).\n"
+            "  Disable to speed up pre-processing of text-only documents (court decisions, contracts).\n"
             "  Does not affect text extraction — only the table structure model.\n"
             "  Default: true."
         ),
@@ -257,14 +257,14 @@ _CONFIGURE_KEYS = {
     "empty_extraction_min_words": {
         "short": "Source-text word count above which a zero-fact extraction fails post-flight (default: 500)",
         "help": (
-            "A document with at least this many words of chewed source text but zero extracted\n"
+            "A document with at least this many words of pre-processed source text but zero extracted\n"
             "  key_facts is treated as a failed extraction, not a genuinely fact-free document —\n"
             "  it gets one automatic repair retry, then fails loudly instead of shipping a silent,\n"
             "  empty result. Gated on actual source-text volume, not page count, so a short but\n"
             "  dense document is still caught and a long but mostly-blank one (a scanned exhibit\n"
             "  set) isn't wrongly flagged.\n"
             "  Lower it if your documents are usually short but substantive (e.g. terse memos);\n"
-            "  raise it if you routinely ingest long documents with legitimately sparse content.\n"
+            "  raise it if you routinely add long documents with legitimately sparse content.\n"
             "  Default: 500."
         ),
         "type": "int",
@@ -335,7 +335,7 @@ _CONFIGURE_KEYS = {
     "extractor_model": {
         "short": "Model for document extraction (default: sonnet)",
         "help": (
-            "Model used to extract each document during `watchdog dig`.\n"
+            "Model used to extract each document during processing.\n"
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
@@ -351,9 +351,9 @@ _CONFIGURE_KEYS = {
         "default": defaults.EXTRACTOR_MODEL,
     },
     "finalizer_model": {
-        "short": "Model for the post-ingest step — reconciliation + synthesis + briefing (default: haiku)",
+        "short": "Model for the post-processing step — reconciliation + synthesis + briefing (default: haiku)",
         "help": (
-            "Model used for the post-ingest step: merging duplicate entities, flagging\n"
+            "Model used for the post-processing step: merging duplicate entities, flagging\n"
             "  contradictions between documents, synthesizing prose for multi-mention entities,\n"
             "  reconciling timeline collisions, and writing the briefing.\n"
             "  This step works from compact digests rather than reading raw documents, so the\n"
@@ -374,7 +374,7 @@ _CONFIGURE_KEYS = {
         "help": (
             "Overrides finalizer_model for just the reconciliation stage — merging duplicate\n"
             "  entities and flagging contradictions between documents. Leave unset to use\n"
-            "  finalizer_model, like every other post-ingest stage.\n"
+            "  finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
@@ -388,7 +388,7 @@ _CONFIGURE_KEYS = {
         "help": (
             "Overrides finalizer_model for just the synthesis stage — writing prose for entities\n"
             "  mentioned across more than one document. Leave unset to use finalizer_model, like\n"
-            "  every other post-ingest stage.\n"
+            "  every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
@@ -402,7 +402,7 @@ _CONFIGURE_KEYS = {
         "help": (
             "Overrides finalizer_model for just the timeline stage — deduplicating same-date\n"
             "  collisions and folding coarse-precision restatements into their exact date. Leave\n"
-            "  unset to use finalizer_model, like every other post-ingest stage.\n"
+            "  unset to use finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
@@ -415,7 +415,7 @@ _CONFIGURE_KEYS = {
         "short": "Model override for writing the briefing only (default: unset — uses finalizer_model)",
         "help": (
             "Overrides finalizer_model for just the briefing stage. Leave unset to use\n"
-            "  finalizer_model, like every other post-ingest stage.\n"
+            "  finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset.\n"
@@ -448,9 +448,9 @@ _CONFIGURE_KEYS = {
         "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     "finalizer_effort": {
-        "short": "Reasoning effort for the post-ingest step (default: high)",
+        "short": "Reasoning effort for the post-processing step (default: high)",
         "help": (
-            "How hard the finalizer model thinks during post-ingest. Reasoning helps the prose\n"
+            "How hard the finalizer model thinks during post-processing. Reasoning helps the prose\n"
             "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
             "  fewer tokens. Left unset, nothing is sent regardless of model — safe on Haiku, the\n"
             "  finalizer default. Setting it explicitly on a model that doesn't support that exact\n"
@@ -530,7 +530,7 @@ _CONFIGURE_KEYS = {
     "dup_threshold": {
         "short": "Near-duplicate Jaccard similarity threshold — score at which documents are flagged (default: 0.85)",
         "help": (
-            "Watchdog fingerprints each document and compares it to all previously ingested documents\n"
+            "Watchdog fingerprints each document and compares it to all previously added documents\n"
             "  using Jaccard similarity on word n-grams. If the score meets or exceeds this threshold,\n"
             "  the document is flagged as a near-duplicate.\n"
             "  Higher = stricter matching (fewer false positives, may miss near-duplicates).\n"
@@ -548,7 +548,7 @@ _CONFIGURE_KEYS = {
             "Documents are fingerprinted using overlapping sequences of n consecutive words.\n"
             "  Larger n is more precise but slower and uses more registry storage per document.\n"
             "  Smaller n is faster but produces more false positives.\n"
-            "  Changing this invalidates existing shingle data — re-ingest to rebuild fingerprints.\n"
+            "  Changing this invalidates existing shingle data — re-add documents to rebuild fingerprints.\n"
             "  Default: 3 (word trigrams)."
         ),
         "type": "int",
@@ -568,7 +568,7 @@ _CONFIGURE_KEYS = {
             "    snowflake/snowflake-arctic-embed-s  (384-dim, 130 MB — same size class)\n"
             "  Must be a model fastembed can load (see `TextEmbedding.list_supported_models()`).\n"
             "  After changing this, run `watchdog reindex` — vectors from two models aren't\n"
-            "  comparable, so the index is rebuilt from disk (no re-ingest needed).\n"
+            "  comparable, so the index is rebuilt from disk (no need to add documents again).\n"
             "  Default: BAAI/bge-small-en-v1.5."
         ),
         "type": "str",
@@ -610,7 +610,7 @@ _CONFIGURE_KEYS = {
             "  default (standard-effort) run. An advisory budget the interactive skill self-limits to;\n"
             "  the 'quick' and 'deep' effort tiers scale it down or up per run. Each captured source\n"
             "  is later read by the local pipeline, not in the research session, so this bounds scope\n"
-            "  and ingest cost rather than session tokens. Default: 25. Minimum: 1."
+            "  and processing cost rather than session tokens. Default: 25. Minimum: 1."
         ),
         "type": "int",
         "default": 25,
@@ -683,9 +683,9 @@ _CONFIGURE_SECTIONS = [
      ["projects_dir"]),
     ("OCR", "Text recognition for scanned documents.",
      ["ocr_engine", "ocr_languages", "garbled_threshold"]),
-    ("Chew", "Local preprocessing — parallelism and large-PDF handling.",
+    ("Pre-processing", "Local conversion — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
-    ("Ingest", "Extraction run — parallelism, classification, skill pinning, sectioning.",
+    ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),

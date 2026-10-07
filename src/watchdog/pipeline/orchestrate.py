@@ -2012,8 +2012,8 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
 
     body = (
         f"---\ndate: {now.isoformat(timespec='seconds')}\nfiles_ingested: {len(results)}\n"
-        f"new_entities: {n_new}\n---\n\n# Ingest briefing — {slug}\n\n"
-        f"## What was ingested\n\n{_lines(what_was_ingested)}\n\n"
+        f"new_entities: {n_new}\n---\n\n# Briefing — {slug}\n\n"
+        f"## What was added\n\n{_lines(what_was_ingested)}\n\n"
         f"## New entities\n\n{_lines(new_entities)}\n\n"
         f"## Connections to existing entities\n\n{_lines(connections)}\n\n"
         f"## Leads and follow-up ideas\n\n{_lines(leads)}\n\n"

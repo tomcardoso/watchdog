@@ -235,9 +235,9 @@ def make_rich_vault(tmp_path: Path) -> Path:
     brief = vault / "briefings"
     brief.mkdir(exist_ok=True)
     _write(brief / "2026-03-01-10-30.md",
-           "---\ndate: 2026-03-01T10:30:00\nfiles_ingested: 1\n---\n\n# Ingest briefing — 2026-03-01\n\n"
+           "---\ndate: 2026-03-01T10:30:00\nfiles_ingested: 1\n---\n\n# Briefing — 2026-03-01\n\n"
            "- [ ] Check Ghost Ltd <!--wid:lead:unprofiled:ghost-ltd-->\n")
-    _write(brief / "2026-03-03-08-00.md", "# Ingest briefing — 2026-03-03\n\nNothing new.\n")
+    _write(brief / "2026-03-03-08-00.md", "# Briefing — 2026-03-03\n\nNothing new.\n")
     _write(brief / "leads-2026-03-03.md", "# Investigative leads — 2026-03-03\n")
     _write(brief / "research-2026-02-01.md", "# Research memo\n")
     _watchlist.write_alerts(vault, [{
