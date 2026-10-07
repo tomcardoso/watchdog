@@ -104,7 +104,9 @@ You allow a folder by choosing it for a purpose: the folder that holds your inve
 
 If you open an investigation that is outside the allowed folders, which is the case for existing investigations the first time you open them after this feature arrived, or after you have moved one, Watchdog shows **Allow Watchdog to work in this investigation** in place of its screens. Choose **Allow access…** to continue, or **All investigations** to leave. If you decline, nothing is changed, and you can allow it later from the same screen or from Settings.
 
-This is a guard against mistakes, not a sandbox: it does not cover programs that Watchdog starts which are not part of the engine, and it does not limit reading.
+**Claude sessions.** When you ask Claude a question, it can change files only inside that investigation's folder. Commands it runs on your computer are held to the same limit. On a Mac they run inside the system's own sandbox: they can write only to the investigation, the temporary folder and Watchdog's settings, and they can never change the list of allowed folders or your keys. On Windows and Linux, Claude can run only Watchdog's own pre-approved commands, one at a time. When Claude asks to run a command and you choose **Always**, that covers the exact command, not every command.
+
+This protects against mistakes and against instructions hidden in a document. It does not limit reading, and the few outside programs Watchdog uses to repair damaged PDFs write only to temporary files it chooses.
 
 ## Updates
 

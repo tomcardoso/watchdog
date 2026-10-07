@@ -504,7 +504,8 @@ See D45–D48.
   `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
   allowed folders and Watchdog's own exempt locations, in the sidecar and every CLI subprocess; the
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
-  edits outside their vault.
+  edits outside their vault. Their shell commands run in Claude Code's sandbox on macOS and are
+  limited to the vault's pre-approved `watchdog` commands elsewhere (D274).
 - **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
@@ -559,4 +560,4 @@ noted as such.
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes
   the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
-  D268.*
+  D268, D274.*

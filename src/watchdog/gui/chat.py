@@ -16,8 +16,10 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import fnmatch
 import json
 import os
+import re
 import sys
 import threading
 import uuid
@@ -63,9 +65,77 @@ def build_options(session: "Session", can_use_tool):
     if session.sdk_session_id:
         kwargs["resume"] = session.sdk_session_id
     from claude_agent_sdk import HookMatcher
-    kwargs["hooks"] = {"PreToolUse": [HookMatcher(matcher="|".join(_EDIT_TOOLS),
-                                                  hooks=[_vault_only_edits(session.vault)])]}
+    kwargs["hooks"] = {"PreToolUse": [
+        HookMatcher(matcher="|".join(_EDIT_TOOLS), hooks=[_vault_only_edits(session.vault)]),
+        HookMatcher(matcher="Bash", hooks=[_confined_shell(session.vault)]),
+    ]}
+    if sandbox_available():
+        kwargs["sandbox"] = sandbox_settings()
     return ClaudeAgentOptions(**kwargs)
+
+
+# ── shell commands (D274) ───────────────────────────────────────────────────────────────
+# Claude's file tools are confined by the hook above, but a shell command could write anywhere
+# the user's account can. On macOS every Bash command runs inside Claude Code's sandbox (Seatbelt,
+# built into the system), which lets it write only to the investigation folder, the temp folder
+# and Watchdog's settings folder, with no unsandboxed retry; Claude Code refuses to start rather
+# than run without it. Elsewhere the sandbox isn't dependable (it is unavailable on Windows and
+# needs bubblewrap and socat on Linux), so a session's shell is limited to the `watchdog` commands
+# the vault pre-approves, each run as a single plain command.
+
+def sandbox_available() -> bool:
+    return sys.platform == "darwin"
+
+
+def sandbox_settings() -> dict:
+    home = Path.home() / ".watchdog"
+    return {
+        "enabled": True,
+        "failIfUnavailable": True,
+        "allowUnsandboxedCommands": False,
+        # Commands the vault doesn't pre-approve still ask the user first.
+        "autoAllowBashIfSandboxed": False,
+        "filesystem": {
+            # `watchdog` commands update the project registry and usage log here.
+            "allowWrite": [str(home)],
+            # The folder-access list and the provider keys are never a command's to change.
+            "denyWrite": [str(home / "access.json"), str(home / "credentials.json")],
+        },
+    }
+
+
+# Anything that chains, substitutes or redirects: a pre-approved prefix must not carry a second
+# command along with it.
+_SHELL_META = re.compile(r"[;&|`$<>(){}\\\n\r]")
+
+
+def _allowed_shell_patterns() -> list[str]:
+    from watchdog.cmd.base import _VAULT_PERMISSIONS
+    return [rule[len("Bash("):-1] for rule in _VAULT_PERMISSIONS if rule.startswith("Bash(")]
+
+
+def shell_refusal(command: str) -> str | None:
+    """Why a session may not run `command` where there is no sandbox, or None."""
+    if sandbox_available():
+        return None
+    cmd = (command or "").strip()
+    if cmd and not _SHELL_META.search(cmd):
+        for pattern in _allowed_shell_patterns():
+            if fnmatch.fnmatchcase(cmd, pattern):
+                return None
+    return ("On this computer Watchdog lets a session run only its own pre-approved watchdog "
+            "commands, one at a time. Use the file and search tools instead.")
+
+
+def _confined_shell(vault: Path):
+    async def hook(input_data, tool_use_id, context):
+        reason = shell_refusal((input_data.get("tool_input") or {}).get("command", ""))
+        if reason is None:
+            return {}
+        return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                       "permissionDecision": "deny",
+                                       "permissionDecisionReason": reason}}
+    return hook
 
 
 # Claude Code's file-editing tools and the input key naming the file each one changes.
@@ -229,7 +299,9 @@ class ChatManager:
     # ── a turn ──────────────────────────────────────────────────────────────────────────
     async def _can_use_tool(self, s: Session, tool: str, tool_input: dict, ctx):
         from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
-        if tool in s.always:
+        # "Always" for a shell command means that exact command, never every shell command.
+        key = f"Bash:{(tool_input or {}).get('command', '')}" if tool == "Bash" else tool
+        if key in s.always:
             return PermissionResultAllow()
         request_id = uuid.uuid4().hex
         fut = asyncio.get_running_loop().create_future()
@@ -243,7 +315,7 @@ class ChatManager:
             s.permissions.pop(request_id, None)
         if allow:
             if always:
-                s.always.add(tool)
+                s.always.add(key)
             return PermissionResultAllow()
         return PermissionResultDeny(message="The user declined this action.")
 
