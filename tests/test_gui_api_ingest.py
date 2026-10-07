@@ -5,10 +5,10 @@ import re
 
 import pytest
 
-from tests.gui_support import (  # noqa: F401
-    SHA1, call, call_error, rich_vault, wdg_home,
-)
+from tests.gui_support import SHA1, call, call_error
 from tests.test_write_vault import make_vault
+
+pytest_plugins = ["tests.gui_support"]   # the rich_vault / wdg_home fixtures
 
 
 def V(vault):

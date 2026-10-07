@@ -37,7 +37,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 ```
 Project = {
   slug, name, description|null, path, archived: bool, created|null,
-  health: null | "missing" | "not_a_vault" | string,   // _check_project_health
+  health: null | "missing" | "not_a_vault" | "registry_corrupt",   // _check_project_health
   stats: { documents, entities, last_ingest|null, incoming, awaiting, failed }
 }
 ```
@@ -45,11 +45,11 @@ Project = {
 | Method | Params | Result |
 |---|---|---|
 | `projects.list` | `{all?: bool}` | `Project[]` (archived only when `all`) |
-| `projects.get` | `{slug}` | `Project` |
+| `projects.get` | `{slug}` | `Project` — exact slug or unique prefix; errors `not_found` / `ambiguous` |
 | `projects.forPath` | `{path}` | `Project \| null` — the registered project at that folder |
 | `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: bool, ingest: bool}, pending_finalization: {...}\|null, size_bytes}` |
-| `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — `ingest.log` |
-| `projects.doctor` | — | `{issues: [{slug, name, path, problem, suggestion}]}` |
+| `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — the last `lines` (default 500) of `.watchdog/registry/ingest.log` |
+| `projects.doctor` | — | `{issues: [{kind: "missing"\|"schema"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
 
 Mutations (`new`, `register`, `rename`, `describe`, `move`, `archive`, `unarchive`, `delete`) go
 through `action.run` with the CLI's own arguments, e.g.
@@ -83,7 +83,7 @@ DocumentRow = {
 }
 
 EntityRow = {
-  id, name, type,                    // type is one of the six (entity_type.CANONICAL)
+  id, name, type,                    // type is one of the six (entity_type.ENTITY_TYPES) or "other"
   aliases: string[], doc_count, role_count, contradiction_count,
   first_seen|null, last_updated|null, note: "entities/<type>/<id>"|null,
   has_summary: bool, summary|null    // first paragraph of ## Summary
@@ -97,23 +97,24 @@ EntityRow = {
 | `vault.document` | `{vault, sha}` | `DocumentDetail` (below) |
 | `vault.entities` | `{vault}` | `EntityRow[]` |
 | `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
-| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, docs: string[]}]}` — stated-direction edges only, edges to unprofiled ids dropped (as `export._forward_edges`) |
+| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, docs: string[]}]}` — `docs` are document shas, repeated (source, target, role) edges merged; stated-direction edges only, edges to unprofiled ids dropped (as `export._forward_edges`) |
 | `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
-| `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` — replaces only the body of the note's `## Notes` section (journalist annotations; the pipeline never writes there) |
-| `vault.resolveLink` | `{vault, target}` | `{path\|null, kind, sha\|null, page\|null}` — what a wikilink target points at (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
+| `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes only; an empty `text` keeps the placeholder comment) — replaces only the body of the note's `## Notes` section (journalist annotations; the pipeline never writes there) |
+| `vault.resolveLink` | `{vault, target}` | `{path\|null, kind: "document"\|"entity"\|"briefing"\|"query"\|"wiki"\|"note"\|"original"\|"fulltext"\|"missing", sha\|null, page\|null}` — what a wikilink target points at (bare names resolve like Obsidian: entity id/name/alias, document slug/title/filename, top-level note) (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
 | `vault.pipeline` | `{vault}` | `PipelineState` (below) |
 | `vault.briefings` | `{vault}` | `[{path, name, kind: "briefing"\|"leads"\|"alerts"\|"research", date, title}]`, newest first |
 | `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `hot.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md` |
-| `vault.requests` | `{vault}` | `{open: [{rid, what, why, likely_source, cited_in: [..]}], resolved_count}` |
+| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `_CONTEXT/` |
 
 ```
 DocumentDetail = DocumentRow & {
   frontmatter: object, body: string,            // the document note
   facts: [{fact, page|null, basis: "stated"|"inferred", date|null, quote|null,
-           entities: [{id, name, type}], figure_note|null, added_by|null}],
+           entities: [{id, name, type}], figure_note|null, quote_note|null, added_by|null}],   // quote_note: quote-verification warning; facts fall back to the note's `## Key facts` bullets when no staged extraction exists
+ 
   entities: [{id, name, type, role|null}],
   pages: [{page, text}],                        // morgue full text split on <!-- PAGE n -->
   file_metadata: object, sidecar: object|null, metadata: object|null,
@@ -211,10 +212,10 @@ Events: `job.started {job}`, `job.log {id, lines: LogLine[]}` (batched ≤ 10/s)
 
 | Method | Params | Result |
 |---|---|---|
-| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, exact: [...], passages: [...], notes: [...]}` — the `--json` shape, each item enriched with `sha`, `note`, `original` where resolvable |
-| `search.batch` | `{vault\|null, terms: string[], everywhere?: bool}` | `{terms: [{term, checked: bool, hits: [{vault_name?, kind, title, note, page, text}]}]}` |
-| `search.everywhere` | `{query, top?}` | `{vaults: [{slug, name, path, entity_hits: [...], exact: [...]}], skipped: [{slug, reason}]}` |
-| `search.status` | `{vault}` | `{total, documents, notes}` — `embed.index_stats` |
+| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, semantic_error\|null, exact: [...], passages: [...], notes: [...]}` — the `--json` shape, each item enriched with `sha`, `note`, `original` where resolvable |
+| `search.batch` | `{vault\|null, terms: string[], everywhere?: bool}` | `{terms: [{term, checked: bool, hits: [{vault_name?, kind, title, note, page, text, path, sha}]}]}` — entity matches are hits with `kind: "entity"`; `top?` limits hits per term |
+| `search.everywhere` | `{query, top?}` | `{vaults: [{slug, name, path, entity_hits: [...], exact: [...], error\|null}], skipped: [{slug, reason}]}` |
+| `search.status` | `{vault}` | `{total, documents, notes, passages, fulltext: {corpus, notes, total}}` — `embed.index_stats` (`documents` = indexed document files) |
 
 ## review
 
@@ -229,9 +230,9 @@ ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates", rid, title, 
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — what `review resolve --list` shows |
 | `review.sync` | `{vault}` | `{resolved: string[], unresolved: string[]}` — `resolutions.sync_from_briefings` |
-| `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe |
+| `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
 | `review.watchlist` | `{vault}` | `{terms: string[], text}` |
-| `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool}` |
+| `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
 
 `merge-entities` (with `--force` after the app's own confirmation), `contradiction-add`, `watchlist`
 sweeps and `leads` run as jobs.
@@ -241,27 +242,27 @@ sweeps and `leads` run as jobs.
 | Method | Params | Result |
 |---|---|---|
 | `settings.schema` | — | `{sections: [{title, blurb, keys: SettingKey[]}]}` |
-| `settings.set` | `{key, value: string}` | `{key, value, display}` — validated by the CLI's `_coerce_value`; a bad value raises `RpcError` with the CLI's message |
-| `settings.models` | — | `{models: [{value, label, provider, backend, input_per_mtok\|null, output_per_mtok\|null, context_window\|null, efforts: string[], notes\|null}], efforts: string[]}` — for model pickers |
-| `auth.status` | — | `{claude: {mode, logged_in, reason\|null}, stages: [{stage, value, provider, ready, billing\|null}], keys: [{provider, masked, in_use: "in use"\|"unused"\|"inactive", source: "stored"\|"env"}]}` |
-| `auth.setAnthropicMode` | `{mode: "subscription"\|"api-key", key?}` | `auth.status` result |
+| `settings.set` | `{key, value: string}` | `{key, value, display}` — validated by the CLI's `_coerce_value`; a bad value raises `RpcError` (code `bad_value`) with the CLI's message. An empty value clears a text/model key to its default. A secret's `value` is `null` and its `display` masked |
+| `settings.models` | — | `{models: [{value, label, id, provider, backend (null for Claude tiers), input_per_mtok\|null, output_per_mtok\|null, context_window\|null, efforts: string[], notes\|null}], efforts: string[]}` — for model pickers |
+| `auth.status` | — | `{claude: {mode, logged_in, reason\|null, env_key_set, key_masked\|null, key_source}, stages: [{stage, config_key, value, provider, ready, billing\|null}], keys: [{provider, masked, in_use: "in use"\|"unused"\|"inactive", detail, source: "stored"\|"env"}], base_urls: [{provider, url}], providers: [{provider, label, env, requires_key, base_url_setting\|null, base_url\|null, ready}]}` |
+| `auth.setAnthropicMode` | `{mode: "subscription"\|"api-key", key?}` | `auth.status` result plus `warning\|null` (as do `setKey`, `deleteKey`, `setBaseUrl`) |
 | `auth.setKey` | `{provider, key}` | `auth.status` result |
 | `auth.deleteKey` | `{provider}` | `auth.status` result |
-| `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result |
+| `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result — an empty `url` removes it |
 | `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
 | `skills.read` | `{name}` | `{name, text}` |
 | `setup.check` | — | `{deps: [{label, ok, hint\|null}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` |
 
 ```
-SettingKey = {key, short, help, default, current, display, kind: "bool"|"int"|"float"|"choice"|"model"|"effort"|"path"|"text"|"secret", choices: string[]|null}
+SettingKey = {key, short, help, is_set: bool, default, current (null for secrets), display, kind: "bool"|"int"|"float"|"choice"|"model"|"effort"|"path"|"text"|"secret", choices: string[]|null}
 ```
 
 ## usage
 
 | Method | Params | Result |
 |---|---|---|
-| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cost_usd, backends, subscription: bool, stages}], corpus: {documents, pages}\|null}` newest first |
-| `usage.run` | `{vault, ts?}` | `{ts, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null}], totals, subscription_note\|null}` (latest when `ts` omitted) |
+| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, backends, subscription: bool, stages: {[stage]: cost_usd}}], corpus: {documents, pages}\|null}` newest first |
+| `usage.run` | `{vault, ts?}` | `{ts, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null, peak_concurrency, batch_note\|null}], totals, subscription_note\|null, corpus, cost_per_page\|null}` (latest when `ts` omitted; `ts` is the timestamp in `usage-<ts>.json`, matched as a substring; error `no_runs` when none exist) |
 
 ## research
 

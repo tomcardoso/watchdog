@@ -2,10 +2,10 @@
 
 import json
 
-from tests.gui_support import (  # noqa: F401
-    SHA1, call, call_error, make_rich_vault, register, rich_vault, wdg_home,
-)
+from tests.gui_support import call, call_error, register
 from tests.test_write_vault import make_vault
+
+pytest_plugins = ["tests.gui_support"]   # the rich_vault / wdg_home fixtures
 
 
 def test_list_is_empty_without_a_registry(wdg_home):

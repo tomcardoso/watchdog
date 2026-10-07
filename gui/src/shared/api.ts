@@ -115,6 +115,7 @@ export interface Fact {
   quote: string | null
   entities: EntityRef[]
   figure_note: string | null
+  quote_note?: string | null
   added_by: string | null
 }
 
@@ -172,7 +173,7 @@ export interface EntityDetail extends EntityRow {
 
 export interface GraphData {
   nodes: { id: string; name: string; type: string; doc_count: number }[]
-  edges: { source: string; target: string; role: string; docs: string[] }[]
+  edges: { source: string; target: string; role: string; docs: string[] }[] // docs: document sha256s
 }
 
 export type NoteKind = 'entity' | 'document' | 'briefing' | 'query' | 'wiki' | 'other'
@@ -185,7 +186,8 @@ export interface Note {
   kind: NoteKind
 }
 
-export interface ResolvedLink { path: string | null; kind: string; sha: string | null; page: number | null }
+export type LinkKind = 'document' | 'entity' | 'briefing' | 'query' | 'wiki' | 'note' | 'original' | 'fulltext' | 'missing'
+export interface ResolvedLink { path: string | null; kind: LinkKind; sha: string | null; page: number | null }
 
 export interface PipelineState {
   incoming: { name: string; path: string; size: number; modified: string; sidecar: boolean }[]
@@ -207,7 +209,15 @@ export interface BriefingRow {
   title: string | null
 }
 
-export interface DocumentRequest { rid: string; what: string; why: string | null; likely_source: string | null; cited_in: string[] }
+export interface DocumentRequest {
+  rid: string
+  type: string | null
+  what: string
+  why: string | null
+  likely_source: string | null
+  cited_in: { sha: string; filename: string; note: string | null }[]
+  added: string | null
+}
 
 // ── ingest ───────────────────────────────────────────────────────────────────
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -286,6 +296,7 @@ export interface SearchResult {
   query: string
   index_empty: boolean
   exact_error: string | null
+  semantic_error?: string | null
   exact: SearchExact[]
   passages: SearchPassage[]
   notes: SearchNote[]
@@ -314,6 +325,7 @@ export interface SettingKey {
   display: string
   kind: SettingKind
   choices: string[] | null
+  is_set?: boolean
 }
 export interface SettingsSchema { sections: { title: string; blurb: string; keys: SettingKey[] }[] }
 export interface ModelChoice {
@@ -351,13 +363,20 @@ export interface UsageRunRow {
   cost_usd: number
   backends: string
   subscription: boolean
-  stages: string[] | Record<string, unknown>
+  stages: Record<string, number> // stage → cost
+  cache_read_tokens?: number
+  cache_write_tokens?: number
+  latency_s?: number
 }
 export interface UsageRun {
   ts: string
   stages: { stage: string; model: string; backend: string; calls: Record<string, unknown>[]; totals: Record<string, number>; wall_seconds: number | null }[]
   totals: Record<string, number>
   subscription_note: string | null
+  peak_concurrency?: number | null
+  batch_note?: string | null
+  corpus?: { documents: number; pages: number } | null
+  cost_per_page?: number | null
 }
 
 // ── research ─────────────────────────────────────────────────────────────────

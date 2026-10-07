@@ -4,8 +4,10 @@ import json
 
 import pytest
 
-from tests.gui_support import call, call_error, rich_vault, wdg_home  # noqa: F401
+from tests.gui_support import call, call_error
 from tests.test_write_vault import make_vault
+
+pytest_plugins = ["tests.gui_support"]   # the rich_vault / wdg_home fixtures
 
 
 def V(vault):

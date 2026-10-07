@@ -1,17 +1,17 @@
 """`settings.*`, `auth.*`, `skills.*` and `setup.check` handlers."""
 
 import json
-import os
 import re
 import stat
-import sys
 
 import pytest
 
 from watchdog import skills_catalog
 from watchdog.cmd import setup as setup_cmd
 
-from tests.gui_support import call, call_error, wdg_home  # noqa: F401
+from tests.gui_support import call, call_error
+
+pytest_plugins = ["tests.gui_support"]   # the rich_vault / wdg_home fixtures
 
 
 def config(home):
