@@ -18,6 +18,8 @@ from watchdog.cmd.base import (
     _VAULT_DENY,
     _VAULT_PERMISSIONS,
     _find_project,
+    _render_template,
+    load_projects,
 )
 from watchdog.pipeline.json_io import _read_json, write_private_json
 
@@ -869,7 +871,66 @@ def cmd_refresh_skills(args) -> None:
         print(f"  {_GREEN}Prompt hook updated{_RESET}  {_DIM}no longer needs python3 on PATH{_RESET}")
     for change in _migrate_vault_views(vault):
         print(f"  {_GREEN}Updated{_RESET}  {_DIM}{change}{_RESET}")
+    claude_md = _refresh_vault_claude_md(vault)
+    if claude_md:
+        print(f"  {_GREEN}Session instructions updated{_RESET}  {_DIM}{claude_md}{_RESET}")
     print()
+
+
+_CLAUDE_MD_BEGIN = "<!-- watchdog:begin"
+_CLAUDE_MD_END = "<!-- watchdog:end -->"
+
+
+def _vault_display_name(vault: Path, current: str) -> str:
+    """The name the vault's CLAUDE.md heading uses: the one already in its heading, else the
+    investigation's registered name, else the folder name."""
+    import re
+    m = re.search(r"^# (.+) — Watchdog$", current, flags=re.M)
+    if m:
+        return m.group(1)
+    try:
+        resolved = vault.resolve()
+        for info in load_projects().values():
+            if info.get("path") and Path(info["path"]).expanduser().resolve() == resolved:
+                return info.get("name") or vault.name
+    except (OSError, SystemExit):
+        pass
+    return vault.name
+
+
+def _refresh_vault_claude_md(vault: Path) -> str | None:
+    """Bring the vault's session instructions (`.claude/CLAUDE.md`) up to date (D264). The part
+    Watchdog writes sits between two marker comments and is replaced; anything outside them is
+    the user's and is kept. A file from before the markers existed is entirely Watchdog's as far
+    as anyone can tell, so it is saved beside itself before being replaced. Returns a description
+    of what changed, or None when nothing did."""
+    path = vault / ".claude" / "CLAUDE.md"
+    raw = path.read_bytes() if path.exists() else b""
+    try:
+        current = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        current = ""            # unreadable: treated as a file without markers, backed up byte for byte
+    block = _render_template("CLAUDE.md", name=_vault_display_name(vault, current)).rstrip("\n")
+    begin, end = current.find(_CLAUDE_MD_BEGIN), current.find(_CLAUDE_MD_END)
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(block + "\n", encoding="utf-8")
+        return ".claude/CLAUDE.md was missing and has been written"
+    if 0 <= begin < end:
+        new = current[:begin] + block + current[end + len(_CLAUDE_MD_END):]
+        if new == current:
+            return None
+        path.write_text(new, encoding="utf-8")
+        return ".claude/CLAUDE.md — Watchdog's section replaced; your own notes kept"
+    backup = path.with_name("CLAUDE.md.before-refresh")
+    n = 1
+    while backup.exists():
+        n += 1
+        backup = path.with_name(f"CLAUDE.md.before-refresh-{n}")
+    backup.write_bytes(raw)
+    path.write_text(block + "\n", encoding="utf-8")
+    return (f".claude/CLAUDE.md replaced; the old copy is at .claude/{backup.name}. Copy any "
+            f"notes of your own from it to below the end marker.")
 
 
 def _migrate_vault_views(vault: Path) -> list[str]:

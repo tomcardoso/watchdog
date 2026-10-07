@@ -159,7 +159,7 @@ cd ~/Investigations/your-investigation
 watchdog settings refresh-skills
 ```
 
-The same command also updates the vault's Claude Code settings and its dashboard and graph views to match the new version.
+The same command also updates the vault's Claude Code settings, its session instructions (`.claude/CLAUDE.md`) and its dashboard and graph views to match the new version. If the session instructions predate the current format, the old copy is saved as `.claude/CLAUDE.md.before-refresh`.
 
 ## A vault moved or is missing
 

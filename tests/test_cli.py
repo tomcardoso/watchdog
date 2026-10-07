@@ -448,6 +448,63 @@ def test_refresh_skills_backfills_read_scope_setting(configured):
     assert refreshed["permissions"]["blockReadsOutsideWorkingDirectories"] is True
 
 
+def _vault_claude_md(configured):
+    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
+    return configured / "city-hall-probe" / ".claude" / "CLAUDE.md"
+
+
+def test_refresh_skills_replaces_watchdogs_section_and_keeps_the_users_notes(configured):
+    """D264: older vaults kept session instructions that contradicted tightened permissions."""
+    path = _vault_claude_md(configured)
+    fresh = path.read_text()
+    assert fresh.startswith("<!-- watchdog:begin") and fresh.rstrip().endswith("<!-- watchdog:end -->")
+    assert "# City Hall Probe — Watchdog" in fresh
+    stale = fresh.replace("read `hot.md`", "read `stale.md`") + "\nMy own note: check the 2019 minutes.\n"
+    path.write_text(stale)
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    text = path.read_text()
+    assert "read `hot.md`" in text and "stale.md" not in text
+    assert text.endswith("\nMy own note: check the 2019 minutes.\n")
+    assert not list(path.parent.glob("CLAUDE.md.before-refresh*"))
+
+
+def test_refresh_skills_leaves_an_up_to_date_claude_md_alone(configured, capsys):
+    path = _vault_claude_md(configured)
+    before = path.read_text()
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    assert path.read_text() == before
+    assert "Session instructions" not in capsys.readouterr().out
+
+
+def test_refresh_skills_backs_up_a_claude_md_from_before_the_markers(configured, capsys):
+    path = _vault_claude_md(configured)
+    old = "# City Hall Probe — Watchdog\n\n| Write/edit files in `.watchdog/registry/` | auto-allowed |\n"
+    path.write_text(old)
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    text = path.read_text()
+    assert ".watchdog/registry/` | auto-allowed" not in text and "# City Hall Probe — Watchdog" in text
+    assert (path.parent / "CLAUDE.md.before-refresh").read_text() == old
+    assert "CLAUDE.md.before-refresh" in capsys.readouterr().out
+    path.write_text(old)                                   # a second refresh never overwrites the backup
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    assert (path.parent / "CLAUDE.md.before-refresh-2").read_text() == old
+
+
+def test_refresh_skills_backs_up_a_claude_md_that_is_not_utf8(configured):
+    path = _vault_claude_md(configured)
+    path.write_bytes(b"# Notes \xff\xfe in another encoding\n")
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    assert "# City Hall Probe — Watchdog" in path.read_text()
+    assert (path.parent / "CLAUDE.md.before-refresh").read_bytes() == b"# Notes \xff\xfe in another encoding\n"
+
+
+def test_refresh_skills_writes_a_missing_claude_md(configured):
+    path = _vault_claude_md(configured)
+    path.unlink()
+    cli.cmd_refresh_skills(args(name="city-hall-probe"))
+    assert "# City Hall Probe — Watchdog" in path.read_text()
+
+
 def test_cmd_new_never_writes_dead_write_permission_rules(configured):
     """Claude Code only matches Edit(path) rules for file-permission checks — Write(path)
     rules are never matched (and print a startup warning). New vaults must not carry any."""
