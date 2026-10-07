@@ -22,7 +22,7 @@ import sys
 import time
 from pathlib import Path
 
-from watchdog import defaults, model_client, skills_catalog, telemetry_db
+from watchdog import defaults, model_client, progress, skills_catalog, telemetry_db
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import (
     abort, batch_extract, chunking, harvest, leads, merge, preflight, postflight, prompts, reconcile,
@@ -1145,6 +1145,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         carry = _carry_text(entities_seen, last_parts[-1].get("observations") or "")
 
     for sec in sections[len(checkpoints):]:
+        progress.emit("doc", sha=sha, filename=pf["filename"], state="section",
+                      detail=f"{sec['index']} of {len(sections)}")
         prior = _facts_so_far(section_parts)
         try:
             r = await _extract_one_section(vault, sha, pf, skill_text, sec,
@@ -1244,6 +1246,7 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     # the queue file, so the ✗ line and log name the file instead of a bare sha.
     name = filename or _queued_filename(vault, sha) or sha[:7]
     _settle(sha, f"  {_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
+    progress.emit("doc", sha=sha, filename=name, state="failed", detail=reason)
     _log(vault, f"FAILED {name}: {reason}")
     # keep_section_checkpoints (#498): an automatic failure should still let a later retry resume
     # from whatever sections already succeeded, rather than re-paying for them from section 1.
@@ -1328,6 +1331,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # marks completion, and the gap between them is that document's own extraction time (the
     # log is otherwise completion-ordered, which reads misleadingly like sequential work).
     _log(vault, f"START {filename}")
+    progress.emit("doc", sha=sha, filename=filename, state="started", detail=None)
 
     # The prior-entity digest telemetry (#216) that used to print here is gone with the digest
     # itself (#381/D118): extraction no longer carries any vault context, so there is no longer a
@@ -1352,6 +1356,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         on_classify=lambda: _step(
             f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
             f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}"))
+    progress.emit("doc", sha=sha, filename=filename, state="classified", detail=skill_label)
     if classified:
         _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
               f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
@@ -1359,6 +1364,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
     plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
+    progress.emit("doc", sha=sha, filename=filename, state="extracting", detail=None)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
         _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
@@ -1424,6 +1430,8 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
             f"{_DIM}{page_count}p · {n_entities} entit{'ies' if n_entities != 1 else 'y'}{type_bit}{_RESET}  "
             f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
     _log(vault, f"OK {filename}: {page_count}p, {n_entities} entities{type_bit}")
+    n_facts = len((extraction.get("document") or {}).get("key_facts") or [])
+    progress.emit("doc", sha=sha, filename=filename, state="done", detail=f"{n_facts} facts")
     for msg in (warnings or []):
         _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
         _log(vault, f"WARN {filename}: {msg}")
@@ -2148,6 +2156,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # may name an entity that was just folded away.
     rec_result = rec_result or {}
     out["merged"] = rec_result.get("merged", [])
+    progress.emit("stage", stage="contradictions", done=None, total=None)
     contradiction_items = rec_result.get("contradictions") or []
     if contradiction_items:
         applied_contradictions = reconcile.apply_contradictions(
@@ -2163,6 +2172,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     batch_shas = [r["sha256"] for r in results if r.get("status") == "ok"]
     bundle = synthesis_bundle.build_bundle(vault, batch_shas)
+    progress.emit("stage", stage="synthesis", done=0, total=len(bundle.get("entities") or []))
     if bundle.get("entities"):
         n_ents = len(bundle["entities"])
         # Split across size-bounded calls (#696): one call per run outgrew the context window —
@@ -2215,6 +2225,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             _log(vault, f"WARN synthesis: {failed} of {n_ents} entities not synthesized this run")
 
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
+    progress.emit("stage", stage="timeline", done=None, total=None)
     _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
     cols = timeline.collisions(vault)
     out["timeline_collisions"] = len(cols)
@@ -2309,6 +2320,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         out["briefing_skipped"] = True
         _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM} (--skip-briefing){_RESET}")
     else:
+        progress.emit("stage", stage="briefing", done=None, total=None)
         _say(f"{_DIM}→  writing briefing…{_RESET}")
         scratchpads = [p.read_text(encoding="utf-8")
                        for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
@@ -2384,6 +2396,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
 
     # 5. Lead sweep (deterministic, no model; #155). Whole-vault snapshot of entities named
     # but never profiled, recurring-but-unconnected entities, and unresolved contradictions.
+    progress.emit("stage", stage="leads", done=None, total=None)
     leads_data = leads.scan(vault)
     leads_relpath = leads.write_leads(vault, leads_data)
     if leads_relpath:
@@ -2433,6 +2446,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # 6. Document requests (deterministic Python from here — #365). Re-render requests.md from
     # the ledger write_vault populated per-document at extraction time and 5b's dedup pass just
     # folded; requests are never re-fed into any *other* model prompt.
+    progress.emit("stage", stage="requests", done=None, total=None)
     requests_relpath = requests.write_requests(vault)
     if requests_relpath:
         n = len(requests.open_requests(vault))
@@ -2676,7 +2690,8 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
     # a crash from undoing any document that had already finished.
     flush_every = 1 if len(shas) <= _PER_DOCUMENT_FLUSH_MAX else 50
     with RegistryBatch(vault, flush_every=flush_every) as batch:
-        for sha in shas:
+        for n, sha in enumerate(shas, 1):
+            progress.emit("stage", stage="commit", done=n - 1, total=len(shas))
             written = _commit_extracted(vault, sha, batch=batch)
             if written:
                 written_map[sha] = written
@@ -2786,7 +2801,9 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
     _restore_missing_results(vault, shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     if shas:
+        progress.emit("stage", stage="fold", done=0, total=len(shas))
         _batch_exact_fold(vault, shas)
+        progress.emit("stage", stage="reconcile", done=None, total=None)
         rec_result = await _reconcile_pre_commit(vault, shas, post_model, post_effort, post_backend,
                                                  finalizer_overrides=finalizer_overrides)
 
@@ -2805,6 +2822,7 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
         return out
 
     commit_summary = _commit_pending(vault, shas)
+    progress.emit("stage", stage="commit", done=len(shas), total=len(shas))
     if brief is None:
         brief = _read_brief(vault)
     if results is None:
@@ -2818,6 +2836,7 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
         _clear_post_ingest_inputs(vault)
     if standalone_usage:
         out["usage_path"], out["usage"] = _end_usage_run(vault)
+    progress.emit("stage", stage="done", done=None, total=None, path=out.get("briefing"))
     return out
 
 
@@ -2865,6 +2884,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         "extract_token_budget": extract_token_budget, "verify": verify, "concurrency": concurrency,
     }
     _run.resume_hint = resume_hint
+    progress.emit("stage", stage="dig", done=0, total=len(shas))
 
     # claude-batch/openai-batch (#214, #530): submit-many/poll/collect, not one-await-per-document,
     # so it's a genuinely different flow — handled entirely by _run_batch (which also covers a
@@ -2982,6 +3002,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                         if not cancelled.is_set():
                             print()
+                            progress.emit("doc", sha=sha, filename=_queued_filename(vault, sha) or "",
+                                          state="failed", detail="rate limit")
+                            progress.emit("message", text=f"Rate limit reached: {e}")
                             _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
                             # #563: ground the "lower extract_concurrency" advice below in the actual
                             # numbers instead of leaving it a guess — the tokens/min this run was
@@ -3167,4 +3190,6 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     est_input_tokens = sum(r.get("est_input_tokens") or 0 for r in results
                            if r.get("status") == "ok") or None
     summary["usage_path"], summary["usage"] = _end_usage_run(vault, est_input_tokens=est_input_tokens)
+    progress.emit("stage", stage="done", done=summary["extracted"] + summary["skipped"],
+                  total=len(shas), path=(summary.get("post_ingest") or {}).get("briefing"))
     return summary

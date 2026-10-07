@@ -22,6 +22,11 @@ _writer: Callable[[dict], None] | None = None
 _writer_lock = threading.Lock()
 _test_sink: list | None = None
 
+# Callables run when the app disconnects. Kept here rather than in `server` because the server runs
+# as `__main__`: a module that imports `watchdog.gui.server` gets a second copy of that module, and
+# a hook appended to the copy's list would never run.
+SHUTDOWN_HOOKS: list[Callable[[], Any]] = []
+
 
 class RpcError(Exception):
     """A failure the app should show to the user as-is (bad input, missing vault, …)."""

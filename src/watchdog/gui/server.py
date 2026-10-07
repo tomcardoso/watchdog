@@ -120,7 +120,7 @@ def main() -> None:
 
 
 # Callables run when the app disconnects (jobs kill their subprocesses, chat closes sessions).
-SHUTDOWN_HOOKS: list = []
+SHUTDOWN_HOOKS = rpc.SHUTDOWN_HOOKS
 
 
 if __name__ == "__main__":

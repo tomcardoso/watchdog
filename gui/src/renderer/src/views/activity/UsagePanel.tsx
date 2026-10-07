@@ -114,7 +114,9 @@ export default function UsagePanel() {
   useEffect(() => {
     if (!sel && runs.length) setSel(runs[0].ts)
   }, [runs, sel])
-  const max = useMemo(() => Math.max(0.0001, ...runs.map((r) => r.cost_usd)), [runs])
+  const byTokens = useMemo(() => runs.every((r) => !r.cost_usd), [runs])
+  const metric = (r: (typeof runs)[number]) => (byTokens ? r.input_tokens + r.output_tokens : r.cost_usd)
+  const max = useMemo(() => Math.max(1e-9, ...runs.map(metric)), [runs, byTokens]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (q.isLoading) return <Skeleton h={260} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
@@ -149,7 +151,7 @@ export default function UsagePanel() {
                 <div className="faint" style={{ fontSize: 'var(--fs-xs)' }}>{r.backends || '—'}</div>
               </div>
               <div className="act-bar" title={`${fmtTokens(r.input_tokens)} tokens in, ${fmtTokens(r.output_tokens)} out`}>
-                <div className="act-bar-fill" style={{ width: `${Math.max(2, (r.cost_usd / max) * 100)}%` }}>
+                <div className="act-bar-fill" style={{ width: `${Math.max(2, (metric(r) / max) * 100)}%` }}>
                   {parts.length
                     ? parts.map(([k, v]) => <span key={k} style={{ flexGrow: v / total, background: stageColor(k) }} />)
                     : <span style={{ flexGrow: 1, background: 'var(--text-3)' }} />}

@@ -32,7 +32,7 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog settings` | Models, keys, health checks and skills — see [Settings](#settings). |
 | `watchdog setup` | Setting up Watchdog after installation; `--force` re-runs it. |
 
-`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `usage`, `export` and `unlock`. They are described on this page too.
+`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
 
 Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts and the vault's slash commands use the old names and see no note.
 
@@ -274,6 +274,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog usage [name]` | Maintenance. Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
 | `watchdog export [name]` | Maintenance. Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
 | `watchdog unlock [name]` | Maintenance. Release a stale chew or ingest lock; `--force` removes it even if recent. |
+| `watchdog gui` | Maintenance. Open the Watchdog desktop app — see [below](#watchdog-gui). |
 
 ### watchdog search
 
@@ -364,6 +365,10 @@ Exports the investigation's entity and relationship graph for network-analysis t
 ### watchdog unlock
 
 Releases a stale lock left behind by an interrupted chew or ingest — both lock types are checked. A lock that looks recent is left alone unless you pass `--force`. Run it from inside the vault, or pass the investigation name.
+
+### watchdog gui
+
+Opens the Watchdog desktop app, which runs the same commands as the terminal and shows their results on screen. The command looks for the app in this order: the program named by the `WATCHDOG_APP` environment variable, then the installed Watchdog app on macOS, then, if you are running Watchdog from a copy of its source code with the app's dependencies installed, the app's development server. If it finds none of them it says so and points to [the app guide](app.md).
 
 ## Settings
 

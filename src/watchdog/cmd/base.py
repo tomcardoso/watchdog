@@ -422,6 +422,13 @@ _CMD_HELP: dict[str, dict] = {
     'unlock': {
         "desc": 'Release a stale chew or ingest lock',
     },
+    'gui': {
+        "desc": 'Open the Watchdog desktop app',
+        "notes": [
+            'Uses WATCHDOG_APP (a path to the app) if set, then the installed app on macOS, then',
+            "the app's dev server when run from a repository checkout.",
+        ],
+    },
     'setup': {
         "desc": 'Set up Watchdog after installation',
     },

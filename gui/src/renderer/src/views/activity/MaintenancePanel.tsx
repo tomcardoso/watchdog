@@ -2,7 +2,6 @@
 // and a Run button. Anything that sends text to a model goes through the public-records gate.
 
 import {
-  Archive,
   BarChart3,
   BookOpen,
   ChevronRight,
@@ -16,7 +15,7 @@ import {
   Network,
   Play,
   RefreshCw,
-  RotateCcw,
+  Coins,
   ScanText,
   Sparkles,
   Telescope,
@@ -25,7 +24,7 @@ import {
 import { LucideIcon } from 'lucide-react'
 import { ReactNode, useState } from 'react'
 import type { Effort, Estimate, RunOptions } from '@shared/api'
-import { Badge, Button, Callout, Field, Segmented, Switch, cx } from '@renderer/components/ui'
+import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { flagsFor, runAction, startJob } from '@renderer/lib/jobs'
@@ -569,5 +568,3 @@ export default function MaintenancePanel() {
     </div>
   )
 }
-// Keep unused-icon imports honest for the cards above.
-void [Archive, RotateCcw, Callout, cx]

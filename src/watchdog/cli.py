@@ -87,6 +87,7 @@ from watchdog.cmd import groups
 from watchdog.cmd.ask import cmd_ask
 from watchdog.cmd.auth import cmd_auth
 from watchdog.cmd.export import cmd_export
+from watchdog.cmd.gui import cmd_gui
 from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
@@ -307,6 +308,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_unlock.add_argument("project", nargs="?", help="Investigation name or slug (default: infer from cwd)").completer = _project_completer
     p_unlock.add_argument("--force", action="store_true", help="Remove lock even if recent")
     p_unlock.set_defaults(func=cmd_unlock)
+
+    p_gui = sub.add_parser("gui", help="Open the Watchdog desktop app")
+    p_gui.set_defaults(func=cmd_gui)
 
     p_requeue = sub.add_parser("requeue", help="Move documents from queue/_failed/ back into the queue for re-ingest")
     p_requeue.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer

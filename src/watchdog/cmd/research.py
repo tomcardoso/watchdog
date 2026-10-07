@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from watchdog import progress
 from watchdog.vault_paths import is_vault
 from watchdog import interactive
 from watchdog.cmd.base import (
@@ -99,6 +100,7 @@ def _print_progress(i: int, total: int, url: str) -> None:
     (each entry can take a few seconds, longer with a rendered capture) isn't silent until it's
     entirely done."""
     print(f"  {_DIM}[{i}/{total}]{_RESET} {url}")
+    progress.emit("download", done=i, total=total, url=url)
 
 
 def _run_download(vault: Path, source_file: Path | None = None) -> int:

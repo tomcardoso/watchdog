@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
+from watchdog import progress
 from watchdog.pipeline import sidecar
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
@@ -384,6 +385,7 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
             pass
         print(f"  {_YELLOW}⚠ duplicate{_RESET}  {f.name}  "
               f"{_DIM}{reason} → _INCOMING/_SKIPPED/{_RESET}")
+        progress.emit("chew", state="file", name=f.name, outcome="duplicate", pages=None)
     return keep
 
 
@@ -460,6 +462,7 @@ def _run_ingest_inner(
     if page_counts:
         files = sorted(files, key=lambda f: page_counts.get(f, 1))
     batch_start = time.time()
+    progress.emit("chew", state="start", total=total)
 
     adaptive_tag = ", adaptive" if adaptive else ""
     print(
@@ -535,6 +538,9 @@ def _run_ingest_inner(
             else:
                 status = f"{_GREEN}OK {_RESET}"
 
+            progress.emit("chew", state="file", name=_rel(path),
+                          outcome="failed" if is_err else "skipped" if is_empty else "ok",
+                          pages=None if is_err else result.get("page_count"), done=done, total=total)
             rel       = _rel(path)
             label     = _page_label(path, result.get("page_count", 0))
             label_str = f"  {_DIM}{label}{_RESET}" if label else ""
@@ -629,6 +635,7 @@ def _run_ingest_inner(
     errs = sum(1 for r in results.values() if "error" in r)
     ok   = total - errs - skipped
     elapsed_total = round(time.time() - batch_start, 1)
+    progress.emit("chew", state="end", ok=ok, skipped=skipped, failed=errs)
 
     parts = [f"{_GREEN}{ok} file{'s' if ok != 1 else ''} ready{_RESET}"]
     if skipped:

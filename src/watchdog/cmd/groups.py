@@ -87,6 +87,7 @@ MAINTENANCE = [
     ("usage", "Token, cost and timing breakdown for past runs"),
     ("export", "Export the entity graph as CSV"),
     ("unlock", "Clear a lock left by a crashed run"),
+    ("gui", "Open the desktop app"),
 ]
 
 
