@@ -92,6 +92,7 @@ For a full first-investigation walkthrough, see [Getting started](https://github
 | [The vault](https://github.com/tomcardoso/watchdog/blob/main/docs/vault.md) | What Watchdog builds on disk and how to read it |
 | [Domain skills](https://github.com/tomcardoso/watchdog/blob/main/docs/skills.md) | The built-in document-type expertise |
 | [Troubleshooting](https://github.com/tomcardoso/watchdog/blob/main/docs/troubleshooting.md) | When something goes wrong |
+| [The desktop app](https://github.com/tomcardoso/watchdog/blob/main/docs/app.md) | The same tools in a window: document thumbnails and a reader, the entity network, the timeline, review and chat (in development) |
 
 ## A note on AI and mistakes
 
