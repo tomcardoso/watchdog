@@ -518,6 +518,9 @@ export interface Events {
 }
 export type EventName = keyof Events
 
+/** A folder the user has allowed Watchdog to change (main/access.ts). */
+export interface FolderGrant { path: string; label: string; granted: string }
+
 /** The in-app updater's state (main/updater.ts). */
 export interface UpdateState {
   state: 'idle' | 'available' | 'downloading' | 'ready'
@@ -597,7 +600,8 @@ export interface WatchdogBridge {
   }
   dialog: {
     openFiles(opts?: { title?: string; folders?: boolean; multi?: boolean }): Promise<string[]>
-    openFolder(opts?: { title?: string }): Promise<string | null>
+    /** `grant`: why Watchdog will change files there; choosing the folder grants access to it. */
+    openFolder(opts?: { title?: string; grant?: string }): Promise<string | null>
     saveFile(opts?: { title?: string; defaultPath?: string }): Promise<string | null>
     confirm(opts: { title: string; message: string; detail?: string; confirm: string; destructive?: boolean }): Promise<boolean>
   }
@@ -620,6 +624,12 @@ export interface WatchdogBridge {
     set(key: string, value: unknown): Promise<void>
   }
   notify(title: string, body: string): void
+  access: {
+    list(): Promise<FolderGrant[]>
+    /** Ask the user, in a native prompt, to allow `path`. Resolves true once granted. */
+    request(path: string, label: string, why: string): Promise<boolean>
+    revoke(path: string): Promise<FolderGrant[]>
+  }
   updates: {
     get(): Promise<UpdateState>
     check(): Promise<void>

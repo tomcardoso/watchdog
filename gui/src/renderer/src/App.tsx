@@ -3,6 +3,7 @@ import { Spinner } from '@renderer/components/ui'
 import { call, invalidate, useEvent } from '@renderer/lib/rpc'
 import { onJobFinished } from '@renderer/lib/jobs'
 import { applyTheme, Route, Theme, useApp } from '@renderer/lib/store'
+import { AccessGate } from './shell/AccessGate'
 import { BackendGate } from './shell/BackendGate'
 import { CommandPalette } from './shell/CommandPalette'
 import { DropOverlay } from './shell/DropOverlay'
@@ -153,7 +154,11 @@ function Shell() {
               </div>
             }
           >
-            <View key={project?.slug ?? 'none'} />
+            {project && project.access === false && !['projects', 'settings', 'activity'].includes(view) ? (
+              <AccessGate project={project} />
+            ) : (
+              <View key={project?.slug ?? 'none'} />
+            )}
           </Suspense>
           <JobDock />
         </div>

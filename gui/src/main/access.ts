@@ -91,7 +91,9 @@ export async function requestGrant(win: BrowserWindow | null, path: string, labe
   }
   const r = win ? await dialog.showMessageBox(win, opts) : await dialog.showMessageBox(opts)
   if (r.response !== 0) return false
-  if (!existsSync(path)) return false
+  // Allowing a folder that doesn't exist yet (the default investigations folder on first run)
+  // creates it, so the grant has something to point at.
+  if (!existsSync(path)) mkdirSync(path, { recursive: true })
   addGrant(path, label)
   return true
 }

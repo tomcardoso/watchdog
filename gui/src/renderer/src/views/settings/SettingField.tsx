@@ -87,7 +87,7 @@ export function SettingField({ setting, models, efforts }: { setting: SettingKey
                 icon={FolderOpen}
                 tip="Choose a folder"
                 onClick={async () => {
-                  const d = await window.watchdog.dialog.openFolder({ title: humanize(key) })
+                  const d = await window.watchdog.dialog.openFolder({ title: humanize(key), grant: key === 'projects_dir' ? 'new investigations' : undefined })
                   if (d) {
                     setDraft(d)
                     void save(d)

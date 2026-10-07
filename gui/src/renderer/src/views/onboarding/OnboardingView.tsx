@@ -193,6 +193,13 @@ function FolderStep({ next, back }: { next: (dir: string) => void; back: () => v
     setBusy(true)
     setError('')
     try {
+      // Watchdog may only create and change files in folders the user has allowed; this asks,
+      // unless the folder was just chosen in the folder dialog (which already allowed it).
+      const allowed = await window.watchdog.access.request(shown, 'new investigations', 'Watchdog creates each new investigation as a folder here.')
+      if (!allowed) {
+        setError('Watchdog needs your permission to keep investigations in this folder. Choose another folder, or allow this one.')
+        return
+      }
       const r = await call('settings.set', { key: 'projects_dir', value: shown })
       next(String(r.value ?? shown))
     } catch (e) {
@@ -211,7 +218,7 @@ function FolderStep({ next, back }: { next: (dir: string) => void; back: () => v
       <Field label="Investigations folder">
         <div className="row">
           <span className="mono truncate grow onb-path" title={shown}>{shown || '…'}</span>
-          <Button icon={FolderOpen} onClick={() => void window.watchdog.dialog.openFolder({ title: 'Choose a folder for your investigations' }).then((d) => d && setDir(d))}>Choose…</Button>
+          <Button icon={FolderOpen} onClick={() => void window.watchdog.dialog.openFolder({ title: 'Choose a folder for your investigations', grant: 'new investigations' }).then((d) => d && setDir(d))}>Choose…</Button>
         </div>
       </Field>
       {error && <Callout tone="danger">{error}</Callout>}

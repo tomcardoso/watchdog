@@ -79,6 +79,11 @@ const bridge: WatchdogBridge = {
     set: (key, value) => ipcRenderer.invoke('prefs:set', key, value)
   },
   notify: (title, body) => ipcRenderer.send('notify', title, body),
+  access: {
+    list: () => ipcRenderer.invoke('access:list'),
+    request: (path, label, why) => ipcRenderer.invoke('access:request', path, label, why),
+    revoke: (path) => ipcRenderer.invoke('access:revoke', path)
+  },
   updates: {
     get: () => ipcRenderer.invoke('update:get'),
     check: () => ipcRenderer.invoke('update:check'),

@@ -426,7 +426,7 @@ function ExportCard() {
             icon={FolderOpen}
             size="sm"
             onClick={async () => {
-              const out = await window.watchdog.dialog.openFolder({ title: 'Export the graph to…' })
+              const out = await window.watchdog.dialog.openFolder({ title: 'Export the graph to…', grant: 'export destination' })
               if (out) await go(out)
             }}
           >

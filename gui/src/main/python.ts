@@ -1,6 +1,7 @@
 // The Python backend: finding an interpreter that can run Watchdog, starting
 // `python -m watchdog.gui.server`, and routing JSON-RPC requests and events over its stdio.
 
+import { app } from 'electron'
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -8,6 +9,7 @@ import { delimiter, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { BackendStatus } from '@shared/api'
 import { getPref } from './prefs'
+import { accessFile } from './access'
 import { Engine, versionAtLeast } from './engine'
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; method: string }
@@ -100,6 +102,18 @@ async function candidates(engine: Engine): Promise<Candidate[]> {
 function pythonPathEnv(src: string | null, engine?: Engine, managed = false): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
   if (src) env.PYTHONPATH = [src, process.env.PYTHONPATH].filter(Boolean).join(delimiter)
+  // Folder access (src/watchdog/access.py): the backend, every job and every command a Claude
+  // session runs may change files only in folders the user has allowed. The engine and the app's
+  // own data folder stay writable. WATCHDOG_ENFORCE_ACCESS=0 turns it off, for development only.
+  if (process.env.WATCHDOG_ENFORCE_ACCESS !== '0') {
+    env.WATCHDOG_ENFORCE_ACCESS = '1'
+    env.WATCHDOG_ACCESS_FILE = accessFile()
+    env.WATCHDOG_EXTRA_WRITE_ROOTS = [engine?.dir, app.getPath('userData'), process.env.WATCHDOG_EXTRA_WRITE_ROOTS]
+      .filter(Boolean)
+      .join(delimiter)
+  } else {
+    delete env.WATCHDOG_ENFORCE_ACCESS
+  }
   if (engine) {
     const uv = engine.uvPath()
     if (uv) env.WATCHDOG_UV = uv

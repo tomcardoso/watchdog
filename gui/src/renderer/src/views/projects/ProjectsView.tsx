@@ -340,7 +340,7 @@ function MoveDialog({ p, onClose }: { p: Project; onClose: () => void }) {
   const m = useMutation(onClose)
   const missing = p.health === 'missing'
   const pick = async () => {
-    const d = await window.watchdog.dialog.openFolder({ title: missing ? 'Choose the folder that holds this investigation' : 'Move the investigation into…' })
+    const d = await window.watchdog.dialog.openFolder({ grant: 'an investigation', title: missing ? 'Choose the folder that holds this investigation' : 'Move the investigation into…' })
     if (d) setDest(d)
   }
   return (
@@ -455,7 +455,7 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState('')
   const m = useMutation(onClose)
   const pick = async () => {
-    const d = await window.watchdog.dialog.openFolder({ title: 'Choose an existing investigation folder' })
+    const d = await window.watchdog.dialog.openFolder({ title: 'Choose an existing investigation folder', grant: 'an investigation' })
     if (!d) return
     setPath(d)
     if (!name) setName(basename(d).replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))

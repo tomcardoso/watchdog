@@ -8,13 +8,14 @@ import { PythonBackend, RpcError } from './python'
 import { Engine } from './engine'
 import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
+import { addGrant, listGrants, requestGrant, revokeGrant } from './access'
 import { getThumb, putThumb } from './thumbs'
 
 export function registerIpc(backend: PythonBackend, engine: Engine, claude: ClaudeSignIn, getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('rpc', async (_e, method: string, params: unknown) => {
     try {
       const result = await backend.call(method, params)
-      if (method === 'projects.list') refreshRoots(result)
+      if (method === 'projects.list') refreshRoots()
       return { ok: true, result }
     } catch (err) {
       const e = err as RpcError
@@ -68,9 +69,35 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
     const r = await dialog.showOpenDialog(getWindow()!, { title: opts.title ?? 'Choose files', properties: props })
     return r.canceled ? [] : r.filePaths
   })
-  ipcMain.handle('dialog:openFolder', async (_e, opts: { title?: string } = {}) => {
-    const r = await dialog.showOpenDialog(getWindow()!, { title: opts.title ?? 'Choose a folder', properties: ['openDirectory', 'createDirectory'] })
-    return r.canceled ? null : r.filePaths[0] ?? null
+  // `grant` names why the folder is wanted when Watchdog will change files in it (a home for new
+  // investigations, an existing investigation, a move or export destination). Choosing a folder in
+  // the system dialog for that stated purpose is the user's permission, as on macOS.
+  ipcMain.handle('dialog:openFolder', async (_e, opts: { title?: string; grant?: string } = {}) => {
+    const r = await dialog.showOpenDialog(getWindow()!, {
+      title: opts.title ?? 'Choose a folder',
+      message: opts.grant ? `Watchdog will be allowed to read and change files in the folder you choose (${opts.grant}).` : undefined,
+      properties: ['openDirectory', 'createDirectory']
+    })
+    const picked = r.canceled ? null : r.filePaths[0] ?? null
+    if (picked && opts.grant) {
+      addGrant(picked, opts.grant)
+      refreshRoots()
+    }
+    return picked
+  })
+
+  // Folder access (main/access.ts). The renderer can list and revoke, and can ask — but a grant
+  // outside a folder dialog always goes through a native prompt the renderer can't answer itself.
+  ipcMain.handle('access:list', () => listGrants())
+  ipcMain.handle('access:request', async (_e, path: string, label: string, why: string) => {
+    const ok = await requestGrant(getWindow(), path, label, why)
+    if (ok) refreshRoots()
+    return ok
+  })
+  ipcMain.handle('access:revoke', (_e, path: string) => {
+    const out = revokeGrant(path)
+    refreshRoots()
+    return out
   })
   ipcMain.handle('dialog:saveFile', async (_e, opts: { title?: string; defaultPath?: string } = {}) => {
     const r = await dialog.showSaveDialog(getWindow()!, { title: opts.title, defaultPath: opts.defaultPath })
@@ -117,15 +144,11 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
   })
 }
 
-function refreshRoots(projects: unknown): void {
-  if (!Array.isArray(projects)) return
-  setAllowedRoots(projects.map((p: { path: string }) => p.path).filter((p) => p && existsSync(p)))
+function refreshRoots(): void {
+  // wdfile:// serves files only from folders the user has allowed.
+  setAllowedRoots(listGrants().map((g) => g.path).filter((p) => p && existsSync(p)))
 }
 
-export async function loadRoots(backend: PythonBackend): Promise<void> {
-  try {
-    refreshRoots(await backend.call('projects.list', { all: true }))
-  } catch {
-    /* backend not ready; the renderer's first projects.list call fills this in */
-  }
+export async function loadRoots(_backend?: PythonBackend): Promise<void> {
+  refreshRoots()
 }

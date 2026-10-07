@@ -43,6 +43,10 @@ export function NewInvestigationDialog() {
     setBusy(true)
     setError('')
     try {
+      if (parent && !(await window.watchdog.access.request(parent, 'new investigations', 'Watchdog creates each new investigation as a folder here.'))) {
+        setError('Watchdog needs your permission to create the investigation in that folder.')
+        return
+      }
       const args = ['new', name.trim(), ...(desc.trim() ? ['--description', desc.trim()] : []), ...(parent ? ['--dir', parent] : [])]
       await runAction(args)
       const list = await call('projects.list', {})
@@ -81,7 +85,7 @@ export function NewInvestigationDialog() {
         <Field label="Where to keep it">
           <div className="row">
             <span className="mono truncate grow dlg-path" title={parent}>{parent || 'Default folder'}</span>
-            <Button icon={FolderOpen} onClick={() => void window.watchdog.dialog.openFolder({ title: 'Choose the parent folder' }).then((d) => d && setDir(d))}>Choose…</Button>
+            <Button icon={FolderOpen} onClick={() => void window.watchdog.dialog.openFolder({ title: 'Choose the parent folder', grant: 'new investigations' }).then((d) => d && setDir(d))}>Choose…</Button>
           </div>
         </Field>
         {error && <Callout tone="danger">{error}</Callout>}

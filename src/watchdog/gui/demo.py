@@ -32,6 +32,7 @@ import re
 import shutil
 import sys
 from collections import defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from watchdog.vault_paths import context_dir, incoming_dir
 
@@ -498,6 +499,10 @@ def build(target: Path, *, verbose: bool = False) -> Path:
     base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     (base.WATCHDOG_HOME / "config.json").write_text(json.dumps(
         {"projects_dir": str(target.parent), "chunk_workers": "auto", "chew_workers": "auto"}, indent=2) + "\n")
+    # Allow the demo's folder, as the app would after the user chose it (gui/src/main/access.ts).
+    (base.WATCHDOG_HOME / "access.json").write_text(json.dumps({"version": 1, "folders": [
+        {"path": str(target.parent.resolve()), "label": "demo investigations",
+         "granted": datetime.now(timezone.utc).isoformat()}]}, indent=2) + "\n")
 
     (vault / "context.md").write_text(CONTEXT_MD, encoding="utf-8")
     watchlist.add_terms(vault, WATCH_TERMS)
