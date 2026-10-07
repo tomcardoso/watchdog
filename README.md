@@ -16,7 +16,7 @@ Never use it with confidential source communications, leaked or unpublished mate
 
 ## What it does
 
-- **Reads almost anything.** PDFs (scanned or not), Word documents, spreadsheets, images, web pages, audio and video. Scanned documents are OCR'd automatically; a 500-page PDF is no problem.
+- **Reads almost anything.** PDFs (scanned or not), Word documents, spreadsheets, images and web pages. Scanned documents are OCR'd automatically; a 500-page PDF is no problem.
 - **Extracts entities, not just text.** People, companies, addresses, relationships and dates become linked notes, with a page-level citation on every fact.
 - **Builds a timeline.** Date-bound events from every document are assembled into one chronological view of the investigation.
 - **Surfaces what you might miss.** Shared addresses, overlapping directors, an entity that keeps turning up, a new document that contradicts an old one. Contradictions are flagged — they are often stories in themselves.
