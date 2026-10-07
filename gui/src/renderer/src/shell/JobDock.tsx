@@ -7,9 +7,9 @@ import { useApp } from '@renderer/lib/store'
 import type { Job } from '@shared/api'
 
 export const STAGE_LABELS: Record<string, string> = {
-  chew: 'Reading documents (local)',
-  extract: 'Extracting with the model',
-  dig: 'Extracting with the model',
+  chew: 'Pre-processing (on this computer)',
+  extract: 'Processing (model extraction)',
+  dig: 'Processing (model extraction)',
   fold: 'Merging exact duplicates',
   reconcile: 'Reconciling entities',
   commit: 'Writing to the vault',

@@ -12,7 +12,7 @@ from watchdog.cmd.base import (
 from watchdog.links import note_link
 from watchdog.vault_paths import context_dir
 
-# Briefing files that aren't ingest briefings.
+# Briefing files that aren't run briefings.
 _NOT_INGEST_BRIEFINGS = ("leads-", "alerts-", "research-")
 _BRIEFING_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}(-\d+)?\.md$")
 _WID = re.compile(r"<!--wid:(alert:[^>]+?)-->")

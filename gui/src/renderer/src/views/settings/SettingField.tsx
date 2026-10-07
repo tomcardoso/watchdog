@@ -22,6 +22,7 @@ const LABELS: Record<string, string> = {
   dup_threshold: 'Duplicate threshold',
   embed_model: 'Embedding model',
   rerank_model: 'Reranker model',
+  chew_workers: 'Pre-processing workers',
   wayback_save: 'Save to the Wayback Machine'
 }
 const ACRONYMS: Record<string, string> = { ocr: 'OCR', url: 'URL', pdf: 'PDF', api: 'API' }

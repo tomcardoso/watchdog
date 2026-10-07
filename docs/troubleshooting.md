@@ -98,7 +98,7 @@ A connection error (refused, timed out) means the server at that address is not 
 
 A run has two stages: reading each document with a model (the slow, paid part), then writing everything to the investigation in one pass and producing the briefing. If the second stage never got a chance to run — no briefing appeared, entity summaries look unfinished, or a message said nothing was written yet — the batch can be completed without re-reading anything.
 
-The Overview shows **A batch is waiting to be finished** with a **Finish** button. Choose it, or add documents again, and the app finishes the batch. **Activity → Maintenance → Bark** runs only this wrap-up step. It is safe to run more than once: if it hits a rate limit part-way, nothing is written at all, and you run it again once the limit resets. Nothing in an unfinished batch is ever discarded.
+The Overview shows **A batch is waiting to be finished** with a **Finish** button. Choose it, or add documents again, and the app finishes the batch. **Activity → Maintenance → Post-processing** runs only this wrap-up step. It is safe to run more than once: if it hits a rate limit part-way, nothing is written at all, and you run it again once the limit resets. Nothing in an unfinished batch is ever discarded.
 
 ## The computer went to sleep during a run
 
@@ -106,7 +106,7 @@ While a run is going, Watchdog asks the computer not to sleep, because a sleep p
 
 ## A lock is stuck
 
-If a run was interrupted, a lock file can be left behind that blocks the next run. Open **Activity → Maintenance** and choose **Release lock** under **Release a stuck lock**. The card shows whether a chew or ingest lock is currently held. The same lock can also be released with **Unlock…** in the strip above the **Documents** list.
+If a run was interrupted, a lock file can be left behind that blocks the next run. Open **Activity → Maintenance** and choose **Release lock** under **Release a stuck lock**. The card shows whether a pre-processing or processing lock is currently held. The same lock can also be released with **Unlock…** in the strip above the **Documents** list.
 
 A running step refreshes its lock every five minutes, however long it runs, so a lock only ages once the run that held it has stopped. If the lock is recent (under 30 minutes old), Watchdog leaves it alone, because the run may still be going. Check the **Jobs** tab to make sure nothing is running. Once you are sure, switch on **Force** and choose **Force release**.
 

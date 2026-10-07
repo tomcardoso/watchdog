@@ -1,4 +1,4 @@
-// Usage: what each ingest run cost, with a per-stage breakdown. Bars are drawn with plain CSS.
+// Usage: what each processing run cost, with a per-stage breakdown. Bars are drawn with plain CSS.
 
 import { BadgeInfo, Coins } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'

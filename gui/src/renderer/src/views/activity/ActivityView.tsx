@@ -1,5 +1,5 @@
 // Activity: jobs and maintenance. Jobs work with no investigation open; the vault-specific tabs
-// (maintenance, ingest history, usage) appear only inside one.
+// (maintenance, processing history, usage) appear only inside one.
 
 import { Activity, History, Wrench, Coins, Terminal } from 'lucide-react'
 import { lazy, Suspense } from 'react'
@@ -28,7 +28,7 @@ export default function ActivityView() {
   if (project)
     tabs.push(
       { value: 'maintenance', label: 'Maintenance', icon: Wrench },
-      { value: 'history', label: 'Ingest history', icon: History },
+      { value: 'history', label: 'Processing history', icon: History },
       { value: 'usage', label: 'Usage', icon: Coins }
     )
 

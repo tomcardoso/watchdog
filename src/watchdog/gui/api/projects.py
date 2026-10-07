@@ -173,7 +173,7 @@ def doctor() -> dict:
             "kind": "corrupt_registry", "slug": slug, "name": info["name"], "path": info["path"],
             "problem": f"Registry file is corrupt: {reg_path}",
             "suggestion": ("It's a regenerated summary cache — delete it and it will rebuild on "
-                           "the next dig or bark."),
+                           "the next processing or post-processing run."),
         })
     return {"issues": issues}
 
