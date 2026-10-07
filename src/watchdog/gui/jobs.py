@@ -209,7 +209,8 @@ class JobManager:
         self._flush(job)
         job.exit_code = code
         job.finished = _now()
-        job.state = "done" if code == 0 else ("cancelled" if job.cancel_requests else "failed")
+        # A stopped job is "cancelled" however it exits: a graceful Ctrl+C stop often exits 0.
+        job.state = "cancelled" if job.cancel_requests else ("done" if code == 0 else "failed")
         rpc.emit("job.finished", {"job": job.to_dict()})
 
     def cancel(self, job_id: str) -> None:

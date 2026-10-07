@@ -166,6 +166,19 @@ def test_cancel_sends_sigint_then_kills(sink, fake_cli):
     assert job.state == "cancelled" and job.exit_code != 0
 
 
+def test_a_stopped_job_that_exits_cleanly_is_cancelled_not_done(sink, fake_cli):
+    """`watchdog watch` stops on Ctrl+C with exit 0; the app must still show it as stopped."""
+    clean = ("import time\ntry:\n    print('ready', flush=True)\n    time.sleep(30)\n"
+             "except KeyboardInterrupt:\n    raise SystemExit(0)")
+    started = api.start(args=[clean], label="c")
+    deadline = time.time() + 10
+    while not api.get(started["id"])["log"] and time.time() < deadline:
+        time.sleep(0.05)
+    api.cancel(started["id"])
+    job = _wait(started["id"])
+    assert job.state == "cancelled" and job.exit_code == 0
+
+
 def test_log_is_a_ring_buffer(sink, fake_cli):
     started = api.start(args=["for i in range(5200): print(i)"], label="many")
     job = _wait(started["id"])
