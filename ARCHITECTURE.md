@@ -493,9 +493,21 @@ See D45–D48.
   under `~/.watchdog/gui/chats/`.
 - **Files.** The renderer reads vault files only through `wdfile://`, which the main process limits
   to registered vault folders. Thumbnails are cached in the app's user-data folder.
-- **Interpreter.** `WATCHDOG_PYTHON`, the user's choice, pipx's `watchdog-intel` venv, the
-  `watchdog` launcher's shebang, then `python3`; the bundled package source goes first on
-  `PYTHONPATH`. `watchdog gui` launches the app.
+- **Engine (D267).** The app installs its own Python: a bundled `uv` creates a Python 3.12
+  environment under the app's user-data folder (`engine/`) and installs the bundled wheel of the
+  same version, then downloads the local models (`gui/src/main/engine.ts`,
+  `watchdog/gui/engine_setup.py`). `WATCHDOG_PYTHON` or a user's choice overrides it; in
+  development the repository's source goes first on `PYTHONPATH`. The terminal commands remain the
+  app's mutation path but are retired from user-facing documentation.
+- **Folder access (D268).** `~/.watchdog/access.json` lists the folders the user has allowed;
+  only the main process writes it (`gui/src/main/access.ts`). The backend runs with
+  `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
+  allowed folders and Watchdog's own exempt locations, in the sidecar and every CLI subprocess; the
+  sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
+  edits outside their vault.
+- **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
+  build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
+  updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
 
 ---
 
@@ -543,3 +555,8 @@ noted as such.
   CLI command that makes it in the terminal, or the library function that command calls; the app
   keeps the CLI's gates (the public-records acknowledgement, confirmations before irreversible
   operations). *History: D265.*
+- **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
+  `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
+  allowed folder or an exempt location are refused, and only the app's main process ever writes
+  the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
+  D268.*
