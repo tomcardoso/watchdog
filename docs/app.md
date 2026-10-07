@@ -1,36 +1,14 @@
 # The desktop app
 
-Watchdog has a desktop app as well as the terminal commands. It is the same program underneath: every button that changes an investigation runs the same `watchdog` command you would type, and every list and page reads the same files. What the app adds is what a terminal can't show — a document's pages beside the facts taken from it, page thumbnails, an entity's connections drawn as a network, the timeline laid out by date, and progress you can watch.
+Watchdog is a desktop app. You use it entirely through its window: you never need a terminal. It shows what a list of files can't — a document's pages beside the facts taken from it, page thumbnails, an entity's connections drawn as a network, the timeline laid out by date, and progress you can watch.
 
-You can switch between the two freely. An investigation created in the app opens in the terminal and in Obsidian, and the other way round.
+Underneath, the app runs Watchdog's engine, the same program that was once run from the command line. Every button that changes an investigation runs one of its steps, and every list and page reads the same files. Each investigation is still an ordinary folder of Markdown files, so it also opens in [Obsidian](https://obsidian.md). The command line is being retired; [Commands](commands.md) remains as a reference for people who already use it.
 
-> **Public records only.** The app sends documents to a cloud AI model exactly as `watchdog add` does, and shows the same warning, with the number of documents about to be sent, before it sends anything. The rule is unchanged: use Watchdog only for documents that are public or presumptively public.
+> **Public records only.** The app sends the text of your documents to the cloud AI model you chose, and it shows a warning, with the number of documents about to be sent, before it sends anything. The rule is unchanged: use Watchdog only for documents that are public or presumptively public.
 
 ## Installing it
 
-Install the app like any other. The first time it opens, it walks you through setup; you never need a terminal.
-
-1. **Welcome.** A short explanation of what Watchdog does, and the public-records rule.
-2. **Install the engine.** The app downloads Python, Watchdog's libraries and the models that run on your computer (document conversion, name detection and search). This is a one-time download of about 5 GB and needs about 7 GB of free space and an internet connection. The app keeps everything in its own folder, so nothing else on your computer changes. You can watch each stage, open the details, cancel, and try again; whatever was already downloaded is kept. If you close the app part-way, it picks up at the same step when you reopen it.
-3. **Where your investigations live.** The folder where each investigation gets its own folder. The default is `Investigations` in your home folder.
-4. **Connect a model.** Sign in with a Claude subscription (no per-run charge), paste an Anthropic API key (billed per use), or use another provider such as OpenAI, Gemini, DeepSeek, OpenRouter or a model on your own computer. The Ask Claude screens always need a Claude sign-in; if you pick another provider, setup offers that sign-in as an optional extra.
-5. **Confirm what you send.** Whether to skip the public-records pause for runs that use only your Claude subscription. The default is to ask every time.
-6. **Ready.** Create your first investigation or open the app.
-
-When a new version of the app needs a newer engine, the app updates it on its own at the next start and shows its progress. To repair a damaged engine, or to download a model that failed, open **Settings → Setup**: **Repair or reinstall the engine** keeps your investigations, settings and models.
-
-### Running the app from source
-
-This is for developers. You need Node.js 20 or later and, to run against your own checkout, a Python with Watchdog's dependencies:
-
-```bash
-git clone https://github.com/tomcardoso/watchdog.git
-cd watchdog/gui
-npm install
-WATCHDOG_PYTHON=/path/to/python npm run dev
-```
-
-Without `WATCHDOG_PYTHON`, the app looks for an existing Watchdog installation and, if it finds none, offers the same setup as above. Settings → Appearance shows which Python it is using.
+[Installing Watchdog](install.md) covers downloading the app, the first-run setup (the engine, the local models, the investigations folder, the model provider and the public-records pause), updating and uninstalling. To repair a damaged engine, or to download a model that failed, open **Settings → Setup**; see [Setup](#setup) below.
 
 ## Finding your way around
 

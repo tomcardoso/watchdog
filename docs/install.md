@@ -1,248 +1,129 @@
 # Installing Watchdog
 
-This page gets Watchdog installed and set up on your computer, and assumes you have never used a terminal before. Most steps take a minute or two; the one-time model download during setup can take a few minutes on a slow connection. Read the page through once before starting.
+Watchdog is a desktop app. You download an installer, open it like any other program, and the app does the rest the first time it runs. You never need a terminal, and you do not install Python or anything else beforehand.
+
+The first run includes a one-time download of the models that run on your computer, which takes several minutes. Read the page through once before starting.
 
 ## What you need
 
 | What | Why | Free? |
 |------|-----|-------|
-| A computer running macOS, Linux, or Windows | Watchdog runs on your computer, not in the cloud | n/a |
-| [Obsidian](https://obsidian.md) | The app where you read and explore your documents | Free |
-| [Claude Code](https://claude.ai/download) | The AI assistant you investigate in — required | Free to install |
-| Claude access | Powers the AI that processes your documents | Pro/Max subscription, or an API key |
+| A Mac, Windows or Linux computer | Watchdog runs on your computer, not in the cloud | n/a |
+| About 7 GB of free disk space and an internet connection | Setup downloads about 5 GB, and needs room to unpack it | n/a |
+| Claude access | Powers the AI that reads your documents and answers your questions | Pro/Max subscription, or an API key |
+| [Obsidian](https://obsidian.md) (optional) | A second way to browse an investigation's files | Free |
 
-**Obsidian** is a note-taking app that Watchdog uses to organize and display your research. You don't need to know how to use it before starting — Watchdog sets it up for you.
+**Claude access** is how Watchdog signs in to Claude. A Pro subscription (US$20/month) is enough for most journalism work; if you are adding hundreds of documents at a time, Max (from US$100/month) gives you higher limits. If you have an Anthropic API key (a paid, metered way to use Claude), you can use that instead.
 
-**Claude Code** is the AI assistant where you do your investigative work: asking questions of your documents, surfacing connections, and building up wiki threads. It's made by Anthropic, the company that makes Claude, and you install it once. It is required — the interactive investigation commands run inside it. The separate document-processing step defaults to Claude too, so nothing extra is needed to get started, though it can be pointed at another provider — OpenAI's GPT-5.6 Luna benchmarked strongest against real filings — to cut cost or improve recall. See [Model backends](configuration.md#model-backends).
+Asking questions of your investigation always runs on Claude. The step that reads each document can use a different provider if you prefer — OpenAI, Google Gemini, DeepSeek, OpenRouter or a model running on your own computer — and you choose that during setup or later in Settings. See [Model backends](configuration.md#model-backends) for the options and [Benchmarks](benchmarks.md) for how they compare.
 
-**Claude access** is required because processing documents requires AI. A Pro subscription (US$20/month) is enough for most journalism work; if you're ingesting hundreds of documents at a time, Max (from US$100/month) gives you higher limits. If you have an Anthropic API key (a paid, metered way to access Claude), you can use that instead.
+**Obsidian** is a free note-taking app. Every investigation is a folder of Markdown files that Obsidian can open, but you do not need it to use Watchdog.
 
-## Step 1: install Obsidian
+## Step 1: download the installer
 
-1. Go to [obsidian.md](https://obsidian.md) and click **Download**.
-2. Open the downloaded file and drag Obsidian to your Applications folder.
-3. Open Obsidian — it will ask you to create or open a vault. Click **Create new vault** and give it any name for now. You'll create your real investigation vaults later.
+Go to the [latest release](https://github.com/tomcardoso/watchdog/releases/latest) on GitHub and download the file for your computer from the list of assets:
 
-## Step 2: install Claude Code and sign in
+| Computer | File |
+|----------|------|
+| Mac with Apple silicon (M1 and later) | `Watchdog-<version>-arm64.dmg` |
+| Mac with an Intel processor | `Watchdog-<version>-x64.dmg` |
+| Windows (64-bit) | `Watchdog-Setup-<version>.exe` |
+| Linux | `Watchdog-<version>.AppImage` |
 
-1. Go to [claude.ai/download](https://claude.ai/download) and download the app.
-2. Open the downloaded file and follow the installation instructions.
-3. Open Claude Code and sign in with your Claude.ai account.
+`<version>` is the release number, such as `1.0.3`. If you are not sure which Mac you have, open the Apple menu and choose **About This Mac**: it lists either an Apple chip (M1, M2 and so on) or an Intel processor.
 
-If you don't have a Claude.ai account yet, create one at [claude.ai](https://claude.ai) and subscribe to Pro or Max before continuing. If you have an Anthropic API key and prefer to use that instead, run `claude login` in your terminal after installation and follow the prompts.
+The release page also lists other files, such as ones ending in `.blockmap`, `.zip` and `latest*.yml`. The app's updater uses those; you do not need them.
 
-## Step 3: open the terminal
+## Step 2: install it
 
-Terminal is a built-in app that lets you type commands to your computer. You'll only need it for the next few steps.
+**Mac.** Open the `.dmg` file and drag Watchdog into your Applications folder. Open Watchdog from there.
 
-**macOS:** Press **Command + Space**, type **Terminal**, press Return.
+**Windows.** Run `Watchdog-Setup-<version>.exe` and follow the installer.
 
-**Linux:** Press **Ctrl + Alt + T**, or search for Terminal in your application menu.
+**Linux.** An AppImage is a single file that runs without installing. Make it executable, then open it. In most file managers you right-click the file, open its properties, and tick the box that allows it to run as a program. If you prefer a terminal, `chmod +x Watchdog-<version>.AppImage` does the same, and you then run the file.
 
-**Windows:** Press **Windows + R**, type **cmd**, press Return. Or install [Windows Terminal](https://apps.microsoft.com/detail/9n0dx20hk701) for a better experience.
+### If your computer says it cannot verify the app
 
-## Step 4: install the prerequisites
+Operating systems check who published an app, and they may stop Watchdog on its first launch. This is a general safeguard, and it has a way past it.
 
-Watchdog needs two tools for processing PDFs — **qpdf** and **Ghostscript** — and **pipx**, a tool for installing Python programs. On Linux and Windows it also needs **Tesseract**, which handles OCR (optical character recognition — turning scanned pages into searchable text).
+- **macOS** may say it cannot verify the developer, or that Watchdog cannot be opened. Open **System Settings**, choose **Privacy & Security**, scroll to the message about Watchdog, and choose **Open Anyway**. Then open Watchdog again and confirm.
+- **Windows** may show a SmartScreen message reading "Windows protected your PC". Choose **More info**, then **Run anyway**.
 
-If you already use [uv](https://docs.astral.sh/uv/), Astral's Python package and tool manager, you can use it instead of pipx for this step and the next — see [Installing with uv instead of pipx](#optional-installing-with-uv-instead-of-pipx) below, then come back to Step 6.
+Download Watchdog only from the project's [GitHub Releases page](https://github.com/tomcardoso/watchdog/releases/latest).
 
-**macOS:**
+## Step 3: first-run setup
 
-```bash
-brew install qpdf ghostscript pipx
-pipx ensurepath
-```
+The first time Watchdog opens, it walks through setup. Each step has a **Continue** or **Back** button, and the app remembers where you were if you close it part-way.
 
-Then close and reopen Terminal so the new `pipx` path takes effect. If you don't have Homebrew, install it first: [brew.sh](https://brew.sh).
+1. **Welcome.** A short description of what Watchdog does, and the public-records rule (see below).
+2. **Install the Watchdog engine.** Watchdog is built on a Python program. The app installs its own private copy, in its own folder, along with the libraries and models it needs. Nothing else on your computer changes. Choose **Install**.
 
-**Ubuntu / Debian Linux:**
+   The download is about 5 GB and needs about 7 GB of free space. It covers Python and Watchdog's libraries, document conversion (Docling), name detection (GLiNER), the search models (an embedding model and a reranker), and text recognition for scans. These are described in [Methodology](methodology.md). You can watch each stage, choose **Show details** to see the installer's log, and **Cancel** at any point. After a cancel or a failure, choose **Try again** and it resumes where it stopped; **Start over** begins from scratch. If an optional piece cannot be downloaded, Watchdog says so and fetches it the first time it is needed.
+3. **Where your investigations live.** Each investigation is a folder inside one parent folder. The default is a folder named `Investigations` in your home folder. Choose **Choose…** to pick another, then **Continue**. Watchdog changes files only in folders you have allowed, so choosing a folder here also gives Watchdog permission to create investigations in it. See [Folder access](app.md#folder-access).
+4. **Connect a model.** Pick one:
+   - **Claude subscription.** Choose **Sign in with Claude**. Your browser opens so you can sign in to your Claude account; the app waits and continues when you finish. If the browser does not open, the app shows a link to the sign-in page.
+   - **Anthropic API key.** Paste a key that starts with `sk-ant-` and choose **Save key**. You create keys in the Anthropic Console, under API keys; **Open the Console** takes you there. Cost depends on the documents and models you choose.
+   - **Another provider.** Choose OpenAI, Google Gemini, DeepSeek, OpenRouter or a local model, then paste its key (or, for a local model, the server's address) and pick a model. The question-and-answer screens still need a Claude sign-in; this step offers one as an optional extra, and you can do it later in **Settings → Models & keys**.
 
-```bash
-sudo apt install qpdf ghostscript pipx tesseract-ocr libtesseract-dev
-```
+   If you are not ready, **Set up later** skips this step, and Watchdog asks again when it needs a model.
+5. **Confirm what you send.** Before documents go to a model, Watchdog normally pauses and asks you to confirm they are public records. You can choose to skip that pause for runs that use only your Claude subscription. The default, **Ask before every run**, is recommended. A run that uses a paid API key always asks. Choose **Finish setup**. You can change this later; see [Auto-approve](configuration.md#auto-approve).
+6. **Ready.** Choose **Create my first investigation**, or **Open Watchdog** to look around first.
 
-**Fedora / RHEL Linux:**
-
-```bash
-sudo dnf install qpdf ghostscript pipx tesseract tesseract-devel
-```
-
-**Windows:**
-
-- qpdf: [github.com/qpdf/qpdf/releases](https://github.com/qpdf/qpdf/releases) — download the installer
-- Ghostscript: [ghostscript.com/releases/gsdnld.html](https://ghostscript.com/releases/gsdnld.html) — download the installer
-- Tesseract: [github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki) — download the installer. Required for OCR on Windows; `watchdog setup` will refuse to continue without it.
-- pipx: open the terminal and run `python -m pip install pipx`, then `pipx ensurepath`
-
-## Step 5: install Watchdog
-
-```bash
-pipx install watchdog-intel
-```
-
-Wait for it to finish — you'll see a message saying the installation is complete. This installs Watchdog from [PyPI](https://pypi.org/project/watchdog-intel/), the standard package repository for Python tools.
-
-## Step 6: run setup
-
-```bash
-watchdog setup
-```
-
-Setup checks that qpdf and Ghostscript are installed, enables tab completion in your terminal, detects your machine's OCR engine, and downloads the models Watchdog uses for document conversion, search, and name detection. The name-detection model (GLiNER, which spots people, organizations, and places as a backstop alongside the AI model's own reading — see [Methodology](methodology.md)) is the largest single download, at roughly 1.1GB; the rest add up to a few hundred megabytes more. All of it is a one-time download that may take a few minutes on a slow connection.
-
-Switching OCR engines (`watchdog settings ocr_engine tesseract`) works the same way: Watchdog installs the faster Tesseract binding for you automatically, provided the system Tesseract headers from the platform install steps above are already in place.
-
-Along the way it asks four questions:
-
-1. **Where to store your investigation projects.** Press Return to accept the default (`~/Investigations`), or type a different path.
-2. **Whether to install the optional capture browser** for full page snapshots (an extra ~150 MB). The default is no; see [Full page snapshots](#optional-full-page-snapshots) below.
-3. **How to authenticate with Claude.** Setup explains that Claude Code powers the interactive commands and is the ingestion default, and reports whether it detects an existing Claude Code login. Press Return to use your subscription, or choose the metered API key option and paste your key.
-
-If you choose the subscription, setup also warns that ingesting more than a few documents at once can be token-heavy for a Pro plan's session limits, and offers to route ingestion to a cheaper metered provider instead — OpenAI's GPT-5.6 Luna is named first, since it benchmarked strongest against real filings (see [Benchmarks](benchmarks.md)), alongside DeepSeek and Gemini — walking you through picking that provider, pasting its key, and choosing a model for each ingest stage. This is entirely optional; declining leaves everything on your Claude Code subscription, same as before. See [Model backends](configuration.md#model-backends) for the full picture, including changing this later with `watchdog settings auth` or `watchdog settings`.
-
-If you decline and stay on the subscription, setup also lowers `extract_concurrency` from its default of 20 to 3 and tells you it's doing so: concurrent extractions on a subscription share one Claude Code session's rate limit, and 20 reliably throttles it. `watchdog settings auth` applies the same tune-down if you switch to subscription auth later, and undoes it automatically if you later switch back to an API key — no need to raise it back by hand unless you set your own value.
-
-4. **Whether to auto-approve subscription runs.** Before sending documents to a model, Watchdog normally pauses and asks you to confirm they are public records. Setup asks whether to skip that pause for runs where you are signed in with your Claude subscription and every step uses it. The default is no, so every run asks; re-running setup with it already on defaults to keeping it. Say yes only if you already check that what you add is public record. A run that uses a paid API key for any step always asks. See [Auto-approve](configuration.md#auto-approve) to change it later.
-
-When setup finishes, reload your shell so tab completion takes effect:
-
-**macOS / zsh:**
-
-```bash
-source ~/.zshrc
-```
-
-**bash:**
-
-```bash
-source ~/.bashrc
-```
-
-On Windows there is nothing to reload — setup installs tab completion only for the zsh, bash, and fish shells, so it is skipped there.
-
-After the reload, pressing Tab after `watchdog ` shows the available commands, and pressing Tab after `watchdog projects status ` completes your investigation names.
-
-## Step 7: check it works
-
-```bash
-watchdog settings about
-```
-
-You should see Watchdog's version number and project links. If you see `watchdog: command not found` instead, head to [Troubleshooting](troubleshooting.md#watchdog-command-not-found).
+> **Public records only.** The originals of your files never leave your computer, and document conversion runs locally. But the extracted text of each document is sent to the AI model you chose, and that cannot be taken back. Use Watchdog only on documents that are public, or presumptively public. Never use it with confidential source communications, leaked or unpublished material, private correspondence, or anything that could identify a source.
 
 ## Optional: using GPT-5.6 Luna for extraction
 
-Claude on your existing subscription is the default and needs nothing extra — skip this section if that's enough for you. It stops being enough once you're feeding Watchdog real volume: subscription auth shares one Claude Code session's rate limit, and a run of even a handful of documents can trip it — one traced case hit it at just six documents ingested at once, and the run stalls waiting out the limit rather than failing outright. Routing extraction to a metered API key instead avoids that, and lets documents run many at a time rather than a few.
+Claude on your existing subscription is the default and needs nothing extra. It stops being enough once you are adding real volume: a subscription shares one session's rate limit (a cap on how much work the provider allows in a window of time), and a run of even a handful of documents can trip it. The run then waits out the limit rather than failing. Routing the reading step to a metered API key avoids that, and lets many documents be read at once.
 
-Watchdog benchmarks its own model recommendations against real court and financial filings rather than picking one on reputation — see [Benchmarks](benchmarks.md) for the numbers and the reasoning behind them. The current pick for extraction is OpenAI's GPT-5.6 Luna, at roughly $1 per 1,000 pages. That's today's answer, not a permanent one — cheap models keep improving, and this recommendation will move as better ones come along.
+Watchdog benchmarks its own model recommendations against real court and financial filings; see [Benchmarks](benchmarks.md) for the numbers and the reasoning. The current pick for extraction is OpenAI's GPT-5.6 Luna, at roughly $1 per 1,000 pages. That is today's answer, not a permanent one.
 
 To set it up:
 
-1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys** in the left sidebar.
-2. Add a payment method under **Settings → Billing**. Unlike Claude's flat monthly subscription, OpenAI's API is pay-as-you-go with no free tier, so a card on file is required before a key can make any paid calls.
-3. Click **Create new secret key** and copy it — it's shown only once.
-4. Run `watchdog setup` and paste the key when it offers to route ingestion to a metered provider, then pick Luna once when asked for a model — that single pick routes all three ingest stages (classifier, extractor, finalizer) to Luna. By default, model effort levels for the classify/extract/finalize model steps are set to low/medium/high, respectively, but benchmarks have found that Luna extractions perform best with effort set to `high`. To do this, run the following command:
-
-   ```bash
-   watchdog settings extractor_effort high
-   ```
-
-   If want to change your choice of model or effort level later, you can set the models directly by running `watchdog settings` and tweaking the configuration interactively, or by running the following commands:
-
-   ```bash
-   watchdog settings classifier_model openai:gpt-5.6-luna
-   watchdog settings classifier_effort low
-   watchdog settings extractor_model openai:gpt-5.6-luna
-   watchdog settings extractor_effort high
-   watchdog settings finalizer_model openai:gpt-5.6-luna
-   watchdog settings finalizer_effort high
-   ```
-
-   Every future `watchdog dig`/`watchdog bark` uses these until you change them again — no per-run flags needed. `watchdog settings` with no arguments shows every setting's current value, including these; `watchdog settings <key>` also works to route just one stage somewhere different, if you want a mix.
-
-See [Model backends](configuration.md#model-backends) for routing a stage to a different provider entirely, and [Controlling cost](configuration.md#controlling-cost) for the full cost picture.
+1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys**.
+2. Add a payment method under **Settings → Billing**. OpenAI's API is pay-as-you-go with no free tier, so a card must be on file before a key can make any paid calls.
+3. Create a secret key and copy it. It is shown only once.
+4. In Watchdog, open **Settings → Models & keys**, paste the key under OpenAI, and route document reading to Luna. Benchmarks found Luna extractions perform best with the extractor's effort set to high; the effort settings are in Settings, and [Model backends](configuration.md#model-backends) and [Controlling cost](configuration.md#controlling-cost) explain them.
 
 ## Optional: audio and video transcription
 
-Watchdog can transcribe audio and video files if you install support for it. This requires **ffmpeg** and adds roughly 2 GB of dependencies.
-
-**macOS:**
-
-```bash
-brew install ffmpeg
-```
-
-**Ubuntu / Debian Linux:**
-
-```bash
-sudo apt install ffmpeg
-```
-
-**Windows:** download from [ffmpeg.org/download.html](https://ffmpeg.org/download.html).
-
-Then reinstall Watchdog with transcription support:
-
-```bash
-pipx install "watchdog-intel[asr]" --force
-```
+Watchdog can transcribe audio and video files when extra components are installed. These are not part of the app's standard setup, and the app does not install them for you. If you need transcription, see [Commands](commands.md) and [Supported file types](vault.md#supported-file-types), or ask for help in an [issue](https://github.com/tomcardoso/watchdog/issues).
 
 ## Optional: full page snapshots
 
-By default, `watchdog research` and `watchdog research fetch` save web pages with a plain, sanitized fetch. No JavaScript runs, so pages that build themselves in the browser can come through as an empty shell, and images and styling aren't captured.
+By default, saving a web page from **Web research** or **Fetch web links…** is a plain, sanitized fetch. No scripts run, so pages that build themselves in the browser can come through as an empty shell, and images and styling are not captured.
 
-Installing the optional capture browser changes that: every web page is rendered in a real (invisible) browser and saved as a faithful, self-contained snapshot, with images, fonts, and stylesheets included and all scripts stripped. It's worth it if the sources you pull in are often JavaScript-heavy or you want the visual layout preserved.
+An optional capture browser changes that: each page is rendered in a real (invisible) browser and saved as a self-contained snapshot, with images, fonts and stylesheets included and all scripts stripped. It adds about 150 MB. **Settings → Setup** shows whether it is installed. Without it, Watchdog falls back to the plain fetch, so nothing breaks either way.
 
-`watchdog setup` asks whether to install it. To install it later, or if you said no the first time:
+## Updating
 
-```bash
-pipx inject watchdog-intel playwright
-~/.local/pipx/venvs/watchdog-intel/bin/playwright install chromium
-```
+Watchdog checks GitHub for a newer release shortly after it opens, and never downloads anything without being asked. When one is ready, an **Update available** button appears in the top bar. Choose it to download the update, then choose **Restart to update**. You can also check yourself: on a Mac, choose **Check for Updates…** from the Watchdog menu; on Windows and Linux, from the **Help** menu. Watchdog tells you if you already have the latest version.
 
-This adds about 150 MB (the browser itself). If it isn't installed, `watchdog research` and `watchdog research fetch` fall back to the plain sanitized fetch automatically — nothing breaks either way.
+An update replaces the app and the engine it carries. The next time Watchdog starts after an update, it installs the matching engine automatically and shows its progress. Your investigations, settings and downloaded models are untouched.
 
-## Optional: installing with uv instead of pipx
+If an update does not install, see [Troubleshooting](troubleshooting.md#updates-fail). You can always download the newest installer from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest) and install it over the old one.
 
-If you already use [uv](https://docs.astral.sh/uv/) — Astral's Python package and tool manager — you can use it instead of pipx for the whole install. Everything past this point (`watchdog setup`, day-to-day use, upgrades) works exactly the same either way; only the install and upgrade commands differ.
+## Uninstalling
 
-Install uv, if you don't have it already:
+Uninstalling Watchdog does not touch your investigations, which are ordinary folders you own. To remove it completely:
 
-**macOS:**
+1. **Remove the app.** On a Mac, drag Watchdog from Applications to the Trash. On Windows, use **Settings → Apps** and uninstall Watchdog. On Linux, delete the AppImage file.
+2. **Remove the app's data folder**, which holds the private engine, downloaded models and preferences (several gigabytes):
+   - Mac: `~/Library/Application Support/Watchdog`
+   - Windows: `%APPDATA%\Watchdog`
+   - Linux: `~/.config/Watchdog`
+3. **Remove the `.watchdog` folder in your home folder** (`~/.watchdog`, or `C:\Users\<you>\.watchdog` on Windows). It holds your settings, the list of your investigations, your saved API keys and the list of allowed folders. Delete it only if you want to start from nothing.
+4. **Keep or delete your investigations.** They are the folders you chose in setup (by default `Investigations` in your home folder). Delete them only if you no longer need the work; this cannot be undone.
 
-```bash
-brew install uv
-```
+On a Mac, the Library folder is hidden. In Finder, choose **Go → Go to Folder…** and paste the path. 
 
-**Linux:**
+## Already using the command-line version?
 
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
+Earlier versions of Watchdog were installed with `pipx` and run from a terminal. If you did that, the app finds that installation and can run on it, and your settings, investigations and API keys are kept in the same `.watchdog` folder, so they carry over. If the existing installation is older than the version the app needs, the app skips it and installs its own engine. **Choose Python…** in the app's start-up error screen and in **Settings → Appearance** lets you point it at a particular installation.
 
-**Windows:**
+Older investigations are renamed to the new folder names (`incoming/` and `context/`, formerly `_INCOMING/` and `_CONTEXT/`) the first time they are opened. Nothing is deleted. The first time you open an existing investigation, Watchdog also asks you to allow access to its folder; see [Folder access](app.md#folder-access).
 
-```powershell
-powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-
-Then install Watchdog:
-
-```bash
-uv tool install watchdog-intel
-```
-
-If that prints a warning that its tool directory isn't on your `PATH`, run `uv tool update-shell`, then close and reopen Terminal. From here, skip Step 5 above and continue with Step 6 (`watchdog setup`).
-
-Wherever the rest of this page says a `pipx` command, use its `uv` equivalent instead:
-
-| pipx | uv |
-|------|-----|
-| `pipx install watchdog-intel` | `uv tool install watchdog-intel` |
-| `pipx install "watchdog-intel[asr]" --force` | `uv tool install "watchdog-intel[asr]"` |
-| `pipx inject watchdog-intel playwright` | `uv tool install watchdog-intel --with playwright` |
-| `pipx upgrade watchdog-intel` | `uv tool upgrade watchdog-intel` |
+The command line is being retired. It still works, because the app runs it underneath, but it is no longer the way in. [Commands](commands.md) remains as a reference for people who already use it.
 
 ## Where next
 
-Watchdog is installed. [Getting started](getting-started.md) walks you through your first investigation from start to finish. If anything on this page didn't work, see [Troubleshooting](troubleshooting.md).
+Watchdog is installed. [Getting started](getting-started.md) walks you through your first investigation from start to finish. If anything on this page did not work, see [Troubleshooting](troubleshooting.md).

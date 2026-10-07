@@ -6,7 +6,7 @@ Knowing this matters for the same reason a reporter needs to know how a database
 
 ## Three stages, one document at a time
 
-Every document you drop into a vault goes through three stages, in order. Watchdog calls them **chew**, **dig**, and **bark** — you can run all three with one command, or run them one at a time when you want to check the results in between.
+Every document you add to an investigation goes through three stages, in order. Watchdog calls them **chew**, **dig**, and **bark**. **Add documents** runs all three for you. When you want to check the results in between, **Activity → Maintenance** has a card for each stage, so you can run them one at a time.
 
 | Stage | What happens | Who does it |
 |---|---|---|
@@ -62,10 +62,10 @@ The parts that need judgment go to a cloud AI model, working across the whole ba
 
 Two more local, no-cost models support the parts of Watchdog you use after ingest — searching the vault. Neither reads or writes anything about what a document means; both just help you find things faster.
 
-- **The embedding model** (`bge-small-en-v1.5` by default) turns every passage of text — and every note Watchdog writes — into a numeric fingerprint that captures its *meaning*, not just its exact words. That is what lets `watchdog search` find a passage about a "shell arrangement" when you searched for "offshore trust" — the words differ, but the fingerprints are close. It runs entirely on your machine.
+- **The embedding model** (`bge-small-en-v1.5` by default) turns every passage of text — and every note Watchdog writes — into a numeric fingerprint that captures its *meaning*, not just its exact words. That is what lets the Search screen find a passage about a "shell arrangement" when you searched for "offshore trust" — the words differ, but the fingerprints are close. It runs entirely on your machine.
 - **The reranker** (`bge-reranker-base` by default) takes the passages that search turns up and re-orders them for precision, the same way a research assistant might skim a first pass of results and put the genuinely relevant ones on top. It also runs locally, and only at the moment you search — nothing about it is stored.
 
-Both are configurable, and neither is required for the pipeline itself to work — they only affect how well `watchdog search` finds what you're looking for. See [Configuration](configuration.md#search-indexing) for the settings.
+Both are configurable, and neither is required for the pipeline itself to work — they only affect how well Search finds what you're looking for. See [Settings](configuration.md#search) for the settings.
 
 ## What stays on your machine, and what doesn't
 
@@ -73,8 +73,8 @@ Chew, search, and the two models above never leave your computer and never cost 
 
 ## Where to go from here
 
-- [Getting started](getting-started.md) — the practical walkthrough, from creating a vault to reading your first briefing.
-- [Configuration](configuration.md) — which model runs each stage, what it costs, and how to change either.
-- [Investigating](investigating.md) — everything you do with a vault day to day, once documents are in it.
+- [Getting started](getting-started.md) — the practical walkthrough, from creating an investigation to reading your first briefing.
+- [Settings](configuration.md) — which model runs each stage, what it costs, and how to change either.
+- [Investigating](investigating.md) — everything you do with an investigation day to day, once documents are in it.
 - [One document, from dropped file to result](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435) — an illustrated walkthrough of chew and dig for a single document, with diagrams of the sectioning and OCR decisions and the token budgets involved.
 - `ARCHITECTURE.md`, in the project repository — the precise technical reference this page is a plain-English companion to.

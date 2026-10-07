@@ -6,11 +6,11 @@ Watchdog ships with domain knowledge for 33 document types — corporate filings
 
 A skill is a plain markdown file that encodes what an experienced investigative journalist knows about one document type: what fields are always present, what patterns are anomalous, what terminology means, and what investigators typically miss. It is the difference between a first-year reporter reading a bankruptcy filing and a twenty-year veteran reading the same pages — the veteran notices the related-party transfer buried in the creditor list.
 
-When Watchdog extracts a document, it loads the matching skill first. The model enters the document already primed with the right red flags, so a sole-source justification or a director change three weeks before a contract award gets flagged rather than passed over.
+When Watchdog extracts a document (the Dig step), it loads the matching skill first. The model enters the document already primed with the right red flags, so a sole-source justification or a director change three weeks before a contract award gets flagged rather than passed over.
 
 ## How a document gets its skill
 
-Each document's type is identified at ingest time by a quick classification step: a small, cheap model reads the document's opening pages and picks the closest-matching skill from the catalogue. Documents that match no specific skill fall back to [general records](../src/watchdog/skills/records/general-records.md), a universal framework for orienting yourself in any unfamiliar record. You can skip classification entirely by pinning a skill — see [reading and pinning skills](#reading-and-pinning-skills) below.
+Each document's type is identified when it is added, by a quick classification step: a small, cheap model reads the document's opening pages and picks the closest-matching skill from the catalogue. Documents that match no specific skill fall back to [general records](../src/watchdog/skills/records/general-records.md), a universal framework for orienting yourself in any unfamiliar record. You can skip classification entirely by pinning a skill — see [reading and pinning skills](#reading-and-pinning-skills) below.
 
 ## The catalogue
 
@@ -76,18 +76,20 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 ## Reading and pinning skills
 
-`watchdog settings skills` lists every skill in the catalogue and opens the skills folder on GitHub; `watchdog settings skills <name>` prints one skill in full so you can see exactly what Watchdog will look for.
+**Settings → Record skills** lists every skill in the catalogue, with a filter box. Select one to read it in full and see exactly what Watchdog will look for. Skills you have added yourself carry a **Yours** label.
 
-If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill: `watchdog dig --skill <name>` for one run (see [Commands](commands.md)), or set `default_skill` to make it permanent (see [Configuration](configuration.md)).
+If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill. For one batch, open **Options** in the **Add documents** dialog and set **Record skill**. To make it permanent, set **Default skill** under **Ingest** in Settings (see [Settings](configuration.md)).
 
-If a batch mixes document types instead, pin each document individually by adding a `skill:` field to its `.yml` sidecar (see [Vault](vault.md#sidecar-files)) — it overrides both `--skill` and `default_skill` for that one document and skips classification for it, so one `dig` run can correctly handle several document types at once.
+If a batch mixes document types instead, pin each document individually by adding a `skill:` field to its `.yml` sidecar (see [Vault](vault.md#sidecar-files)). It overrides both the batch option and **Default skill** for that one document and skips classification for it, so one batch can correctly handle several document types at once.
 
 ## Custom skills
 
-You can add your own skills in `~/.watchdog/skills/records/` — plain markdown, no code required. A custom skill overrides a built-in one of the same name, so you can also adapt an existing skill to your beat by copying and editing it.
+You can add your own skills as plain markdown files, no code required. **Settings → Record skills** shows the folder they go in and has a **Show in folder** button that opens it (on a standard setup it is `.watchdog/skills/records/` inside your home folder). A custom skill overrides a built-in one of the same name, so you can also adapt an existing skill to your beat by copying and editing it.
+
+Claude's own instructions for an investigation (the `/watchdog-*` commands and the `.claude/CLAUDE.md` file in each vault) are separate from record skills. After you update Watchdog, run **Refresh Claude setup** under **Activity → Maintenance** to bring them up to date. Your own notes below the end marker in `.claude/CLAUDE.md` are kept. Record skills themselves are global and never need refreshing.
 
 Start from the template at [`_template.md`](../src/watchdog/skills/records/_template.md), which lays out the standard structure. The one authoring principle that matters most: lead with patterns that apply anywhere, and treat specific jurisdictions as examples rather than the frame. If you want to contribute a skill back to the project, the full authoring guide is in [CLAUDE.md](../CLAUDE.md).
 
 ---
 
-**Where next:** [Investigating](investigating.md) to put the extracted knowledge to work, or [Configuration](configuration.md) for the classification and skill settings.
+**Where next:** [Investigating](investigating.md) to put the extracted knowledge to work, or [Settings](configuration.md) for the classification and skill settings.

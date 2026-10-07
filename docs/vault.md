@@ -1,18 +1,20 @@
 # The vault
 
-This page explains what Watchdog builds on disk and how to read it: the folders, the notes, the dashboard, and the markers that tell you whether a fact was read from a document or inferred by the model. Read it once your first ingest has finished and you are looking at a vault full of files, wondering what each one is.
+This page explains what Watchdog builds on disk and how to read it: the folders, the notes, the dashboard, and the markers that tell you whether a fact was read from a document or inferred by the model. You can do all your work inside the Watchdog app without ever opening these folders, but it helps to know what is there: the files are yours, and they stay readable with or without the app. Read it once your first batch of documents has been added and you want to know what each file is.
 
 ## One vault per investigation
 
-Each investigation is its own vault — a plain [Obsidian](https://obsidian.md) folder of markdown files. Watchdog writes to it; you read, search, and annotate it. There is no proprietary format and nothing locked away.
+Each investigation is its own vault — an ordinary folder of markdown files (plain text with light formatting). Watchdog writes to it; you read, search, and annotate it. There is no proprietary format and nothing locked away. To see the folder, choose **File → Show in Folder** in the app, or **Show in folder** in the **⋯** menu on the All investigations screen.
 
-The vault is also safe to edit. Watchdog's internal registries — machine-readable files under `.watchdog/` — are the source of truth, and the notes you see in Obsidian are generated from them. Deleting a note loses nothing; it can be rebuilt from the registry.
+[Obsidian](https://obsidian.md), a free note-taking program, is optional. The vault is laid out so that Obsidian can open it, and **File → Open in Obsidian** does that if Obsidian is installed. Watchdog does not need it, and nothing on this page requires it. Any program that reads markdown will do.
+
+The vault is also safe to edit. Watchdog's internal registries — machine-readable files under `.watchdog/` — are the source of truth, and the notes you see are generated from them. Deleting a note loses nothing; it can be rebuilt from the registry.
 
 ## The directory tree
 
 ```
 my-investigation/
-├── incoming/               ← drop public records here
+├── incoming/               ← public records waiting to be read
 │   ├── failed/             ← files that could not be processed
 │   └── skipped/            ← exact duplicates and empty-text files, set aside
 ├── context/                ← background material (prior stories, notes)
@@ -44,13 +46,13 @@ my-investigation/
 
 ## Folder by folder
 
-**`incoming/`** is where you put documents. Everything you drop here gets processed by `watchdog chew` — see [Getting started](getting-started.md) for the workflow. Two subfolders catch problems: `failed/` holds files that could not be processed (password-protected, corrupted, or an unsupported format), and `skipped/` holds exact duplicates of documents already ingested, plus files in which no text could be found. [Troubleshooting](troubleshooting.md) covers what to do with each.
+**`incoming/`** is where documents wait to be read. When you choose **Add documents**, the app copies your files here (the originals stay where they were) and reads them. You can also drop files into this folder yourself and read them from **Activity → Maintenance** (the Chew card), or switch on **Watch incoming for new files** there to have them read as they arrive. See [Getting started](getting-started.md) for the workflow. Two subfolders catch problems: `failed/` holds files that could not be processed (password-protected, corrupted, or an unsupported format), and `skipped/` holds exact duplicates of documents already ingested, plus files in which no text could be found. [Troubleshooting](troubleshooting.md) covers what to do with each.
 
 **`context/`** holds background material — prior published stories, your notes, screenshots. Files here are not ingested as records; they feed the context interview that writes `context.md`, described in [Getting started](getting-started.md).
 
-Vaults created by earlier versions of Watchdog called these folders `_INCOMING/` and `_CONTEXT/`. They are renamed automatically, with nothing deleted, the first time the vault is opened in the app or used from the command line.
+Vaults created by earlier versions of Watchdog called these folders `_INCOMING/` and `_CONTEXT/`. They are renamed automatically, with nothing deleted, the first time the vault is opened. If you kept scripts or Obsidian plugins that point at the old names, update them.
 
-**`morgue/`** is where original files land after a successful ingest, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Obsidian or the terminal. Nothing is ever discarded: the file you dropped in is the file in the morgue.
+**`morgue/`** is where original files land after a successful ingest, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Watchdog's Search screen or from any program that searches files. Nothing is ever discarded: the file you dropped in is the file in the morgue.
 
 **`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, and the registries that record every entity, document, and relationship. Do not edit anything in here by hand.
 
@@ -60,19 +62,19 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 **`briefings/`** collects the reports Watchdog writes after each ingest: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. [Investigating](investigating.md) explains how to work with each.
 
-**`wiki/`** holds investigation thread pages — angles that have matured beyond a single question, created with `/watchdog-wiki`.
+**`wiki/`** holds investigation thread pages — angles that have matured beyond a single question, created in **Ask Claude** with `/watchdog-wiki`.
 
-**`queries/`** holds saved answers filed by `/watchdog-query` when a question produces a substantive answer worth keeping.
+**`queries/`** holds saved answers that **Ask Claude** files (through `/watchdog-query`) when a question produces a substantive answer worth keeping.
 
-**`.fulltext/`** and **`.embeddings/`** are the indexes behind `watchdog search` — one for exact matches, one for meaning. They are rebuilt from disk by `watchdog reindex`; you never touch them directly.
+**`.fulltext/`** and **`.embeddings/`** are the indexes behind the Search screen — one for exact matches, one for meaning. They are rebuilt from disk by **Rebuild the search index** under **Activity → Maintenance**; you never touch them directly.
 
 ### The root files
 
 - **`hot.md`** — a current-state summary of the investigation, rewritten after every ingest. Claude reads it at the start of each session to orient itself without re-reading the vault.
 - **`log.md`** — an append-only, human-readable record of every ingest session.
 - **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view.
-- **`context.md`** — your investigation intent and key questions, written by the context interview.
-- **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. The format and the scan are covered in [Investigating](investigating.md).
+- **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**.
+- **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. Edit it on the **Watch list** tab of Review; the format and the scan are covered in [Investigating](investigating.md#the-watch-list).
 - **`requests.md`** — documents named in what you have already ingested that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every ingest and covered in [Investigating](investigating.md#document-requests).
 - **`index.md`** — a thin landing page that links to the dashboard.
 - **`dashboard.base`** — the dashboard itself, described next.
@@ -81,9 +83,9 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 `dashboard.base` is a dashboard of live tables: most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicate documents. The tables refresh as you ingest.
 
-It uses [Obsidian Bases](https://help.obsidian.md/bases), a core Obsidian feature in version 1.9 and up. There is nothing to install — no community plugin, no restricted mode to clear. Click a column header to sort (by **Documents**, say, to surface the most-mentioned entities); click a row to open the note.
+The dashboard is for people who open the vault in Obsidian. It uses [Obsidian Bases](https://help.obsidian.md/bases), a core Obsidian feature in version 1.9 and up, so there is nothing to install — no community plugin, no restricted mode to clear. Click a column header to sort (by **Documents**, say, to surface the most-mentioned entities); click a row to open the note. If you work only in the Watchdog app, you do not need it: the Overview, Entities and Review screens show the same things.
 
-Two tables deserve attention. **Possible duplicate documents** lists documents that closely match one already in the vault; Watchdog never discards them, so decide whether each pair is the same document. **Single-source entities** is where a duplicate entity — the same person or company under two ids — usually shows up; the fix is `watchdog review merge-entities`, covered in [Investigating](investigating.md#duplicate-entities).
+Two tables deserve attention. **Possible duplicate documents** lists documents that closely match one already in the vault; Watchdog never discards them, so decide whether each pair is the same document. **Single-source entities** is where a duplicate entity — the same person or company under two ids — usually shows up; the fix is **Merge**, covered in [Investigating](investigating.md#duplicate-entities).
 
 ## Entity notes
 
@@ -165,9 +167,9 @@ obtained: 2026-06-05
 notes: Check the director change on page 12.
 ```
 
-Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded by `watchdog research fetch` and web research arrive in `incoming/` with a provenance sidecar already attached.
+Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded with **Fetch Links** and by web research arrive in `incoming/` with a provenance sidecar already attached.
 
-Edit a sidecar before running `chew`: chew reads it once, and the file is gone afterward, so an edit made between `chew` and `ingest` has no effect. Re-run `chew` if you need to change one.
+Edit a sidecar before the document is read (before you choose **Add documents**, or before running Chew in Maintenance): the sidecar is read once during that step, and the file is gone afterward, so a later edit has no effect. Add the document again if you need to change one.
 
 A sidecar can also pin that one document's record skill:
 
@@ -175,7 +177,7 @@ A sidecar can also pin that one document's record skill:
 skill: bankruptcy
 ```
 
-Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way `--skill` does for a whole run. It must name a skill from the catalogue (`watchdog settings skills` lists them); a file path is ignored here and the document is classified instead, since a sidecar can arrive with a document you didn't write yourself. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single `ingest`, rather than needing one run per type. See [Skills](skills.md#reading-and-pinning-skills).
+Unlike `notes` and `source`, this field never reaches the model — it is read directly and skips classification for that document, the same way the **Record skill** option does for a whole run. It must name a skill from the catalogue (**Settings → Record skills** lists them); a file path is ignored here and the document is classified instead, since a sidecar can arrive with a document you didn't write yourself. That means a batch mixing document types (a corporate filing next to a court order, say) can pin each one correctly in a single batch, rather than needing one batch per type. See [Skills](skills.md#reading-and-pinning-skills).
 
 ---
 

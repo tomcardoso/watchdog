@@ -1,6 +1,12 @@
-# Command reference
+# Command line (being retired)
 
-This page lists every Watchdog command, what it does, and every option it takes. Use it as a lookup — the guided walkthroughs live in [Getting started](getting-started.md) and [Investigating](investigating.md). Every command here runs in your terminal, except the slash commands at the end, which run inside a Claude Code session. Add `--help` after any command (for example `watchdog dig --help`) to see its usage in the terminal.
+Watchdog is a desktop app, and the app is the way to use it. Everything on the other pages of this guide is written for the app, and you never need a terminal. See [The desktop app](app.md) and [Getting started](getting-started.md).
+
+The command line that the app was built on still works. The app runs these same commands behind the scenes, and people who already use them can carry on. But it is no longer documented as the way in, it receives no new guidance, and it may be removed in a later version. If you are new to Watchdog, you can skip this page.
+
+Typed at a terminal, Watchdog prints a one-line notice pointing to the app. The notice does not appear when the app, a script or a Claude Code session runs a command, and setting the `WATCHDOG_NO_RETIREMENT_NOTICE` environment variable switches it off.
+
+The rest of this page is the reference as it stood, kept for those who still need it. It lists every command, what it does, and every option it takes. Every command here runs in your terminal, except the slash commands at the end, which run inside a Claude Code session. Add `--help` after any command (for example `watchdog dig --help`) to see its usage in the terminal.
 
 ## Colour output
 
@@ -368,7 +374,7 @@ Releases a stale lock left behind by an interrupted chew or ingest — both lock
 
 ### watchdog gui
 
-Opens the Watchdog desktop app, which runs the same commands as the terminal and shows their results on screen. The command looks for the app in this order: the program named by the `WATCHDOG_APP` environment variable, then the installed Watchdog app on macOS, then, if you are running Watchdog from a copy of its source code with the app's dependencies installed, the app's development server. If it finds none of them it says so and points to [the app guide](app.md).
+Opens the Watchdog desktop app, which runs these same commands behind the scenes and shows their results on screen. The command looks for the app in this order: the program named by the `WATCHDOG_APP` environment variable, then the installed Watchdog app on macOS, then, if you are running Watchdog from a copy of its source code with the app's dependencies installed, the app's development server. If it finds none of them it says so and points to [the app guide](app.md).
 
 ## Settings
 
