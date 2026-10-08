@@ -177,15 +177,21 @@ def entity_list(doc: dict) -> list[dict]:
     return out
 
 
+# Every fact in the story names its source sentence (`q`), but a real extraction gives a locator
+# only when the wording matters (D170), so most facts arrive with just a page. The demo keeps the
+# locator on every third fact and lets the rest be matched to their passage (D270).
+LOCATOR_EVERY = 3
+
+
 def extraction_for(doc: dict) -> dict:
     facts = []
-    for f in doc["facts"]:
+    for i, f in enumerate(doc["facts"]):
         fact = {"fact": f["text"], "page": f["page"], "entities": f["ents"]}
         if f["inferred"]:
             fact["basis"] = "inferred"
         if f["date"]:
             fact["date"] = f["date"]
-        if f["q"]:
+        if f["q"] and i % LOCATOR_EVERY == 0:
             fact["quote_locator"] = f["q"]
         facts.append(fact)
     out = {
@@ -461,6 +467,36 @@ def _loose_ends(vault: Path) -> None:
         encoding="utf-8")
 
 
+REPORTER = "Jordan Ellis"   # the fictional reporter whose checks the demo's ledger records
+
+# (file, fact index in the story, status, note): the checks the demo reporter has made so far.
+MARKS = [
+    ("council-minutes-2022-02-08.pdf", 0, "verified", None),
+    ("council-minutes-2022-02-08.pdf", 1, "verified", None),
+    ("council-minutes-2022-02-08.pdf", 2, "verified", "Matches the report number in the agenda index."),
+    ("parcel-register-14-dockside-road.pdf", 0, "verified", None),
+    ("contract-c-2022-041-pier-9-servicing.pdf", 0, "verified", None),
+    ("capital-payment-register-2022.pdf", 0, "disputed",
+     "The register's running total does not add up to this figure. Asked Finance for the ledger."),
+    ("news-release-pier-9-award.pdf", 0, "unverifiable",
+     "The release is no longer on the City's site and the archived copy is undated."),
+]
+
+
+def _verification(vault: Path, docs: list[dict]) -> None:
+    """Record the demo reporter's checks through the ledger's own writer."""
+    from watchdog.pipeline import verification
+    by_file = {d["file"]: d for d in docs}
+    reg = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text(encoding="utf-8"))
+    sha_for = {rec["filename"]: sha for sha, rec in reg.items()}
+    for file, idx, status, note in MARKS:
+        sha = sha_for[file]
+        facts = verification.document_facts(vault, sha, reg[sha])
+        want = by_file[file]["facts"][idx]["text"]
+        fid = next(i for i, f in zip(verification.fact_ids(sha, facts), facts) if f["fact"] == want)
+        verification.mark(vault, fid, status, note=note, by=REPORTER)
+
+
 def build(target: Path, *, verbose: bool = False) -> Path:
     """Build the demo vault at `target` (which must not exist) and return its path."""
     import types
@@ -498,7 +534,8 @@ def build(target: Path, *, verbose: bool = False) -> Path:
 
     base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
     (base.WATCHDOG_HOME / "config.json").write_text(json.dumps(
-        {"projects_dir": str(target.parent), "chunk_workers": "auto", "chew_workers": "auto"}, indent=2) + "\n")
+        {"projects_dir": str(target.parent), "chunk_workers": "auto", "chew_workers": "auto",
+         "reporter_name": REPORTER}, indent=2) + "\n")
     # Allow the demo's folder, as the app would after the user chose it (gui/src/main/access.ts).
     (base.WATCHDOG_HOME / "access.json").write_text(json.dumps({"version": 1, "folders": [
         {"path": str(target.parent.resolve()), "label": "demo investigations",
@@ -524,6 +561,7 @@ def build(target: Path, *, verbose: bool = False) -> Path:
         model_client.acomplete_json = real_call
     assert by_file   # (kept for readers: every document went through the pipeline above)
 
+    _verification(vault, docs)
     _loose_ends(vault)
     shutil.rmtree(work, ignore_errors=True)
     if canned.unsynthesized:

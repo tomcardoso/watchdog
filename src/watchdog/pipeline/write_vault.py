@@ -423,8 +423,10 @@ def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
 
 
 @contextmanager
-def _registry_lock(registry_dir: Path):
-    """Exclusive per-vault lock so concurrent write-vault calls serialize safely.
+def _registry_lock(registry_dir: Path, name: str = ".write-lock"):
+    """Exclusive per-vault lock so concurrent write-vault calls serialize safely. `name` picks a
+    different lock file for a store only its own commands write (the verification ledger, D271),
+    so those writes don't wait on a long commit pass.
 
     Uses `fcntl.flock` on macOS/Linux (blocks indefinitely until acquired) and
     `msvcrt.locking` on Windows (locks a 1-byte region; blocks in ~1s retries, raising
@@ -432,7 +434,7 @@ def _registry_lock(registry_dir: Path):
     behavioural difference from flock, not just a different API). If neither is
     available, this is a no-op and callers rely on in-process serialization only
     (D18) — cross-process writers are not locked out."""
-    lock_path = registry_dir / ".write-lock"
+    lock_path = registry_dir / name
     with open(lock_path, "w") as fh:
         if _HAS_FLOCK:
             _flock(fh, _LOCK_EX)

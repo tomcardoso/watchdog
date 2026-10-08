@@ -92,6 +92,7 @@ from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
+from watchdog.cmd.verify import cmd_verify_fact
 from watchdog.cmd.review import KINDS as _REVIEW_KINDS, cmd_review
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
@@ -280,6 +281,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_unresolve = sub.add_parser("unresolve", help="Bring resolved leads/alerts/contradictions back into the active list")
     p_unresolve.add_argument("ids", nargs="+", metavar="ID", help="Resolution ids to reopen")
     p_unresolve.set_defaults(func=cmd_unresolve)
+
+    p_verify = sub.add_parser("verify-fact", help="Mark a fact verified, disputed or can't verify (the verification ledger)")
+    p_verify.add_argument("id", nargs="?", metavar="FACT_ID", help="The fact's id, as the app and --list show it")
+    p_verify.add_argument("--status", help="verified, disputed, cant-verify, or clear to remove the mark")
+    p_verify.add_argument("--note", help="An optional note: what you checked, or why it is disputed")
+    p_verify.add_argument("--by", metavar="NAME", help="Who checked it (default: the reporter_name setting)")
+    p_verify.add_argument("--list", action="store_true", help="Show progress and every marked fact")
+    p_verify.set_defaults(func=cmd_verify_fact)
+
 
     p_reindex = sub.add_parser("reindex", help="Rebuild the search index from disk — no OCR re-run, no model calls")
     p_reindex.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer

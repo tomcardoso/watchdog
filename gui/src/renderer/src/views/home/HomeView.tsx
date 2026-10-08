@@ -3,7 +3,8 @@
 
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
-  Layers, Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X
+  Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
+  ShieldAlert, ShieldCheck
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -54,7 +55,8 @@ export default function HomeView() {
         { kind: 'contradictions', n: s.contradictions, one: 'contradiction', many: 'contradictions', hint: 'Facts that disagree across documents', icon: Scale },
         { kind: 'leads', n: s.leads, one: 'open lead', many: 'open leads', hint: 'Names and threads worth chasing', icon: Lightbulb },
         { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
-        { kind: 'alerts', n: s.alerts, one: 'watch-list hit', many: 'watch-list hits', hint: 'Matches for names you are watching', icon: Bell }
+        { kind: 'alerts', n: s.alerts, one: 'watch-list hit', many: 'watch-list hits', hint: 'Matches for names you are watching', icon: Bell },
+        { kind: 'verification', n: s.verification?.disputed ?? 0, one: 'disputed fact', many: 'disputed facts', hint: 'Facts you marked as not supported by the source', icon: ShieldAlert }
       ] as const).filter((w) => w.n > 0)
     : []
 
@@ -72,9 +74,9 @@ export default function HomeView() {
               <DropCard />
             ) : (
               <div className="home-stats">
-                <Stat icon={Files} label="Documents" value={fmtNum(s.totals.documents)} onClick={() => navigate({ view: 'documents' })} />
+                <Stat icon={Files} label="Documents" value={fmtNum(s.totals.documents)} sub={`${fmtNum(s.totals.pages)} pages`} onClick={() => navigate({ view: 'documents' })} />
                 <Stat icon={Shapes} label="Entities" value={fmtNum(s.totals.entities)} onClick={() => navigate({ view: 'entities' })} />
-                <Stat icon={Layers} label="Pages" value={fmtNum(s.totals.pages)} />
+                <Stat icon={ShieldCheck} label="Facts verified" value={`${fmtNum(s.verification?.verified ?? 0)} of ${fmtNum(s.verification?.facts ?? 0)}`} onClick={() => navigate({ view: 'review', kind: 'verification' })} />
                 <Stat icon={CalendarRange} label="Timeline events" value={fmtNum(s.totals.events)} onClick={() => navigate({ view: 'timeline' })} />
               </div>
             )}

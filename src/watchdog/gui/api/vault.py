@@ -97,7 +97,13 @@ def summary(vault: str) -> dict:
         },
         "recent_documents": vaultio.sorted_document_rows(v, docs, limit=8),
         "top_entities": vaultio.sorted_entity_rows(v, ents, limit=8),
+        "verification": _verification_summary(v, docs),
     }
+
+
+def _verification_summary(v: Path, docs: dict) -> dict:
+    from watchdog.pipeline import verification
+    return verification.summary(v, verification.all_facts(v, docs))
 
 
 # ── documents ────────────────────────────────────────────────────────────────────
@@ -111,51 +117,43 @@ def _strip_note_markup(text: str) -> str:
     return re.sub(r"^\s*\*\(|\)\*\s*$", "", text or "").strip()
 
 
-def _facts_from_extraction(vault: Path, sha: str, ents: dict) -> list[dict] | None:
+def fact_row(f: dict, fid: str, ents: dict, mark: dict | None) -> dict:
+    """One fact as the app shows it (`Fact` in gui/API.md)."""
     from watchdog.pipeline.write_vault import _figure_verification_note, _quote_verification_note
 
-    doc = vaultio.extracted(vault, sha).get("document")
-    if not isinstance(doc, dict) or not isinstance(doc.get("key_facts"), list):
-        return None
-    out = []
-    for f in doc["key_facts"]:
-        if not isinstance(f, dict) or not (f.get("fact") or "").strip():
-            continue
-        figure = _strip_note_markup(_figure_verification_note(f))
-        quote_note = _strip_note_markup(_quote_verification_note(f))
-        out.append({
-            "fact": f["fact"],
-            "page": f.get("page") if isinstance(f.get("page"), int) else None,
-            "basis": "inferred" if f.get("basis") == "inferred" else "stated",
-            "date": f.get("date") or None,
-            "quote": (f.get("quote") or "").strip() or None,
-            "entities": [vaultio.entity_ref(ents, e) for e in (f.get("entities") or []) if e],
-            "figure_note": figure or None,
-            "quote_note": quote_note or None,
-            "added_by": f.get("added_by") or None,
-        })
-    return out
+    figure = _strip_note_markup(_figure_verification_note(f))
+    quote_note = _strip_note_markup(_quote_verification_note(f))
+    method = f.get("passage_method")
+    passage_page = f.get("passage_page")
+    return {
+        "id": fid,
+        "fact": f["fact"],
+        "page": f.get("page") if isinstance(f.get("page"), int) else None,
+        "basis": "inferred" if f.get("basis") == "inferred" else "stated",
+        "date": f.get("date") or None,
+        "quote": (f.get("quote") or "").strip() or None,
+        "entities": [vaultio.entity_ref(ents, e) for e in (f.get("entities") or []) if e],
+        "figure_note": figure or None,
+        "quote_note": quote_note or None,
+        "added_by": f.get("added_by") or None,
+        "passage": (f.get("passage") or "").strip() or None,
+        "passage_page": passage_page if isinstance(passage_page, int) else None,
+        "passage_method": method if method in ("quote", "matched", "unlocated") else None,
+        "passage_score": f.get("passage_score") if isinstance(f.get("passage_score"), (int, float)) else None,
+        "mark": ({k: mark.get(k) for k in ("status", "note", "by", "at")}
+                 if mark and mark.get("status") else None),
+    }
 
 
-def _facts_from_note(sections: dict) -> list[dict]:
-    """Key facts read back from a document note's `## Key facts` bullets — for a vault that
-    predates the staged extraction artifacts."""
-    out = []
-    for line in (sections.get("key facts") or "").splitlines():
-        if not line.startswith("- "):
-            if line.startswith(">") and out and not out[-1]["quote"]:
-                out[-1]["quote"] = line.lstrip("> ").strip() or None
-            continue
-        text = line[2:].strip()
-        page_m = re.search(r"\[\[[^\]]*#page=(\d+)[^\]]*\]\]|p\. (\d+)", text)
-        page = int(page_m.group(1) or page_m.group(2)) if page_m else None
-        inferred = "*(inferred)*" in text
-        text = re.sub(r"\s*\(\[\[[^\]]*\|p\. \d+\]\]\)", "", text)
-        text = re.sub(r"\s*\*\(.*?\)\*", "", text).strip()
-        out.append({"fact": text, "page": page, "basis": "inferred" if inferred else "stated",
-                    "date": None, "quote": None, "entities": [], "figure_note": None,
-                    "quote_note": None, "added_by": None})
-    return out
+def _facts(vault: Path, sha: str, rec: dict, ents: dict) -> list[dict]:
+    """The document's facts with their ids, passages and verification marks — from the saved
+    extraction, or the note's `## Key facts` bullets when there is none."""
+    from watchdog.pipeline import verification
+
+    facts = verification.document_facts(vault, sha, rec)
+    marks = verification.marks(vault)
+    return [fact_row(f, fid, ents, verification.attach(marks.get(fid), f))
+            for fid, f in zip(verification.fact_ids(sha, facts), facts)]
 
 
 def _doc_entities(sha: str, rec: dict, ents: dict) -> list[dict]:
@@ -222,9 +220,7 @@ def document(vault: str, sha: str) -> dict:
     extraction = vaultio.extracted(v, full)
     ex_doc = extraction.get("document") if isinstance(extraction.get("document"), dict) else {}
 
-    facts = _facts_from_extraction(v, full, ents)
-    if facts is None:
-        facts = _facts_from_note(parsed["sections"]) if parsed else []
+    facts = _facts(v, full, rec, ents)
 
     pages: list[dict] = []
     if row["fulltext"]:
