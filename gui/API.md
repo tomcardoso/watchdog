@@ -81,7 +81,7 @@ afterwards.
 Summary = {               // cmd/home.summary(), made JSON-safe
   name, path,
   briefing: {path, name, date}|null, headline|null,
-  contradictions, leads, near_duplicates, alerts,              // waiting on you
+  contradictions, leads, near_duplicates, possible_same, alerts, // waiting on you
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
   has_work: bool,                                              // home.has_work()
@@ -263,8 +263,23 @@ Events: `job.started {job}`, `job.log {id, lines: LogLine[]}` (batched ≤ 10/s)
 ## review
 
 ```
-ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates", rid, title, detail: string[], note|null}
+ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates"|"merges", rid, title, detail: string[], note|null,
+              pair?: SamePair}                     // pair only on "merges" items
+SamePair   = {tier: "high"|"medium"|"low", rule, model_declined: bool,
+              evidence: {surface, identifier: {scheme, value}|null, shared: [{relationship, target_id, target_name}]},
+              a: SameSide, b: SameSide}
+SameSide   = {id, name, type, aliases, documents: sha[], doc_count, note|null,
+              facts: [{id, sha, fact, page, document, date}], roles: [{relationship, target}]}
+MergeLogEntry = {id, keep: {id, name, type, exists, note|null}, merged: {id, name, type},
+                 tier: "high"|"medium"|"low"|"manual", decided_by: "rule"|"model"|"reporter", rule|null,
+                 reason, model|null, reporter|null, same_name: bool, at, first_at,
+                 identifier|null, shared: [...], documents: [{sha, title}], document_count,
+                 facts: [{id, fact, page, sha, title}], undo_available: false}
 ```
+
+A `merges` item is a "possible same" pair from `.watchdog/registry/merges.json` (D279). Resolving
+its rid (`same:<hash>`) is the reporter's "Not the same": the pair is never merged automatically
+afterwards. Merging it is the existing `merge-entities` job (I10), which closes the item.
 
 | Method | Params | Result |
 |---|---|---|
@@ -275,6 +290,7 @@ ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates", rid, title, 
 | `review.sync` | `{vault}` | `{resolved: string[], unresolved: string[]}` — `resolutions.sync_from_briefings` |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
 | `review.watchlist` | `{vault}` | `{terms: string[], text}` |
+| `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: false}` — newest first, documents and facts resolved for display; read-only |
 | `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
 
 `merge-entities` (with `--force` after the app's own confirmation), `contradiction-add`, `watchlist`

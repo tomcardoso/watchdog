@@ -158,6 +158,45 @@ def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
     }
 
 
+def undo_snapshot(entry: dict) -> dict:
+    """The parts of a registry entry a later split needs (D279): who it was, which documents
+    named it, and the relationships it held — enough, with the facts' original entity tags in
+    `.watchdog/extracted/`, to rebuild it."""
+    return {
+        "id": entry.get("id"), "name": entry.get("name"), "type": entry.get("type"),
+        "aliases": list(entry.get("aliases") or []),
+        "appears_in": list(entry.get("appears_in") or []),
+        "note_path": entry.get("note_path"),
+        "roles": [{k: r.get(k) for k in ("relationship", "target_id", "source_sha256", "is_reverse")}
+                  for r in entry.get("roles") or []],
+    }
+
+
+def _reporter_log_entry(vault_path: Path, keep: dict, merged: dict) -> dict:
+    """The merge-log entry for a merge a reporter asked for. When it settles a "possible same" pair
+    from Review, the pair's tier, rule and evidence come with it."""
+    from watchdog.pipeline import identity, merge_log
+    from watchdog.pipeline.verification import reporter_name
+    data = merge_log.load(vault_path)
+    cand = data["candidates"].get(identity.pair_id(keep["id"], merged["id"]))
+    evidence = identity.Evidence(vault_path, {})
+    loser = evidence.registry_profile(merged["id"], merged)
+    occurrence = {"sha": None, "documents": list(merged.get("appears_in") or []),
+                  "facts": [f["id"] for f in loser.facts[:5]],
+                  "identifier": None, "shared": []}
+    reason = "Merged by a reporter."
+    if cand:
+        reason = f"Merged by a reporter from Review. {cand.get('reason') or ''}".strip()
+        ev = cand.get("evidence") or {}
+        occurrence.update({"identifier": ev.get("identifier"), "shared": ev.get("shared") or []})
+    return merge_log.merge_entry(
+        keep={"id": keep["id"], "name": keep["name"], "type": keep["type"]},
+        merged={"id": merged["id"], "name": merged["name"], "type": merged["type"]},
+        tier=cand.get("tier") if cand else "manual", decided_by="reporter",
+        rule=cand.get("rule") if cand else None, reason=reason, occurrence=occurrence,
+        reporter=reporter_name(), run=None)
+
+
 # ── Vault-level operation ──────────────────────────────────────────────────────
 
 def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int:
@@ -167,7 +206,7 @@ def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int
     return remap_entity_ids(vault_path, {merge_id: keep_id})
 
 
-def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
+def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
     """Perform the full `watchdog merge-entities` operation on a vault on disk:
     registry surgery (`merge`), note concatenation/redirect, timeline NDJSON entity-tag
     remap, manifest + timeline rebuild, and a best-effort search-index refresh of the two
@@ -216,6 +255,12 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     merge_note_text = merge_note_file.read_text(encoding="utf-8") if merge_note_file.exists() else ""
     merge_notes_body = _extract_section(merge_note_text, "Notes") if merge_note_text else ""
 
+    # The merge log (D279): a reporter's merge is logged here; a merge the pipeline decided arrives
+    # with its entry already built (`log_entry`). Either way it gets the losing record's snapshot.
+    if log_entry is None:
+        log_entry = _reporter_log_entry(vault_path, entities_reg[keep_id], entities_reg[merge_id])
+    log_entry.setdefault("undo", {})["entry"] = undo_snapshot(entities_reg[merge_id])
+
     stats = merge(entities_reg, keep_id, merge_id)
     keep = entities_reg[keep_id]
 
@@ -227,7 +272,14 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     backup_paths += [
         vault_path / f"{entities_reg[eid]['note_path']}.md" for eid in stats["touched_entities"]
     ]
+    from watchdog.pipeline import merge_log
+    log_path = merge_log.path(vault_path)
+    if log_path.exists():
+        backup_paths.append(log_path)
     backup_dir = _snapshot(vault_path, "merge-entities", backup_paths)
+    if backup_dir:
+        log_entry["undo"]["backup"] = str(Path(backup_dir).relative_to(vault_path)) \
+            if Path(backup_dir).is_relative_to(vault_path) else str(backup_dir)
 
     # Concatenate Analysis with provenance intact — a labelled block, not a blind splice.
     if merge_analysis:
@@ -322,6 +374,10 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     # entity id, so they need no remap.
     stats["resolutions_remapped"] = resolutions.remap_entity(vault_path, merge_id, keep_id)
 
+    log_data = merge_log.load(vault_path)
+    merge_log.mark_candidate_merged(log_data, keep_id, merge_id)
+    merge_log.record(vault_path, [log_entry], data=log_data)
+
     all_notes = {keep_note_path: (keep["name"], note_content),
                  merge_note_path: (merge_name, stub_content),
                  **other_notes}
@@ -348,13 +404,13 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     }
 
 
-def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
+def run(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
     from a Claude Code session or a second terminal while `watchdog bark` commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
     from watchdog.pipeline.write_vault import _registry_lock
     registry_dir = Path(vault_path) / ".watchdog" / "registry"
     if not registry_dir.is_dir():
-        return _run_unlocked(vault_path, keep_id, merge_id)
+        return _run_unlocked(vault_path, keep_id, merge_id, log_entry)
     with _registry_lock(registry_dir):
-        return _run_unlocked(vault_path, keep_id, merge_id)
+        return _run_unlocked(vault_path, keep_id, merge_id, log_entry)

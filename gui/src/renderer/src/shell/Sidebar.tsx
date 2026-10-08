@@ -54,7 +54,7 @@ export function Sidebar() {
   const running = Object.values(jobs).filter((j) => j.state === 'running').length
   const { data: projects } = useRpc('projects.list', {})
   const { data: summary } = useRpc('vault.summary', project ? { vault: project.path } : null, { refetchInterval: 30_000 })
-  const reviewCount = summary ? summary.contradictions + summary.leads + summary.near_duplicates + summary.alerts : 0
+  const reviewCount = summary ? summary.contradictions + summary.leads + summary.near_duplicates + summary.alerts + (summary.possible_same ?? 0) : 0
   const backend = useApp((s) => s.project) // re-render on project change
   void backend
 

@@ -42,6 +42,22 @@ The lists are read when you open the tab. **Run full lead sweep** rereads every 
 
 The **Duplicates** tab shows documents the pipeline judged to be near-copies of one already in the investigation, side by side. Watchdog never discards them. Compare the pair, then confirm they are the same record or that the difference matters. Marking a pair handled only hides it from the list and from reports; both documents stay, and the later one remains flagged on its own page.
 
+<a id="merges"></a>
+
+### Merges
+
+Two documents often name the same person or company, and Watchdog has to decide whether they mean the same one. Two different people can share a name, so it never decides that on a name alone. How sure it is decides what happens (the methodology page explains [how Watchdog decides two names are the same](methodology.md#same-entity)):
+
+- **High confidence: merged, and recorded.** The same registration, licence, court file or parcel number on both, or the same full name with the same role, employer or street address, or the same company or place name when it is specific enough to pick out one ("Northgate Civil Works Ltd.", but not "the City").
+- **Medium confidence: the AI model decides, and the decision is recorded.** The same full name with nothing else in common, or a short or general name. The model reads both records' facts side by side and merges them only if it is confident.
+- **Low confidence: never merged automatically.** One name is an initialled or shortened form of the other ("J. Smith" and "John Smith"), or both are the same short name ("Mr. Pike").
+
+The **Merges** tab has two parts. At the top is the queue of **possible same entities**: low-confidence pairs, and same-name pairs the model was not confident about. Each card shows both records side by side, with their type, document count, roles and the facts recorded about each, every fact linked to its page. Choose **Merge…** if they are one, which opens the usual merge dialog with both filled in. Choose **Not the same** if they are not: the pair leaves the queue, and Watchdog will never merge those two records automatically, by rule or by model. **Not the same** counts as handling the item, so it appears under **Handled** and **Bring back** undoes it.
+
+Below the queue is **Recent merges**: every merge, newest first, whoever made it. Each row says which records were joined, how confident the decision was, and who decided: Watchdog's rules, the AI model (by name), or the reporter who chose **Merge**. Open a row for the reason, the matching number or shared role if there was one, the facts that came with the merged record and the documents it came from. Recognising the same specific company or place name in another document is recorded too, but those rows are hidden until you turn on **Include exact-name recognitions**, so the list stays on the merges worth a look.
+
+A merge cannot yet be undone from the app. The merged page's summary and any notes you wrote on it cannot be split back reliably, so the **Undo merge** button is shown but not yet available. Each log entry keeps what a later version needs to split it. If you find a wrong merge, note it on the entity's page. The same record is kept in `merges.md` in the investigation's folder (see [the vault layout](vault.md)).
+
 ### Document requests
 
 Some documents refer to other documents you do not have yet: the transcript a hearing order cites, the regulation it enforces, an exhibit that was filed but never attached. Watchdog lists these on the **Requests** tab, apart from the open-ended leads, because each one names a specific thing known to exist. Each request carries the reason it matters, where it can plausibly be obtained, and a link back to the document that named it. The written list is `requests.md` in the investigation's folder, rewritten after every run.
@@ -117,11 +133,11 @@ Open an entity to see its summary, analysis, contradictions, timeline and relati
 
 ### Duplicate entities
 
-Sometimes the same real-world person or company ends up extracted as two entities, most often because a name is spelled differently across documents. Watchdog merges the pairs it is confident about when it finishes a batch; the ones it leaves are worth checking by hand.
+Sometimes the same real-world person or company ends up extracted as two entities, most often because a name is spelled differently across documents, or because Watchdog was not sure enough to merge two records that share a name. The pairs it was unsure about wait on the [Merges tab](#merges) in Review; others are worth checking by hand.
 
 The **Single-source** filter is the best place to look, since a duplicate usually appears in only one document. A pair of near-duplicate documents on the Duplicates tab often produces two copies of the same entities as well. To fold one entity into the other, select the two on the Entities screen and choose **Merge…**, or open one and choose **Merge into another entity…** from its **⋯** menu.
 
-The dialog shows both entities (name, type, document and relationship counts) before you commit, and asks you to tick that you understand the merge cannot be undone from the app. The duplicate's aliases, documents, relationships and timeline events all combine onto the survivor, and every relationship elsewhere that pointed at the duplicate follows. A snapshot is taken first.
+The dialog shows both entities (name, type, document and relationship counts) before you commit, and asks you to tick that you understand the merge cannot be undone from the app. The duplicate's aliases, documents, relationships and timeline events all combine onto the survivor, and every relationship elsewhere that pointed at the duplicate follows. A snapshot is taken first, and the merge is recorded under your name in the merge log (Review, Merges).
 
 When it finishes, the dialog offers **Rebuild search index**, which drops the merged entity's stale entries from Search. The merge keeps only one of the two written summaries, so when both entities had one, open the survivor and choose **Refresh summary from all sources** from its **⋯** menu. That asks Claude to rewrite its Summary and Timeline from every source.
 

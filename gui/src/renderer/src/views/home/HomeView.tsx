@@ -4,7 +4,7 @@
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
-  ShieldAlert, ShieldCheck
+  ShieldAlert, ShieldCheck, GitMerge
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -58,6 +58,7 @@ export default function HomeView() {
         { kind: 'leads', n: s.leads, one: 'open lead', many: 'open leads', hint: 'Names and threads worth chasing', icon: Lightbulb },
         { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
         { kind: 'alerts', n: s.alerts, one: 'watch-list hit', many: 'watch-list hits', hint: 'Matches for names you are watching', icon: Bell },
+        { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge },
         { kind: 'verification', n: s.verification?.disputed ?? 0, one: 'disputed fact', many: 'disputed facts', hint: 'Facts you marked as not supported by the source', icon: ShieldAlert }
       ] as const).filter((w) => w.n > 0)
     : []

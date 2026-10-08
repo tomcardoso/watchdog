@@ -1,11 +1,15 @@
 """`watchdog review [kind]` — step through what is waiting on the user, one item at a time (D252).
 
-Four kinds, each read from local files only:
+Five kinds, each read from local files only:
 
   * contradictions — conflicting claims recorded on entity notes
   * leads          — entities named but never profiled, isolated, or carrying inferred facts
   * alerts         — unresolved watch-list hits in `briefings/alerts-*.md`
   * duplicates     — documents chew's MinHash matched to an earlier one
+  * merges         — two entity records that may be the same, left unmerged (D279)
+
+Marking a `merges` item handled means "not the same": the pair is never merged automatically
+afterwards. Merging one runs `watchdog merge-entities`.
 
 Each item can be marked handled (the same `resolutions.json` store `watchdog resolve` writes, so
 it stops re-surfacing in every report), kept open, or opened in Obsidian. Off a terminal the
@@ -23,9 +27,12 @@ from watchdog.pipeline import resolutions
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.vault_paths import is_vault
 
-KINDS = ("contradictions", "leads", "alerts", "duplicates")
+KINDS = ("contradictions", "leads", "alerts", "duplicates", "merges")
 _LABELS = {"contradictions": "Contradictions", "leads": "Leads",
-           "alerts": "Watch-list hits", "duplicates": "Possible duplicate documents"}
+           "alerts": "Watch-list hits", "duplicates": "Possible duplicate documents",
+           "merges": "Possible same entities"}
+_SAME_WORD = {"person": "person", "organization": "organization", "public-body": "public body",
+              "place": "place", "asset": "asset", "proceeding": "proceeding"}
 
 # The link is greedy up to the last `**` before the optional entity/count suffix, so a filename
 # containing `**` stays whole.
@@ -114,6 +121,31 @@ def _duplicates(vault: Path, resolved: frozenset[str]) -> list[dict]:
     return out
 
 
+def _same_entities(vault: Path, resolved: frozenset[str]) -> list[dict]:
+    """"Possible same" pairs the merge log holds open (D279), each with both sides' evidence."""
+    from watchdog.pipeline import merge_log
+    entities = _read_json_or(vault / ".watchdog" / "registry" / "entities.json", {})
+    out = []
+    for c in merge_log.open_candidates(vault, entities=entities, resolved=resolved):
+        a, b = c["a"], c["b"]
+        word = _SAME_WORD.get(a.get("type"), "entity")
+        detail = [c.get("reason") or ""]
+        if c.get("model_declined"):
+            detail.append("The AI model compared their facts and was not confident they are the same.")
+        item = _item("merges", c["id"], f"{a['name']} and {b['name']} — possible same {word}",
+                     [d for d in detail if d], (entities.get(a["id"]) or {}).get("note_path"))
+        item["pair"] = {
+            "tier": c.get("tier"), "rule": c.get("rule"), "model_declined": bool(c.get("model_declined")),
+            "evidence": c.get("evidence") or {},
+            "a": {**a, "note": (entities.get(a["id"]) or {}).get("note_path"),
+                  "doc_count": len((entities.get(a["id"]) or {}).get("appears_in") or [])},
+            "b": {**b, "note": (entities.get(b["id"]) or {}).get("note_path"),
+                  "doc_count": len((entities.get(b["id"]) or {}).get("appears_in") or [])},
+        }
+        out.append(item)
+    return out
+
+
 def open_items(vault: Path, kinds=KINDS) -> list[dict]:
     """Every unresolved item of the given kinds, in `KINDS` order."""
     resolved = resolutions.resolved_ids(vault)
@@ -128,6 +160,8 @@ def open_items(vault: Path, kinds=KINDS) -> list[dict]:
             out += _lead_items(found)
         elif kind == "alerts":
             out += _alerts(vault, resolved)
+        elif kind == "merges":
+            out += _same_entities(vault, resolved)
         else:
             out += _duplicates(vault, resolved)
     return out
@@ -137,6 +171,11 @@ def count_open_duplicates(vault: Path) -> int:
     return len(_duplicates(vault, resolutions.resolved_ids(vault)))
 
 
+def count_open_same_entities(vault: Path, resolved: frozenset[str] | None = None) -> int:
+    from watchdog.pipeline import merge_log
+    return len(merge_log.open_candidates(vault, resolved=resolved))
+
+
 def _show(vault: Path, item: dict, n: int, total: int) -> None:
     print(f"\n  {_DIM}{n} of {total} · {_LABELS[item['kind']]}{_RESET}")
     print(f"  {_BOLD}{item['title']}{_RESET}")
@@ -144,6 +183,10 @@ def _show(vault: Path, item: dict, n: int, total: int) -> None:
         print(f"    {line}")
     if item["note"]:
         print(f"    {_CYAN}{note_link(vault, item['note'], item['note'])}{_RESET}")
+    if item.get("pair"):
+        a, b = item["pair"]["a"], item["pair"]["b"]
+        print(f"    {_DIM}To merge them:{_RESET} {_CYAN}watchdog review merge-entities "
+              f"{a['id']} {b['id']}{_RESET}")
 
 
 def _print_list(vault: Path, items: list[dict]) -> None:
@@ -166,7 +209,8 @@ def _walk(vault: Path, items: list[dict]) -> int:
     for n, item in enumerate(items, 1):
         _show(vault, item, n, len(items))
         while True:
-            choices = ["Mark as handled", "Keep open"]
+            handle = "Not the same" if item["kind"] == "merges" else "Mark as handled"
+            choices = [handle, "Keep open"]
             if item["note"]:
                 choices.append("Open in Obsidian")
             choices.append("Stop reviewing")
@@ -178,7 +222,7 @@ def _walk(vault: Path, items: list[dict]) -> int:
                 if not open_url(obsidian_url(vault, item["note"])):
                     print(f"  {_YELLOW}Could not open Obsidian — is it installed?{_RESET}")
                 continue
-            if choice == "Mark as handled":
+            if choice == handle:
                 resolutions.resolve(vault, [item["rid"]], label="review")
                 resolutions.tick_in_briefings(vault, [item["rid"]])
                 handled += 1

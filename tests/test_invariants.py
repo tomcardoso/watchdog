@@ -1,4 +1,4 @@
-"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I10), #349.
+"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I12), #349.
 
 Each test name starts with the invariant id it guards (`test_I1_...`, `test_I2_...`, etc.), so
 a failing rule shows up as a specific, named red bar instead of relying on code review to catch
@@ -411,3 +411,34 @@ def test_I10_the_app_backend_never_calls_a_vault_writing_entry_point():
                  for m in writers.finditer(p.read_text(encoding="utf-8"))]
     assert not offenders, offenders
 
+
+
+# ── I12: entity merges are tiered and recorded (D279) ─────────────────────────────────────────
+
+def test_I12_a_person_is_never_folded_on_a_name_alone(tmp_path):
+    """Same slug, same full name, nothing else in common: two records stay two, for the reconcile
+    model or the reporter to decide."""
+    from tests.test_identity import _commit, _person, _registry, _stage
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")])
+    _commit(vault, ["sha-a"])
+    _stage(vault, tmp_path, "sha-b", [_person("john-smith", "John Smith")])
+    _commit(vault, ["sha-b"])
+    assert sum(1 for e in _registry(vault).values() if e["name"] == "John Smith") == 2
+
+
+def test_I12_every_automatic_fold_is_recorded_in_the_merge_log(tmp_path):
+    """Every entity the fold moves onto another (an alias match here) leaves a merge-log entry
+    naming both records, the tier and the rule."""
+    import json as _json
+    from tests.test_identity import _commit, _org, _stage
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_org("ey", "Ernst & Young LLP", ["Ernst and Young LLP"])])
+    _stage(vault, tmp_path, "sha-b", [_org("ernst-young", "Ernst and Young LLP")])
+    _commit(vault, ["sha-a", "sha-b"])
+    log = _json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())
+    entry = next(m for m in log["merges"] if m["merged"]["id"] == "ernst-young")
+    assert (entry["keep"]["id"], entry["tier"], entry["decided_by"]) == ("ey", "high", "rule")
+    assert entry["rule"] and entry["occurrences"][0]["documents"] == ["sha-b"]

@@ -14,7 +14,7 @@ from watchdog.gui.rpc import RpcError, method
 from watchdog.gui.vaultio import require_vault
 
 _RID_KINDS = {"lead": "leads", "contradiction": "contradictions", "alert": "alerts",
-              "duplicate": "duplicates", "request": "requests"}
+              "duplicate": "duplicates", "request": "requests", "same": "merges"}
 
 
 def _rids(rids) -> list[str]:
@@ -104,6 +104,55 @@ def watchlist(vault: str) -> dict:
     v = require_vault(vault)
     return {"terms": [t["term"] for t in _watchlist.load_terms(v)],
             "text": vaultio.read_text(v / "watchlist.md")}
+
+
+@method("review.mergeLog")
+def merge_log(vault: str, limit: int = 200) -> dict:
+    """Recent entries of the merge log (D279), newest first, each with its documents and facts
+    resolved for display. `undo_available` is false: a merge cannot yet be split back apart
+    from what is on disk (see DECISIONS D279)."""
+    from watchdog.pipeline import merge_log as _log
+    from watchdog.pipeline.verification import all_facts
+
+    v = require_vault(vault)
+    data = _log.load(v)
+    ents = vaultio.load_entities(v)
+    docs = vaultio.load_documents(v)
+    facts = None
+    out = []
+    merges = sorted(data.get("merges", []), key=lambda m: m.get("last_at") or "", reverse=True)
+    for m in merges[:max(1, min(int(limit or 200), 1000))]:
+        shas: list[str] = []
+        fact_ids: list[str] = []
+        identifier, shared = None, []
+        for occ in m.get("occurrences") or []:
+            for sha in occ.get("documents") or ([occ["sha"]] if occ.get("sha") else []):
+                if sha not in shas:
+                    shas.append(sha)
+            fact_ids += [f for f in occ.get("facts") or [] if f not in fact_ids]
+            identifier = identifier or occ.get("identifier")
+            shared = shared or occ.get("shared") or []
+        if fact_ids and facts is None:
+            facts = all_facts(v)
+        keep = m.get("keep") or {}
+        out.append({
+            "id": m.get("id"), "keep": {**keep, "exists": keep.get("id") in ents,
+                                        "note": (ents.get(keep.get("id")) or {}).get("note_path")},
+            "merged": m.get("merged") or {}, "tier": m.get("tier"), "decided_by": m.get("decided_by"),
+            "rule": m.get("rule"), "reason": m.get("reason") or "", "model": m.get("model"),
+            "reporter": m.get("reporter"), "same_name": bool(m.get("same_name")),
+            "at": m.get("last_at"), "first_at": m.get("first_at"),
+            "identifier": identifier, "shared": shared,
+            "documents": [{"sha": s, "title": (docs.get(s) or {}).get("title")
+                           or (docs.get(s) or {}).get("filename") or s[:12]} for s in shas[:50]],
+            "document_count": len(shas),
+            "facts": [{"id": f, "fact": facts[f]["fact"], "page": facts[f]["page"],
+                       "sha": facts[f]["sha256"], "title": facts[f]["title"]}
+                      for f in fact_ids[:8] if facts and f in facts],
+            "undo_available": False,
+        })
+    return {"merges": out, "total": len(merges), "too_new": _log.too_new(data),
+            "undo_available": False}
 
 
 @method("review.mergePreview")

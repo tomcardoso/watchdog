@@ -52,7 +52,7 @@ def _failed(vault: Path) -> int:
 
 def summary(vault: Path) -> dict:
     """Everything the home screen shows, read from local files only."""
-    from watchdog.cmd.review import count_open_duplicates
+    from watchdog.cmd.review import count_open_duplicates, count_open_same_entities
     from watchdog.pipeline import leads, orchestrate, research, resolutions
     from watchdog.pipeline.preprocess_batch import find_files
 
@@ -66,6 +66,7 @@ def summary(vault: Path) -> dict:
         "contradictions": sum(c["count"] for c in found["contradictions"]),
         "leads": len(found["unprofiled"]) + len(found["isolated"]) + len(found["inferred"]),
         "near_duplicates": count_open_duplicates(vault),
+        "possible_same": count_open_same_entities(vault, resolved),
         "alerts": _open_alerts(vault, resolved),
         "incoming": _count_incoming(vault),
         "awaiting_dig": _count_awaiting_dig(vault),
@@ -107,7 +108,9 @@ def render(name: str, s: dict) -> str:
                (s["leads"], "open lead|open leads", "watchdog review leads"),
                (s["near_duplicates"], "possible duplicate document|possible duplicate documents",
                 "watchdog review duplicates"),
-               (s["alerts"], "watch-list hit|watch-list hits", "watchdog review alerts")]
+               (s["alerts"], "watch-list hit|watch-list hits", "watchdog review alerts"),
+               (s.get("possible_same", 0), "possible same entity|possible same entities",
+                "watchdog review merges")]
     waiting = [w for w in waiting if w[0]]
     if waiting:
         lines.append(f"\n  {_BOLD}Waiting on you{_RESET}")

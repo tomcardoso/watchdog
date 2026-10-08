@@ -22,6 +22,7 @@ const ROUTES = [
   { view: 'timeline' },
   { view: 'search', query: 'contract' },
   { view: 'review' },
+  { view: 'review', kind: 'merges' },
   { view: 'briefings' },
   { view: 'ask' },
   { view: 'research' },
@@ -74,6 +75,11 @@ test('every screen renders against the demo investigation', async () => {
         await page.waitForTimeout(1200)
         const failure = await page.locator('.callout.danger').first().textContent({ timeout: 500 }).catch(() => null)
         expect(failure, `${theme} ${route.view} shows an error`).toBeNull()
+        if ('kind' in route && route.kind === 'merges') {
+          // The demo leaves one possible-same pair for the reporter, and logs every merge (D279).
+          await expect(page.locator('.mg-side')).toHaveCount(2)
+          expect(await page.locator('.mg-row').count()).toBeGreaterThan(0)
+        }
       }
     }
     expect(errors, 'renderer errors').toEqual([])

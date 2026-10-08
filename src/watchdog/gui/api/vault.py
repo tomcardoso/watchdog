@@ -79,6 +79,7 @@ def summary(vault: str) -> dict:
         "contradictions": s["contradictions"],
         "leads": s["leads"],
         "near_duplicates": s["near_duplicates"],
+        "possible_same": s["possible_same"],
         "alerts": s["alerts"],
         "incoming": s["incoming"],
         "awaiting_dig": s["awaiting_dig"],

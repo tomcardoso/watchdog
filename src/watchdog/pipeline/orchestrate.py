@@ -2486,13 +2486,21 @@ def _load_results(vault: Path) -> list:
 # rate-limit stop.
 
 def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
-    """Fold exact-name entity duplicates across the staged batch before anything commits (D127).
+    """Fold high-confidence entity matches across the staged batch before anything commits (D127,
+    D279).
 
     Walks `shas` in sorted order over an in-memory copy of the registry, applying the same
     `_reconcile_entity_ids`/`_new_entity`/`_merge_entity` the commit uses, so later documents match
-    earlier ones without touching the registry on disk. Rewrites each staged extraction in place
-    (ids, aliases, role targets, `morgue_entity_id`, `key_facts[].entities`) so the commit replays
-    already-folded entities."""
+    earlier ones without touching the registry on disk. Each would-be fold is judged by
+    `identity.classify` with the documents' evidence: only a high-confidence match folds, and each
+    fold is staged as a merge-log entry in the artifact's `identity` block, written to
+    `registry/merges.json` when the document commits. A medium or low match is left as two records
+    (a same-slug one under a fresh slug) for the reconcile pass to route to the model or to Review.
+    Rewrites each staged extraction in place (ids, aliases, role targets, `morgue_entity_id`,
+    `key_facts[].entities`, keeping each fact's original tags in `extracted_entities`) so the
+    commit replays already-folded entities."""
+    from watchdog.pipeline import identity, merge_log
+    from watchdog.pipeline.entity_type import canonical_type
     from watchdog.pipeline.write_vault import (
         NameIndex, _merge_entity, _new_entity, _reconcile_entity_ids,
     )
@@ -2507,12 +2515,37 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     extracted_dir = vault / ".watchdog" / "extracted"
     # Kept current as the fold walks the batch rather than rebuilt per document (#696).
     name_index = NameIndex(pseudo_reg)
+    evidence = identity.Evidence(vault, pseudo_reg)
+    profiles: dict[str, identity.Profile] = {}     # existing id -> what the vault says about it
     for sha in shas:
         artifact_path = extracted_dir / f"{sha}.json"
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
         entities = artifact.get("entities") or []
+        evidence.staged = {sha: artifact}
 
-        remap = _reconcile_entity_ids(entities, pseudo_reg, name_index)
+        def judge(entity: dict, existing_id: str, sha=sha, artifact=artifact) -> bool:
+            entry = pseudo_reg[existing_id]
+            if existing_id not in profiles:
+                profiles[existing_id] = evidence.registry_profile(existing_id, entry, exclude={sha})
+            ids = {entity["id"], entity.get("extracted_id", entity["id"])}
+            incoming = evidence.profile(entity["id"], entity["name"], entity["type"], [sha],
+                                        aliases=entity.get("aliases") or (), ids=ids)
+            verdict = identity.classify(incoming, profiles[existing_id], evidence.dismissed())
+            if not verdict or verdict["tier"] != "high":
+                return False
+            entry_log = merge_log.merge_entry(
+                keep={"id": existing_id, "name": entry["name"], "type": canonical_type(entry["type"])},
+                merged={"id": entity.get("extracted_id", entity["id"]), "name": entity["name"],
+                        "type": canonical_type(entity["type"])},
+                tier="high", decided_by="rule", rule=verdict["rule"], reason=verdict["reason"],
+                occurrence=identity.evidence_record(verdict, incoming, sha),
+                undo={"extracted_id": entity.get("extracted_id", entity["id"]), "documents": [sha]},
+                run=_run.run_id)
+            stage_identity_log(artifact, entry_log)
+            profiles[existing_id].absorb(incoming)
+            return True
+
+        remap = _reconcile_entity_ids(entities, pseudo_reg, name_index, judge=judge)
         if remap:
             # Staged at extraction time, so its events still name the pre-fold ids (D243).
             timeline.remap_entity_ids(vault, remap, sha=sha)
@@ -2520,7 +2553,8 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
                 artifact["morgue_entity_id"] = remap[artifact["morgue_entity_id"]]
             for fact in artifact.get("document", {}).get("key_facts", []):
                 tags = fact.get("entities")
-                if tags:
+                if tags and any(t in remap for t in tags):
+                    fact.setdefault("extracted_entities", list(tags))
                     fact["entities"] = [remap.get(t, t) for t in tags]
 
         for entity in entities:
@@ -2534,6 +2568,21 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
         artifact_path.write_text(
             json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+    evidence.staged = {}
+
+
+def stage_identity_log(artifact: dict, entry: dict) -> None:
+    """Stage a merge-log entry on a staged extraction, written to `registry/merges.json` when the
+    document commits (I7). A re-run of the same fold stages nothing new."""
+    block = artifact.setdefault("identity", {"version": 1, "log": []})
+    log = block.setdefault("log", [])
+    sha = ((entry.get("occurrences") or [{}])[0]).get("sha")
+    for existing in log:
+        if existing.get("id") == entry["id"] and \
+                ((existing.get("occurrences") or [{}])[0]).get("sha") == sha:
+            existing.update({k: v for k, v in entry.items() if k not in ("first_at", "last_at", "occurrences")})
+            return
+    log.append(entry)
 
 
 def _pending_commits(vault: Path, force_shas: list[str] | None = None) -> list[str]:
@@ -2605,7 +2654,8 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     reconciliation_backend = fo.get("reconciliation_backend", post_backend)
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     rec_bundle = reconcile.build_bundle(vault, shas)
-    if not (rec_bundle["entities"] or rec_bundle["pairs"]):
+    if not (rec_bundle["entities"] or rec_bundle["pairs"] or rec_bundle.get("rule_merges")
+            or rec_bundle.get("candidates")):
         return result
     n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
     if rec_bundle.get("pairs_dropped"):
@@ -2618,7 +2668,10 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     # (I7), an oversized bundle used to deadlock it — every `watchdog bark` retry sent the same
     # prompt into the same limit. A bundle that fits still goes out as exactly one call.
     budget = chunking.prompt_budget_chars(reconciliation_model, reconciliation_backend, vault)
-    chunks = reconcile.chunk_bundle(rec_bundle, budget)
+    # Nothing for the model when every pair was settled by tier and no entity can hold a
+    # contradiction — the high merges and "possible same" pairs still apply below (D279).
+    needs_model = bool(rec_bundle["entities"] or rec_bundle["pairs"])
+    chunks = reconcile.chunk_bundle(rec_bundle, budget) if needs_model else []
     answers = []
     for n, chunk in enumerate(chunks, 1):
         # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
@@ -2650,14 +2703,48 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
 
     applied = reconcile.apply_merges(
         vault, shas, reconcile.merge_chunk_results(chunks, answers), rec_bundle,
-        warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"), _log(vault, f"WARN {m}")))
+        warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"), _log(vault, f"WARN {m}")),
+        model=reconciliation_model)
     result["merged"] = applied["merged"]
     result["remap"] = applied["remap"]
     result["contradictions"] = applied["contradictions"]
+
+    # A merge decided in this pass joins two claim ledgers the call above saw apart, so the
+    # survivors get one more, contradiction-only look at their whole record (D279). Their
+    # contradictions from the first call are replaced by this one's. A failure here keeps the
+    # first call's: the merges are already applied, so the batch is not deferred.
+    survivors = {m["keep_id"] for m in applied["merged"]}
+    if survivors:
+        followup = reconcile.build_bundle(vault, shas, only=survivors)
+        if followup["entities"]:
+            try:
+                extra = []
+                for chunk in reconcile.chunk_bundle(followup, budget):
+                    r = await _call_model(
+                        task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
+                        schema=schemas.RECONCILE, prompt=prompts.build_reconcile_prompt(chunk),
+                        effort=post_effort, detail=f"{len(chunk['entities'])} merged entities",
+                        vault=vault)
+                    extra += (r.parsed or {}).get("contradictions") or []
+                merged_away = set(applied["remap"])
+                result["contradictions"] = [
+                    c for c in result["contradictions"]
+                    if applied["remap"].get(c.get("entity_id"), c.get("entity_id")) not in survivors
+                    and c.get("entity_id") not in merged_away] + extra
+            except model_client.CALL_FAILURES as e:
+                _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}contradiction check on merged entities "
+                     f"skipped — {e}{_RESET}")
+                _log(vault, f"WARN reconcile follow-up skipped: {e}")
     for m in applied["merged"]:
         _say(f"   {_DIM}merged{_RESET} {m['merge_name']} {_DIM}→{_RESET} "
              f"{_BOLD}{m['keep_name']}{_RESET}  {_DIM}{m['reason']}{_RESET}")
-        _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']}: {m['reason']}")
+        _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']} "
+                    f"({m.get('tier')}, {m.get('decided_by')}): {m['reason']}")
+    n_cand = applied.get("candidates") or 0
+    result["candidates"] = n_cand
+    if n_cand:
+        _say(f"   {_BOLD}{n_cand}{_RESET} possible same entit{'ies' if n_cand != 1 else 'y'} "
+             f"{_DIM}left for you to check in Review (not merged){_RESET}")
     return result
 
 

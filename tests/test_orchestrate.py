@@ -1083,7 +1083,7 @@ def test_reconcile_pre_commit_stage_override_routes_reconcile_call(tmp_path, mon
     monkeypatch.setattr(orchestrate.reconcile, "build_bundle",
                         lambda vault, shas: {"entities": [{"id": "e1"}], "pairs": [{"a": "e1", "b": "e2"}]})
     monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
-                        lambda vault, shas, parsed, bundle, warn:
+                        lambda vault, shas, parsed, bundle, warn, **kw:
                         {"merged": [], "remap": {}, "contradictions": []})
 
     seen = []
@@ -1109,7 +1109,7 @@ def test_reconcile_pre_commit_falls_back_to_post_model_when_unoverridden(tmp_pat
     monkeypatch.setattr(orchestrate.reconcile, "build_bundle",
                         lambda vault, shas: {"entities": [{"id": "e1"}], "pairs": [{"a": "e1", "b": "e2"}]})
     monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
-                        lambda vault, shas, parsed, bundle, warn:
+                        lambda vault, shas, parsed, bundle, warn, **kw:
                         {"merged": [], "remap": {}, "contradictions": []})
 
     seen = []
