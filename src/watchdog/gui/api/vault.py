@@ -240,6 +240,7 @@ def document(vault: str, sha: str) -> dict:
         "file_metadata": vaultio.plain(file_metadata) if isinstance(file_metadata, dict) else {},
         "sidecar": _sidecar(ex_doc.get("sidecar") or (queue.get("sidecar") if isinstance(queue, dict) else None)),
         "metadata": vaultio.plain(metadata) if isinstance(metadata, dict) else None,
+        "media": vaultio.media_info(rec),
         "extract_model": rec.get("extract_model") or None,
         "extract_effort": rec.get("extract_effort") or None,
         "record_skill_hash": rec.get("record_skill_hash") or None,

@@ -140,7 +140,18 @@ Contradictions are raised whatever the two claims are marked as — including wh
 | Image | `.jpg`, `.jpeg`, `.png`, `.tiff`, `.tif`, `.bmp`, `.webp` | OCR applied automatically |
 | Web page | `.html`, `.htm` | |
 | Plain text | `.txt`, `.csv`, `.md` | |
-| Audio / video | `.mp3`, `.mp4`, `.m4a`, `.wav`, `.aac`, `.ogg`, `.flac`, `.avi`, `.mov` | Requires the optional transcription install — see [Installation](install.md) |
+| Audio | `.mp3`, `.m4a`, `.wav`, `.aac`, `.ogg`, `.oga`, `.opus`, `.flac` | Transcribed on your computer; see [Recordings](#recordings) |
+| Video | `.mp4`, `.m4v`, `.mov`, `.webm`, `.mkv`, `.avi` | The sound track is transcribed; a video with no sound cannot be added |
+
+### Recordings
+
+Watchdog turns an interview, a council meeting or a press conference into text on your own computer, with a speech-recognition model, before anything else happens to it. Nothing about the recording is sent anywhere while it is transcribed. The first recording you add downloads the model once; see [Installation](install.md#the-transcription-model).
+
+A transcript's "pages" are blocks of time: page 1 is the first five minutes, page 2 the next five, and so on. A fact from a recording therefore cites a stretch of it, shown in the app as a time range such as 10:00–15:00 rather than a page number. A five-minute block with no speech in it has no page, so the page numbers of a recording with a long silence can skip. Inside a page, each passage starts with the time it was spoken, written as `[00:12:05]`.
+
+A machine transcript is a draft, not a record. It has no speaker names, so it cannot tell you who said what unless the speech itself does ("Councillor Ferreira, you have the floor"). It mishears: names are the usual casualty, then figures and technical terms. Watchdog tells the model it is reading a transcript and to flag names and figures that look wrong, but it cannot know what was really said. Before you quote anyone, click the timestamp in the app and listen.
+
+Changing the transcription model in [Settings](configuration.md#transcription) affects recordings added afterwards; a recording already in the investigation keeps its transcript. Each transcript records the model and settings that produced it.
 
 ### Embedded file metadata
 

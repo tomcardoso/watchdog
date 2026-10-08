@@ -95,23 +95,27 @@ def test_ingest_lock_excluded(tmp_path):
 # ── preprocess_one ────────────────────────────────────────────────────────────
 
 class _FakePopen:
-    """Minimal Popen mock: communicate() returns immediately."""
+    """Minimal Popen mock: the process has already exited, its output waiting in the pipes."""
     def __init__(self, stdout="", stderr=""):
-        self._stdout = stdout
-        self._stderr = stderr
+        self.stdout = io.StringIO(stdout)
+        self.stderr = io.StringIO(stderr)
         self.cmd_seen = None
 
-    def communicate(self, timeout=None):
-        return self._stdout, self._stderr
+    def poll(self):
+        return 0
 
     def kill(self): pass
     def wait(self): pass
 
 
 class _FakePopenTimeout:
-    """Popen mock that always raises TimeoutExpired from communicate()."""
-    def communicate(self, timeout=None):
-        raise subprocess.TimeoutExpired([], timeout or 0)
+    """Popen mock for a process that never exits."""
+    def __init__(self):
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+
+    def poll(self):
+        return None
 
     def kill(self): pass
     def wait(self): pass

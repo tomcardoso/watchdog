@@ -32,7 +32,7 @@ import yaml
 
 from watchdog.pipeline import sidecar
 from watchdog.pipeline.json_io import _read_json
-from watchdog.pipeline.preprocess import DIRECT_TEXT_SUFFIXES, DOCLING_SUFFIXES
+from watchdog.pipeline.preprocess import DIRECT_TEXT_SUFFIXES, DOCLING_SUFFIXES, MEDIA_SUFFIXES
 from watchdog.pipeline.write_vault import slugify
 from watchdog.vault_paths import incoming_dir
 
@@ -47,7 +47,7 @@ _MAX_REDIRECTS = 5
 _TIMEOUT = 30
 _USER_AGENT = "watchdog-research/1.0 (+https://github.com/tomcardoso/watchdog)"
 
-_SUPPORTED_SUFFIXES = DIRECT_TEXT_SUFFIXES | DOCLING_SUFFIXES
+_SUPPORTED_SUFFIXES = DIRECT_TEXT_SUFFIXES | DOCLING_SUFFIXES | MEDIA_SUFFIXES
 _HTML_EXTS = {".html", ".xhtml"}
 
 # Content-Type → extension, restricted to suffixes chew already understands (preprocess.py).

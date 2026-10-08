@@ -598,6 +598,11 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     # stamped here, same posture as sha256/filename above: a claim the file makes about itself,
     # never asked of the model.
     doc["file_metadata"] = pf.get("file_metadata") or {}
+    # A recording's time map and what transcribed it (D273), carried to the registry so the app
+    # can show "Page 3 (10:00-15:00)" and a later model can be compared with this one.
+    media = (pf.get("processing") or {}).get("media")
+    if isinstance(media, dict):
+        doc["media"] = media
     doc["near_duplicate_of"] = _near_duplicate_of(pf.get("near_dup"))
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).

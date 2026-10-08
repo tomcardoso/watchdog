@@ -6,11 +6,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { Badge, Button, Callout, ErrorNote, Skeleton, Tabs } from '@renderer/components/ui'
 import { fmtDate, plural } from '@renderer/lib/format'
+import { fmtDuration } from '@renderer/lib/media'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentDetail } from '@shared/api'
 import { DetailsTab, EntitiesTab, Highlight, NotesTab, SummaryTab, TextTab } from './DocPanels'
 import { FactsTab } from './FactsTab'
+import { MediaViewer } from './MediaViewer'
 import { JumpTarget, PdfViewer } from './PdfViewer'
 import './documents.css'
 
@@ -83,6 +85,7 @@ function Original({ d, abs, target, onOpen }: { d: DocumentDetail; abs: string |
   const [pdfFailed, setPdfFailed] = useState<string | null>(null)
   useEffect(() => setPdfFailed(null), [d.sha])
   const ext = d.ext
+  if (d.media) return <MediaViewer d={d} media={d.media} abs={abs} target={target} />
   if (abs && ext === 'pdf' && !pdfFailed) return <PdfViewer path={abs} target={target} onFailed={setPdfFailed} />
   if (abs && BROWSER_IMAGE.has(ext)) return <ImageViewer src={window.watchdog.files.url(abs)} />
   if (abs && (ext === 'html' || ext === 'htm'))
@@ -178,7 +181,11 @@ export default function DocumentView() {
             <div className="docv-meta">
               {d.document_type && <Badge tone="accent">{d.document_type}</Badge>}
               {d.date_of_document && <span>{fmtDate(d.date_of_document)}</span>}
-              {d.page_count ? <><span className="dot">·</span><span>{plural(d.page_count, 'page')}</span></> : null}
+              {d.media ? (
+                <><span className="dot">·</span><span>{fmtDuration(d.media.duration_seconds)} {d.media.kind === 'video' ? 'video' : 'recording'}</span></>
+              ) : d.page_count ? (
+                <><span className="dot">·</span><span>{plural(d.page_count, 'page')}</span></>
+              ) : null}
               {d.title && <><span className="dot">·</span><span className="mono truncate" style={{ maxWidth: 260 }}>{d.filename}</span></>}
               {d.near_duplicate_of && <Badge tone="warning" tip={d.near_duplicate_of}>possible duplicate</Badge>}
             </div>
@@ -227,10 +234,10 @@ export default function DocumentView() {
                 ]}
               />
               <div className="docv-right-body" key={tab}>
-                {tab === 'facts' && <FactsTab facts={d.facts} jump={jump} hasViewer={hasViewer} />}
+                {tab === 'facts' && <FactsTab facts={d.facts} jump={jump} hasViewer={hasViewer} media={d.media} />}
                 {tab === 'summary' && <SummaryTab d={d} />}
                 {tab === 'entities' && <EntitiesTab entities={d.entities} />}
-                {tab === 'text' && <TextTab pages={d.pages} jump={jump} hasViewer={hasViewer} />}
+                {tab === 'text' && <TextTab pages={d.pages} jump={jump} hasViewer={hasViewer} media={d.media} />}
                 {tab === 'details' && <DetailsTab d={d} />}
                 {tab === 'notes' && <NotesTab key={d.sha} d={d} />}
               </div>

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { DocThumb } from '@renderer/components/DocThumb'
 import { Button, Empty, ErrorNote, Segmented, Skeleton, useDebounced } from '@renderer/components/ui'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
+import { fmtDuration } from '@renderer/lib/media'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentRow } from '@shared/api'
@@ -69,7 +70,11 @@ function Card({ d }: { d: DocumentRow }) {
       <div className="docs-card-thumb">
         <DocThumb sha={d.sha} ext={d.ext} original={d.original} title={titleOf(d)} summary={d.summary} />
         {d.near_duplicate_of && <DupBadge />}
-        {!!d.page_count && d.page_count > 1 && <span className="docs-card-pages">{d.page_count} pp</span>}
+        {d.media_kind ? (
+          <span className="docs-card-pages">{fmtDuration(d.duration_seconds)}</span>
+        ) : (
+          !!d.page_count && d.page_count > 1 && <span className="docs-card-pages">{d.page_count} pp</span>
+        )}
       </div>
       <div className="docs-card-title">{titleOf(d)}</div>
       <div className="docs-card-meta">
@@ -94,7 +99,7 @@ function ListRow({ d }: { d: DocumentRow }) {
       </div>
       <span className="cell truncate">{d.document_type ?? ''}</span>
       <span className="cell truncate">{fmtDate(d.date_of_document)}</span>
-      <span className="cell num tnum">{d.page_count ?? ''}</span>
+      <span className="cell num tnum">{d.media_kind ? fmtDuration(d.duration_seconds) : d.page_count ?? ''}</span>
       <span className="cell num tnum">{d.entity_count || ''}</span>
       <span className="cell truncate">{fmtDate(d.ingested_at)}</span>
     </button>

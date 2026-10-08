@@ -7,7 +7,7 @@
 
 import { _electron as electron, expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -53,6 +53,18 @@ test('every screen renders against the demo investigation', async () => {
       const w = window as unknown as { watchdog: { rpc: (m: string, p: unknown) => Promise<unknown> }; __watchdogApp: { getState: () => { setProject: (p: unknown) => void } } }
       w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
     }, slug)
+
+    // wdfile:// answers byte ranges, which a recording needs to seek (D273).
+    const clip = join(root, 'vault', 'context', 'range-check.mp3')
+    writeFileSync(clip, Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 256)))
+    const ranged = await page.evaluate(async (p) => {
+      const w = window as unknown as { watchdog: { files: { url: (p: string) => string } } }
+      const url = w.watchdog.files.url(p)
+      const r = await fetch(url, { headers: { Range: 'bytes=10-19' } })
+      const whole = await fetch(url)
+      return { status: r.status, range: r.headers.get('content-range'), bytes: Array.from(new Uint8Array(await r.arrayBuffer())), wholeStatus: whole.status, wholeLength: (await whole.arrayBuffer()).byteLength, accept: whole.headers.get('accept-ranges') }
+    }, clip)
+    expect(ranged).toEqual({ status: 206, range: 'bytes 10-19/1000', bytes: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19], wholeStatus: 200, wholeLength: 1000, accept: 'bytes' })
 
     for (const theme of ['light', 'dark']) {
       await page.evaluate((t) => (window as any).__watchdogApp.getState().setTheme(t), theme)

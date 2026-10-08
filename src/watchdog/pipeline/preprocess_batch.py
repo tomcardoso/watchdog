@@ -17,7 +17,7 @@ from pathlib import Path
 
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog import progress
-from watchdog.pipeline import sidecar
+from watchdog.pipeline import sidecar, transcribe
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
@@ -29,6 +29,9 @@ DEFAULT_FILE_TIMEOUT = 600
 # renders last, below the in-flight file rows (#158, #333 follow-up — previously just the
 # first key inserted, so it visually jumped between finished/in-flight rows as files completed).
 _PROGRESS_KEY = "__progress__"
+
+# One recording transcribes at a time (see _chew in _run_ingest_inner).
+_MEDIA_SLOT = threading.Semaphore(1)
 
 # A blank pinned row rendered just above the progress bar so the bar always keeps one line of
 # clearance from the finished/in-flight rows above it instead of butting directly against them.
@@ -163,6 +166,16 @@ def _page_label(path: Path, count: int) -> str:
     if unit is None or count == 0:
         return ""
     return f"{count} {unit}{'s' if count != 1 else ''}"
+
+
+def _media_label(result: dict) -> str:
+    """A recording's length for its finished row ("42 min recording"), or "" for a document."""
+    media = (result.get("metadata") or {}).get("media") or {}
+    seconds = media.get("duration_seconds")
+    if not seconds:
+        return ""
+    minutes = max(1, round(seconds / 60))
+    return f"{minutes} min {media.get('kind') or 'recording'}"
 
 
 def _ocr_note(result: dict, is_garbled: bool) -> str:
@@ -322,26 +335,50 @@ def preprocess_one(
     if chunk_workers is not None:
         cmd += ["--chunk-workers", str(chunk_workers)]
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                encoding="utf-8", errors="replace")
+        # stdout is the one JSON result; stderr carries library chatter plus, for a recording,
+        # progress lines (transcribe.stderr_emitter), which are forwarded to this process's own
+        # progress stream as they arrive rather than at exit.
+        out_parts: list[str] = []
+        err_parts: list[str] = []
+
+        def read_out() -> None:
+            out_parts.append(proc.stdout.read())
+
+        def read_err() -> None:
+            for line in iter(proc.stderr.readline, ""):
+                event = progress.parse(line.rstrip("\r\n"))
+                if event is not None:
+                    kind = event.pop("kind", None)
+                    if kind:
+                        progress.emit(kind, **event)
+                else:
+                    err_parts.append(line)
+
+        readers = [threading.Thread(target=read_out, daemon=True),
+                   threading.Thread(target=read_err, daemon=True)]
+        for t in readers:
+            t.start()
         deadline = t0 + timeout
-        while True:
-            try:
-                stdout, stderr = proc.communicate(timeout=0.5)
-                break
-            except subprocess.TimeoutExpired:
-                if _cancel_event.is_set():
-                    proc.kill()
-                    proc.wait()
-                    return {"error": "cancelled", "source_path": str(path),
-                            "elapsed_s": round(time.time() - t0, 1), "char_count": 0}
-                if time.time() >= deadline:
-                    proc.kill()
-                    proc.wait()
-                    result = {"error": f"Timed out after {timeout}s"}
-                    result["source_path"] = str(path)
-                    result["elapsed_s"]   = round(time.time() - t0, 1)
-                    result["char_count"]  = 0
-                    return result
+        while proc.poll() is None:
+            time.sleep(0.2)
+            if _cancel_event.is_set():
+                proc.kill()
+                proc.wait()
+                return {"error": "cancelled", "source_path": str(path),
+                        "elapsed_s": round(time.time() - t0, 1), "char_count": 0}
+            if time.time() >= deadline:
+                proc.kill()
+                proc.wait()
+                result = {"error": f"Timed out after {timeout}s"}
+                result["source_path"] = str(path)
+                result["elapsed_s"]   = round(time.time() - t0, 1)
+                result["char_count"]  = 0
+                return result
+        for t in readers:
+            t.join(timeout=5)
+        stdout, stderr = "".join(out_parts), "".join(err_parts)
         elapsed = round(time.time() - t0, 1)
         if not stdout.strip():
             result = {"error": stderr.strip()[:300] or "Empty output from preprocessor"}
@@ -355,6 +392,23 @@ def preprocess_one(
     result["elapsed_s"]   = elapsed
     result["char_count"]  = sum(len(p.get("markdown", "")) for p in result.get("pages", []))
     return result
+
+
+def _prefetch_transcription_model(files: list[Path]) -> None:
+    """Fetch the transcription model once, before any worker starts, when the drop has a
+    recording and the model is not on disk: two recordings would otherwise race to download the
+    same 0.5-1.6 GB. A failure is not fatal; each recording then fails with the reason, and
+    everything else is read as usual."""
+    if not any(transcribe.is_media(Path(f)) for f in files):
+        return
+    try:
+        transcribe.os_environ_quiet()
+        name = transcribe.configured_model()
+        if not transcribe.model_cached(name):
+            print(f"\n  {_DIM}{transcribe.download_label(name)}, one time only…{_RESET}")
+            transcribe.ensure_model(name, progress.emit)
+    except Exception as e:  # noqa: BLE001
+        print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{e}{_RESET}")
 
 
 def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
@@ -480,6 +534,7 @@ def _run_ingest_inner(
     pre_workers, chunk_workers, adaptive, page_counts = _resolve_workers(files, workers, chunk_workers)
     if page_counts:
         files = sorted(files, key=lambda f: page_counts.get(f, 1))
+    _prefetch_transcription_model(files)
     batch_start = time.time()
     progress.emit("chew", state="start", total=total)
 
@@ -520,6 +575,11 @@ def _run_ingest_inner(
             # Pad the arrow marker to the same width as the settled status codes ("OK "/"ERR"/
             # "SKP") so filenames start at the same column whether a row is in-flight or done.
             live.update(str(path), f"  {_DIM}→  {_RESET}  {_DIM}{_rel(path)}  chewing…{_RESET}")
+        if transcribe.is_media(path):
+            # Transcription already uses every core, so recordings go one at a time (D273).
+            with _MEDIA_SLOT:
+                return preprocess_one(path, timeout=transcribe.media_timeout(path, DEFAULT_FILE_TIMEOUT),
+                                      chunk_workers=chunk_workers)
         return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
 
     results: dict[str, dict] = {}
@@ -561,7 +621,7 @@ def _run_ingest_inner(
                           outcome="failed" if is_err else "skipped" if is_empty else "ok",
                           pages=None if is_err else result.get("page_count"), done=done, total=total)
             rel       = _rel(path)
-            label     = _page_label(path, result.get("page_count", 0))
+            label     = _media_label(result) or _page_label(path, result.get("page_count", 0))
             label_str = f"  {_DIM}{label}{_RESET}" if label else ""
             ocr_note  = _ocr_note(result, is_garbled)
             garb_str  = f"  {_DIM}·  {ocr_note}{_RESET}" if ocr_note else ""

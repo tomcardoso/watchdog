@@ -9,7 +9,7 @@ The first run includes a one-time download of the libraries and models that run 
 | What | Why | Free? |
 |------|-----|-------|
 | A Mac, Windows or Linux computer | Watchdog runs on your computer, not in the cloud | n/a |
-| About 7 GB of free disk space and an internet connection | Setup downloads about 4.7 GB in all, and needs room to unpack it | n/a |
+| About 7 GB of free disk space and an internet connection | Setup downloads about 4.7 GB in all, and needs room to unpack it. Transcribing recordings takes 1.5 GB more, downloaded the first time you add one | n/a |
 | Claude access | Powers the AI that reads your documents and answers your questions | Pro/Max subscription, or an API key |
 | [Obsidian](https://obsidian.md) (optional) | A second way to browse an investigation's files | Free |
 
@@ -88,9 +88,11 @@ To set it up:
 3. Create a secret key and copy it. It is shown only once.
 4. In Watchdog, open **Settings → Models & keys**, paste the key under OpenAI, and route document reading to Luna. Benchmarks found Luna extractions perform best with the extractor's effort set to high; the effort settings are in Settings, and [Model backends](configuration.md#model-backends) and [Controlling cost](configuration.md#controlling-cost) explain them.
 
-## Optional: audio and video transcription
+## The transcription model
 
-Watchdog can transcribe audio and video files when extra components are installed. These are not part of the app's standard setup, and the app does not install them for you. If you need transcription, see [Commands](commands.md) and [Supported file types](vault.md#supported-file-types), or ask for help in an [issue](https://github.com/tomcardoso/watchdog/issues).
+Audio and video work out of the box: the engine includes everything needed to transcribe them, with no separate program to install. The speech-recognition model itself is not part of the first-run download, because only investigations with recordings need it. It downloads the first time you add a recording, and the run shows "Downloading the transcription model (1,531 MB)" while it does; after that it is on your computer for good.
+
+The default model is 1.5 GB; the alternatives in [Settings](configuration.md#transcription) range from 486 MB to 1.6 GB. To download it ahead of time, for example before working somewhere without a reliable connection, open **Settings → Setup** and choose **Download now** beside the transcription model.
 
 ## Optional: full page snapshots
 

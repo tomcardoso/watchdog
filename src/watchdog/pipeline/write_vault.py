@@ -1090,6 +1090,8 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "minhash":          sig,
             "morgue_path":      morgue_relative,
         }
+        if isinstance(doc.get("media"), dict):
+            documents_reg[doc_sha256]["media"] = doc["media"]   # audio/video only (D273)
 
         # ── 2b. Record document requests ──────────────────────────────────────
         #

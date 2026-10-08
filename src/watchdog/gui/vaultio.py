@@ -440,6 +440,37 @@ def document_row(vault: Path, sha: str, rec: dict) -> dict:
         "source": _str_or_none(fields["source"]),
         "obtained": _str_or_none(plain(fields["obtained"])),
         "summary": _str_or_none(fields["summary"]),
+        "media_kind": (media_info(rec) or {}).get("kind"),
+        "duration_seconds": (media_info(rec) or {}).get("duration_seconds"),
+    }
+
+
+def media_info(rec: dict) -> dict | None:
+    """A recording's `media` block (D273) as the app reads it: kind, duration and each page's
+    time range, plus what transcribed it. Reads only the fields it knows, whatever the block's
+    `format`, so a newer block still shows; None for a document that is not a recording."""
+    media = rec.get("media") if isinstance(rec, dict) else None
+    if not isinstance(media, dict):
+        return None
+
+    def num(v):
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+    pages = []
+    for p in media.get("pages") or []:
+        if isinstance(p, dict) and isinstance(p.get("page"), int) and num(p.get("start")) is not None:
+            end = num(p.get("end"))
+            pages.append({"page": p["page"], "start": num(p["start"]),
+                          "end": end if end is not None else num(p["start"])})
+    tx = media.get("transcription") if isinstance(media.get("transcription"), dict) else {}
+    kind = media.get("kind")
+    return {
+        "kind": kind if kind in ("audio", "video") else "audio",
+        "duration_seconds": num(media.get("duration_seconds")),
+        "page_seconds": num(media.get("page_seconds")),
+        "pages": pages,
+        "language": _str_or_none(media.get("language")),
+        "model": _str_or_none(tx.get("model")),
     }
 
 

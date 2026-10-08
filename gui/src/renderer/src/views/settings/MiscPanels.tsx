@@ -4,10 +4,10 @@ import { BookOpen, CheckCircle2, ExternalLink, FolderOpen, MinusCircle, Monitor,
 import { useEffect, useState } from 'react'
 import type { BackendStatus, SetupModels } from '@shared/api'
 import { EngineActions, EngineProgressView, useEngine } from '@renderer/views/onboarding/EngineInstall'
-import { Badge, Button, Callout, Empty, ErrorNote, Modal, Segmented, Skeleton, Spinner } from '@renderer/components/ui'
+import { Badge, Button, Callout, Empty, ErrorNote, Modal, Progress, Segmented, Skeleton, Spinner } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
 import { toast, useApp, Theme } from '@renderer/lib/store'
-import { errorMessage, useRpc } from '@renderer/lib/rpc'
+import { call, errorMessage, useEvent, useRpc } from '@renderer/lib/rpc'
 import { plural } from '@renderer/lib/format'
 
 export function SkillsPanel() {
@@ -143,6 +143,54 @@ const MODEL_LABELS: [keyof SetupModels, string, string][] = [
   ['reranker', 'Search reranker', 'Orders the best matches. Downloaded on first use if missing.']
 ]
 
+/** The speech-to-text model (D273): fetched the first time a recording is added, or here ahead of
+ * time, for example before travelling somewhere without a reliable connection. */
+function TranscriptionModel({ m, onDone }: { m: SetupModels; onDone: () => void }) {
+  const [jobId, setJobId] = useState<string | null>(null)
+  const job = useApp((s) => (jobId ? s.jobs[jobId] : undefined))
+  const running = !!jobId && (!job || job.state === 'running')
+  useEvent('job.finished', (e) => {
+    if (e.job.id !== jobId) return
+    setJobId(null)
+    onDone()
+    if (e.job.state === 'done') toast({ kind: 'success', title: 'Transcription model downloaded' })
+    else if (e.job.state === 'failed') toast({ kind: 'error', title: 'The transcription model could not be downloaded', body: 'Check the internet connection and try again. Activity has the details.' })
+  })
+  const start = async () => {
+    try {
+      const j = await call('setup.downloadModel', { model: 'transcription' })
+      setJobId(j.id)
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not start the download', body: errorMessage(e) })
+    }
+  }
+  const size = m.transcription_size_mb ? `${m.transcription_size_mb.toLocaleString('en-CA')} MB` : ''
+  return (
+    <div className="set-check">
+      {m.transcription ? <CheckCircle2 style={{ color: 'var(--success)' }} /> : <MinusCircle style={{ color: 'var(--text-3)' }} />}
+      <div className="grow">
+        <div style={{ fontWeight: 560 }}>Transcription model ({m.transcription_model}{size ? `, ${size}` : ''})</div>
+        {!m.transcription && (
+          <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 2 }}>
+            Turns audio and video into text on this computer. Downloaded the first time you add a recording, or now.
+          </div>
+        )}
+        {running && job && (
+          <div style={{ marginTop: 8 }}>
+            <Progress value={job.progress.done} max={job.progress.total ?? 1} indeterminate={!job.progress.total} />
+            <div className="faint" style={{ fontSize: 'var(--fs-xs)', marginTop: 4 }}>{job.progress.current ?? 'Starting'}</div>
+          </div>
+        )}
+      </div>
+      {!m.transcription && (
+        <Button size="sm" loading={running} disabled={running} onClick={() => void start()}>
+          Download now
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function SetupPanel() {
   const q = useRpc('setup.check', {})
   const models = useRpc('setup.models', {})
@@ -222,6 +270,7 @@ export function SetupPanel() {
           {MODEL_LABELS.map(([key, label, hint]) => (m ? <Item key={key} ok={m[key] !== false} label={label} hint={hint} optional /> : null))}
           {m && <Item ok={!!m.ocr} label={m.ocr ? `Text recognition for scans (${m.ocr})` : 'Text recognition for scans'} hint="No OCR engine is installed. Repair the engine to add one." />}
           {m && <Item ok={!!m.claude_cli} label="Claude Code (for Ask Claude and Research)" hint="Comes with the engine. Repair the engine if it is missing." />}
+          {m && m.transcription_model && <TranscriptionModel m={m} onDone={() => void models.refetch()} />}
         </div>
       </section>
       <section className="card set-card">

@@ -22,6 +22,7 @@ from watchdog.cmd.base import (
     load_projects,
 )
 from watchdog.pipeline.json_io import _read_json, write_private_json
+from watchdog.pipeline import transcribe as _transcribe
 from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_state
 
 
@@ -197,6 +198,40 @@ _CONFIGURE_KEYS = {
         "type": "int",
         "default": 300,
         "min": 1,
+    },
+    # ── Transcription (D273) ──────────────────────────────────────────────────
+    "transcription_model": {
+        "short": f"Speech-to-text model for audio and video (default: {_transcribe.DEFAULT_MODEL})",
+        "help": (
+            "The model that transcribes recordings, on this computer. It is downloaded the first\n"
+            "  time a recording is added (or ahead of time from Settings, under Setup).\n"
+            "  medium:          1.5 GB. The default: the most accurate on names and on noisy\n"
+            "                   audio in Watchdog's tests, and the slowest (an hour of audio took\n"
+            "                   20 to 35 minutes on a four-core computer).\n"
+            "  large-v3-turbo:  1.6 GB. As accurate as medium on noisy audio, less so on names;\n"
+            "                   usually faster than medium.\n"
+            "  small:           486 MB. Fastest download; noticeably less accurate on poor audio.\n"
+            "  distil-large-v3: 1.5 GB. English only.\n"
+            "  Recordings already added keep the transcript they were given; changing this\n"
+            "  affects recordings added afterwards."
+        ),
+        "type": "enum",
+        "default": _transcribe.DEFAULT_MODEL,
+        "choices": list(_transcribe.MODELS),
+    },
+    "transcription_language": {
+        "short": "Language spoken in recordings (default: auto, detected per recording)",
+        "help": (
+            "The language recordings are transcribed in. 'auto' detects it from the first minute\n"
+            "  or so of each recording. Set a language when every recording is in it, or when\n"
+            "  detection picks the wrong one (a recording that opens with music, or with a\n"
+            "  greeting in another language). Codes: en English, fr French, es Spanish,\n"
+            "  de German, pt Portuguese, it Italian, zh Chinese, ar Arabic, uk Ukrainian, and\n"
+            "  the other Whisper language codes."
+        ),
+        "type": "enum",
+        "default": "auto",
+        "choices": ["auto", *_transcribe.LANGUAGES],
     },
     # ── Extraction ────────────────────────────────────────────────────────────
     "table_structure": {
@@ -700,6 +735,8 @@ _CONFIGURE_SECTIONS = [
      ["ocr_engine", "ocr_languages", "garbled_threshold"]),
     ("Pre-processing", "Local conversion — parallelism and large-PDF handling.",
      ["chew_workers", "chunk_size", "chunk_workers", "chunk_timeout", "table_structure"]),
+    ("Transcription", "Speech-to-text for audio and video, on this computer.",
+     ["transcription_model", "transcription_language"]),
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",

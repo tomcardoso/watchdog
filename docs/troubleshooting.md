@@ -69,12 +69,24 @@ The file could not be read when Watchdog converted it to text. It sits in `incom
 
 To retry, fix the problem, move the file from `incoming/failed/` back into `incoming/` (in your file manager; **File → Show in Folder** opens the investigation's folder), then choose **Add documents** again.
 
+## A recording failed or came out wrong
+
+Recordings are transcribed on your computer during pre-processing. What goes wrong, and what to do:
+
+- **"The transcription model could not be downloaded."** The first recording you add downloads the speech-recognition model (1.5 GB by default), and the connection failed. Check the connection, then add the file again, or download the model from **Settings → Setup** with **Download now** first.
+- **"This video has no sound track."** The file has pictures but no audio, so there is nothing to transcribe. If it should have sound, export it again from wherever it came from.
+- **"This file could not be read as audio or video."** The file is damaged, or is not the format its name says. Try opening it in another player; if that also fails, get a fresh copy.
+- **It takes a long time.** Transcription runs on your computer and is the slowest step for a long recording: with the default model, an hour of audio took 20 to 35 minutes on a four-core test computer. Recordings are transcribed one at a time, and the run shows how far it has got ("Transcribing hearing.mp4, 12:05 of 1:02:05"). A smaller model in [Settings](configuration.md#transcription) is faster but makes more mistakes.
+- **The transcript is in the wrong language, or is nonsense.** Language detection listens to the start of the recording, and music, silence or a greeting in another language can mislead it. Set **Transcription language** in [Settings](configuration.md#transcription), then add the recording again.
+- **Names or figures are wrong.** Speech recognition mishears uncommon names and numbers; this is the normal failure, not a fault. Click the timestamp beside the passage to hear it, and correct the fact in your own notes. A larger model makes fewer of these mistakes.
+- **The player says the format can't be played.** The transcript is still there. Some formats (`.avi`, and some `.mkv` files) cannot be played inside Watchdog; use **Open original** to play the recording in another app.
+
 ## A file landed in incoming/skipped/
 
 Two things send a file here, and neither is an error:
 
 - **It is an exact duplicate.** Watchdog fingerprints every document by its content, so a file that is byte-identical to one already added, even under a different name, is set aside rather than processed twice. Nothing to do.
-- **No text was found.** Watchdog found nothing readable in the file, even after OCR. Open the original and check it is legible; a very poor scan can produce no text at all.
+- **No text was found.** Watchdog found nothing readable in the file, even after OCR. Open the original and check it is legible; a very poor scan can produce no text at all. For a recording, it means no speech was heard: check that it plays with sound.
 
 ## A document failed during a run
 

@@ -2,13 +2,14 @@
 // reporter's own check (D271). Keyboard: J/K or the arrow keys move between facts, V/D/C mark the
 // focused fact Verified, Disputed or Can't verify (again to clear), N edits its note.
 
-import { AlertTriangle, FileText, Info, SearchX } from 'lucide-react'
+import { AlertTriangle, Clock, FileText, Info, SearchX } from 'lucide-react'
 import { useRef, useState } from 'react'
 import { EntityChip } from '@renderer/components/EntityChip'
 import { FactCheck, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
 import { Badge, Empty, Kbd, Segmented, cx } from '@renderer/components/ui'
 import { fmtDate } from '@renderer/lib/format'
-import type { Fact } from '@shared/api'
+import { pageLabel } from '@renderer/lib/media'
+import type { Fact, MediaInfo } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
 
 type Jump = (t: Omit<JumpTarget, 'nonce'>) => void
@@ -28,15 +29,17 @@ export function passageSnippet(q: string): string {
   return words.slice(0, 7).join(' ')
 }
 
-function Passage({ f, jump, hasViewer }: { f: Fact; jump: Jump; hasViewer: boolean }) {
+function Passage({ f, jump, hasViewer, media }: { f: Fact; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
   const page = f.passage_page ?? f.page
+  const findLabel = media ? 'play from here' : 'find on page'
+  const on = (p: number) => (media ? `at ${pageLabel(media, p)}` : `on ${pageLabel(null, p)}`)
   if (f.quote) {
     return (
       <blockquote className="fact-quote">
         {f.quote}
         {page && hasViewer && (
           <button className="fact-quote-find" onClick={() => jump({ page, find: passageSnippet(f.quote!) })}>
-            find on page
+            {findLabel}
           </button>
         )}
       </blockquote>
@@ -47,12 +50,12 @@ function Passage({ f, jump, hasViewer }: { f: Fact; jump: Jump; hasViewer: boole
     return (
       <blockquote className="fact-passage">
         <span className="fact-passage-label" data-tip="Watchdog found this passage by matching the fact's names, figures and dates against the page. The model did not quote it, so read the page before relying on it.">
-          Matched passage{f.passage_page ? `, p. ${f.passage_page}` : ''}{elsewhere ? ` (the fact cites p. ${f.page})` : ''}
+          Matched passage{f.passage_page ? `, ${pageLabel(media, f.passage_page)}` : ''}{elsewhere ? ` (the fact cites ${pageLabel(media, f.page!)})` : ''}
         </span>
         {f.passage}
         {page && hasViewer && (
           <button className="fact-quote-find" onClick={() => jump({ page, find: passageSnippet(f.passage!) })}>
-            find on page
+            {findLabel}
           </button>
         )}
       </blockquote>
@@ -62,14 +65,14 @@ function Passage({ f, jump, hasViewer }: { f: Fact; jump: Jump; hasViewer: boole
     return (
       <div className="fact-unlocated" data-tip="Nothing on the page shares enough of this fact's names, figures and dates. It may be reasoned from several passages, or the page citation may be off. Check the source.">
         <SearchX />
-        {f.page ? `No matching passage found on p. ${f.page}` : 'No matching passage found in this document'}
+        {f.page ? `No matching passage found ${on(f.page)}` : 'No matching passage found in this document'}
       </div>
     )
   }
   return null
 }
 
-export function FactsTab({ facts, jump, hasViewer }: { facts: Fact[]; jump: Jump; hasViewer: boolean }) {
+export function FactsTab({ facts, jump, hasViewer, media }: { facts: Fact[]; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
   const [mode, setMode] = useState<Mode>('all')
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const marks = useMarks()
@@ -137,8 +140,12 @@ export function FactsTab({ facts, jump, hasViewer }: { facts: Fact[]; jump: Jump
               <div className="fact-top">
                 {f.date && <span className="fact-date">{fmtDate(f.date)}</span>}
                 {f.page ? (
-                  <button className="fact-page" onClick={() => jump({ page: f.page!, find: undefined })} data-tip={hasViewer ? `Show page ${f.page}` : `Page ${f.page}`}>
-                    <FileText />p. {f.page}
+                  <button
+                    className="fact-page"
+                    onClick={() => jump({ page: f.page!, find: media && (f.quote || f.passage) ? passageSnippet((f.quote || f.passage)!) : undefined })}
+                    data-tip={media ? `Play page ${f.page} of the recording` : hasViewer ? `Show page ${f.page}` : `Page ${f.page}`}
+                  >
+                    {media ? <Clock /> : <FileText />}{pageLabel(media, f.page)}
                   </button>
                 ) : null}
                 {f.basis === 'inferred' && <Badge tone="info" icon={Info} tip={INFERRED_TIP}>inferred</Badge>}
@@ -146,7 +153,7 @@ export function FactsTab({ facts, jump, hasViewer }: { facts: Fact[]; jump: Jump
                 {f.added_by && <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>added by {f.added_by}</span>}
               </div>
               <div className="fact-text selectable">{f.fact}</div>
-              <Passage f={f} jump={jump} hasViewer={hasViewer} />
+              <Passage f={f} jump={jump} hasViewer={hasViewer} media={media} />
               {f.figure_note && (
                 <div className="fact-warn">
                   <AlertTriangle />

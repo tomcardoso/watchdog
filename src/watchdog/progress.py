@@ -23,6 +23,12 @@ Events (every one has `kind`):
      briefing|leads|requests|done", "done": n|null, "total": n|null, "path": str|null}
         `dig` carries the run's document count as `total`; `done` is the briefing path.
     {"kind": "download", "done": n, "total": n, "url": str|null}   (research fetch)
+    {"kind": "model", "name": "transcription", "label": str, "state": "start|progress|done|failed",
+     "done": MB|null, "total": MB|null, "detail": str|null}
+        a one-time model download; `label` reads "Downloading the transcription model (486 MB)".
+    {"kind": "transcribe", "name": str, "position": seconds, "duration": seconds|null}
+        a recording being transcribed. Written by the pre-processing subprocess to its stderr
+        (its stdout is the JSON result) and forwarded by preprocess_batch.preprocess_one.
     {"kind": "message", "text": str}
 """
 

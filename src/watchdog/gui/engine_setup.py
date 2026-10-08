@@ -59,8 +59,10 @@ STEPS: list[tuple[str, str]] = [
 
 # Models downloaded only when first needed, never during setup: (id, label). Each one also needs
 # a runner in _RUNNERS; the feature that needs the model runs `models --only <id>` (or calls
-# `download_models([id])`) before first use and reports the same progress lines. Empty for now.
-ON_DEMAND: list[tuple[str, str]] = []
+# `download_models([id])`) before first use and reports the same progress lines. The
+# speech-to-text model is 0.5 to 1.6 GB and only some investigations include recordings, so it is
+# fetched the first time a recording is pre-processed or from Settings > Setup (D273).
+ON_DEMAND: list[tuple[str, str]] = [("transcription", "Transcription model")]
 
 
 # ── the two install phases ──────────────────────────────────────────────────────────
@@ -68,7 +70,7 @@ ON_DEMAND: list[tuple[str, str]] = []
 # Distributions left out of phase 1: they pull in torch, transformers, onnxruntime and the rest
 # of the multi-gigabyte stack, and only adding documents and semantic search use them. Every
 # import of them in the package is inside the function that needs it.
-PHASE2_ONLY = ("docling", "fastembed", "gliner", "ocrmac")
+PHASE2_ONLY = ("docling", "fastembed", "gliner", "ocrmac", "faster-whisper", "av")
 # Not declared by the package (it arrives through docling and fastembed) but imported at module
 # level by watchdog.pipeline.embed, which the search screens load to read index statistics.
 PHASE1_EXTRA = ("numpy",)
@@ -126,6 +128,8 @@ def _hf_cache() -> Path:
         from huggingface_hub import constants
         return Path(constants.HF_HUB_CACHE)
     except Exception:  # noqa: BLE001
+        if os.environ.get("HF_HUB_CACHE"):
+            return Path(os.environ["HF_HUB_CACHE"])
         home = os.environ.get("HF_HOME") or str(Path.home() / ".cache" / "huggingface")
         return Path(home) / "hub"
 
@@ -189,7 +193,22 @@ def check() -> dict:
         "reranker": reranker,
         "ocr": available_ocr_engine() if sys.platform != "darwin" else "apple_vision",
         "claude_cli": bundled_claude_path(),
+        **_transcription_check(),
     }
+
+
+def _transcription_check() -> dict:
+    """Whether the configured transcription model's weights are in the hub cache, read off the
+    snapshot folders (no import of the hub library, no network)."""
+    from watchdog.pipeline import transcribe
+    name = transcribe.configured_model()
+    repo_dir = _hf_cache() / ("models--" + transcribe.model_repo(name).replace("/", "--"))
+    try:
+        cached = any((snap / "model.bin").exists() for snap in (repo_dir / "snapshots").iterdir())
+    except OSError:
+        cached = False
+    return {"transcription": cached, "transcription_model": name,
+            "transcription_size_mb": transcribe.MODELS[name]["size_mb"]}
 
 
 # ── downloads ───────────────────────────────────────────────────────────────────────
@@ -220,6 +239,16 @@ def _download_reranker() -> str | None:
     from fastembed.rerank.cross_encoder import TextCrossEncoder
     TextCrossEncoder(embed._rerank_model_name())
     return None
+
+
+def _download_transcription() -> str | None:
+    from watchdog.pipeline import transcribe
+    name = transcribe.configured_model()
+    if transcribe.model_cached(name):
+        return f"{name}, already downloaded"
+    # Byte progress as `model` events, the same ones a job shows when a recording triggers it.
+    transcribe.ensure_model(name, progress.emit)
+    return name
 
 
 def _ensure_ocr() -> str | None:
@@ -258,6 +287,7 @@ _RUNNERS: dict[str, Callable[[], str | None]] = {
     "embedding": _download_embedding,
     "reranker": _download_reranker,
     "ocr": _ensure_ocr,
+    "transcription": _download_transcription,
 }
 
 

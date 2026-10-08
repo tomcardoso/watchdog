@@ -8,6 +8,7 @@ import type { Job } from '@shared/api'
 
 export const STAGE_LABELS: Record<string, string> = {
   chew: 'Pre-processing (on this computer)',
+  model: 'Downloading a local model',
   extract: 'Processing (model extraction)',
   dig: 'Processing (model extraction)',
   fold: 'Merging exact duplicates',
@@ -31,9 +32,12 @@ export function progressText(job: Job): { text: string; done: number | null; tot
     const finished = docs.filter((d) => d.state === 'done' || d.state === 'failed').length
     return { text: `${stage ?? 'Extracting'} · ${finished} of ${p.total ?? docs.length} documents`, done: finished, total: p.total ?? docs.length }
   }
+  // A one-time model download names itself and its size (D273): "Downloading the transcription
+  // model (486 MB)", with the megabytes as the bar.
+  if (p.stage === 'model') return { text: `${p.current ?? 'Downloading a model'}…`, done: p.done, total: p.total }
   if (stage) {
     const of = p.total ? ` · ${p.done ?? 0} of ${p.total}` : ''
-    return { text: stage + of, done: p.done, total: p.total }
+    return { text: stage + of + (p.note ? ` · ${p.note}` : ''), done: p.done, total: p.total }
   }
   return { text: p.current ?? 'Working…', done: null, total: null }
 }

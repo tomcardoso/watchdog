@@ -95,6 +95,7 @@ DocumentRow = {
   sha, filename, title|null, document_type|null, date_of_document|null,
   page_count|null, record_skill|null, ingested_at|null,
   near_duplicate_of|null,            // display text of the matched document
+  media_kind: "audio"|"video"|null, duration_seconds|null,   // recordings (D273)
   note: "documents/<slug>"|null,     // registry document_note
   original: "morgue/…/file.pdf"|null,// registry morgue_path, vault-relative
   fulltext: "morgue/…/file.md"|null, // the full-text sibling, when present
@@ -143,7 +144,9 @@ DocumentDetail = DocumentRow & {
   pages: [{page, text}],                        // morgue full text split on <!-- PAGE n -->
   file_metadata: object, sidecar: object|null, metadata: object|null,
   extract_model|null, extract_effort|null, record_skill_hash|null,
-  duplicates: [{sha, filename, note}]           // documents this one nearly duplicates, both ways
+  duplicates: [{sha, filename, note}],          // documents this one nearly duplicates, both ways
+  media: null | {kind: "audio"|"video", duration_seconds|null, page_seconds|null,   // recordings only (D273):
+          pages: [{page, start, end}], language|null, model|null}   // page n is start..end seconds; unknown fields ignored
 }
 
 EntityDetail = EntityRow & {
@@ -238,7 +241,9 @@ A job is `python -m watchdog <args…>` run with the vault as its working direct
 
 ```
 Job = { id, label, kind, vault|null, args, state: "running"|"done"|"failed"|"cancelled",
-        exit_code|null, started, finished|null, progress: ProgressState }
+ProgressState = { stage|null, done|null, total|null, current|null, note?: string|null, docs: {[sha]: {filename, state, detail|null}} }
+// stage "model" is a one-time model download (current = "Downloading the transcription model (486 MB)", done/total in MB);
+// note is a transient detail beside the stage ("Transcribing hearing.mp4, 12:05 of 1:02:05").
 LogLine = { t, stream: "out"|"err", text }
 ProgressState = { stage|null, done|null, total|null, current|null, docs: {[sha]: {filename, state, detail|null}} }
 ```
@@ -290,7 +295,8 @@ sweeps and `leads` run as jobs.
 | `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
 | `skills.read` | `{name}` | `{name, text}` |
 | `setup.check` | — | `{deps: [{label, ok, hint\|null, required: false}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` — no dependency blocks the app |
-| `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null}` — what is on disk, no network |
+| `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null, transcription: bool, transcription_model, transcription_size_mb}` — what is on disk, no network |
+| `setup.downloadModel` | `{model: "transcription"}` | `Job` — downloads an on-demand model ahead of time (D273) as a job running `python -m watchdog.gui.engine_setup models --only transcription`; progress is the `model` stage |
 | `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes what `watchdog setup` writes; an existing config file is the "set up" signal |
 | `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
 

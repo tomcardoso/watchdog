@@ -22,7 +22,7 @@ SRC = Path(__file__).resolve().parents[1] / "src"
 # Everything phase 2 brings, including what the phase-2 distributions pull in.
 PHASE2_MODULES = ("docling", "docling_core", "docling_parse", "fastembed", "gliner", "torch",
                   "torchvision", "transformers", "onnxruntime", "tokenizers", "huggingface_hub",
-                  "rapidocr", "ocrmac", "easyocr", "tesserocr", "scipy", "pandas")
+                  "rapidocr", "ocrmac", "easyocr", "tesserocr", "scipy", "pandas", "faster_whisper", "ctranslate2", "av")
 
 
 # ── core-requirements ────────────────────────────────────────────────────────────

@@ -14,7 +14,9 @@ Outputs a single JSON object to stdout:
   "metadata": {
     "ocr_used": bool,         # OCR was forced on at least one page
     "garbled_detected": bool, # at least one page's text layer read as junk
-    "source_type": "direct_text" | "docling",
+    "source_type": "direct_text" | "docling" | "transcript",
+    "media": {...},           # audio/video only: kind, duration and each page's time range
+                              # (see transcribe.process_media)
     "chunked": bool,          # true when the PDF was split for parallel processing
     "ocr_pages": [int]        # 1-indexed pages OCR'd, present only when OCR was
                               # page-scoped — i.e. some pages but not all (#605)
@@ -41,6 +43,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from watchdog import config as user_config
+from watchdog.pipeline import transcribe as _transcribe
 
 # alphanumeric+space ratio below which text is considered garbled by the character-class
 # signal alone. Lowered from 0.75 (#580/#597): 0.75 was too aggressive for tables and
@@ -81,10 +84,11 @@ DOCLING_SUFFIXES = {
     ".asciidoc", ".adoc",
     ".tex",
     ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp",
-    ".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac",
-    ".mp4", ".avi", ".mov",
     ".vtt",
 }
+
+# Audio and video are transcribed locally by pipeline/transcribe.py, not Docling (D273).
+MEDIA_SUFFIXES = _transcribe.MEDIA_SUFFIXES
 
 
 def sha256_file(path: Path) -> str:
@@ -788,10 +792,11 @@ def main() -> None:
 
     suffix = path.suffix.lower()
 
-
-
     if suffix in DIRECT_TEXT_SUFFIXES:
         result = process_direct_text(path)
+    elif suffix in MEDIA_SUFFIXES:
+        _transcribe.os_environ_quiet()
+        result = _transcribe.process_media(path, emit=_transcribe.stderr_emitter)
     elif suffix in DOCLING_SUFFIXES:
         result = process_with_docling(path, force_ocr=args.force_ocr,
                                       detect=not args.no_force_ocr)
