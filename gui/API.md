@@ -24,6 +24,12 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   call naming a vault outside the folders in `~/.watchdog/access.json`, and any `jobs.start` or
   `action.run` there, fails with `RpcError(code="not_granted", data={"path"})`. The server only
   reads that file (`access.list`); grants are made by the main process (`window.watchdog.access`).
+- **Engine setup (D272).** While the app's engine is still installing its background phase, the
+  main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
+  then refuse `add`, `chew`, `dig`, `bark`, `ingest`, `watch`, `requeue`, `reindex` and
+  `merge-entities` (grouped forms and aliases included) with
+  `RpcError(code="engine_not_ready", data={"command"})`, and `search.query` skips the
+  meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by reused
   CLI code is converted to an error with its message (leading `Error:` stripped).
 
@@ -34,7 +40,9 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 | Method | Params | Result |
 |---|---|---|
 | `app.ping` | — | `{ok: true}` |
-| `app.info` | — | `{version, python, python_version, platform, watchdog_home, config_file, setup_complete, projects_dir, claude_code: {installed, logged_in}, obsidian_installed}` |
+| `app.info` | — | `{version, python, python_version, platform, watchdog_home, config_file, setup_complete, projects_dir, claude_code: {installed, logged_in}, obsidian_installed, engine_ready}` |
+| `engine.ready` | — | `{ready}`: false while the engine's background phase is unfinished (D272) |
+| `engine.setReady` | — | `{ready: true}`. Called by the main process when the background phase finishes: clears `WATCHDOG_ENGINE_PENDING` for the server and the commands it starts, and drops the import caches so the new packages load |
 
 ## access
 
@@ -242,7 +250,7 @@ Events: `job.started {job}`, `job.log {id, lines: LogLine[]}` (batched ≤ 10/s)
 
 | Method | Params | Result |
 |---|---|---|
-| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, semantic_error\|null, exact: [...], passages: [...], notes: [...]}` — the `--json` shape, each item enriched with `sha`, `note`, `original` where resolvable |
+| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, semantic_error\|null, semantic_pending: bool, exact: [...], passages: [...], notes: [...]}` — the `--json` shape, each item enriched with `sha`, `note`, `original` where resolvable |
 | `search.batch` | `{vault\|null, terms: string[], everywhere?: bool}` | `{terms: [{term, checked: bool, hits: [{vault_name?, kind, title, note, page, text, path, sha}]}]}` — entity matches are hits with `kind: "entity"`; `top?` limits hits per term |
 | `search.everywhere` | `{query, top?}` | `{vaults: [{slug, name, path, entity_hits: [...], exact: [...], error\|null}], skipped: [{slug, reason}]}` |
 | `search.status` | `{vault}` | `{total, documents, notes, passages, fulltext: {corpus, notes, total}}` — `embed.index_stats` (`documents` = indexed document files) |

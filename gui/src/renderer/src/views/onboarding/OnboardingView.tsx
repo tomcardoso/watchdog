@@ -10,7 +10,7 @@ import { Button, Callout, Field, Spinner, cx } from '@renderer/components/ui'
 import { LogoMark } from '@renderer/components/Logo'
 import { ModelPicker, providerName } from '@renderer/components/ModelPicker'
 import { call, errorMessage, useEvent, useRpc } from '@renderer/lib/rpc'
-import { EngineActions, EngineProgressView, ENGINE_DISK_TEXT, ENGINE_DOWNLOAD_TEXT, useEngine } from './EngineInstall'
+import { EngineActions, EngineProgressView, ENGINE_DISK_TEXT, ENGINE_DOWNLOAD_TEXT, ENGINE_FIRST_TEXT, useEngine } from './EngineInstall'
 import './onboarding.css'
 
 type Step = 'welcome' | 'engine' | 'folder' | 'provider' | 'approve' | 'done'
@@ -110,7 +110,10 @@ function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: B
   const { status, run } = eng
   const running = run?.state === 'running'
   const external = status?.usingExternal ?? null
-  const ready = backend?.state === 'ready' && !running && (run?.state === 'done' || (status?.engine === 'ready' && status.modelsDone))
+  // Phase 1 is all setup waits for (D272): once the backend runs on it, the rest carries on in the
+  // background while the person continues.
+  const inBackground = running && run?.phase === 2
+  const coreReady = backend?.state === 'ready' && (inBackground || (!running && (run?.state === 'done' || status?.engine === 'ready' || !!external)))
   const broken = status?.engine === 'ready' && backend?.state === 'error' && !running && run?.state !== 'done'
   const title = mode === 'update' ? 'Updating the Watchdog engine' : mode === 'repair' ? 'Repair the Watchdog engine' : 'Install the Watchdog engine'
 
@@ -120,6 +123,20 @@ function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: B
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, status?.engine])
 
+  // Move on by itself the moment phase 1 is in place during this visit.
+  const [advanced, setAdvanced] = useState(false)
+  useEffect(() => {
+    if (advanced || !coreReady || !run || run.state === 'idle' || mode === 'update') return
+    setAdvanced(true)
+    next()
+  }, [coreReady, run, advanced, mode, next])
+
+  // With a Python the app did not install, only the models remain: start them and carry on.
+  const continueExternal = () => {
+    if (status && !status.complete && status.canInstall) void window.watchdog.engine.install()
+    next()
+  }
+
   return (
     <>
       <h1>{title}</h1>
@@ -127,22 +144,23 @@ function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: B
         <div className="col gap-16">
           {external ? (
             <p className="onb-lead">
-              Watchdog is already installed on this computer, at <span className="mono selectable">{external}</span>. It still needs its local models: document
-              conversion, name detection and search. They are a one-time download of {ENGINE_DOWNLOAD_TEXT}.
+              Watchdog is already installed on this computer, at <span className="mono selectable">{external}</span>. It still needs its local models for document
+              conversion, name detection and search, a one-time download of about 4 GB. They download in the background while you finish setting up.
             </p>
           ) : (
             <p className="onb-lead">
-              Watchdog needs Python and a set of libraries to read documents, and several models that run on your computer. Setup downloads them once,
-              {' '}<strong>{ENGINE_DOWNLOAD_TEXT}</strong> in all, and keeps them in the app’s own folder, so nothing else on your computer changes. It
-              needs an internet connection and {ENGINE_DISK_TEXT} of free space while it installs.
+              Watchdog needs Python, a set of libraries and several models that run on your computer. It keeps them in the app’s own folder, so nothing else on
+              your computer changes. The first part, <strong>{ENGINE_FIRST_TEXT}</strong>, takes a minute or two; then you can carry on while the rest,{' '}
+              {ENGINE_DOWNLOAD_TEXT}, downloads in the background. It needs an internet connection and {ENGINE_DISK_TEXT} of free space.
             </p>
           )}
           <ul className="onb-list">
-            <li><strong>Python and Watchdog’s libraries</strong>, the program that does the work.</li>
+            <li><strong>Python and Watchdog</strong>, the program that does the work. Setup waits for this part.</li>
             <li><strong>Document conversion (Docling)</strong>, which reads PDFs and scans, including text in images.</li>
             <li><strong>Name detection (GLiNER)</strong>, which finds people, organizations and places on your computer before any model is asked.</li>
             <li><strong>Search</strong>, an embedding model and a reranker that rank passages by meaning.</li>
           </ul>
+          <p className="onb-note">You can add documents once the background download has finished. A small bar at the bottom of the sidebar shows how far along it is.</p>
           {broken && (
             <Callout tone="danger" title="The engine is installed but did not start">
               <span className="selectable" style={{ whiteSpace: 'pre-wrap' }}>{backend?.message}</span>
@@ -153,7 +171,7 @@ function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: B
           )}
         </div>
       ) : (
-        <EngineProgressView eng={eng} backend={backend} />
+        <EngineProgressView eng={eng} backend={backend} focus={1} />
       )}
       <div className="onb-footer">
         {back && !running && <Button variant="ghost" icon={ArrowLeft} onClick={back}>Back</Button>}
@@ -165,9 +183,12 @@ function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: B
             <Button variant="ghost" onClick={() => void onBackendAction(window.watchdog.backend.choosePython)}>Choose Python…</Button>
           </>
         )}
-        {!ready && !broken && <EngineActions eng={eng} primary={external ? 'Download the models' : 'Install'} onFresh={() => void eng.start(true)} />}
-        {ready && mode !== 'update' && <Button variant="primary" size="lg" onClick={next}>{mode === 'repair' ? 'Open Watchdog' : 'Continue'}</Button>}
-        {ready && mode === 'update' && <Spinner />}
+        {!coreReady && !broken && <EngineActions eng={eng} primary="Install" onFresh={() => void eng.start(true)} />}
+        {coreReady && external && (!run || run.state === 'idle') && <Button variant="primary" size="lg" onClick={continueExternal}>Continue</Button>}
+        {coreReady && !(external && (!run || run.state === 'idle')) && mode !== 'update' && (
+          <Button variant="primary" size="lg" onClick={next}>{mode === 'repair' ? 'Open Watchdog' : 'Continue'}</Button>
+        )}
+        {coreReady && mode === 'update' && <Spinner />}
       </div>
     </>
   )

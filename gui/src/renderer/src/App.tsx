@@ -2,6 +2,7 @@ import { Suspense, useEffect } from 'react'
 import { Spinner } from '@renderer/components/ui'
 import { call, invalidate, useEvent } from '@renderer/lib/rpc'
 import { onJobFinished } from '@renderer/lib/jobs'
+import { useEngineSync } from '@renderer/lib/engine'
 import { applyTheme, Route, Theme, useApp } from '@renderer/lib/store'
 import { AccessGate } from './shell/AccessGate'
 import { BackendGate } from './shell/BackendGate'
@@ -118,6 +119,7 @@ function Shell() {
   const project = useApp((s) => s.project)
   useBootstrap()
   useShortcuts()
+  useEngineSync()
   useEvent('menu.command', ({ command }) => runCommand(command))
   useEvent('job.started', ({ job }) => useApp.getState().upsertJob(job))
   useEvent('job.progress', ({ id, progress }) => {

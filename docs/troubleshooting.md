@@ -22,6 +22,15 @@ If setup finishes with **Some optional pieces could not be downloaded**, Watchdo
 
 If the message says the app cannot install the engine because the installer files are missing, download the app again from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest).
 
+## Add documents is turned off, or "Watchdog is still setting up"
+
+Right after Watchdog is installed or updated, it finishes downloading its document and search libraries and its local models in the background. Until that is done, adding documents is turned off and says "Watchdog is still setting up". Everything else works. The **Finishing setup…** bar at the bottom of the sidebar shows how far along it is; the full download is about 4.5 GB, so on a slow connection it can take a while.
+
+- **The bar is still moving.** Wait for it to finish. You can keep working in the meantime.
+- **The bar says "Setup did not finish".** The download stopped, usually because the connection dropped. Choose **Retry**. Whatever was already downloaded is kept. If it keeps failing, open **Settings → Setup**, choose **Show details** and look at the last lines of the log; the causes are the same as in [The engine installation stops or fails](#the-engine-installation-stops-or-fails).
+- **You quit Watchdog part-way.** Nothing is lost. Setup continues by itself the next time Watchdog opens.
+- **Search shows only exact matches.** Searching by meaning needs the search models, which arrive with the rest of setup. Results ranked by meaning return when it finishes.
+
 ## macOS or Windows will not open the app
 
 On the first launch, your computer may say it cannot verify the developer of Watchdog. Follow the steps in [the install guide](install.md#if-your-computer-says-it-cannot-verify-the-app): on a Mac, **System Settings → Privacy & Security → Open Anyway**; on Windows, **More info → Run anyway**.

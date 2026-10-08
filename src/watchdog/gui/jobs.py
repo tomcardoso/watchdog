@@ -48,6 +48,39 @@ _VALUE_FLAGS = {
 _SWITCH_FLAGS = {"force": "--force", "wait": "--wait", "skip_briefing": "--skip-briefing"}
 COMMANDS = ("add", "dig", "bark", "chew")
 
+# Commands that need the engine's phase-2 libraries or models (D272): adding documents in any
+# form, the incoming-folder watcher, putting failed documents back in the queue, and anything that
+# rewrites the semantic search index. Refused with `engine_not_ready` until the engine is complete.
+ADD_COMMANDS = frozenset({"add", "chew", "dig", "bark", "ingest", "watch", "requeue"})
+INDEX_COMMANDS = frozenset({"reindex", "merge-entities"})
+ENGINE_BUSY_OTHER = ("Watchdog is still setting up. This will be available when it finishes, "
+                     "in a few minutes.")
+
+
+def canonical_command(args: list[str]) -> str | None:
+    """The command `watchdog <args…>` runs, after grouped forms and aliases are resolved."""
+    from watchdog.cmd.base import _ALIASES, _DEPRECATED_ALIASES
+    from watchdog.cmd.groups import rewrite
+
+    argv = rewrite(list(args))
+    if not argv:
+        return None
+    head = argv[0]
+    return _DEPRECATED_ALIASES.get(head) or _ALIASES.get(head) or head
+
+
+def require_engine(args: list[str]) -> None:
+    """Refuse a command that needs the full engine while the app is still installing it."""
+    from watchdog.gui.engine_setup import ENGINE_NOT_READY, engine_ready
+
+    if engine_ready():
+        return
+    command = canonical_command(args)
+    if command in ADD_COMMANDS:
+        raise rpc.RpcError(ENGINE_NOT_READY, code="engine_not_ready", data={"command": command})
+    if command in INDEX_COMMANDS:
+        raise rpc.RpcError(ENGINE_BUSY_OTHER, code="engine_not_ready", data={"command": command})
+
 
 def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
@@ -152,6 +185,7 @@ class JobManager:
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
     def start(self, vault: Path | None, args: list[str], label: str, kind: str | None) -> Job:
+        require_engine(args)
         _require_granted_cwd(vault)
         job = Job(vault, args, label, kind)
         env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "PYTHONUNBUFFERED": "1",
@@ -267,6 +301,7 @@ def _require_granted_cwd(vault: Path | None) -> None:
 
 def run_action(vault: Path | None, args: list[str], timeout: float) -> dict:
     """A short command run to completion: `{code, stdout, stderr}` with colour codes removed."""
+    require_engine(args)
     _require_granted_cwd(vault)
     env = {**os.environ, "NO_COLOR": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
     env.pop("WATCHDOG_PROGRESS", None)

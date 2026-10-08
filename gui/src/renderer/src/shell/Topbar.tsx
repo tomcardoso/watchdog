@@ -1,11 +1,14 @@
 import { ArrowLeft, ArrowRight, FilePlus2, Moon, Search, Sun } from 'lucide-react'
 import { Button, Kbd } from '@renderer/components/ui'
+import { useEngineGate } from '@renderer/lib/engine'
+import { WaitTip } from '@renderer/components/EngineWait'
 import { useApp } from '@renderer/lib/store'
 import { routeTitle } from './titles'
 import { UpdateButton } from '@renderer/components/UpdateButton'
 
 export function Topbar() {
   const { route, back, forward, goBack, goForward, project, setPalette, openAdd, theme, setTheme } = useApp()
+  const gate = useEngineGate()
   const isMac = window.watchdog.platform === 'darwin'
   const dark = document.documentElement.dataset.theme === 'dark'
   return (
@@ -36,9 +39,11 @@ export function Topbar() {
         onClick={() => setTheme(dark ? 'light' : theme === 'light' ? 'dark' : 'dark')}
       />
       {project && (
-        <Button variant="primary" icon={FilePlus2} onClick={() => openAdd()}>
-          Add documents
-        </Button>
+        <WaitTip reason={gate.reason}>
+          <Button variant="primary" icon={FilePlus2} disabled={!gate.ready} onClick={() => openAdd()}>
+            Add documents
+          </Button>
+        </WaitTip>
       )}
     </header>
   )

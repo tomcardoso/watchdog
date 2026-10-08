@@ -1,8 +1,9 @@
 // The document library: every document in the vault as a grid of page thumbnails or a dense list,
 // with filtering, sorting, facets, and the pipeline strip for work that hasn't reached the vault.
 
+import { AddDocumentsButton } from '@renderer/components/EngineWait'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, Copy, FilePlus2, FileText, LayoutGrid, List as ListIcon, Search, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, FileText, LayoutGrid, List as ListIcon, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { Button, Empty, ErrorNote, Segmented, Skeleton, useDebounced } from '@renderer/components/ui'
@@ -104,7 +105,6 @@ export default function DocumentsView() {
   const vault = useVault()
   const route = useApp((s) => s.route)
   const projectName = useApp((s) => s.project?.name ?? 'this investigation')
-  const openAdd = useApp((s) => s.openAdd)
   const docsQ = useRpc('vault.documents', { vault })
   const pipeQ = useRpc('vault.pipeline', { vault })
 
@@ -254,9 +254,7 @@ export default function DocumentsView() {
             icon={FileText}
             title="No documents in the vault yet"
             action={
-              <Button variant="primary" icon={FilePlus2} onClick={() => openAdd()}>
-                Add documents
-              </Button>
+              <AddDocumentsButton />
             }
           >
             Documents appear here once they have been read, extracted and written to the vault. Add PDFs, scans, Word files, spreadsheets or web pages, and each one gets a note with its facts and the people and organizations it names.

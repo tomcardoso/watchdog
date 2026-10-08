@@ -2,7 +2,8 @@
 
 import { BookOpen, CheckCircle2, ExternalLink, FolderOpen, MinusCircle, Monitor, Moon, RefreshCw, Search, Sun, Wrench, XCircle } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import type { BackendStatus, EngineStatus, SetupModels } from '@shared/api'
+import type { BackendStatus, SetupModels } from '@shared/api'
+import { EngineActions, EngineProgressView, useEngine } from '@renderer/views/onboarding/EngineInstall'
 import { Badge, Button, Callout, Empty, ErrorNote, Modal, Segmented, Skeleton, Spinner } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
 import { toast, useApp, Theme } from '@renderer/lib/store'
@@ -145,10 +146,15 @@ const MODEL_LABELS: [keyof SetupModels, string, string][] = [
 export function SetupPanel() {
   const q = useRpc('setup.check', {})
   const models = useRpc('setup.models', {})
-  const [eng, setEng] = useState<EngineStatus | null>(null)
+  const install = useEngine()
+  const eng = install.status
+  const run = install.run
+  // The background phase (D272), or a run that stopped: shown first, with its steps and log.
+  const unfinished = !!eng && (!eng.complete || run?.state === 'running' || run?.state === 'failed' || run?.state === 'cancelled')
   useEffect(() => {
-    void window.watchdog.engine.status().then(setEng)
-  }, [])
+    if (run?.state === 'done') void models.refetch()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [run?.state])
   if (q.isLoading) return <Skeleton h={300} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const c = q.data!
@@ -177,12 +183,31 @@ export function SetupPanel() {
   }
   return (
     <div className="col" style={{ gap: 18 }}>
+      {unfinished && (
+        <section className="card set-card">
+          <div className="set-card-head">
+            <div>
+              <div className="card-title">{run?.state === 'running' ? 'Finishing setup' : run?.state === 'failed' || run?.state === 'cancelled' ? 'Setup did not finish' : 'Setup is not finished'}</div>
+              <div className="card-sub">
+                Watchdog downloads its document and search libraries and its local models in the background. Adding documents waits until they are in place; everything
+                else works now. If the app is closed or the connection drops, setup continues the next time Watchdog opens.
+              </div>
+            </div>
+          </div>
+          <div style={{ padding: '4px 18px 18px' }} className="col gap-16">
+            {run && run.state !== 'idle' && <EngineProgressView eng={install} />}
+            <div className="row" style={{ gap: 8 }}>
+              <EngineActions eng={install} primary="Finish setup" />
+            </div>
+          </div>
+        </section>
+      )}
       <section className="card set-card">
         <div className="set-card-head">
           <div><div className="card-title">Engine</div><div className="card-sub">The private Python environment Watchdog runs in, installed and kept up to date by the app.</div></div>
         </div>
         <dl className="kv" style={{ padding: '4px 18px 8px' }}>
-          <dt>Status</dt><dd>{eng?.engine === 'ready' ? 'Installed' : eng?.usingExternal ? 'Using another Watchdog installation' : eng?.engine === 'outdated' ? 'Needs an update' : 'Not installed'}</dd>
+          <dt>Status</dt><dd>{eng?.engine === 'ready' ? (eng.complete ? 'Installed' : 'Installed; finishing setup in the background') : eng?.usingExternal ? 'Using another Watchdog installation' : eng?.engine === 'outdated' ? 'Needs an update' : 'Not installed'}</dd>
           <dt>Version</dt><dd>{eng?.installedVersion ?? '—'}</dd>
           <dt>Location</dt><dd className="mono selectable">{eng?.usingExternal ?? eng?.dir ?? '—'}</dd>
         </dl>

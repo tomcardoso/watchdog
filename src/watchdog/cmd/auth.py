@@ -204,7 +204,7 @@ def resolve_auth(provider: str = "anthropic") -> dict:
     mode = _load_state().get("mode")
 
     if mode is None:
-        return {"mode": "none", "reason": "auth not configured — run `watchdog setup`"}
+        return {"mode": "none", "reason": "No model provider is set up. Sign in or add a key under Settings → Models & keys."}
     if mode == "subscription":
         return {"mode": "subscription"}
     # api-key

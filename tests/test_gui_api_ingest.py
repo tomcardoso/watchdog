@@ -62,7 +62,7 @@ def test_preflight_warning_text_is_plain(rich_vault, wdg_home):
 def test_preflight_reports_missing_auth(rich_vault, wdg_home):
     p = call("ingest.preflight", vault=V(rich_vault))
     assert p["auth"]["mode"] == "none" and p["auth"]["ok"] is False
-    assert "watchdog setup" in p["auth"]["reason"]
+    assert "Settings → Models & keys" in p["auth"]["reason"] and "watchdog" not in p["auth"]["reason"]
     assert all(m["backend"] is None for m in p["models"])
 
 

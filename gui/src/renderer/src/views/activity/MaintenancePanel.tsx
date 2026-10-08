@@ -28,6 +28,8 @@ import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { flagsFor, runAction, startJob } from '@renderer/lib/jobs'
+import { useEngineGate } from '@renderer/lib/engine'
+import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import { usePublicRecordsGate } from './PublicRecordsGate'
@@ -442,6 +444,17 @@ function ExportCard() {
   )
 }
 
+/** The cards that need the full engine: every control inside is disabled until setup has
+ * finished (D272). `display: contents` keeps the grid layout untouched. */
+function Gated({ children }: { children: ReactNode }) {
+  const ready = useEngineGate().ready
+  return (
+    <fieldset className="act-gated" disabled={!ready}>
+      {children}
+    </fieldset>
+  )
+}
+
 function UnlockCard({ locks }: { locks: { chew: boolean; ingest: boolean } | null }) {
   const [force, setForce] = useState(false)
   const held = locks && (locks.chew || locks.ingest)
@@ -490,11 +503,17 @@ export default function MaintenancePanel() {
       <div className="act-intro">
         These are the steps <span className="mono">Add documents</span> runs for you, plus repairs. Reach for them to run one step at a time, to check an extraction before it reaches the vault, or to fix something that stopped.
       </div>
-      <WatchCard />
+      <EngineWait />
+      <Gated>
+        <WatchCard />
+      </Gated>
       <div className="act-mgrid">
-        <ChewCard incoming={p?.incoming.length ?? null} />
-        <DigCard queued={p?.queued.length ?? null} models={models} />
-        <BarkCard pending={p?.pending_finalization ?? null} models={models} />
+        <Gated>
+          <ChewCard incoming={p?.incoming.length ?? null} />
+          <DigCard queued={p?.queued.length ?? null} models={models} />
+          <BarkCard pending={p?.pending_finalization ?? null} models={models} />
+        </Gated>
+        <Gated>
         <SimpleCard
           icon={Undo2}
           title="Requeue failed documents"
@@ -507,6 +526,7 @@ export default function MaintenancePanel() {
             void call('vault.pipeline', { vault: project.path })
           }}
         />
+        </Gated>
         <SimpleCard
           icon={Telescope}
           title="Lead sweep"
@@ -521,6 +541,7 @@ export default function MaintenancePanel() {
           label="Rebuild timeline"
           onRun={() => launch(['timeline'], 'Rebuild timeline', 'timeline')}
         />
+        <Gated>
         <SimpleCard
           icon={Cpu}
           title="Rebuild the search index"
@@ -528,6 +549,7 @@ export default function MaintenancePanel() {
           label="Reindex"
           onRun={() => launch(['reindex'], 'Reindex', 'reindex')}
         />
+        </Gated>
         <MCard
           icon={Coins}
           title="Usage"

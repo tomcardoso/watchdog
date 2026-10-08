@@ -155,6 +155,69 @@
   font-size: var(--fs-xs);
   color: var(--text-3);
 }
+/* The engine's background setup (Sidebar SetupProgress): quiet, above the version line. */
+.setup-foot {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+}
+.setup-foot:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.setup-foot .progress {
+  height: 4px;
+}
+.setup-foot-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.setup-foot.stalled {
+  cursor: default;
+  background: var(--warning-soft);
+  border-color: transparent;
+  gap: 8px;
+}
+.setup-foot-main {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+.setup-foot-main svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--warning);
+}
+.setup-foot-title {
+  display: block;
+  font-weight: 560;
+}
+.setup-foot-sub {
+  display: block;
+  color: var(--text-2);
+}
+.setup-foot.stalled .btn {
+  align-self: flex-start;
+}
 .status-dot {
   width: 7px;
   height: 7px;

@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPref, setPref } from './prefs'
 import { PythonBackend, RpcError } from './python'
+import type { EngineStatus } from '@shared/api'
 import { Engine } from './engine'
 import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
@@ -42,21 +43,9 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
     return s
   })
 
-  // Installing, repairing and cancelling the managed engine. Progress arrives as 'engine.progress'
-  // events; these calls return the final status.
-  const runInstall = async (fresh: boolean) => {
-    const external = !fresh && backend.status.state === 'ready' && engine.externalPython ? engine.externalPython : null
-    if (!external) await backend.suspend(fresh ? 'Reinstalling the engine…' : 'Installing the engine…')
-    const state = await engine.install({ external, fresh })
-    if (!external && state === 'done') {
-      await backend.start()
-      void loadRoots(backend)
-    }
-    return engine.status()
-  }
   ipcMain.handle('engine:status', () => engine.status())
-  ipcMain.handle('engine:install', (_e, opts: { fresh?: boolean } = {}) => runInstall(!!opts.fresh))
-  ipcMain.handle('engine:reinstall', () => runInstall(true))
+  ipcMain.handle('engine:install', (_e, opts: { fresh?: boolean } = {}) => runInstall(backend, engine, !!opts.fresh))
+  ipcMain.handle('engine:reinstall', () => runInstall(backend, engine, true))
   ipcMain.handle('engine:cancel', () => engine.cancel())
   ipcMain.handle('claude:status', () => claude.status())
   ipcMain.handle('claude:signIn', () => claude.signIn())
@@ -142,6 +131,46 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
     if (win?.isFocused()) return
     if (Notification.isSupported()) new Notification({ title, body }).show()
   })
+}
+
+/**
+ * Install, repair or finish the managed engine (engine.ts). Progress arrives as 'engine.progress'
+ * events; this resolves with the final status. The backend is stopped only when phase 1 has work
+ * to do (the files it runs from are replaced), and started again as soon as phase 1 is in place,
+ * so the app is usable while phase 2 continues. When phase 2 finishes the running backend is told
+ * (`engine.setReady`) rather than restarted, so an open Ask Claude conversation is not cut off.
+ */
+export async function runInstall(backend: PythonBackend, engine: Engine, fresh: boolean): Promise<EngineStatus> {
+  if (engine.isRunning()) return engine.status()
+  const external = !fresh && backend.status.state === 'ready' && engine.externalPython ? engine.externalPython : null
+  const coreWork = !external && (fresh || engine.engineState() !== 'ready' || backend.status.state !== 'ready')
+  if (coreWork) await backend.suspend(fresh ? 'Reinstalling the engine…' : 'Installing the engine…')
+  const state = await engine.install({
+    external,
+    fresh,
+    onCore: async () => {
+      if (!coreWork) return
+      await backend.start()
+      void loadRoots(backend)
+    }
+  })
+  if (state === 'done') await backend.engineReady()
+  return engine.status()
+}
+
+/** At launch: finish an engine whose background phase did not complete (the app was quit, the
+ * network dropped, or an update brought a new version), without asking. */
+export async function resumeEngine(backend: PythonBackend, engine: Engine): Promise<void> {
+  if (backend.status.state !== 'ready') {
+    if (backend.status.state !== 'starting') return
+    try {
+      await backend.waitReady()
+    } catch {
+      return
+    }
+  }
+  const onManaged = backend.status.state === 'ready' && (backend.status.source === 'managed' || !!engine.simulate)
+  if (onManaged && engine.needsBackground()) void runInstall(backend, engine, false)
 }
 
 function refreshRoots(): void {

@@ -9,6 +9,8 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Badge, Button, Callout, Empty, Field, Modal, Progress, Skeleton, Spinner, Switch } from '@renderer/components/ui'
 import { basename, fmtCost, plural } from '@renderer/lib/format'
 import { flagsFor, startJob, waitForJob } from '@renderer/lib/jobs'
+import { useEngineGate } from '@renderer/lib/engine'
+import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import { progressText, STAGE_LABELS } from '@renderer/shell/JobDock'
@@ -32,6 +34,7 @@ export function AddDialog() {
   const jobs = useApp((s) => s.jobs)
   const hasProject = useApp((s) => s.project !== null)
   const visible = addOpen !== null && hasProject
+  const engine = useEngineGate()
 
   const [phase, setPhase] = useState<Phase>('choose')
   const [paths, setPaths] = useState<string[]>([])
@@ -184,6 +187,8 @@ export function AddDialog() {
 
   if (effective === 'choose') {
     body = (
+      <>
+      <EngineWait style={{ marginBottom: 16 }} />
       <ChooseStep
         paths={paths}
         setPaths={setPaths}
@@ -195,12 +200,15 @@ export function AddDialog() {
         setOptions={setOptions}
         error={error}
       />
+      </>
     )
     footer = (
       <>
-        <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>Reading files stays on this computer. You confirm before anything goes to a model.</span>
+        <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>
+          {engine.ready ? 'Reading files stays on this computer. You confirm before anything goes to a model.' : 'Files you choose stay listed here, ready to read when setup finishes.'}
+        </span>
         <Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading} loading={busy} onClick={() => void begin()}>
+        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !engine.ready} loading={busy} onClick={() => void begin()}>
           Read documents
         </Button>
       </>
@@ -239,7 +247,7 @@ export function AddDialog() {
         {nothing ? (
           <Button variant="primary" onClick={close}>Close</Button>
         ) : (
-          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok} onClick={() => void run(gate.pf, folders)}>
+          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready} onClick={() => void run(gate.pf, folders)}>
             Acknowledge and add
           </Button>
         )}

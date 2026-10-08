@@ -2,14 +2,14 @@
 
 Watchdog is a desktop app. You download an installer, open it like any other program, and the app does the rest the first time it runs. You never need a terminal, and you do not install Python or anything else beforehand.
 
-The first run includes a one-time download of the models that run on your computer, which takes several minutes. Read the page through once before starting.
+The first run includes a one-time download of the libraries and models that run on your computer. Only a small part of it, about 200 MB, has to finish before you can carry on; the rest, about 4.5 GB, downloads in the background while you finish setting up and look around. Read the page through once before starting.
 
 ## What you need
 
 | What | Why | Free? |
 |------|-----|-------|
 | A Mac, Windows or Linux computer | Watchdog runs on your computer, not in the cloud | n/a |
-| About 7 GB of free disk space and an internet connection | Setup downloads about 5 GB, and needs room to unpack it | n/a |
+| About 7 GB of free disk space and an internet connection | Setup downloads about 4.7 GB in all, and needs room to unpack it | n/a |
 | Claude access | Powers the AI that reads your documents and answers your questions | Pro/Max subscription, or an API key |
 | [Obsidian](https://obsidian.md) (optional) | A second way to browse an investigation's files | Free |
 
@@ -58,7 +58,11 @@ The first time Watchdog opens, it walks through setup. Each step has a **Continu
 1. **Welcome.** A short description of what Watchdog does, and the public-records rule (see below).
 2. **Install the Watchdog engine.** Watchdog is built on a Python program. The app installs its own private copy, in its own folder, along with the libraries and models it needs. Nothing else on your computer changes. Choose **Install**.
 
-   The download is about 5 GB and needs about 7 GB of free space. It covers Python and Watchdog's libraries, document conversion (Docling), name detection (GLiNER), the search models (an embedding model and a reranker), and text recognition for scans. These are described in [Methodology](methodology.md). You can watch each stage, choose **Show details** to see the installer's log, and **Cancel** at any point. After a cancel or a failure, choose **Try again** and it resumes where it stopped; **Start over** begins from scratch. If an optional piece cannot be downloaded, Watchdog says so and fetches it the first time it is needed.
+   The install comes in two parts. The first, about 200 MB, is Python and Watchdog itself; it usually takes a minute or two, and setup moves on to the next step by itself as soon as it is done. The second, about 4.5 GB, carries on in the background: the libraries that read documents, and the models for document conversion (Docling), name detection (GLiNER), search (an embedding model and a reranker) and text recognition for scans. These are described in [Methodology](methodology.md). It needs about 7 GB of free space in all.
+
+   While the first part runs you can watch each stage, choose **Show details** to see the installer's log, and **Cancel** at any point. After a cancel or a failure, choose **Try again** and it resumes where it stopped; **Start over** begins from scratch.
+
+   While the second part runs, you can finish setup, open investigations, read, search for exact words, review and ask questions. **Adding documents waits until it has finished**: the **Add documents** button and the other ways of adding are turned off, with a note saying why. A small bar at the bottom of the sidebar, **Finishing setup…**, shows how far along it is; choose it to see each stage in **Settings → Setup**. The bar disappears when everything is in place. If you quit Watchdog or lose the connection part-way, it picks up where it stopped the next time Watchdog opens. If an optional model cannot be downloaded, Watchdog says so and fetches it the first time it is needed.
 3. **Where your investigations live.** Each investigation is a folder inside one parent folder. The default is a folder named `Investigations` in your home folder. Choose **Choose…** to pick another, then **Continue**. Watchdog changes files only in folders you have allowed, so choosing a folder here also gives Watchdog permission to create investigations in it. See [Folder access](app.md#folder-access).
 4. **Connect a model.** Pick one:
    - **Claude subscription.** Choose **Sign in with Claude**. Your browser opens so you can sign in to your Claude account; the app waits and continues when you finish. If the browser does not open, the app shows a link to the sign-in page.
@@ -98,7 +102,7 @@ An optional capture browser changes that: each page is rendered in a real (invis
 
 Watchdog checks GitHub for a newer release shortly after it opens, and never downloads anything without being asked. When one is ready, an **Update available** button appears in the top bar. Choose it to download the update, then choose **Restart to update**. You can also check yourself: on a Mac, choose **Check for Updates…** from the Watchdog menu; on Windows and Linux, from the **Help** menu. Watchdog tells you if you already have the latest version.
 
-An update replaces the app and the engine it carries. The next time Watchdog starts after an update, it installs the matching engine automatically and shows its progress. Your investigations, settings and downloaded models are untouched.
+An update replaces the app and the engine it carries. The next time Watchdog starts after an update, it installs the matching engine automatically and shows its progress. As on the first run, Watchdog opens as soon as the first part is in place and finishes the rest in the background; the sidebar bar shows it, and adding documents waits for it, usually for less than a minute when the models are already on your computer. Your investigations, settings and downloaded models are untouched.
 
 If an update does not install, see [Troubleshooting](troubleshooting.md#updates-fail). You can always download the newest installer from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest) and install it over the old one.
 

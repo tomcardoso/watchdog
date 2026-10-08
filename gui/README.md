@@ -41,22 +41,36 @@ A journalist never opens a terminal. On first run the app installs Watchdog itse
 1. `uv python install 3.12`, `uv venv --seed` into `<userData>/engine/` (`python/`, `cache/`, `venv/`;
    `UV_PYTHON_INSTALL_DIR`, `UV_CACHE_DIR` and `UV_PYTHON_BIN_DIR` all point inside it, so nothing
    lands in the user's home).
-2. `uv pip install <bundled wheel>`; on Linux x86 with PyTorch's CPU index, which avoids about
-   2.5 GB of unused NVIDIA libraries. `engine.json` records the wheel's version and digest; a
-   different bundled wheel at a later launch triggers an automatic update.
-3. `python -m watchdog.gui.engine_setup models`: Docling, GLiNER, the embedding model, the reranker
-   and an OCR check. Failures are warnings (each model is fetched again on first use).
+2. Phase 1 (D272), what setup waits for: `uv pip compile` resolves every library once into
+   `engine/requirements.lock`; the wheel goes in with `--no-deps`; then the light libraries from
+   `python -m watchdog.gui.engine_setup core-requirements`, pinned to the lock. The backend starts
+   on this with `WATCHDOG_ENGINE_PENDING=1`, which makes `jobs.start` refuse document-adding
+   commands.
+3. Phase 2, in the background: `uv pip install -r requirements.lock`, then
+   `python -m watchdog.gui.engine_setup models` (Docling, GLiNER, the embedding model, the reranker
+   and an OCR check; failures are warnings, each model is fetched again on first use). When it
+   finishes the main process calls `engine.setReady` on the running backend. An unfinished phase 2
+   resumes at the next launch.
+
+`--torch-backend cpu` (Linux and Windows) takes PyTorch's CPU build: on Linux the PyPI build pulls
+the CUDA stack, a 6.2 GB environment against 1.8 GB. `engine.json` has a `schema` and the `phases`
+finished for its wheel; a different bundled wheel triggers an automatic update, and a record in
+any other schema rebuilds the environment.
 
 `uv` ships in the app (`scripts/fetch-uv.mjs`: pinned version, sha256 verified, into
 `resources/bin/<os>-<arch>/`) and the wheel is built at packaging time (`scripts/build-wheel.mjs`,
 into `resources/python-wheel/`); `npm run dist*` runs both (`predist*`). Measured on a clean Linux
-install: about 0.6 GB of libraries, 4.1 GB of models, 6 GB on disk.
+x64 install (October 2026): phase 1 downloads 147 MB of wheels and a 34 MB Python (a 398 MB
+environment); phase 2 0.41 GB of libraries (1.9 GB environment in all) and 4.0 GB of models.
 
 Developer switches: `WATCHDOG_FORCE_ONBOARDING=1` (or a step id: `welcome`, `engine`, `folder`,
 `provider`, `approve`, `done`) shows setup even when it is complete;
-`WATCHDOG_ENGINE_SIMULATE=1` (`slow`, `fail:<step>`) plays a fake install and sign-in without
-downloading anything. `node scripts/engine-cli.mjs --user-data /tmp/x --verbose` runs the real
-installer headless.
+`WATCHDOG_ENGINE_SIMULATE=1` (`slow`, `fail:<step>`, `slow-phase2` for a phase 2 that takes a few
+minutes, `resume` to open with phase 1 already in place; combine with commas) plays a fake install
+and sign-in without downloading anything, and gates the backend as a real phase 2 does.
+`node scripts/engine-cli.mjs --user-data /tmp/x --verbose` runs the real installer headless
+(`--core-only` stops after phase 1, `--cancel-after <s>` interrupts it, `--home` puts the models
+somewhere disposable); `npm run engine:check` checks the engine logic without the network.
 
 ## Developing
 

@@ -16,6 +16,8 @@ The sidebar lists the screens for the open investigation. The investigation's na
 
 You can drop files onto the window at any time to add them to the open investigation.
 
+Below the screens, the sidebar shows the app's version. Right after Watchdog is installed or updated, a small **Finishing setup…** bar sits above it while the rest of the engine downloads in the background; choose it to see each stage in [Setup](#setup). It disappears when setup has finished. If the download stops, the bar turns into a **Setup did not finish** note with a **Retry** button.
+
 ### Investigations
 
 The list of your investigations, with each one's document and entity counts, when documents were last added, and anything that needs attention. The **⋯** menu on each offers **Open**, **Rename…**, **Edit description…**, **Move to another folder…**, **Archive** (and **Unarchive**), **Show in folder**, **Open in Obsidian**, **Processing history**, **Remove from Watchdog…** and **Remove and delete files…**. Removing from Watchdog leaves the folder where it is. **Remove and delete files…** permanently deletes the folder and its usage records, and asks you to type the investigation's name first. An existing investigation folder can be added with **Add existing folder…**, and **Settings → Check vaults** checks that every investigation's folder and registry are readable.
@@ -34,6 +36,8 @@ The headline from the latest briefing, the briefing itself, what is waiting on y
 4. **Adding.** Extraction and the finishing steps run, with each document's progress shown as it goes. **Hide** closes the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends it cleanly, and adding again resumes it.
 
 **File → Fetch Links…** downloads web pages from a list of addresses into `incoming/`, from where you add them like any other document.
+
+**Until setup has finished**, adding documents is turned off: the **Add documents** button, dropping files on the window, **Finish adding** on the Overview, the actions under **Documents → Pipeline**, and in **Activity → Maintenance** the incoming-folder watcher, pre-processing, processing, post-processing, **Requeue** and **Rebuild the search index**. Each says why: "Watchdog is still setting up. You can add documents when it finishes, in a few minutes." If you open the Add documents window another way, it shows the same note and how far along setup is; files you choose stay listed, ready to read when setup finishes. Merging two entities waits too, because it rewrites the search index. Fetching links still works, since it only downloads into `incoming/`.
 
 ### Documents
 
@@ -55,7 +59,7 @@ An entity's page shows its summary, analysis, contradictions, timeline and relat
 
 ### Search
 
-Three kinds of result, kept separate: exact matches (every place the words appear), source passages (ranked by meaning) and notes (what the investigation has concluded). You can set how many results each section shows, a score threshold, and whether results are re-ranked. **Every investigation** searches all of them at once, and **Check a list of names** reports hits for each name in a list. A name that could not be checked is shown as "not checked", never as "no hits".
+Three kinds of result, kept separate: exact matches (every place the words appear), source passages (ranked by meaning) and notes (what the investigation has concluded). You can set how many results each section shows, a score threshold, and whether results are re-ranked. **Every investigation** searches all of them at once, and **Check a list of names** reports hits for each name in a list. A name that could not be checked is shown as "not checked", never as "no hits". Until setup has finished, only exact matches are searched; a note under the results says so.
 
 ### Review
 
@@ -118,6 +122,7 @@ You can also check yourself with **Check for Updates…**, which is in the Watch
 
 **Settings → Setup** shows the state of the pieces Watchdog depends on:
 
+- **Finishing setup.** Shown while the second part of the install is under way, or if it stopped: each stage (the document and search libraries, then each local model) with its progress, **Show details** for the installer's log, and **Cancel**. Cancelling pauses setup; it continues the next time Watchdog opens, or when you choose **Try again**. Adding documents waits until this has finished.
 - **Engine.** The private Python environment Watchdog runs in: its status, version and location. **Repair or reinstall the engine** removes the environment and installs it again. Your investigations, settings and downloaded models are not touched. It needs an internet connection and can take several minutes. **Download missing models** fetches any local model that failed to download.
 - **Local models.** Document conversion (Docling), name detection (GLiNER), the search embedding model and reranker, and text recognition for scans, each marked present or missing. A missing model is downloaded the first time it is needed. [Methodology](methodology.md) explains what each is for.
 - **Helper tools.** qpdf and Ghostscript, which are optional and used only for repairing or re-rendering problem PDFs.

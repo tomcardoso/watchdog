@@ -2,48 +2,85 @@
 // Watchdog and everything it needs. A journalist never opens a terminal or installs Python.
 //
 //   <userData>/engine/
-//     python/       Python 3.12, downloaded by uv (UV_PYTHON_INSTALL_DIR)
-//     cache/        uv's download cache (UV_CACHE_DIR), so a repair does not download twice
-//     venv/         the environment Watchdog runs in
-//     engine.json   what was installed: the wheel's version and digest, the model results
+//     python/            Python 3.12, downloaded by uv (UV_PYTHON_INSTALL_DIR)
+//     cache/             uv's download cache (UV_CACHE_DIR), so a repair does not download twice
+//     venv/              the environment Watchdog runs in
+//     requirements.in    the one requirement: the bundled wheel
+//     requirements.lock  every library, resolved once for both phases (`uv pip compile`)
+//     core.txt           phase 1's requirements (`engine_setup core-requirements`)
+//     engine.json        what was installed: the wheel's version and digest, whether phase 2's
+//                        libraries are in, the model results
 //
-// Install steps: `uv python install` -> `uv venv` -> `uv pip install <bundled wheel>` ->
-// `python -m watchdog.gui.engine_setup models`. Every step is safe to repeat, so a cancelled or
-// failed install resumes where it stopped. uv ships inside the app (scripts/fetch-uv.mjs) and the
-// wheel is built from this repository at packaging time (scripts/build-wheel.mjs), so the engine is
-// always the same version as the app. This file imports nothing from Electron, so
-// scripts/engine-cli.mjs can run it headless.
+// The install runs in two phases (D272), so the app is usable within a minute or so:
+//
+//   Phase 1, which first-run setup waits for: `uv python install` -> `uv venv` -> `uv pip compile`
+//   (the full resolution, written to requirements.lock) -> the wheel with `--no-deps` -> the
+//   light libraries the backend needs to start, read investigations, change settings and sign in,
+//   pinned to the lock. The caller restarts the backend at this point (`onCore`).
+//
+//   Phase 2, in the background while the person works: every library in the lock (torch,
+//   docling, fastembed, gliner…), then `python -m watchdog.gui.engine_setup models`. Because both
+//   phases install from one resolution, phase 2 only adds packages beside the ones the running
+//   backend has loaded; it never replaces one. Until phase 2 has finished the backend runs with
+//   WATCHDOG_ENGINE_PENDING=1, and it refuses to add documents (`engine_not_ready`).
+//
+// Every step is safe to repeat, so a cancelled or failed install, or one interrupted by quitting
+// the app, resumes where it stopped: the app starts phase 2 again at the next launch. uv ships
+// inside the app (scripts/fetch-uv.mjs) and the wheel is built from this repository at packaging
+// time (scripts/build-wheel.mjs), so the engine is always the same version as the app. This file
+// imports nothing from Electron, so scripts/engine-cli.mjs can run it headless.
 
 import { ChildProcess, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statfsSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { createInterface } from 'node:readline'
 import type { EngineProgress, EngineState, EngineStatus, EngineStep } from '../shared/api'
 
 export const PYTHON_VERSION = '3.12'
 const PROGRESS_PREFIX = '\x1eWDP '
 const MIN_FREE_BYTES = 8 * 1024 ** 3
+/** The environment variable the backend reads while phase 2 is incomplete (engine_setup.PENDING_ENV). */
+export const PENDING_ENV = 'WATCHDOG_ENGINE_PENDING'
 
-const STEP_DEFS: { id: string; label: string; optional: boolean }[] = [
-  { id: 'python', label: 'Python', optional: false },
-  { id: 'packages', label: 'Watchdog and its libraries', optional: false },
-  { id: 'docling', label: 'Document conversion (Docling)', optional: true },
-  { id: 'gliner', label: 'Name detection (GLiNER)', optional: true },
-  { id: 'embedding', label: 'Search embedding', optional: true },
-  { id: 'reranker', label: 'Search reranker', optional: true },
-  { id: 'ocr', label: 'Text recognition for scans', optional: true }
+const STEP_DEFS: { id: string; label: string; optional: boolean; phase: 1 | 2 }[] = [
+  { id: 'python', label: 'Python', optional: false, phase: 1 },
+  { id: 'packages', label: 'Watchdog', optional: false, phase: 1 },
+  { id: 'libraries', label: 'Document and search libraries', optional: false, phase: 2 },
+  { id: 'docling', label: 'Document conversion (Docling)', optional: true, phase: 2 },
+  { id: 'gliner', label: 'Name detection (GLiNER)', optional: true, phase: 2 },
+  { id: 'embedding', label: 'Search embedding', optional: true, phase: 2 },
+  { id: 'reranker', label: 'Search reranker', optional: true, phase: 2 },
+  { id: 'ocr', label: 'Text recognition for scans', optional: true, phase: 2 }
 ]
-const MODEL_STEPS = STEP_DEFS.slice(2).map((s) => s.id)
+const MODEL_STEPS = STEP_DEFS.filter((s) => s.phase === 2 && s.id !== 'libraries').map((s) => s.id)
+
+/**
+ * engine.json's format. A record with any other value (an older app's, or a newer app's after a
+ * downgrade) is not interpreted: the environment is rebuilt from scratch, which costs a download
+ * but can never leave a half-understood engine in place.
+ */
+export const RECORD_SCHEMA = 2
+/**
+ * The install phases this app defines, in order. A record lists the ones finished for its wheel;
+ * the engine is complete when every phase named here is listed and the model step has run. A
+ * later app that adds, splits or renames a phase finds it missing from the list and runs it, and
+ * a new wheel (every update brings one) rewrites the list from the first phase, so no change to the
+ * phases can strand an engine that looks finished but is not.
+ */
+export const PHASES = ['core', 'libraries'] as const
 
 interface EngineRecord {
-  schema: 1
+  schema: typeof RECORD_SCHEMA
   wheel: string
   wheelSha256: string
   wheelVersion: string
   python: string
   installedAt: string
+  /** The PHASES finished for this wheel. */
+  phases: string[]
   /** null until the model step has run to the end (warnings included). */
   models: Record<string, 'ok' | 'warn'> | null
 }
@@ -59,6 +96,17 @@ export interface EngineOptions {
   emit: (e: EngineProgress) => void
   /** Environment overrides, for tests. Defaults to process.env. */
   env?: NodeJS.ProcessEnv
+  /** process.platform, for tests. */
+  platform?: NodeJS.Platform
+}
+
+export interface InstallOptions {
+  /** The Python the backend already runs on when it is not a managed one: only the models are fetched. */
+  external?: string | null
+  /** Throw the environment away first (repair or reinstall). */
+  fresh?: boolean
+  /** Called once phase 1 is in place, before phase 2 starts: the moment to (re)start the backend. */
+  onCore?: () => Promise<void> | void
 }
 
 const osName = (): string => ({ darwin: 'mac', win32: 'win' } as Record<string, string>)[process.platform] ?? 'linux'
@@ -92,6 +140,18 @@ export function versionAtLeast(a: string, b: string): boolean {
   return true
 }
 
+/**
+ * uv arguments that choose PyTorch's build. PyPI's Linux torch wheels pull in several GB of
+ * NVIDIA libraries Watchdog never uses (it converts documents on the CPU): measured on Linux x64,
+ * a 6.2 GB environment against 1.8 GB with the CPU build. `--torch-backend cpu` takes only the
+ * PyTorch-ecosystem packages from PyTorch's CPU index, everything else from PyPI. Windows' PyPI
+ * build is already CPU-only, so the flag changes nothing there but keeps the platforms alike. macOS
+ * is left to PyPI, whose wheels are the CPU (and Apple GPU) build.
+ */
+export function torchArgs(platform: NodeJS.Platform = process.platform): string[] {
+  return platform === 'darwin' ? [] : ['--torch-backend', 'cpu']
+}
+
 function friendlyError(text: string): string {
   const low = text.toLowerCase()
   if (/dns|resolve|connect|network|timed out|timeout|tls|certificate|error sending request|unreachable/.test(low)) {
@@ -101,29 +161,46 @@ function friendlyError(text: string): string {
   return text
 }
 
+/** WATCHDOG_ENGINE_SIMULATE, parsed. "1", "slow", "fail:<step>", "slow-phase2" (phase 2 takes a
+ * few minutes, for screenshots of the background indicator) and "resume" (phase 1 counts as
+ * already installed, so the app opens straight away and finishes phase 2 in the background) can be
+ * combined with commas: "resume,slow-phase2". */
+export function parseSimulate(value: string | null | undefined): { slow: boolean; slowPhase2: boolean; resume: boolean; failAt: string | null } | null {
+  if (!value) return null
+  const parts = value.split(',').map((p) => p.trim())
+  const fail = parts.find((p) => p.startsWith('fail:'))
+  return { slow: parts.includes('slow'), slowPhase2: parts.includes('slow-phase2'), resume: parts.includes('resume'), failAt: fail ? fail.slice(5) : null }
+}
+
 export class Engine {
   readonly dir: string
   private opts: EngineOptions
   private env: NodeJS.ProcessEnv
+  private platform: NodeJS.Platform
   private child: ChildProcess | null = null
   private cancelled = false
   private running = false
   private runId = 0
   private state: EngineState = 'idle'
+  private phase: 1 | 2 | null = null
   private steps: EngineStep[] = []
   private error: string | null = null
   private log: string[] = []
   private pendingLog: string[] = []
   private flushTimer: ReturnType<typeof setTimeout> | null = null
+  private simulatedCore = false
   private simulatedDone = false
+  private simulatedFailed = false
   /** Set by the caller when the backend is running on a Python that is not the managed one. */
   externalPython: string | null = null
 
   constructor(opts: EngineOptions) {
     this.opts = opts
     this.env = opts.env ?? process.env
+    this.platform = opts.platform ?? process.platform
     this.dir = join(opts.userData, 'engine')
     this.steps = this.freshSteps()
+    this.simulatedCore = !!this.sim?.resume
   }
 
   // ── what is on disk ─────────────────────────────────────────────────────────────
@@ -136,12 +213,16 @@ export class Engine {
     return this.env.WATCHDOG_ENGINE_SIMULATE ?? null
   }
 
+  private get sim() {
+    return parseSimulate(this.simulate)
+  }
+
   venvDir(): string {
     return join(this.dir, 'venv')
   }
 
   venvPython(): string {
-    return process.platform === 'win32' ? join(this.venvDir(), 'Scripts', 'python.exe') : join(this.venvDir(), 'bin', 'python')
+    return this.platform === 'win32' ? join(this.venvDir(), 'Scripts', 'python.exe') : join(this.venvDir(), 'bin', 'python')
   }
 
   /** The venv's bin directory (where the `watchdog` command lives). */
@@ -149,8 +230,15 @@ export class Engine {
     return dirname(this.venvPython())
   }
 
+  /** engine.json when it is in this app's format, else null (see RECORD_SCHEMA). */
   private record(): EngineRecord | null {
-    return readJson<EngineRecord>(join(this.dir, 'engine.json'))
+    const r = readJson<EngineRecord>(join(this.dir, 'engine.json'))
+    return r && r.schema === RECORD_SCHEMA && Array.isArray(r.phases) ? r : null
+  }
+
+  /** An engine.json exists that this app does not read: rebuild rather than guess. */
+  private foreignRecord(): boolean {
+    return existsSync(join(this.dir, 'engine.json')) && !this.record()
   }
 
   private writeRecord(r: EngineRecord): void {
@@ -161,7 +249,7 @@ export class Engine {
   }
 
   uvPath(): string | null {
-    const exe = process.platform === 'win32' ? 'uv.exe' : 'uv'
+    const exe = this.platform === 'win32' ? 'uv.exe' : 'uv'
     const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
     const candidates = this.opts.isPackaged
       ? [join(this.opts.resources, 'bin', exe)]
@@ -207,8 +295,7 @@ export class Engine {
     return r.status === 0 && r.stdout.trim() === 'True'
   }
 
-  private packagesCurrent(): boolean {
-    const rec = this.record()
+  private packagesCurrent(rec = this.record()): boolean {
     const wheel = this.wheelPath()
     if (!rec || !wheel) return !!rec && !wheel // nothing to compare against: whatever is installed stands
     return rec.wheelSha256 === sha256(wheel)
@@ -220,12 +307,28 @@ export class Engine {
     return this.record() && existsSync(this.venvPython()) ? this.venvPython() : null
   }
 
-  /** installed and matching the app; 'outdated' when the bundled wheel differs from what is installed. */
+  /** Phase 1 installed and matching the app ('ready'); 'outdated' when the bundled wheel differs. */
   engineState(): 'missing' | 'outdated' | 'ready' {
-    if (this.simulate) return this.simulatedDone ? 'ready' : 'missing'
+    if (this.simulate) return this.simulatedCore || this.simulatedDone ? 'ready' : 'missing'
     const rec = this.record()
     if (!rec || !existsSync(this.venvPython())) return 'missing'
-    return this.packagesCurrent() ? 'ready' : 'outdated'
+    return this.packagesCurrent(rec) && rec.phases.includes('core') ? 'ready' : 'outdated'
+  }
+
+  /**
+   * Everything installed: phase 2's libraries and the model step. With a Python the app did not
+   * install, there are no libraries to add, so only a model download in progress counts.
+   */
+  complete(): boolean {
+    if (this.simulate) return this.simulatedDone
+    if (this.externalPython) return !(this.running && this.phase === 2)
+    const rec = this.record()
+    return this.engineState() === 'ready' && !!rec && PHASES.every((p) => rec.phases.includes(p)) && !!rec.models
+  }
+
+  /** Phase 1 is in place and phase 2 is not: what the app resumes at launch. */
+  needsBackground(): boolean {
+    return !this.running && this.canInstall() && this.engineState() === 'ready' && !this.complete()
   }
 
   status(): EngineStatus {
@@ -234,6 +337,7 @@ export class Engine {
     return {
       state: this.running ? 'installing' : this.state === 'failed' || this.state === 'cancelled' ? this.state : es,
       engine: es,
+      complete: this.complete(),
       dir: this.dir,
       installedVersion: rec?.wheelVersion ?? null,
       bundledVersion: this.bundledVersion(),
@@ -244,7 +348,7 @@ export class Engine {
       forceOnboarding: this.env.WATCHDOG_FORCE_ONBOARDING ?? null,
       simulated: !!this.simulate,
       setupConfigExists: existsSync(join(homedir(), '.watchdog', 'config.json')),
-      run: { id: this.runId, state: this.state, steps: this.steps, log: this.log.slice(-400), error: this.error }
+      run: { id: this.runId, state: this.state, phase: this.phase, steps: this.steps, log: this.log.slice(-400), error: this.error }
     }
   }
 
@@ -267,7 +371,7 @@ export class Engine {
 
   private publish(): void {
     const log = this.pendingLog.splice(0)
-    this.opts.emit({ id: this.runId, state: this.state, steps: this.steps.map((s) => ({ ...s })), log, error: this.error })
+    this.opts.emit({ id: this.runId, state: this.state, phase: this.phase, steps: this.steps.map((s) => ({ ...s })), log, error: this.error })
   }
 
   private addLog(line: string): void {
@@ -301,6 +405,20 @@ export class Engine {
       UV_NO_PROGRESS: '1',
       NO_COLOR: '1'
     })
+    return env
+  }
+
+  /** The environment for Python the engine runs itself (the model step, core-requirements). */
+  private pythonEnv(external: boolean): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = { ...this.env, WATCHDOG_PROGRESS: '1', PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
+    for (const k of ['PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV']) delete env[k]
+    const uv = this.uvPath()
+    if (uv) env.WATCHDOG_UV = uv
+    if (external && this.isDev) {
+      // A development checkout's Python runs the repository's source, as the backend does.
+      const src = join(this.opts.repoRoot ?? '', 'src')
+      if (this.opts.repoRoot && existsSync(src)) env.PYTHONPATH = src
+    }
     return env
   }
 
@@ -340,7 +458,7 @@ export class Engine {
     this.cancelled = true
     const child = this.child
     if (child?.pid) {
-      if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'])
+      if (this.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'])
       else child.kill('SIGTERM')
     }
   }
@@ -349,31 +467,40 @@ export class Engine {
     return this.running
   }
 
+  /** The phase of the run in progress, or null. */
+  runningPhase(): 1 | 2 | null {
+    return this.running ? this.phase : null
+  }
+
   /**
-   * Install or repair. Skips whatever is already in place. `external` is the Python the backend
-   * already runs on when it is not a managed one: then only the models are fetched, into that
-   * environment. `fresh` throws the environment away first (repair or reinstall).
+   * Install, repair or finish. Skips whatever is already in place: a run started with phase 1
+   * current goes straight to phase 2. `onCore` runs between the phases, whether phase 1 had
+   * anything to do or not.
    */
-  async install(opts: { external?: string | null; fresh?: boolean } = {}): Promise<EngineState> {
+  async install(opts: InstallOptions = {}): Promise<EngineState> {
     if (this.running) return this.state
     this.running = true
     this.cancelled = false
     this.runId += 1
     this.state = 'running'
+    this.phase = 1
     this.error = null
     this.log = []
     this.pendingLog = []
     this.steps = this.freshSteps()
     this.publish()
     try {
-      if (this.simulate) await this.simulateRun()
+      if (this.simulate) await this.simulateRun(opts)
       else await this.realRun(opts)
       this.state = 'done'
     } catch (e) {
       const msg = (e as Error).message
       if (this.cancelled || msg === 'cancelled') {
         this.state = 'cancelled'
-        this.error = 'The installation was cancelled. You can start it again; what was already downloaded is kept.'
+        this.error =
+          (this.phase as 1 | 2 | null) === 2
+            ? 'Setup was paused. Watchdog finishes it the next time it opens, or when you choose Try again; what was already downloaded is kept.'
+            : 'The installation was cancelled. You can start it again; what was already downloaded is kept.'
       } else {
         this.state = 'failed'
         this.error = friendlyError(msg)
@@ -395,87 +522,102 @@ export class Engine {
     return this.state
   }
 
-  private async realRun(opts: { external?: string | null; fresh?: boolean }): Promise<void> {
+  private async enterPhase2(opts: InstallOptions): Promise<void> {
+    if (opts.onCore) await opts.onCore()
+    if (this.cancelled) throw new Error('cancelled')
+    this.phase = 2
+    this.publish()
+  }
+
+  private async realRun(opts: InstallOptions): Promise<void> {
     mkdirSync(this.dir, { recursive: true })
     let python: string
+    const uv = this.uvPath()
     if (opts.external) {
       python = opts.external
       this.setStep('python', 'skipped', 'Already on this computer')
       this.setStep('packages', 'skipped', 'Watchdog is already installed')
+      await this.enterPhase2(opts)
+      this.setStep('libraries', 'skipped', 'Already installed')
     } else {
-      const uv = this.uvPath()
       if (!uv) throw new Error('The app is missing its installer (uv). Reinstall the app.')
       const wheel = this.wheelPath()
       const source = wheel ?? (this.isDev ? this.opts.repoRoot : null)
       if (!source) throw new Error('The app is missing the Watchdog package. Reinstall the app.')
       const env = this.uvEnv()
-      try {
-        const free = statfsSync(this.dir)
-        if (free.bavail * free.bsize < MIN_FREE_BYTES) {
-          throw new Error('There is not enough free space on this computer: Watchdog needs about 7 GB while it installs.')
-        }
-      } catch (e) {
-        if ((e as Error).message.startsWith('There is not')) throw e
-      }
 
-      // 1. Python and the environment
-      if (opts.fresh) {
-        this.addLog('Removing the existing environment')
+      // ── phase 1 ──
+      if (opts.fresh || this.foreignRecord()) {
+        this.addLog(opts.fresh ? 'Removing the existing environment' : 'The existing environment was made by another version of the app; rebuilding it')
         rmSync(this.venvDir(), { recursive: true, force: true })
-        rmSync(join(this.dir, 'engine.json'), { force: true })
+        for (const f of ['engine.json', 'requirements.in', 'requirements.lock', 'core.txt']) rmSync(join(this.dir, f), { force: true })
       }
+      let rec = this.record()
+      const coreCurrent = !!rec && rec.phases.includes('core') && (wheel ? rec.wheelSha256 === sha256(wheel) : true)
+      if (!coreCurrent || !existsSync(this.venvPython())) this.checkFreeSpace()
+
       this.setStep('python', 'running', 'Downloading Python')
       if (!this.venvWorks()) {
         rmSync(this.venvDir(), { recursive: true, force: true })
+        rmSync(join(this.dir, 'engine.json'), { force: true })
+        rec = null
         await this.runOrThrow('Installing Python', uv, ['python', 'install', PYTHON_VERSION, '--no-bin'], env, 'python')
         await this.runOrThrow('Creating the environment', uv, ['venv', this.venvDir(), '--python', PYTHON_VERSION, '--seed'], env, 'python')
       }
       python = this.venvPython()
       this.setStep('python', 'done', `Python ${PYTHON_VERSION}`)
 
-      // 2. Watchdog and its libraries
-      const rec = this.record()
-      const current = !!rec && (wheel ? rec.wheelSha256 === sha256(wheel) : true)
-      if (current) {
-        this.setStep('packages', 'done', `Version ${rec!.wheelVersion}`)
+      if (rec && coreCurrent) {
+        this.setStep('packages', 'done', `Version ${rec.wheelVersion}`)
       } else {
-        this.setStep('packages', 'running', 'Downloading libraries')
-        const args = ['pip', 'install', '--python', python]
-        // PyPI's Linux torch wheels pull in about 2.5 GB of NVIDIA libraries Watchdog never uses
-        // (it converts documents on the CPU), so Linux on x86 takes PyTorch's CPU build instead.
-        if (process.platform === 'linux' && process.arch === 'x64') {
-          args.push('--extra-index-url', 'https://download.pytorch.org/whl/cpu', '--index-strategy', 'unsafe-best-match')
-        }
+        this.setStep('packages', 'running', 'Resolving libraries')
+        await this.compileLock(uv, python, source, env)
+        const args = ['pip', 'install', '--python', python, '--no-deps']
         if (rec) args.push('--reinstall-package', 'watchdog-intel')
         args.push(source)
+        this.setStep('packages', 'running', 'Installing Watchdog')
         await this.runOrThrow('Installing Watchdog', uv, args, env, 'packages')
+        await this.writeCoreRequirements(python)
+        await this.runOrThrow(
+          'Installing Watchdog’s libraries',
+          uv,
+          ['pip', 'install', '--python', python, ...torchArgs(this.platform), '-c', this.lockPath(), '-r', join(this.dir, 'core.txt')],
+          env,
+          'packages'
+        )
         const version = wheel ? wheelVersion(wheel.split(/[\\/]/).pop()!) : this.pythonPackageVersion(python)
         this.writeRecord({
-          schema: 1,
+          schema: RECORD_SCHEMA,
           wheel: wheel ? wheel.split(/[\\/]/).pop()! : 'source',
           wheelSha256: wheel ? sha256(wheel) : 'source',
           wheelVersion: version,
           python: PYTHON_VERSION,
           installedAt: new Date().toISOString(),
+          phases: ['core'],
           models: null
         })
         this.setStep('packages', 'done', `Version ${version}`)
       }
+
+      // ── phase 2: libraries ──
+      await this.enterPhase2(opts)
+      rec = this.record()
+      if (rec && rec.phases.includes('libraries')) {
+        this.setStep('libraries', 'done', null)
+      } else {
+        this.setStep('libraries', 'running', 'Downloading libraries')
+        if (!existsSync(this.lockPath())) await this.compileLock(uv, python, source, env, 'libraries')
+        await this.runOrThrow('Installing the document and search libraries', uv, ['pip', 'install', '--python', python, ...torchArgs(this.platform), '-r', this.lockPath()], env, 'libraries')
+        const now = this.record()
+        if (now) this.writeRecord({ ...now, phases: [...new Set([...now.phases, 'libraries'])] })
+        this.setStep('libraries', 'done', null)
+      }
     }
 
-    // 3. Local models
-    const modelEnv: NodeJS.ProcessEnv = { ...this.env, WATCHDOG_PROGRESS: '1', PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
-    for (const k of ['PYTHONPATH', 'PYTHONHOME', 'VIRTUAL_ENV']) delete modelEnv[k]
-    const uv = this.uvPath()
-    if (uv) modelEnv.WATCHDOG_UV = uv
-    if (opts.external && this.isDev) {
-      // A development checkout's Python runs the repository's source, as the backend does.
-      const src = join(this.opts.repoRoot ?? '', 'src')
-      if (this.opts.repoRoot && existsSync(src)) modelEnv.PYTHONPATH = src
-    }
+    // ── phase 2: local models ──
     for (const id of MODEL_STEPS) this.setStep(id, 'pending')
     const results: Record<string, 'ok' | 'warn'> = {}
-    const code = await this.run(python, ['-m', 'watchdog.gui.engine_setup', 'models'], modelEnv, (line) => {
+    const code = await this.run(python, ['-m', 'watchdog.gui.engine_setup', 'models'], this.pythonEnv(!!opts.external), (line) => {
       if (line.startsWith(PROGRESS_PREFIX)) {
         try {
           const ev = JSON.parse(line.slice(PROGRESS_PREFIX.length)) as { kind: string; step: string; state: string; detail: string | null }
@@ -507,6 +649,37 @@ export class Engine {
     if (rec) this.writeRecord({ ...rec, models: results })
   }
 
+  private lockPath(): string {
+    return join(this.dir, 'requirements.lock')
+  }
+
+  private checkFreeSpace(): void {
+    try {
+      const free = statfsSync(this.dir)
+      if (free.bavail * free.bsize < MIN_FREE_BYTES) {
+        throw new Error('There is not enough free space on this computer: Watchdog needs about 7 GB while it installs.')
+      }
+    } catch (e) {
+      if ((e as Error).message.startsWith('There is not')) throw e
+    }
+  }
+
+  /** Resolve every library once, for both phases. Small: package metadata only. */
+  private async compileLock(uv: string, python: string, source: string, env: NodeJS.ProcessEnv, step = 'packages'): Promise<void> {
+    const input = join(this.dir, 'requirements.in')
+    writeFileSync(input, `watchdog-intel @ ${pathToFileURL(source).href}\n`)
+    await this.runOrThrow('Resolving Watchdog’s libraries', uv, ['pip', 'compile', '--python', python, ...torchArgs(this.platform), '--quiet', input, '-o', this.lockPath()], env, step)
+  }
+
+  /** core.txt: phase 1's requirement list, read from the installed package's own metadata. */
+  private async writeCoreRequirements(python: string): Promise<void> {
+    const lines: string[] = []
+    const code = await this.run(python, ['-m', 'watchdog.gui.engine_setup', 'core-requirements'], this.pythonEnv(false), (l) => lines.push(l))
+    if (this.cancelled) throw new Error('cancelled')
+    if (code !== 0 || !lines.length) throw new Error(`Listing Watchdog’s libraries failed (exit ${code}).\n${this.log.slice(-6).join('\n')}`)
+    writeFileSync(join(this.dir, 'core.txt'), lines.join('\n') + '\n')
+  }
+
   private pythonPackageVersion(python: string): string {
     const r = spawnSync(python, ['-c', 'import watchdog; print(watchdog.__version__)'], { encoding: 'utf8', timeout: 30000 })
     return r.status === 0 ? r.stdout.trim() : 'unknown'
@@ -520,12 +693,12 @@ export class Engine {
   }
 
   // ── development stand-in ────────────────────────────────────────────────────────
-  // WATCHDOG_ENGINE_SIMULATE=1 plays a timed install without downloading anything, so the
-  // onboarding screens can be exercised and photographed. "fail:<step>" fails at that step the
-  // first time; "slow" doubles the pace.
+  // WATCHDOG_ENGINE_SIMULATE plays a timed install without downloading anything, so the
+  // onboarding screens and the background indicator can be exercised and photographed (see
+  // parseSimulate for the values).
 
-  private async simulateRun(): Promise<void> {
-    const failAt = this.simulate?.startsWith('fail:') ? this.simulate.slice(5) : null
+  private async simulateRun(opts: InstallOptions): Promise<void> {
+    const sim = this.sim!
     const pause = (ms: number) =>
       new Promise<void>((resolve, reject) => {
         const t = setTimeout(resolve, ms)
@@ -540,16 +713,23 @@ export class Engine {
       })
     const lines: Record<string, string[]> = {
       python: ['Installed Python 3.12.13 in 2.1s', 'Creating virtual environment at: venv'],
-      packages: ['Resolved 135 packages in 3.5s', 'Downloading torch (188.5MiB)', 'Downloading onnxruntime (17.2MiB)', 'Prepared 134 packages in 41s', 'Installed 135 packages in 219ms']
+      packages: ['Resolved 135 packages in 2.4s', 'Installed 1 package in 12ms', 'Prepared 50 packages in 5.8s', 'Installed 50 packages in 81ms'],
+      libraries: ['Resolved 135 packages in 539ms', 'Downloading torch (188.5MiB)', 'Downloading onnxruntime (17.2MiB)', 'Prepared 84 packages in 13.7s', 'Installed 85 packages in 249ms']
     }
     for (const def of STEP_DEFS) {
       const id = def.id
+      if (def.phase === 2 && this.phase === 1) await this.enterPhase2(opts)
+      if (def.phase === 1 && this.simulatedCore) {
+        this.setStep(id, 'done', null)
+        continue
+      }
       this.setStep(id, 'running', 'Downloading')
+      const pace = def.phase === 2 && sim.slowPhase2 ? 9000 : sim.slow ? 1400 : 600
       for (const l of lines[id] ?? [`Fetching ${def.label}`]) {
         this.addLog(l)
-        await pause(this.simulate === 'slow' ? 1400 : 600)
+        await pause(pace)
       }
-      if (failAt === id && !this.simulatedFailed) {
+      if (sim.failAt === id && !this.simulatedFailed) {
         this.simulatedFailed = true
         if (def.optional) {
           this.setStep(id, 'warning', 'Could not download. It will be fetched when first needed.')
@@ -558,8 +738,8 @@ export class Engine {
         throw new Error('Watchdog could not download what it needs. Check the internet connection and try again.')
       }
       this.setStep(id, 'done', null)
+      if (id === 'packages') this.simulatedCore = true
     }
     this.simulatedDone = true
   }
-  private simulatedFailed = false
 }

@@ -10,7 +10,7 @@ import { Engine } from './engine'
 import { ClaudeSignIn } from './claude'
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
-import { loadRoots, registerIpc } from './ipc'
+import { loadRoots, registerIpc, resumeEngine } from './ipc'
 import { registerUpdater } from './updater'
 
 registerSchemePrivileges()
@@ -130,6 +130,9 @@ app.whenReady().then(async () => {
   await createWindow()
   await backend.start()
   void loadRoots(backend)
+  // An engine whose background phase was interrupted (the app quit, the network dropped) or that an
+  // update has replaced finishes in the background, without asking (D272).
+  void resumeEngine(backend, engine)
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) void createWindow()
   })
@@ -139,4 +142,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => backend.stop())
+app.on('before-quit', () => {
+  // A download in progress stops with the app and resumes at the next launch; left running, it
+  // would race the next launch's own run over the same environment.
+  engine.cancel()
+  backend.stop()
+})

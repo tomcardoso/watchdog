@@ -65,3 +65,12 @@
 .act-bar { height: 12px; border-radius: var(--r-full); background: var(--surface-sunken); overflow: hidden; }
 .act-bar-fill { height: 100%; display: flex; border-radius: var(--r-full); overflow: hidden; }
 .act-bar-fill span { min-width: 2px; }
+
+/* Cards that wait for the engine's setup (MaintenancePanel Gated): no box of its own. */
+.act-gated {
+  display: contents;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}

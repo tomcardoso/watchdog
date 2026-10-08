@@ -1,6 +1,7 @@
 // The merge flow: choose the entity to keep and the duplicate to fold into it, see both, read
 // exactly what `watchdog review merge-entities` will do, confirm, then follow the job.
 
+import { ENGINE_WAIT_OTHER, useEngineGate } from '@renderer/lib/engine'
 import { ArrowLeftRight, ArrowRight, GitMerge, RefreshCw, Search } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { EntityAvatar } from '@renderer/components/EntityChip'
@@ -22,6 +23,7 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
   const [stage, setStage] = useState<Stage>('form')
   const [jobId, setJobId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const engine = useEngineGate()
   const [reindexing, setReindexing] = useState(false)
   const [bothSummaries, setBothSummaries] = useState(false)
 
@@ -89,16 +91,16 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
           <>
             <label className="checkbox" style={{ marginRight: 'auto', color: 'var(--text-2)' }}>
               <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-              <span>I understand this cannot be undone from the app</span>
+              <span>{engine.ready ? 'I understand this cannot be undone from the app' : ENGINE_WAIT_OTHER}</span>
             </label>
             <Button onClick={close}>Cancel</Button>
-            <Button variant="danger" icon={GitMerge} disabled={!keep || !merge || keep === merge || !ack || preview.isLoading || preview.isError} onClick={() => void run()}>
+            <Button variant="danger" icon={GitMerge} disabled={!keep || !merge || keep === merge || !ack || preview.isLoading || preview.isError || !engine.ready} onClick={() => void run()}>
               Merge into {survivorName ? truncate(survivorName, 22) : 'survivor'}
             </Button>
           </>
         ) : stage === 'done' ? (
           <>
-            <Button icon={RefreshCw} loading={reindexing} onClick={() => void reindex()}>
+            <Button icon={RefreshCw} loading={reindexing} disabled={!engine.ready} onClick={() => void reindex()}>
               Rebuild search index
             </Button>
             <Button variant="primary" iconRight={ArrowRight} onClick={() => { onClose(); if (survivor) navigate({ view: 'entity', id: survivor }) }}>

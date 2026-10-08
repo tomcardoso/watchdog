@@ -518,7 +518,13 @@ See D45–D48.
 - **Engine (D267).** The app installs its own Python: a bundled `uv` creates a Python 3.12
   environment under the app's user-data folder (`engine/`) and installs the bundled wheel of the
   same version, then downloads the local models (`gui/src/main/engine.ts`,
-  `watchdog/gui/engine_setup.py`). `WATCHDOG_PYTHON` or a user's choice overrides it; in
+  `watchdog/gui/engine_setup.py`). It installs in two phases (D272): phase 1 (Python, the wheel,
+  the light libraries from `engine_setup core-requirements`) is what first-run setup waits for;
+  phase 2 (the rest of one `uv pip compile` lock, then the models) runs in the background and
+  resumes at launch. Until it finishes the sidecar runs with `WATCHDOG_ENGINE_PENDING=1` and
+  `jobs.start`/`action.run` refuse document-adding commands (`engine_not_ready`);
+  `engine.setReady` lifts it without a restart. `engine.json` is versioned (`schema`, finished
+  `phases`); an unreadable or foreign record rebuilds the environment. `WATCHDOG_PYTHON` or a user's choice overrides it; in
   development the repository's source goes first on `PYTHONPATH`. The terminal commands remain the
   app's mutation path but are retired from user-facing documentation.
 - **Folder access (D268).** `~/.watchdog/access.json` lists the folders the user has allowed;

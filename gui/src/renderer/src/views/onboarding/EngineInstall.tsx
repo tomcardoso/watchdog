@@ -1,5 +1,7 @@
 // The engine installer's progress view, shared by first-run setup and Settings → Setup. It shows
 // the stages the main process reports ('engine.progress'), a log disclosure, retry and cancel.
+// Setup waits only for phase 1; phase 2 (the document and search libraries and the local models)
+// carries on in the background (D272), and first-run setup lists it as such.
 
 import { AlertTriangle, CheckCircle2, ChevronRight, Circle, MinusCircle, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
@@ -7,12 +9,15 @@ import type { BackendStatus, EngineProgress, EngineStatus, EngineStep } from '@s
 import { Button, Callout, Progress, Spinner, cx } from '@renderer/components/ui'
 import { useEvent } from '@renderer/lib/rpc'
 
-/** What the download costs, in words. Measured on a clean install (see gui/README.md). */
-export const ENGINE_DOWNLOAD_TEXT = 'about 5 GB'
+/** What the downloads cost, in words. Measured on a clean Linux install (see gui/README.md and
+ * D272): phase 1 is Python and about 150 MB of libraries; phase 2 about 0.4 GB of libraries and
+ * 4 GB of models. */
+export const ENGINE_FIRST_TEXT = 'about 200 MB'
+export const ENGINE_DOWNLOAD_TEXT = 'about 4.5 GB'
 export const ENGINE_DISK_TEXT = 'about 7 GB'
 
 // How much of the bar each stage is worth; the model downloads are the slow part.
-const WEIGHT: Record<string, number> = { python: 1, packages: 5, docling: 2, gliner: 6, embedding: 1, reranker: 3, ocr: 1 }
+const WEIGHT: Record<string, number> = { python: 1, packages: 2, libraries: 3, docling: 2, gliner: 6, embedding: 1, reranker: 3, ocr: 1 }
 
 function StepIcon({ state }: { state: EngineStep['state'] }) {
   if (state === 'running') return <Spinner />
@@ -35,7 +40,8 @@ function Row({ step, sub }: { step: EngineStep; sub?: boolean }) {
   )
 }
 
-export function fraction(steps: EngineStep[]): number {
+export function fraction(all: EngineStep[], phase?: 1 | 2): number {
+  const steps = phase ? all.filter((s) => s.phase === phase) : all
   const total = steps.reduce((n, s) => n + (WEIGHT[s.id] ?? 1), 0)
   const done = steps.reduce((n, s) => n + (['done', 'warning', 'skipped', 'failed'].includes(s.state) ? WEIGHT[s.id] ?? 1 : 0), 0)
   return total ? done / total : 0
@@ -77,7 +83,11 @@ export function useEngine(): EngineRun {
   return { status, run, log, start }
 }
 
-export function EngineProgressView({ eng, backend }: { eng: EngineRun; backend?: BackendStatus | null }) {
+/**
+ * `focus` 1 (first-run setup): the bar and the steps are phase 1's; phase 2's are listed below as
+ * continuing in the background. Without it (Settings → Setup), every step counts.
+ */
+export function EngineProgressView({ eng, backend, focus }: { eng: EngineRun; backend?: BackendStatus | null; focus?: 1 }) {
   const { run, log } = eng
   const logRef = useRef<HTMLPreElement>(null)
   const [open, setOpen] = useState(false)
@@ -85,23 +95,32 @@ export function EngineProgressView({ eng, backend }: { eng: EngineRun; backend?:
     if (open && logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [log, open])
   if (!run || run.state === 'idle') return null
-  const models = run.steps.filter((s) => !['python', 'packages'].includes(s.id))
-  const python = run.steps.find((s) => s.id === 'python')!
-  const packages = run.steps.find((s) => s.id === 'packages')!
+  const first = run.steps.filter((s) => s.phase === 1)
+  const libraries = run.steps.find((s) => s.id === 'libraries')
+  const models = run.steps.filter((s) => s.phase === 2 && s.id !== 'libraries')
   const warned = run.state === 'done' && run.steps.some((s) => s.state === 'warning')
+  const coreDone = first.every((s) => ['done', 'skipped'].includes(s.state))
+  const value = run.state === 'done' || (focus === 1 && coreDone) ? 1 : fraction(run.steps, focus)
   return (
     <div className="col gap-16">
-      <Progress value={run.state === 'done' ? 1 : fraction(run.steps)} indeterminate={run.state === 'running' && fraction(run.steps) === 0} />
+      <Progress value={value} indeterminate={run.state === 'running' && value === 0} />
       <div className="onb-steps" aria-live="polite">
-        <Row step={python} />
-        <Row step={packages} />
-        <div className="onb-group">Local models</div>
+        {first.map((s) => (
+          <Row key={s.id} step={s} />
+        ))}
+        <div className="onb-group">{focus === 1 ? 'Continues in the background' : 'Document and search tools'}</div>
+        {libraries && <Row step={libraries} sub />}
         {models.map((s) => (
           <Row key={s.id} step={s} sub />
         ))}
       </div>
+      {focus === 1 && (
+        <p className="onb-note">
+          You can carry on as soon as the first steps are done. The rest downloads while you finish setting up and while you work; adding documents waits for it.
+        </p>
+      )}
       {run.error && (
-        <Callout tone={run.state === 'cancelled' ? 'info' : 'danger'} title={run.state === 'cancelled' ? 'Installation stopped' : 'The installation did not finish'}>
+        <Callout tone={run.state === 'cancelled' ? 'info' : 'danger'} title={run.state === 'cancelled' ? (run.phase === 2 ? 'Setup paused' : 'Installation stopped') : 'The installation did not finish'}>
           <span className="selectable" style={{ whiteSpace: 'pre-wrap' }}>{run.error}</span>
         </Callout>
       )}
