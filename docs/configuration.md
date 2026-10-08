@@ -297,6 +297,8 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 
 | Value | Runs on |
 |---|---|
+| `haiku` | Claude, via your billing mode. Currently resolves to Claude Haiku 4.5, the classifier and finalizer default. |
+| `haiku-5.5` | Claude Haiku 5.5, explicitly. It costs a tenth of Haiku 4.5 per token (US$0.10 in and US$0.50 out per million tokens, for requests up to 100,000 tokens; Watchdog keeps each request under that), thinks before it answers, and accepts every effort level. It has not yet been benchmarked on Watchdog's documents, which is why `haiku` doesn't point to it yet. |
 | `sonnet` | Claude, via your billing mode (subscription or API key). Currently resolves to Claude Sonnet 5.5. |
 | `sonnet-4.6` | Claude Sonnet 4.6, explicitly. It was the `sonnet` default until Sonnet 5.5 took over; use this to keep an existing setup on 4.6. |
 | `sonnet-5.5` | Claude Sonnet 5.5, explicitly. This is the model `sonnet` resolves to today, pinned by name in case the bare default ever moves. It accepts a wider range of effort levels (up to `xhigh`) than Sonnet 4.6; see [Controlling cost](#controlling-cost). |

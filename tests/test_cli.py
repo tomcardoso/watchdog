@@ -1338,11 +1338,12 @@ def test_pick_model_interactive_only_provider_filters_to_one_group(monkeypatch):
 
 
 def test_pick_model_interactive_custom_free_text(monkeypatch):
-    # "19" is "Type my own…" — one more for each of Opus 5.5 and GPT-6 Luna joining the catalog
+    # "20" is "Type my own…" — one more for Haiku 5.5 joining the catalog; before that, 19: one
+    # more for each of Opus 5.5 and GPT-6 Luna joining the catalog
     # (D249) and one fewer for GPT-5.4 Nano leaving it (previously 18, after Opus 5 (#635) joined
     # the Claude group; 17 before that, after gemini-2.5-flash/-flash-lite/-pro were dropped, #583,
     # D182).
-    answers = iter(["19", "openai:my-custom-model"])
+    answers = iter(["20", "openai:my-custom-model"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     assert _setup._pick_model_interactive(None) == "openai:my-custom-model"
 
