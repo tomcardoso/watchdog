@@ -24,7 +24,7 @@ def make_vault(tmp_path: Path) -> Path:
     (reg_dir / "registry.json").write_text(
         json.dumps({"schema_version": "1", "document_count": 0, "entity_count": 0}) + "\n"
     )
-    (reg_dir / "ingest.log").write_text("")
+    (reg_dir / "processing.log").write_text("")
     return vault
 
 
@@ -713,7 +713,7 @@ def test_ingest_log_appended(tmp_path):
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text()
     assert "INGEST" in log
     assert "test-doc.pdf" in log
     assert "abc123" in log

@@ -36,7 +36,7 @@ List the files in `context/` with the Glob tool (pattern `context/**/*`), ignori
 
 If the folder is empty or missing, skip to step 3 — you'll work from the interview alone.
 
-Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never run `watchdog chew` on these files: chew is an ingest step that moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
+Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never run `watchdog chew` on these files: pre-processing moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
 
 ---
 
@@ -169,7 +169,7 @@ entirely if there were no candidates, or the reporter approved none of them.
 
 Print:
 ```
-context.md written. N watchlist term(s) added. Drop records into incoming/, then run `watchdog chew` and `watchdog dig` to begin processing.
+context.md written. N watchlist term(s) added. Add documents in the Watchdog app (or drop them into incoming/ and add them from the app) to begin processing.
 ```
 (Omit the watchlist clause if none were added.)
 
@@ -186,5 +186,5 @@ Skipped — context.md not written.
 - **Don't cite `context/` files as sources** — they are the reporter's prior knowledge, not the vault's evidence base.
 - **Questions must be specific** — generic questions produce generic answers. Generate questions from what you actually read.
 - **Respect skipped questions** — if the reporter doesn't answer, make a reasonable inference or leave a placeholder. Don't repeat the question.
-- **Watchlist candidates must be specific, not generic** — a proper name, a company, a street address, a case or filing number. Skip roles, categories, or anything broad enough to false-positive constantly (e.g. "the mayor's office," "the bank") — a bad watchlist term is worse than none, since every future ingest will flag it. When in doubt, leave it out rather than pad the list to hit a target count.
+- **Watchlist candidates must be specific, not generic** — a proper name, a company, a street address, a case or filing number. Skip roles, categories, or anything broad enough to false-positive constantly (e.g. "the mayor's office," "the bank") — a bad watchlist term is worse than none, since every future processing run will flag it. When in doubt, leave it out rather than pad the list to hit a target count.
 - **Prefer the shortest distinctive form of a name over its full legal form** — matching is literal (word-boundary or regex; see `pipeline/watchlist.py`), not fuzzy, so a term only catches documents that render the name exactly that way. Legal suffixes and full registered forms ("Ltd.", "Inc.", "Partners", "LLC", "Holdings") vary across documents even when the underlying entity doesn't. For "Furniture Direct Partners Ltd.," propose "Furniture Direct" rather than the full name — unless the shorter form is itself generic enough to false-positive (weigh this against the bullet above).

@@ -1,6 +1,6 @@
 # {name} — context
 
-> Fill this in before your first ingest. The more specific you are, the more targeted Watchdog's briefings, leads, and analysis will be. Update it any time your understanding of the story evolves.
+> Fill this in before you add your first documents. The more specific you are, the more targeted Watchdog's briefings, leads, and analysis will be. Update it any time your understanding of the story evolves.
 
 ## What I'm investigating
 

@@ -18,7 +18,7 @@ You can drop files onto the window at any time to add them to the open investiga
 
 ### Investigations
 
-The list of your investigations, with each one's document and entity counts, when documents were last added, and anything that needs attention. The **⋯** menu on each offers **Open**, **Rename…**, **Edit description…**, **Move to another folder…**, **Archive** (and **Unarchive**), **Show in folder**, **Open in Obsidian**, **Ingest history**, **Remove from Watchdog…** and **Remove and delete files…**. Removing from Watchdog leaves the folder where it is. **Remove and delete files…** permanently deletes the folder and its usage records, and asks you to type the investigation's name first. An existing investigation folder can be added with **Add existing folder…**, and **Settings → Check vaults** checks that every investigation's folder and registry are readable.
+The list of your investigations, with each one's document and entity counts, when documents were last added, and anything that needs attention. The **⋯** menu on each offers **Open**, **Rename…**, **Edit description…**, **Move to another folder…**, **Archive** (and **Unarchive**), **Show in folder**, **Open in Obsidian**, **Processing history**, **Remove from Watchdog…** and **Remove and delete files…**. Removing from Watchdog leaves the folder where it is. **Remove and delete files…** permanently deletes the folder and its usage records, and asks you to type the investigation's name first. An existing investigation folder can be added with **Add existing folder…**, and **Settings → Check vaults** checks that every investigation's folder and registry are readable.
 
 ### Overview
 
@@ -63,7 +63,7 @@ Contradictions, leads, watch-list hits, possible duplicates and document request
 
 ### Briefings
 
-Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved. The current-state summary (`hot.md`), the ingest history (`log.md`) and the investigation's context (`context.md`, which you can edit here) are pinned at the top.
+Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved. The current-state summary (`hot.md`), the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here) are pinned at the top.
 
 ### Ask Claude and Web research
 
@@ -78,8 +78,8 @@ Both run on your Claude sign-in. If Claude is not signed in, sign in under **Set
 Everything the app has run, with the full output of each. **Stop** ends a run cleanly so it can be resumed. The tabs:
 
 - **Jobs.** Running and finished runs. Select one to see its output.
-- **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Chew** (read files on this computer), **Dig** (extract with a model), **Bark** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
-- **Ingest history.** What was added, and when.
+- **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
+- **Processing history.** What was added, and when.
 - **Usage.** What the models used and cost.
 
 ### Settings
@@ -104,7 +104,9 @@ You allow a folder by choosing it for a purpose: the folder that holds your inve
 
 If you open an investigation that is outside the allowed folders, which is the case for existing investigations the first time you open them after this feature arrived, or after you have moved one, Watchdog shows **Allow Watchdog to work in this investigation** in place of its screens. Choose **Allow access…** to continue, or **All investigations** to leave. If you decline, nothing is changed, and you can allow it later from the same screen or from Settings.
 
-This is a guard against mistakes, not a sandbox: it does not cover programs that Watchdog starts which are not part of the engine, and it does not limit reading.
+**Claude sessions.** When you ask Claude a question, it can change files only inside that investigation's folder. Commands it runs on your computer are held to the same limit. On a Mac they run inside the system's own sandbox: they can write only to the investigation, the temporary folder and Watchdog's settings, and they can never change the list of allowed folders or your keys. On Windows and Linux, Claude can run only Watchdog's own pre-approved commands, one at a time. When Claude asks to run a command and you choose **Always**, that covers the exact command, not every command.
+
+This protects against mistakes and against instructions hidden in a document. It does not limit reading, and the few outside programs Watchdog uses to repair damaged PDFs write only to temporary files it chooses.
 
 ## Updates
 

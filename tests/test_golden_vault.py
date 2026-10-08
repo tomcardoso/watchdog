@@ -54,7 +54,7 @@ _NORMALIZERS = [
 # of the vault's committed state. Their existence is recorded; their bytes are not.
 # `.fulltext/index.db` is SQLite: internal page layout and rowids shift between byte-identical
 # logical contents, so hashing it would fail for reasons unrelated to what was indexed.
-_CONTENT_EXEMPT = ("ingest.log", "usage/", ".write-lock", "/tmp/", ".fulltext/index.db")
+_CONTENT_EXEMPT = ("processing.log", "usage/", ".write-lock", "/tmp/", ".fulltext/index.db")
 
 # Paths excluded from the manifest entirely — not even their presence is recorded.
 #

@@ -89,7 +89,7 @@ def test_contradictions_synthesis_and_merges(demo_vault):
     # Two reconciliation merges folded the variant ids away.
     assert "planning-procurement-committee" not in entities
     assert "port-calder-land-registry" not in entities
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "MERGED" in log
 
 
@@ -114,13 +114,32 @@ def test_pipeline_state_left_for_the_app(demo_vault):
     assert sorted(p.name for p in (vault / "incoming").iterdir()) == [
         "pier-9-change-order-3.pdf", "site-meeting-notes-2022-09-14.docx"]
     assert len(list((vault / ".watchdog" / "queue" / "_failed").glob("*.json"))) == 1
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "FAILED scanned-memo-illegible.pdf" in log
     assert len(list((vault / "context").iterdir())) >= 2
     queue = (vault / ".watchdog" / "research" / "queue.tsv").read_text(encoding="utf-8")
     assert queue.startswith("https://")
     assert len(list((vault / ".watchdog" / "registry" / "usage").glob("usage-*.json"))) >= 2
     assert "14 documents" in stdout
+
+
+def test_passages_and_the_verification_ledger(demo_vault):
+    """Most demo facts arrive without a locator and get a matched passage; a few have none on
+    their page; the demo reporter's checks are in the ledger and verification.md (D270, D271)."""
+    vault, _, _ = demo_vault
+    methods = []
+    for path in (vault / ".watchdog" / "extracted").glob("*.json"):
+        doc = json.loads(path.read_text(encoding="utf-8"))["document"]
+        assert doc["passages_version"] == 1
+        methods += [f["passage_method"] for f in doc["key_facts"]]
+    assert {m: methods.count(m) > 0 for m in ("quote", "matched", "unlocated")} == \
+        {"quote": True, "matched": True, "unlocated": True}
+    assert methods.count("matched") > methods.count("unlocated")
+    ledger = json.loads((vault / ".watchdog" / "registry" / "verification.json").read_text(encoding="utf-8"))
+    statuses = sorted(m["status"] for m in ledger["marks"].values())
+    assert statuses == ["disputed", "unverifiable"] + ["verified"] * 5
+    assert {m["by"] for m in ledger["marks"].values()} == {"Jordan Ellis"}
+    assert "**5 of 116 facts verified**" in (vault / "verification.md").read_text(encoding="utf-8")
 
 
 def test_home_holds_the_registry_and_config(demo_vault):

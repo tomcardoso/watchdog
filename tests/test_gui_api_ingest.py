@@ -219,7 +219,7 @@ def test_estimate_bark(rich_vault, wdg_home):
 def test_estimate_bark_with_nothing_staged(wdg_home, tmp_path):
     credentials(wdg_home, "subscription")
     r = call("ingest.estimate", vault=V(make_vault(tmp_path)), stage="bark")
-    assert r == {"text": "Nothing to finish — run dig first.", "estimate": None, "all_models": None}
+    assert r == {"text": "Nothing to finish — run processing first.", "estimate": None, "all_models": None}
 
 
 def test_estimate_rejects_an_unknown_stage(rich_vault, wdg_home):

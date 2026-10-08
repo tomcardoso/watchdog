@@ -31,6 +31,7 @@ from watchdog.pipeline import (
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 from watchdog import config as user_config
+from watchdog.vault_paths import processing_log
 
 DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
@@ -474,7 +475,7 @@ _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
 
 
 def _log(vault: Path, msg: str) -> None:
-    log = vault / ".watchdog" / "registry" / "ingest.log"
+    log = processing_log(vault)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -2017,8 +2018,8 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
 
     body = (
         f"---\ndate: {now.isoformat(timespec='seconds')}\nfiles_ingested: {len(results)}\n"
-        f"new_entities: {n_new}\n---\n\n# Ingest briefing — {slug}\n\n"
-        f"## What was ingested\n\n{_lines(what_was_ingested)}\n\n"
+        f"new_entities: {n_new}\n---\n\n# Briefing — {slug}\n\n"
+        f"## What was added\n\n{_lines(what_was_ingested)}\n\n"
         f"## New entities\n\n{_lines(new_entities)}\n\n"
         f"## Connections to existing entities\n\n{_lines(connections)}\n\n"
         f"## Leads and follow-up ideas\n\n{_lines(leads)}\n\n"

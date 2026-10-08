@@ -1,6 +1,6 @@
 # Benchmarks
 
-Watchdog's ingest pipeline calls a model three times per document — once to classify it, once to
+Watchdog's processing pipeline calls a model three times per document — once to classify it, once to
 extract its facts, once to write up what changed. The model and effort level each stage uses by
 default isn't a guess. It's chosen by running the same fixed set of real documents through every
 candidate combination and checking what came back against a frozen answer key. This page has

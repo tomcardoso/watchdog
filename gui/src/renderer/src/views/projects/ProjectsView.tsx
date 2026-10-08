@@ -67,7 +67,7 @@ export default function ProjectsView() {
     { separator: true, label: '' },
     { label: 'Show in folder', icon: FolderOpen, onClick: () => window.watchdog.shell.showItemInFolder(p.path) },
     { label: 'Open in Obsidian', icon: ExternalLink, onClick: () => void window.watchdog.shell.openInObsidian(p.path), disabled: !!p.health },
-    { label: 'Ingest history', icon: History, onClick: () => setDialog({ kind: 'log', project: p }) },
+    { label: 'Processing history', icon: History, onClick: () => setDialog({ kind: 'log', project: p }) },
     { separator: true, label: '' },
     { label: 'Remove from Watchdog…', icon: Trash2, danger: true, onClick: () => setDialog({ kind: 'remove', project: p }) },
     { label: 'Remove and delete files…', icon: Trash2, danger: true, onClick: () => setDialog({ kind: 'purge', project: p }) }
@@ -226,7 +226,7 @@ function ProjectCard({ p, menu, onOpen, onFix, onRemove }: { p: Project; menu: M
           <div className="proj-card-foot">
             <span className="faint row gap-4">
               <Clock style={{ width: 13, height: 13 }} />
-              {s.last_ingest ? `Last ingest ${fmtRelative(s.last_ingest)}` : 'Nothing ingested yet'}
+              {s.last_ingest ? `Last processed ${fmtRelative(s.last_ingest)}` : 'Nothing added yet'}
             </span>
             <span className="spacer" />
             {p.archived && <Badge icon={Archive}>Archived</Badge>}
@@ -383,13 +383,13 @@ function MoveDialog({ p, onClose }: { p: Project; onClose: () => void }) {
 function LogDialog({ p, onClose }: { p: Project; onClose: () => void }) {
   const { data, error, isLoading, refetch } = useRpc('projects.log', { slug: p.slug, lines: 400 })
   return (
-    <Modal open onClose={onClose} title="Ingest history" sub={p.name} width="wide" footer={<Button onClick={onClose}>Close</Button>}>
+    <Modal open onClose={onClose} title="Processing history" sub={p.name} width="wide" footer={<Button onClick={onClose}>Close</Button>}>
       {error ? (
         <ErrorNote error={error} retry={() => void refetch()} />
       ) : isLoading ? (
         <Skeleton h={180} />
       ) : !data?.lines.length ? (
-        <Empty icon={History} title="Nothing ingested yet">Each run that adds documents to this investigation is recorded here.</Empty>
+        <Empty icon={History} title="Nothing added yet">Each run that adds documents to this investigation is recorded here.</Empty>
       ) : (
         <div className="log proj-log">
           {data.lines.map((l, i) => (

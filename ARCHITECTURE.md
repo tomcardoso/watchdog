@@ -32,6 +32,8 @@ vault/registry layout or an invariant updates this file in the same change (see
 
 ## 2. Pipeline overview
 
+In the app and the docs the three stages are called pre-processing (`chew`), processing (`dig`) and post-processing (`bark`), and the whole flow is "adding documents"; code, commands, settings keys and RPC names keep the original words (D275).
+
 ```
 incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watchdog/extracted/<sha>.json ─▶ bark ─▶ vault
  (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
@@ -182,7 +184,7 @@ as-is; GPT-5.6+ on OpenAI gets explicit cache breakpoints; other OpenAI models g
 money, figures, percentages, dates and court file numbers by regex, plus names from the local
 GLiNER model, into a per-page checklist the prompt includes.
 
-**Failure.** A document whose extraction or post-flight fails is logged to `ingest.log` and moved
+**Failure.** A document whose extraction or post-flight fails is logged to `processing.log` and moved
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
 `watchdog requeue` puts failed documents back.
 
@@ -357,14 +359,19 @@ queries/ wiki/               session-written findings and threads
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, a fresh run's wipe of leftovers)
-  ingest-state.json          present while a run is in progress
+  processing-state.json      present while a run is in progress
+  .preprocessing-lock        held while files are pre-processed
   registry/
     entities.json documents.json registry.json manifest.json
     resolutions.json requests.json batch-pending.json
-    ingest.log               per-document START/OK/WARN/FAILED lines
+    processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
-    .ingest-lock .write-lock
+    .processing-lock .write-lock
 ```
+
+**Working files (D276).** The locks, run state and run log are named for the app's stages and built
+through `vault_paths.py` helpers; the same migration renames an older vault's `.chew-lock`,
+`.ingest-lock`, `ingest-state.json` and `ingest.log`.
 
 **Folder names (D266).** `vault_paths.py` is the one place the `incoming/` and `context/` names live, with
 helpers for every path under them. `migrate_folder_names` renames an older vault's `_INCOMING/` and
@@ -504,7 +511,8 @@ See D45–D48.
   `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
   allowed folders and Watchdog's own exempt locations, in the sidecar and every CLI subprocess; the
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
-  edits outside their vault.
+  edits outside their vault. Their shell commands run in Claude Code's sandbox on macOS and are
+  limited to the vault's pre-approved `watchdog` commands elsewhere (D274).
 - **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
@@ -559,4 +567,4 @@ noted as such.
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes
   the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
-  D268.*
+  D268, D274.*

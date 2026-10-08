@@ -77,7 +77,7 @@ def test_for_path(rich_vault, wdg_home, tmp_path):
 
 def test_status(rich_vault, wdg_home):
     register(wdg_home, rich_vault)
-    (rich_vault / ".watchdog" / ".chew-lock").write_text("pid: cli\n")
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text("pid: cli\n")
     s = call("projects.status", slug="rich")
     assert s["project"]["slug"] == "rich"
     assert s["by_type"] == {"person": 2, "organization": 1}

@@ -1,6 +1,6 @@
-// Everything Watchdog writes for the journalist, as a reading list: ingest briefings, lead
+// Everything Watchdog writes for the journalist, as a reading list: briefings, lead
 // sweeps, watch-list alerts and research memos, plus the three living files (current state,
-// ingest history, investigation context) pinned above them.
+// processing history, investigation context) pinned above them.
 
 import { Activity, Bell, FileText, History, Lightbulb, MessageCircle, MessageSquareQuote, Network, Pencil, Save, Search, Target, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -16,12 +16,12 @@ import './briefings.css'
 
 const PINNED: { path: string; label: string; sub: string; icon: LucideIcon }[] = [
   { path: 'hot.md', label: 'Current state', sub: 'Where the investigation stands now', icon: Activity },
-  { path: 'log.md', label: 'Ingest history', sub: 'What each run added', icon: History },
+  { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History },
   { path: 'context.md', label: 'Investigation context', sub: 'Your questions and what you know', icon: Target }
 ]
 
 const KINDS: { kind: BriefingRow['kind']; label: string; icon: LucideIcon }[] = [
-  { kind: 'briefing', label: 'Ingest briefings', icon: FileText },
+  { kind: 'briefing', label: 'Briefings', icon: FileText },
   { kind: 'leads', label: 'Lead sweeps', icon: Lightbulb },
   { kind: 'alerts', label: 'Watch-list alerts', icon: Bell },
   { kind: 'research', label: 'Research memos', icon: Search }
@@ -109,7 +109,7 @@ export default function BriefingsView() {
               ))}
             </div>
           )}
-          {list.data && !rows.length && <div className="faint" style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)' }}>No briefings yet. The first is written when an ingest finishes.</div>}
+          {list.data && !rows.length && <div className="faint" style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)' }}>No briefings yet. The first is written when a run finishes.</div>}
         </div>
       </aside>
       <main className="bf-main">
@@ -139,7 +139,7 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
       await call('vault.writeFile', { vault, path, text: draft })
       invalidate('vault.readFile', 'vault.summary')
       setEditing(false)
-      toast({ kind: 'success', title: 'Context saved', body: 'The next ingest and briefing will use it.' })
+      toast({ kind: 'success', title: 'Context saved', body: 'The next run and briefing will use it.' })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not save', body: errorMessage(e) })
     } finally {
@@ -179,7 +179,7 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             </>
           ) : !q.data?.exists || !body.trim() ? (
             <Empty icon={FileText} title={pinned ? `${pinned.label} is empty` : 'Nothing here'} action={isContext ? <Button icon={Pencil} onClick={() => { setDraft(text); setEditing(true) }}>Write context</Button> : undefined}>
-              {path === 'hot.md' || path === 'log.md' ? 'This file is written at the end of an ingest run that produces a briefing.' : 'This file does not exist yet.'}
+              {path === 'hot.md' || path === 'log.md' ? 'This file is written at the end of a run that produces a briefing.' : 'This file does not exist yet.'}
             </Empty>
           ) : (
             <>

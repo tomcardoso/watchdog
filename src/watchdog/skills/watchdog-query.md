@@ -24,7 +24,7 @@ Identify:
 
 ### 2. Gather evidence
 
-**Facets — narrow before you read.** If the question names a filter — an entity type ("which companies…"), a document type ("court filings", "annual reports"), or a date range ("in 2021", "between 2019 and 2022") — apply it before opening individual notes, using metadata already captured at ingest. No new lookups are needed, and facets combine (e.g. "companies named in court filings from 2021" narrows on all three):
+**Facets — narrow before you read.** If the question names a filter — an entity type ("which companies…"), a document type ("court filings", "annual reports"), or a date range ("in 2021", "between 2019 and 2022") — apply it before opening individual notes, using metadata already captured during processing. No new lookups are needed, and facets combine (e.g. "companies named in court filings from 2021" narrows on all three):
 
 - **Entity type** — `.watchdog/registry/manifest.json`'s `type` field — one of `person`, `organization`, `public-body`, `place`, `asset` or `proceeding` (a company is an `organization`; an address is a `place`). Keep only matching entries before matching on name/alias in the manifest step below.
 - **Document type** — each document note's `document_type` frontmatter field. Grep across notes rather than opening each one:

@@ -1,6 +1,6 @@
 # {name}
 
-An investigation vault built with **[Watchdog](https://github.com/tomcardoso/watchdog)** — document intelligence for investigative journalism. Drop public records in; get linked, source-cited notes you can explore in [Obsidian](https://obsidian.md).
+An investigation built with **[Watchdog](https://github.com/tomcardoso/watchdog)** — document intelligence for investigative journalism. Open it in the Watchdog app to add documents, read the briefings and ask questions. Every note here is ordinary Markdown, so you can also browse the folder in [Obsidian](https://obsidian.md).
 
 > Created with Watchdog `v{version}` · [GitHub](https://github.com/tomcardoso/watchdog) · [Report an issue](https://github.com/tomcardoso/watchdog/issues)
 
@@ -10,32 +10,9 @@ Never add confidential source material, leaked documents, private correspondence
 
 ## How to use it
 
-1. Drop documents into `incoming/`.
-2. From this folder in your terminal:
-   - `watchdog chew` — OCR and prepare the documents
-   - `watchdog dig` — extract entities, relationships, and timelines
-   - `watchdog bark` — reconcile, synthesize, and write the briefing
-3. Browse the results in [Obsidian](https://obsidian.md), or open this folder in Claude Code to ask questions across the whole vault.
-
-## Common commands
-
-In your terminal, from this folder:
-
-| Command | What it does |
-|---------|--------------|
-| `watchdog chew` | Process the files in `incoming/` |
-| `watchdog dig` | Extract from the chewed documents |
-| `watchdog bark` | Finish post-processing if an ingest was interrupted |
-| `watchdog status` | Vault stats, plus anything queued or pending |
-| `watchdog requeue` | Retry documents that failed extraction |
-
-In a Claude Code session opened on this folder:
-
-| Command | What it does |
-|---------|--------------|
-| `/watchdog-query <question>` | Answer a question from the vault |
-| `/watchdog-surface` | Surface connections and anomalies |
-| `/watchdog-wiki` | Build investigation thread pages |
+1. Open the investigation in the Watchdog app and choose **Add documents**, or drop files into `incoming/` and add them from the app.
+2. Watchdog pre-processes each file on this computer, processes it with an AI model to pull out people, organizations, places and dates, then post-processes the batch: merging entities, flagging contradictions and writing a briefing.
+3. Read the briefing, explore the people and connections, and use **Ask Claude** in the app to ask questions across the whole investigation.
 
 ## What's in here
 
@@ -44,8 +21,8 @@ In a Claude Code session opened on this folder:
 | `incoming/` | Drop zone for new documents |
 | `context/` | Background material (prior stories, notes) that seeds the investigation |
 | `entities/` | One note per person, company, address… |
-| `documents/` | One note per ingested document |
-| `briefings/` | Post-ingest summaries of what was found |
+| `documents/` | One note per added document |
+| `briefings/` | A summary of what was found each time documents are added |
 | `timeline.md` | Chronology across the whole investigation |
-| `morgue/` | Your original files, kept after ingest |
+| `morgue/` | Your original files, kept once processed |
 | `.watchdog/` | Internal state — leave it alone |

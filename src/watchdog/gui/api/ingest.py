@@ -215,7 +215,7 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
         backend, _model = _resolve_stage(args.finalizer_model, config.get("finalizer_model"),
                                          default=defaults.FINALIZER_MODEL)
         if not orchestrate.has_pending_finalization(v):
-            return {"text": "Nothing to finish — run dig first.", "estimate": None,
+            return {"text": "Nothing to finish — run processing first.", "estimate": None,
                     "all_models": None}
         mode = resolve_auth()["mode"] if backend is None else None
         est = ingest_setup.finalize_cost_estimate(v, _effective_extract_backend(backend, mode))

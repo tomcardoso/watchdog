@@ -196,7 +196,7 @@ export default function AuthPanel() {
       <section className="card" style={{ overflow: 'hidden' }}>
         <div className="set-card-head">
           <div>
-            <div className="card-title">Ingestion stages</div>
+            <div className="card-title">Processing stages</div>
             <div className="card-sub">Which provider each step runs on, and whether it is ready. Change models under Models in the sections list.</div>
           </div>
         </div>

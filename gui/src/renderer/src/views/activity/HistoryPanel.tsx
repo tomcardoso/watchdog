@@ -1,4 +1,4 @@
-// Ingest history: the vault's ingest.log, newest first, with OK / WARN / FAILED filtering.
+// Processing history: the vault's processing.log, newest first, with OK / WARN / FAILED filtering.
 
 import { History } from 'lucide-react'
 import { useMemo, useState } from 'react'
@@ -50,7 +50,7 @@ export default function HistoryPanel() {
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   if (!q.data?.lines.length)
     return (
-      <Empty icon={History} title="No ingest history yet">
+      <Empty icon={History} title="No processing history yet">
         Every document the pipeline reads, extracts or fails on is recorded here, so you can see exactly what happened and when.
       </Empty>
     )
