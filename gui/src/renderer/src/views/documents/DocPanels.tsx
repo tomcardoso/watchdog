@@ -9,7 +9,8 @@ import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtDateTime, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate } from '@renderer/lib/rpc'
 import { navigate, useVault } from '@renderer/lib/store'
-import type { DocumentDetail } from '@shared/api'
+import { fmtDuration, pageLabel } from '@renderer/lib/media'
+import type { DocumentDetail, MediaInfo } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
 
 type Jump = (t: Omit<JumpTarget, 'nonce'>) => void
@@ -91,7 +92,7 @@ export function Highlight({ text, q }: { text: string; q: string }): ReactNode {
   return out
 }
 
-export function TextTab({ pages, jump, hasViewer }: { pages: DocumentDetail['pages']; jump: Jump; hasViewer: boolean }) {
+export function TextTab({ pages, jump, hasViewer, media }: { pages: DocumentDetail['pages']; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
   const [q, setQ] = useState('')
   const needle = q.trim()
   const counts = useMemo(() => {
@@ -114,7 +115,7 @@ export function TextTab({ pages, jump, hasViewer }: { pages: DocumentDetail['pag
         counts && !counts[i] ? null : (
           <section className="text-tab-page" key={p.page}>
             <button className="text-tab-page-head" onClick={() => jump({ page: p.page })} disabled={!hasViewer} style={!hasViewer ? { cursor: 'default' } : undefined}>
-              p. {p.page}
+              {media ? `Page ${p.page} · ${pageLabel(media, p.page)}` : `p. ${p.page}`}
               {hasViewer && <ChevronRight style={{ width: 11, height: 11 }} />}
             </button>
             <div className="text-tab-page-body">
@@ -169,7 +170,7 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
             ['File name', d.filename],
             ['Document type', d.document_type || '—'],
             ['Document date', d.date_of_document ? fmtDate(d.date_of_document) : '—'],
-            ['Pages', d.page_count ?? '—'],
+            d.media ? ['Length', fmtDuration(d.media.duration_seconds)] : ['Pages', d.page_count ?? '—'],
             ['Source', d.source || '—'],
             ['Obtained', d.obtained ? fmtDate(d.obtained) : '—'],
             ['Added', d.ingested_at ? fmtDateTime(d.ingested_at) : '—']
@@ -184,6 +185,12 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
             ['Skill hash', d.record_skill_hash ? <code>{d.record_skill_hash}</code> : '—'],
             ['Model', d.extract_model || '—'],
             ['Effort', d.extract_effort || '—'],
+            ...(d.media
+              ? ([
+                  ['Transcribed with', d.media.model ? `${d.media.model} (on this computer)` : 'On this computer'],
+                  ['Language', d.media.language || '—']
+                ] as [string, ReactNode][])
+              : []),
             [
               'SHA-256',
               <div className="det-sha" key="sha">

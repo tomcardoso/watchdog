@@ -67,6 +67,9 @@ export interface DocumentRow {
   source: string | null
   obtained: string | null
   summary: string | null
+  /** "audio" or "video" for a recording, else null (D273). */
+  media_kind?: 'audio' | 'video' | null
+  duration_seconds?: number | null
 }
 
 export interface EntityRef { id: string; name: string; type: EntityType | string }
@@ -142,6 +145,16 @@ export interface Fact {
   mark: FactMark | null
 }
 
+/** A recording's time map (D273): page n is the block from `start` to `end` seconds. */
+export interface MediaInfo {
+  kind: 'audio' | 'video'
+  duration_seconds: number | null
+  page_seconds: number | null
+  pages: { page: number; start: number; end: number }[]
+  language: string | null
+  model: string | null
+}
+
 export interface DocumentDetail extends DocumentRow {
   frontmatter: Record<string, unknown>
   body: string
@@ -155,6 +168,8 @@ export interface DocumentDetail extends DocumentRow {
   extract_effort: string | null
   record_skill_hash: string | null
   duplicates: { sha: string; filename: string; note: string | null }[]
+  /** Audio and video only (D273). */
+  media: MediaInfo | null
 }
 
 export interface TimelineEvent {
@@ -294,6 +309,8 @@ export interface ProgressState {
   done: number | null
   total: number | null
   current: string | null
+  /** A transient detail beside the stage, such as which recording is being transcribed. */
+  note?: string | null
   docs: Record<string, DocProgress>
 }
 export interface Job {
@@ -385,6 +402,10 @@ export interface SetupModels {
   reranker: boolean | null
   ocr: string | null
   claude_cli: string | null
+  /** The configured transcription model is downloaded (D273). Downloaded on demand. */
+  transcription?: boolean
+  transcription_model?: string
+  transcription_size_mb?: number
 }
 
 // ── usage ────────────────────────────────────────────────────────────────────
@@ -501,6 +522,7 @@ export interface Methods {
   'skills.read': [{ name: string }, { name: string; text: string }]
   'setup.check': [Record<string, never>, SetupCheck]
   'setup.models': [Record<string, never>, SetupModels]
+  'setup.downloadModel': [{ model: 'transcription' }, Job]
   'setup.complete': [{ projects_dir?: string; auto_approve?: boolean }, { projects_dir: string; ocr_engine: string | null; auto_approve: boolean }]
   'auth.routeIngestion': [{ provider: string; model: string }, AuthStatus]
 

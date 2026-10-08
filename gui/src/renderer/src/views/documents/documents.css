@@ -1189,3 +1189,87 @@
 .docv-right-body {
   overflow-x: hidden;
 }
+
+/* ── Audio and video documents (D273) ─────────────────────────────────────── */
+.media-stage {
+  flex: none;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.media-stage.is-video {
+  display: flex;
+  justify-content: center;
+}
+.media-player {
+  display: block;
+  width: 100%;
+}
+.media-stage.is-video .media-player {
+  max-height: 38vh;
+  width: auto;
+  max-width: 100%;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+}
+.media-page {
+  max-width: 760px;
+  margin: 0 auto 22px;
+  padding: 22px 28px 14px;
+  background: var(--paper);
+  color: var(--paper-text);
+  border-radius: 2px;
+  box-shadow: var(--paper-shadow);
+}
+.media-page-head {
+  margin: 0 0 12px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--paper-text-2);
+}
+.media-line {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin: 0 -8px 6px;
+  padding: 4px 8px;
+  border-radius: var(--r-sm);
+  font-family: var(--font-read);
+  font-size: var(--fs-read);
+  line-height: 1.6;
+}
+.media-line.is-now {
+  background: var(--accent-soft);
+}
+.media-line.flash {
+  animation: sheet-flash 1.6s var(--ease);
+}
+.media-stamp {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 5px;
+  border: 1px solid var(--paper-rule);
+  border-radius: var(--r-full);
+  background: transparent;
+  color: var(--accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.media-stamp svg {
+  width: 10px;
+  height: 10px;
+}
+.media-stamp:hover:not(:disabled) {
+  background: var(--accent-soft);
+}
+.media-stamp:disabled {
+  color: var(--paper-text-3);
+  cursor: default;
+}

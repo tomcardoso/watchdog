@@ -20,7 +20,7 @@ const STEP_OF: Record<Phase, number> = { choose: 0, reading: 1, gate: 2, running
 
 // Pipeline stage → step of the run stepper: Read, Extract, Write, Brief.
 const STAGE_STEP: Record<string, number> = {
-  chew: 0, classify: 1, extract: 1, dig: 1, fold: 1, reconcile: 2, commit: 2, contradictions: 2, synthesis: 2, timeline: 2, briefing: 3, leads: 3, requests: 3, done: 3
+  model: 0, chew: 0, classify: 1, extract: 1, dig: 1, fold: 1, reconcile: 2, commit: 2, contradictions: 2, synthesis: 2, timeline: 2, briefing: 3, leads: 3, requests: 3, done: 3
 }
 const RUN_STEPS = ['Read', 'Extract', 'Write', 'Brief']
 

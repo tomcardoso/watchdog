@@ -4,6 +4,7 @@
 
 import { FileAudio, FileImage, FileSpreadsheet, FileText, FileVideo, Globe, Presentation } from 'lucide-react'
 import { CSSProperties, useEffect, useRef, useState } from 'react'
+import { MEDIA_EXTS, VIDEO_EXTS } from '@renderer/lib/media'
 import { renderThumb } from '@renderer/lib/pdf'
 import { useVault } from '@renderer/lib/store'
 import '@renderer/styles/docthumb.css'
@@ -16,8 +17,7 @@ export function extIcon(ext: string) {
   if (['xlsx', 'xls', 'csv'].includes(ext)) return FileSpreadsheet
   if (['pptx', 'ppt'].includes(ext)) return Presentation
   if (['html', 'htm'].includes(ext)) return Globe
-  if (['mp3', 'm4a', 'wav', 'aac', 'ogg', 'flac'].includes(ext)) return FileAudio
-  if (['mp4', 'mov', 'avi'].includes(ext)) return FileVideo
+  if (MEDIA_EXTS.has(ext)) return VIDEO_EXTS.has(ext) ? FileVideo : FileAudio
   return FileText
 }
 
