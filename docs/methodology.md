@@ -75,7 +75,7 @@ Both are configurable, and neither is required for the pipeline itself to work �
 
 ## What stays on your machine, and what doesn't
 
-Pre-processing (transcription included), search and the two models above never leave your computer and never cost anything. The one network use is downloading a model the first time it is needed. The only things that go to a cloud AI provider are the extracted text sent during processing (one document at a time) and the cross-document material assembled during post-processing (facts, names, and short quoted excerpts — never the raw original file). This is why Watchdog must only be used on documents that are public or presumptively public; see the [public-records notice](getting-started.md) for what that means in practice.
+Pre-processing (transcription included), search and the two models above never leave your computer and never cost anything. The one network use is downloading a model the first time it is needed. The only things that go to a cloud AI provider are the extracted text sent during processing (one document at a time, each accompanied by your investigation's brief, `context.md`) and the cross-document material assembled during post-processing (facts, names, and short quoted excerpts — never the raw original file). This is why Watchdog must only be used on documents that are public or presumptively public; see the [public-records notice](getting-started.md) for what that means in practice.
 
 ## Where to go from here
 

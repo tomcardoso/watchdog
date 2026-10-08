@@ -170,7 +170,7 @@ Type a question in plain language, or start from one of the shortcuts on the emp
 - `/watchdog-entity` refreshes an entity's summary and timeline from all its source documents.
 - `/watchdog-wiki` creates or updates thread pages in `wiki/`. When a finding grows into a real angle (two or more entities tied together by two or more documents), it graduates to a thread page. Over a long investigation, `queries/` and `wiki/` become the record of what you have worked out.
 - `/watchdog-health` checks integrity: orphaned notes, broken links, registry mismatches, open contradictions.
-- `/watchdog-context` and **Seed investigation context** tell Watchdog what the story is. Claude reads the background files in `context/`, interviews you where they fall short, and writes `context.md`. An existing one is updated, not replaced.
+- `/watchdog-context` and **Seed investigation context** tell Watchdog what you want to find out. Claude reads the background files in `context/`, interviews you where they fall short, and writes `context.md` as open questions rather than conclusions. An existing one is updated, not replaced. The brief is sent to the AI model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it and how to phrase it.
 
 A selector at the top of the screen chooses the Claude model for new conversations: Default (Claude Code's own setting), Sonnet, Opus or Haiku. The cost so far is shown beside it; on a subscription this is what it would cost at published rates, not what you are billed.
 

@@ -199,7 +199,7 @@ def _seed_context(vault: Path) -> None:
     info = next((v for v in load_projects().values() if Path(v["path"]).resolve() == vault.resolve()), None)
     name = info["name"] if info else vault.name
     description = (info or {}).get("description") or (
-        "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->")
+        "<!-- One paragraph, written as open questions: what do you want to understand or explore? -->")
     path.write_text(_render_template("context.md", name=name, description=description), encoding="utf-8")
 
 

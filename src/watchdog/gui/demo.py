@@ -55,17 +55,18 @@ CONTEXT_MD = """\
 
 ## What I'm investigating
 
-How Port Calder City Council came to buy 14 Dockside Road for far more than it was worth in February 2022
-and, two months later, award the $48.6-million Pier 9 marine servicing contract without a public tender.
-Both decisions benefited companies tied to the developer Meridian Shoreline Developments. I want to know
-who stood on both sides of each deal and what Council was and was not told.
+I want to understand how Port Calder City Council came to buy 14 Dockside Road in February 2022, and why,
+two months later, it awarded the $48.6-million Pier 9 marine servicing contract without a public tender.
+I want to explore whether the developer Meridian Shoreline Developments, or companies connected to it,
+stood on either side of these decisions, and what Council was told before each vote.
 
 ## Key questions I'm trying to answer
 
 - Who owns 7714882 Holdings Ltd., the numbered company that sold the City the property?
-- Did Councillor Dana Whitcombe disclose her family link to the company's director, and to whom?
-- Why does the contract price exceed what Council approved?
-- Was the "time-critical" reason for skipping a tender true?
+- How did the price the City paid compare with the property's appraised value?
+- Did any councillor have a connection to the companies involved, and was it disclosed?
+- Does the contract price match what Council approved?
+- What was the "time-critical" reason given for skipping a tender, and does the record support it?
 
 ## Entities I already know are relevant
 
@@ -78,24 +79,30 @@ who stood on both sides of each deal and what Council was and was not told.
 
 - The City Clerk's record of any conflict disclosure in April 2022.
 - The unsevered appraisal of 14 Dockside Road and the "second valuation" staff e-mail.
+- The Harbour Authority's record of the Pier 9 berth permits, including any renewal in 2022.
 - The Northgate-Tideway subcontract.
 
 ## What I don't yet understand
 
-- Where the money went between the $1,150,000 the company paid and the $4,350,000 the City paid.
+- How the price rose between what the company paid for the property and what the City paid.
 """
 
 WATCH_TERMS = ["Strathmore Public Affairs", "Marcus Teague", "410 Wharf Street", "7714882", "time-critical",
                "Blackwater Capital"]
 
 CONTEXT_NOTE = """\
-# Interview notes - former Harbour Authority staffer
+# Background - published coverage
 
-Spoke by phone, not for attribution, on background.
+Summary of "City skips tender for $48.6M Pier 9 contract", Port Calder Ledger, April 28, 2022.
+A published news story, kept here as background, not as evidence.
 
-- The Pier 9 permits were routine paperwork. Nobody at the Authority thought they were at risk.
-- Staff at the City were told in January that "the Meridian people" would be buying Dockside Road.
-- Ask for the March 2022 berth permit renewal letter.
+- Council voted 7 to 3 on April 26, 2022 to award the Pier 9 marine servicing contract to Northgate
+  Civil Works Ltd. without a public tender.
+- City staff told Council the work was time-critical because the Pier 9 berth permits expire on
+  September 30, 2022.
+- The Harbour Authority, which issues the berth permits, declined to comment on their status.
+- The story does not say who owns Northgate or whether it is related to Meridian Shoreline Developments.
+- Worth requesting: the Harbour Authority's record of the Pier 9 berth permits, including any renewal.
 """
 
 CONTEXT_TIMELINE = """\
@@ -439,7 +446,7 @@ def _loose_ends(vault: Path) -> None:
          ["Updated dredging schedule", "Tideway", "2022-09-28"]])
 
     context = context_dir(vault)
-    (context / "interview-notes-harbour-authority.md").write_text(CONTEXT_NOTE, encoding="utf-8")
+    (context / "ledger-story-pier-9-award.md").write_text(CONTEXT_NOTE, encoding="utf-8")
     (context / "harbourfront-timeline.txt").write_text(CONTEXT_TIMELINE, encoding="utf-8")
 
     sha = hashlib.sha256(b"scanned-memo-illegible.pdf").hexdigest()

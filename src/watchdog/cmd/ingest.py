@@ -1607,7 +1607,7 @@ def cmd_context(args) -> None:
     if interactive.confirm("\n  Open in Claude Code to seed context?", default=True):
         context_path = vault / "context.md"
         if not context_path.exists():
-            description = info["description"] if info and info.get("description") else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"
+            description = info["description"] if info and info.get("description") else "<!-- One paragraph, written as open questions: what do you want to understand or explore? -->"
             context_path.write_text(_render_template("context.md", name=name, description=description))
         _launch_claude(vault, "/watchdog-context", model=model)
     else:

@@ -170,7 +170,10 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             <><Skeleton w="55%" h={28} /><Skeleton h={14} style={{ marginTop: 22 }} /><Skeleton h={14} style={{ marginTop: 8 }} /><Skeleton w="75%" h={14} style={{ marginTop: 8 }} /></>
           ) : editing ? (
             <>
-              <Callout tone="info">Plain Markdown. Be specific: the more precisely you say what you are investigating, the more targeted briefings, leads and analysis become.</Callout>
+              <Callout tone="info">
+                Plain Markdown. This page is sent to the AI model with every document you add, so leave out anything you would not send with them: source names, contact details, unpublished tips.
+                Write open questions rather than conclusions, such as “I want to understand how the contract was awarded”. A page that states what you expect to find can lead the model to read the documents that way.
+              </Callout>
               <textarea className="textarea bf-editor" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck autoFocus />
               <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
                 <Button icon={X} variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
