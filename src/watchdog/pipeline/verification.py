@@ -4,18 +4,25 @@ A reporter marks a fact **Verified**, **Disputed** or **Can't verify**, with an 
 Watchdog records who and when. Nothing here calls a model, and nothing here changes a fact: the
 ledger is the journalist's record about the pipeline's output, kept beside it.
 
-Fact identity. Facts have no stored id, so one is derived: ``fact:<sha12>:<hash10>``, where
-``sha12`` opens the document's SHA-256 and ``hash10`` is a SHA-1 of that full SHA-256, the fact's
-cited page and its text normalized only for case, Unicode form and spacing (never punctuation or
-digits, so "$1.2 million" and "$12 million" stay different facts). An exact duplicate within one
-document (same text, same page) gets ``:2``, ``:3`` in reading order. The id survives anything
+Fact identity. Facts have no stored id, so one is derived: ``fact:1:<sha12>:<hash10>``, where
+``1`` is the id scheme (`ID_SCHEME`), ``sha12`` opens the document's SHA-256 and ``hash10`` is a
+SHA-1 of that full SHA-256, the fact's cited page and its text normalized only for case, Unicode
+form and spacing (never punctuation or digits, so "$1.2 million" and "$12 million" stay different
+facts). An exact duplicate within one document (same text, same page) gets ``:2``, ``:3`` in
+reading order. Each mark also keeps the fact's text and page as they were when it was made, and a
+mark attaches to a current fact only when that snapshot still matches (`attach`): so neither a hash
+collision nor a later change to how ids or facts are produced can re-point a mark at different
+words. A future id scheme gets a new number, and marks made under scheme 1 keep resolving through
+it. The id survives anything
 that leaves the fact's words and page alone: an entity merge (entities are not part of it), a
 reindex, a re-run of post-flight, and re-processing that extracts the same fact again. When
 re-processing changes a fact's wording or page, the id changes with it, and the old mark is shown
 as no longer matching a current fact, with the fact as it read when marked. It is never moved to
 another fact, because a mark attached to words the reporter didn't check would be worse than none.
 
-Storage. ``.watchdog/registry/verification.json`` is the source of truth::
+Storage. ``.watchdog/registry/verification.json`` is the source of truth (``schema_version``
+1; unknown fields are kept on rewrite and ignored on read; a ledger with a newer version than this
+code knows is read for display but never written, `LedgerTooNew`)::
 
     {"schema_version": 1,
      "marks": {"<fact id>": {"status": "verified"|"disputed"|"unverifiable"|null, "note",
@@ -40,6 +47,8 @@ import unicodedata
 from pathlib import Path
 
 _SCHEMA_VERSION = 1
+ID_SCHEME = 1
+NOTE_FORMAT = 1
 STATUSES = ("verified", "disputed", "unverifiable")
 LABELS = {"verified": "Verified", "disputed": "Disputed", "unverifiable": "Can't verify"}
 # What the CLI accepts for each status, besides its own name.
@@ -70,7 +79,7 @@ def fact_ids(sha256: str, facts: list[dict]) -> list[str]:
     for f in facts:
         page = _page(f.get("page"))
         key = f"{sha256}\n{'' if page is None else page}\n{normalize_fact_text(f.get('fact') or '')}"
-        base = f"fact:{sha256[:12]}:{hashlib.sha1(key.encode('utf-8')).hexdigest()[:10]}"
+        base = f"fact:{ID_SCHEME}:{sha256[:12]}:{hashlib.sha1(key.encode('utf-8')).hexdigest()[:10]}"
         n = seen.get(base, 0) + 1
         seen[base] = n
         out.append(base if n == 1 else f"{base}:{n}")
@@ -78,8 +87,27 @@ def fact_ids(sha256: str, facts: list[dict]) -> list[str]:
 
 
 def sha_prefix(fid: str) -> str:
+    """The document SHA-256 prefix inside a fact id, or "" for an id this code can't read."""
     parts = fid.split(":")
-    return parts[1] if len(parts) >= 3 and parts[0] == "fact" else ""
+    if len(parts) >= 4 and parts[0] == "fact" and parts[1] == str(ID_SCHEME):
+        return parts[2]
+    return ""
+
+
+def attach(mark: dict | None, fact: dict | None) -> dict | None:
+    """`mark` if it is a current mark made on exactly this fact's words and page, else None. The
+    id already says so; this re-checks against the snapshot the mark was made on."""
+    if not isinstance(mark, dict) or mark.get("status") not in STATUSES or not isinstance(fact, dict):
+        return None
+    if "fact" in mark and normalize_fact_text(mark.get("fact") or "") != normalize_fact_text(fact.get("fact") or ""):
+        return None
+    if "page" in mark and _page(mark.get("page")) != _page(fact.get("page")):
+        return None
+    return mark
+
+
+class LedgerTooNew(RuntimeError):
+    """The ledger was written by a newer Watchdog; this one can show it but must not rewrite it."""
 
 
 # ── a vault's facts ───────────────────────────────────────────────────────────────────
@@ -128,7 +156,11 @@ def document_facts(vault: Path, sha256: str, record: dict | None = None) -> list
         ex = None
     doc = ex.get("document") if isinstance(ex, dict) else None
     if isinstance(doc, dict) and isinstance(doc.get("key_facts"), list):
-        return [f for f in doc["key_facts"] if isinstance(f, dict) and (f.get("fact") or "").strip()]
+        facts = [f for f in doc["key_facts"] if isinstance(f, dict) and (f.get("fact") or "").strip()]
+        from watchdog.pipeline import passages
+        if not passages.readable(doc):   # written by a newer Watchdog: show facts, not passages
+            facts = [{k: v for k, v in f.items() if k not in passages.PASSAGE_FIELDS} for f in facts]
+        return facts
     record = record if record is not None else _load_documents(vault).get(sha256) or {}
     note = record.get("document_note") if isinstance(record, dict) else None
     if not note:
@@ -173,6 +205,11 @@ def load(vault: Path) -> dict:
     if not isinstance(data, dict) or not isinstance(data.get("marks"), dict):
         return {"schema_version": _SCHEMA_VERSION, "marks": {}}
     return data
+
+
+def too_new(data: dict) -> bool:
+    v = data.get("schema_version", _SCHEMA_VERSION)
+    return not isinstance(v, int) or isinstance(v, bool) or v > _SCHEMA_VERSION
 
 
 def marks(vault: Path) -> dict[str, dict]:
@@ -265,6 +302,9 @@ def mark(vault: Path, fid: str, status: str | None, note: str | None = None,
     registry.mkdir(parents=True, exist_ok=True)
     with _registry_lock(registry, _LOCK):
         data = load(vault)
+        if too_new(data):
+            raise LedgerTooNew("This investigation's verification ledger was written by a newer "
+                               "version of Watchdog. Update Watchdog to change marks.")
         entry = data["marks"].get(fid)
         if current is None and status is not None:
             raise LookupError(f"No current fact has the id {fid}.")
@@ -277,6 +317,10 @@ def mark(vault: Path, fid: str, status: str | None, note: str | None = None,
         elif entry.get("status") is not None or entry.get("note"):
             entry.setdefault("history", []).append(
                 {k: entry.get(k) for k in ("status", "note", "by", "at")})
+        if entry.get("status") is not None and current is not None and attach(entry, current) is None:
+            # A mark left on this id from different words (a collision, or an older scheme):
+            # start afresh, keeping what it said in the history.
+            entry["history"][-1]["fact"] = entry.get("fact")
         entry.update({"status": status, "note": note or None, "by": who, "at": now})
         if current is not None:
             rec = docs[sha]
@@ -294,17 +338,20 @@ def mark(vault: Path, fid: str, status: str | None, note: str | None = None,
 def summary(vault: Path, facts: dict[str, dict] | None = None, data: dict | None = None) -> dict:
     """Progress over the vault's current facts, and the marks that no longer match one."""
     facts = facts if facts is not None else all_facts(vault)
-    current = {fid: m for fid, m in (data or load(vault))["marks"].items()
+    data = data or load(vault)
+    current = {fid: m for fid, m in data["marks"].items()
                if isinstance(m, dict) and m.get("status") in STATUSES}
     counts = {s: 0 for s in STATUSES}
+    orphaned = 0
     for fid, m in current.items():
-        if fid in facts:
+        if attach(m, facts.get(fid)):
             counts[m["status"]] += 1
+        else:
+            orphaned += 1
     unlocated = sum(1 for f in facts.values() if f.get("passage_method") == "unlocated")
     return {"facts": len(facts), **counts,
             "unmarked": len(facts) - sum(counts.values()),
-            "unlocated": unlocated,
-            "orphaned": sum(1 for fid in current if fid not in facts)}
+            "unlocated": unlocated, "orphaned": orphaned, "read_only": too_new(data)}
 
 
 def entries(vault: Path, facts: dict[str, dict] | None = None, data: dict | None = None) -> list[dict]:
@@ -315,7 +362,7 @@ def entries(vault: Path, facts: dict[str, dict] | None = None, data: dict | None
     for fid, m in (data or load(vault))["marks"].items():
         if not isinstance(m, dict) or m.get("status") not in STATUSES:
             continue
-        cur = facts.get(fid)
+        cur = facts.get(fid) if attach(m, facts.get(fid)) else None
         out.append({
             "id": fid, "status": m["status"], "note": m.get("note") or None,
             "by": m.get("by") or None, "at": m.get("at") or None,
@@ -345,7 +392,8 @@ def render(vault: Path, data: dict | None = None, docs: dict | None = None) -> P
     s = summary(vault, facts, data)
     rows = entries(vault, facts, data)
     lines = [
-        "---", "title: Fact verification", "type: Verification", "---", "",
+        "---", "title: Fact verification", "type: Verification", f"format_version: {NOTE_FORMAT}",
+        "---", "",
         "# Fact verification", "",
         "<!-- Generated by Watchdog from .watchdog/registry/verification.json and rewritten on "
         "every change. Mark facts in the Watchdog app; edits made here are not kept. -->", "",

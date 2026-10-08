@@ -25,18 +25,18 @@ How a passage is found:
 
 A fact whose `quote` resolved (D170) uses that quote as its passage. The result is stored on the
 fact in the staged extraction: `passage`, `passage_page`, `passage_method` ("quote", "matched" or
-"unlocated") and `passage_score`. Post-flight stamps it before the commit (I7); `watchdog
-locate-passages` computes it for documents committed before this existed, from the morgue's page
-text, with no model call."""
+"unlocated") and `passage_score`, and the document records `passages_version`. Post-flight stamps
+them before the commit (I7). Documents committed before this existed simply have no passages.
+
+Format version. `PASSAGES_VERSION` is written as `document.passages_version`. A reader that finds a
+newer version than it knows ignores the passage fields (the fact shows without a passage) rather
+than misreading them; unknown extra fields are ignored."""
 
 from __future__ import annotations
 
-import json
 import math
-import os
 import re
 from datetime import date as _date
-from pathlib import Path
 
 from watchdog.pipeline.figure_verify import _GROUPED_NUM_RE, _YEAR_RE, _normalize_token
 from watchdog.pipeline.quote_verify import _HYPHEN_BREAK_RE, _WS_RE, _is_soft_wrap, _sentence_boundary_end
@@ -50,6 +50,14 @@ _PASSAGE_CAP = 500           # characters, as for a resolved quote
 _MIN_PASSAGE_CHARS = 12      # shorter blocks (a page number, a lone label) are furniture
 
 METHODS = ("quote", "matched", "unlocated")
+PASSAGES_VERSION = 1
+PASSAGE_FIELDS = ("passage", "passage_page", "passage_method", "passage_score")
+
+
+def readable(document: dict) -> bool:
+    """Whether this code understands the passage fields of a staged extraction's `document`."""
+    v = document.get("passages_version", 1) if isinstance(document, dict) else 1
+    return isinstance(v, int) and not isinstance(v, bool) and v <= PASSAGES_VERSION
 
 _STOPWORDS = frozenset("""
 a about above after again against all also am an and any are as at be because been before being
@@ -370,82 +378,9 @@ def locate_passages(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     """Post-flight step: stamp passages on `document.key_facts`. Never a gate; returns no
     warnings (an unlocated fact is shown in the app, not logged), but keeps post-flight's
     `-> list[str]` shape so a future warning has somewhere to go."""
-    facts = extraction.get("document", {}).get("key_facts", [])
+    doc = extraction.get("document", {})
+    facts = doc.get("key_facts", [])
     if page_texts and isinstance(facts, list):
         locate(facts, page_texts, force=True)
+        doc["passages_version"] = PASSAGES_VERSION
     return []
-
-
-# ── existing documents ───────────────────────────────────────────────────────────────────
-
-_PAGE_MARKER_RE = re.compile(r"<!--\s*PAGE\s+(\d+)\s*-->")
-
-
-def morgue_page_texts(vault: Path, record: dict) -> dict[int, str]:
-    """A committed document's page text, from the full-text sibling the commit wrote next to the
-    original in the morgue (`<!-- PAGE n -->` markers). `{}` when there is none."""
-    morgue = record.get("morgue_path") if isinstance(record, dict) else None
-    if not morgue:
-        return {}
-    path = (vault / morgue).with_suffix(".md")
-    try:
-        text = path.read_text(encoding="utf-8")
-    except OSError:
-        return {}
-    parts = _PAGE_MARKER_RE.split(text)
-    if len(parts) == 1:
-        return {1: text} if text.strip() else {}
-    return {int(parts[i]): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
-
-
-def backfill(vault: Path, *, force: bool = False, shas: list[str] | None = None) -> dict:
-    """Compute passages for committed documents whose staged extraction has facts without one
-    (`watchdog locate-passages`). Rewrites only the passage fields of `.watchdog/extracted/
-    <sha>.json`, atomically and under the registry lock; the model's own fields are untouched.
-    Returns `{"documents", "updated", "skipped": [{sha, filename, reason}], "counts"}`."""
-    from watchdog.pipeline.json_io import _read_json_or
-    from watchdog.pipeline.write_vault import _registry_lock
-
-    registry = vault / ".watchdog" / "registry"
-    docs = _read_json_or(registry / "documents.json", {}, catch=(json.JSONDecodeError,)) \
-        if (registry / "documents.json").exists() else {}
-    totals = {m: 0 for m in METHODS}
-    updated, skipped, seen = 0, [], 0
-    wanted = set(shas) if shas else None
-    with _registry_lock(registry):
-        for sha, rec in sorted(docs.items()):
-            if not isinstance(rec, dict) or (wanted is not None and sha not in wanted
-                                             and not any(sha.startswith(w) for w in wanted)):
-                continue
-            seen += 1
-            path = vault / ".watchdog" / "extracted" / f"{sha}.json"
-            try:
-                extraction = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                skipped.append({"sha": sha, "filename": rec.get("filename"),
-                                "reason": "no saved extraction"})
-                continue
-            facts = (extraction.get("document") or {}).get("key_facts")
-            if not isinstance(facts, list) or not facts:
-                continue
-            pending = force or any(isinstance(f, dict) and f.get("passage_method") not in METHODS
-                                   for f in facts)
-            if not pending:
-                for f in facts:
-                    if isinstance(f, dict) and f.get("passage_method") in METHODS:
-                        totals[f["passage_method"]] += 1
-                continue
-            pages = morgue_page_texts(vault, rec)
-            if not pages:
-                skipped.append({"sha": sha, "filename": rec.get("filename"),
-                                "reason": "no page text in the morgue"})
-                continue
-            counts = locate(facts, pages, force=force)
-            for k, v in counts.items():
-                totals[k] += v
-            tmp = path.with_suffix(".json.tmp")
-            tmp.write_text(json.dumps(extraction, ensure_ascii=False, indent=2), encoding="utf-8")
-            os.replace(tmp, path)
-            updated += 1
-    return {"documents": seen, "updated": updated, "skipped": skipped, "counts": totals}
-

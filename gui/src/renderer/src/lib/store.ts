@@ -15,7 +15,7 @@ export type Route =
   | { view: 'graph'; focus?: string }
   | { view: 'timeline'; entity?: string }
   | { view: 'search'; query?: string }
-  | { view: 'review'; kind?: ReviewKind | 'handled' | 'watchlist' | 'requests' }
+  | { view: 'review'; kind?: ReviewKind | 'handled' | 'watchlist' | 'requests' | 'verification'; filter?: string }
   | { view: 'briefings'; path?: string }
   | { view: 'note'; path: string }
   | { view: 'ask'; session?: string; prompt?: string; mode?: 'ask' | 'context' }

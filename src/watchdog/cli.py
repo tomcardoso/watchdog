@@ -92,7 +92,7 @@ from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
-from watchdog.cmd.verify import cmd_locate_passages, cmd_verify_fact
+from watchdog.cmd.verify import cmd_verify_fact
 from watchdog.cmd.review import KINDS as _REVIEW_KINDS, cmd_review
 from watchdog.cmd.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
@@ -290,9 +290,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify.add_argument("--list", action="store_true", help="Show progress and every marked fact")
     p_verify.set_defaults(func=cmd_verify_fact)
 
-    p_passages = sub.add_parser("locate-passages", help="Find the source passage for each fact in documents added earlier — no model calls")
-    p_passages.add_argument("--force", action="store_true", help="Recompute every fact's passage, not only the missing ones")
-    p_passages.set_defaults(func=cmd_locate_passages)
 
     p_reindex = sub.add_parser("reindex", help="Rebuild the search index from disk — no OCR re-run, no model calls")
     p_reindex.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer

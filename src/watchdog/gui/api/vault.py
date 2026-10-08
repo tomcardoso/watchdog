@@ -151,7 +151,7 @@ def _facts(vault: Path, sha: str, rec: dict, ents: dict) -> list[dict]:
 
     facts = verification.document_facts(vault, sha, rec)
     marks = verification.marks(vault)
-    return [fact_row(f, fid, ents, marks.get(fid))
+    return [fact_row(f, fid, ents, verification.attach(marks.get(fid), f))
             for fid, f in zip(verification.fact_ids(sha, facts), facts)]
 
 

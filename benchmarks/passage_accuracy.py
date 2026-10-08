@@ -19,12 +19,28 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
 
 from watchdog.pipeline import passages
 from watchdog.pipeline.quote_verify import _normalize
+
+_PAGE_MARKER_RE = re.compile(r"<!--\s*PAGE\s+(\d+)\s*-->")
+
+
+def morgue_page_texts(vault: Path, record: dict) -> dict[int, str]:
+    """A committed document's page text, from its morgue full-text sibling."""
+    try:
+        text = (vault / record["morgue_path"]).with_suffix(".md").read_text(encoding="utf-8")
+    except (KeyError, OSError):
+        return {}
+    parts = _PAGE_MARKER_RE.split(text)
+    if len(parts) == 1:
+        return {1: text}
+    return {int(parts[i]): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
+
 
 THRESHOLDS = [0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.8]
 
@@ -33,7 +49,7 @@ def cases(vault: Path) -> list[dict]:
     docs = json.loads((vault / ".watchdog/registry/documents.json").read_text(encoding="utf-8"))
     out = []
     for sha, rec in sorted(docs.items()):
-        pages = passages.morgue_page_texts(vault, rec)
+        pages = morgue_page_texts(vault, rec)
         try:
             ex = json.loads((vault / ".watchdog/extracted" / f"{sha}.json").read_text(encoding="utf-8"))
         except OSError:

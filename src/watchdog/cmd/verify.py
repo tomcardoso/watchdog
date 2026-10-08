@@ -1,13 +1,10 @@
-"""`watchdog verify-fact` (D271) and `watchdog locate-passages` (D270): the reporter's
-verification ledger and the source passage behind each fact, both model-free.
+"""`watchdog verify-fact` (D271): the reporter's verification ledger, model-free.
 
 Run from inside the vault, like `watchdog resolve`:
 
   * `watchdog verify-fact <fact-id> --status verified|disputed|cant-verify [--note TEXT]`
   * `watchdog verify-fact <fact-id> --status clear` removes the mark (its history is kept)
   * `watchdog verify-fact --list` shows progress and every marked fact
-  * `watchdog locate-passages [--force]` finds passages for documents committed before passages
-    existed, from the morgue's page text
 
 The app writes marks in-process through `verification.mark`, the function this command calls (I10).
 """
@@ -66,7 +63,7 @@ def cmd_verify_fact(args) -> None:
     try:
         status = verification.parse_status(args.status)
         entry = verification.mark(vault, args.id, status, note=args.note, by=args.by)
-    except (LookupError, ValueError) as e:
+    except (LookupError, ValueError, verification.LedgerTooNew) as e:
         sys.exit(f"Error: {e.args[0] if e.args else e}")
     print()
     if status is None:
@@ -78,18 +75,3 @@ def cmd_verify_fact(args) -> None:
     print(f"  {_DIM}Listed in{_RESET} {_CYAN}{verification.NOTE_FILE}{_RESET}")
     print()
 
-
-def cmd_locate_passages(args) -> None:
-    from watchdog.pipeline import passages
-
-    vault = _vault()
-    result = passages.backfill(vault, force=args.force)
-    c = result["counts"]
-    print()
-    print(f"  {_GREEN}Passages{_RESET} for {_BOLD}{result['updated']}{_RESET} "
-          f"{_DIM}of {result['documents']} documents updated{_RESET}")
-    print(f"  {_DIM}{c['quote']} from quotes · {c['matched']} matched on the page · "
-          f"{c['unlocated']} with no matching passage{_RESET}")
-    for s in result["skipped"]:
-        print(f"  {_YELLOW}Skipped{_RESET} {s['filename']}  {_DIM}{s['reason']}{_RESET}")
-    print()

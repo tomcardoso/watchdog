@@ -483,24 +483,9 @@ MARKS = [
 ]
 
 
-@contextlib.contextmanager
-def _first_batch_without_passages():
-    """Post-flight leaves passages out of the first batch, as it did for documents added before
-    passages existed, so `watchdog locate-passages` has real work to do afterwards."""
-    from watchdog.pipeline import passages
-    real = passages.locate_passages
-    passages.locate_passages = lambda extraction, page_texts: []
-    try:
-        yield
-    finally:
-        passages.locate_passages = real
-
-
 def _verification(vault: Path, docs: list[dict]) -> None:
-    """Find the first batch's passages the way an older vault would, then record the demo
-    reporter's checks through the ledger's own writer."""
-    from watchdog.pipeline import passages, verification
-    passages.backfill(vault)
+    """Record the demo reporter's checks through the ledger's own writer."""
+    from watchdog.pipeline import verification
     by_file = {d["file"]: d for d in docs}
     reg = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text(encoding="utf-8"))
     sha_for = {rec["filename"]: sha for sha, rec in reg.items()}
@@ -568,8 +553,7 @@ def build(target: Path, *, verbose: bool = False) -> Path:
     try:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             _stage_chewed(vault, batch_one)
-            with _first_batch_without_passages():
-                asyncio.run(orchestrate.run(vault, extract_model="sonnet", resume_hint="watchdog add"))
+            asyncio.run(orchestrate.run(vault, extract_model="sonnet", resume_hint="watchdog add"))
             _stage_chewed(vault, batch_two)
             asyncio.run(orchestrate.run(vault, extract_model="sonnet", skip_finalize=True))
             asyncio.run(orchestrate.finalize(vault))

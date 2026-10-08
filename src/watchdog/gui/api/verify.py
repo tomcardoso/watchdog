@@ -18,11 +18,13 @@ def mark(vault: str, id: str, status: str | None, note: str | None = None) -> di
     from watchdog.pipeline import verification
 
     v = require_vault(vault)
-    if not isinstance(id, str) or not id.startswith("fact:"):
+    if not isinstance(id, str) or not verification.sha_prefix(id):
         raise RpcError("That is not a fact id.", code="bad_params")
     try:
         parsed = verification.parse_status(status if isinstance(status, str) else None)
         entry = verification.mark(v, id, parsed, note=note if isinstance(note, str) else None)
+    except verification.LedgerTooNew as e:
+        raise RpcError(str(e), code="ledger_too_new")
     except LookupError:
         raise RpcError("That fact is no longer in this investigation. It may have changed when "
                        "its document was processed again.", code="not_found")
@@ -50,7 +52,7 @@ def facts(vault: str) -> dict:
             continue
         facts_ = verification.document_facts(v, sha, rec)
         for fid, f in zip(verification.fact_ids(sha, facts_), facts_):
-            m = marks.get(fid)
+            m = verification.attach(marks.get(fid), f)
             page = f.get("page") if isinstance(f.get("page"), int) else None
             rows.append({
                 "id": fid, "fact": f["fact"], "page": page,
@@ -62,7 +64,8 @@ def facts(vault: str) -> dict:
                 "mark": {k: m.get(k) for k in ("status", "note", "by", "at")} if m else None,
             })
     rows.sort(key=lambda r: ((r["title"] or "").lower(), r["sha"]))   # stable: reading order within each
-    all_facts = {r["id"]: {"passage_method": r["passage_method"]} for r in rows}
+    all_facts = {r["id"]: {"fact": r["fact"], "page": r["page"], "passage_method": r["passage_method"]}
+                 for r in rows}
     orphans = [e for e in verification.entries(v, all_facts, data) if e["orphaned"]]
     return {"summary": verification.summary(v, all_facts, data), "facts": rows,
             "orphaned": [{k: e[k] for k in ("id", "status", "note", "by", "at", "fact", "page",
