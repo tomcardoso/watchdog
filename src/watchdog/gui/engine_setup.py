@@ -19,6 +19,19 @@ unless the arguments are wrong.
 
 `check` prints a JSON object saying which pieces are already on disk (no imports of the heavy
 libraries, no network). `claude-path` prints the Claude Code binary bundled in claude-agent-sdk.
+
+The engine installs in two phases (D272). Phase 1, which first-run setup waits for, is Python, the
+`watchdog` package and only the libraries the app's backend needs to start, read investigations,
+change settings and sign in: `core-requirements` prints that list, read from the installed
+package's own metadata so pyproject.toml stays the single list of dependencies. Phase 2 runs in the
+background: every remaining library, then `models`. The app refuses to add documents until phase 2
+has finished (`engine_ready`, which the backend's `jobs.start` checks).
+
+    python -m watchdog.gui.engine_setup core-requirements
+
+Models a person may never need (audio transcription, for instance) are not part of phase 2: they
+belong in ON_DEMAND and are downloaded the first time they are needed, with
+`models --only <id>`.
 """
 
 from __future__ import annotations
@@ -28,6 +41,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Callable
@@ -42,6 +56,59 @@ STEPS: list[tuple[str, str]] = [
     ("reranker", "Search reranker"),
     ("ocr", "Text recognition for scans"),
 ]
+
+# Models downloaded only when first needed, never during setup: (id, label). Each one also needs
+# a runner in _RUNNERS; the feature that needs the model runs `models --only <id>` (or calls
+# `download_models([id])`) before first use and reports the same progress lines. Empty for now.
+ON_DEMAND: list[tuple[str, str]] = []
+
+
+# ── the two install phases ──────────────────────────────────────────────────────────
+
+# Distributions left out of phase 1: they pull in torch, transformers, onnxruntime and the rest
+# of the multi-gigabyte stack, and only adding documents and semantic search use them. Every
+# import of them in the package is inside the function that needs it.
+PHASE2_ONLY = ("docling", "fastembed", "gliner", "ocrmac")
+# Not declared by the package (it arrives through docling and fastembed) but imported at module
+# level by watchdog.pipeline.embed, which the search screens load to read index statistics.
+PHASE1_EXTRA = ("numpy",)
+
+# Set by the app while phase 2 is incomplete, for the backend and everything it starts.
+PENDING_ENV = "WATCHDOG_ENGINE_PENDING"
+ENGINE_NOT_READY = ("Watchdog is still setting up. You can add documents when it finishes, "
+                    "in a few minutes.")
+
+
+def engine_ready() -> bool:
+    """False while the app's engine is still installing its phase-2 libraries and models. A
+    Python the app did not install (a development checkout, pipx) is always ready."""
+    return os.environ.get(PENDING_ENV) != "1"
+
+
+def _requirement_name(req: str) -> str:
+    name = req.split(";", 1)[0].strip()
+    for sep in "[<>=!~ @(":
+        name = name.split(sep, 1)[0]
+    return name.strip().lower().replace("_", "-")
+
+
+def core_requirements(requires: list[str] | None = None) -> list[str]:
+    """Phase 1's requirement strings: the package's own dependencies without PHASE2_ONLY and
+    without optional extras, plus PHASE1_EXTRA. Markers are kept (the installer evaluates them)."""
+    if requires is None:
+        from importlib.metadata import requires as _requires
+        requires = _requires("watchdog-intel") or []
+    out = []
+    for req in requires:
+        if re.search(r"\bextra\s*==", req):
+            continue
+        if _requirement_name(req) in PHASE2_ONLY:
+            continue
+        out.append(req.strip())
+    for extra in PHASE1_EXTRA:
+        if all(_requirement_name(r) != extra for r in out):
+            out.append(extra)
+    return out
 
 
 # ── where things live ───────────────────────────────────────────────────────────────
@@ -161,6 +228,27 @@ def _ensure_ocr() -> str | None:
         return "Apple Vision" if engine is None else f"Apple Vision, with {engine} as a fallback"
     if engine is None:
         raise RuntimeError("no OCR engine is installed; scanned pages cannot be read")
+    apply_preferred_ocr()
+    return engine
+
+
+def apply_preferred_ocr() -> str | None:
+    """Store `preferred_ocr_engine()` as `ocr_engine` when setup has written a settings file that
+    does not name one, as `setup.complete` does. First-run setup usually finishes before the
+    engine's background phase has installed the OCR engine, so this step repeats the choice once
+    the engine is there. Returns the engine stored, or None."""
+    from watchdog.cmd import setup as setup_cmd
+    from watchdog.gui.api.settings import _read_config
+
+    if not setup_cmd.CONFIG_FILE.exists():
+        return None
+    config = _read_config()
+    if "ocr_engine" in config:
+        return None
+    engine = preferred_ocr_engine()
+    if engine:
+        config["ocr_engine"] = engine
+        setup_cmd._persist(config)
     return engine
 
 
@@ -178,9 +266,9 @@ def download_models(only: list[str] | None = None) -> dict[str, str]:
     os.environ.setdefault("FASTEMBED_CACHE_PATH", str(_fastembed_cache()))
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     results: dict[str, str] = {}
-    for step, label in STEPS:
-        if only and step not in only:
-            continue
+    # Without `only`, the setup steps; an ON_DEMAND model runs only when named.
+    steps = [s for s in STEPS + ON_DEMAND if s[0] in only] if only else STEPS
+    for step, label in steps:
         progress.emit("engine", step=step, label=label, state="start", detail=None)
         try:
             # The libraries print their own download chatter to stderr; the app keeps it in the
@@ -201,8 +289,12 @@ def main(argv: list[str] | None = None) -> int:
     models.add_argument("--only", default="", help="comma-separated step ids")
     sub.add_parser("check", help="report which pieces are already downloaded")
     sub.add_parser("claude-path", help="print the bundled Claude Code binary")
+    sub.add_parser("core-requirements", help="print phase 1's requirements, one per line")
     args = parser.parse_args(argv)
 
+    if args.command == "core-requirements":
+        print("\n".join(core_requirements()))
+        return 0
     if args.command == "models":
         only = [s for s in args.only.split(",") if s]
         unknown = [s for s in only if s not in _RUNNERS]

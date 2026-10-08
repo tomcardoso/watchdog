@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from watchdog.gui import vaultio
+from watchdog.gui import engine_setup, vaultio
 from watchdog.gui.rpc import RpcError, method
 from watchdog.gui.vaultio import require_vault
 
@@ -98,7 +98,10 @@ def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
     semantic_error = None
     stats = embed.index_stats(v)
     index_empty = stats["total"] == 0
-    if not index_empty:
+    # The meaning-based lane needs the search models, which the app's engine installs in its
+    # background phase (D272); until then only exact matches are searched.
+    semantic_pending = not engine_setup.engine_ready()
+    if not index_empty and not semantic_pending:
         # Without an explicit threshold nothing is filtered (cosine ≥ -1 always holds), as in the CLI.
         min_score = threshold if threshold is not None else -1.0
         try:
@@ -124,6 +127,7 @@ def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
         "index_empty": index_empty,
         "exact_error": exact_error,
         "semantic_error": semantic_error,
+        "semantic_pending": semantic_pending,
         "exact": [_exact_hit(index, h) for h in exact_raw],
         "passages": passages,
         "notes": notes,
