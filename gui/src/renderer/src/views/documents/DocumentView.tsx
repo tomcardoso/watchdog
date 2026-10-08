@@ -85,7 +85,7 @@ function Original({ d, abs, target, onOpen }: { d: DocumentDetail; abs: string |
   const [pdfFailed, setPdfFailed] = useState<string | null>(null)
   useEffect(() => setPdfFailed(null), [d.sha])
   const ext = d.ext
-  if (d.media) return <MediaViewer d={d} media={d.media} abs={abs} target={target} onOpen={onOpen} />
+  if (d.media) return <MediaViewer d={d} media={d.media} abs={abs} target={target} />
   if (abs && ext === 'pdf' && !pdfFailed) return <PdfViewer path={abs} target={target} onFailed={setPdfFailed} />
   if (abs && BROWSER_IMAGE.has(ext)) return <ImageViewer src={window.watchdog.files.url(abs)} />
   if (abs && (ext === 'html' || ext === 'htm'))

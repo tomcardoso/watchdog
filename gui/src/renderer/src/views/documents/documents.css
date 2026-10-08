@@ -1206,7 +1206,7 @@
   width: 100%;
 }
 .media-stage.is-video .media-player {
-  max-height: 38vh;
+  max-height: 30vh;
   width: auto;
   max-width: 100%;
   border-radius: var(--r-md);

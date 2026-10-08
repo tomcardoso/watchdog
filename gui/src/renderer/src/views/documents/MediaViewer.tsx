@@ -2,9 +2,9 @@
 // its transcript. Each transcript line starts at a timestamp; clicking it plays from there, and a
 // fact's citation jumps to its page (a block of time) or to the line its passage is on.
 
-import { ExternalLink, Play } from 'lucide-react'
+import { Play } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Button, Callout, cx } from '@renderer/components/ui'
+import { Callout, cx } from '@renderer/components/ui'
 import { fmtClock, fmtDuration, pageSpan, seekTime, transcriptLines, VIDEO_EXTS } from '@renderer/lib/media'
 import type { DocumentDetail, MediaInfo } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
@@ -14,15 +14,16 @@ interface Props {
   media: MediaInfo
   abs: string | null
   target: JumpTarget | null
-  onOpen: () => void
 }
 
-export function MediaViewer({ d, media, abs, target, onOpen }: Props) {
+export function MediaViewer({ d, media, abs, target }: Props) {
   const player = useRef<HTMLMediaElement | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState(0)
   const [failed, setFailed] = useState(false)
   const [flash, setFlash] = useState<number | null>(null)
+  // The spoken line is marked only once the recording has been played, not on a fresh page.
+  const [started, setStarted] = useState(false)
   const isVideo = media.kind === 'video' && VIDEO_EXTS.has(d.ext)
   const pages = useMemo(() => d.pages.map((p) => ({ ...p, span: pageSpan(media, p.page), lines: transcriptLines(p.text) })), [d.pages, media])
 
@@ -54,10 +55,11 @@ export function MediaViewer({ d, media, abs, target, onOpen }: Props) {
 
   // The line being spoken: the last one that starts at or before the playhead.
   const current = useMemo(() => {
+    if (!started) return null
     let best: number | null = null
     for (const p of pages) for (const l of p.lines) if (l.at !== null && l.at <= now + 0.25) best = l.at
     return best
-  }, [pages, now])
+  }, [pages, now, started])
 
   const src = abs ? window.watchdog.files.url(abs) : null
   const common = {
@@ -65,6 +67,7 @@ export function MediaViewer({ d, media, abs, target, onOpen }: Props) {
     controls: true,
     preload: 'metadata' as const,
     onTimeUpdate: (e: React.SyntheticEvent<HTMLMediaElement>) => setNow(e.currentTarget.currentTime),
+    onPlay: () => setStarted(true),
     onError: () => setFailed(true)
   }
 
@@ -74,8 +77,6 @@ export function MediaViewer({ d, media, abs, target, onOpen }: Props) {
         <span className="pdf-pagelabel">
           {isVideo ? 'Video' : 'Audio'} · {fmtDuration(media.duration_seconds)} · transcribed on this computer
         </span>
-        <span className="spacer" />
-        {abs && <Button size="sm" icon={ExternalLink} onClick={onOpen}>Open original</Button>}
       </div>
       <div className={cx('media-stage', isVideo && 'is-video')}>
         {!src ? (
