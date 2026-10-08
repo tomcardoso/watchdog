@@ -231,6 +231,13 @@ def check_story(docs: list[dict]) -> list[str]:
     return problems
 
 
+# People the canned reconcile model is not confident about when two documents share only their
+# name: the corporate profile names Tomasz Wieczorek as director of the numbered company, the
+# contracts as the developer's chief executive, and nothing in the facts ties the two roles
+# together. That link is the story, and it is the reporter's to confirm.
+UNSURE_SAME_NAME = {"tomasz-wieczorek"}
+
+
 # ── the canned model ────────────────────────────────────────────────────────────────────────
 
 class CannedModel:
@@ -269,9 +276,12 @@ class CannedModel:
                     merges.append({"pair": i, "keep_id": keep, "reason": reason})
         # A same-name pair the rules could not settle (D285) is a record the fold kept apart under
         # a fresh slug (`marcus-teague-2`). The story has one entity per cast id, so a careful model
-        # reading both sides' facts would confirm it.
+        # reading both sides' facts would confirm it — except where the facts give it nothing to go
+        # on (`UNSURE_SAME_NAME`), which leaves one "possible same person" in Review.
         for i, pair in enumerate(pairs):
             ids = sorted((pair["a"]["id"], pair["b"]["id"]), key=len)
+            if ids[0] in UNSURE_SAME_NAME:
+                continue
             if pair.get("same_name") and re.fullmatch(re.escape(ids[0]) + r"-\d+", ids[1]):
                 merges.append({"pair": i, "keep_id": ids[0],
                                "reason": "The same person, described consistently in both documents."})

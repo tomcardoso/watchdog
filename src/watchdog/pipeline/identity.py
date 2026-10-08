@@ -149,8 +149,10 @@ def _name_tokens(name: str) -> list[str]:
 
 def is_distinctive(name: str) -> bool:
     """Whether a non-person name is specific enough to identify one thing: two words that are not
-    generic ("Northgate Civil Works", "Port Calder City Council"), one with a legal-form suffix
-    ("Acme Ltd."), or a number with another word ("Pier 9", "14 Dockside Road")."""
+    generic ("Northgate Civil Works", "Port Calder City Council"), one such word with a legal-form
+    suffix ("Acme Ltd.") or within a name of three or more words ("Office of the City Auditor"),
+    or a number with another word ("Pier 9", "14 Dockside Road"). "The City", "Council", "City
+    Hall" and "Acme Holdings" are not."""
     # Split on hyphens too: "Toronto-Dominion Bank" is two distinctive words, not one.
     tokens = [t for t in re.split(r"[^\w]+|_", _fold(name).replace("&", " and ")) if t
               and t not in _STOPWORDS]
@@ -159,7 +161,7 @@ def is_distinctive(name: str) -> bool:
              and t not in digits]
     if len(words) >= 2:
         return True
-    if words and any(t in _LEGAL for t in tokens):
+    if words and (any(t in _LEGAL for t in tokens) or len(tokens) >= 3):
         return True
     return bool(digits) and len(tokens) >= 2
 
