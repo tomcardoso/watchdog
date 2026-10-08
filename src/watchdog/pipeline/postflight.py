@@ -467,6 +467,13 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     for warning in verify_figures(extraction, page_texts):
         _warn(warning)
 
+    # A source passage for every fact (D270): the resolved quote where there is one, otherwise
+    # the best-matching sentence on the cited page, or "unlocated". After the two steps above,
+    # which settle the page and quote this reads; staged only, like everything here (I7).
+    from watchdog.pipeline.passages import locate_passages
+    for warning in locate_passages(extraction, page_texts):
+        _warn(warning)
+
     # Fan the unified key_facts out into the per-entity evidence_fragments / timeline_events that
     # write_vault and timeline staging consume (#140).
     for warning in explode_key_facts(extraction):
