@@ -3,11 +3,13 @@
 import { FileDown } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useApp } from '@renderer/lib/store'
+import { ENGINE_WAIT, useEngineGate } from '@renderer/lib/engine'
 
 export function DropOverlay() {
   const project = useApp((s) => s.project)
   const openAdd = useApp((s) => s.openAdd)
   const [over, setOver] = useState(false)
+  const ready = useEngineGate().ready
   useEffect(() => {
     let depth = 0
     const hasFiles = (e: DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files')
@@ -29,7 +31,7 @@ export function DropOverlay() {
       e.preventDefault()
       depth = 0
       setOver(false)
-      if (!project) return
+      if (!project || !ready) return
       const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.watchdog.files.pathForFile(f)).filter(Boolean)
       if (paths.length) openAdd(paths)
     }
@@ -43,8 +45,19 @@ export function DropOverlay() {
       window.removeEventListener('dragover', overFn)
       window.removeEventListener('drop', drop)
     }
-  }, [project, openAdd])
+  }, [project, openAdd, ready])
   if (!over || !project) return null
+  if (!ready) {
+    return (
+      <div className="drop-overlay">
+        <div className="box">
+          <FileDown />
+          <div className="t">Not yet</div>
+          <div className="muted">{ENGINE_WAIT}</div>
+        </div>
+      </div>
+    )
+  }
   return (
     <div className="drop-overlay">
       <div className="box">

@@ -1,4 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { AddDocumentsButton } from '@renderer/components/EngineWait'
 import { CalendarClock, FileText, MoreHorizontal, RefreshCw, Search, Users, X } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
@@ -223,7 +224,7 @@ export default function TimelineView() {
         ) : q.isError ? (
           <div className="tl-inner" style={{ padding: 36 }}><ErrorNote error={q.error} retry={() => void q.refetch()} /></div>
         ) : events.length === 0 ? (
-          <Empty icon={CalendarClock} title="No dated events yet" action={<Button variant="primary" onClick={() => useApp.getState().openAdd()}>Add documents</Button>}>
+          <Empty icon={CalendarClock} title="No dated events yet" action={<AddDocumentsButton />}>
             Events are dated facts that the pipeline pulls from your documents, such as filings, meetings and payments. They appear here once documents have been read.
           </Empty>
         ) : filtered.length === 0 ? (

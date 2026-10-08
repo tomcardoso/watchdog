@@ -13,6 +13,8 @@ import { Markdown } from '@renderer/components/Markdown'
 import { typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtNum, fmtRelative, plural } from '@renderer/lib/format'
 import { runAction, startJob } from '@renderer/lib/jobs'
+import { useEngineGate } from '@renderer/lib/engine'
+import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { ReviewKind, Summary } from '@shared/api'
@@ -243,6 +245,7 @@ function Header() {
 
 // ── Finish adding ────────────────────────────────────────────────────────────
 function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
+  const engine = useEngineGate()
   const n = s.incoming + s.awaiting_dig + s.awaiting_bark
   const text =
     n > 0
@@ -257,9 +260,9 @@ function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
       <div className="ico"><FilePlus2 /></div>
       <div className="grow">
         <div className="t">{text}</div>
-        <div className="s">{locked ? 'A run is already in progress for this investigation.' : sub}</div>
+        <div className="s">{locked ? 'A run is already in progress for this investigation.' : engine.reason ?? sub}</div>
       </div>
-      <Button variant="primary" size="lg" disabled={locked} onClick={() => useApp.getState().openAdd()}>
+      <Button variant="primary" size="lg" disabled={locked || !engine.ready} onClick={() => useApp.getState().openAdd()}>
         {n > 0 ? `Finish adding ${plural(n, 'document')}` : 'Finish the batch'}
       </Button>
     </div>
@@ -268,6 +271,7 @@ function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
 
 // ── Empty vault ──────────────────────────────────────────────────────────────
 function DropCard() {
+  const engine = useEngineGate()
   const pick = async (folders: boolean) => {
     const paths = await window.watchdog.dialog.openFiles({ title: folders ? 'Choose a folder of documents' : 'Choose documents to add', folders, multi: true })
     if (paths.length) useApp.getState().openAdd(paths)
@@ -280,9 +284,10 @@ function DropCard() {
         Drag PDFs, Word files, spreadsheets, emails or scans into this window. Watchdog copies them into the investigation, reads them on this computer, and only then asks
         before anything is sent to a model.
       </p>
+      {!engine.ready && <EngineWait style={{ textAlign: 'left', margin: '0 auto 16px', maxWidth: 560 }} />}
       <div className="row" style={{ justifyContent: 'center' }}>
-        <Button variant="primary" size="lg" icon={FilePlus2} onClick={() => void pick(false)}>Choose files…</Button>
-        <Button size="lg" icon={FolderInput} onClick={() => void pick(true)}>Choose a folder…</Button>
+        <Button variant="primary" size="lg" icon={FilePlus2} disabled={!engine.ready} onClick={() => void pick(false)}>Choose files…</Button>
+        <Button size="lg" icon={FolderInput} disabled={!engine.ready} onClick={() => void pick(true)}>Choose a folder…</Button>
         <Button size="lg" icon={Link2} onClick={() => window.dispatchEvent(new CustomEvent('wd:command', { detail: 'fetch-links' }))}>Fetch web links…</Button>
       </div>
     </div>
@@ -324,6 +329,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
   const rows: ReactNode[] = []
   const awaiting = s.awaiting_dig + s.awaiting_bark
   const add = () => useApp.getState().openAdd()
+  const engine = useEngineGate()
   const row = (key: string, icon: ReactNode, text: ReactNode, action?: ReactNode, tone?: 'danger') => (
     <div className={'home-prog' + (tone ? ' ' + tone : '')} key={key}>
       <span className="ico">{icon}</span>
@@ -331,9 +337,9 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
       {action}
     </div>
   )
-  if (s.incoming) rows.push(row('inc', <Inbox />, <><b className="tnum">{s.incoming}</b> {s.incoming === 1 ? 'file' : 'files'} in incoming</>, <Button size="sm" onClick={add}>Add</Button>))
-  if (awaiting) rows.push(row('await', <Hourglass />, <><b className="tnum">{awaiting}</b> {awaiting === 1 ? 'document' : 'documents'} not yet finished</>, <Button size="sm" onClick={add}>Continue</Button>))
-  if (s.pending_finalize && !awaiting) rows.push(row('batch', <Hourglass />, <>A batch is waiting to be finished</>, <Button size="sm" onClick={add}>Finish</Button>))
+  if (s.incoming) rows.push(row('inc', <Inbox />, <><b className="tnum">{s.incoming}</b> {s.incoming === 1 ? 'file' : 'files'} in incoming</>, <Button size="sm" disabled={!engine.ready} onClick={add}>Add</Button>))
+  if (awaiting) rows.push(row('await', <Hourglass />, <><b className="tnum">{awaiting}</b> {awaiting === 1 ? 'document' : 'documents'} not yet finished</>, <Button size="sm" disabled={!engine.ready} onClick={add}>Continue</Button>))
+  if (s.pending_finalize && !awaiting) rows.push(row('batch', <Hourglass />, <>A batch is waiting to be finished</>, <Button size="sm" disabled={!engine.ready} onClick={add}>Finish</Button>))
   if (s.failed)
     rows.push(
       row(
@@ -345,7 +351,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
             <button className="linklike" onClick={() => setShowFailed(!showFailed)}>{showFailed ? 'hide' : 'details'}</button>
           )}
         </>,
-        <Button size="sm" icon={RefreshCw} onClick={() => window.dispatchEvent(new CustomEvent('wd:add', { detail: { retry: true } }))}>Retry</Button>,
+        <Button size="sm" icon={RefreshCw} disabled={!engine.ready} onClick={() => window.dispatchEvent(new CustomEvent('wd:add', { detail: { retry: true } }))}>Retry</Button>,
         'danger'
       )
     )
@@ -373,6 +379,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
   return (
     <section className="card home-panel">
       <h3>In progress</h3>
+      {engine.reason && <p className="faint" style={{ margin: "0 0 8px", fontSize: "var(--fs-sm)" }}>{engine.reason}</p>}
       <div className="home-progs">{rows}</div>
       {showFailed && (
         <ul className="home-failed">

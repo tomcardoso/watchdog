@@ -3,9 +3,11 @@ import {
   MessageSquareText, Network, Plus, Search, Settings, Shapes, CalendarRange
 } from 'lucide-react'
 import { CSSProperties } from 'react'
-import { Dropdown } from '@renderer/components/ui'
+import { AlertTriangle, RotateCw } from 'lucide-react'
+import { Button, Dropdown, Progress } from '@renderer/components/ui'
 import { LogoMark } from '@renderer/components/Logo'
 import { useRpc } from '@renderer/lib/rpc'
+import { finishSetup, useEngineGate } from '@renderer/lib/engine'
 import { Route, useApp, ViewName } from '@renderer/lib/store'
 import { plural } from '@renderer/lib/format'
 import type { Project } from '@shared/api'
@@ -137,9 +139,45 @@ export function Sidebar() {
 function BackendFoot() {
   const { data: info } = useRpc('app.info', {}, { staleTime: Infinity })
   return (
-    <div className="sidebar-foot">
-      <span className="status-dot" />
-      <span className="truncate">Watchdog {info?.version ?? ''}</span>
-    </div>
+    <>
+      <SetupProgress />
+      <div className="sidebar-foot">
+        <span className="status-dot" />
+        <span className="truncate">Watchdog {info?.version ?? ''}</span>
+      </div>
+    </>
+  )
+}
+
+/** While the engine's background phase runs (D272): a slim bar that opens Settings → Setup. A
+ * stopped run becomes a calm warning with Retry. Gone once setup has finished. */
+function SetupProgress() {
+  const gate = useEngineGate()
+  const navigate = useApp((s) => s.navigate)
+  if (gate.ready) return null
+  const open = () => navigate({ view: 'settings', tab: 'setup' })
+  if (gate.stalled) {
+    return (
+      <div className="setup-foot stalled" role="status">
+        <button className="setup-foot-main" onClick={open} title="Open Settings, Setup">
+          <AlertTriangle />
+          <span className="grow">
+            <span className="setup-foot-title">Setup did not finish</span>
+            <span className="setup-foot-sub">Adding documents waits for it.</span>
+          </span>
+        </button>
+        <Button size="sm" variant="soft" icon={RotateCw} onClick={finishSetup}>Retry</Button>
+      </div>
+    )
+  }
+  const pct = Math.round(gate.fraction * 100)
+  return (
+    <button className="setup-foot" onClick={open} role="status" aria-label={`Finishing setup, ${pct} percent. Open Settings, Setup for details.`}>
+      <span className="setup-foot-row">
+        <span className="grow truncate">Finishing setup…</span>
+        <span className="tnum">{pct}%</span>
+      </span>
+      <Progress value={gate.fraction} indeterminate={!gate.finishing} />
+    </button>
   )
 }

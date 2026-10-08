@@ -1,4 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { AddDocumentsButton } from '@renderer/components/EngineWait'
 import { AlertTriangle, FileText, GitMerge, Link2, Search, Shapes, UserX, Users, X, Copy } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityAvatar } from '@renderer/components/EntityChip'
@@ -142,7 +143,7 @@ export default function EntitiesView() {
             ) : q.isError ? (
               <ErrorNote error={q.error} retry={() => void q.refetch()} />
             ) : all.length === 0 ? (
-              <Empty icon={Users} title="No entities yet" action={<Button variant="primary" onClick={() => useApp.getState().openAdd()}>Add documents</Button>}>
+              <Empty icon={Users} title="No entities yet" action={<AddDocumentsButton />}>
                 Entities appear once documents have been read and synthesized. Add some documents to begin.
               </Empty>
             ) : rows.length === 0 ? (

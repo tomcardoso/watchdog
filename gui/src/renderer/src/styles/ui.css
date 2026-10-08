@@ -820,6 +820,17 @@
   bottom: auto;
   top: calc(100% + 6px);
 }
+/* A sentence rather than a label: wraps, and hangs from the right edge so it stays on screen. */
+[data-tip-pos='bottom-end']:hover::after {
+  bottom: auto;
+  top: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  transform: none;
+  width: 260px;
+  white-space: normal;
+  line-height: 1.4;
+}
 [data-tip-pos='right']:hover::after {
   left: calc(100% + 8px);
   bottom: auto;

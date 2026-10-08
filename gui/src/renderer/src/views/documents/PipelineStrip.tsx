@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react'
 import { Badge, Button } from '@renderer/components/ui'
 import { fmtBytes, plural } from '@renderer/lib/format'
 import { runAction } from '@renderer/lib/jobs'
+import { useEngineGate } from '@renderer/lib/engine'
+import { EngineWait } from '@renderer/components/EngineWait'
 import { errorMessage, invalidate } from '@renderer/lib/rpc'
 import { toast, useApp } from '@renderer/lib/store'
 import type { PipelineState } from '@shared/api'
@@ -28,6 +30,7 @@ function FileList({ rows }: { rows: { key: string; name: string; why?: string | 
 
 export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState; vaultName: string }) {
   const openAdd = useApp((s) => s.openAdd)
+  const engine = useEngineGate()
   const [open, setOpen] = useState<boolean | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -111,6 +114,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
 
       {expanded && (
         <div className="pipe-body">
+          {!engine.ready && <EngineWait style={{ gridColumn: '1 / -1' }} />}
           {locked && (
             <div className="pipe-group wide">
               <div className="pipe-group-head"><Lock style={{ color: 'var(--warning)' }} />Lock present</div>
@@ -130,7 +134,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
               <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting in incoming <span className="n">{p.incoming.length}</span></div>
               <p>Files in the investigation's incoming folder that haven't been read yet.</p>
               <FileList rows={p.incoming.map((f) => ({ key: f.path, name: f.name, why: [fmtBytes(f.size), f.sidecar ? 'with sidecar' : ''].filter(Boolean).join(' · ') }))} />
-              <div className="pipe-actions"><Button size="sm" variant="primary" onClick={() => openAdd()}>Add them</Button></div>
+              <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Add them</Button></div>
             </div>
           )}
 
@@ -139,7 +143,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
               <div className="pipe-group-head"><Hourglass style={{ color: 'var(--text-2)' }} />Read, awaiting extraction <span className="n">{waiting.length}</span></div>
               <p>Chewed locally into text and queued. The model hasn't extracted facts from them yet.</p>
               <FileList rows={waiting.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />
-              <div className="pipe-actions"><Button size="sm" variant="primary" onClick={() => openAdd()}>Extract them</Button></div>
+              <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Extract them</Button></div>
             </div>
           )}
 
@@ -151,7 +155,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
                 {finalizing ? ` (${plural(finalizing.docs, 'document')}, ${plural(finalizing.entities, 'entity', 'entities')})` : ''}. It is safe to run more than once, and nothing staged is ever discarded.
               </p>
               {staged.length > 0 && <FileList rows={staged.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />}
-              <div className="pipe-actions"><Button size="sm" variant="primary" onClick={() => openAdd()}>Finish them</Button></div>
+              <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Finish them</Button></div>
             </div>
           )}
 
@@ -163,8 +167,8 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
               </p>
               <FileList rows={p.failed.map((f) => ({ key: f.sha, name: f.filename, why: f.reason ?? 'No reason recorded. See Activity for the run output.', err: true }))} />
               <div className="pipe-actions">
-                <Button size="sm" variant="primary" icon={RotateCw} onClick={() => window.dispatchEvent(new CustomEvent('wd:add', { detail: { retry: true } }))}>Retry</Button>
-                <Button size="sm" loading={busy === 'requeue'} onClick={requeue}>Requeue</Button>
+                <Button size="sm" variant="primary" icon={RotateCw} disabled={!engine.ready} onClick={() => window.dispatchEvent(new CustomEvent('wd:add', { detail: { retry: true } }))}>Retry</Button>
+                <Button size="sm" loading={busy === 'requeue'} disabled={!engine.ready} onClick={requeue}>Requeue</Button>
               </div>
             </div>
           )}
