@@ -44,7 +44,9 @@ const WEIGHT: Record<string, number> = { libraries: 3, docling: 2, gliner: 6, em
 export function backgroundFraction(steps: EngineStep[]): number {
   const bg = steps.filter((s) => s.phase === 2)
   const total = bg.reduce((n, s) => n + (WEIGHT[s.id] ?? 1), 0)
-  const done = bg.reduce((n, s) => n + (['done', 'warning', 'skipped', 'failed'].includes(s.state) ? WEIGHT[s.id] ?? 1 : 0), 0)
+  // A step under way counts for half, so the bar moves during the long single downloads.
+  const share = (s: EngineStep) => (['done', 'warning', 'skipped', 'failed'].includes(s.state) ? 1 : s.state === 'running' ? 0.5 : 0)
+  const done = bg.reduce((n, s) => n + share(s) * (WEIGHT[s.id] ?? 1), 0)
   return total ? done / total : 0
 }
 

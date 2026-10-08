@@ -32,6 +32,13 @@
   cursor: default;
   pointer-events: none;
 }
+/* A disabled primary button must not read as live, in the dark theme's bright accent above all. */
+.btn-primary:disabled {
+  opacity: 1;
+  background: var(--surface-sunken);
+  border-color: var(--border);
+  color: var(--text-3);
+}
 .btn svg {
   width: 15px;
   height: 15px;

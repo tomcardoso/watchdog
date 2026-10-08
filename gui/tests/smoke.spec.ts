@@ -129,3 +129,26 @@ test('adding documents waits for the background setup', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+// When the background phase finishes, the bar goes away and the running backend accepts what it
+// refused, without a restart (engine.setReady).
+test('the gate lifts when the background setup finishes', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
+  const home = join(root, 'home')
+  try {
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    const app = await electron.launch({
+      args: [resolve(__dirname, '..'), '--no-sandbox'],
+      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume' }
+    })
+    const page = await app.firstWindow()
+    await page.waitForSelector('.app', { timeout: 90_000 })
+    await expect(page.locator('.setup-foot')).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('.setup-foot')).toHaveCount(0, { timeout: 60_000 })
+    const ready = await page.evaluate(() => (window as any).watchdog.rpc('engine.ready', {}))
+    expect(ready).toEqual({ ready: true })
+    await app.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
