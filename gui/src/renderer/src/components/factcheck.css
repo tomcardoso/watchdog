@@ -166,3 +166,10 @@
 .fact.is-marked-unverifiable {
   border-left: 3px solid var(--warning);
 }
+.facts-bar .segmented {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.facts-bar .segmented button {
+  white-space: nowrap;
+}

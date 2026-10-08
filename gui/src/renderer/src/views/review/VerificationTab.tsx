@@ -7,7 +7,7 @@ import { useMemo, useRef, useState } from 'react'
 import type { LedgerFact } from '@shared/api'
 import { FactCheck, MarkSummary, STATUS_META, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
 import { Callout, Empty, ErrorNote, Kbd, Progress, Segmented, Skeleton, cx } from '@renderer/components/ui'
-import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
+import { fmtNum, plural } from '@renderer/lib/format'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 
@@ -181,7 +181,6 @@ export function VerificationTab() {
                       No matching passage found{f.page ? ` on p. ${f.page}` : ''}
                     </span>
                   )}
-                  {mark?.at && filter !== 'unchecked' && <span className="faint" style={{ fontSize: 'var(--fs-xs)', marginLeft: 'auto' }}>{fmtDate(mark.at.slice(0, 10))}</span>}
                 </div>
                 <div className="fact-text selectable">{f.fact}</div>
                 <FactCheck id={f.id} mark={mark} marks={marks} noteOpen={noteFor === f.id} setNoteOpen={(v) => setNoteFor(v ? f.id : null)} />

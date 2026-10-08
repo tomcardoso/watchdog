@@ -102,7 +102,7 @@ export function FactsTab({ facts, jump, hasViewer }: { facts: Fact[]; jump: Jump
             { value: 'unchecked', label: `Not checked ${unchecked}`, tip: 'Facts you have not yet marked Verified, Disputed or Can’t verify' },
             ...(unlocated ? [{ value: 'unlocated' as Mode, label: `No passage ${unlocated}`, tip: 'Facts with no matching passage on the page they cite' }] : []),
             { value: 'inferred', label: `Inferred ${inferred}` },
-            { value: 'figures', label: `Figure warnings ${figures}` }
+            { value: 'figures', label: `Figures ${figures}`, tip: 'Facts with a figure or quote Watchdog could not confirm on the page' }
           ]}
         />
         <span className="faint" style={{ fontSize: 'var(--fs-xs)' }} data-tip="Select a fact, then press V, D or C to mark it, N for a note, J and K to move">
