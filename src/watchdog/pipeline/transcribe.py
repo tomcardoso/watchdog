@@ -49,14 +49,14 @@ PAUSE_SECONDS = 1.5                 # a pause this long after a sentence end sta
 # download itself asks the hub for the real figure. Every repository is MIT-licensed, as are
 # OpenAI's Whisper weights they are converted from.
 MODELS: dict[str, dict] = {
-    "small": {"repo": "Systran/faster-whisper-small", "size_mb": 486, "multilingual": True},
     "medium": {"repo": "Systran/faster-whisper-medium", "size_mb": 1531, "multilingual": True},
     "large-v3-turbo": {"repo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo", "size_mb": 1622,
                        "multilingual": True},
+    "small": {"repo": "Systran/faster-whisper-small", "size_mb": 486, "multilingual": True},
     "distil-large-v3": {"repo": "Systran/faster-distil-whisper-large-v3", "size_mb": 1516,
                         "multilingual": False},
 }
-DEFAULT_MODEL = "small"
+DEFAULT_MODEL = "medium"   # the most accurate on names and noisy audio in our tests (D273)
 # The files faster-whisper loads (its own download_model uses the same list).
 _ALLOW_PATTERNS = ["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json",
                    "vocabulary.*"]
