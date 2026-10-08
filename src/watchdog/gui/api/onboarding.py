@@ -20,6 +20,22 @@ def models() -> dict:
     return engine_setup.check()
 
 
+@method("setup.downloadModel")
+def download_model(model: str) -> dict:
+    """Start a job that downloads one on-demand model ahead of time (D273), the same step the
+    first recording would otherwise trigger. Only `transcription` is on demand today. The job's
+    progress is the `model` event, so it shows in the job dock like any other run."""
+    import sys
+    from watchdog.gui import engine_setup, jobs
+    if model not in engine_setup.ON_DEMAND:
+        raise RpcError(f"“{model}” isn't a model that downloads on demand.", code="bad_params")
+    label = dict(engine_setup.STEPS)[model]
+    argv = [sys.executable, "-m", "watchdog.gui.engine_setup", "models", "--only", model]
+    job = jobs.MANAGER.start(None, ["download-model", model], f"Download: {label}", "download-model",
+                             argv=argv)
+    return job.to_dict()
+
+
 @method("setup.complete")
 def complete(projects_dir: str | None = None, auto_approve: bool = False) -> dict:
     """Write the configuration `watchdog setup` writes, without asking anything: the projects

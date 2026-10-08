@@ -53,6 +53,13 @@ def _now() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
+def _clock(seconds) -> str:
+    """12:05, or 1:02:05 past an hour."""
+    s = max(0, int(seconds or 0))
+    h, m, sec = s // 3600, s % 3600 // 60, s % 60
+    return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+
+
 def command_argv(args: list[str]) -> list[str]:
     """The process a job runs. A module-level function so tests can substitute a quick script."""
     return [sys.executable, "-m", "watchdog", *args]
@@ -99,7 +106,8 @@ class Job:
         self.exit_code: int | None = None
         self.started = _now()
         self.finished: str | None = None
-        self.progress = {"stage": None, "done": None, "total": None, "current": None, "docs": {}}
+        self.progress = {"stage": None, "done": None, "total": None, "current": None, "note": None,
+                         "docs": {}}
         self.log: collections.deque = collections.deque(maxlen=LOG_LINES)
         self.pending: list[dict] = []
         self.lock = threading.Lock()
@@ -138,6 +146,21 @@ class Job:
                 if event.get("state") == "file":
                     p["done"] = event.get("done", p["done"])
                     p["current"] = event.get("name")
+                    p["note"] = None
+            elif kind == "transcribe":
+                # A recording being transcribed (D273): kept beside the file count, not over it.
+                pos, dur = event.get("position"), event.get("duration")
+                where = _clock(pos) + (f" of {_clock(dur)}" if dur else "") if pos is not None else ""
+                p["note"] = f"Transcribing {event.get('name') or 'a recording'}" + (f", {where}" if where else "")
+            elif kind == "model":
+                # A one-time model download, before pre-processing or from Settings (D273).
+                if event.get("state") in ("done", "failed"):
+                    p["note"] = None
+                    if p["stage"] == "model":
+                        p.update(stage=None, done=None, total=None)
+                else:
+                    p.update(stage="model", done=event.get("done"), total=event.get("total"),
+                             current=event.get("label"))
             elif kind == "download":
                 p.update(stage="download", done=event.get("done"), total=event.get("total"),
                          current=event.get("url"))
@@ -151,7 +174,10 @@ class JobManager:
         self.lock = threading.Lock()
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
-    def start(self, vault: Path | None, args: list[str], label: str, kind: str | None) -> Job:
+    def start(self, vault: Path | None, args: list[str], label: str, kind: str | None,
+              argv: list[str] | None = None) -> Job:
+        """`argv` replaces the `python -m watchdog <args>` process, for the one job that runs
+        another module (`setup.downloadModel`); `args` still labels the job."""
         _require_granted_cwd(vault)
         job = Job(vault, args, label, kind)
         env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "PYTHONUNBUFFERED": "1",
@@ -161,7 +187,7 @@ class JobManager:
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         try:
             job.proc = subprocess.Popen(
-                command_argv(args), cwd=str(vault) if vault else None, env=env,
+                argv or command_argv(args), cwd=str(vault) if vault else None, env=env,
                 stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **popen_kwargs)
         except OSError as e:
             raise rpc.RpcError(f"Could not start the command: {e}") from e

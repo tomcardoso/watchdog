@@ -127,6 +127,12 @@ def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
     )
 
 
+def _is_transcript(processing: dict | None) -> bool:
+    """True for a machine transcript of a recording (D273): the only documents that get the
+    transcript note, so every other document's prompt is byte-for-byte unchanged."""
+    return (processing or {}).get("source_type") == "transcript"
+
+
 def _wants_scaffold(model: str | None) -> bool:
     """Whether the extraction prompt should carry the explicit step-by-step scaffold (#570) —
     true for a model with no private reasoning channel to work the problem in instead. Resolved
@@ -160,6 +166,8 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
     volatile = [_known_types_block(known_document_types)]
     if sidecar:
         volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
+    if _is_transcript(processing):
+        volatile.append(f"\n{_text('transcript_note')}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
     if candidates:
@@ -217,6 +225,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     if carry_forward:
         volatile.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
                         f"ids):\n{carry_forward}")
+    if _is_transcript(processing):
+        volatile.append(f"\n{_text('transcript_note')}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
     if candidates:

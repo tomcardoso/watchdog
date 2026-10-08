@@ -12,6 +12,7 @@ import unicodedata
 
 _WS_RE = re.compile(r"\s+")
 _HYPHEN_BREAK_RE = re.compile(r"-\s*\n\s*")
+_TIMESTAMP_LEAD_RE = re.compile(r"^\[\d{1,2}:\d{2}:\d{2}\]\s*")
 _NON_WORD_RE = re.compile(r"[^\w\s]", re.UNICODE)
 _WORD_CHAR_RE = re.compile(r"\w", re.UNICODE)
 _SPACE_CHAR_RE = re.compile(r"\s", re.UNICODE)
@@ -397,6 +398,8 @@ def _expand_sentence(text: str, a: int, b: int) -> str:
     end = _sentence_end(text, b)
     quote = _HYPHEN_BREAK_RE.sub("", text[start:end])
     quote = _WS_RE.sub(" ", quote).strip()
+    # A transcript line opens with its `[hh:mm:ss]` (D273): a place in the recording, not words.
+    quote = _TIMESTAMP_LEAD_RE.sub("", quote)
     return _cap(quote)
 
 
