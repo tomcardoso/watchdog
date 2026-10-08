@@ -32,7 +32,7 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog add` | Getting documents in — see [Adding documents](#adding-documents). |
 | `watchdog ask` | A back-and-forth Claude Code session about the vault — see [below](#watchdog-ask). |
 | `watchdog search` | Finding passages by meaning and exact wording — see [below](#watchdog-search). |
-| `watchdog review` | Everything flagged for a person: contradictions, leads, watch-list hits, possible duplicates — see [below](#watchdog-review). |
+| `watchdog review` | Everything flagged for a person: contradictions, leads, watch-list hits, possible duplicates, possible same entities — see [below](#watchdog-review). |
 | `watchdog open` | Opening the investigation in Obsidian; `--folder` opens the folder in Finder or your file explorer instead. Omit the name when you are inside the vault. |
 | `watchdog research` | Web research, and downloading lists of links — see [below](#watchdog-research). |
 | `watchdog new` | Creating a new investigation — see [Projects](#projects). |
@@ -269,7 +269,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 |---|---|
 | `watchdog ask ["question"]` | Open a Claude Code session on the vault, optionally starting with a question — see [below](#watchdog-ask). |
 | `watchdog search <name> "<query>"` | Search ingested documents by meaning and exact terms — see [below](#watchdog-search). |
-| `watchdog review [kind]` | Step through open contradictions, leads, watch-list hits and possible duplicate documents one at a time — see [below](#watchdog-review). |
+| `watchdog review [kind]` | Step through open contradictions, leads, watch-list hits, possible duplicate documents and possible same entities one at a time — see [below](#watchdog-review). |
 | `watchdog review resolve <id…>` | Mark items handled by their resolution ids — see [below](#watchdog-review-resolve-and-unresolve). |
 | `watchdog review unresolve <id…>` | Bring handled items back into the active list. |
 | `watchdog review watchlist [name]` | Sweep every already-ingested document against the current `watchlist.md` — see [below](#watchdog-review-watchlist). |
@@ -315,11 +315,11 @@ Two options: `--project <name>` opens a vault you are not currently inside, and 
 
 ### watchdog review
 
-Run from inside the vault, `watchdog review` shows everything waiting on you one item at a time: open contradictions, leads, watch-list hits and possible duplicate documents. For each, choose **Mark as handled**, **Keep open**, **Open in Obsidian** (which opens the item's note) or **Stop reviewing**. A handled item is acknowledged exactly as `watchdog review resolve` would acknowledge it, so it drops out of later reports, briefings and the home screen, and `watchdog review unresolve <id>` brings it back.
+Run from inside the vault, `watchdog review` shows everything waiting on you one item at a time: open contradictions, leads, watch-list hits, possible duplicate documents and possible same entities (two entity records that may be one, left unmerged; see [Merges](investigating.md#merges)). For each, choose **Mark as handled**, **Keep open**, **Open in Obsidian** (which opens the item's note) or **Stop reviewing**. A handled item is acknowledged exactly as `watchdog review resolve` would acknowledge it, so it drops out of later reports, briefings and the home screen, and `watchdog review unresolve <id>` brings it back.
 
 The dashboard's "Possible duplicate documents" table reads the documents' own notes, so it keeps listing a pair after you mark it handled here.
 
-Name a kind to review only that: `watchdog review contradictions`, `leads`, `alerts` or `duplicates`. When the output is piped or there is no terminal to answer in, it prints the list with each item's resolution id instead.
+For a possible same entity, the first choice is **Not the same**, which records that the two are different so they are never merged automatically; the item also prints the `watchdog review merge-entities` command that merges them. Name a kind to review only that: `watchdog review contradictions`, `leads`, `alerts`, `duplicates` or `merges`. When the output is piped or there is no terminal to answer in, it prints the list with each item's resolution id instead.
 
 ### Leads
 
@@ -337,7 +337,7 @@ Folds a duplicate entity into another when the same real-world person or company
 watchdog review merge-entities <keep-id> <merge-id>
 ```
 
-The command prints both entities and asks for confirmation, since the merge is irreversible; `--force` skips the prompt. Run `watchdog reindex` afterward to drop the merged entity's stale search-index entries. When both entities had a prose Summary, it prints a reminder to run `/watchdog-entity <keep-id>` in a Claude Code session, which re-synthesizes the survivor from every merged source. See [Investigating](investigating.md) for when duplicates happen and how to spot them.
+The command prints both entities and asks for confirmation, since the merge is irreversible; `--force` skips the prompt. Each merge is recorded under your name (the `reporter_name` setting) in `.watchdog/registry/merges.json` and `merges.md`, and closes the matching possible-same item, if there was one. Run `watchdog reindex` afterward to drop the merged entity's stale search-index entries. When both entities had a prose Summary, it prints a reminder to run `/watchdog-entity <keep-id>` in a Claude Code session, which re-synthesizes the survivor from every merged source. See [Investigating](investigating.md) for when duplicates happen and how to spot them.
 
 ### watchdog timeline
 

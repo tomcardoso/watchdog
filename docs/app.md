@@ -24,7 +24,7 @@ The list of your investigations, with each one's document and entity counts, whe
 
 ### Overview
 
-The headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, watch-list hits, disputed facts) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
+The headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, possible same entities, watch-list hits, disputed facts) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
 
 ### Adding documents
 
@@ -65,7 +65,7 @@ Three kinds of result, kept separate: exact matches (every place the words appea
 
 ### Review
 
-Contradictions, leads, watch-list hits, possible duplicates and document requests, one tab each, plus a **Verification** tab: every fact in the investigation with your own check of it, a progress bar and filters (not checked, disputed, can't verify, verified, no passage, and changed since marked). See [Checking facts](investigating.md#the-verification-tab). Mark an item handled and it stops appearing in briefings and on the Overview. The keyboard works here too: J and K move between items, H marks one handled, O opens it, U undoes. The **Handled** tab brings items back, and can pick up checkboxes you ticked in the briefing files. The **Watch list** tab edits the list of names and terms to watch for, and can check every document against it.
+Contradictions, leads, watch-list hits, possible duplicates, merges and document requests, one tab each, plus a **Verification** tab: every fact in the investigation with your own check of it, a progress bar and filters (not checked, disputed, can't verify, verified, no passage, and changed since marked). See [Checking facts](investigating.md#the-verification-tab). Mark an item handled and it stops appearing in briefings and on the Overview. The keyboard works here too: J and K move between items, H marks one handled, O opens it, U undoes. The **Merges** tab lists pairs of records that may be one person or company, to merge or mark not the same, and every merge Watchdog or you have made, with who decided and why; see [Merges](investigating.md#merges). The **Handled** tab brings items back, and can pick up checkboxes you ticked in the briefing files. The **Watch list** tab edits the list of names and terms to watch for, and can check every document against it.
 
 ### Briefings
 

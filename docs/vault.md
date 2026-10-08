@@ -41,6 +41,7 @@ my-investigation/
 ├── watchlist.md            ← terms to watch for in new documents (one per line)
 ├── requests.md             ← documents to go and get, regenerated after every run
 ├── verification.md         ← the facts you have marked, generated from your checks
+├── merges.md               ← every entity merge and every possible-same pair, generated
 ├── index.md                ← landing page linking to the dashboard
 └── dashboard.base          ← dashboard of live tables (Obsidian Bases)
 ```
@@ -78,6 +79,7 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 - **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. Edit it on the **Watch list** tab of Review; the format and the scan are covered in [Investigating](investigating.md#the-watch-list).
 - **`requests.md`** — documents named in what you have already added that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every run and covered in [Investigating](investigating.md#document-requests).
 - <a id="verificationmd"></a>**`verification.md`** — the facts you have marked Verified, Disputed or Can't verify, grouped by status and then by document, with who marked each, when, and any note. It opens with progress ("12 of 340 facts verified"). A final section lists marks whose fact has since changed. Watchdog rewrites the file on every change, so mark facts in the app, not here; edits to the file are not kept. The marks themselves are stored in `.watchdog/registry/verification.json`, which you should not edit either. See [Checking facts](investigating.md#checking-facts).
+- <a id="mergesmd"></a>**`merges.md`** — every time Watchdog treated two records as the same person, organization, place or thing, newest first: which records, how confident the decision was, who made it (Watchdog's rules, the AI model, or a reporter, by name), the reason and the documents. It opens with the pairs still waiting as **possible same entities**. Watchdog rewrites the file whenever the log changes, so edits to it are not kept. The log itself is `.watchdog/registry/merges.json`, which you should not edit; besides what the note shows, it keeps for each merge the merged record's original id, its relationships and document list, and the snapshot taken before a manual merge, so a later version can split a merge back apart. See [Merges](investigating.md#merges).
 - **`index.md`** — a thin landing page that links to the dashboard.
 - **`dashboard.base`** — the dashboard itself, described next.
 

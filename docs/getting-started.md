@@ -73,7 +73,7 @@ For a plain-English account of what each stage does to your documents, and what 
 
 When the run finishes, the **Overview** shows the headline from the latest briefing, with a button to read the whole thing. The briefing summarizes what was found, how it connects to entities already in the investigation, and anything worth following up. Read it carefully: the connections section is often where the story is.
 
-The Overview also shows what is waiting on you (contradictions, leads, possible duplicates and watch-list hits) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
+The Overview also shows what is waiting on you (contradictions, leads, possible duplicates, possible same entities and watch-list hits) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
 
 ## Explore the results
 
@@ -91,7 +91,7 @@ If you prefer to browse the files themselves, **File → Show in Folder** opens 
 
 ## Review what needs a decision
 
-Choose **Review** to work through contradictions, leads, watch-list hits, possible duplicates and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview.
+Choose **Review** to work through contradictions, leads, watch-list hits, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview.
 
 ## Ask Claude
 

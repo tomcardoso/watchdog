@@ -255,13 +255,24 @@ body of evidence, so one passing mention doesn't redefine an established entity.
 One reconcile call (split into context-bounded chunks when large, D237) does two jobs that need
 every document's claims side by side:
 
-- **Entity resolution.** The exact-name fold (`_batch_exact_fold`, D127) has already merged exact
-  normalized-name duplicates in the staged batch. `candidate_pairs` blocks the rest: same canonical
-  type, name-token Jaccard ≥ 0.5 (subsets score 1.0), at least one side touched this run, found
-  through an inverted index on rare tokens and capped at 2,000 pairs. The model confirms or rejects
-  each pair; `apply_merges` applies them by what is already committed (D128): a staged-only loser
-  is an id rewrite, two committed sides get `merge_entities.run`, and a committed side always
-  survives. Merges apply **before** the commit pass.
+- **Entity resolution, by confidence tier (D285).** `pipeline/identity.py` classifies every
+  candidate pair from what the extractions record (names and aliases, roles, facts, and a
+  type-gated harvest of labelled identifiers from facts about one entity): **high** (same
+  identifier; a person's same full name plus a shared role, employer or street address; a
+  non-person's same, specific name) merges in code; **medium** (a person's same full name alone;
+  a short or generic name; reordered or similar names) goes to the model with both sides' facts and
+  roles; **low** (initialled or partial person names) is never merged and becomes a "possible
+  same" item; a conflicting identifier, different people's names or a pair the reporter dismissed
+  is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
+  match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
+  canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
+  names, at least one side touched this run, capped at 2,000 pairs, then routes each by tier.
+  `apply_merges` applies rule and model merges by what is already committed (D128): a staged-only
+  loser is an id rewrite, two committed sides get `merge_entities.run`, a committed side always
+  survives, and no chain of merges joins a dismissed pair. Merges apply **before** the commit
+  pass; merged survivors get one contradiction-only follow-up call over their joined record.
+  Every merge and candidate is staged on an extraction's `identity` block and written to
+  `registry/merges.json` at commit (§12).
 - **Contradiction detection.** For each entity in 2+ documents, the model compares its
   source-attributed claims and returns structured conflicts. `apply_contradictions` files each
   through `contradiction.run`, which validates both document slugs (D81). Applied **after** commit,
@@ -277,7 +288,7 @@ contradiction failure after commit only leaves those callouts for a later run.
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
 `pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Order: **exact-name fold → reconciliation merges → commit → post-ingest.**
+Order: **tiered fold → reconciliation merges → commit → post-ingest.**
 
 **Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
 `documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
@@ -358,6 +369,7 @@ timeline.md                  rendered global timeline
 briefings/                   briefings, leads, alerts, research memos
 requests.md                  open document requests
 verification.md              generated list of the facts a reporter has marked (D271); never hand-edited
+merges.md                    generated record of every entity merge and open "possible same" pair (D285)
 context.md / hot.md / log.md investigation context, session cache, run log
 index.md / dashboard.base    landing page and Obsidian Bases dashboard (D42)
 queries/ wiki/               session-written findings and threads
@@ -377,6 +389,7 @@ queries/ wiki/               session-written findings and threads
     entities.json documents.json registry.json manifest.json
     resolutions.json requests.json batch-pending.json
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
+    merges.json              the merge log and "possible same" candidates (D285); source of merges.md
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
     .processing-lock .write-lock .verification-lock
@@ -418,6 +431,17 @@ permissions, the prompt hook and dashboard views in existing vaults.
 **Merging entities (D54).** `watchdog merge-entities <keep> <merge>` unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
 what it changes. It keeps one Summary and suggests `/watchdog-entity` when both had one.
+
+**The merge log (D285).** `registry/merges.json` (`schema_version` 1) records every merge — keep
+and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the
+`reporter_name`), rule, reason, evidence per occurrence (documents, D271 fact ids, matching
+identifier, shared attributes), run id and timestamps — and every "possible same" candidate
+(`same:<hash>` ids; "Not the same" is a resolution). A recurring decision adds an occurrence, not
+an entry. It is written only in the finalize commit (`RegistryBatch.flush`, before the registries,
+idempotently) or by `merge_entities.run`, under the registry lock, and regenerates `merges.md`. Each
+entry's `undo` keeps the merged record's extracted id, documents and fact ids, its registry
+snapshot and the backup path; the staged extraction keeps each moved entity's `extracted_id` and
+each fact's `extracted_entities`. There is no split yet: it needs the facts-as-data entity rebuild.
 
 ---
 
@@ -607,3 +631,9 @@ noted as such.
   allowed folder or an exempt location are refused, and only the app's main process ever writes
   the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
   D268, D274.*
+- **I12 — Entity merges are tiered and recorded.** Two entity records are joined only on a
+  high-confidence rule, a model judgement of a medium-confidence pair, or a reporter's merge; a
+  person is never merged on a name alone, and initialled or partial names are never merged
+  automatically. Every merge is written to `registry/merges.json` with who decided and the
+  evidence, and a pair the reporter marked "Not the same" is never merged automatically.
+  *History: D127, D285.*
