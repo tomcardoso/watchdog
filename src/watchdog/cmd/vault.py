@@ -38,6 +38,7 @@ from watchdog.cmd.base import (
     slugify,
 )
 from watchdog.pipeline.json_io import _read_json, _read_json_or
+from watchdog.vault_paths import processing_log
 
 
 _WATCHLIST_TEMPLATE = """\
@@ -357,7 +358,7 @@ def cmd_new(args) -> None:
             indent=2,
         ) + "\n"
     )
-    (vault / ".watchdog" / "registry" / "ingest.log").write_text("")
+    (processing_log(vault)).write_text("")
 
     (vault / ".obsidian" / "app.json").write_text(
         json.dumps(

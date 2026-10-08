@@ -59,8 +59,8 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 
 ## 4. Lock file check
 
-Check whether `.watchdog/registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
-`STALE LOCK: .watchdog/registry/.ingest-lock (created <timestamp>, <N>m ago) — run: watchdog unlock <project-slug>`
+Check whether `.watchdog/registry/.processing-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
+`STALE LOCK: .watchdog/registry/.processing-lock (created <timestamp>, <N>m ago) — release it in the Watchdog app: Activity → Maintenance → Release a stuck lock`
 
 ---
 
@@ -92,8 +92,8 @@ Read `.watchdog/registry/registry.json`. Compare `document_count` and `entity_co
 
 Also check that the following files exist at the vault root. Report any that are missing:
 - `timeline.md` — `MISSING FILE: timeline.md (rebuild with: watchdog timeline)`
-- `hot.md` — `MISSING FILE: hot.md (created automatically by watchdog dig; create manually if needed)`
-- `log.md` — `MISSING FILE: log.md (created automatically by watchdog dig; create manually if needed)`
+- `hot.md` — `MISSING FILE: hot.md (created automatically by processing; create manually if needed)`
+- `log.md` — `MISSING FILE: log.md (created automatically by processing; create manually if needed)`
 
 ---
 
@@ -127,7 +127,7 @@ Skip any entry whose id `duplicate:<first 12 characters of its sha256>` is liste
 
 ## 10. Report
 
-Print a health summary to the terminal:
+Print a health summary:
 
 ```
 Vault health check — <date>

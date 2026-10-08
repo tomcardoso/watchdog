@@ -1,4 +1,4 @@
-// Processing history: the vault's ingest.log, newest first, with OK / WARN / FAILED filtering.
+// Processing history: the vault's processing.log, newest first, with OK / WARN / FAILED filtering.
 
 import { History } from 'lucide-react'
 import { useMemo, useState } from 'react'

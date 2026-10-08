@@ -991,7 +991,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     with (nullcontext() if batch is not None else _registry_lock(registry_dir)):
         entities_path  = registry_dir / "entities.json"
         documents_path = registry_dir / "documents.json"
-        log_path       = registry_dir / "ingest.log"
+        log_path       = registry_dir / "processing.log"   # vault_paths.processing_log (D276)
 
         if batch is not None:
             entities_reg, documents_reg = batch.entities, batch.documents

@@ -22,6 +22,7 @@ from watchdog.cmd.base import (
     load_projects,
 )
 from watchdog.pipeline.json_io import _read_json, write_private_json
+from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_state
 
 
 _CONFIGURE_KEYS = {
@@ -1483,8 +1484,8 @@ def cmd_unlock(args) -> None:
             sys.exit("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.")
 
     locks = [
-        (vault / ".watchdog" / ".chew-lock",                 ".chew-lock",   "chew"),
-        (vault / ".watchdog" / "registry" / ".ingest-lock",  ".ingest-lock", "ingest"),
+        (preprocessing_lock(vault), ".preprocessing-lock", "pre-processing"),
+        (processing_lock(vault),    ".processing-lock",    "processing"),
     ]
 
     print()
@@ -1502,7 +1503,7 @@ def cmd_unlock(args) -> None:
             lock_path.unlink()
             print(f"  {_GREEN}Removed:{_RESET} {_BOLD}{lock_name}{_RESET}  {_DIM}({age_str}){_RESET}")
         else:
-            if op_name == "ingest":
+            if op_name == "processing":
                 ingest_lock_held = True
             print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
             force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"
@@ -1514,10 +1515,10 @@ def cmd_unlock(args) -> None:
     # The run state and temp files belong to the ingest that holds the lock — leave them alone
     # while a live one still does.
     if not ingest_lock_held:
-        state_file = vault / ".watchdog" / "ingest-state.json"
+        state_file = processing_state(vault)
         if state_file.exists():
             state_file.unlink(missing_ok=True)
-            print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}ingest-state.json{_RESET}")
+            print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}processing-state.json{_RESET}")
 
         tmp_dir = vault / ".watchdog" / "tmp"
         if tmp_dir.exists():

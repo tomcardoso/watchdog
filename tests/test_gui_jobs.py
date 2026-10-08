@@ -105,6 +105,10 @@ def test_job_streams_log_and_progress(sink, fake_cli, tmp_path):
     assert not any(progress.PREFIX.strip() in t for _, t in texts)       # progress stays out of the log
     assert got["progress"]["stage"] == "dig"
     assert got["progress"]["docs"]["s1"] == {"filename": "a.pdf", "state": "done", "detail": "3 facts"}
+    # The job's state changes a moment before its job.finished event is emitted.
+    deadline = time.time() + 5
+    while sink[-1]["event"] != "job.finished" and time.time() < deadline:
+        time.sleep(0.02)
     names = [e["event"] for e in sink]
     assert names[0] == "job.started" and names[-1] == "job.finished"
     assert names.count("job.progress") == 3

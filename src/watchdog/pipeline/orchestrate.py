@@ -31,6 +31,7 @@ from watchdog.pipeline import (
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 from watchdog import config as user_config
+from watchdog.vault_paths import processing_log
 
 DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
@@ -474,7 +475,7 @@ _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
 
 
 def _log(vault: Path, msg: str) -> None:
-    log = vault / ".watchdog" / "registry" / "ingest.log"
+    log = processing_log(vault)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

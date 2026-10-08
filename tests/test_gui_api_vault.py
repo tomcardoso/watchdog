@@ -415,8 +415,8 @@ def test_pipeline_state(rich_vault):
 
 
 def test_pipeline_locks_and_batch(rich_vault):
-    (rich_vault / ".watchdog" / ".chew-lock").write_text("pid: cli\n")
-    (rich_vault / ".watchdog" / "registry" / ".ingest-lock").write_text("pid: cli\n")
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text("pid: cli\n")
+    (rich_vault / ".watchdog" / "registry" / ".processing-lock").write_text("pid: cli\n")
     (rich_vault / ".watchdog" / "batch-pending.json").write_text("{}")
     from watchdog.pipeline import batch_extract
     batch_extract.write_state(rich_vault, {"batch_id": "b1", "shas": [SHA1]})
@@ -426,7 +426,7 @@ def test_pipeline_locks_and_batch(rich_vault):
 
 
 def test_pipeline_failure_reason_uses_the_latest_log_line(rich_vault):
-    log = rich_vault / ".watchdog" / "registry" / "ingest.log"
+    log = rich_vault / ".watchdog" / "registry" / "processing.log"
     log.write_text(log.read_text() + "[2026-03-02T10:01:00Z] FAILED broken.pdf: rate limited\n")
     assert call("vault.pipeline", vault=V(rich_vault))["failed"][0]["reason"] == "rate limited"
 

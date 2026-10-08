@@ -460,7 +460,7 @@ def _full_vault(tmp_path: Path) -> Path:
     (reg / "entities.json").write_text("{}\n")
     (reg / "documents.json").write_text("{}\n")
     (reg / "registry.json").write_text(json.dumps({"document_count": 0, "entity_count": 0}) + "\n")
-    (reg / "ingest.log").write_text("")
+    (reg / "processing.log").write_text("")
     return vault
 
 

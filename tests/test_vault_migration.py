@@ -102,7 +102,7 @@ def test_ensure_current_layout_refreshes_commands_and_logs(tmp_path):
     assert changes and len(notes) == 1
     assert (v / ".claude" / "commands" / "watchdog-context.md").exists()
     assert "context/" in (v / ".claude" / "commands" / "watchdog-context.md").read_text()
-    assert "MIGRATED" in (v / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "MIGRATED" in (v / ".watchdog" / "registry" / "processing.log").read_text()
     assert ensure_current_layout(v, say=notes.append) == [] and len(notes) == 1
 
 
@@ -138,3 +138,41 @@ def test_count_incoming_excludes_new_names(tmp_path, sub):
     (tmp_path / "incoming" / sub / "x.pdf").write_text("")
     (tmp_path / "incoming" / "y.pdf").write_text("")
     assert cli._count_incoming(tmp_path) == 1
+
+
+# ── working files (D276) ──────────────────────────────────────────────────────────────
+
+def test_working_files_are_renamed(tmp_path):
+    v = _old_vault(tmp_path)
+    (v / ".watchdog" / ".chew-lock").write_text("started_at: x\n")
+    (v / ".watchdog" / "registry" / ".ingest-lock").write_text("pid: cli\n")
+    (v / ".watchdog" / "ingest-state.json").write_text("{}")
+    (v / ".watchdog" / "registry" / "ingest.log").write_text("[t] OK a.pdf\n")
+    changes = migrate_folder_names(v)
+    assert vault_paths.preprocessing_lock(v).read_text() == "started_at: x\n"
+    assert vault_paths.processing_lock(v).read_text() == "pid: cli\n"
+    assert vault_paths.processing_state(v).read_text() == "{}"
+    assert vault_paths.processing_log(v).read_text() == "[t] OK a.pdf\n"
+    for old in (".watchdog/.chew-lock", ".watchdog/registry/.ingest-lock",
+                ".watchdog/ingest-state.json", ".watchdog/registry/ingest.log"):
+        assert not (v / old).exists()
+        assert any(c.startswith(old) for c in changes)
+    assert migrate_folder_names(v) == []                      # idempotent
+
+
+def test_a_lock_under_the_new_name_is_never_replaced(tmp_path):
+    v = _old_vault(tmp_path)
+    vault_paths.processing_lock(v).write_text("new run\n")
+    (v / ".watchdog" / "registry" / ".ingest-lock").write_text("orphan\n")
+    migrate_folder_names(v)
+    assert vault_paths.processing_lock(v).read_text() == "new run\n"
+    assert not (v / ".watchdog" / "registry" / ".ingest-lock").exists()
+
+
+def test_old_log_goes_in_front_of_the_new_one(tmp_path):
+    v = _old_vault(tmp_path)
+    (v / ".watchdog" / "registry" / "ingest.log").write_text("first\n")
+    vault_paths.processing_log(v).write_text("second\n")
+    migrate_folder_names(v)
+    assert vault_paths.processing_log(v).read_text() == "first\nsecond\n"
+    assert not (v / ".watchdog" / "registry" / "ingest.log").exists()

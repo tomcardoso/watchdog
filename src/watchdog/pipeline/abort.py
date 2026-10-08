@@ -30,6 +30,7 @@ then run `watchdog dig` again.
 
 from datetime import datetime, timezone
 from pathlib import Path
+from watchdog.vault_paths import processing_log
 
 
 
@@ -93,7 +94,7 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
         queue_file.replace(dest)
         requeue_path = str(dest.relative_to(vault))
 
-    log = vault / ".watchdog" / "registry" / "ingest.log"
+    log = processing_log(vault)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "a", encoding="utf-8") as f:

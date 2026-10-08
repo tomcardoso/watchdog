@@ -11,6 +11,7 @@ from pathlib import Path
 
 from watchdog.gui import vaultio
 from watchdog.gui.rpc import RpcError, method
+from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_log
 
 _HEALTH = {"folder not found": "missing", "not a watchdog vault": "not_a_vault"}
 _LOG_DEFAULT_LINES = 500
@@ -121,8 +122,8 @@ def status(slug: str) -> dict:
         for doc in vaultio.load_documents(vault).values():
             if isinstance(doc, dict) and doc.get("document_type"):
                 documents_by_type[doc["document_type"]] += 1
-        locks = {"chew": (vault / ".watchdog" / ".chew-lock").exists(),
-                 "ingest": (vault / ".watchdog" / "registry" / ".ingest-lock").exists()}
+        locks = {"chew": (preprocessing_lock(vault)).exists(),
+                 "ingest": (processing_lock(vault)).exists()}
         if orchestrate.has_pending_finalization(vault):
             pending = orchestrate.pending_finalization(vault)
         size = _vault_size(vault)
@@ -139,7 +140,7 @@ def status(slug: str) -> dict:
 @method("projects.log")
 def log(slug: str, lines: int | None = None) -> dict:
     slug, info = _find(slug)
-    path = Path(info.get("path") or "") / ".watchdog" / "registry" / "ingest.log"
+    path = processing_log(Path(info.get("path") or ""))
     text = vaultio.read_text(path)
     out = [ln.rstrip("\r") for ln in text.splitlines()]
     n = _LOG_DEFAULT_LINES if lines is None else max(0, min(int(lines), _LOG_MAX_LINES))

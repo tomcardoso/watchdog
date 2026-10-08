@@ -9,7 +9,7 @@ Refresh the Summary and Timeline for one or more entities by re-synthesizing fro
 
 Usage: `/watchdog-entity <entity-id> [entity-id ...]`
 
-Run this when an entity has accumulated enough documents that its ingest-time Summary may have drifted, or when you want a definitive Timeline for a central figure in the investigation.
+Run this when an entity has accumulated enough documents that its processing-time Summary may have drifted, or when you want a definitive Timeline for a central figure in the investigation.
 
 ---
 
@@ -28,7 +28,7 @@ Read `.watchdog/registry/documents.json`. For each SHA-256 in `appears_in`:
 - Look up `document_note` (e.g. `documents/form-79`)
 - Read `<document_note>.md` from the vault
 
-Collect the content of all those document notes. You do not need to re-read the original preprocessed text — the document notes contain the key facts, summary, and entities that were extracted during ingest.
+Collect the content of all those document notes. You do not need to re-read the original preprocessed text — the document notes contain the key facts, summary, and entities that were extracted during processing.
 
 Also read the entity's current note at `<note_path>.md` to see its existing Summary, Timeline, and Analysis.
 

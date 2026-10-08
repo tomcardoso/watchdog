@@ -184,7 +184,7 @@ as-is; GPT-5.6+ on OpenAI gets explicit cache breakpoints; other OpenAI models g
 money, figures, percentages, dates and court file numbers by regex, plus names from the local
 GLiNER model, into a per-page checklist the prompt includes.
 
-**Failure.** A document whose extraction or post-flight fails is logged to `ingest.log` and moved
+**Failure.** A document whose extraction or post-flight fails is logged to `processing.log` and moved
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
 `watchdog requeue` puts failed documents back.
 
@@ -359,14 +359,19 @@ queries/ wiki/               session-written findings and threads
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, a fresh run's wipe of leftovers)
-  ingest-state.json          present while a run is in progress
+  processing-state.json      present while a run is in progress
+  .preprocessing-lock        held while files are pre-processed
   registry/
     entities.json documents.json registry.json manifest.json
     resolutions.json requests.json batch-pending.json
-    ingest.log               per-document START/OK/WARN/FAILED lines
+    processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
-    .ingest-lock .write-lock
+    .processing-lock .write-lock
 ```
+
+**Working files (D276).** The locks, run state and run log are named for the app's stages and built
+through `vault_paths.py` helpers; the same migration renames an older vault's `.chew-lock`,
+`.ingest-lock`, `ingest-state.json` and `ingest.log`.
 
 **Folder names (D266).** `vault_paths.py` is the one place the `incoming/` and `context/` names live, with
 helpers for every path under them. `migrate_folder_names` renames an older vault's `_INCOMING/` and

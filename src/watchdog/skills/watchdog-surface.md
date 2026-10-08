@@ -6,7 +6,7 @@ description: Full connection and anomaly analysis across the vault — shared ad
 
 Perform a full connection and anomaly analysis across every entity and document in the vault. Surface things the journalist may have missed.
 
-Run this on demand. It is computationally expensive on large vaults; run after major ingest batches.
+Run this on demand. It is computationally expensive on large vaults; run after adding a large batch of documents.
 
 ---
 
@@ -65,7 +65,7 @@ Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
 
 ## 3. Contradiction scan
 
-Scan every entity note in `entities/` for `[!contradiction]` callouts. The pipeline writes them during finalization (`watchdog bark`), when reconciliation finds that one document contradicts a fact from another.
+Scan every entity note in `entities/` for `[!contradiction]` callouts. The pipeline writes them during post-processing, when reconciliation finds that one document contradicts a fact from another.
 
 For each callout found:
 - Record the entity, the disputed fact, both values, and both source documents
@@ -83,7 +83,7 @@ Flag any case where the same fact is stated differently in two documents — bot
 
 **Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are verified at extraction time and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
 
-Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, run `watchdog contradiction-add` yourself from the terminal with that candidate's values and report success/failure in the session output. If they do not confirm, leave it as a candidate in the report only.
+Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, run `watchdog contradiction-add` yourself with that candidate's values and report success/failure in the session output. If they do not confirm, leave it as a candidate in the report only.
 
 ---
 
@@ -175,7 +175,7 @@ If context.md is filled in, prioritise leads that speak directly to the journali
 *Run `/watchdog-query` to dig into any of these. Run `/watchdog-health` to check vault integrity.*
 ```
 
-Print a summary to the terminal: contradiction count, connection count, anomaly count, gap count.
+Print a summary: contradiction count, connection count, anomaly count, gap count.
 
 ---
 

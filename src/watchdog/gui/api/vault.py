@@ -17,6 +17,7 @@ from watchdog.gui import vaultio
 from watchdog.gui.rpc import RpcError, method
 from watchdog.gui.vaultio import require_vault, resolve_in_vault
 from watchdog.vault_paths import SET_ASIDE_NAMES, context_dir, incoming_dir, incoming_failed_dir, incoming_skipped_dir
+from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_log
 
 _BRIEFING_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})(?:-\d+)?$")
 _DATE_IN_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})")
@@ -579,7 +580,7 @@ def _sha256_of(path: Path) -> str | None:
 def _failure_reasons(vault: Path, names: list[str]) -> dict[str, str]:
     """The latest `FAILED <name>: <reason>` line in `ingest.log` for each of `names`."""
     reasons: dict[str, str] = {}
-    log = vaultio.read_text(vault / ".watchdog" / "registry" / "ingest.log")
+    log = vaultio.read_text(processing_log(vault))
     for line in reversed(log.splitlines()):
         _, sep, rest = line.partition("] FAILED ")
         if not sep:
@@ -640,8 +641,8 @@ def pipeline(vault: str) -> dict:
         "queued": queued,
         "failed": failed,
         "pending_finalization": pending,
-        "locks": {"chew": (v / ".watchdog" / ".chew-lock").exists(),
-                  "ingest": (v / ".watchdog" / "registry" / ".ingest-lock").exists()},
+        "locks": {"chew": preprocessing_lock(v).exists(),
+                  "ingest": processing_lock(v).exists()},
         "research_urls": research.pending_count(v),
         "batch_pending": batch_extract.read_state(v),
     }

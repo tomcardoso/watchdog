@@ -89,7 +89,7 @@ def test_contradictions_synthesis_and_merges(demo_vault):
     # Two reconciliation merges folded the variant ids away.
     assert "planning-procurement-committee" not in entities
     assert "port-calder-land-registry" not in entities
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "MERGED" in log
 
 
@@ -114,7 +114,7 @@ def test_pipeline_state_left_for_the_app(demo_vault):
     assert sorted(p.name for p in (vault / "incoming").iterdir()) == [
         "pier-9-change-order-3.pdf", "site-meeting-notes-2022-09-14.docx"]
     assert len(list((vault / ".watchdog" / "queue" / "_failed").glob("*.json"))) == 1
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "FAILED scanned-memo-illegible.pdf" in log
     assert len(list((vault / "context").iterdir())) >= 2
     queue = (vault / ".watchdog" / "research" / "queue.tsv").read_text(encoding="utf-8")

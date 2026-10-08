@@ -277,7 +277,7 @@ def make_rich_vault(tmp_path: Path) -> Path:
     (queue / "_failed").mkdir()
     (queue / "_failed" / f"{'c' * 64}.json").write_text(json.dumps(
         {"sha256": "c" * 64, "filename": "broken.pdf", "pages": []}))
-    (reg / "ingest.log").write_text(
+    (reg / "processing.log").write_text(
         "[2026-03-01T10:00:00Z] START broken.pdf\n"
         "[2026-03-01T10:01:00Z] FAILED broken.pdf: model returned invalid JSON\n"
         "[2026-03-01T10:02:00Z] OK report-one.pdf: 3p\n")
