@@ -21,7 +21,7 @@ GHOST = "lead:unprofiled:ghost-ltd"
 def test_items_match_the_terminal_review(rich_vault):
     r = call("review.items", vault=V(rich_vault))
     assert r["items"] == open_items(rich_vault)
-    assert r["counts"] == {"contradictions": 1, "leads": 2, "alerts": 1, "duplicates": 1}
+    assert r["counts"] == {"contradictions": 1, "leads": 2, "alerts": 1, "duplicates": 1, "merges": 0}
     first = r["items"][0]
     assert set(first) == {"kind", "rid", "title", "detail", "note"}
     assert first["title"] == "Jane Doe — Start date of Jane Doe's directorship"
@@ -38,7 +38,7 @@ def test_items_can_be_filtered_by_kind(rich_vault):
 
 def test_items_on_an_empty_vault(tmp_path):
     r = call("review.items", vault=V(make_vault(tmp_path)))
-    assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0}}
+    assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}}
 
 
 def test_resolve_writes_the_store_and_ticks_the_briefing(rich_vault):
@@ -57,7 +57,7 @@ def test_resolve_several_kinds_at_once(rich_vault):
     assert sorted(call("review.resolve", vault=V(rich_vault), rids=rids)["resolved"]) == sorted(rids)
     assert call("review.items", vault=V(rich_vault))["items"] == []
     assert call("review.items", vault=V(rich_vault))["counts"] == {
-        "contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0}
+        "contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}
 
 
 def test_unresolve_reopens_and_unticks(rich_vault):

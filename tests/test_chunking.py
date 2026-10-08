@@ -109,7 +109,7 @@ def test_reconcile_pre_commit_splits_and_applies_merges_once(tmp_path, monkeypat
                         lambda *a, **k: 2 * chunking.json_size(_pair(0)) + 5)
     applied = []
     monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
-                        lambda vault, shas, parsed, b, warn:
+                        lambda vault, shas, parsed, b, warn, **kw:
                         applied.append(parsed) or {"merged": [], "remap": {}, "contradictions": []})
     calls = []
 

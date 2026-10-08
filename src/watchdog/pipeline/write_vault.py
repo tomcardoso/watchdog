@@ -196,6 +196,7 @@ class NameIndex:
     def __init__(self, entities_reg: dict):
         self._pos: dict[str, int] = {}
         self._index: dict[tuple[str, str], str] = {}
+        self._all: dict[tuple[str, str], set[str]] = {}
         for eid, entry in entities_reg.items():
             self.add(eid, entry)
 
@@ -204,6 +205,7 @@ class NameIndex:
         etype = canonical_type(entry["type"])
         for n in [entry["name"], *entry.get("aliases", [])]:
             key = (normalize_entity_name(n), etype)
+            self._all.setdefault(key, set()).add(eid)
             current = self._index.get(key)
             if current is None or self._pos[current] > pos:
                 self._index[key] = eid
@@ -211,38 +213,91 @@ class NameIndex:
     def get(self, key: tuple[str, str]) -> str | None:
         return self._index.get(key)
 
+    def get_all(self, key: tuple[str, str]) -> list[str]:
+        """Every entity carrying this (name, type), in registry order — several records can share
+        a name now that a same-name person is no longer folded on name alone (D285)."""
+        return sorted(self._all.get(key, ()), key=lambda eid: self._pos[eid])
+
+
+def _unique_entity_id(eid: str, taken) -> str:
+    """`eid`, or `eid-2`, `eid-3`, … — the first not in `taken`."""
+    n = 2
+    while f"{eid}-{n}" in taken:
+        n += 1
+    return f"{eid}-{n}"
+
+
+def _names_only_judge(entity: dict, existing_id: str, entities_reg: dict) -> bool:
+    """`identity.classify` on names and aliases alone — the judge when no vault evidence is at
+    hand. Only a high-confidence verdict folds."""
+    from watchdog.pipeline import identity
+    entry = entities_reg[existing_id]
+    a = identity.Profile(entity["id"], entity["name"], entity["type"])
+    for alias in entity.get("aliases") or []:
+        a.add_surface(alias)
+    b = identity.Profile(existing_id, entry["name"], entry["type"])
+    for alias in entry.get("aliases") or []:
+        b.add_surface(alias)
+    verdict = identity.classify(a, b)
+    return bool(verdict and verdict["tier"] == "high")
+
 
 def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict,
-                          name_index: NameIndex | None = None) -> dict[str, str]:
-    """Remap incoming entities that name an existing entity under a different slug.
+                          name_index: NameIndex | None = None, judge=None) -> dict[str, str]:
+    """Fold incoming entities onto existing ones only when `judge` says the match is high
+    confidence (D285); otherwise keep them apart, so a medium or low match reaches the reconcile
+    model or the reporter instead of being merged here.
 
-    An incoming new entity whose normalized (name, canonical type) matches an existing one takes the
-    existing id, so it merges instead of duplicating (e.g. 'ernst-and-young-inc' and
-    'ernst-young-inc'). Called by `orchestrate._batch_exact_fold`, the pre-commit pass over the
-    staged batch (D127). Returns the remap (old id -> surviving id) so the caller can rewrite other
-    fields that name entity ids — `morgue_entity_id`, `document.key_facts[].entities`."""
+    Two ways an incoming entity meets an existing one: the same slug (two documents both coin
+    `john-smith`), or the same normalized (name, canonical type) under another slug, including an
+    existing alias. `judge(entity, existing_id)` decides each; it is `identity.classify` with the
+    documents' evidence when called from `orchestrate._batch_exact_fold`, and on names alone
+    otherwise. A same-slug match that is not high gets a fresh slug (`john-smith-2`) so the two
+    records stay separate. Non-person entities are judged first, so a person's roles already point
+    at reconciled ids when shared employers and addresses are compared.
+
+    Each entity that moves keeps the id it was extracted under in `extracted_id`. Returns the remap
+    (old id -> new id) so the caller can rewrite the other fields that name entity ids —
+    `morgue_entity_id`, `document.key_facts[].entities`."""
     norm_index = name_index if name_index is not None else NameIndex(entities_reg)
+    if judge is None:
+        def judge(entity, existing_id):
+            return _names_only_judge(entity, existing_id, entities_reg)
 
     remap: dict[str, str] = {}
-    for entity in incoming_entities:
+    taken = set(entities_reg) | {e["id"] for e in incoming_entities}
+    # The id each entity had when this call began: the key the caller's other fields still use.
+    start = {id(e): e["id"] for e in incoming_entities}
+
+    def _move(entity: dict, new_id: str) -> None:
+        old = entity["id"]
+        entity.setdefault("extracted_id", old)
+        entity["id"] = new_id
+        remap[start[id(entity)]] = new_id
+        for other in incoming_entities:
+            for role in other.get("roles", []):
+                if role.get("target_id") == old:
+                    role["target_id"] = new_id
+
+    ordered = sorted(incoming_entities, key=lambda e: canonical_type(e.get("type", "")) == "person")
+    for entity in ordered:
         if entity["id"] in entities_reg:
-            continue
+            if judge(entity, entity["id"]):
+                continue
+            new_id = _unique_entity_id(entity["id"], taken)
+            taken.add(new_id)
+            _move(entity, new_id)
         key = (normalize_entity_name(entity["name"]), canonical_type(entity["type"]))
-        existing_id = norm_index.get(key)
-        if existing_id and existing_id != entity["id"]:
-            remap[entity["id"]] = existing_id
-            entity["id"] = existing_id
-            # Preserve the variant spelling so the entity stays findable next time.
-            entity.setdefault("aliases", []).append(entity["name"])
+        for existing_id in norm_index.get_all(key):
+            if existing_id == entity["id"] or existing_id not in entities_reg:
+                continue
+            if judge(entity, existing_id):
+                _move(entity, existing_id)
+                # Preserve the variant spelling so the entity stays findable next time.
+                entity.setdefault("aliases", []).append(entity["name"])
+                break
 
-    # Keep intra-document role targets pointing at the reconciled ids.
-    if remap:
-        for entity in incoming_entities:
-            for role in entity.get("roles", []):
-                if role.get("target_id") in remap:
-                    role["target_id"] = remap[role["target_id"]]
-
-    return remap
+    return {old: new for old, new in remap.items() if old != new}
 
 
 def _resolve_role_targets(incoming_entities: list[dict], entities_reg: dict) -> None:
@@ -478,6 +533,8 @@ class RegistryBatch:
         self._after_flush: list = []
         self._lock = None
         self._undo: tuple | None = None
+        self._merge_log: list[dict] = []     # merge-log entries of the documents written so far
+        self._merge_log_mark = 0
 
     def __enter__(self) -> "RegistryBatch":
         self.registry_dir.mkdir(parents=True, exist_ok=True)
@@ -499,6 +556,7 @@ class RegistryBatch:
         them either. Only the entries a write can touch are copied: the document's own entities,
         the targets its roles point at (`_add_reverse_role`), and its own documents entry."""
         missing = object()
+        self._merge_log_mark = len(self._merge_log)
         self._undo = (
             {eid: deepcopy(self.entities[eid]) if eid in self.entities else missing
              for eid in entity_ids},
@@ -512,6 +570,7 @@ class RegistryBatch:
         if self._undo is None:
             return
         entities, doc_sha256, document, missing = self._undo
+        del self._merge_log[self._merge_log_mark:]
         for eid, entry in entities.items():
             if entry is missing:
                 self.entities.pop(eid, None)
@@ -533,10 +592,23 @@ class RegistryBatch:
         if self._pending >= self.flush_every:
             self.flush()
 
+    def log_merges(self, entries: list[dict]) -> None:
+        """Queue a document's merge-log entries (D285) for the flush that commits it."""
+        self._merge_log.extend(entries)
+
     def flush(self) -> None:
         if not self._pending:
             return
+        # Before the registries: a crash in between leaves entries for documents a replay commits
+        # again, and `merge_log.record` is idempotent, so the log never misses a committed merge.
+        logged = bool(self._merge_log)
+        if logged:
+            from watchdog.pipeline import merge_log
+            merge_log.record(self.vault_path, self._merge_log, render_note=False)
+            self._merge_log = []
         _persist_registries(self.vault_path, self.entities, self.documents)
+        if logged:
+            merge_log.render(self.vault_path)     # after the registries, so it names the documents
         self._pending = 0
         callbacks, self._after_flush = self._after_flush, []
         for callback in callbacks:
@@ -1182,8 +1254,16 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         #
         # Inside a RegistryBatch (#696) this is the batch's flush, every `flush_every` documents.
 
+        identity_log = (extraction.get("identity") or {}).get("log") or []
         if batch is None:
+            if identity_log:
+                from watchdog.pipeline import merge_log
+                merge_log.record(vault_path, identity_log, render_note=False)
             _persist_registries(vault_path, entities_reg, documents_reg)
+            if identity_log:
+                merge_log.render(vault_path)
+        elif identity_log:
+            batch.log_merges(identity_log)
 
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(

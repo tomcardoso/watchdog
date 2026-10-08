@@ -267,6 +267,14 @@ class CannedModel:
             for i, pair in enumerate(pairs):
                 if {pair["a"]["id"], pair["b"]["id"]} == {a, b}:
                     merges.append({"pair": i, "keep_id": keep, "reason": reason})
+        # A same-name pair the rules could not settle (D285) is a record the fold kept apart under
+        # a fresh slug (`marcus-teague-2`). The story has one entity per cast id, so a careful model
+        # reading both sides' facts would confirm it.
+        for i, pair in enumerate(pairs):
+            ids = sorted((pair["a"]["id"], pair["b"]["id"]), key=len)
+            if pair.get("same_name") and re.fullmatch(re.escape(ids[0]) + r"-\d+", ids[1]):
+                merges.append({"pair": i, "keep_id": ids[0],
+                               "reason": "The same person, described consistently in both documents."})
         ledger_ids = {e["entity_id"] for e in entities}
         # A document is "known" once it is committed to the vault or cited in this batch's claims.
         docs_path = self.vault / ".watchdog" / "registry" / "documents.json"
