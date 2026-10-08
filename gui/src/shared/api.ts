@@ -114,7 +114,7 @@ export type VerifyStatus = 'verified' | 'disputed' | 'unverifiable'
 export interface FactMark { status: VerifyStatus; note: string | null; by: string | null; at: string | null }
 export interface VerificationSummary {
   facts: number; verified: number; disputed: number; unverifiable: number; unmarked: number
-  unlocated: number; orphaned: number
+  unlocated: number; orphaned: number; read_only?: boolean
 }
 export type PassageMethod = 'quote' | 'matched' | 'unlocated'
 export interface LedgerFact {

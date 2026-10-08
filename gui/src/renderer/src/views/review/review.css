@@ -67,3 +67,10 @@
 .rv-hmeta { font-size: var(--fs-xs); }
 .rv-watch { min-height: 280px; font-family: var(--font-mono); font-size: var(--fs-sm); }
 @media (max-width: 760px) { .rv-pair { grid-template-columns: 1fr; } .rv-pair-vs { display: none; } }
+
+/* Verification tab (VerificationTab.tsx) */
+.vf-progress { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; }
+.vf-progress-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: var(--fs-sm); }
+.vf-progress-n { font-size: var(--fs-lg); color: var(--text); }
+.vf-row { margin-bottom: 0; }
+.vf-row .fact-page svg:last-child { width: 10px; height: 10px; }

@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Save,
   ScanSearch,
+  ShieldCheck,
   Swords,
   Undo2,
   Zap
@@ -29,9 +30,11 @@ import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
+import { VerificationTab } from './VerificationTab'
+import '../documents/documents.css'
 import './review.css'
 
-type Tab = ReviewKind | 'handled' | 'watchlist' | 'requests'
+type Tab = ReviewKind | 'handled' | 'watchlist' | 'requests' | 'verification'
 type QueueKind = ReviewKind | 'requests'
 
 const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: ReactNode; empty: string }> = {
@@ -184,12 +187,15 @@ export default function ReviewView() {
             { value: 'alerts', label: 'Watch-list hits', icon: Bell, count: counts.alerts },
             { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
             { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests },
+            { value: 'verification', label: 'Verification', icon: ShieldCheck },
             { value: 'handled', label: 'Handled', icon: CheckCheck },
             { value: 'watchlist', label: 'Watch list', icon: ScanSearch }
           ]}
         />
 
-        {tab === 'handled' ? (
+        {tab === 'verification' ? (
+          <VerificationTab />
+        ) : tab === 'handled' ? (
           <HandledTab vault={vault} />
         ) : tab === 'watchlist' ? (
           <WatchlistTab vault={vault} />

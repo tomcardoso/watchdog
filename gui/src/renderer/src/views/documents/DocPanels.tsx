@@ -1,15 +1,15 @@
 // The right-hand tabs of the document reader: facts, summary, entities, text, details, notes.
 
-import { AlertTriangle, Check, ChevronRight, Copy, FileText, Info, Search } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Copy, FileText, Search } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityChip } from '@renderer/components/EntityChip'
 import { Markdown } from '@renderer/components/Markdown'
-import { Badge, Button, Callout, Empty, Segmented } from '@renderer/components/ui'
+import { Button, Callout, Empty } from '@renderer/components/ui'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtDateTime, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate } from '@renderer/lib/rpc'
 import { navigate, useVault } from '@renderer/lib/store'
-import type { DocumentDetail, Fact } from '@shared/api'
+import type { DocumentDetail } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
 
 type Jump = (t: Omit<JumpTarget, 'nonce'>) => void
