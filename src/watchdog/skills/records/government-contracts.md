@@ -81,7 +81,7 @@ Loaded by Watchdog when the document type is a procurement record, tender docume
 - **Address issues** — vendor's address is a residence, a mailbox service, or the same as another frequent contractor. May indicate a shell or pass-through entity.
 - **Vendor registered close to the RFP** — if both the vendor's registration/incorporation date and the RFP date appear in the document, note whether the company was incorporated only after the RFP was posted; if the incorporation date is not stated, log a lead to check it against the corporate registry.
 - **Subcontracting to a named competitor** — record any subcontractors named in the award or contract; log a lead to check whether any of them bid against the prime on this same competition, which would effectively reverse the result.
-- **Vendor previously lost a competitive bid for this work** — record the vendor and the non-competitive award; if the entity digest shows the same vendor lost an earlier competition for related work, flag the correlation, otherwise log it as a lead.
+- **Vendor previously lost a competitive bid for this work** — record the vendor and the non-competitive award; where the document itself mentions an earlier competition for related work (in a sole-source justification or a procurement history), record which vendor won and lost it and flag the correlation, otherwise log a lead to check whether the same vendor lost an earlier competition.
 
 ### Bid documents
 

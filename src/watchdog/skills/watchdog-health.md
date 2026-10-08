@@ -48,10 +48,7 @@ Report any missing field: `MISSING FIELD: <file> — missing: <field>`
 
 Scan all `.md` files in `entities/` and `documents/` for `[[...]]` links.
 
-For each link, check that the target file exists:
-```bash
-grep -r '\[\[' entities/ documents/ --include="*.md" -h | grep -oP '\[\[\K[^\]|]+' | sort -u
-```
+For each link, check that the target file exists. Use the Grep tool (not a shell `grep`, whose options differ between macOS and Linux) to list the links: search `entities/` and `documents/` for the pattern `\[\[[^\]|]+` with output mode `content` and only-matching on, then strip the leading `[[`.
 
 Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the path portion before any `|` when checking file existence. Report broken links: `DEAD LINK: <source file> → [[<target>]] (file not found)`
 
@@ -105,11 +102,7 @@ Find all entities in `entities.json` where `roles` is an empty list or absent. T
 
 ## 8. Unresolved contradictions
 
-The pipeline flags conflicts between sources as `> [!contradiction]` callouts in an entity's `## Contradictions` section, verified at extraction time and never auto-removed. They sit there until a journalist resolves them — but nothing surfaces the full list in one place. Find them:
-
-```bash
-grep -rn '\[!contradiction\]' entities/ --include="*.md"
-```
+The pipeline flags conflicts between sources as `> [!contradiction]` callouts in an entity's `## Contradictions` section, written during post-processing when reconciliation finds two documents disagree, and never auto-removed. They sit there until a journalist resolves them — but nothing surfaces the full list in one place. Find them with the Grep tool: search `entities/` for the pattern `\[!contradiction\]` in `*.md` files, with line numbers.
 
 For each callout, report: `CONTRADICTION: entities/<type>/<id>.md — <first line of the callout>`. These are conflicting claims a journalist should resolve (confirm which source is right; check dates and primary sources). Count them for the summary. They are append-only by design, so a callout the journalist has already worked through may still appear — treat the list as "conflicts on record," highest-value first.
 

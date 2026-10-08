@@ -124,7 +124,7 @@ This skill is loaded by Watchdog when the document type is a lobbyist registrati
 5. **The gap between registration and first reported meeting** — if meetings start occurring the same week as registration, the communications may have preceded the registration.
 6. **Corporate structure of the client** — the "client" listed may be a subsidiary; the ultimate beneficial interest may be a foreign corporation or state-owned enterprise that would be politically sensitive.
 7. **The official who was lobbied later joining the firm** — the inverse of the revolving door: a public office holder who met with a lobbyist subsequently takes a job with the lobbyist's firm or client. Spotting it requires tracking the official's career after the meetings, not just reading the registration.
-8. **Multiple clients in the same industry** — a lobbying firm working for several companies in the same sector on the same regulatory file may have undisclosed conflicts. This becomes visible only by comparing a firm's registrations across clients, or against clients already recorded in the vault digest.
+8. **Multiple clients in the same industry** — a lobbying firm working for several companies in the same sector on the same regulatory file may have undisclosed conflicts. This becomes visible only by comparing a firm's registrations across clients, including clients named in registrations already in your investigation.
 
 ---
 

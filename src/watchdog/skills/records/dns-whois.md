@@ -46,16 +46,16 @@ This skill is loaded by Watchdog when the document type is a WHOIS registration 
 
 ### Registration patterns
 
-- **Domain registered shortly before its first known use** — record the registration/creation date. When it sits just before a launch, announcement, or campaign named elsewhere in the vault, flag the correlation as a lead; the date is a fact, tying it to an event is for the reporter to check.
-- **Privacy protection masking a registrant** — privacy services (WhoisGuard, DomainsByProxy, Withheld for Privacy) replace registrant details, and their name is visible in the record. Their presence is not suspicious in itself; flag it when the digest shows the entity behind the domain is one that claims transparency (a government body, a public company).
-- **Registrant contact shared with an entity already in the vault** — a registrant email, phone, or address that matches a value recorded on an existing entity is the strongest link between a domain and its owner. Compare the contact fields against the entity digest and record any match.
-- **Name server clustering** — domains that share a name server may be managed by the same operator even when registrant details differ. Record the name servers and flag a match against name servers already in the digest.
+- **Domain registered shortly before its first known use** — record the registration/creation date. Log a lead to compare it with the launch, announcement, or campaign the domain was used for; the date is a fact, tying it to an event is for the reporter to check.
+- **Privacy protection masking a registrant** — privacy services (WhoisGuard, DomainsByProxy, Withheld for Privacy) replace registrant details, and their name is visible in the record. Their presence is not suspicious in itself. Record the service as stated; where the record itself shows the domain belongs to an entity that claims transparency (a government body, a public company), flag the masking, and otherwise log a lead if the operator matters to the story.
+- **Registrant contact details** — a registrant email, phone, or address that matches a value on another record is the strongest link between a domain and its owner. Record each contact field exactly as printed, tagged to the registrant, and log a lead to search for other domains and entities using the same contact. Where the record itself gives the same contact for differently named registrants or contacts, flag it.
+- **Name server clustering** — domains that share a name server may be managed by the same operator even when registrant details differ. Record the name servers exactly as printed. Where the record itself lists several domains sharing them (a reverse lookup), record the cluster; otherwise log a lead to check which other domains use the same name servers.
 - **Look-alike / impersonation domains** — a domain whose name mimics a known organization (governmentofcanada.com, cbc-news.ca) may be used for phishing, fraud, or impersonation. This is visible in the domain string itself.
 - **Registrant or transfer change in the record's history** — when the document's own history shows a change of registrant or a transfer, record it; note it as a lead if the change precedes other activity you would want to date.
 
 ### Infrastructure connections
 
-- **Shared IP hosting** — multiple domains resolving to the same IP address. Legitimate shared hosting is common, so record the shared IP and flag it only when it is combined with a registrant or name-server match against the digest.
+- **Shared IP hosting** — multiple domains resolving to the same IP address. Legitimate shared hosting is common, so record the shared IP and flag it only when the same record also shows those domains sharing a registrant contact or name server; otherwise log a lead.
 - **SSL certificate Subject Alternative Names (SANs)** — a single certificate often covers multiple domains. The SAN list names other domains served from the same infrastructure; capture every domain listed.
 - **IP owner / ASN as stated** — capture the IP owner and ASN recorded in the document. Whether that network operator is itself significant (a state entity, a known-abusive host) is an outside-knowledge question — log it as a lead rather than a finding.
 
