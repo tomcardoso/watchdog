@@ -257,6 +257,10 @@ class Profile:
         r = self.relations.setdefault(target_id, {"name": target_name or target_id,
                                                   "type": canonical_type(target_type or ""),
                                                   "rels": {}})
+        if target_name and r["name"] == target_id:
+            r["name"] = target_name
+        if target_type and r["type"] == canonical_type(""):
+            r["type"] = canonical_type(target_type)
         if relationship:
             r["rels"].setdefault(relationship, _rel_tokens(relationship))
 
@@ -469,8 +473,10 @@ class Evidence:
             for alias in entry.get("aliases") or []:
                 p.add_surface(alias)
             for role in entry.get("roles") or []:
+                target = self.registry.get(role.get("target_id")) or {}
                 p.add_relation(role.get("target_id"), role.get("relationship", ""),
-                               role.get("target_name", ""), role.get("target_type", ""))
+                               role.get("target_name") or target.get("name", ""),
+                               role.get("target_type") or target.get("type", ""))
         for sha in shas:
             art = self.artifact(sha)
             if not art:
@@ -485,7 +491,7 @@ class Evidence:
                     for alias in e.get("aliases") or []:
                         p.add_surface(alias)
                     for role in e.get("roles") or []:
-                        t = by_id.get(role.get("target_id")) or {}
+                        t = by_id.get(role.get("target_id")) or self.registry.get(role.get("target_id")) or {}
                         p.add_relation(role.get("target_id"), role.get("relationship", ""),
                                        t.get("name") or role.get("target_name", ""),
                                        t.get("type") or role.get("target_type", ""))

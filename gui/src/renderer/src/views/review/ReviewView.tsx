@@ -1,6 +1,7 @@
-// `watchdog review` and everything under it: the four queues (contradictions, leads, watch-list
-// hits, possible duplicates), what has been handled, the watch list itself, and open document
-// requests. Built for triage by keyboard: J/K to move, H to mark handled, O to open, U to undo.
+// `watchdog review` and everything under it: the five queues (contradictions, leads, watch-list
+// hits, possible duplicates, possible same entities), what has been handled, the watch list
+// itself, open document requests and the merge log. Built for triage by keyboard: J/K to move,
+// H to mark handled, O to open, U to undo.
 
 import {
   ArrowUpRight,
@@ -11,6 +12,7 @@ import {
   ClipboardList,
   FileQuestion,
   GitCompare,
+  GitMerge,
   Lightbulb,
   MessageCircle,
   RefreshCw,
@@ -31,6 +33,8 @@ import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
 import { VerificationTab } from './VerificationTab'
+import { MergeLogSection, SamePairView } from './MergesTab'
+import MergeModal from '../entities/MergeModal'
 import '../documents/documents.css'
 import './review.css'
 
@@ -61,6 +65,12 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
     icon: GitCompare,
     blurb: 'Documents the pipeline judged to be near-copies of an earlier one. Compare them, then confirm they are the same record or that the difference matters.',
     empty: 'No possible duplicate documents are waiting.'
+  },
+  merges: {
+    label: 'Possible same entities',
+    icon: GitMerge,
+    blurb: 'Two records that may be the same person, organization or place, which Watchdog was not sure enough to merge: one name is an initialled or shortened form of the other, or the AI model compared their facts and was not confident. Merge them if they are one; mark them not the same and they will never be merged automatically.',
+    empty: 'No possible same entities are waiting. Pairs appear here when two records share a name but nothing else ties them together.'
   },
   requests: {
     label: 'Document requests',
@@ -136,14 +146,14 @@ export default function ReviewView() {
   const requests = useRpc('vault.requests', vault ? { vault } : null, { staleTime: 5_000 })
 
   const counts = useMemo(() => {
-    const c: Record<QueueKind, number> = { contradictions: 0, leads: 0, alerts: 0, duplicates: 0, requests: 0 }
+    const c: Record<QueueKind, number> = { contradictions: 0, leads: 0, alerts: 0, duplicates: 0, merges: 0, requests: 0 }
     items.data?.items.forEach((i) => !triage.hidden.has(i.rid) && c[i.kind]++)
     requests.data?.open.forEach((r) => !triage.hidden.has(r.rid) && c.requests++)
     return c
   }, [items.data, requests.data, triage.hidden])
 
   // Default tab: the first queue with something in it.
-  const defaultTab: Tab = (['contradictions', 'leads', 'alerts', 'duplicates', 'requests'] as QueueKind[]).find((k) => counts[k] > 0) ?? 'contradictions'
+  const defaultTab: Tab = (['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests'] as QueueKind[]).find((k) => counts[k] > 0) ?? 'contradictions'
   const [tab, setTab] = useState<Tab>(routeKind ?? defaultTab)
   const chosen = useRef(!!routeKind)
   useEffect(() => {
@@ -163,7 +173,7 @@ export default function ReviewView() {
     navigate({ view: 'review', kind: t }, { replace: true })
   }
 
-  const total = counts.contradictions + counts.leads + counts.alerts + counts.duplicates
+  const total = counts.contradictions + counts.leads + counts.alerts + counts.duplicates + counts.merges
 
   return (
     <div className="page">
@@ -186,6 +196,7 @@ export default function ReviewView() {
             { value: 'leads', label: 'Leads', icon: Lightbulb, count: counts.leads },
             { value: 'alerts', label: 'Watch-list hits', icon: Bell, count: counts.alerts },
             { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
+            { value: 'merges', label: 'Merges', icon: GitMerge, count: counts.merges },
             { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests },
             { value: 'verification', label: 'Verification', icon: ShieldCheck },
             { value: 'handled', label: 'Handled', icon: CheckCheck },
@@ -242,6 +253,8 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
   const [sweeping, setSweeping] = useState(false)
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
   const docs = useRpc('vault.documents', kind === 'duplicates' && vault ? { vault } : null)
+  const [mergeFor, setMergeFor] = useState<{ keep: string; merge: string } | null>(null)
+  const handledWord = kind === 'merges' ? 'marked not the same' : 'marked handled'
 
   const liveItems = visible.filter((i) => !leaving.has(i.rid))
   const focusId = focus && visible.some((i) => i.rid === focus) ? focus : liveItems[0]?.rid ?? null
@@ -267,7 +280,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
     setSelected(new Set())
     setLeaving((l) => new Set([...l, ...rids]))
     setHandledHere((n) => n + rids.length)
-    say(rids.length === 1 ? 'Marked handled' : `${plural(rids.length, 'item')} marked handled`, true)
+    say(rids.length === 1 ? (kind === 'merges' ? 'Marked not the same' : 'Marked handled') : `${plural(rids.length, 'item')} ${handledWord}`, true)
     // Let the card finish collapsing, then drop it from the list and write the resolution.
     setTimeout(() => {
       void triage.resolve(rids, kind)
@@ -356,7 +369,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
     }
   }
 
-  const otherWithItems = (['contradictions', 'leads', 'alerts', 'duplicates', 'requests'] as QueueKind[]).filter((k) => k !== kind && counts[k] > 0)
+  const otherWithItems = (['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests'] as QueueKind[]).filter((k) => k !== kind && counts[k] > 0)
 
   return (
     <div className="rv-queue">
@@ -431,10 +444,16 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
                 say('Kept open')
               }}
               onOpen={() => openItem(it)}
+              onMerge={it.pair ? () => setMergeFor({ keep: it.pair!.a.id, merge: it.pair!.b.id }) : undefined}
               docs={docs.data}
             />
           ))}
         </div>
+      )}
+
+      {kind === 'merges' && <MergeLogSection />}
+      {kind === 'merges' && (
+        <MergeModal open={!!mergeFor} onClose={() => setMergeFor(null)} initialKeep={mergeFor?.keep} initialMerge={mergeFor?.merge} />
       )}
 
       {/* the legend doubles as the bulk bar and the undo snackbar */}
@@ -444,7 +463,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
             <b className="tnum">{selected.size}</b>
             <span className="muted">selected</span>
             <Button size="sm" variant="primary" icon={Check} onClick={() => handle([...selected])}>
-              Mark {selected.size} handled
+              {kind === 'merges' ? `Mark ${selected.size} not the same` : `Mark ${selected.size} handled`}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
               Clear
@@ -467,7 +486,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
         ) : (
           <>
             <Key k="J" k2="K" label="move" />
-            <Key k="H" label="mark handled" />
+            <Key k="H" label={kind === 'merges' ? 'not the same' : 'mark handled'} />
             <Key k="O" label="open" />
             <Key k="S" label="keep open, next" />
             <Key k="X" label="select" />
@@ -504,7 +523,7 @@ function renderTitle(title: string): ReactNode {
   )
 }
 
-function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHandle, onKeep, onOpen, docs }: {
+function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHandle, onKeep, onOpen, onMerge, docs }: {
   item: QItem
   kind: QueueKind
   focused: boolean
@@ -515,6 +534,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
   onHandle: () => void
   onKeep: () => void
   onOpen: () => void
+  onMerge?: () => void
   docs?: DocumentRow[]
 }) {
   const openLink = useOpenWikilink()
@@ -533,6 +553,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
       <div className="rv-body">
         <div className="rv-title">{renderTitle(item.title)}</div>
         {kind === 'duplicates' && <DuplicatePair item={item} docs={docs} />}
+        {kind === 'merges' && item.pair && <SamePairView pair={item.pair} expanded={focused} />}
         {item.detail.length > 0 && kind !== 'duplicates' && (
           <div className={cx('rv-detail', !focused && 'clamped')}>
             {item.detail.length > 1 || /^\s*[-*]/.test(item.detail[0]) ? <Markdown compact text={item.detail.map((l) => (/^\s*([-*]|\d+\.)\s/.test(l) ? l : `- ${l}`)).join('\n')} /> : <Markdown compact text={item.detail[0]} />}
@@ -552,7 +573,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
             {!focused && cited.length > 3 && <span className="faint">+{cited.length - 3}</span>}
           </div>
         )}
-        {item.note && (
+        {item.note && kind !== 'merges' && (
           <button
             className="rv-notelink"
             onClick={(e) => {
@@ -566,13 +587,18 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
         )}
         {focused && (
           <div className="rv-actions">
-            <Button size="sm" variant="primary" icon={Check} onClick={onHandle}>
-              Mark handled <Kbd>H</Kbd>
+            {onMerge && (
+              <Button size="sm" variant="primary" icon={GitMerge} onClick={onMerge}>
+                Merge…
+              </Button>
+            )}
+            <Button size="sm" variant={onMerge ? 'default' : 'primary'} icon={Check} onClick={onHandle}>
+              {kind === 'merges' ? 'Not the same' : 'Mark handled'} <Kbd>H</Kbd>
             </Button>
             <Button size="sm" onClick={onKeep}>
               Keep open
             </Button>
-            {item.note && (
+            {item.note && kind !== 'merges' && (
               <Button size="sm" iconRight={ArrowUpRight} onClick={onOpen}>
                 Open <Kbd>O</Kbd>
               </Button>

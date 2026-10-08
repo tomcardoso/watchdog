@@ -97,6 +97,7 @@ export interface Summary {
   contradictions: number
   leads: number
   near_duplicates: number
+  possible_same: number
   alerts: number
   incoming: number
   awaiting_dig: number
@@ -352,9 +353,36 @@ export interface EverywhereResult {
 }
 
 // ── review ───────────────────────────────────────────────────────────────────
-export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates'
-export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates']
-export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null }
+export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
+export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair }
+
+// Entity identity (D285): a "possible same" pair left for the reporter, and the merge log.
+export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
+export interface SameFact { id: string; sha: string; fact: string; page: number | null; document: string; date: string | null }
+export interface SameSide { id: string; name: string; type: string; aliases: string[]; documents: string[]; facts: SameFact[]; roles: { relationship: string; target: string }[]; note: string | null; doc_count: number }
+export interface MergeEvidence { surface?: string | null; identifier?: { scheme: string; value: string } | null; shared?: { relationship: string; target_id: string; target_name: string }[] }
+export interface SamePair { tier: MergeTier; rule: string; model_declined: boolean; evidence: MergeEvidence; a: SameSide; b: SameSide }
+export interface MergeLogEntry {
+  id: string
+  keep: { id: string; name: string; type: string; exists: boolean; note: string | null }
+  merged: { id: string; name: string; type: string }
+  tier: MergeTier
+  decided_by: 'rule' | 'model' | 'reporter'
+  rule: string | null
+  reason: string
+  model: string | null
+  reporter: string | null
+  same_name: boolean
+  at: string | null
+  first_at: string | null
+  identifier: { scheme: string; value: string } | null
+  shared: { relationship: string; target_id: string; target_name: string }[]
+  documents: { sha: string; title: string }[]
+  document_count: number
+  facts: { id: string; fact: string; page: number | null; sha: string; title: string }[]
+  undo_available: boolean
+}
 
 // ── settings ─────────────────────────────────────────────────────────────────
 export type SettingKind = 'bool' | 'int' | 'float' | 'choice' | 'model' | 'effort' | 'path' | 'text' | 'secret'
@@ -510,6 +538,7 @@ export interface Methods {
   'review.sync': [{ vault: string }, { resolved: string[]; unresolved: string[] }]
   'review.leads': [{ vault: string }, Record<string, unknown>]
   'review.watchlist': [{ vault: string }, { terms: string[]; text: string }]
+  'review.mergeLog': [{ vault: string; limit?: number }, { merges: MergeLogEntry[]; total: number; too_new: boolean; undo_available: boolean }]
   'review.mergePreview': [{ vault: string; keep: string; merge: string }, { keep: EntityRow; merge: EntityRow; both_have_summary: boolean; type_mismatch?: boolean }]
 
   'settings.schema': [Record<string, never>, SettingsSchema]

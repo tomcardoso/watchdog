@@ -353,3 +353,35 @@ def test_merge_log_newer_schema_is_never_rewritten(tmp_path):
     p.write_text(json.dumps({"schema_version": 99, "merges": [], "candidates": {}}))
     assert merge_log.record(vault, [{"kind": "merge", "id": "merge:x", "occurrences": []}]) is False
     assert json.loads(p.read_text())["schema_version"] == 99
+
+
+# ── the app's Review → Merges ─────────────────────────────────────────────────────────────────
+
+def test_app_lists_the_pair_resolves_it_as_not_the_same_and_shows_the_log(tmp_path, monkeypatch):
+    from tests.gui_support import call
+    vault = make_vault(tmp_path)
+    acme = _org("acme-ltd", "Acme Ltd.")
+    _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith"), acme],
+           facts=[("John Smith joined Acme Ltd.", ["john-smith"])])
+    _commit(vault, ["sha-a"])
+    _stage(vault, tmp_path, "sha-b", [_person("john-smith", "John Smith"), dict(acme)])
+    _fake_model(monkeypatch, False, [])
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    items = call("review.items", vault=str(vault), kinds=["merges"])
+    assert items["counts"] == {"merges": 1}
+    pair = items["items"][0]["pair"]
+    assert pair["a"]["facts"][0]["fact"] == "John Smith joined Acme Ltd."
+    assert pair["a"]["note"] == "entities/person/john-smith"
+
+    call("review.resolve", vault=str(vault), rids=[items["items"][0]["rid"]])
+    assert call("review.items", vault=str(vault), kinds=["merges"])["counts"] == {"merges": 0}
+    handled = call("review.resolved", vault=str(vault))["items"]
+    assert handled[0]["kind"] == "merges"
+
+    log = call("review.mergeLog", vault=str(vault))
+    assert log["undo_available"] is False and not log["too_new"]
+    acme_entry = next(m for m in log["merges"] if m["keep"]["id"] == "acme-ltd")
+    assert acme_entry["decided_by"] == "rule" and acme_entry["documents"][0]["sha"] == "sha-b"
+    assert acme_entry["keep"]["exists"] is True
+    json.dumps(log)

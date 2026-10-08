@@ -187,6 +187,7 @@ function FormBody({ keep, merge, setKeep, setMerge, preview }: { keep: string | 
           <li>Carries the duplicate’s Analysis section over, with its sources intact.</li>
           <li>Replaces the duplicate’s note with a stub that redirects to the survivor. Handled-contradiction marks follow the entity.</li>
           <li>Takes a snapshot of the affected files first. Restoring from it means copying files back by hand; the app has no undo button.</li>
+          <li>Records the merge, with your name, in the merge log under Review, Merges, and in <code>merges.md</code>.</li>
           <li>Makes no model call and costs nothing. Rebuilding the search index afterwards is advisable.</li>
         </ul>
       </div>
