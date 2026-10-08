@@ -498,7 +498,7 @@ export class Engine {
       if (this.cancelled || msg === 'cancelled') {
         this.state = 'cancelled'
         this.error =
-          this.phase === 2
+          (this.phase as 1 | 2 | null) === 2
             ? 'Setup was paused. Watchdog finishes it the next time it opens, or when you choose Try again; what was already downloaded is kept.'
             : 'The installation was cancelled. You can start it again; what was already downloaded is kept.'
       } else {

@@ -298,6 +298,8 @@ export interface SearchResult {
   index_empty: boolean
   exact_error: string | null
   semantic_error?: string | null
+  /** The engine's background setup has not finished, so only exact matches were searched (D272). */
+  semantic_pending?: boolean
   exact: SearchExact[]
   passages: SearchPassage[]
   notes: SearchNote[]

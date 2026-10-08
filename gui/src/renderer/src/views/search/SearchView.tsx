@@ -2,6 +2,7 @@
 // plus the two cheaper modes the CLI has — every investigation at once, and a pasted list of
 // names checked one by one. See docs/commands.md § watchdog search.
 
+import { useEngineGate } from '@renderer/lib/engine'
 import {
   ArrowUpRight,
   FileText,
@@ -401,6 +402,7 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
 }) {
   const vault = useVault()
   const [rebuilding, setRebuilding] = useState(false)
+  const engine = useEngineGate()
   const status = useRpc('search.status', vault ? { vault } : null)
 
   if (!submitted) return <Start recent={recent} clearRecent={clearRecent} run={run} status={status.data} />
@@ -418,6 +420,7 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
           <Button
             variant="primary"
             loading={rebuilding}
+            disabled={!engine.ready}
             onClick={async () => {
               setRebuilding(true)
               try {
@@ -446,6 +449,11 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
         <Callout tone="warning" title="The exact-match lane was not checked">
           Exact matches could not be searched ({d.exact_error}). Treat the absence of exact matches below as unknown, not as “none”. Rebuilding the index usually fixes this.
         </Callout>
+      )}
+      {d.semantic_pending && (
+        <div className="faint srch-hint" style={{ marginTop: -14 }}>
+          Searching by meaning becomes available when Watchdog finishes setting up, in a few minutes. Until then only exact matches are shown.
+        </div>
       )}
       {d.semantic_error && (
         <div className="faint srch-hint" style={{ marginTop: -14 }}>

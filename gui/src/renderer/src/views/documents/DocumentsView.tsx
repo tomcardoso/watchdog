@@ -3,7 +3,7 @@
 
 import { AddDocumentsButton } from '@renderer/components/EngineWait'
 import { useVirtualizer } from '@tanstack/react-virtual'
-import { ArrowDown, ArrowUp, Copy, FilePlus2, FileText, LayoutGrid, List as ListIcon, Search, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Copy, FileText, LayoutGrid, List as ListIcon, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { Button, Empty, ErrorNote, Segmented, Skeleton, useDebounced } from '@renderer/components/ui'
@@ -105,7 +105,6 @@ export default function DocumentsView() {
   const vault = useVault()
   const route = useApp((s) => s.route)
   const projectName = useApp((s) => s.project?.name ?? 'this investigation')
-  const openAdd = useApp((s) => s.openAdd)
   const docsQ = useRpc('vault.documents', { vault })
   const pipeQ = useRpc('vault.pipeline', { vault })
 
