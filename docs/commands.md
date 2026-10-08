@@ -40,7 +40,7 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog settings` | Models, keys, health checks and skills — see [Settings](#settings). |
 | `watchdog setup` | Setting up Watchdog after installation; `--force` re-runs it. |
 
-`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
+`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `verify-fact`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
 
 Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts and the vault's slash commands use the old names and see no note.
 
@@ -279,6 +279,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog leads [name]` | Maintenance. Print the full lead sweep — see [Leads](#leads). |
 | `watchdog timeline [name]` | Maintenance. Rebuild `timeline.md` from the canonical event files; deterministic, no model call. |
 | `watchdog reindex [name]` | Maintenance. Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
+| `watchdog verify-fact [fact-id]` | Maintenance. Mark a fact verified, disputed or can't verify, or list what has been marked — see [below](#watchdog-verify-fact). |
 | `watchdog usage [name]` | Maintenance. Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
 | `watchdog export [name]` | Maintenance. Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
 | `watchdog unlock [name]` | Maintenance. Release a stale chew or ingest lock; `--force` removes it even if recent. |
@@ -366,9 +367,21 @@ Each call's usage is written to disk as soon as it completes, not just when the 
 
 A batch-collected extractor stage (the Batches API's cheaper, asynchronous extraction path) gets an extra line under its header showing the batch's full lifecycle: when it was submitted, when Anthropic finished processing it, and when this vault actually collected the results — the last two routinely differ by hours, since a batch is submit-and-exit and only a *later* `watchdog dig` invocation notices it has finished and pulls the results in.
 
+### watchdog verify-fact
+
+Records your own check of a fact in the verification ledger; the app's **Verified**, **Disputed** and **Can't verify** buttons do the same thing (see [Checking facts](investigating.md#checking-facts)). Run it from inside the investigation's folder. It makes no model call.
+
+- `watchdog verify-fact <fact-id> --status verified|disputed|cant-verify [--note TEXT]` sets the mark. `--status clear` removes it, keeping its history. The fact must currently exist.
+- `--by NAME` records someone else's name instead of the `reporter_name` setting (see [Your name](configuration.md#verification)).
+- `--list` shows progress and every marked fact, newest first, with its id and a flag on marks whose fact has since changed.
+
+A fact's id is shown by `--list` and in the `fact_id` column of `facts.csv`. Each change rewrites `verification.md` in the investigation's root.
+
 ### watchdog export
 
 Exports the investigation's entity and relationship graph for network-analysis tools. The default writes Neo4j-import CSV (`nodes.csv` and `relationships.csv`, also loadable in Gephi); `--format cypher` writes a single `graph.cypher` of `MERGE` statements instead (it starts by creating a uniqueness constraint, so it needs Neo4j 4.4 or later; every node carries a `WatchdogEntity` label as well as its type), and `--output DIR` sets the destination (default: `<slug>-export/`). The export is deterministic — it reads the registry, with no model calls. Only stated-direction relationships are exported (auto-generated reverse edges are skipped), and edges to never-profiled entities are dropped so the import stays valid.
+
+The default CSV format also writes `facts.csv`: one row for every fact, with its document, page, the fact's wording, whether it is stated or inferred, its source passage (`passage`, `passage_page`, `passage_method` of `quote`, `matched` or `unlocated`) and, if you have marked it, `status`, `checked_by`, `checked_at` and `note`. The first column, `fact_id`, matches the id `verify-fact` uses. Documents added before passages existed have empty passage columns.
 
 ### watchdog unlock
 

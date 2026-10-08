@@ -40,6 +40,7 @@ my-investigation/
 ├── context.md              ← your investigation intent and key questions
 ├── watchlist.md            ← terms to watch for in new documents (one per line)
 ├── requests.md             ← documents to go and get, regenerated after every run
+├── verification.md         ← the facts you have marked, generated from your checks
 ├── index.md                ← landing page linking to the dashboard
 └── dashboard.base          ← dashboard of live tables (Obsidian Bases)
 ```
@@ -76,6 +77,7 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 - **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**.
 - **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. Edit it on the **Watch list** tab of Review; the format and the scan are covered in [Investigating](investigating.md#the-watch-list).
 - **`requests.md`** — documents named in what you have already added that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every run and covered in [Investigating](investigating.md#document-requests).
+- <a id="verificationmd"></a>**`verification.md`** — the facts you have marked Verified, Disputed or Can't verify, grouped by status and then by document, with who marked each, when, and any note. It opens with progress ("12 of 340 facts verified"). A final section lists marks whose fact has since changed. Watchdog rewrites the file on every change, so mark facts in the app, not here; edits to the file are not kept. The marks themselves are stored in `.watchdog/registry/verification.json`, which you should not edit either. See [Checking facts](investigating.md#checking-facts).
 - **`index.md`** — a thin landing page that links to the dashboard.
 - **`dashboard.base`** — the dashboard itself, described next.
 

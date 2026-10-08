@@ -183,6 +183,16 @@ Optionally save research sources to the Internet Archive's Wayback Machine.
 
 With Save to the Wayback Machine on, every source that Web research or **Fetch Links** downloads is also submitted to the Internet Archive, and the snapshot address is recorded in the source's provenance record. That gives you a citable copy that survives if the original changes or is taken down. It does nothing until both keys are set; a free pair can be generated at [archive.org/account/s3.php](https://archive.org/account/s3.php). Archiving is best-effort and never blocks or fails a download.
 
+### Verification
+
+How your checks of individual facts are recorded.
+
+| Field | Default | What it controls |
+|---|---|---|
+| Your name | your computer account's full name, or its login name if the account has none | The name recorded, with the time, each time you mark a fact Verified, Disputed or Can't verify. It is stored in `reporter_name`, trimmed to 120 characters, and shown in `verification.md` and on the Review → Verification tab. |
+
+A change applies to marks you make afterwards; marks already made keep the name they were recorded with. See [Checking facts](investigating.md#checking-facts).
+
 ### Privacy
 
 The local record of model calls across your investigations.

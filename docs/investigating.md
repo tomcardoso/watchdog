@@ -66,6 +66,49 @@ Because the automatic scan only sees new documents, a term added after documents
 
 Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** on the **Handled** tab to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
 
+## Checking facts
+
+Every fact Watchdog extracts is a claim to check, not a finding. The app gives you what you need to check it, and a place to record that you did.
+
+### Source passages
+
+Open a document and look at its **Facts** tab. Under each fact is the text from the document that supports it:
+
+- **A quotation** is shown when the model quoted the source and Watchdog confirmed the wording is there.
+- **A matched passage** is labelled "Matched passage" with its page. The model did not quote it. Watchdog found it by comparing the fact's names, figures and dates with the sentences on the cited page, with ordinary code and no AI model (see [how a passage is found](methodology.md#how-a-passage-is-found)). It is the sentence most likely to be the source, not proof that it supports the claim. If it is from a different page than the fact cites, the label says so.
+- **"No matching passage found"** means nothing on the cited page shares enough of the fact's names, figures and dates. The fact may combine several passages, rest on reasoning, or cite the wrong page. Read the page yourself.
+
+**find on page** beside a quotation or matched passage scrolls the original to it. Documents added before this feature existed show no passage; they get one when they are next processed.
+
+### Marking facts
+
+Each fact has three buttons. Click one to record your own check, and click it again to clear it.
+
+- **Verified** — you read the source and the fact holds.
+- **Disputed** — the source, or another record, does not support it.
+- **Can't verify** — you could not confirm or rule it out.
+
+Watchdog records your name and the time with each mark. Once a fact is marked, **Add note** lets you write what you checked it against or why it is in doubt (up to 2,000 characters; Enter saves, Shift+Enter starts a new line, Esc closes the box). Set the name under **Settings → Verification**; see [Your name](configuration.md#verification). Marking changes nothing in the fact itself, and it never calls an AI model.
+
+The bar above the facts filters them: **All**, **Not checked**, **No passage** (shown only when some facts have none), **Inferred** and **Figures**, with a count of how many you have checked. Select a fact (click it or tab to it), then use the keyboard:
+
+| Key | Does |
+|---|---|
+| J or ↓ | Next fact |
+| K or ↑ | Previous fact |
+| V, D, C | Mark Verified, Disputed or Can't verify; press it again to clear |
+| N | Edit the note (when the fact is marked) |
+
+### The Verification tab
+
+**Review → Verification** lists every fact in the investigation with the same buttons, a progress bar ("12 of 340 facts verified") and a filter: **Not checked**, **Disputed**, **Can't verify**, **Verified**, **No passage**, and **Changed since marked** when there are any. It opens on Disputed when something is disputed, otherwise on Not checked. A fact you have just marked stays in the list until you change the filter, so you can undo it. After V, D or C the focus moves on to the next fact. J and K move, N edits the note, and O (or Enter) opens the document at that fact's page. The Overview shows how many facts are verified, and lists disputed facts among what is waiting on you.
+
+If a document is processed again and a fact's wording or page changes, your mark stays with the old wording and appears under **Changed since marked**. It is never moved to the new wording, because you did not check those words. Check the new fact and mark it again.
+
+### The written record
+
+Every change rewrites `verification.md` at the top of the investigation: a list of marked facts by status and document, with who checked them, when and your notes. See [the vault guide](vault.md#verificationmd). `facts.csv`, from the older command line's export, lists every fact with its passage and mark; see [commands](commands.md#watchdog-export).
+
 ## Entities
 
 **Entities** lists every person, organization, public body, place, asset and proceeding Watchdog found, filterable by type, with the number of documents each appears in. Search it by name or alias, and sort it by most documents, name, most recent update or most contradictions. Filters narrow it to entities with contradictions, entities with no summary written yet, and single-source entities.
@@ -194,7 +237,7 @@ To bring an existing investigation folder back, choose **Add existing folder…*
 
 ## Trusting what you read
 
-Every extracted fact is either stated (read directly from a document) or inferred, which is marked *(inferred)* in the notes and is a lead to verify, not a finding. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
+Every extracted fact is either stated (read directly from a document) or inferred, which is marked *(inferred)* in the notes and is a lead to verify, not a finding. [Checking facts](#checking-facts) shows how to read each fact's source passage and record your own check. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
 
 ## Where next
 

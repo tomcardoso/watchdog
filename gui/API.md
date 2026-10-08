@@ -78,6 +78,7 @@ Summary = {               // cmd/home.summary(), made JSON-safe
   failed, research_urls, context_unseeded: bool,               // in progress
   has_work: bool,                                              // home.has_work()
   totals: {documents, entities, pages, events},
+  verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
   top_entities: EntityRow[]          // 8 with the most documents
 }
@@ -125,8 +126,10 @@ EntityRow = {
 ```
 DocumentDetail = DocumentRow & {
   frontmatter: object, body: string,            // the document note
-  facts: [{fact, page|null, basis: "stated"|"inferred", date|null, quote|null,
-           entities: [{id, name, type}], figure_note|null, quote_note|null, added_by|null}],   // quote_note: quote-verification warning; facts fall back to the note's `## Key facts` bullets when no staged extraction exists
+  facts: [{id, fact, page|null, basis: "stated"|"inferred", date|null, quote|null,
+           entities: [{id, name, type}], figure_note|null, quote_note|null, added_by|null,
+           passage|null, passage_page|null, passage_method: "quote"|"matched"|"unlocated"|null,
+           passage_score|null, mark: FactMark|null}],   // id: the derived fact id (D271); passage*: the source passage found in post-flight (D270), passage_method null when the document predates passages; mark: the reporter's current mark, only if it still matches the fact's words and page   // quote_note: quote-verification warning; facts fall back to the note's `## Key facts` bullets when no staged extraction exists
  
   entities: [{id, name, type, role|null}],
   pages: [{page, text}],                        // morgue full text split on <!-- PAGE n -->
@@ -163,6 +166,20 @@ PipelineState = {
   batch_pending: object|null                                  // batch_extract.read_state
 }
 ```
+
+## verify — the verification ledger (D271)
+
+```
+FactMark = {status: "verified"|"disputed"|"unverifiable", note|null, by|null, at|null}   // at: ISO 8601 with offset
+VerificationSummary = {facts, verified, disputed, unverifiable, unmarked, unlocated, orphaned, read_only: bool}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `verify.mark` | `{vault, id, status: "verified"\|"disputed"\|"unverifiable"\|null, note?}` | `FactMark & {id}` — sets the mark on one current fact, or clears it when `status` is null or empty (the history is kept). `by` is the `reporter_name` setting, else the computer account's name. `note` is trimmed and capped at 2,000 characters. Calls `pipeline/verification.mark`, the function `watchdog verify-fact` calls (I10); it takes the ledger's own lock and regenerates `verification.md`. Errors: `bad_params` (not a fact id), `not_found` (no current fact has that id, for example after the document was processed again), `bad_value` (unknown status), `ledger_too_new` (the ledger was written by a newer Watchdog and is read-only) |
+| `verify.facts` | `{vault}` | `{summary: VerificationSummary, facts: LedgerFact[], orphaned: OrphanMark[], reporter}` — every current fact, sorted by document title then reading order, with `{id, fact, page\|null, basis, sha, filename, title, passage_method\|null, passage_page\|null, mark: FactMark\|null}`; `orphaned` lists current marks whose fact's words or page have since changed, each `FactMark & {id, fact, page, sha256, filename}` with the fact as it read when marked; `reporter` is the name `verify.mark` would record |
+
+A fact's `id` is `fact:<scheme>:<12 characters of the document's SHA-256>:<10-character hash>`, with `:2`, `:3` on exact duplicates within one document. It stays the same while the fact's words and page do; see D271.
 
 ## ingest — before a pipeline run
 
@@ -270,7 +287,7 @@ sweeps and `leads` run as jobs.
 | `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
 
 ```
-SettingKey = {key, short, help, is_set: bool, default, current (null for secrets), display, kind: "bool"|"int"|"float"|"choice"|"model"|"effort"|"path"|"text"|"secret", choices: string[]|null}
+SettingKey = {key, short, help, is_set: bool, default, current (null for secrets), display, kind: "bool"|"int"|"float"|"choice"|"model"|"effort"|"path"|"text"|"secret", choices: string[]|null}   // default can be computed when read: for `reporter_name` it is the computer account's name
 ```
 
 ## usage

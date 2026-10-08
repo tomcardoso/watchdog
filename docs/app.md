@@ -22,7 +22,7 @@ The list of your investigations, with each one's document and entity counts, whe
 
 ### Overview
 
-The headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, watch-list hits) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
+The headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, watch-list hits, disputed facts) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
 
 ### Adding documents
 
@@ -39,7 +39,7 @@ The headline from the latest briefing, the briefing itself, what is waiting on y
 
 Every document in the investigation, as a grid of first-page thumbnails or a list you can sort by date, type, pages or entities. A strip above it shows documents not yet in the investigation — waiting, read but not extracted, failed, or set aside — with the fix for each (**Retry**, **Requeue**, **Unlock…**). **Retry** puts failed documents back and runs them again; **Requeue** moves them back without running them.
 
-Open a document to read it. The original is on the left, with page navigation, zoom and find (⌘F or Ctrl+F). On the right are the facts taken from it. Each fact's page number scrolls the original to that page, facts the model inferred rather than read are marked, and figures that could not be found on the cited page carry the same note as in the notes (see [Stated vs inferred](vault.md#stated-vs-inferred)). Other tabs show the summary, the entities it names, its full extracted text, its details and embedded metadata, and your own notes.
+Open a document to read it. The original is on the left, with page navigation, zoom and find (⌘F or Ctrl+F). On the right are the facts taken from it. Each fact's page number scrolls the original to that page, facts the model inferred rather than read are marked, and figures that could not be found on the cited page carry the same note as in the notes (see [Stated vs inferred](vault.md#stated-vs-inferred)). Under each fact is its source passage, or a note that none was found, and three buttons to mark it **Verified**, **Disputed** or **Can't verify**, with an optional note. A bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact and press J and K to move, V, D or C to mark it, and N for its note. [Checking facts](investigating.md#checking-facts) explains how to use them. Other tabs show the summary, the entities it names, its full extracted text, its details and embedded metadata, and your own notes.
 
 ### Entities
 
@@ -59,7 +59,7 @@ Three kinds of result, kept separate: exact matches (every place the words appea
 
 ### Review
 
-Contradictions, leads, watch-list hits, possible duplicates and document requests, one tab each. Mark an item handled and it stops appearing in briefings and on the Overview. The keyboard works here too: J and K move between items, H marks one handled, O opens it, U undoes. The **Handled** tab brings items back, and can pick up checkboxes you ticked in the briefing files. The **Watch list** tab edits the list of names and terms to watch for, and can check every document against it.
+Contradictions, leads, watch-list hits, possible duplicates and document requests, one tab each, plus a **Verification** tab: every fact in the investigation with your own check of it, a progress bar and filters (not checked, disputed, can't verify, verified, no passage, and changed since marked). See [Checking facts](investigating.md#the-verification-tab). Mark an item handled and it stops appearing in briefings and on the Overview. The keyboard works here too: J and K move between items, H marks one handled, O opens it, U undoes. The **Handled** tab brings items back, and can pick up checkboxes you ticked in the briefing files. The **Watch list** tab edits the list of names and terms to watch for, and can check every document against it.
 
 ### Briefings
 

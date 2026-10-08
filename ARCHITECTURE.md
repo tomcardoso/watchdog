@@ -145,7 +145,9 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
 5. **Post-flight** — validates the JSON; resolves each `quote_locator` to the full sentence on the
    cited page, correcting `page` when the locator resolves uniquely elsewhere (D75, D177); checks
    each fact's figures against the page text and annotates figures found nowhere or only on
-   another page (D112, D200); explodes `key_facts` into per-entity fragments and timeline events
+   another page (D112, D200); stamps a source passage on every fact (`pipeline/passages.py`, D270:
+   the resolved quote, else the best-matching sentence on the cited page found by code, else
+   `unlocated`; no model call); explodes `key_facts` into per-entity fragments and timeline events
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
    OCR'd scans); stages raw timeline NDJSON; and writes the validated extraction to
    `.watchdog/extracted/<sha>.json` (D126). That artifact is kept as an audit record.
@@ -346,6 +348,7 @@ morgue/<entity>/<type>/…     originals + a <name>.md full-text sibling (D26); 
 timeline.md                  rendered global timeline
 briefings/                   briefings, leads, alerts, research memos
 requests.md                  open document requests
+verification.md              generated list of the facts a reporter has marked (D271); never hand-edited
 context.md / hot.md / log.md investigation context, session cache, run log
 index.md / dashboard.base    landing page and Obsidian Bases dashboard (D42)
 queries/ wiki/               session-written findings and threads
@@ -364,10 +367,22 @@ queries/ wiki/               session-written findings and threads
   registry/
     entities.json documents.json registry.json manifest.json
     resolutions.json requests.json batch-pending.json
+    verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
-    .processing-lock .write-lock
+    .processing-lock .write-lock .verification-lock
 ```
+
+**Passages and the verification ledger (D270, D271).** Each fact in `.watchdog/extracted/<sha>.json`
+carries `passage`, `passage_page`, `passage_method` and `passage_score`, and the document records
+`passages_version`; they are stamped in post-flight, so they reach the vault only through the
+finalize commit (I7). Documents committed earlier have none and are not backfilled. Facts have no
+stored id: `pipeline/verification.py` derives one from the document's SHA-256, the fact's page and
+its normalized text. `registry/verification.json` (`schema_version`) holds the marks, each with a
+snapshot of the fact it was made on and a history; it has its own lock, `.verification-lock`, so a
+mark never waits on a commit pass, and every write regenerates `verification.md` (`format_version`)
+at the vault root. The ledger never changes a fact, and the app writes it through `verification.mark`,
+the function `watchdog verify-fact` calls (I10).
 
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
 through `vault_paths.py` helpers; the same migration renames an older vault's `.chew-lock`,
@@ -529,7 +544,7 @@ noted as such.
   (identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, and the model
   is not asked to restate as prose what it emitted structurally. Exception: `document.summary`, a
   bounded digest grounded in `key_facts` — a prompt instruction, not a checked postcondition.
-  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170.*
+  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270.*
 - **I2 — Local-first preprocessing.** Source documents never leave the machine during chew, and
   chew costs no API tokens. This bounds source-document egress; web research is allowed (§14).
   *History: D1, D45.*
@@ -562,7 +577,7 @@ noted as such.
 - **I10 — The app adds no pipeline behaviour.** Every vault mutation the desktop app makes runs the
   CLI command that makes it in the terminal, or the library function that command calls; the app
   keeps the CLI's gates (the public-records acknowledgement, confirmations before irreversible
-  operations). *History: D265.*
+  operations). *History: D265, D271.*
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes

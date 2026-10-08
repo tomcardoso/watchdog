@@ -45,6 +45,10 @@ Every fact the model records is either something the document **states** outrigh
 
 The document's full text is never sent anywhere at this stage beyond the one cloud AI call reading it — see [what stays on your machine](#what-stays-on-your-machine-and-what-doesnt) below for the exact boundary.
 
+### How a passage is found
+
+The model usually records only a page number for a fact, and a quoted phrase just when the exact wording matters. So that you can see the evidence beside the claim, Watchdog then looks for the sentence on that page that best supports each fact. This is ordinary code with no AI model: it breaks the page into sentences, picks out the fact's figures, dates and distinctive words, gives the rarer ones more weight, and keeps the sentence (or pair of sentences) that shares the most of them. If the model's quotation was confirmed in the source, that quotation is used instead. When nothing on the page is close enough, the app says "No matching passage found" rather than guess. That means the fact may rest on several passages, on reasoning, or on a wrong page citation; read the page. A matched passage is a pointer to where to look, not a confirmation that the fact is right. See [Checking facts](investigating.md#checking-facts).
+
 ## Post-processing: cross-checking and writing up
 
 Reading one document at a time only gets you so far — the real value of an investigation is in what connects across documents. That happens at post-processing, after every document in the batch has been read.
