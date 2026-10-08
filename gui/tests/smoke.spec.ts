@@ -70,3 +70,62 @@ test('every screen renders against the demo investigation', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+// The engine's background phase (D272): the app opens on the light phase-1 environment, shows the
+// setup bar in the sidebar, and adding documents waits, in the interface and in the backend.
+// WATCHDOG_PHASE1_PYTHON may name an environment holding only phase 1's libraries
+// (`node scripts/engine-cli.mjs --core-only` builds one); otherwise WATCHDOG_PYTHON is used. The
+// engine itself is simulated with a slow phase 2, so the gate stays closed while the test looks.
+test('adding documents waits for the background setup', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
+  const home = join(root, 'home')
+  const phase1 = process.env.WATCHDOG_PHASE1_PYTHON ?? python
+  try {
+    execFileSync(phase1, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], {
+      env: { ...process.env, PYTHONPATH: repoSrc },
+      stdio: 'inherit'
+    })
+    const projects = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))
+    const slug = Object.keys(projects)[0]
+    const app = await electron.launch({
+      args: [resolve(__dirname, '..'), '--no-sandbox'],
+      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: phase1, WATCHDOG_SRC: repoSrc, WATCHDOG_ENGINE_SIMULATE: 'resume,slow-phase2' }
+    })
+    const page = await app.firstWindow()
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.waitForSelector('.app', { timeout: 90_000 })
+    await page.evaluate(async (s) => {
+      const w = window as any
+      w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
+    }, slug)
+    await expect(page.locator('.setup-foot')).toContainText('Finishing setup', { timeout: 20_000 })
+    await expect(page.locator('.topbar button', { hasText: 'Add documents' })).toBeDisabled()
+
+    const refused = await page.evaluate(async (s) => {
+      const w = window as any
+      const p = await w.watchdog.rpc('projects.get', { slug: s })
+      try {
+        await w.watchdog.rpc('jobs.start', { vault: p.path, args: ['add', '--skip-warning'], label: 'x' })
+        return 'started'
+      } catch (e) {
+        return String((e as Error).message ?? e)
+      }
+    }, slug)
+    // The bridge carries the message (an error's own fields do not cross into the page).
+    expect(refused).toContain('still setting up')
+
+    const routes = [{ view: 'home' }, { view: 'documents' }, { view: 'search', query: 'contract' }, { view: 'activity', tab: 'maintenance' }, { view: 'settings', tab: 'setup' }]
+    for (const route of routes) {
+      await page.evaluate((r) => (window as any).__watchdogApp.getState().navigate(r), route)
+      await page.waitForTimeout(1200)
+      const failure = await page.locator('.callout.danger').first().textContent({ timeout: 500 }).catch(() => null)
+      expect(failure, `${route.view} shows an error`).toBeNull()
+    }
+    await expect(page.locator('.card-title', { hasText: 'Finishing setup' })).toBeVisible()
+    expect(errors, 'renderer errors').toEqual([])
+    await app.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
