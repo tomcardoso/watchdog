@@ -75,7 +75,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
         ? `Remove the lock on ${vaultName} even if it is recent?`
         : `Remove the stale lock on ${vaultName}?`,
       detail: force
-        ? 'A lock is only safe to remove once you are sure nothing is still running. If a chew or ingest is still working on this investigation, removing its lock lets a second run start and the two can overwrite each other.'
+        ? 'A lock is only safe to remove once you are sure nothing is still running. If pre-processing or processing is still working on this investigation, removing its lock lets a second run start and the two can overwrite each other.'
         : 'Do this only if an earlier run was interrupted. A lock under 30 minutes old is left in place unless you force it, because the run that holds it may still be working.',
       confirm: force ? 'Force remove' : 'Remove lock',
       destructive: force
@@ -119,7 +119,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
             <div className="pipe-group wide">
               <div className="pipe-group-head"><Lock style={{ color: 'var(--warning)' }} />Lock present</div>
               <p>
-                {p.locks.chew && p.locks.ingest ? 'A chew lock and an ingest lock are present.' : p.locks.chew ? 'A chew lock is present.' : 'An ingest lock is present.'}{' '}
+                {p.locks.chew && p.locks.ingest ? 'A pre-processing lock and a processing lock are present.' : p.locks.chew ? 'A pre-processing lock is present.' : 'A processing lock is present.'}{' '}
                 While a lock exists, Watchdog refuses to start another run on this investigation. If a run is still going, wait for it. If one was interrupted, the lock is left behind and can be removed. A lock under 30 minutes old is kept unless you force it.
               </p>
               <div className="pipe-actions">
@@ -141,7 +141,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
           {waiting.length > 0 && (
             <div className="pipe-group">
               <div className="pipe-group-head"><Hourglass style={{ color: 'var(--text-2)' }} />Read, awaiting extraction <span className="n">{waiting.length}</span></div>
-              <p>Chewed locally into text and queued. The model hasn't extracted facts from them yet.</p>
+              <p>Converted to text on this computer and queued. The model hasn't extracted facts from them yet.</p>
               <FileList rows={waiting.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />
               <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Extract them</Button></div>
             </div>
@@ -177,7 +177,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
             <div className="pipe-group">
               <div className="pipe-group-head"><FileWarning style={{ color: 'var(--warning)' }} />Couldn't be read <span className="n">{p.chew_failed.length}</span></div>
               <p>
-                These landed in incoming/failed when chewing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into incoming.
+                These landed in incoming/failed when pre-processing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into incoming.
               </p>
               <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: fmtBytes(f.size) }))} />
             </div>
@@ -187,7 +187,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
             <div className="pipe-group">
               <div className="pipe-group-head"><Copy style={{ color: 'var(--text-2)' }} />Set aside <span className="n">{p.skipped.length}</span></div>
               <p>
-                Neither is an error. A file byte-identical to one already ingested is set aside rather than processed twice. A file with no readable text, even after OCR, is set aside too. Open the original to check a very poor scan.
+                Neither is an error. A file byte-identical to one already added is set aside rather than processed twice. A file with no readable text, even after OCR, is set aside too. Open the original to check a very poor scan.
               </p>
               <FileList rows={p.skipped.map((f) => ({ key: f.path, name: f.name, why: f.reason ?? undefined }))} />
             </div>

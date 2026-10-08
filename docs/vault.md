@@ -18,7 +18,7 @@ my-investigation/
 │   ├── failed/             ← files that could not be processed
 │   └── skipped/            ← exact duplicates and empty-text files, set aside
 ├── context/                ← background material (prior stories, notes)
-├── morgue/                 ← original files after ingest, each beside its full extracted text
+├── morgue/                 ← original files after processing, each beside its full extracted text
 ├── .watchdog/              ← internal state: processing queue, staging area,
 │                             registries — do not edit
 ├── entities/
@@ -28,39 +28,39 @@ my-investigation/
 │   ├── place/              ← addresses, properties, locations
 │   ├── asset/              ← vehicles, accounts, domains, shares
 │   └── proceeding/         ← lawsuits, insolvencies, inquiries
-├── documents/              ← one note per ingested document
-├── briefings/              ← post-ingest briefings, leads, and watch-word alerts
+├── documents/              ← one note per added document
+├── briefings/              ← briefings, leads, and watch-word alerts
 ├── wiki/                   ← investigation thread pages (matured angles)
 ├── queries/                ← saved answers to questions you have asked
 ├── .fulltext/              ← full-text search index
 ├── .embeddings/            ← semantic search index
-├── hot.md                  ← current session state, rewritten after every ingest
-├── log.md                  ← append-only ingest history
+├── hot.md                  ← current session state, rewritten after every run
+├── log.md                  ← append-only processing history
 ├── timeline.md             ← chronological event log across the investigation
 ├── context.md              ← your investigation intent and key questions
 ├── watchlist.md            ← terms to watch for in new documents (one per line)
-├── requests.md             ← documents to go and get, regenerated after every ingest
+├── requests.md             ← documents to go and get, regenerated after every run
 ├── index.md                ← landing page linking to the dashboard
 └── dashboard.base          ← dashboard of live tables (Obsidian Bases)
 ```
 
 ## Folder by folder
 
-**`incoming/`** is where documents wait to be read. When you choose **Add documents**, the app copies your files here (the originals stay where they were) and reads them. You can also drop files into this folder yourself and read them from **Activity → Maintenance** (the Chew card), or switch on **Watch incoming for new files** there to have them read as they arrive. See [Getting started](getting-started.md) for the workflow. Two subfolders catch problems: `failed/` holds files that could not be processed (password-protected, corrupted, or an unsupported format), and `skipped/` holds exact duplicates of documents already ingested, plus files in which no text could be found. [Troubleshooting](troubleshooting.md) covers what to do with each.
+**`incoming/`** is where documents wait to be read. When you choose **Add documents**, the app copies your files here (the originals stay where they were) and reads them. You can also drop files into this folder yourself and read them from **Activity → Maintenance** (the Pre-processing card), or switch on **Watch incoming for new files** there to have them read as they arrive. See [Getting started](getting-started.md) for the workflow. Two subfolders catch problems: `failed/` holds files that could not be processed (password-protected, corrupted, or an unsupported format), and `skipped/` holds exact duplicates of documents already added, plus files in which no text could be found. [Troubleshooting](troubleshooting.md) covers what to do with each.
 
-**`context/`** holds background material — prior published stories, your notes, screenshots. Files here are not ingested as records; they feed the context interview that writes `context.md`, described in [Getting started](getting-started.md).
+**`context/`** holds background material — prior published stories, your notes, screenshots. Files here are not added as records; they feed the context interview that writes `context.md`, described in [Getting started](getting-started.md).
 
 Vaults created by earlier versions of Watchdog called these folders `_INCOMING/` and `_CONTEXT/`. They are renamed automatically, with nothing deleted, the first time the vault is opened. If you kept scripts or Obsidian plugins that point at the old names, update them.
 
-**`morgue/`** is where original files land after a successful ingest, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Watchdog's Search screen or from any program that searches files. Nothing is ever discarded: the file you dropped in is the file in the morgue.
+**`morgue/`** is where original files land after a successful run, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Watchdog's Search screen or from any program that searches files. Nothing is ever discarded: the file you dropped in is the file in the morgue.
 
 **`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, and the registries that record every entity, document, and relationship. Do not edit anything in here by hand.
 
 **`entities/`** holds one note per extracted entity, filed by type. Watchdog sorts every entity into one of six fixed classes: **person** (people), **organization** (companies, banks, unions, funds, non-profits), **public-body** (governments, regulators, courts, agencies), **place** (addresses, properties, locations), **asset** (vehicles, accounts, domains, shares), and **proceeding** (lawsuits, insolvencies, inquiries). Fixing the list to these six keeps the same real-world entity from being split across near-duplicate folders when the model describes it differently in two documents. These notes are the heart of the vault; their structure is described [below](#entity-notes).
 
-**`documents/`** holds one note per ingested document: what it is, what was extracted from it, and a link to the original in the morgue.
+**`documents/`** holds one note per added document: what it is, what was extracted from it, and a link to the original in the morgue.
 
-**`briefings/`** collects the reports Watchdog writes after each ingest: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. [Investigating](investigating.md) explains how to work with each.
+**`briefings/`** collects the reports Watchdog writes after each run: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. [Investigating](investigating.md) explains how to work with each.
 
 **`wiki/`** holds investigation thread pages — angles that have matured beyond a single question, created in **Ask Claude** with `/watchdog-wiki`.
 
@@ -70,18 +70,18 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 ### The root files
 
-- **`hot.md`** — a current-state summary of the investigation, rewritten after every ingest. Claude reads it at the start of each session to orient itself without re-reading the vault.
-- **`log.md`** — an append-only, human-readable record of every ingest session.
+- **`hot.md`** — a current-state summary of the investigation, rewritten after every run. Claude reads it at the start of each session to orient itself without re-reading the vault.
+- **`log.md`** — an append-only, human-readable record of every run.
 - **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view.
 - **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**.
 - **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. Edit it on the **Watch list** tab of Review; the format and the scan are covered in [Investigating](investigating.md#the-watch-list).
-- **`requests.md`** — documents named in what you have already ingested that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every ingest and covered in [Investigating](investigating.md#document-requests).
+- **`requests.md`** — documents named in what you have already added that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every run and covered in [Investigating](investigating.md#document-requests).
 - **`index.md`** — a thin landing page that links to the dashboard.
 - **`dashboard.base`** — the dashboard itself, described next.
 
 ## The dashboard
 
-`dashboard.base` is a dashboard of live tables: most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicate documents. The tables refresh as you ingest.
+`dashboard.base` is a dashboard of live tables: most-mentioned entities, recent documents, people, companies, single-source entities to review, and possible duplicate documents. The tables refresh as you add documents.
 
 The dashboard is for people who open the vault in Obsidian. It uses [Obsidian Bases](https://help.obsidian.md/bases), a core Obsidian feature in version 1.9 and up, so there is nothing to install — no community plugin, no restricted mode to clear. Click a column header to sort (by **Documents**, say, to surface the most-mentioned entities); click a row to open the note. If you work only in the Watchdog app, you do not need it: the Overview, Entities and Review screens show the same things.
 
@@ -91,11 +91,11 @@ Two tables deserve attention. **Possible duplicate documents** lists documents t
 
 Every entity note follows the same five-section anatomy:
 
-- **`## Summary`** — a synthesized overview of who this entity is and why they matter; replaced on each ingest.
+- **`## Summary`** — a synthesized overview of who this entity is and why they matter; replaced on each run.
 - **`## Analysis`** — investigative claims about the entity, each dated, page-linked, and with an optional verbatim quote. Claims accumulate as a list for single-document entities and are synthesized into prose once the entity appears in two or more documents.
 - **`## Timeline`** — datable events involving this entity, in order, linked to source pages.
 - **`## Relationships`** — connections to other entities, with source citations.
-- **`## Notes`** — yours. Watchdog never writes to this section, so annotations here survive every ingest.
+- **`## Notes`** — yours. Watchdog never writes to this section, so annotations here survive every run.
 
 Every source citation is a direct page link into the original file in the morgue — `[[morgue/.../file.pdf#page=3|p. 3]]` — so you can jump from any fact straight to the page it came from.
 
@@ -146,13 +146,13 @@ Most formats above carry metadata about themselves, separate from anything writt
 
 Two of those fields repay a second look. A company name shared across documents that are supposedly unrelated points to a shared template, and therefore a shared drafter — the same kind of thread as two companies sharing a registered agent. And a long, weighty report with only a few minutes of editing time was assembled from something else, not written.
 
-Treat this metadata as a lead, not a fact. It is trivially easy to forge, and often says nothing about who actually authored a document: a scanner's software name is not the scan's author, and a template's creation date is inherited by every document built from it. Watchdog does one thing with it automatically — if a document's embedded creation date falls a year or more after the date the document itself claims to be from, and the document was not OCR'd, Watchdog flags the mismatch as a warning during ingest. A "2019 agreement" whose file was created in 2023 is worth asking about.
+Treat this metadata as a lead, not a fact. It is trivially easy to forge, and often says nothing about who actually authored a document: a scanner's software name is not the scan's author, and a template's creation date is inherited by every document built from it. Watchdog does one thing with it automatically — if a document's embedded creation date falls a year or more after the date the document itself claims to be from, and the document was not OCR'd, Watchdog flags the mismatch as a warning during processing. A "2019 agreement" whose file was created in 2023 is worth asking about.
 
 
 
 ### Sidecar files
 
-A `.yml` file with the same base name as a document is a **sidecar** — metadata attached to the file beside it, never ingested as a document itself:
+A `.yml` file with the same base name as a document is a **sidecar** — metadata attached to the file beside it, never added as a document itself:
 
 ```
 shell-co-annual-report-2023.pdf
@@ -167,9 +167,9 @@ obtained: 2026-06-05
 notes: Check the director change on page 12.
 ```
 
-Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through ingest. Watchdog also writes sidecars of its own: files downloaded with **Fetch Links** and by web research arrive in `incoming/` with a provenance sidecar already attached.
+Any other field is dropped — a sidecar isn't a place to invent your own metadata schema. This context is merged into the document record and preserved through processing. Watchdog also writes sidecars of its own: files downloaded with **Fetch Links** and by web research arrive in `incoming/` with a provenance sidecar already attached.
 
-Edit a sidecar before the document is read (before you choose **Add documents**, or before running Chew in Maintenance): the sidecar is read once during that step, and the file is gone afterward, so a later edit has no effect. Add the document again if you need to change one.
+Edit a sidecar before the document is read (before you choose **Add documents**, or before running pre-processing in Maintenance): the sidecar is read once during that step, and the file is gone afterward, so a later edit has no effect. Add the document again if you need to change one.
 
 A sidecar can also pin that one document's record skill:
 

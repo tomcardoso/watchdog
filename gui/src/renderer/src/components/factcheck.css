@@ -1,0 +1,175 @@
+/* The reporter's check of a fact (FactCheck.tsx). Colours come from tokens.css only. */
+
+.fcheck {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fcheck-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.fcheck-btns {
+  display: inline-flex;
+  gap: 4px;
+}
+.fcheck-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  background: transparent;
+  transition: all var(--dur);
+}
+.fcheck-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.fcheck-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--hover);
+}
+.fcheck-btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+.fcheck-btn.on.is-verified {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+}
+.fcheck-btn.on.is-disputed {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+}
+.fcheck-btn.on.is-unverifiable {
+  color: var(--warning);
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border));
+}
+.fcheck-who {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fcheck-note-btn {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fcheck-note-btn svg {
+  width: 12px;
+  height: 12px;
+}
+.fcheck-note-btn:hover {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.fcheck-note-btn:focus-visible {
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+.fcheck-textarea {
+  min-height: 52px;
+  font-size: var(--fs-sm);
+  user-select: text;
+}
+.fcheck-note {
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+  color: var(--text-2);
+  padding-left: 10px;
+  border-left: 2px solid var(--border-strong);
+  white-space: pre-wrap;
+}
+.fcheck-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 620;
+}
+.fcheck-badge svg {
+  width: 12px;
+  height: 12px;
+}
+.fcheck-badge.is-verified {
+  color: var(--success);
+}
+.fcheck-badge.is-disputed {
+  color: var(--danger);
+}
+.fcheck-badge.is-unverifiable {
+  color: var(--warning);
+}
+.fcheck-badge .fcheck-who {
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+/* A matched passage (D270) is evidence the app found, not a quote the model pointed to: quieter
+   than a quote, and labelled. */
+.fact-passage {
+  margin: 0;
+  padding: 6px 12px;
+  border-left: 3px dashed var(--border-strong);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-family: var(--font-read);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-2);
+  user-select: text;
+}
+.fact-passage-label {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+.fact-unlocated {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.fact-unlocated svg {
+  width: 12px;
+  height: 12px;
+}
+.fact[data-fact-id]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+.fact.is-marked-verified {
+  border-left: 3px solid var(--success);
+}
+.fact.is-marked-disputed {
+  border-left: 3px solid var(--danger);
+}
+.fact.is-marked-unverifiable {
+  border-left: 3px solid var(--warning);
+}
+.facts-bar .segmented {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+.facts-bar .segmented button {
+  white-space: nowrap;
+}

@@ -121,7 +121,7 @@ def test_concurrent_lock_writers_in_one_process_never_collide(tmp_path):
     """The heartbeat thread and `dig --wait`'s main thread both rewrite the lock (D258)."""
     import threading
     from watchdog.pipeline.locks import refresh_lock
-    lock = tmp_path / ".ingest-lock"
+    lock = tmp_path / ".processing-lock"
     lock.write_text("pid: cli\nstarted_at: 2026-01-01T00:00:00Z\n")
     errors = []
 

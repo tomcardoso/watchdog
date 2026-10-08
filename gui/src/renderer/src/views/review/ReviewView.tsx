@@ -16,6 +16,7 @@ import {
   RefreshCw,
   Save,
   ScanSearch,
+  ShieldCheck,
   Swords,
   Undo2,
   Zap
@@ -29,9 +30,11 @@ import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
+import { VerificationTab } from './VerificationTab'
+import '../documents/documents.css'
 import './review.css'
 
-type Tab = ReviewKind | 'handled' | 'watchlist' | 'requests'
+type Tab = ReviewKind | 'handled' | 'watchlist' | 'requests' | 'verification'
 type QueueKind = ReviewKind | 'requests'
 
 const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: ReactNode; empty: string }> = {
@@ -39,7 +42,7 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
     label: 'Contradictions',
     icon: Swords,
     blurb: 'Two documents, or two places in one, that say different things about the same entity. Open the note to read both claims side by side. Handle it once you have decided which source to trust or have noted the conflict.',
-    empty: 'No open contradictions. New ones appear here when an ingest finds documents that disagree.'
+    empty: 'No open contradictions. New ones appear here when processing finds documents that disagree.'
   },
   leads: {
     label: 'Leads',
@@ -51,7 +54,7 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
     label: 'Watch-list hits',
     icon: Bell,
     blurb: 'Documents where a term from your watch list appeared. Each hit names the document, the page and the surrounding words.',
-    empty: 'No open watch-list hits. Add terms on the Watch list tab; every new ingest is scanned for them.'
+    empty: 'No open watch-list hits. Add terms on the Watch list tab; every batch of new documents is scanned for them.'
   },
   duplicates: {
     label: 'Possible duplicates',
@@ -184,12 +187,15 @@ export default function ReviewView() {
             { value: 'alerts', label: 'Watch-list hits', icon: Bell, count: counts.alerts },
             { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
             { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests },
+            { value: 'verification', label: 'Verification', icon: ShieldCheck },
             { value: 'handled', label: 'Handled', icon: CheckCheck },
             { value: 'watchlist', label: 'Watch list', icon: ScanSearch }
           ]}
         />
 
-        {tab === 'handled' ? (
+        {tab === 'verification' ? (
+          <VerificationTab />
+        ) : tab === 'handled' ? (
           <HandledTab vault={vault} />
         ) : tab === 'watchlist' ? (
           <WatchlistTab vault={vault} />
@@ -292,7 +298,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
   const openItem = (it: QItem | undefined) => {
     if (!it) return
     if (it.note) void openLink(stripMd(it.note))
-    else if (it.kind === 'leads' && !it.request) toast({ kind: 'info', title: 'No note to open', body: 'This entity has no page yet. Ask Claude about it, or run an ingest to profile it.' })
+    else if (it.kind === 'leads' && !it.request) toast({ kind: 'info', title: 'No note to open', body: 'This entity has no page yet. Ask Claude about it, or add more documents to profile it.' })
   }
 
   useEffect(() => {
@@ -746,7 +752,7 @@ function WatchlistTab({ vault }: { vault: string }) {
       await call('vault.writeFile', { vault, path: 'watchlist.md', text: value })
       setText(null)
       await q.refetch()
-      toast({ kind: 'success', title: 'Watch list saved', body: `${plural(terms.length, 'term')}. New ingests are scanned for them automatically.` })
+      toast({ kind: 'success', title: 'Watch list saved', body: `${plural(terms.length, 'term')}. New documents are scanned for them automatically.` })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not save', body: errorMessage(e) })
     } finally {
@@ -789,7 +795,7 @@ function WatchlistTab({ vault }: { vault: string }) {
             </Button>
           </div>
           <Callout tone="info" title="Check every document now" action={<Button icon={Zap} loading={running} disabled={!terms.length} onClick={() => void sweep()}>Check every document now</Button>}>
-            The scan at the end of each ingest only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Hits go to Watch-list hits.
+            The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Hits go to Watch-list hits.
           </Callout>
         </>
       )}

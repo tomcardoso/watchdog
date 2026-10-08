@@ -516,8 +516,8 @@ function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions:
         <h4>Speed and behaviour</h4>
         <div className="add-grid">
           {num('concurrency', 'Documents at once', 'Extracted in parallel.')}
-          {num('chew_workers', 'Reading: files at once', 'Parallel file workers while reading.')}
-          {num('chunk_workers', 'Reading: parts at once', 'Parallel workers within one file.')}
+          {num('chew_workers', 'Pre-processing: files at once', 'Parallel file workers while pre-processing.')}
+          {num('chunk_workers', 'Pre-processing: parts at once', 'Parallel workers within one file.')}
         </div>
         <div className="col" style={{ marginTop: 10 }}>
           <label className="row add-switch">

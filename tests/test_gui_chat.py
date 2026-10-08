@@ -166,7 +166,8 @@ def test_permission_round_trip(env):
         return await client.options.can_use_tool("Bash", {"command": "ls"}, ToolPermissionContext(title="Run ls?"))
 
     async def ask_again(client):
-        return await client.options.can_use_tool("Bash", {"command": "pwd"}, ToolPermissionContext())
+        # The same command again: "always" covers that exact command only (D274).
+        return await client.options.can_use_tool("Bash", {"command": "ls"}, ToolPermissionContext())
 
     FakeClient.scripts = [[ask_tool, ask_again, _result()]]
     sid = api.start(str(vault), "ask", prompt="x")["session"]

@@ -17,6 +17,7 @@ from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
 from watchdog.terminal import (  # noqa: F401 — re-exported
     _COLOR, _color_enabled, _BOLD, _DIM, _CYAN, _YELLOW, _GREEN, _RESET,
 )
+from watchdog.vault_paths import preprocessing_lock, processing_lock
 
 WATCHDOG_HOME = Path.home() / ".watchdog"
 PROJECTS_FILE = WATCHDOG_HOME / "projects.json"
@@ -732,8 +733,8 @@ def _launch_claude(vault: Path, prompt: str | None = None, model: str | None = N
 
 
 def _check_vault_locks(vault: Path, slug: str) -> None:
-    chew_lock   = vault / ".watchdog" / ".chew-lock"
-    ingest_lock = vault / ".watchdog" / "registry" / ".ingest-lock"
+    chew_lock   = preprocessing_lock(vault)
+    ingest_lock = processing_lock(vault)
     if chew_lock.exists():
         sys.exit(f"Error: chew is in progress. Wait for it to finish or run: watchdog unlock {slug}")
     if ingest_lock.exists():

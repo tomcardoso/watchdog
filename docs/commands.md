@@ -6,6 +6,8 @@ The command line that the app was built on still works. The app runs these same 
 
 Typed at a terminal, Watchdog prints a one-line notice pointing to the app. The notice does not appear when the app, a script or a Claude Code session runs a command, and setting the `WATCHDOG_NO_RETIREMENT_NOTICE` environment variable switches it off.
 
+The commands keep the names they were built with: `chew`, `dig` and `bark`. The app calls the same three stages pre-processing, processing and post-processing, and the rest of this guide uses those names.
+
 The rest of this page is the reference as it stood, kept for those who still need it. It lists every command, what it does, and every option it takes. Every command here runs in your terminal, except the slash commands at the end, which run inside a Claude Code session. Add `--help` after any command (for example `watchdog dig --help`) to see its usage in the terminal.
 
 ## Colour output

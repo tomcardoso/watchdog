@@ -27,6 +27,7 @@ from watchdog.cmd.base import (
     load_projects,
 )
 from watchdog.pipeline.json_io import _read_json_or
+from watchdog.vault_paths import processing_lock, processing_state
 
 # Sentinel for `--skill` with no value: trigger the interactive record-skill picker.
 _PICK_SKILL = "\x00pick"
@@ -1095,8 +1096,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     run_skip_finalize = no_finalize or force
 
     def _release_lock() -> None:
-        (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
-        (vault / ".watchdog" / "ingest-state.json").unlink(missing_ok=True)
+        (processing_lock(vault)).unlink(missing_ok=True)
+        (processing_state(vault)).unlink(missing_ok=True)
 
     if confirm:
         auto = _auto_approve_on(config)
@@ -1151,7 +1152,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
               f"row is normal, not a stall.{_RESET}")
         print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = processing_lock(vault)
     from watchdog.pipeline.locks import heartbeat
     try:
         summary = None
@@ -1406,8 +1407,8 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     from watchdog.pipeline import orchestrate
     from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat, lock_started_at
     from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
-    lock = vault / ".watchdog" / "registry" / ".ingest-lock"
-    # Atomic acquisition (#257): the shared .ingest-lock means a running ingest or a second
+    lock = processing_lock(vault)
+    # Atomic acquisition (#257): the shared .processing-lock means a running ingest or a second
     # finalize is excluded without a check-then-write race; a >30-min stale lock is taken over.
     if not acquire_or_take_stale(lock, f"pid: cli-finalize\nstarted_at: {_iso_now()}\n", STALE_SECONDS):
         ts = lock_started_at(lock)

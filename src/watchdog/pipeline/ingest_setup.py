@@ -4,7 +4,7 @@ watchdog ingest — setup step for the Python ingest orchestrator (`pipeline/orc
 Called from `cmd/ingest.py` before extraction runs. Handles:
   1. Stale lock detection (>30 min) and re-acquisition
   2. Queue directory scan
-  3. Writes .watchdog/ingest-state.json (present for the run's duration; a stale one
+  3. Writes .watchdog/processing-state.json (present for the run's duration; a stale one
      signals an interrupted ingest to resume with `watchdog dig`)
 
 Human workflow:
@@ -21,6 +21,7 @@ from watchdog import defaults
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
+from watchdog.vault_paths import processing_lock, processing_state
 from watchdog.pipeline.section import (
     section_token_threshold as _section_token_threshold,
     est_tokens_from_pages as _est_tokens_from_pages,
@@ -356,8 +357,8 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
     (so two concurrent `watchdog ingest` invocations can't both try to collect the same
     batch) even when there's nothing new to chew.
     """
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
-    state_file = vault / ".watchdog" / "ingest-state.json"
+    lock_file = processing_lock(vault)
+    state_file = processing_state(vault)
 
     queue_files = scan_queue(vault)
     total = len(queue_files)
@@ -376,7 +377,7 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
 
     if total == 0 and not force_lock:
         # Nothing new to ingest. Don't acquire a lock — but if a live ingest holds one, say so
-        # rather than silently clearing its ingest-state.json.
+        # rather than silently clearing its processing-state.json.
         err = _live_lock_error()
         if err is not None:
             return err

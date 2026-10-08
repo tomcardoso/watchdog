@@ -18,7 +18,7 @@ type Layout = 'grid' | 'list'
 type SortKey = 'ingested' | 'docdate' | 'title' | 'pages' | 'entities'
 
 const SORTS: { value: SortKey; label: string; dir: 1 | -1 }[] = [
-  { value: 'ingested', label: 'Date ingested', dir: -1 },
+  { value: 'ingested', label: 'Date added', dir: -1 },
   { value: 'docdate', label: 'Document date', dir: -1 },
   { value: 'title', label: 'Title', dir: 1 },
   { value: 'pages', label: 'Pages', dir: -1 },
@@ -378,7 +378,7 @@ export default function DocumentsView() {
                   {sortHeader('docdate', 'Document date')}
                   {sortHeader('pages', 'Pages', true)}
                   {sortHeader('entities', 'Entities', true)}
-                  {sortHeader('ingested', 'Ingested')}
+                  {sortHeader('ingested', 'Added')}
                 </div>
                 {virtual ? (
                   <div ref={listRef} style={{ position: 'relative', height: virt.getTotalSize() }}>

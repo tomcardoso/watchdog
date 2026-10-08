@@ -233,7 +233,7 @@ export default function JobsPanel({ selected, onSelect }: { selected?: string; o
   if (!jobs.length)
     return (
       <Empty icon={Terminal} title="Nothing has run yet">
-        Chewing, extracting and the other long tasks appear here while they run, with their full output. Add documents to start one.
+        Pre-processing, processing and the other long tasks appear here while they run, with their full output. Add documents to start one.
       </Empty>
     )
   return (

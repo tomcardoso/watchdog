@@ -1,27 +1,27 @@
-<!-- watchdog:begin — `watchdog settings refresh-skills` rewrites everything down to the end marker. Put your own notes below it. -->
+<!-- watchdog:begin — Watchdog rewrites everything down to the end marker when it updates this investigation's Claude setup. Put your own notes below it. -->
 # {name} — Watchdog
 
-At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about. If the user asks about documents that haven't appeared yet, `watchdog status` in their terminal shows anything still waiting to be chewed, extracted (`watchdog dig`) or finalized (`watchdog bark`).
+At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about. This session runs inside the Watchdog desktop app. If the user asks about documents that haven't appeared yet, they may still be waiting for pre-processing (converting the files on this computer), processing (extracting facts with a model) or post-processing (merging entities and writing the briefing); the Documents screen and Activity in the app show what is waiting.
 
-The vault is written by Watchdog's pipeline, which runs in the terminal — not by this session. Entity notes, document notes, the registry, and `timeline.md` are pipeline-owned: read them freely, but change them only through the `watchdog` commands below, never by editing the files or the registry by hand.
+The vault is written by Watchdog's pipeline, which the journalist runs from the app — not by this session. Entity notes, document notes, the registry, and `timeline.md` are pipeline-owned: read them freely, but change them only through the `watchdog` commands below, never by editing the files or the registry by hand.
 
 ## Vault layout
 
 | Path | Purpose |
 |------|---------|
-| `incoming/` | Drop zone — drag files here, then run `watchdog chew` in your terminal |
+| `incoming/` | Drop zone — files here wait until the journalist adds them in the app |
 | `incoming/failed/`, `incoming/skipped/` | Files that couldn't be processed, or exact duplicates of something already in the vault |
 | `context/` | Background material (prior stories, notes) — `/watchdog-context` reads it to seed `context.md` |
 | `entities/` | One note per real-world entity, filed by type (person, organization, public-body, place, asset, proceeding) |
-| `documents/` | One note per ingested document |
-| `morgue/` | Original files after ingest, each beside a markdown copy of its full text |
-| `briefings/` | Post-ingest briefings, plus leads and watch-list alert reports |
+| `documents/` | One note per added document |
+| `morgue/` | Original files once processed, each beside a markdown copy of its full text |
+| `briefings/` | A briefing after each batch of documents is processed, plus leads and watch-list alert reports |
 | `timeline.md` | Chronology across every document |
 | `requests.md` | Documents worth going to get, as cited by the vault's own documents |
 | `wiki/` | Investigation thread pages — matured angles that deepen over time |
 | `queries/` | Saved answers to questions — substantive findings filed here so explorations compound |
-| `hot.md` | Session-to-session context cache — updated after every ingest |
-| `log.md` | Ingest history |
+| `hot.md` | Session-to-session context cache — updated after every processing run |
+| `log.md` | Processing history |
 | `context.md` | Investigation intent and key questions — read this before every skill |
 | `.watchdog/` | Pipeline state and indexes — read `.watchdog/registry/manifest.json` for entity lookups; never edit |
 
@@ -41,7 +41,7 @@ These are allowed in `.claude/settings.json`, so they run without asking:
 | `watchdog watchlist-add "<term>" …` | auto-allowed (used by `/watchdog-context`) |
 | `watchdog timeline` | auto-allowed |
 
-Use the Read, Glob and Grep tools for files rather than shell pipelines, and paths relative to the vault root. Never pass `--vault` to a watchdog command — every command defaults to the current directory, and naming another path could touch a different investigation. Don't run `watchdog chew`, `dig`, `bark` or `unlock` from this session: they belong to the journalist's terminal.
+Use the Read, Glob and Grep tools for files rather than shell pipelines, and paths relative to the vault root; shell commands other than those above may be refused. Never pass `--vault` to a watchdog command — every command defaults to the current directory, and naming another path could touch a different investigation. Don't run `watchdog chew`, `dig`, `bark` or `unlock` (pre-processing, processing, post-processing, releasing a lock) from this session: the journalist runs them from the app.
 
 ## Hard rules
 
@@ -61,7 +61,7 @@ Use the Read, Glob and Grep tools for files rather than shell pipelines, and pat
 | `/watchdog-wiki <angle>` | Create or update investigation thread pages |
 | `/watchdog-entity <id>` | Re-synthesize an entity's Summary and Timeline from every document it appears in |
 | `/watchdog-health` | Check vault integrity |
-| `/watchdog-research` | Research open questions on the web (launched by `watchdog research`) |
+| `/watchdog-research` | Research open questions on the web (started from the app's Web research screen) |
 
 ## Compounding — file what you find
 

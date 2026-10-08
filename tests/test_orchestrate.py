@@ -126,14 +126,14 @@ def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
 
     asyncio.run(orchestrate.run(vault))
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "START test-doc.pdf" in log
     assert log.index("START test-doc.pdf") < log.index("OK test-doc.pdf")
 
 
 def test_call_model_logs_pruned_keys_to_ingest_log(tmp_path, monkeypatch):
     """#412/D124: when `model_client.acomplete_json` reports pruned keys and a vault is
-    passed, `_call_model` writes a WARN line to ingest.log naming them."""
+    passed, `_call_model` writes a WARN line to processing.log naming them."""
     vault = make_vault(tmp_path)
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -146,7 +146,7 @@ def test_call_model_logs_pruned_keys_to_ingest_log(tmp_path, monkeypatch):
     asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
                                         filename="doc.pdf", vault=vault))
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert ("WARN doc.pdf: pruned unexpected JSON key(s) from model output: "
            "extra_field, entities[0].roles[0].date") in log
 
@@ -298,7 +298,7 @@ def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
 
 def test_call_model_telemetry_db_failure_logged_not_raised(tmp_path, monkeypatch):
     """#611: a telemetry write failure (locked db, disk full) must not break the ingest call
-    it's observing — `_record_usage` catches it and logs a WARN to the vault's own ingest.log,
+    it's observing — `_record_usage` catches it and logs a WARN to the vault's own processing.log,
     same posture as every other side channel `_call_model`/`_record_usage` already has."""
     from watchdog import telemetry_db as telemetry_db_mod
 
@@ -319,7 +319,7 @@ def test_call_model_telemetry_db_failure_logged_not_raised(tmp_path, monkeypatch
         r = asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
                                                 vault=vault))
         assert r.parsed == {"name": "Acme"}   # the call itself still succeeded
-        log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+        log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
         assert "WARN telemetry_db write failed for task=extract" in log
     finally:
         orchestrate._end_usage_run(vault)
@@ -935,7 +935,7 @@ def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypat
     # abort cleanup: queue file moved to _failed/ (preserved, not auto-retried), failure logged
     assert not (vault / ".watchdog" / "queue" / "abc123.json").exists()
     assert (vault / ".watchdog" / "queue" / "_failed" / "abc123.json").exists()
-    assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "FAILED" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
 
 
 def test_simple_extract_repairs_empty_key_facts_on_substantive_document(tmp_path, monkeypatch):
@@ -986,7 +986,7 @@ def test_simple_extract_fails_loudly_when_repair_still_empty(tmp_path, monkeypat
     assert summary["failed"] == 1 and summary["extracted"] == 0
     assert summary["results"][0]["status"] == "failed"
     assert "key_facts is empty" in summary["results"][0]["reason"]
-    assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "FAILED" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
 
 
 def test_orchestrator_empty_queue(tmp_path):
@@ -1816,7 +1816,7 @@ def test_extract_sectioned_writes_a_checkpoint_per_section(tmp_path, monkeypatch
 
 
 def test_extract_sectioned_logs_a_section_line_before_each_model_call(tmp_path, monkeypatch):
-    """#556: ingest.log used to go straight from a section's HARVEST line to the next
+    """#556: processing.log used to go straight from a section's HARVEST line to the next
     section's, so the model call's multi-minute latency read as though the (sub-second)
     harvest caused it. A SECTION line, logged right before the call, attributes the gap to
     the call that actually owns it — one per section, each preceded by that section's own
@@ -1837,7 +1837,7 @@ def test_extract_sectioned_logs_a_section_line_before_each_model_call(tmp_path, 
         orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     assert ok, errors
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "SECTION test-doc.pdf [part 1 of 2]: extracting…" in log
     assert "SECTION test-doc.pdf [part 2 of 2]: extracting…" in log
     # each section's HARVEST line lands before that section's SECTION line, not after
@@ -2812,7 +2812,7 @@ def test_record_usage_reads_cache_read_tokens_from_deepseek_usage_shape():
 
 def test_record_usage_includes_pruned_keys_when_present():
     """#412/D124: pruned key paths ride along on the usage record so schema drift stays
-    visible in `watchdog usage`, not just ingest.log."""
+    visible in `watchdog usage`, not just processing.log."""
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
@@ -3899,7 +3899,7 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "result_old.json").write_text("{}")
     (tmp / "notes_old.md").write_text("obs")
-    lock = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock = vault / ".watchdog" / "registry" / ".processing-lock"
 
     # merge: inputs preserved so this run finalizes together with the pending batch
     ingest_setup.run(vault, wipe_pending=False)
@@ -4600,7 +4600,7 @@ def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
     skill_file.write_text("SKILL")
     asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "BATCH b1" in log
     assert "submitted 2026-07-29T02:54:46Z" in log
     assert "ended 2026-07-29T03:36:02Z (processed 41m16s)" in log
@@ -5289,7 +5289,7 @@ def test_a_failed_verification_leaves_the_document_extracted_and_intact(tmp_path
 
     assert summary["extracted"] == 1 and summary["failed"] == 0
     assert [f["fact"] for f in _staged(vault)["document"]["key_facts"]] == ["Filed in 2024"]
-    assert "verification pass failed" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "verification pass failed" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
 
 
 def test_a_rate_limit_during_verification_stops_the_run(tmp_path, monkeypatch):
@@ -5481,7 +5481,7 @@ def test_staged_extraction_without_results_still_finalizes(tmp_path, monkeypatch
         p.unlink()
     assert orchestrate.has_pending_finalization(vault)
     ingest_setup.run(vault, wipe_pending=False)
-    (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
+    (vault / ".watchdog" / "registry" / ".processing-lock").unlink(missing_ok=True)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 0 and "post_ingest" in summary
     docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())

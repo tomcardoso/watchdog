@@ -106,9 +106,26 @@ export interface Summary {
   totals: { documents: number; entities: number; pages: number; events: number }
   recent_documents: DocumentRow[]
   top_entities: EntityRow[]
+  verification: VerificationSummary
 }
 
+// The verification ledger (D271): a reporter's own check of a fact.
+export type VerifyStatus = 'verified' | 'disputed' | 'unverifiable'
+export interface FactMark { status: VerifyStatus; note: string | null; by: string | null; at: string | null }
+export interface VerificationSummary {
+  facts: number; verified: number; disputed: number; unverifiable: number; unmarked: number
+  unlocated: number; orphaned: number; read_only?: boolean
+}
+export type PassageMethod = 'quote' | 'matched' | 'unlocated'
+export interface LedgerFact {
+  id: string; fact: string; page: number | null; basis: 'stated' | 'inferred' | string
+  sha: string; filename: string; title: string
+  passage_method: PassageMethod | null; passage_page: number | null; mark: FactMark | null
+}
+export interface OrphanMark extends FactMark { id: string; fact: string; page: number | null; sha256: string | null; filename: string | null }
+
 export interface Fact {
+  id: string
   fact: string
   page: number | null
   basis: 'stated' | 'inferred' | string
@@ -118,6 +135,11 @@ export interface Fact {
   figure_note: string | null
   quote_note?: string | null
   added_by: string | null
+  passage: string | null                 // the supporting text: the resolved quote or a matched passage (D270)
+  passage_page: number | null
+  passage_method: PassageMethod | null   // null: the document predates passages
+  passage_score: number | null
+  mark: FactMark | null
 }
 
 export interface DocumentDetail extends DocumentRow {
@@ -441,6 +463,9 @@ export interface Methods {
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
   'vault.migrate': [{ vault: string }, { changes: string[] }]
+
+  'verify.mark': [{ vault: string; id: string; status: VerifyStatus | null; note?: string | null }, FactMark & { id: string }]
+  'verify.facts': [{ vault: string }, { summary: VerificationSummary; facts: LedgerFact[]; orphaned: OrphanMark[]; reporter: string }]
 
   'ingest.preflight': [{ vault: string; options?: RunOptions }, Preflight]
   'ingest.estimate': [{ vault: string; stage: 'dig' | 'bark'; all_models?: boolean; options?: RunOptions }, Estimate]

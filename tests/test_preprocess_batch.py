@@ -86,7 +86,7 @@ def test_nonexistent_path_returns_empty(tmp_path):
 
 
 def test_ingest_lock_excluded(tmp_path):
-    lock = tmp_path / ".ingest-lock"
+    lock = tmp_path / ".processing-lock"
     lock.write_bytes(b"")
     assert find_files([str(tmp_path)]) == []
 
@@ -352,12 +352,12 @@ def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
 
 def test_chew_refuses_when_a_fresh_chew_lock_exists(tmp_path):
     """Two chews on one vault (e.g. `watchdog watch` + a manual `watchdog chew`) previously both
-    ran, racing staging renames. A fresh .chew-lock now makes the second refuse."""
+    ran, racing staging renames. A fresh .preprocessing-lock now makes the second refuse."""
     import time
     vault = tmp_path / "vault"
     (vault / ".watchdog").mkdir(parents=True)
     (vault / "incoming").mkdir()
-    lock = vault / ".watchdog" / ".chew-lock"
+    lock = vault / ".watchdog" / ".preprocessing-lock"
     fresh = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     lock.write_text(f"started_at: {fresh}\npid: 999\n")
 

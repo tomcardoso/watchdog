@@ -437,7 +437,7 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
           </Button>
         }
       >
-        Search indexes are built automatically while documents are ingested. This investigation has none yet: either nothing has been through <b>Add documents</b>, or the index was removed. If documents are already here, rebuilding reads them from disk and takes no model calls.
+        Search indexes are built automatically while documents are added. This investigation has none yet: either nothing has been through <b>Add documents</b>, or the index was removed. If documents are already here, rebuilding reads them from disk and takes no model calls.
       </Empty>
     )
   }

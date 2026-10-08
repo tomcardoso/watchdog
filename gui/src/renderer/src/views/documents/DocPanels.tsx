@@ -1,107 +1,18 @@
 // The right-hand tabs of the document reader: facts, summary, entities, text, details, notes.
 
-import { AlertTriangle, Check, ChevronRight, Copy, FileText, Info, Search } from 'lucide-react'
+import { AlertTriangle, Check, ChevronRight, Copy, FileText, Search } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityChip } from '@renderer/components/EntityChip'
 import { Markdown } from '@renderer/components/Markdown'
-import { Badge, Button, Callout, Empty, Segmented } from '@renderer/components/ui'
+import { Button, Callout, Empty } from '@renderer/components/ui'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtDateTime, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate } from '@renderer/lib/rpc'
 import { navigate, useVault } from '@renderer/lib/store'
-import type { DocumentDetail, Fact } from '@shared/api'
+import type { DocumentDetail } from '@shared/api'
 import type { JumpTarget } from './PdfViewer'
 
 type Jump = (t: Omit<JumpTarget, 'nonce'>) => void
-
-// ── Facts ────────────────────────────────────────────────────────────────────
-const INFERRED_TIP = 'Reasoned from the document, not stated — verify before relying on it'
-
-function figureExplain(note: string): string {
-  if (/another page/i.test(note)) return 'The number is in the document, but not on the page this fact cites. The page link may be wrong.'
-  if (/not found/i.test(note)) return 'The number appears nowhere in the source. It was probably calculated (a total, a difference) rather than read off the page. Check the arithmetic before using it.'
-  return 'Watchdog could not confirm this figure on the page it cites. Check it against the source.'
-}
-
-function quoteSnippet(q: string): string {
-  const words = q.replace(/[“”"…]|\.\.\./g, ' ').replace(/\s+/g, ' ').trim().split(' ')
-  return words.slice(0, 7).join(' ')
-}
-
-export function FactsTab({ facts, jump, hasViewer }: { facts: Fact[]; jump: Jump; hasViewer: boolean }) {
-  const [mode, setMode] = useState<'all' | 'inferred' | 'figures'>('all')
-  const inferred = facts.filter((f) => f.basis === 'inferred').length
-  const figures = facts.filter((f) => f.figure_note || f.quote_note).length
-  const shown = facts.filter((f) => (mode === 'all' ? true : mode === 'inferred' ? f.basis === 'inferred' : !!(f.figure_note || f.quote_note)))
-  if (!facts.length) return <Empty icon={FileText} title="No facts recorded">Nothing was extracted as a discrete fact from this document. The summary and full text are still available.</Empty>
-  return (
-    <>
-      <div className="facts-bar">
-        <Segmented
-          value={mode}
-          onChange={setMode}
-          options={[
-            { value: 'all', label: `All ${facts.length}` },
-            { value: 'inferred', label: `Inferred ${inferred}` },
-            { value: 'figures', label: `Figure warnings ${figures}` }
-          ]}
-        />
-      </div>
-      {shown.length === 0 && <div className="faint" style={{ padding: '12px 2px' }}>No facts in this group.</div>}
-      {shown.map((f, i) => (
-        <article className={'fact' + (f.figure_note ? ' warn' : '')} key={i}>
-          <div className="fact-top">
-            {f.date && <span className="fact-date">{fmtDate(f.date)}</span>}
-            {f.page ? (
-              <button className="fact-page" onClick={() => jump({ page: f.page!, find: undefined })} data-tip={hasViewer ? `Show page ${f.page}` : `Page ${f.page}`}>
-                <FileText />p. {f.page}
-              </button>
-            ) : null}
-            {f.basis === 'inferred' && <Badge tone="info" icon={Info} tip={INFERRED_TIP}>inferred</Badge>}
-            {f.figure_note && <Badge tone="warning" icon={AlertTriangle} tip="A figure in this fact was not found where it was cited">check figure</Badge>}
-            {f.added_by && <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>added by {f.added_by}</span>}
-          </div>
-          <div className="fact-text selectable">{f.fact}</div>
-          {f.quote && (
-            <blockquote className="fact-quote">
-              {f.quote}
-              {f.page && hasViewer && (
-                <button className="fact-quote-find" onClick={() => jump({ page: f.page!, find: quoteSnippet(f.quote!) })}>
-                  find on page
-                </button>
-              )}
-            </blockquote>
-          )}
-          {f.figure_note && (
-            <div className="fact-warn">
-              <AlertTriangle />
-              <div>
-                <b>Figure check.</b> {figureExplain(f.figure_note)}
-                <div className="faint selectable" style={{ marginTop: 2 }}>{f.figure_note.replace(/^\(|\)$/g, '')}</div>
-              </div>
-            </div>
-          )}
-          {f.quote_note && (
-            <div className="fact-warn">
-              <AlertTriangle />
-              <div>
-                <b>Quote check.</b> The quoted wording could not be confirmed verbatim in the source. Check it against the page before quoting it.
-                <div className="faint selectable" style={{ marginTop: 2 }}>{f.quote_note.replace(/^\(|\)$/g, '')}</div>
-              </div>
-            </div>
-          )}
-          {f.entities.length > 0 && (
-            <div className="fact-ents">
-              {f.entities.map((e) => (
-                <EntityChip key={e.id} id={e.id} name={e.name} type={e.type} />
-              ))}
-            </div>
-          )}
-        </article>
-      ))}
-    </>
-  )
-}
 
 // ── Summary ──────────────────────────────────────────────────────────────────
 /** Split a note body at its `## Notes` section (the journalist's own). */
@@ -261,7 +172,7 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
             ['Pages', d.page_count ?? '—'],
             ['Source', d.source || '—'],
             ['Obtained', d.obtained ? fmtDate(d.obtained) : '—'],
-            ['Ingested', d.ingested_at ? fmtDateTime(d.ingested_at) : '—']
+            ['Added', d.ingested_at ? fmtDateTime(d.ingested_at) : '—']
           ]}
         />
       </section>
@@ -361,7 +272,7 @@ export function NotesTab({ d }: { d: DocumentDetail }) {
   return (
     <div className="notes-editor">
       <Callout tone="info">
-        These notes are yours. Watchdog never writes to this section, so what you put here survives every ingest. They are saved to the document's note in the vault, and show up in Obsidian too.
+        These notes are yours. Watchdog never writes to this section, so what you put here survives every run. They are saved to the document's note in the vault, and show up in Obsidian too.
       </Callout>
       <textarea
         className="textarea"

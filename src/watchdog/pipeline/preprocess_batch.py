@@ -143,7 +143,8 @@ def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None,
 
 _cancel_event = threading.Event()
 
-SKIP_NAMES    = {".ds_store", ".ingest-lock", "thumbs.db", "desktop.ini"}
+SKIP_NAMES    = {".ds_store", ".ingest-lock", ".processing-lock", ".chew-lock",
+                 ".preprocessing-lock", "thumbs.db", "desktop.ini"}
 SKIP_SUFFIXES = {".yml"}
 # Folders directly under incoming/ that chew never reads (incoming/failed, incoming/skipped, and
 # their pre-D266 spellings); see vault_paths.is_set_aside.
@@ -431,9 +432,9 @@ def run_ingest(
     # one; a >30-min stale lock (from a crashed chew) is taken over, recoverable via `unlock`.
     from watchdog.pipeline.locks import acquire_or_take_stale
     from watchdog.pipeline.ingest_setup import STALE_SECONDS
-    lock_dir = vault / ".watchdog"
-    lock_dir.mkdir(parents=True, exist_ok=True)
-    lock_file = lock_dir / ".chew-lock"
+    from watchdog.vault_paths import preprocessing_lock
+    lock_file = preprocessing_lock(vault)
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if not acquire_or_take_stale(lock_file, f"started_at: {started_at}\npid: {os.getpid()}\n",
                                  STALE_SECONDS):

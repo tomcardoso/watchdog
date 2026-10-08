@@ -156,7 +156,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 
 ## Briefings
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Ingest briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (`hot.md`), **Ingest history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (`hot.md`), **Processing history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
 
 ## Maintenance runs
 
@@ -165,10 +165,10 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | Card | What it does |
 |---|---|
 | **Watch incoming for new files** | Reads files as they land in `incoming/`, starting with any already waiting. Nothing is sent to a model. |
-| **Chew** | Converts every file in `incoming/` to text on your computer, applying OCR to pages that need it, and checks for duplicates. |
-| **Dig** | Extracts facts, entities and dates from each document with a model, and stages the result. **Estimate** and **Compare all models** quote the cost first. |
-| **Bark** | Finishes a batch: merges duplicate entities, flags contradictions, writes entity summaries, reconciles the timeline and writes the briefing. Safe to run again if it stops partway. |
-| **Requeue failed documents** | Moves documents that failed extraction back into the queue so a later Dig tries them again. |
+| **Pre-processing** | Converts every file in `incoming/` to text on your computer, applying OCR to pages that need it, and checks for duplicates. |
+| **Processing** | Extracts facts, entities and dates from each document with a model, and stages the result. **Estimate** and **Compare all models** quote the cost first. |
+| **Post-processing** | Finishes a batch: merges duplicate entities, flags contradictions, writes entity summaries, reconciles the timeline and writes the briefing. Safe to run again if it stops partway. |
+| **Requeue failed documents** | Moves documents that failed extraction back into the queue so a later processing run tries them again. |
 | **Lead sweep** | Runs the full lead sweep, with no model call. |
 | **Rebuild the timeline** | Regenerates the written timeline from the underlying records. |
 | **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
@@ -177,7 +177,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Release a stuck lock** | An interrupted run can leave a lock that stops the next one starting. This releases a stale one; a recent-looking lock is left alone unless you force it. |
 | **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude Code settings after you update Watchdog. |
 
-Running Dig and Bark separately, rather than back to back, is also how you compare finishing models against the same extraction. The **Ingest history** tab beside Maintenance shows what each run added.
+Running processing and post-processing separately, rather than back to back, is also how you compare finishing models against the same extraction. The **Processing history** tab beside Maintenance shows what each run added.
 
 ## Managing investigations
 
@@ -186,7 +186,7 @@ Each investigation is a separate folder; create as many as you need. **All inves
 - **Rename…**, **Edit description…** and **Move to another folder…**. Renaming and moving are blocked while a run is in progress.
 - **Archive** and **Unarchive.** Archiving hides an investigation from the list and from cross-investigation search without deleting anything.
 - **Show in folder** and **Open in Obsidian**, for the investigation's files on disk.
-- **Ingest history**, which shows what each run added.
+- **Processing history**, which shows what each run added.
 - **Remove from Watchdog…**, which takes it off the list but leaves its files on disk.
 - **Remove and delete files…**, which permanently deletes the folder and its usage records, and asks you to type the investigation's name first. Use Archive instead if you might want it later.
 

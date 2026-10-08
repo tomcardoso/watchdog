@@ -46,7 +46,7 @@ def test_empty_queue_returns_total_zero(tmp_path):
     result = run(vault)
     assert result["total"] == 0
     assert result["lock_acquired"] is False
-    assert not (vault / ".watchdog" / "ingest-state.json").exists()
+    assert not (vault / ".watchdog" / "processing-state.json").exists()
 
 
 def test_force_lock_acquires_lock_despite_empty_queue(tmp_path):
@@ -56,13 +56,13 @@ def test_force_lock_acquires_lock_despite_empty_queue(tmp_path):
     result = run(vault, force_lock=True)
     assert result["total"] == 0
     assert result["lock_acquired"] is True
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     assert lock_file.exists()
 
 
 def test_force_lock_still_blocked_by_a_fresh_existing_lock(tmp_path):
     vault = _make_vault(tmp_path)
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text(f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
     result = run(vault, force_lock=True)
     assert "error" in result
@@ -82,11 +82,11 @@ def test_queued_files_acquires_lock_and_writes_state(tmp_path):
     assert "batch_start" in result
     assert "started_at" in result
 
-    state_file = vault / ".watchdog" / "ingest-state.json"
+    state_file = vault / ".watchdog" / "processing-state.json"
     assert state_file.exists()
     assert json.loads(state_file.read_text()) == result
 
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     assert lock_file.exists()
     assert "pid: cli" in lock_file.read_text()
 
@@ -147,7 +147,7 @@ def test_queue_files_filename_falls_back_to_sha256(tmp_path):
 
 def test_fresh_lock_blocks_ingest(tmp_path):
     vault = _make_vault(tmp_path)
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text(f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
 
     result = run(vault)
@@ -163,7 +163,7 @@ def test_stale_lock_is_replaced(tmp_path):
     stale_ts = datetime.fromtimestamp(
         time.time() - STALE_SECONDS - 60, tz=timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text(f"pid: old\nstarted_at: {stale_ts}\n")
 
     result = run(vault)
@@ -177,7 +177,7 @@ def test_malformed_lock_is_refused_not_deleted(tmp_path):
     it regardless and proceeded; now ingest refuses and leaves it for `watchdog unlock` (#257)."""
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text("pid: mystery\n")   # no started_at line
 
     result = run(vault)
@@ -194,7 +194,7 @@ def test_extractor_model_written_to_state(tmp_path):
     result = run(vault, extractor_model="haiku")
 
     assert result["extractor_model"] == "haiku"
-    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
+    state = json.loads((vault / ".watchdog" / "processing-state.json").read_text())
     assert state["extractor_model"] == "haiku"
 
 
@@ -214,7 +214,7 @@ def test_finalizer_model_written_to_state(tmp_path):
     result = run(vault, finalizer_model="opus")
 
     assert result["finalizer_model"] == "opus"
-    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
+    state = json.loads((vault / ".watchdog" / "processing-state.json").read_text())
     assert state["finalizer_model"] == "opus"
 
 
@@ -278,7 +278,7 @@ def test_queue_files_include_est_tokens(tmp_path):
 
 def test_empty_queue_cleans_up_stale_state_file(tmp_path):
     vault = _make_vault(tmp_path)
-    state_file = vault / ".watchdog" / "ingest-state.json"
+    state_file = vault / ".watchdog" / "processing-state.json"
     state_file.write_text('{"stale": true}')
 
     result = run(vault)

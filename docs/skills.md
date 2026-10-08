@@ -6,7 +6,7 @@ Watchdog ships with domain knowledge for 33 document types — corporate filings
 
 A skill is a plain markdown file that encodes what an experienced investigative journalist knows about one document type: what fields are always present, what patterns are anomalous, what terminology means, and what investigators typically miss. It is the difference between a first-year reporter reading a bankruptcy filing and a twenty-year veteran reading the same pages — the veteran notices the related-party transfer buried in the creditor list.
 
-When Watchdog extracts a document (the Dig step), it loads the matching skill first. The model enters the document already primed with the right red flags, so a sole-source justification or a director change three weeks before a contract award gets flagged rather than passed over.
+When Watchdog extracts a document (the processing step), it loads the matching skill first. The model enters the document already primed with the right red flags, so a sole-source justification or a director change three weeks before a contract award gets flagged rather than passed over.
 
 ## How a document gets its skill
 
@@ -78,7 +78,7 @@ Skills are jurisdiction-agnostic by default: universal principles come first, wi
 
 **Settings → Record skills** lists every skill in the catalogue, with a filter box. Select one to read it in full and see exactly what Watchdog will look for. Skills you have added yourself carry a **Yours** label.
 
-If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill. For one batch, open **Options** in the **Add documents** dialog and set **Record skill**. To make it permanent, set **Default skill** under **Ingest** in Settings (see [Settings](configuration.md)).
+If a vault is always one document type — 400 pages of the same filing, say — you can skip per-document classification by pinning a skill. For one batch, open **Options** in the **Add documents** dialog and set **Record skill**. To make it permanent, set **Default skill** under **Processing** in Settings (see [Settings](configuration.md)).
 
 If a batch mixes document types instead, pin each document individually by adding a `skill:` field to its `.yml` sidecar (see [Vault](vault.md#sidecar-files)). It overrides both the batch option and **Default skill** for that one document and skips classification for it, so one batch can correctly handle several document types at once.
 

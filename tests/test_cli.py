@@ -1898,7 +1898,7 @@ def _make_vault_with_lock(configured, timestamp_str):
     vault = configured / "test-proj"
     lock_dir = vault / ".watchdog" / "registry"
     lock_dir.mkdir(parents=True)
-    lock_path = lock_dir / ".ingest-lock"
+    lock_path = lock_dir / ".processing-lock"
     lock_path.write_text(f"pid: claude-session\nstarted_at: {timestamp_str}\n")
     projects = {"test-proj": {"name": "Test Proj", "path": str(vault), "created": "2026-01-01T00:00:00Z"}}
     cli.save_projects(projects)
@@ -2326,7 +2326,7 @@ def test_cmd_rename_updates_obsidian_registry(configured, capsys):
 def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
-    (vault / ".watchdog" / ".chew-lock").write_text("started_at: 2026-01-01T00:00:00Z\npid: 99\n")
+    (vault / ".watchdog" / ".preprocessing-lock").write_text("started_at: 2026-01-01T00:00:00Z\npid: 99\n")
     with pytest.raises(SystemExit):
         cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
     assert "shell-co" in cli.load_projects()
@@ -2335,7 +2335,7 @@ def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
 def test_cmd_rename_blocked_by_ingest_lock(configured, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
-    (vault / ".watchdog" / "registry" / ".ingest-lock").write_text("started_at: 2026-01-01T00:00:00Z\n")
+    (vault / ".watchdog" / "registry" / ".processing-lock").write_text("started_at: 2026-01-01T00:00:00Z\n")
     with pytest.raises(SystemExit):
         cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
 
@@ -3050,7 +3050,7 @@ def test_wait_for_rate_limit_refreshes_lock_in_chunks(tmp_path, monkeypatch):
     from watchdog.cmd import ingest as ing
     from watchdog.pipeline import locks
 
-    lock_file = tmp_path / ".ingest-lock"
+    lock_file = tmp_path / ".processing-lock"
     lock_file.write_text("pid: cli\nstarted_at: 2000-01-01T00:00:00Z\n")
 
     slept = []
@@ -3154,7 +3154,7 @@ def test_cmd_ingest_wait_loops_until_rate_limit_clears(wdg_home, tmp_path, monke
     assert len(calls) == 2
     assert all(k.get("wait") is True for k in calls)
     assert waited == [None]
-    assert not (vault / ".watchdog" / "registry" / ".ingest-lock").exists()
+    assert not (vault / ".watchdog" / "registry" / ".processing-lock").exists()
     out = capsys.readouterr().out
     assert "1" in out and "extracted" in out   # merged total, not the first cycle's 0
     assert "not started" not in out            # sha1's cycle-1 "cancelled" stub must not survive
@@ -3888,8 +3888,8 @@ def test_cmd_ingest_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, m
     out = _strip_ansi(capsys.readouterr().out)
     assert "1 document" in out
     assert "tokens in" in out
-    assert not (vault / ".watchdog" / "registry" / ".ingest-lock").exists()
-    assert not (vault / ".watchdog" / "ingest-state.json").exists()
+    assert not (vault / ".watchdog" / "registry" / ".processing-lock").exists()
+    assert not (vault / ".watchdog" / "processing-state.json").exists()
 
 
 def test_cmd_ingest_estimate_empty_queue(wdg_home, tmp_path, monkeypatch, capsys):
@@ -4030,7 +4030,7 @@ def test_cmd_finalize_estimate_prints_and_exits_without_lock(wdg_home, tmp_path,
     out = _strip_ansi(capsys.readouterr().out)
     assert "1 document" in out
     assert "tokens in" in out
-    assert not (vault / ".watchdog" / "registry" / ".ingest-lock").exists()
+    assert not (vault / ".watchdog" / "registry" / ".processing-lock").exists()
 
 
 def test_cmd_finalize_estimate_nothing_pending(wdg_home, tmp_path, monkeypatch, capsys):

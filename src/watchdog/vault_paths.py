@@ -6,6 +6,7 @@ a vault: `watchdog context` run from `~` offered to write `~/context.md` and lau
 there. The global directory is recognized by its own files and the absence of a vault registry.
 """
 
+import os
 from pathlib import Path
 
 _GLOBAL_MARKERS = ("config.json", "projects.json", "credentials.json", "telemetry.db")
@@ -56,6 +57,64 @@ def incoming_skipped_dir(vault: Path) -> Path:
 
 def context_dir(vault: Path) -> Path:
     return Path(vault) / CONTEXT_NAME
+
+
+# ── working files (D276) ─────────────────────────────────────────────────────────
+# Named for the stages the app shows (D275): pre-processing holds one lock while it converts
+# files; processing and post-processing share the run lock, the run state and the run log.
+
+def preprocessing_lock(vault: Path) -> Path:
+    return Path(vault) / ".watchdog" / ".preprocessing-lock"
+
+
+def processing_lock(vault: Path) -> Path:
+    return Path(vault) / ".watchdog" / "registry" / ".processing-lock"
+
+
+def processing_state(vault: Path) -> Path:
+    return Path(vault) / ".watchdog" / "processing-state.json"
+
+
+def processing_log(vault: Path) -> Path:
+    return Path(vault) / ".watchdog" / "registry" / "processing.log"
+
+
+# What each was called before D276, relative to the vault.
+_LEGACY_WORKING_FILES = (
+    (".watchdog/.chew-lock", preprocessing_lock),
+    (".watchdog/registry/.ingest-lock", processing_lock),
+    (".watchdog/ingest-state.json", processing_state),
+)
+_LEGACY_LOG = ".watchdog/registry/ingest.log"
+LEGACY_LOCK_NAMES = frozenset({".chew-lock", ".ingest-lock"})
+
+
+def _rename_working_files(vault: Path, changes: list[str]) -> None:
+    """Rename an older vault's lock, state and log files. A lock or state file moves only when
+    the new name is free, so a lock held under the old name keeps excluding a second run under the
+    new one; one left behind beside a newer file is an orphan and is removed. The old log is
+    put in front of anything already written to the new one, so the history stays in order."""
+    for rel, new_path in _LEGACY_WORKING_FILES:
+        old, new = vault / rel, new_path(vault)
+        if not old.exists():
+            continue
+        if new.exists():
+            old.unlink(missing_ok=True)
+        else:
+            new.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(old, new)
+            changes.append(f"{rel} -> {new.relative_to(vault).as_posix()}")
+    old_log, new_log = vault / _LEGACY_LOG, processing_log(vault)
+    if old_log.exists():
+        if new_log.exists():
+            combined = old_log.read_bytes() + new_log.read_bytes()
+            tmp = new_log.with_suffix(".log.tmp")
+            tmp.write_bytes(combined)
+            os.replace(tmp, new_log)
+            old_log.unlink()
+        else:
+            os.replace(old_log, new_log)
+        changes.append(f"{_LEGACY_LOG} -> {new_log.relative_to(vault).as_posix()}")
 
 
 def is_set_aside(rel_parts) -> bool:
@@ -145,8 +204,9 @@ def _rewrite_settings(vault: Path) -> bool:
 def migrate_folder_names(vault: Path) -> list[str]:
     """Rename a pre-D266 vault's `_INCOMING/` (and its `_FAILED`/`_SKIPPED`) and `_CONTEXT/` to
     their current names, and rewrite any permission rules in `.claude/settings.json` that name
-    them. Idempotent; never deletes a file. When both an old and a new folder exist, the old one's
-    contents are moved into the new one (a clashing file is renamed with a `-migrated` suffix).
+    them, and rename its working files (D276). Idempotent; never deletes a document or note. When
+    both an old and a new folder exist, the old one's contents are moved into the new one (a
+    clashing file is renamed with a `-migrated` suffix).
     Returns a description of each change made (empty when there was nothing to do)."""
     vault = Path(vault)
     changes: list[str] = []
@@ -162,6 +222,7 @@ def migrate_folder_names(vault: Path) -> list[str]:
                                    f"{INCOMING_NAME}/{new_name}", changes)
         _rename_folder(vault / LEGACY_CONTEXT_NAME, context_dir(vault),
                        LEGACY_CONTEXT_NAME, CONTEXT_NAME, changes)
+        _rename_working_files(vault, changes)
     except OSError as e:
         changes.append(f"stopped early: {e}")
     if _rewrite_settings(vault):
@@ -171,7 +232,7 @@ def migrate_folder_names(vault: Path) -> list[str]:
 
 def ensure_current_layout(vault: Path, *, say=None, refresh: bool = True) -> list[str]:
     """Migrate `vault` if it needs it, then refresh its Claude commands and session instructions
-    (reusing the `refresh-skills` machinery) and note the move in ingest.log. `say`, if given, is
+    (reusing the `refresh-skills` machinery) and note the move in processing.log. `say`, if given, is
     called with a one-line summary. Returns the changes; cheap when there is nothing to do."""
     vault = Path(vault)
     if not is_vault(vault):
@@ -189,7 +250,7 @@ def ensure_current_layout(vault: Path, *, say=None, refresh: bool = True) -> lis
             pass
     try:
         import datetime
-        log = vault / ".watchdog" / "registry" / "ingest.log"
+        log = processing_log(vault)
         log.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         with open(log, "a", encoding="utf-8") as f:
@@ -198,7 +259,7 @@ def ensure_current_layout(vault: Path, *, say=None, refresh: bool = True) -> lis
     except OSError:
         pass
     if say:
-        say("Vault folders renamed: " + "; ".join(changes))
+        say("Investigation folder updated: " + "; ".join(changes))
     return changes
 
 
