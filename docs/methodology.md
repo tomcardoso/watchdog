@@ -22,6 +22,8 @@ Before anything can be read, it has to become text a computer can search. That i
 
 If a PDF already has selectable text, Watchdog reads it directly. If it doesn't — a scanned court filing, a photographed ledger page, a fax — Watchdog runs optical character recognition (OCR): the same idea as a scanner turning a photo of a page into text you can copy and paste, just automated. The tool doing this reading is called Docling, an open-source document-reading program; it also recognizes tables and page layout, so a financial statement's rows and columns come through as structured text rather than a jumble.
 
+An audio or video recording is transcribed instead. A speech-recognition model called Whisper, released by OpenAI as open source and run here through a program called faster-whisper, listens to the sound track and writes down what it hears, with the time each passage was spoken. It runs on your computer like everything else at this stage: the recording is not uploaded anywhere to be transcribed. The transcript is cut into five-minute "pages", so a fact can cite the stretch of the recording it came from, and you can click a time in the app to hear it. Speech recognition is good but not faithful: it has no idea who is speaking, and it mishears names and numbers it has not met before. The extraction stage is told it is reading a machine transcript for that reason. See [Recordings](vault.md#recordings).
+
 Pre-processing also does two pieces of housekeeping, both without any AI involved:
 
 - **Duplicate checking.** Every document gets a digital fingerprint of its contents. If you drop in a file you (or a colleague) already gave Watchdog, it is set aside rather than processed twice. A looser version of the same check flags documents that are *similar but not identical* — a redlined revision of a contract, say — so you can decide whether they matter separately.
@@ -60,7 +62,7 @@ The parts that need judgment go to a cloud AI model, working across the whole ba
 
 ## The other models at work
 
-Two more local, no-cost models support the parts of Watchdog you use after adding documents — searching the vault. Neither reads or writes anything about what a document means; both just help you find things faster.
+Two more local, no-cost models support the parts of Watchdog you use after adding documents — searching the vault. The transcription model is described under pre-processing, above. Neither reads or writes anything about what a document means; both just help you find things faster.
 
 - **The embedding model** (`bge-small-en-v1.5` by default) turns every passage of text — and every note Watchdog writes — into a numeric fingerprint that captures its *meaning*, not just its exact words. That is what lets the Search screen find a passage about a "shell arrangement" when you searched for "offshore trust" — the words differ, but the fingerprints are close. It runs entirely on your machine.
 - **The reranker** (`bge-reranker-base` by default) takes the passages that search turns up and re-orders them for precision, the same way a research assistant might skim a first pass of results and put the genuinely relevant ones on top. It also runs locally, and only at the moment you search — nothing about it is stored.
@@ -69,7 +71,7 @@ Both are configurable, and neither is required for the pipeline itself to work �
 
 ## What stays on your machine, and what doesn't
 
-Pre-processing, search and the two models above never leave your computer and never cost anything. The only things that go to a cloud AI provider are the extracted text sent during processing (one document at a time) and the cross-document material assembled during post-processing (facts, names, and short quoted excerpts — never the raw original file). This is why Watchdog must only be used on documents that are public or presumptively public; see the [public-records notice](getting-started.md) for what that means in practice.
+Pre-processing (transcription included), search and the two models above never leave your computer and never cost anything. The one network use is downloading a model the first time it is needed. The only things that go to a cloud AI provider are the extracted text sent during processing (one document at a time) and the cross-document material assembled during post-processing (facts, names, and short quoted excerpts — never the raw original file). This is why Watchdog must only be used on documents that are public or presumptively public; see the [public-records notice](getting-started.md) for what that means in practice.
 
 ## Where to go from here
 

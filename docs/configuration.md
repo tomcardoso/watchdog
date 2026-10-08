@@ -54,6 +54,28 @@ Local conversion: parallelism and large-PDF handling. Pre-processing is the firs
 
 Pre-processing workers and Chunk workers both default to `auto`: Watchdog scans the batch before starting and picks values based on how large the documents are. They multiply, so a batch of large PDFs runs roughly Pre-processing workers times Chunk workers processes at once. Pin them to small numbers on a modest computer.
 
+### Transcription
+
+Speech-to-text for audio and video, on this computer. A recording is transcribed during pre-processing by a local speech-recognition model, so nothing about it leaves your computer at that stage; see [Recordings](vault.md#recordings) for what a transcript looks like.
+
+| Field | Default | What it controls |
+|---|---|---|
+| Transcription model | `medium` | The speech-recognition model: `medium`, `large-v3-turbo`, `small` or `distil-large-v3`. |
+| Transcription language | `auto` | The language recordings are in, as a code such as `en`, `fr` or `es`; `auto` detects it from the start of each recording. |
+
+The model is downloaded the first time you add a recording, or ahead of time from **Settings → Setup**. The four differ in size, speed and accuracy. The figures below are from Watchdog's own tests on a four-core computer, transcribing a clean reading, a 1961 outdoor speech, a deliberately degraded telephone-quality copy with background voices, and a mock council meeting full of uncommon names:
+
+| Model | Download | Speed (an hour of audio) | Accuracy |
+|---|---|---|---|
+| `medium` | 1.5 GB | 20 to 35 minutes | The best on names (28 of 39 spoken correctly) and on poor audio (about 15 words in 100 wrong) |
+| `large-v3-turbo` | 1.6 GB | 14 to 29 minutes | As good as medium on poor audio, no better than small on names (19 of 39); once returned a transcript with no punctuation |
+| `small` | 486 MB | 11 to 16 minutes | Close to the others on clear audio, but about 27 words in 100 wrong on poor audio, and 18 of 39 names |
+| `distil-large-v3` | 1.5 GB | Not measured | English only |
+
+All four are close on clear speech: one or two words in a hundred wrong. The difference shows on a bad line, a busy room or an unusual name, which is most of what a reporter records, so the default is the most accurate rather than the fastest. A faster computer than the test machine transcribes faster; recordings are transcribed one at a time, using every processor core.
+
+Changing the model affects recordings added afterwards. Set a language when every recording is in it, or when detection picks the wrong one, for example on a recording that opens with music or a greeting in another language.
+
 ### Processing
 
 The extraction run: parallelism, classification, skill pinning and sectioning.
@@ -239,7 +261,7 @@ Checks every registered investigation for a folder that has moved or been delete
 The state of the engine and its parts.
 
 - **Engine.** The private Python environment Watchdog runs in, installed and kept up to date by the app. It shows the status, version and location. **Repair or reinstall the engine** removes the environment and installs it again without touching your investigations, settings or downloaded models. It needs an internet connection and can take several minutes. **Download missing models** fetches any local model that is not yet on the computer.
-- **Local models.** Whether the document-conversion models (Docling), the name-detection model (GLiNER), the search embedding model and the search reranker are present, along with the OCR engine and Claude Code.
+- **Local models.** Whether the document-conversion models (Docling), the name-detection model (GLiNER), the search embedding model and the search reranker are present, along with the OCR engine and Claude Code. The transcription model is listed with its size and a **Download now** button: it is not part of the first-run download, because only investigations with recordings need it. Download it here ahead of time if you will add recordings somewhere without a reliable connection.
 - **Helper tools.** Optional programs: qpdf (repairs damaged or protected PDFs), Ghostscript (re-renders problem PDFs) and Tesseract OCR. Watchdog reads scanned pages with its own built-in engine, so none is required.
 - **Optional and downloaded pieces.** The capture browser (lets web pages be saved as full snapshots), whether an investigations folder is chosen, and whether the settings file exists.
 
