@@ -170,7 +170,7 @@ Type a question in plain language, or start from one of the shortcuts on the emp
 - `/watchdog-entity` refreshes an entity's summary and timeline from all its source documents.
 - `/watchdog-wiki` creates or updates thread pages in `wiki/`. When a finding grows into a real angle (two or more entities tied together by two or more documents), it graduates to a thread page. Over a long investigation, `queries/` and `wiki/` become the record of what you have worked out.
 - `/watchdog-health` checks integrity: orphaned notes, broken links, registry mismatches, open contradictions.
-- `/watchdog-context` and **Seed investigation context** tell Watchdog what the story is. Claude reads the background files in `context/`, interviews you where they fall short, and writes `context.md`. An existing one is updated, not replaced.
+- `/watchdog-context` and **Seed investigation context** tell Watchdog what you want to find out. Claude reads the background files in `context/`, interviews you where they fall short, and writes `context.md` as open questions rather than conclusions. An existing one is updated, not replaced. The brief is sent to the AI model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it and how to phrase it.
 
 A selector at the top of the screen chooses the Claude model for new conversations: Default (Claude Code's own setting), Sonnet, Opus or Haiku. The cost so far is shown beside it; on a subscription this is what it would cost at published rates, not what you are billed.
 
@@ -237,7 +237,7 @@ To bring an existing investigation folder back, choose **Add existing folder…*
 
 ## Trusting what you read
 
-Every extracted fact is either stated (read directly from a document) or inferred, which is marked *(inferred)* in the notes and is a lead to verify, not a finding. [Checking facts](#checking-facts) shows how to read each fact's source passage and record your own check. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
+Where the model knows a fact is its own reasoning rather than something a document says, it marks it *(inferred)*: a lead to verify, not a finding. The mark is a hint from the model, not a check, and an unmarked fact is not guaranteed to be stated in the document. [Checking facts](#checking-facts) shows how to read each fact's source passage and record your own check, which is how to be sure. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
 
 ## Where next
 

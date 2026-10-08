@@ -5701,3 +5701,33 @@ def test_resume_batch_stops_cleanly_on_an_auth_failure(tmp_path, monkeypatch):
     out = asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk"))
     assert out["batch_pending"] is True and "credit balance" in out["auth_error"]
     assert batch_extract.read_state(vault) is not None       # kept for a later run
+
+
+@pytest.mark.parametrize("withhold", [False, True])
+def test_withhold_brief_keeps_context_md_out_of_extraction_only(tmp_path, monkeypatch, withhold):
+    """D278: a benchmark arm can extract without the investigation brief to measure its effect.
+    Off by default, so `context.md` reaches extraction as before; on, it reaches no extraction
+    prompt, while finalize still reads the brief itself (the briefing keeps it)."""
+    vault = make_vault(tmp_path)
+    (vault / "context.md").write_text("# Context\n\nI WANT TO UNDERSTAND THE PIER CONTRACT.\n")
+    _queue_doc(vault)
+    prompts_by_task: dict[str, list[str]] = {}
+    ext = _extraction()
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        prompts_by_task.setdefault(task, []).append(_flat(prompt) if isinstance(prompt, list) else prompt)
+        parsed = {"classify": {"skill": "general-records.md"}, "extract": ext,
+                  "entity-synthesis": {"entity_syntheses": []}, "timeline-dedup": {"groups": []},
+                  "briefing": {"investigation_status": "Early days.",
+                               "what_was_ingested": ["test-doc.pdf — Annual Report"],
+                               "new_entities": ["Acme Corp"]}}.get(task, ext)
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
+                                        auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, withhold_brief=withhold))
+
+    marker = "I WANT TO UNDERSTAND THE PIER CONTRACT"
+    assert prompts_by_task["extract"]
+    assert any(marker in p for p in prompts_by_task["extract"]) is not withhold
+    assert any(marker in p for p in prompts_by_task["briefing"])

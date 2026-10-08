@@ -46,16 +46,60 @@ HERE = Path(__file__).resolve().parent
 
 # ─── config ──────────────────────────────────────────────────────────────────────────────────
 
+def expand_repeats(stage_key: str, stage: dict) -> None:
+    """Expand `repeats: N` (on an arm, or in the stage's `defaults:`) into N identical arms, in
+    place (D278). One run of an arm is one sample: archived runs of a single configuration have
+    differed by up to 3x (FINDINGS, #581), so a comparison between two arms means little without
+    the spread within each. Each copy gets the id `<id>-r<k>`, its own vault, and `repeat_of: <id>`,
+    which `--arms <id>` selects as a group and the report uses to compute the spread. N = 1 (the
+    default) leaves the arm exactly as written, so archived arm ids keep their meaning."""
+    default_n = (stage.get("defaults") or {}).get("repeats", 1)
+    expanded = []
+    for arm in stage.get("arms") or []:
+        n = arm.get("repeats", default_n)
+        if not isinstance(n, int) or isinstance(n, bool) or n < 1:
+            sys.exit(f"Error: {stage_key} arm '{arm.get('id')}' has repeats: {n!r} — "
+                     f"it must be a whole number of at least 1")
+        base = {k: v for k, v in arm.items() if k != "repeats"}
+        if n == 1:
+            expanded.append(base)
+            continue
+        expanded += [{**base, "id": f"{arm.get('id')}-r{k}", "repeat_of": arm.get("id")}
+                     for k in range(1, n + 1)]
+    stage["arms"] = expanded
+
+
 def load_config(path: Path) -> dict:
     """Load and validate the arm matrix. Unknown top-level keys are tolerated (forward-compat
     with sections added later, e.g. a CI-trigger section) — only the shape of sections this
-    tool actually understands is checked."""
+    tool actually understands is checked. `repeats:` is expanded here (`expand_repeats`), so
+    everything downstream sees one arm per run."""
     try:
         config = yaml.safe_load(path.read_text(encoding="utf-8"))
     except OSError as e:
         sys.exit(f"Error: can't read config {path}: {e}")
     except yaml.YAMLError as e:
         sys.exit(f"Error: invalid YAML in {path}: {e}")
+
+    for stage_key in ("extractor_sweep", "finalizer_sweep"):
+        if config.get(stage_key):
+            expand_repeats(stage_key, config[stage_key])
+
+    # `brief:` on an extractor arm (D278): a path (relative to this config file) to a brief that
+    # becomes the arm vault's context.md, or `false` to withhold context.md from extraction.
+    # Absent means the vault's own context.md, which benchmark vaults never have.
+    for arm in (config.get("extractor_sweep") or {}).get("arms") or []:
+        brief = arm.get("brief")
+        if brief is None or brief is False:
+            continue
+        if not isinstance(brief, str):
+            sys.exit(f"Error: extractor_sweep arm '{arm.get('id')}' has brief: {brief!r} — "
+                     f"use a path to a brief file, or false")
+        brief_path = (path.parent / brief).resolve()
+        if not brief_path.is_file():
+            sys.exit(f"Error: extractor_sweep arm '{arm.get('id')}' names a brief that does not "
+                     f"exist: {brief_path}")
+        arm["brief"] = str(brief_path)
 
     for stage_key, arms_key in (("extractor_sweep", "arms"), ("finalizer_sweep", "arms")):
         stage = config.get(stage_key)
@@ -389,6 +433,9 @@ class ArmResult:
     wait_count: int = 0
     documents_done: int | None = None
     documents_total: int | None = None
+    # The base arm id when this result is one run of a repeated arm (`repeats:`, D278) — the
+    # report groups on it to show the spread across runs.
+    repeat_of: str | None = None
 
 
 def _resolve(model_str: str | None, default: str):
@@ -555,7 +602,14 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
                         force=False, skip_warning=True, wait=backend not in BATCH_BACKENDS,
                         max_rate_limit_waits=arm.get("max_rate_limit_waits", 2),
                         concurrency=arm.get("concurrency"), no_finalize=True,
-                        verify=bool(arm.get("verify", False)), benchmark_arm_id=arm["id"])
+                        verify=bool(arm.get("verify", False)), benchmark_arm_id=arm["id"],
+                        # `brief: false` (D278) extracts without the vault's context.md.
+                        withhold_brief=arm.get("brief") is False)
+    if isinstance(arm.get("brief"), str):
+        # A brief file (resolved by load_config) becomes this arm's context.md, the same file a
+        # user's brief lives in, so extraction reads it exactly as it would in use.
+        (vault / "context.md").write_text(Path(arm["brief"]).read_text(encoding="utf-8"),
+                                          encoding="utf-8")
     try:
         with _in_vault(vault):
             summary = _quiet(ing.cmd_extract, ns, non_interactive=True)
@@ -830,13 +884,17 @@ def main(argv: list[str] | None = None) -> int:
                                      "sdk_check")
                  for a in (config.get(key) or {}).get("arms", [])}
         known |= {(config.get("classifier_smoke") or {}).get("arm", {}).get("id")} - {None}
+        # A repeated arm's base id selects every one of its runs (`--arms sonnet-5.5-med`).
+        known |= {a["repeat_of"] for key in ("extractor_sweep", "finalizer_sweep")
+                  for a in (config.get(key) or {}).get("arms", []) if a.get("repeat_of")}
         unknown = wanted_arms - known
         if unknown:
             sys.exit(f"Error: unknown arm id(s): {', '.join(sorted(unknown))}. "
                      f"Known: {', '.join(sorted(known))}")
 
     def _selected(arm: dict) -> bool:
-        return wanted_arms is None or arm.get("id") in wanted_arms
+        return (wanted_arms is None or arm.get("id") in wanted_arms
+                or arm.get("repeat_of") in wanted_arms)
 
     # Every target vault must be fresh before this run spends a cent — refuse the whole run
     # rather than discover mid-sweep, after earlier arms already ran, that a later arm's vault
@@ -1016,6 +1074,7 @@ def main(argv: list[str] | None = None) -> int:
                     # summary below — its two-document corpus doesn't match either one.
                     result = run_extractor_arm(ctx["arm"], ctx["vault"])
                     result.stage = "sdk-check"
+                result.repeat_of = ctx["arm"].get("repeat_of")
                 results.append(result)
                 print(_arm_line(i, total, label, result, time.monotonic() - start))
                 if result.cancelled:

@@ -77,7 +77,7 @@ Loaded by Watchdog when the document type is a title transfer, deed, mortgage or
 - **Transfer between related parties at below-market consideration** — may indicate a fraudulent preference (transferring assets to avoid creditors) or tax avoidance.
 - **Rapid sequential transfers** — property that has changed hands three or more times in 12 months, especially with increasing consideration, may be involved in title fraud, mortgage fraud, or money laundering.
 - **Transfer to a numbered company, shell entity, or trust** — obscures ultimate beneficial ownership. The corporate registry entry for the entity is a lead worth recording.
-- **Transfer shortly before or after a court judgment or bankruptcy filing** — hallmark of a fraudulent transfer. Note the timing relative to any court cases in the vault.
+- **Transfer shortly before or after a court judgment or bankruptcy filing** — hallmark of a fraudulent transfer. Note the timing relative to any judgment or bankruptcy filing the document itself mentions; otherwise record the transfer date and log a lead to check for judgments or bankruptcy filings against the transferor around it.
 - **Transfer by power of attorney** — a transfer signed by someone acting under a power of attorney. The POA document may not be registered; whether the authority existed and was valid at the time is a lead worth recording.
 
 ### Title integrity

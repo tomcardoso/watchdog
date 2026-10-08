@@ -13,6 +13,16 @@ paying for the whole ~$15 sweep. An unknown id is a hard error, not a silent ful
 run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
 ```
 
+**Repeated runs and the brief (D278).** `repeats: N` on an arm (or in a sweep's `defaults:`)
+runs it N times as `<id>-r1` … `<id>-rN`, each in its own vault; `--arms <id>` selects all N, and
+REPORT.md's "Spread across repeated runs" table (and `run.json`'s `repeat_groups`) gives the mean,
+lowest–highest and sample standard deviation of each group's recall and cost, counting only
+complete runs. Use it for any comparison you intend to act on: single runs of one configuration
+have differed by up to 3x (#581). `brief: <file>` on an extractor arm writes that file into the
+arm vault as `context.md`; `brief: false` withholds a vault's own `context.md` from extraction.
+Benchmark vaults have no `context.md` otherwise, so every arm without `brief:` (every archived arm
+included) extracted with no investigation brief, unlike real use.
+
 **Redoing an already-run arm needs its vault deleted first.** Each arm's vault is a fixed path
 (`bench-ex-<arm-id>`, etc.) — rerunning the same arm id against an existing vault does not start
 over. `run_benchmark.py` checks every target vault up front (queue files, a pending finalization,

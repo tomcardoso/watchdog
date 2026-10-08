@@ -90,7 +90,7 @@ For a full first-investigation walkthrough, see [Getting started](https://github
 
 ## A note on AI and mistakes
 
-Watchdog uses AI to read documents, and AI makes mistakes — it can misread a name or draw a wrong inference. Every fact it records links to the source document and page, and facts it inferred rather than read are marked *(inferred)* — leads to verify, not findings. Treat the vault as a structured first read, not a finished product, and follow the link before you publish anything.
+Watchdog uses AI to read documents, and AI makes mistakes — it can misread a name or draw a wrong inference. Every fact it records links to the source document and page. Facts the model flags as inferred rather than read are marked *(inferred)* — leads to verify, not findings — but the flag is the model's own hint, and an unmarked fact can still be wrong or be its reasoning. Treat the vault as a structured first read, not a finished product, and follow the link before you publish anything.
 
 ## Contributing
 

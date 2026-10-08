@@ -79,7 +79,7 @@ export function NewInvestigationDialog() {
         <Field label="Name">
           <input className="input" autoFocus value={name} placeholder="Harbour Authority contracts" onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && name.trim() && void create()} />
         </Field>
-        <Field label="One-line description" hint="Optional. You can change it later from the Overview.">
+        <Field label="One-line description" hint="Optional. It also starts the investigation’s context page, which is sent to the AI model with every document, so phrase it as a question rather than a conclusion.">
           <input className="input" value={desc} onChange={(e) => setDesc(e.target.value)} />
         </Field>
         <Field label="Where to keep it">

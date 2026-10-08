@@ -19,7 +19,7 @@ function ContextCard({ api }: { api: WorkspaceApi }) {
         <div className="chat-ctx-icon"><Sprout /></div>
         <div className="grow">
           <div style={{ fontWeight: 640 }}>Seed investigation context</div>
-          <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tell Watchdog what the story is, so extraction and briefings are framed by it.</div>
+          <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>Tell Watchdog what you want to find out. Claude writes it as open questions, because the page is sent to the AI model with every document you add.</div>
         </div>
         <Button variant="primary" onClick={() => void api.begin('', 'context')} loading={api.busy}>Start</Button>
       </div>

@@ -117,6 +117,16 @@ reproduced here so it doesn't live only in a maintainer's local, not-checked-in
 
 A few things this benchmark doesn't cover yet:
 
+- **The shipped default.** Every user's documents are read by Claude Sonnet 5.5 at medium effort,
+  and no run has measured it yet. Every figure above is one run of each setting, and single runs
+  of one setting have differed by up to three times, so the next run repeats the arms that matter
+  most three times each and reports the spread: Sonnet 5.5 at medium and high effort, Sonnet 4.6
+  at high, and Claude Haiku 5.5 at low and medium for extraction (and at medium as the finishing
+  model). Read two arms as different only where their ranges do not overlap.
+- **What the investigation brief changes.** The brief (`context.md`) is sent with every document
+  in real use, but the benchmark's investigation has none, so every figure above was measured
+  without one. The next run pairs Sonnet 5.5 at medium with and without a short brief written as
+  open questions, three runs each, to show whether the brief shifts what gets extracted.
 - **Classifying document types.** The current document set only spans two of Watchdog's record
   skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
   those two right, not enough to rank classifier models against each other. That needs a

@@ -49,7 +49,7 @@ This skill is loaded by Watchdog when the document type is a motor vehicle regis
 ### Ownership and shell structures
 
 - **Corporate or trust registration** — a vehicle registered to a numbered company, trust, or holding entity rather than an individual. This is common with expensive vehicles, yachts, and commercial fleets and can obscure beneficial ownership.
-- **Rapid successive transfers** — a vehicle showing multiple transfers within the record among parties that share directors, addresses, or beneficial owners may indicate artificial transactions, asset hiding, or circular ownership arrangements. Record the transfers and log a lead to verify the entity relationships, or compare against the vault digest if those entities are already recorded.
+- **Rapid successive transfers** — a vehicle showing multiple transfers within the record among parties that share directors, addresses, or beneficial owners may indicate artificial transactions, asset hiding, or circular ownership arrangements. Record the transfers and any shared addresses the record itself shows among the parties, and log a lead to verify the relationships between them.
 - **Registration address of record** — the address registered on the title may differ from where the owner actually resides. Using a different jurisdiction's registration can sometimes reduce insurance costs or registration fees (common in border regions).
 
 ### Liens and financial claims

@@ -180,6 +180,75 @@ def extractor_table_md(results: list, scores: dict) -> str:
     return "\n".join(lines)
 
 
+def _spread(values: list[float]) -> dict | None:
+    """Mean, minimum, maximum and sample standard deviation of `values`, or None when empty.
+    `sd` is None for a single value: one run has no spread to report."""
+    import statistics
+    if not values:
+        return None
+    return {"n": len(values), "mean": statistics.fmean(values), "min": min(values),
+            "max": max(values), "sd": statistics.stdev(values) if len(values) > 1 else None}
+
+
+def repeat_groups(results: list, scores: dict) -> dict:
+    """The spread across the runs of each repeated arm (`repeats:`, D278), keyed by base arm id.
+
+    Recall (`facts`, `must_not_miss`, as percentages) counts only complete extractor runs: a
+    partial or failed run answered a smaller question (see `is_partial`), so pooling it would
+    widen the spread with something that is not sampling variance. `excluded` says how many runs
+    were left out for that reason. `cost_usd` covers every run that made calls."""
+    facts = scores.get("totals", {}).get("facts", {})
+    mnm = scores.get("totals", {}).get("must_not_miss", {})
+    grouped: dict[str, list] = {}
+    for r in results:
+        if getattr(r, "repeat_of", None):
+            grouped.setdefault(r.repeat_of, []).append(r)
+    out = {}
+    for base, runs in grouped.items():
+        complete = [r for r in runs if r.ok and not is_partial(r)]
+
+        def pcts(totals, rs=complete):
+            vals = []
+            for r in rs:
+                t = totals.get(Path(r.vault).name if r.vault else r.arm_id)
+                if t and t.get("of"):
+                    vals.append(t["hit"] / t["of"] * 100)
+            return _spread(vals)
+        out[base] = {
+            "stage": runs[0].stage,
+            "runs": [r.arm_id for r in runs],
+            "excluded": len(runs) - len(complete),
+            "facts": pcts(facts) if runs[0].stage == "extractor" else None,
+            "must_not_miss": pcts(mnm) if runs[0].stage == "extractor" else None,
+            "cost_usd": _spread([_usage_totals(r.usage)["cost_usd"] for r in runs if r.ok and r.usage]),
+        }
+    return out
+
+
+def _spread_cell(s: dict | None, *, money: bool = False) -> str:
+    if not s:
+        return "—"
+    def fmt(v: float) -> str:
+        return f"${v:.3f}" if money else f"{v:.0f}%"
+    sd = "" if s["sd"] is None else (f", sd ${s['sd']:.3f}" if money else f", sd {s['sd']:.1f} pts")
+    return f"{fmt(s['mean'])} ({fmt(s['min'])}–{fmt(s['max'])}{sd})"
+
+
+def repeat_table_md(results: list, scores: dict) -> str:
+    """One row per repeated arm: mean (min–max, sample sd) across its runs."""
+    groups = repeat_groups(results, scores)
+    if not groups:
+        return "No arm in this run was repeated."
+    lines = ["| Arm | Stage | Runs scored | Facts | must_not_miss | Cost |", "|---|---|---|---|---|---|"]
+    for base, g in groups.items():
+        scored = len(g["runs"]) - g["excluded"]
+        note = f" ({g['excluded']} partial or failed, left out)" if g["excluded"] else ""
+        lines.append(f"| `{base}` | {g['stage']} | {scored} of {len(g['runs'])}{note} | "
+                     f"{_spread_cell(g['facts'])} | {_spread_cell(g['must_not_miss'])} | "
+                     f"{_spread_cell(g['cost_usd'], money=True)} |")
+    return "\n".join(lines)
+
+
 def finalizer_table_md(results: list) -> str:
     lines = ["| Arm | Backend | Entity duplicates flagged | Contradictions found | Cost | "
              "Latency (summed) |",
@@ -513,6 +582,12 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
             "model": model,
             "effort": effort,
             "verify": bool(arm_cfg.get("verify", False)),
+            # D278: the brief file this arm extracted with, false when withheld, None when the
+            # vault had no brief of its own (every benchmark vault, unless an arm supplies one);
+            # and the base arm id when this is one run of a repeated arm.
+            "brief": (Path(arm_cfg["brief"]).name if isinstance(arm_cfg.get("brief"), str)
+                      else arm_cfg.get("brief")) if r.stage == "extractor" else None,
+            "repeat_of": getattr(r, "repeat_of", None),
             # The #551 index's cost-per-page/speed-per-page denominator — the arm's own pages,
             # never the corpus total (see `_extracted_page_stats`).
             "pages_extracted": pages_extracted,
@@ -546,6 +621,7 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
         # `git_provenance`'s commit hash doesn't say whether either epoch changed since a past run.
         "versions": {"scorer": score_arms.SCORER_VERSION, "cost_model": COST_MODEL_VERSION},
         "arms": arms,
+        "repeat_groups": repeat_groups(results, scores),
     }
 
 
@@ -588,6 +664,10 @@ def write_run(out_root: Path, results: list, scores: dict, config: dict,
         _provenance_note(prov), "",
         "## Extractor sweep", "", extractor_table_md(results, scores),
         *_notional_note([r for r in results if r.stage == "extractor"]), "",
+        "## Spread across repeated runs", "",
+        "Mean (lowest–highest, sample standard deviation) across each repeated arm's runs. "
+        "Compare two arms only where their ranges do not overlap.", "",
+        repeat_table_md(results, scores), "",
         "## SDK backend check", "", sdk_check_table_md(results),
         *_notional_note([r for r in results if r.stage == "sdk-check"]), "",
         "## Finalizer sweep", "", finalizer_table_md(results),

@@ -1176,7 +1176,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
                     resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget,
                     benchmark_arm_id=getattr(args, "benchmark_arm_id", None),
-                    only_shas=only_shas))
+                    only_shas=only_shas,
+                    # Not a CLI flag or a setting: only benchmark arms set it (D278).
+                    withhold_brief=bool(getattr(args, "withhold_brief", False))))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
@@ -1607,7 +1609,7 @@ def cmd_context(args) -> None:
     if interactive.confirm("\n  Open in Claude Code to seed context?", default=True):
         context_path = vault / "context.md"
         if not context_path.exists():
-            description = info["description"] if info and info.get("description") else "<!-- One paragraph. What is the story? What pattern, question, or wrongdoing are you pursuing? -->"
+            description = info["description"] if info and info.get("description") else "<!-- One paragraph, written as open questions: what do you want to understand or explore? -->"
             context_path.write_text(_render_template("context.md", name=name, description=description))
         _launch_claude(vault, "/watchdog-context", model=model)
     else:

@@ -79,9 +79,9 @@ For each entity that appears in 3 or more documents, compare the following field
 - Director or officer appointments (is the person listed as the same role in all documents?)
 - Transaction amounts (does the same transaction appear with different values in different documents?)
 
-Flag any case where the same fact is stated differently in two documents — both values directly stated (not `inferred`) — and that discrepancy is not already captured in a `[!contradiction]` callout.
+Flag any case where the same fact is stated differently in two documents and that discrepancy is not already captured in a `[!contradiction]` callout. Flag it whatever either claim's basis, as the pipeline's own check does; where one side is marked `inferred` or carries a figure note, say so beside it.
 
-**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are verified at extraction time and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
+**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are written during post-processing, when reconciliation compares every entity's claims across documents, and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
 
 Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, run `watchdog contradiction-add` yourself with that candidate's values and report success/failure in the session output. If they do not confirm, leave it as a candidate in the report only.
 
@@ -91,7 +91,7 @@ Include all contradictions (pre-existing callouts and new candidates, labelled a
 
 ### Disproportionate transactions
 
-Find all Transaction entities. Compare their amounts to the apparent scale of the entities involved (revenue, assets mentioned in nearby documents). Flag any transaction that is more than 2x the annual revenue of either party, or that involves round numbers with no stated purpose.
+Transactions are recorded as facts and timeline events, not as entities: find them in entity notes' `## Timeline` sections and in `timeline.md`. Compare their amounts to the apparent scale of the entities involved (revenue, assets mentioned in nearby documents). Flag any transaction that is more than 2x the annual revenue of either party, or that involves round numbers with no stated purpose.
 
 ### Dormant entities in active documents
 

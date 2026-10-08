@@ -30,11 +30,31 @@ extractor_sweep:
   # surfaces as a partial result within a few waits instead of stalling the sweep.
   defaults: {concurrency: 5, max_rate_limit_waits: 2}
   arms:
+    # ── The shipped default, and the arms for the next run (D278) ──
+    # `repeats: 3` runs an arm three times, as `<id>-r1` … `-r3`, and the report shows the spread
+    # (mean, lowest–highest, standard deviation). `--arms sonnet-5.5-med` selects all three. One
+    # run is one sample: archived single runs of one configuration differed by up to 3x.
+    #
+    # Sonnet 5.5 at medium is what every user runs (D236) and has never been measured; high is
+    # its comparison, alongside sonnet-4.6-high (below, also repeated). Haiku 5.5 is pinned
+    # explicitly (`haiku-5.5`) so the arm means the same model whatever bare `haiku` resolves to.
+    #
+    # The brief pair: no benchmark vault has a context.md, so every arm here, and every archived
+    # arm, extracts with no investigation brief. `-brief` arms give the vault the open-question
+    # brief in briefs/corpus-v1.md, so the pair measures what a brief changes. `brief: false`
+    # withholds a vault's own context.md instead (for a config whose vaults carry one).
+    - {id: sonnet-5.5-med,       extractor_model: sonnet-5.5, extractor_effort: medium, repeats: 3}
+    - {id: sonnet-5.5-high,      extractor_model: sonnet-5.5, extractor_effort: high, repeats: 3}
+    - {id: sonnet-5.5-med-brief, extractor_model: sonnet-5.5, extractor_effort: medium, repeats: 3,
+       brief: briefs/corpus-v1.md}
+    - {id: haiku-5.5-low,        extractor_model: haiku-5.5, extractor_effort: low, repeats: 3}
+    - {id: haiku-5.5-med,        extractor_model: haiku-5.5, extractor_effort: medium, repeats: 3}
+
     # ── Anthropic ──
-    - {id: haiku,             extractor_model: haiku}
+    - {id: haiku,             extractor_model: haiku-4.5}   # archived as `haiku` when that meant 4.5 (D277)
     - {id: sonnet-4.6-low,    extractor_model: sonnet-4.6, extractor_effort: low}
     - {id: sonnet-4.6-med,    extractor_model: sonnet-4.6, extractor_effort: medium}
-    - {id: sonnet-4.6-high,   extractor_model: sonnet-4.6, extractor_effort: high}
+    - {id: sonnet-4.6-high,   extractor_model: sonnet-4.6, extractor_effort: high, repeats: 3}
     - {id: sonnet-5-low,      extractor_model: sonnet-5, extractor_effort: low}
     - {id: sonnet-5-med,      extractor_model: sonnet-5, extractor_effort: medium}
     - {id: sonnet-5-high,     extractor_model: sonnet-5, extractor_effort: high}
@@ -98,7 +118,11 @@ finalizer_sweep:
   vault_prefix: bench-fn
   base: {extractor_model: "deepseek:deepseek-flash"}   # fixed, cheap, deterministic (#381)
   arms:
-    - {id: haiku,             finalizer_model: haiku}
+    - {id: haiku,             finalizer_model: haiku-4.5}   # archived as `haiku` when that meant 4.5 (D277)
+    # Haiku 5.5 as the finalizer (D278): bare `haiku`, the shipped finalizer default, is moving
+    # to it. Pinned and repeated, since the finalizer's output (merges, contradictions) varies run
+    # to run on one fixed extraction.
+    - {id: haiku-5.5-med,     finalizer_model: haiku-5.5, finalizer_effort: medium, repeats: 3}
     - {id: sonnet-high,       finalizer_model: sonnet, finalizer_effort: high}
     - {id: sonnet-med,        finalizer_model: sonnet, finalizer_effort: medium}
     # finalizer_effort still defaults to high and has never been benchmarked at any lower effort.
@@ -122,7 +146,8 @@ classifier_sweep:
   corpus_dir: corpora/classify    # empty for now — see corpora/classify/README.md
   fixed: {extractor_model: "deepseek:deepseek-flash", finalizer_model: "deepseek:deepseek-flash"}
   arms:
-    - {id: haiku,             classifier_model: haiku}    # shipped default
+    - {id: haiku,             classifier_model: haiku-4.5}    # the shipped default before D277
+    - {id: haiku-5.5,         classifier_model: haiku-5.5}
     - {id: sonnet,            classifier_model: sonnet}
     - {id: ds-flash,          classifier_model: "deepseek:deepseek-flash"}
     - {id: gemini-flash-lite, classifier_model: "gemini:gemini-3.5-flash-lite"}

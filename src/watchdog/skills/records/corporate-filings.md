@@ -54,7 +54,7 @@ For standalone financial statements or MD&A, see `financial-statements`; for sec
 - **Director with no address, or a PO box as address** — may indicate a nominee director (a person who lends their name to a company but has no real involvement). Common in shell company structures.
 - **Same person as director of multiple companies** — record each directorship and flag the count when the same person appears as director of three or more companies. Whether those companies span unrelated industries or different jurisdictions is a judgment for a human to make on the recorded list.
 - **Director appointed and resigned within 12 months** — rapid turnover can indicate a company being set up and wound down quickly.
-- **Director change near a significant event** — note director changes with their dates, and log a lead to correlate the timing with any major transaction, filing, or regulatory action, checking the entity digest where such an event is already recorded.
+- **Director change near a significant event** — note director changes with their dates. Where the filing itself records a major transaction, filing, or regulatory action, record both dates so the gap between them is visible; otherwise log a lead to correlate the timing with any such event.
 - **Director whose address matches the company's registered address** — can indicate the director's address is fictitious.
 - **Name variations** — most corporate registries do not verify the information they receive, so (intentionally or unintentionally) misspelled or variable names are common.
 

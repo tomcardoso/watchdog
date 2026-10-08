@@ -43,7 +43,7 @@ Two things happen here, both cloud AI calls:
 
 A model reading quickly can still skim past a fact buried in a footnote or a table row. As a backup, Watchdog runs a small, local, non-AI check alongside the model's reading — it scans the page for the shapes of names, dollar figures, dates, and case numbers, and hands the model a checklist of everything it found, so a genuinely material figure sitting in a dense table is less likely to be missed. This checklist tool is called GLiNER; it runs on your computer and is installed automatically as part of setup.
 
-Every fact the model records is either something the document **states** outright, or something the model **inferred** from what's stated — and Watchdog marks the difference. An inferred fact is a lead worth chasing, not a finding you can cite on its own; always follow the citation back to the source page before you rely on either kind.
+The model is asked to mark any fact it **inferred** — reasoned from what the document says, rather than read in it — and Watchdog shows that mark beside the fact. An inferred fact is a lead worth chasing, not a finding you can cite on its own. The mark is the model's own hint, though, not a check: the model marks very few facts this way and does not catch all of its own reasoning, so an unmarked fact is not guaranteed to be stated in the document. Always follow the citation back to the source passage before you rely on any fact, and record what you find with a verification mark.
 
 The document's full text is never sent anywhere at this stage beyond the one cloud AI call reading it — see [what stays on your machine](#what-stays-on-your-machine-and-what-doesnt) below for the exact boundary.
 
@@ -75,7 +75,7 @@ Both are configurable, and neither is required for the pipeline itself to work �
 
 ## What stays on your machine, and what doesn't
 
-Pre-processing (transcription included), search and the two models above never leave your computer and never cost anything. The one network use is downloading a model the first time it is needed. The only things that go to a cloud AI provider are the extracted text sent during processing (one document at a time) and the cross-document material assembled during post-processing (facts, names, and short quoted excerpts — never the raw original file). This is why Watchdog must only be used on documents that are public or presumptively public; see the [public-records notice](getting-started.md) for what that means in practice.
+Pre-processing (transcription included), search and the two models above never leave your computer and never cost anything. The one network use is downloading a model the first time it is needed. The only things that go to a cloud AI provider are the extracted text sent during processing (one document at a time, each accompanied by your investigation's brief, `context.md`) and the cross-document material assembled during post-processing (facts, names, and short quoted excerpts — never the raw original file). This is why Watchdog must only be used on documents that are public or presumptively public; see the [public-records notice](getting-started.md) for what that means in practice.
 
 ## Where to go from here
 

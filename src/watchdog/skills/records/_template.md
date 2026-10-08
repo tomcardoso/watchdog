@@ -31,17 +31,17 @@ This skill is loaded by Watchdog when the document type is a [list the trigger d
 
 ## Red flags — what to look for
 
-The only reader of this section is the extractor: one model pass over a single document, plus a digest of the entities already in the vault — no web, no databases, no prior knowledge of who anyone is. Write every red flag so it reduces to one of three moves:
+The only reader of this section is the extractor: one model pass over a single document — no view of the rest of the investigation, no web, no databases, no prior knowledge of who anyone is. Write every red flag so it reduces to one of three moves:
 
 - **Capture a stated pattern** the model can see in this document — a structure, a sequence, a value, a role.
-- **Compare against the entity digest**, but only where both sides are stated: this document says one thing, the digest says another. A contradiction needs two explicit claims; it cannot fire on silence.
+- **Flag an inconsistency within this document**, but only where both sides are stated: one page, schedule, or speaker says one thing, another says something else. A contradiction needs two explicit claims; it cannot fire on silence.
 - **Log a lead** — something worth a human checking later, when the flag depends on knowledge the model doesn't have.
 
 A flag that requires knowing who someone is, proving an absence ("undisclosed", "not filed", "failed to"), or looking something up is not a red flag the extractor can act on — move that insight to *What investigators typically miss*.
 
 Watch for these recurring non-actionable patterns — convert each rather than delete it:
 
-- **Counting or trend across documents** ("repeated", "a pattern of", "over several years") — narrow to what one document shows, make it a digest comparison, or move it to *What investigators typically miss*.
+- **Counting or trend across documents** ("repeated", "a pattern of", "over several years") — narrow to what one document shows (a filing that itself tabulates several years is fair game), log a lead naming the comparison across documents, or move it to *What investigators typically miss*.
 - **Outside reputation or benchmark** ("known bad actor", "above the industry average", "low-tax jurisdiction") — capture the value and log a lead.
 - **Editorial judgement** ("less reliable", "reputable") — rewrite as an extraction action ("record the stated characterisation").
 - **Vague thresholds** ("recent", "shortly after") — give a concrete window or tie it to a date stated in the document.

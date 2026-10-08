@@ -74,7 +74,7 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 - **`hot.md`** — a current-state summary of the investigation, rewritten after every run. Claude reads it at the start of each session to orient itself without re-reading the vault.
 - **`log.md`** — an append-only, human-readable record of every run.
 - **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view.
-- **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**.
+- **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**. It is sent to the AI model with every document you add, so write it as open questions and keep confidential material out of it; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended).
 - **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. Edit it on the **Watch list** tab of Review; the format and the scan are covered in [Investigating](investigating.md#the-watch-list).
 - **`requests.md`** — documents named in what you have already added that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every run and covered in [Investigating](investigating.md#document-requests).
 - <a id="verificationmd"></a>**`verification.md`** — the facts you have marked Verified, Disputed or Can't verify, grouped by status and then by document, with who marked each, when, and any note. It opens with progress ("12 of 340 facts verified"). A final section lists marks whose fact has since changed. Watchdog rewrites the file on every change, so mark facts in the app, not here; edits to the file are not kept. The marks themselves are stored in `.watchdog/registry/verification.json`, which you should not edit either. See [Checking facts](investigating.md#checking-facts).
@@ -103,14 +103,14 @@ Every source citation is a direct page link into the original file in the morgue
 
 ## Stated vs inferred
 
-Every extracted fact records its **basis** — whether the document said it, or Watchdog reasoned to it:
+Every extracted fact records its **basis** — whether the model says it read the fact in the document, or reasoned to it:
 
 | Basis | Meaning |
 |-------|---------|
-| `stated` | Directly stated in the document — a quote, a figure, an explicit assertion. The default, left unmarked in the notes. |
-| `inferred` | Reasoned from the document rather than stated outright. Marked *(inferred)* in the notes. |
+| `stated` | The model's default: it reports reading the fact in the document — a quote, a figure, an explicit assertion. Left unmarked in the notes. |
+| `inferred` | The model flagged the fact as its own reasoning rather than something the document says outright. Marked *(inferred)* in the notes. |
 
-Only inferred facts are flagged, so anything **unmarked is directly stated**. Treat an *(inferred)* fact as a lead that requires verification, not as an established fact.
+The label is the model's own hint, not a check. When the model marks a fact *(inferred)*, treat it as a lead that requires verification, not as an established fact. But the model marks very few facts this way, and it does not catch all of its own reasoning, so an **unmarked fact is not thereby guaranteed to be stated** in the document. To check any fact, read its source passage and record what you find with a verification mark (see [Checking facts](investigating.md#checking-facts)); a fact with no matching passage deserves a closer look.
 
 ## Figures that aren't on the page they cite
 
@@ -121,13 +121,13 @@ Watchdog checks every number in a stated fact against the page the fact cites (a
 | *(figure 173,471 not found in the document — may be derived; verify against source)* | The number appears nowhere in the source document. Usually it was calculated — a total, a difference, a gap between two figures — rather than read off the page. Check the arithmetic before you use it. |
 | *(figure 197.6 (p. 3) found on another page, not the one cited)* | The number is real and appears in the document, just not where the fact says. The page link may point at the wrong page. |
 
-Dates are not checked this way — only figures — and roughly two to three per cent of facts carry a note, so one is worth stopping on. A fact with no note had its figures found where it said they were.
+Dates are not checked this way — only figures — and roughly two to three per cent of facts carry a note, so one is worth stopping on. A fact with no note either had its figures found where it said they were, or was not checked: facts marked *(inferred)*, facts that cite no page, and facts whose page has no text are skipped.
 
 When a new document contradicts a fact already in the vault — a different address, a conflicting date, a mismatched role — that is not a basis level. It surfaces as a `[!contradiction]` callout in the entity's note, with both sources cited. A contradiction is often newsworthy in itself: two official records that disagree can be the story.
 
 Contradictions are raised whatever the two claims are marked as — including where one side is *(inferred)* or carries a figure note. A conflict is too important to hide, and the occasional one that turns out to be the model's own error is the price of not missing a real one. Both sources and pages are always cited, so check them before you rely on it.
 
-> **Verify before you publish.** AI extraction makes mistakes. Every fact links to its source document and page; facts the model inferred rather than read are marked *(inferred)* and are leads, not findings. Follow the link before publishing.
+> **Verify before you publish.** AI extraction makes mistakes. Every fact links to its source document and page; facts the model flagged as inferred rather than read are marked *(inferred)* and are leads, not findings. An unmarked fact can still be the model's reasoning, so follow the link before publishing.
 
 ## Supported file types
 

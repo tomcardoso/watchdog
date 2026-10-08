@@ -2861,7 +2861,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               resume_hint: str = "watchdog dig", verify: bool = False,
               extract_token_budget: int | None = None,
               benchmark_arm_id: str | None = None,
-              only_shas: list[str] | None = None) -> dict:
+              only_shas: list[str] | None = None,
+              withhold_brief: bool = False) -> dict:
     """Extract every queued document (at most `concurrency` at a time), then finalize.
 
     Per-stage `*_model`, `*_effort` and `*_backend` choose each stage's model; a non-Claude backend
@@ -2876,7 +2877,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     - `verify`: add the verification pass (not available on batch backends).
     - `extract_token_budget`: tokens/minute ceiling for admission control; `None` uses the
       provider's reported limit.
-    - `benchmark_arm_id`: tags this run's telemetry rows."""
+    - `benchmark_arm_id`: tags this run's telemetry rows.
+    - `withhold_brief`: extract without `context.md` (D278) — a benchmark arm setting that measures
+      what the brief changes. Extraction only: finalize still reads the brief itself."""
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
     if only_shas is not None:
@@ -2888,6 +2891,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         "classify_model": classify_model, "classify_pages": classify_pages,
         "classify_effort": classify_effort,
         "extract_token_budget": extract_token_budget, "verify": verify, "concurrency": concurrency,
+        "withhold_brief": withhold_brief,
     }
     _run.resume_hint = resume_hint
     progress.emit("stage", stage="dig", done=0, total=len(shas))
@@ -2907,7 +2911,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                              f"re-reads a document immediately after extracting it, and a batch's "
                              f"results arrive hours later in a separate run")
         _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
-        brief = _read_brief(vault)
+        brief = None if withhold_brief else _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
                                      classify_backend, backend=extract_backend, force=force,
@@ -2923,7 +2927,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         if not shas:
             return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
 
-        brief = _read_brief(vault)
+        brief = None if withhold_brief else _read_brief(vault)
         # Live status region for the concurrent extraction phase (#151): one in-place row per
         # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
         # where it degrades to the previous append-only output.
