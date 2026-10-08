@@ -237,7 +237,7 @@ To bring an existing investigation folder back, choose **Add existing folder…*
 
 ## Trusting what you read
 
-Every extracted fact is either stated (read directly from a document) or inferred, which is marked *(inferred)* in the notes and is a lead to verify, not a finding. [Checking facts](#checking-facts) shows how to read each fact's source passage and record your own check. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
+Where the model knows a fact is its own reasoning rather than something a document says, it marks it *(inferred)*: a lead to verify, not a finding. The mark is a hint from the model, not a check, and an unmarked fact is not guaranteed to be stated in the document. [Checking facts](#checking-facts) shows how to read each fact's source passage and record your own check, which is how to be sure. When a new document contradicts something already in the investigation, the entity note gets a contradiction callout with both sources cited. The [vault guide](vault.md#stated-vs-inferred) has the full explanation.
 
 ## Where next
 

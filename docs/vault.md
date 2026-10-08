@@ -103,14 +103,14 @@ Every source citation is a direct page link into the original file in the morgue
 
 ## Stated vs inferred
 
-Every extracted fact records its **basis** — whether the document said it, or Watchdog reasoned to it:
+Every extracted fact records its **basis** — whether the model says it read the fact in the document, or reasoned to it:
 
 | Basis | Meaning |
 |-------|---------|
-| `stated` | Directly stated in the document — a quote, a figure, an explicit assertion. The default, left unmarked in the notes. |
-| `inferred` | Reasoned from the document rather than stated outright. Marked *(inferred)* in the notes. |
+| `stated` | The model's default: it reports reading the fact in the document — a quote, a figure, an explicit assertion. Left unmarked in the notes. |
+| `inferred` | The model flagged the fact as its own reasoning rather than something the document says outright. Marked *(inferred)* in the notes. |
 
-Only inferred facts are flagged, so anything **unmarked is directly stated**. Treat an *(inferred)* fact as a lead that requires verification, not as an established fact.
+The label is the model's own hint, not a check. When the model marks a fact *(inferred)*, treat it as a lead that requires verification, not as an established fact. But the model marks very few facts this way, and it does not catch all of its own reasoning, so an **unmarked fact is not thereby guaranteed to be stated** in the document. To check any fact, read its source passage and record what you find with a verification mark (see [Checking facts](investigating.md#checking-facts)); a fact with no matching passage deserves a closer look.
 
 ## Figures that aren't on the page they cite
 
@@ -121,13 +121,13 @@ Watchdog checks every number in a stated fact against the page the fact cites (a
 | *(figure 173,471 not found in the document — may be derived; verify against source)* | The number appears nowhere in the source document. Usually it was calculated — a total, a difference, a gap between two figures — rather than read off the page. Check the arithmetic before you use it. |
 | *(figure 197.6 (p. 3) found on another page, not the one cited)* | The number is real and appears in the document, just not where the fact says. The page link may point at the wrong page. |
 
-Dates are not checked this way — only figures — and roughly two to three per cent of facts carry a note, so one is worth stopping on. A fact with no note had its figures found where it said they were.
+Dates are not checked this way — only figures — and roughly two to three per cent of facts carry a note, so one is worth stopping on. A fact with no note either had its figures found where it said they were, or was not checked: facts marked *(inferred)*, facts that cite no page, and facts whose page has no text are skipped.
 
 When a new document contradicts a fact already in the vault — a different address, a conflicting date, a mismatched role — that is not a basis level. It surfaces as a `[!contradiction]` callout in the entity's note, with both sources cited. A contradiction is often newsworthy in itself: two official records that disagree can be the story.
 
 Contradictions are raised whatever the two claims are marked as — including where one side is *(inferred)* or carries a figure note. A conflict is too important to hide, and the occasional one that turns out to be the model's own error is the price of not missing a real one. Both sources and pages are always cited, so check them before you rely on it.
 
-> **Verify before you publish.** AI extraction makes mistakes. Every fact links to its source document and page; facts the model inferred rather than read are marked *(inferred)* and are leads, not findings. Follow the link before publishing.
+> **Verify before you publish.** AI extraction makes mistakes. Every fact links to its source document and page; facts the model flagged as inferred rather than read are marked *(inferred)* and are leads, not findings. An unmarked fact can still be the model's reasoning, so follow the link before publishing.
 
 ## Supported file types
 
