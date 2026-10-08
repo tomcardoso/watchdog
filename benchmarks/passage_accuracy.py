@@ -1,14 +1,14 @@
 """Measure how well `pipeline/passages.py` finds each fact's source passage (D270).
 
-Ground truth is a vault whose facts carry quote locators: the locator names the sentence the fact
-was drawn from. For each such fact the locator and quote are hidden, the matcher is run as it would
+Ground truth is a set of facts that each name the sentence they were drawn from: by default the
+fictional demo investigation's story (`watchdog.gui.demo`), where every fact carries the opening
+words of its source sentence, or a VAULT whose facts carry quote locators. For each such fact the locator and quote are hidden, the matcher is run as it would
 be for a fact with only a page number, and the passage it picks is judged correct when it contains
 the locator's sentence opening on the right page.
 
     python benchmarks/passage_accuracy.py [VAULT] [--embed]
 
-With no VAULT the fictional demo investigation is built into a temporary folder
-(`watchdog.gui.demo`). `--embed` also scores the local embedding model as a second signal, when
+`--embed` also scores the local embedding model as a second signal, when
 fastembed and its model are available. Prints precision and recall at a range of thresholds.
 
 Precision = correct / located; recall = correct / all facts with ground truth; "located" counts
@@ -45,6 +45,23 @@ def cases(vault: Path) -> list[dict]:
                 continue
             out.append({"doc": rec["filename"], "fact": f["fact"], "page": f.get("page"),
                         "locator": loc, "index": index, "pages": pages})
+    return out
+
+
+def story_cases() -> list[dict]:
+    """The demo story's facts, with the page text its rendered files really carry."""
+    from watchdog.gui import demo
+    docs = demo.all_docs()
+    with tempfile.TemporaryDirectory() as tmp:
+        demo.render_files(docs, Path(tmp))
+    out = []
+    for doc in docs:
+        pages = {i: md for i, md in enumerate(doc["md"], 1)}
+        index = passages._DocIndex(pages)
+        for f in doc["facts"]:
+            if f["q"]:
+                out.append({"doc": doc["file"], "fact": f["text"], "page": f["page"],
+                            "locator": f["q"], "index": index, "pages": pages})
     return out
 
 
@@ -91,11 +108,15 @@ def embedded(case_list: list[dict], mix: float) -> list[tuple[float, bool]] | No
 def decoys(case_list: list[dict]) -> list[float]:
     """Each fact scored against the same-numbered page of a different document, where its
     support cannot be: any passage accepted there is a false location."""
+    # The document halfway round the list, not the next one: neighbours in a story are often a
+    # revised copy or a report restating the same record, where the support really is.
+    names = list(dict.fromkeys(c["doc"] for c in case_list))
+    first = {name: next(d for d in case_list if d["doc"] == name) for name in names}
     out = []
-    for i, c in enumerate(case_list):
-        other = next((d for d in case_list[i + 1:] + case_list[:i] if d["doc"] != c["doc"]), None)
-        if other is None:
-            continue
+    for c in case_list:
+        if len(names) < 2:
+            break
+        other = first[names[(names.index(c["doc"]) + len(names) // 2) % len(names)]]
         pages = sorted(other["index"].pages)
         page = min(c["page"] or 1, pages[-1]) if pages else 1
         r = passages.find_passage(other["index"], {"fact": c["fact"], "page": page}, threshold=0.0)
@@ -121,13 +142,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--embed", action="store_true", help="also try the embedding model as a second signal")
     ap.add_argument("--misses", action="store_true", help="print the facts the matcher got wrong")
     args = ap.parse_args(argv)
-    if args.vault:
-        vault = Path(args.vault)
-    else:
-        from watchdog.gui import demo
-        tmp = Path(tempfile.mkdtemp())
-        vault = demo.build(tmp / "demo")
-    case_list = cases(vault)
+    case_list = cases(Path(args.vault)) if args.vault else story_cases()
     n = len(case_list)
     if not n:
         print("No facts with quote locators to measure against.", file=sys.stderr)

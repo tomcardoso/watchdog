@@ -65,6 +65,11 @@ def _display(key: str, value, config: dict) -> str:
         return str(value) if value is not None else "(not set)"
 
 
+def _default_fn(ref: str):
+    from watchdog.cmd.setup import _call_default_fn
+    return _call_default_fn(ref)
+
+
 def _setting(key: str, meta: dict, config: dict) -> dict:
     kind = _kind(key, meta)
     value = config.get(key)
@@ -73,7 +78,8 @@ def _setting(key: str, meta: dict, config: dict) -> dict:
         "key": key,
         "short": meta.get("short") or "",
         "help": _help(meta),
-        "default": meta.get("default"),
+        "default": (meta.get("default") if meta.get("default") is not None or not meta.get("default_fn")
+                    else _default_fn(meta["default_fn"])),
         "current": None if kind == "secret" else value,
         "display": _display(key, value, config),
         "kind": kind,

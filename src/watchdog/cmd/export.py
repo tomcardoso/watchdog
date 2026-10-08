@@ -85,6 +85,37 @@ _LABEL_RE = re.compile(r"[^A-Za-z0-9_]")
 _NODE_LABEL = "WatchdogEntity"
 
 
+def _write_facts_csv(vault: Path, out: Path) -> tuple[Path, int, int]:
+    """Every fact with its source passage and the reporter's verification mark (D270, D271), one
+    row each. Returns (path, facts, marked)."""
+    from watchdog.pipeline import verification
+
+    docs = _read_json(vault / ".watchdog" / "registry" / "documents.json") \
+        if (vault / ".watchdog" / "registry" / "documents.json").exists() else {}
+    marks = verification.marks(vault)
+    path = out / "facts.csv"
+    n = marked = 0
+    with path.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["fact_id", "document", "sha256", "page", "fact", "basis", "passage",
+                    "passage_page", "passage_method", "status", "checked_by", "checked_at", "note"])
+        for sha, rec in sorted(docs.items(), key=lambda kv: (kv[1].get("filename") or "", kv[0])):
+            facts = verification.document_facts(vault, sha, rec)
+            for fid, fact in zip(verification.fact_ids(sha, facts), facts):
+                m = marks.get(fid) or {}
+                status = m.get("status")
+                n += 1
+                marked += bool(status)
+                w.writerow([fid, rec.get("filename") or "", sha, fact.get("page") or "",
+                            fact.get("fact") or "", fact.get("basis") or "stated",
+                            fact.get("passage") or "", fact.get("passage_page") or "",
+                            fact.get("passage_method") or "",
+                            verification.LABELS.get(status, "") if status else "",
+                            m.get("by") or "" if status else "", m.get("at") or "" if status else "",
+                            m.get("note") or "" if status else ""])
+    return path, n, marked
+
+
 def _cypher_label(type_: str) -> str:
     """Map an entity type to a Cypher label token (backtick-quoted at the call site)."""
     return _LABEL_RE.sub("_", type_).strip("_") or "Entity"
@@ -158,6 +189,9 @@ def cmd_export(args) -> None:
         print(f"  {_DIM}Import with:  neo4j-admin database import full "
               f"--nodes={nodes_csv.name} --relationships={rels_csv.name} <db>{_RESET}")
         print(f"  {_DIM}Or open nodes.csv / relationships.csv directly in Gephi.{_RESET}")
+        facts_csv, n_facts, n_marked = _write_facts_csv(vault, out)
+        print(f"  {_CYAN}{facts_csv}{_RESET}  {_DIM}{n_facts} facts with their source passages; "
+              f"{n_marked} marked in the verification ledger{_RESET}")
 
     if dangling:
         print(f"  {_DIM}Skipped {dangling} relationship(s) pointing at unprofiled entities.{_RESET}")

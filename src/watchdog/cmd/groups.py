@@ -84,6 +84,8 @@ MAINTENANCE = [
     ("leads", "Print the full lead sweep (`watchdog review leads` steps through it)"),
     ("timeline", "Rebuild timeline.md"),
     ("reindex", "Rebuild the search index"),
+    ("locate-passages", "Find each fact's source passage in documents added earlier"),
+    ("verify-fact", "Mark a fact verified, disputed or can't verify"),
     ("usage", "Token, cost and timing breakdown for past runs"),
     ("export", "Export the entity graph as CSV"),
     ("unlock", "Clear a lock left by a crashed run"),

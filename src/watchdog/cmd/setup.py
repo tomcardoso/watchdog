@@ -651,6 +651,20 @@ _CONFIGURE_KEYS = {
         "type": "string",
         "secret": True,
     },
+    # ── Verification ──────────────────────────────────────────────────────────
+    "reporter_name": {
+        "short": "Your name, recorded with each fact you mark verified, disputed or can't verify",
+        "help": (
+            "When you mark a fact Verified, Disputed or Can't verify, Watchdog records who\n"
+            "  marked it and when, in the investigation's verification ledger and its\n"
+            "  verification.md. This is the name it records.\n"
+            "  Leave unset to use your computer account's full name, or its login name\n"
+            "  when the account has no full name."
+        ),
+        "type": "string",
+        "default": None,
+        "default_fn": "watchdog.pipeline.verification:default_reporter_name",
+    },
     # ── Privacy ───────────────────────────────────────────────────────────────
     "telemetry": {
         "short": "Record every model call in ~/.watchdog/telemetry.db (default: true)",
@@ -703,6 +717,8 @@ _CONFIGURE_SECTIONS = [
      ["research_max_rounds", "research_max_fetches"]),
     ("Web archiving", "Optionally save research sources to the Wayback Machine.",
      ["wayback_save", "wayback_access_key", "wayback_secret_key"]),
+    ("Verification", "How your checks of individual facts are recorded.",
+     ["reporter_name"]),
     ("Privacy", "The local record of model calls across your investigations.",
      ["telemetry"]),
 ]
@@ -1114,6 +1130,17 @@ def _auto_resolved_hint(key: str, config: dict) -> str:
     return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {suffix}){_RESET}"
 
 
+def _call_default_fn(ref: str):
+    """A default computed at read time (`"module:function"`), such as the OS account's name for
+    `reporter_name`. None if it can't be computed."""
+    import importlib
+    module, _, name = ref.partition(":")
+    try:
+        return getattr(importlib.import_module(module), name)()
+    except Exception:  # noqa: BLE001 — a display default must never break settings
+        return None
+
+
 def _display_value(k, v, config=None):
     meta = _CONFIGURE_KEYS.get(k, {})
     # Model-aware section budgets: 'auto' (or an unset key) resolves to a value derived from the
@@ -1124,6 +1151,10 @@ def _display_value(k, v, config=None):
         if k == "ocr_languages":
             return f"{_DIM}auto-detect (default){_RESET}"
         d = meta.get("default")
+        if d is None and meta.get("default_fn"):
+            d = _call_default_fn(meta["default_fn"])
+            if d is not None:
+                return f"{_CYAN}{d}{_RESET} {_DIM}(default){_RESET}"
         if d is not None:
             v = d
         else:
@@ -1205,6 +1236,8 @@ def _coerce_value(config: dict, key: str, value: str) -> str:
         if key == "ocr_engine":
             _ensure_ocr_engine(value)
         return value
+    if key == "reporter_name":
+        value = " ".join(value.split())[:120]
     config[key] = value
     return value
 
