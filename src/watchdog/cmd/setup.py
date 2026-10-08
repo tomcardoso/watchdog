@@ -209,7 +209,7 @@ _CONFIGURE_KEYS = {
             "                   audio in Watchdog's tests, and the slowest (an hour of audio took\n"
             "                   20 to 35 minutes on a four-core computer).\n"
             "  large-v3-turbo:  1.6 GB. As accurate as medium on noisy audio, less so on names;\n"
-            "                   about twice as fast.\n"
+            "                   usually faster than medium.\n"
             "  small:           486 MB. Fastest download; noticeably less accurate on poor audio.\n"
             "  distil-large-v3: 1.5 GB. English only.\n"
             "  Recordings already added keep the transcript they were given; changing this\n"
