@@ -367,8 +367,10 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
         return {"entities": entities, "pairs": [], "pairs_dropped": 0, "pair_verdicts": [],
                 "rule_merges": [], "candidates": [], "profiles": {}}
     ranked = _ranked_pairs(working, touched)
-    ranked += _person_pairs(working, touched, {(p["a"]["id"], p["b"]["id"]) for p in ranked})
     blocked = ranked[:_MAX_PAIRS]
+    # Initialled-name pairs are found separately and capped separately: they are almost all low
+    # tier, which costs no model call, so they must not crowd out pairs the model has to see.
+    blocked += _person_pairs(working, touched, {(p["a"]["id"], p["b"]["id"]) for p in ranked})[:_MAX_PAIRS]
 
     # Route each blocked pair by its confidence tier (D285): high merges in code, medium goes to the
     # model with both records' facts, low becomes a "possible same" item for the reporter, and a
@@ -379,9 +381,7 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
 
     def _profile(eid: str) -> identity.Profile:
         if eid not in profiles:
-            entry = working[eid]
-            profiles[eid] = evidence.profile(eid, entry.get("name", ""), entry.get("type", ""),
-                                             entry.get("appears_in") or [], entry=entry)
+            profiles[eid] = evidence.registry_profile(eid, working[eid])
         return profiles[eid]
 
     pairs, verdicts, rule_merges, candidates = [], [], [], []
@@ -414,7 +414,7 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
                 summaries[eid] = _extract_summary(note) or ""
             pair[side]["summary"] = _orienting_line(summaries[eid])
 
-    return {"entities": entities, "pairs": pairs, "pairs_dropped": len(ranked) - len(blocked),
+    return {"entities": entities, "pairs": pairs, "pairs_dropped": max(0, len(ranked) - _MAX_PAIRS),
             "pair_verdicts": verdicts, "rule_merges": rule_merges, "candidates": candidates,
             "profiles": profiles}
 

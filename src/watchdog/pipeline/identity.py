@@ -227,6 +227,8 @@ _REL_STOP = frozenset({"of", "at", "the", "for", "to", "with", "by", "on", "in",
 _REL_WEAK = frozenset({"resident", "resides", "lives", "living", "located", "based", "born",
                        "citizen", "native"})
 FACT_CAP = 6
+# Documents read for one registered entity's facts and identifiers (`Evidence.registry_profile`).
+PROFILE_DOCS = 60
 
 
 def _rel_tokens(relationship: str) -> frozenset[str]:
@@ -516,7 +518,10 @@ class Evidence:
         return p
 
     def registry_profile(self, eid: str, entry: dict, exclude: set[str] = frozenset()) -> Profile:
-        shas = [s for s in entry.get("appears_in") or [] if s not in exclude]
+        """A registered entity's profile. Its relationships come whole from the registry entry;
+        facts and identifiers from its latest `PROFILE_DOCS` documents only, so a record named in
+        thousands of documents is not re-read in full on every run."""
+        shas = [s for s in entry.get("appears_in") or [] if s not in exclude][-PROFILE_DOCS:]
         return self.profile(eid, entry.get("name", ""), entry.get("type", ""), shas, entry=entry)
 
 
