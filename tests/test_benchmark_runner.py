@@ -2910,3 +2910,160 @@ def test_load_judged_summaries_refuses_an_arm_rated_by_two_passes(tmp_path):
 
     with pytest.raises(SystemExit, match="arm-a"):
         si._load_judged_summaries([str(p1), str(p2)])
+
+
+# ── repeated runs and the no-brief arm setting (D278) ──────────────────────────────────────────
+
+def test_load_config_expands_repeats_into_numbered_arms(tmp_path):
+    cfg = _write_config(tmp_path, extractor_sweep={"vault_prefix": "bench-ex", "arms": [
+        {"id": "s-med", "extractor_model": "sonnet", "extractor_effort": "medium", "repeats": 3},
+        {"id": "h", "extractor_model": "haiku"},
+    ]})
+    arms = rb.load_config(cfg)["extractor_sweep"]["arms"]
+    assert [a["id"] for a in arms] == ["s-med-r1", "s-med-r2", "s-med-r3", "h"]
+    assert all(a["repeat_of"] == "s-med" and a["extractor_effort"] == "medium" for a in arms[:3])
+    assert "repeats" not in arms[0]
+    assert arms[3] == {"id": "h", "extractor_model": "haiku"}   # unrepeated: exactly as written
+
+
+def test_load_config_reads_repeats_from_stage_defaults_and_arm_overrides_it(tmp_path):
+    cfg = _write_config(tmp_path, finalizer_sweep={
+        "vault_prefix": "bench-fn", "base": {"extractor_model": "x"}, "defaults": {"repeats": 2},
+        "arms": [{"id": "a", "finalizer_model": "haiku"},
+                 {"id": "b", "finalizer_model": "haiku", "repeats": 1}]})
+    arms = rb.load_config(cfg)["finalizer_sweep"]["arms"]
+    assert [a["id"] for a in arms] == ["a-r1", "a-r2", "b"]
+
+
+@pytest.mark.parametrize("bad", [0, -1, "3", 2.5, True])
+def test_load_config_rejects_a_bad_repeats_value(tmp_path, bad):
+    cfg = _write_config(tmp_path, extractor_sweep={"vault_prefix": "bench-ex", "arms": [
+        {"id": "a", "extractor_model": "haiku", "repeats": bad}]})
+    with pytest.raises(SystemExit):
+        rb.load_config(cfg)
+
+
+def test_load_config_rejects_an_expanded_id_that_collides(tmp_path):
+    cfg = _write_config(tmp_path, extractor_sweep={"vault_prefix": "bench-ex", "arms": [
+        {"id": "a", "extractor_model": "haiku", "repeats": 2},
+        {"id": "a-r1", "extractor_model": "haiku"}]})
+    with pytest.raises(SystemExit, match="duplicate arm id 'a-r1'"):
+        rb.load_config(cfg)
+
+
+def test_main_arms_filter_selects_every_run_of_a_repeated_arm(tmp_path, monkeypatch):
+    cfg = tmp_path / "benchmark.yaml"
+    cfg.write_text(yaml.safe_dump({
+        "corpus": {"dir": "corpus", "sha256": "corpus/c.sha256"},
+        "keys": {"dir": "keys", "sha256": "keys/k.sha256"},
+        "master_vault": {"name": "m", "classify_name": "mc"},
+        "extractor_sweep": {"vault_prefix": "bench-ex", "arms": [
+            {"id": "s-med", "extractor_model": "sonnet", "repeats": 3},
+            {"id": "h", "extractor_model": "haiku"}]},
+    }), encoding="utf-8")
+    root = tmp_path / ".vaults"
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    previewed = []
+    monkeypatch.setattr(rb, "preview_extractor_arm",
+                        lambda vault, *a, **k: previewed.append(vault.name) or
+                        {"cost_low": 0.0, "cost_high": 0.0})
+
+    rb.main(["--config", str(cfg), "--stages", "extractor", "--arms", "s-med", "--estimate-only"])
+    assert previewed == ["bench-ex-s-med-r1", "bench-ex-s-med-r2", "bench-ex-s-med-r3"]
+
+
+@pytest.mark.parametrize("arm, withheld", [
+    ({"id": "a", "extractor_model": "haiku"}, False),
+    ({"id": "a", "extractor_model": "haiku", "brief": True}, False),
+    ({"id": "a", "extractor_model": "haiku", "brief": False}, True),
+])
+def test_run_extractor_arm_withholds_the_brief_only_when_the_arm_says_so(monkeypatch, tmp_path,
+                                                                         arm, withheld):
+    captured = {}
+    monkeypatch.setattr(wd_ingest, "cmd_extract",
+                        lambda ns, **kw: captured.update(w=ns.withhold_brief) or
+                        {"cancelled": False, "results": []})
+    rb.run_extractor_arm(arm, tmp_path)
+    assert captured["w"] is withheld
+
+
+def test_repeat_groups_report_mean_range_and_sd_over_complete_runs_only():
+    results = [
+        _arm_result(arm_id="s-r1", vault=Path("/v/bench-ex-s-r1"), repeat_of="s",
+                    usage={"calls": [{"cost_usd": 1.0}]}),
+        _arm_result(arm_id="s-r2", vault=Path("/v/bench-ex-s-r2"), repeat_of="s",
+                    usage={"calls": [{"cost_usd": 3.0}]}),
+        # Rate-limited: a smaller question, never pooled into the recall spread.
+        _arm_result(arm_id="s-r3", vault=Path("/v/bench-ex-s-r3"), repeat_of="s", rate_limited=True,
+                    usage={"calls": [{"cost_usd": 0.5}]}),
+        _arm_result(arm_id="h", vault=Path("/v/bench-ex-h")),
+    ]
+    scores = {"totals": {
+        "facts": {"bench-ex-s-r1": {"hit": 5, "of": 10}, "bench-ex-s-r2": {"hit": 7, "of": 10},
+                  "bench-ex-s-r3": {"hit": 1, "of": 10}, "bench-ex-h": {"hit": 9, "of": 10}},
+        "must_not_miss": {}}}
+    groups = br.repeat_groups(results, scores)
+    assert list(groups) == ["s"]
+    g = groups["s"]
+    assert g["runs"] == ["s-r1", "s-r2", "s-r3"] and g["excluded"] == 1
+    assert g["facts"]["n"] == 2
+    assert (g["facts"]["mean"], g["facts"]["min"], g["facts"]["max"]) == (60.0, 50.0, 70.0)
+    assert round(g["facts"]["sd"], 2) == 14.14
+    assert g["must_not_miss"] is None
+    assert g["cost_usd"]["n"] == 3
+
+    table = br.repeat_table_md(results, scores)
+    assert "`s`" in table and "2 of 3 (1 partial or failed, left out)" in table
+    assert "60% (50%–70%, sd 14.1 pts)" in table
+
+
+def test_repeat_table_says_so_when_nothing_was_repeated():
+    assert br.repeat_table_md([_arm_result()], {"totals": {}}) == "No arm in this run was repeated."
+
+
+def test_shipped_benchmark_yaml_repeats_the_default_model_arms():
+    """The default model's arms are the ones every user's documents run on, so the shipped
+    matrix runs each of them at least three times (D278)."""
+    config = rb.load_config(BENCHMARKS_DIR / "benchmark.yaml")
+    groups: dict[str, int] = {}
+    for a in config["extractor_sweep"]["arms"]:
+        if a.get("repeat_of"):
+            groups[a["repeat_of"]] = groups.get(a["repeat_of"], 0) + 1
+    for base in ("sonnet-5.5-med", "sonnet-5.5-high", "sonnet-4.6-high", "sonnet-5.5-med-brief"):
+        assert groups.get(base, 0) >= 3, base
+    # The brief pair differs only in the brief, so the difference between them is the brief's.
+    by_id = {a["id"]: a for a in config["extractor_sweep"]["arms"]}
+    plain, briefed = dict(by_id["sonnet-5.5-med-r1"]), dict(by_id["sonnet-5.5-med-brief-r1"])
+    assert Path(briefed.pop("brief")).is_file() and "brief" not in plain
+    assert {k: v for k, v in plain.items() if k not in ("id", "repeat_of")} == \
+        {k: v for k, v in briefed.items() if k not in ("id", "repeat_of")}
+
+
+def test_load_config_resolves_a_brief_file_and_rejects_a_missing_one(tmp_path):
+    (tmp_path / "brief.md").write_text("# Brief\n")
+    cfg = _write_config(tmp_path, extractor_sweep={"vault_prefix": "bench-ex", "arms": [
+        {"id": "a", "extractor_model": "haiku", "brief": "brief.md"}]})
+    arm = rb.load_config(cfg)["extractor_sweep"]["arms"][0]
+    assert arm["brief"] == str((tmp_path / "brief.md").resolve())
+    cfg = _write_config(tmp_path, extractor_sweep={"vault_prefix": "bench-ex", "arms": [
+        {"id": "a", "extractor_model": "haiku", "brief": "nope.md"}]})
+    with pytest.raises(SystemExit, match="does not exist"):
+        rb.load_config(cfg)
+
+
+def test_run_extractor_arm_writes_a_brief_file_into_the_vault_as_context_md(monkeypatch, tmp_path):
+    brief = tmp_path / "brief.md"
+    brief.write_text("I want to understand the filing.\n")
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    seen = {}
+    monkeypatch.setattr(wd_ingest, "cmd_extract",
+                        lambda ns, **kw: seen.update(ctx=(Path.cwd() / "context.md").read_text(),
+                                                     w=ns.withhold_brief) or
+                        {"cancelled": False, "results": []})
+    rb.run_extractor_arm({"id": "a", "extractor_model": "haiku", "brief": str(brief)}, vault)
+    assert seen == {"ctx": "I want to understand the filing.\n", "w": False}

@@ -1176,7 +1176,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                     force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
                     resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget,
                     benchmark_arm_id=getattr(args, "benchmark_arm_id", None),
-                    only_shas=only_shas))
+                    only_shas=only_shas,
+                    # Not a CLI flag or a setting: only benchmark arms set it (D278).
+                    withhold_brief=bool(getattr(args, "withhold_brief", False))))
                 summary = _merge_summary(summary, iter_summary)
                 if not (wait and iter_summary.get("rate_limited")):
                     break
