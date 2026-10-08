@@ -545,6 +545,8 @@ export interface EngineStep {
   id: string
   label: string
   optional: boolean
+  /** 1: needed before the app can be used. 2: installed in the background (D272). */
+  phase: 1 | 2
   state: 'pending' | 'running' | 'done' | 'warning' | 'failed' | 'skipped'
   detail: string | null
 }
@@ -552,6 +554,8 @@ export interface EngineStep {
 export interface EngineProgress {
   id: number
   state: EngineState
+  /** The phase the run is in (or ended in). */
+  phase: 1 | 2 | null
   steps: EngineStep[]
   log: string[]
   error: string | null
@@ -559,7 +563,10 @@ export interface EngineProgress {
 export interface EngineStatus {
   /** 'installing' while a run is in progress; otherwise the run's failed/cancelled state or the engine's own. */
   state: 'missing' | 'outdated' | 'ready' | 'installing' | 'failed' | 'cancelled'
+  /** Phase 1 (what the app needs to open): 'ready' when installed and matching the app. */
   engine: 'missing' | 'outdated' | 'ready'
+  /** Phase 2 too: every library and the model step. Adding documents waits for this. */
+  complete: boolean
   dir: string
   installedVersion: string | null
   bundledVersion: string | null
@@ -574,7 +581,7 @@ export interface EngineStatus {
   /** ~/.watchdog/config.json exists: the existing signal that setup has been done. */
   setupConfigExists: boolean
   /** The current (or last) run, so a screen opened mid-install can catch up. */
-  run: { id: number; state: EngineState; steps: EngineStep[]; log: string[]; error: string | null }
+  run: { id: number; state: EngineState; phase: 1 | 2 | null; steps: EngineStep[]; log: string[]; error: string | null }
 }
 
 // ── the bridge exposed on window.watchdog by the preload script ──────────────

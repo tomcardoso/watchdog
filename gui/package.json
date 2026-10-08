@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "engine:prepare": "node scripts/prepare-engine.mjs",
     "engine:test": "node scripts/engine-cli.mjs",
+    "engine:check": "node scripts/engine-check.mjs",
     "predist": "node scripts/prepare-engine.mjs",
     "predist:mac": "node scripts/prepare-engine.mjs --target mac --arch arm64,x64",
     "predist:win": "node scripts/prepare-engine.mjs --target win --arch x64",

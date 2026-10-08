@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline'
 import type { BackendStatus } from '@shared/api'
 import { getPref } from './prefs'
 import { accessFile } from './access'
-import { Engine, versionAtLeast } from './engine'
+import { Engine, PENDING_ENV, versionAtLeast } from './engine'
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; method: string }
 
@@ -102,6 +102,10 @@ async function candidates(engine: Engine): Promise<Candidate[]> {
 
 function pythonPathEnv(src: string | null, engine?: Engine, managed = false): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8', NO_COLOR: '1' }
+  delete env[PENDING_ENV]
+  // While the engine's background phase is unfinished the backend refuses to add documents
+  // (D272). The simulated engine sets it too, so the gated screens can be exercised.
+  if (engine && (managed || engine.simulate) && !engine.complete()) env[PENDING_ENV] = '1'
   if (src) env.PYTHONPATH = [src, process.env.PYTHONPATH].filter(Boolean).join(delimiter)
   // Folder access (src/watchdog/access.py): the backend, every job and every command a Claude
   // session runs may change files only in folders the user has allowed. The engine and the app's
@@ -243,7 +247,7 @@ export class PythonBackend {
     }
   }
 
-  private waitReady(timeoutMs = 60000): Promise<void> {
+  waitReady(timeoutMs = 60000): Promise<void> {
     if (this.status.state === 'ready') return Promise.resolve()
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new RpcError('The Watchdog backend did not start.', 'backend_timeout', null)), timeoutMs)
@@ -268,6 +272,19 @@ export class PythonBackend {
       this.pending.set(id, { resolve, reject, method })
       proc.stdin.write(JSON.stringify({ id, method, params: params ?? {} }) + '\n')
     })
+  }
+
+  /** Tell a running backend that the engine's background phase has finished, so it accepts
+   * commands that add documents (engine.setReady). A backend that is not running reads the state
+   * afresh when it next starts. */
+  async engineReady(): Promise<void> {
+    if (this.status.state !== 'ready') return
+    try {
+      await this.call('engine.setReady', {})
+    } catch (e) {
+      log.warn('engine.setReady failed; restarting the backend', e)
+      await this.start()
+    }
   }
 
   /** Stop the backend and wait for it to exit, so its files can be replaced (an engine repair).
