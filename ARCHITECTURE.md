@@ -59,6 +59,15 @@ that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together.
 
 - **Text.** Direct text where the file has it; Docling with OCR otherwise. Output is per-page
   markdown.
+- **Recordings (D273, `pipeline/transcribe.py`).** Audio and video are transcribed locally by
+  faster-whisper (int8 on the CPU), decoded by PyAV in streamed 20-minute windows cut at a quiet
+  point. A page is a fixed five-minute block numbered by time (a silent block has no page), and
+  each line starts with `[hh:mm:ss]`; lines break at sentence ends, so a timestamp never splits a
+  sentence for quote checking. `metadata.source_type` is `transcript` and `metadata.media` is a
+  versioned block (`format`): kind, duration, each page's time range, detected language, and the
+  model and decode settings that produced it. The model is fetched on demand (once per drop, before
+  the workers start), recordings transcribe one at a time, and the per-file timeout scales with
+  length. The subprocess reports progress on stderr, forwarded by `preprocess_one`.
 - **Page-scoped OCR (D189, D192).** Every PDF page is scored by three signals (character ratio,
   word shape, font CMap; two must agree). Pages without a usable text layer are force-OCR'd; the
   rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
@@ -369,6 +378,10 @@ queries/ wiki/               session-written findings and threads
     .processing-lock .write-lock
 ```
 
+**Recordings in the registry (D273).** A recording's `documents.json` entry carries the `media`
+block from pre-processing (stamped on the document at extraction): readers use the fields they
+know and ignore the rest, whatever its `format`.
+
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
 through `vault_paths.py` helpers; the same migration renames an older vault's `.chew-lock`,
 `.ingest-lock`, `ingest-state.json` and `ingest.log`.
@@ -499,13 +512,18 @@ See D45–D48.
   settings loaded, so the vault's permissions and `/watchdog-*` commands apply; transcripts are kept
   under `~/.watchdog/gui/chats/`.
 - **Files.** The renderer reads vault files only through `wdfile://`, which the main process limits
-  to registered vault folders. Thumbnails are cached in the app's user-data folder.
+  to registered vault folders, and which answers byte-range requests (206) so a recording can
+  seek. Thumbnails are cached in the app's user-data folder. A recording opens in a player above
+  its transcript; its citations read as time ranges (D273).
 - **Engine (D267).** The app installs its own Python: a bundled `uv` creates a Python 3.12
   environment under the app's user-data folder (`engine/`) and installs the bundled wheel of the
   same version, then downloads the local models (`gui/src/main/engine.ts`,
   `watchdog/gui/engine_setup.py`). `WATCHDOG_PYTHON` or a user's choice overrides it; in
   development the repository's source goes first on `PYTHONPATH`. The terminal commands remain the
-  app's mutation path but are retired from user-facing documentation.
+  app's mutation path but are retired from user-facing documentation. The transcription model is
+  an on-demand step (`engine_setup.ON_DEMAND`): never in the first-run download, fetched by the
+  first recording or by `setup.downloadModel`, a job running `engine_setup models --only
+  transcription` (D273).
 - **Folder access (D268).** `~/.watchdog/access.json` lists the folders the user has allowed;
   only the main process writes it (`gui/src/main/access.ts`). The backend runs with
   `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
