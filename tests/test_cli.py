@@ -2764,7 +2764,7 @@ def test_effort_default_skipped_when_model_does_not_support_it():
     `extractor_effort=medium` default (D26) into a hard failure for a stage nobody configured —
     only an *explicit* effort choice should ever hit model_client's loud-fail path."""
     from watchdog.cmd.ingest import _effort
-    assert _effort(None, None, default="medium", backend=None, model="haiku") is None
+    assert _effort(None, None, default="medium", backend=None, model="haiku-4.5") is None
 
 
 def test_effort_no_default_stays_unset():

@@ -415,7 +415,7 @@ def test_model_defaults_widen_for_over_estimating_tokenizers():
     # budget widens rather than shrinks. Safe because _THRESHOLD_FRACTION leaves 40% of the window
     # unused regardless.
     assert section.model_defaults("sonnet-4.6") == (int(120_000 / 0.93), int(60_000 / 0.93))
-    assert section.model_defaults("haiku") == (int(120_000 / 0.93), int(60_000 / 0.93))
+    assert section.model_defaults("haiku-4.5") == (int(120_000 / 0.93), int(60_000 / 0.93))
     assert section.model_defaults("deepseek-flash") == (740_740, 370_370)     # 0.81
     # gpt-5.4-mini rather than gpt-5.4: same 0.80 ratio, but no pricing boundary to clamp against,
     # so the widening is visible rather than masked by the clamp. 400K window: 240_000/0.80.

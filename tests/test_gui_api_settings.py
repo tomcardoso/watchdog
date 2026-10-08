@@ -203,7 +203,7 @@ def test_models(wdg_home):
     assert sonnet["label"] == "Claude Sonnet 5.5" and sonnet["id"] == "claude-sonnet-5-5"
     assert sonnet["input_per_mtok"] == pytest.approx(2.0) and sonnet["output_per_mtok"] == pytest.approx(10.0)
     assert sonnet["context_window"] and sonnet["efforts"] == [e for e in r["efforts"] if e in sonnet["efforts"]]
-    assert by_value["haiku"]["efforts"] == []
+    assert by_value["haiku-4.5"]["efforts"] == [] and by_value["haiku"]["efforts"] == r["efforts"]
     non_claude = [m for m in r["models"] if m["provider"] != "anthropic"]
     assert non_claude and all(m["value"] == f"{m['provider']}:{m['id']}" and m["backend"] == m["provider"]
                               for m in non_claude)

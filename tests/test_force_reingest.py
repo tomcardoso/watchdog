@@ -377,11 +377,10 @@ def test_cmd_extract_defaults_extractor_effort_to_medium_when_unconfigured(wdg_h
     assert calls[0].get("extract_effort") == "medium"
 
 
-def test_cmd_extract_classifier_effort_is_unset_on_the_default_haiku_classifier(wdg_home, tmp_path, monkeypatch):
-    """D221: classify gained an effort knob, but Haiku (the classifier's default) rejects the
-    parameter outright — same effortless-model gate `extract_effort` already respects (#518).
-    An unconfigured install must reach `orchestrate.run` with `classify_effort=None`, not `"low"`,
-    since nothing here overrides the classifier off Haiku."""
+def test_cmd_extract_classifier_effort_is_low_on_the_default_haiku_classifier(wdg_home, tmp_path, monkeypatch):
+    """D221's `classify_effort="low"` default reaches `orchestrate.run` on an unconfigured
+    install now that the default `haiku` is Haiku 5.5, which accepts effort (D277). Haiku 4.5
+    rejected the parameter, so the effortless-model gate (#518) used to drop it here."""
     from watchdog.cmd import auth as auth_module
     from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
@@ -404,7 +403,7 @@ def test_cmd_extract_classifier_effort_is_unset_on_the_default_haiku_classifier(
     ing.cmd_extract(_args())
 
     assert len(calls) == 1
-    assert calls[0].get("classify_effort") is None
+    assert calls[0].get("classify_effort") == "low"
 
 
 def test_cmd_extract_classifier_effort_defaults_to_low_when_classifier_routed_to_a_model_that_supports_it(

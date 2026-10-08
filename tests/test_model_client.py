@@ -241,13 +241,13 @@ def test_effort_high_is_treated_as_no_override(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] is None
 
 
-def test_effort_rejected_for_haiku(api_key_auth, monkeypatch):
-    # Haiku rejects output_config.effort (400) — requesting any level errors rather than
+def test_effort_rejected_for_haiku_4_5(api_key_auth, monkeypatch):
+    # Haiku 4.5 rejects output_config.effort (400) — requesting any level errors rather than
     # silently sending nothing, so a misconfigured stage is caught instead of running unnoticed.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="low"):
-        complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku", effort="low")
+        complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku-4.5", effort="low")
 
 
 def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
@@ -781,7 +781,8 @@ def test_context_window_ignores_backend_for_hosted_models():
 @pytest.mark.parametrize("model, ratio", [
     ("sonnet", 1.28),            # default tier is Sonnet 5.5 — new Claude tokenizer (D236)
     ("sonnet-4.6", 0.93),        # old Claude tokenizer (Sonnet 4.6)
-    ("haiku", 0.93),             # old Claude tokenizer — same value, same tokenizer
+    ("haiku-4.5", 0.93),         # old Claude tokenizer — same value, same tokenizer
+    ("haiku", 1.21),             # Haiku 5.5: derived from "about 30% more" than 4.5, unmeasured (D277)
     (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
     ("sonnet-5", 1.28),          # new Claude tokenizer
     ("sonnet-5.5", 1.28),        # same tokenizer family, copied not measured
@@ -1925,7 +1926,7 @@ def test_batch_cost_none_for_unknown_model():
 
 
 @pytest.mark.parametrize("tier, expected", [
-    ("haiku", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-5-5"),
+    ("haiku", "claude-haiku-5-5"), ("haiku-4.5", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-5-5"),
     ("opus", "claude-opus-5-5"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
     # Bare `sonnet` moved from 4.6 to 5.5 (D236); `sonnet-4.6` and `sonnet-5` stay selectable
     # by name so benchmark arms and pinned configs keep their meaning.

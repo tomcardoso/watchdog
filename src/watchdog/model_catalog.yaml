@@ -199,17 +199,31 @@ models:
   # Order matches the old _MODEL_IDS table (haiku, sonnet, opus) — cmd/setup.py's interactive
   # picker lists Claude tiers in this insertion order, so preserving it keeps picker behavior
   # unchanged rather than silently reshuffling it.
-  - id: claude-haiku-4-5
-    name: Claude Haiku 4.5
+  # Claude Haiku 5.5 — the bare `haiku` default (alongside the explicit `haiku-5.5` pin) since
+  # 2026-10-09 (D277), ahead of the benchmark that will measure it. First in the list so the
+  # picker's Claude order stays haiku, sonnet, opus.
+  # Pricing has two rate cards chosen by prompt length: $0.10 / $0.50 per MTok up to 100K input
+  # tokens, $0.50 / $2.50 above (the whole request); cache reads 0.1x input, 5-minute cache writes
+  # 1.25x (Anthropic's model and migration docs, cached 2026-10-06). `long_context_threshold`
+  # keeps every planned call under 100K so only the lower card applies, as for the OpenAI entries
+  # (D202). 1M context per Anthropic, pinned to 200K here per D89; 128K output; adaptive thinking
+  # is on by default (no `thinking` field, D206); all five effort levels, default `medium`.
+  # `tokenizer_ratio` is DERIVED, not measured: Anthropic says this tokenizer counts the same text
+  # as about 30% more tokens than Haiku 4.5's, so 0.93 x 1.3 = 1.21 — see the CLAUDE.md Standing
+  # Follow-ups. No batch output ceiling is published for it, so none is declared.
+  - id: claude-haiku-5-5
+    name: Claude Haiku 5.5
     provider: anthropic
-    tier: haiku
-    input: 1.0e-6
-    output: 5.0e-6
-    cache_write: 1.25e-6
-    cache_read: 0.10e-6
+    tier: [haiku, haiku-5.5]
+    input: 0.10e-6
+    output: 0.50e-6
+    cache_write: 0.125e-6
+    cache_read: 0.01e-6
     context_window: 200_000
-    max_output_tokens: 64_000
-    tokenizer_ratio: 0.93     # measured #617, corpus-v1 2026-08-15 (old Claude tokenizer)
+    max_output_tokens: 128_000
+    effort_levels: [low, medium, high, xhigh, max]
+    tokenizer_ratio: 1.21     # derived from "about 30% more tokens" than Haiku 4.5; unmeasured
+    long_context_threshold: 100_000   # $0.50 / $2.50 above this, whole request
   # Claude Sonnet 5.5 — the bare `sonnet` default (alongside the explicit `sonnet-5.5` pin), moved
   # here from 4.6 on 2026-10-01 (D236). Listed second so the picker's Claude order stays haiku,
   # sonnet, opus. Pricing is $2 / $10 per MTok, cache read $0.20 (platform.claude.com model table,
@@ -390,31 +404,19 @@ models:
     tokenizer_ratio: 0.81     # measured #617, corpus-v1 2026-08-15 (DeepSeek V4 tokenizer)
     price_periods: *deepseek_peak    # same windows as Flash — one schedule, both models
 
-  # Claude Haiku 5.5, added 2026-10-09 (listed after the bare tiers so the picker's first three
-  # stay haiku, sonnet, opus) as an explicit pin (`haiku-5.5`) only: bare `haiku` (the
-  # classifier and finalizer default) stays on Haiku 4.5 until the next benchmark measures 5.5.
-  # Pricing has two rate cards chosen by prompt length: $0.10 / $0.50 per MTok up to 100K input
-  # tokens, $0.50 / $2.50 above (the whole request); cache reads 0.1x input, 5-minute cache writes
-  # 1.25x (Anthropic's model and migration docs, cached 2026-10-06). `long_context_threshold`
-  # keeps every planned call under 100K so only the lower card applies, as for the OpenAI entries
-  # (D202). 1M context per Anthropic, pinned to 200K here per D89; 128K output; adaptive thinking
-  # is on by default (no `thinking` field, D206); all five effort levels, default `medium`.
-  # `tokenizer_ratio` is DERIVED, not measured: Anthropic says this tokenizer counts the same text
-  # as about 30% more tokens than Haiku 4.5's, so 0.93 x 1.3 = 1.21 — see the CLAUDE.md Standing
-  # Follow-ups. No batch output ceiling is published for it, so none is declared.
-  - id: claude-haiku-5-5
-    name: Claude Haiku 5.5
+  # Claude Haiku 4.5, the bare `haiku` default until 2026-10-09 (D277); reachable now only as
+  # `haiku-4.5`, to keep an existing setup on it.
+  - id: claude-haiku-4-5
+    name: Claude Haiku 4.5
     provider: anthropic
-    tier: haiku-5.5
-    input: 0.10e-6
-    output: 0.50e-6
-    cache_write: 0.125e-6
-    cache_read: 0.01e-6
+    tier: haiku-4.5
+    input: 1.0e-6
+    output: 5.0e-6
+    cache_write: 1.25e-6
+    cache_read: 0.10e-6
     context_window: 200_000
-    max_output_tokens: 128_000
-    effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 1.21     # derived from "about 30% more tokens" than Haiku 4.5; unmeasured
-    long_context_threshold: 100_000   # $0.50 / $2.50 above this, whole request
+    max_output_tokens: 64_000
+    tokenizer_ratio: 0.93     # measured #617, corpus-v1 2026-08-15 (old Claude tokenizer)
 
   # OpenAI GPT-5 family, standard tier (the -pro variants are excluded: no discounted cache
   # rate, and a flat 6x price jump over these for no clear quality benefit — see #473)
