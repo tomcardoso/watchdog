@@ -168,6 +168,23 @@ def test_document_queue_metadata(rich_vault):
     assert detail["file_metadata"] == {"author": "Acme Finance"}   # falls back to the extraction
 
 
+def test_text_positions_are_listed_on_the_document_and_read_a_few_pages_at_a_time(rich_vault):
+    """D289: the document says which pages have saved OCR positions; the boxes come lazily."""
+    from watchdog.pipeline import text_positions
+    assert call("vault.document", vault=V(rich_vault), sha=SHA1)["positions_pages"] == []
+    assert call("vault.textPositions", vault=V(rich_vault), sha=SHA1, pages=[1])["boxes"] == {}
+    text_positions.write(rich_vault, SHA1, text_positions.block(
+        {"2": {"width": 612, "height": 792, "lines": [[72, 90, 400, 104, "Jane Doe was appointed director"]]}},
+        "rapidocr"))
+    assert call("vault.document", vault=V(rich_vault), sha=SHA1)["positions_pages"] == [2]
+    got = call("vault.textPositions", vault=V(rich_vault), sha=SHA1[:8], pages=[1, 2])
+    assert got["pages"] == [2] and got["unit"] == "line" and list(got["boxes"]) == ["2"]
+    assert got["boxes"]["2"]["lines"][0][4] == "Jane Doe was appointed director"
+    assert call("vault.textPositions", vault=V(rich_vault), sha=SHA1)["boxes"] == {}
+    assert call_error("vault.textPositions", vault=V(rich_vault), sha=SHA1, pages="2")["code"] == "bad_params"
+    assert call_error("vault.textPositions", vault=V(rich_vault), sha="deadbeef")["code"] == "not_found"
+
+
 def test_document_by_unique_prefix_and_unknown(rich_vault):
     assert call("vault.document", vault=V(rich_vault), sha=SHA1[:8])["sha"] == SHA1
     assert call_error("vault.document", vault=V(rich_vault), sha="deadbeef")["code"] == "not_found"

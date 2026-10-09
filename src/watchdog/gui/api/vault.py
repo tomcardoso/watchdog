@@ -18,6 +18,7 @@ from pathlib import Path
 
 from watchdog.gui import vaultio
 from watchdog.gui.rpc import RpcError, method
+from watchdog.pipeline import text_positions
 from watchdog.gui.vaultio import require_vault, resolve_in_vault
 from watchdog.vault_paths import SET_ASIDE_NAMES, context_dir, incoming_dir, incoming_failed_dir, incoming_skipped_dir
 from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_log
@@ -256,7 +257,21 @@ def document(vault: str, sha: str) -> dict:
         "extract_effort": rec.get("extract_effort") or None,
         "record_skill_hash": rec.get("record_skill_hash") or None,
         "duplicates": _duplicates(full, rec, docs),
+        "positions_pages": text_positions.available_pages(v, full),
     }
+
+
+@method("vault.textPositions")
+def text_positions_(vault: str, sha: str, pages: list | None = None) -> dict:
+    """Where the OCR'd lines sit on the requested pages of a scanned document (D289), read from
+    `.watchdog/text-positions/<sha>.json`; the app asks for a few pages at a time as they are
+    shown or searched, never the whole document at once."""
+    v = require_vault(vault)
+    full = vaultio.resolve_sha(vaultio.load_documents(v), sha)
+    if pages is not None and (not isinstance(pages, list)
+                              or not all(isinstance(n, int) and not isinstance(n, bool) for n in pages)):
+        raise RpcError("Pages must be a list of page numbers.", code="bad_params")
+    return text_positions.read(v, full, pages)
 
 
 # ── entities ─────────────────────────────────────────────────────────────────────

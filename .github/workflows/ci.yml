@@ -73,5 +73,7 @@ jobs:
 
       - run: npm run typecheck
 
+      - run: npm run test:unit
+
       - run: npx electron-vite build
 

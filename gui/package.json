@@ -14,6 +14,7 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && node scripts/check-colours.mjs",
     "test:e2e": "playwright test",
+    "test:unit": "node --experimental-strip-types --experimental-default-type=module --no-warnings --test src/renderer/src/lib/findText.test.ts",
     "engine:prepare": "node scripts/prepare-engine.mjs",
     "engine:test": "node scripts/engine-cli.mjs",
     "engine:check": "node scripts/engine-check.mjs",

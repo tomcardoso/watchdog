@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Callout, cx } from '@renderer/components/ui'
 import { fmtClock, fmtDuration, pageSpan, seekTime, transcriptLines, VIDEO_EXTS } from '@renderer/lib/media'
 import type { DocumentDetail, MediaInfo } from '@shared/api'
+import { FindBox, FindNote, Marked, SearchTextInstead, useFindQuery, useRevealCurrent, useTextMatches } from './FindBox'
 import type { JumpTarget } from './PdfViewer'
 
 interface Props {
@@ -14,9 +15,10 @@ interface Props {
   media: MediaInfo
   abs: string | null
   target: JumpTarget | null
+  onSearchText?: (q: string) => void
 }
 
-export function MediaViewer({ d, media, abs, target }: Props) {
+export function MediaViewer({ d, media, abs, target, onSearchText }: Props) {
   const player = useRef<HTMLMediaElement | null>(null)
   const scroller = useRef<HTMLDivElement>(null)
   const [now, setNow] = useState(0)
@@ -26,6 +28,23 @@ export function MediaViewer({ d, media, abs, target }: Props) {
   const [started, setStarted] = useState(false)
   const isVideo = media.kind === 'video' && VIDEO_EXTS.has(d.ext)
   const pages = useMemo(() => d.pages.map((p) => ({ ...p, span: pageSpan(media, p.page), lines: transcriptLines(p.text) })), [d.pages, media])
+  // Find in the transcript (D289): every line, in order, numbered across the recording.
+  const input = useRef<HTMLInputElement>(null)
+  const find = useFindQuery()
+  const q = find.active ? find.debounced : ''
+  const lineTexts = useMemo(() => pages.flatMap((p) => p.lines.map((l) => l.text)), [pages])
+  const lineStart = useMemo(() => {
+    const out: number[] = []
+    let n = 0
+    for (const p of pages) {
+      out.push(n)
+      n += p.lines.length
+    }
+    return out
+  }, [pages])
+  const matches = useTextMatches(lineTexts, q)
+  const step = (delta: number) => matches.total && find.setCurrent((c) => (c + delta + matches.total) % matches.total)
+  useRevealCurrent(scroller, find.current, matches.total, [q])
 
   useEffect(() => setFailed(false), [d.sha])
 
@@ -74,10 +93,13 @@ export function MediaViewer({ d, media, abs, target }: Props) {
   return (
     <div className="pdf-viewer media-viewer">
       <div className="pdf-toolbar">
+        <FindBox inputRef={input} query={find.query} onQuery={find.setQuery} active={!!q} total={matches.total} current={find.current} onStep={step} disabled={!pages.length} />
+        <span className="spacer" />
         <span className="pdf-pagelabel">
           {isVideo ? 'Video' : 'Audio'} · {fmtDuration(media.duration_seconds)} · transcribed on this computer
         </span>
       </div>
+      {q && !matches.total && <FindNote action={<SearchTextInstead query={q} onSearchText={onSearchText} />}>No matches in the transcript.</FindNote>}
       <div className={cx('media-stage', isVideo && 'is-video')}>
         {!src ? (
           <Callout tone="info">The original recording is not in the investigation folder, so it can’t be played here. The transcript is below.</Callout>
@@ -96,12 +118,12 @@ export function MediaViewer({ d, media, abs, target }: Props) {
           </Callout>
         </div>
         {pages.length === 0 && <div className="text-reader-note faint">No speech was found in this recording.</div>}
-        {pages.map((p) => (
+        {pages.map((p, pi) => (
           <section key={p.page} data-p={p.page} className="media-page">
             <h3 className="media-page-head">
               Page {p.page} <span className="faint">({fmtClock(p.span.start)}–{fmtClock(p.span.end)})</span>
             </h3>
-            {p.lines.map((l, i) => (
+            {p.lines.map((l, i) => { const li = lineStart[pi] + i; return (
               <p
                 key={i}
                 data-at={l.at === null ? undefined : Math.floor(l.at)}
@@ -112,9 +134,9 @@ export function MediaViewer({ d, media, abs, target }: Props) {
                     <Play />{fmtClock(l.at)}
                   </button>
                 )}
-                <span className="selectable">{l.text}</span>
+                <span className="selectable"><Marked text={l.text} ranges={matches.ranges[li] ?? []} offset={matches.offsets[li]} current={find.current} /></span>
               </p>
-            ))}
+            )})}
           </section>
         ))}
       </div>

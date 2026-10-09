@@ -2,6 +2,8 @@
 
 import { Check, ChevronRight, Copy, FileText, Search } from 'lucide-react'
 import { ReactNode, useMemo, useState } from 'react'
+import { findRanges, foldQuery } from '@renderer/lib/findText'
+import { Marked } from './FindBox'
 import { EntityChip } from '@renderer/components/EntityChip'
 import { Markdown } from '@renderer/components/Markdown'
 import { NotesEditor, splitNotes } from '@renderer/components/NotesEditor'
@@ -64,29 +66,12 @@ export function EntitiesTab({ entities }: { entities: DocumentDetail['entities']
 }
 
 // ── Text ─────────────────────────────────────────────────────────────────────
-export function Highlight({ text, q }: { text: string; q: string }): ReactNode {
-  if (!q) return text
-  const lo = text.toLowerCase()
-  const needle = q.toLowerCase()
-  const out: ReactNode[] = []
-  let pos = 0
-  for (let at = lo.indexOf(needle); at !== -1; at = lo.indexOf(needle, pos)) {
-    if (at > pos) out.push(text.slice(pos, at))
-    out.push(<mark key={at}>{text.slice(at, at + needle.length)}</mark>)
-    pos = at + needle.length
-  }
-  out.push(text.slice(pos))
-  return out
-}
-
-export function TextTab({ pages, jump, hasViewer, media }: { pages: DocumentDetail['pages']; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
-  const [q, setQ] = useState('')
-  const needle = q.trim()
-  const counts = useMemo(() => {
-    if (!needle) return null
-    const n = needle.toLowerCase()
-    return pages.map((p) => p.text.toLowerCase().split(n).length - 1)
-  }, [pages, needle])
+export function TextTab({ pages, jump, hasViewer, media, initialQuery = '' }: { pages: DocumentDetail['pages']; jump: Jump; hasViewer: boolean; media?: MediaInfo | null; initialQuery?: string }) {
+  const [q, setQ] = useState(initialQuery)
+  // The same matcher as the viewer's find box: case, accents, quotes, dashes and spaces aside.
+  const needle = foldQuery(q) ? q : ''
+  const ranges = useMemo(() => (needle ? pages.map((p) => findRanges(p.text, needle)) : null), [pages, needle])
+  const counts = ranges?.map((r) => r.length) ?? null
   const total = counts?.reduce((a, b) => a + b, 0) ?? 0
   if (!pages.length) return <Empty icon={FileText} title="No extracted text">This document has no full-text file in the vault.</Empty>
   return (
@@ -106,7 +91,7 @@ export function TextTab({ pages, jump, hasViewer, media }: { pages: DocumentDeta
               {hasViewer && <ChevronRight style={{ width: 11, height: 11 }} />}
             </button>
             <div className="text-tab-page-body">
-              <Highlight text={p.text} q={needle} />
+              <Marked text={p.text} ranges={ranges?.[i] ?? []} />
             </div>
           </section>
         )

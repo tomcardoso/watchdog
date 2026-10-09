@@ -2,12 +2,23 @@
 // so the scrollbar and jump-to-page are exact; only pages near the viewport hold a canvas and a
 // text layer, canvases come from a small pool, and in-flight renders are cancelled the moment a
 // page scrolls away. Text layers make the text selectable and searchable.
+//
+// A scanned page has no text layer of its own. Where pre-processing saved the positions of its
+// OCR'd lines (D289), an invisible layer built from them takes the place of pdf.js's, so the
+// page can be searched, highlighted, selected and copied like any other. Where it didn't (a
+// document pre-processed before D289), find searches the text extracted from that page instead
+// and can say only which page a match is on.
 
-import { ChevronDown, ChevronUp, Maximize2, Search, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Maximize2, ZoomIn, ZoomOut } from 'lucide-react'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { Button, Callout, Spinner } from '@renderer/components/ui'
+import { countMatches, foldQuery, matchSegments } from '@renderer/lib/findText'
 import { cssVar, openPdf, pdfjs } from '@renderer/lib/pdf'
+import type { PagePositions } from '@shared/api'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
+import { FindBox, FindNote, SearchTextInstead } from './FindBox'
+import { OcrLayer } from './OcrLayer'
+import type { PositionsSource } from './positions'
 
 export interface JumpTarget {
   page: number
@@ -35,46 +46,25 @@ function release(c: HTMLCanvasElement | null | undefined): void {
   if (pool.length < 14) pool.push(c)
 }
 
-// ── search helpers ───────────────────────────────────────────────────────────
-interface ItemHit { item: number; from: number; to: number; k: number }
-const normQ = (q: string) => q.replace(/\s+/g, ' ').trim().toLowerCase()
+// ── what each page can be searched by ────────────────────────────────────────
+/** A page's searchable text: its own text layer, its saved OCR lines, or (with neither) the text
+ * extracted from it, where a match can be counted and its page shown but not highlighted. */
+type PageInfo =
+  | { kind: 'pdf'; strs: string[] }
+  | { kind: 'ocr'; pos: PagePositions }
+  | { kind: 'extracted'; text: string }
+  | { kind: 'empty' }
+type PageKind = PageInfo['kind']
 
-/** Matches of `query` over the concatenated text items of a page, mapped back onto the items. */
-function matchItems(strs: string[], query: string): { count: number; byItem: Map<number, ItemHit[]> } {
-  const q = normQ(query)
-  const byItem = new Map<number, ItemHit[]>()
-  if (!q) return { count: 0, byItem }
-  let text = ''
-  const starts: number[] = []
-  const ids: number[] = []
-  strs.forEach((s, i) => {
-    if (!s) return
-    if (text && !/\s$/.test(text) && !/^\s/.test(s)) text += ' '
-    starts.push(text.length)
-    ids.push(i)
-    text += s
-  })
-  const hay = text.replace(/\s/g, (c) => (c === ' ' ? ' ' : c)).toLowerCase()
-  let count = 0
-  for (let at = hay.indexOf(q); at !== -1; at = hay.indexOf(q, at + q.length)) {
-    const end = at + q.length
-    for (let j = 0; j < starts.length; j++) {
-      const s = starts[j]
-      const e = s + strs[ids[j]].length
-      if (e <= at) continue
-      if (s >= end) break
-      const hit = { item: ids[j], from: Math.max(at, s) - s, to: Math.min(end, e) - s, k: count }
-      const list = byItem.get(ids[j])
-      if (list) list.push(hit)
-      else byItem.set(ids[j], [hit])
-    }
-    count++
-  }
-  return { count, byItem }
+function itemStrs(tc: TextContent): string[] {
+  return tc.items.filter((it) => 'str' in it).map((it) => ('str' in it ? it.str : ''))
 }
 
-function pageStrs(tc: TextContent): string[] {
-  return tc.items.map((it) => ('str' in it ? it.str : '')).filter((s) => s.length > 0)
+function countOn(info: PageInfo, q: string): number {
+  if (info.kind === 'pdf') return matchSegments(info.strs, q).count
+  if (info.kind === 'ocr') return matchSegments(info.pos.lines.map((l) => l[4]), q).count
+  if (info.kind === 'extracted') return countMatches(info.text, q)
+  return 0
 }
 
 // ── a single page ────────────────────────────────────────────────────────────
@@ -90,13 +80,29 @@ interface SlotProps {
   hitOffset: number
   current: number
   getText: (n: number) => Promise<TextContent>
+  getInfo: (n: number) => Promise<PageInfo>
   onLayer: () => void
 }
 
-const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, query, hitOffset, current, getText, onLayer }: SlotProps) {
+const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, query, hitOffset, current, getText, getInfo, onLayer }: SlotProps) {
   const host = useRef<HTMLDivElement>(null)
   const layer = useRef<HTMLDivElement>(null)
   const [layerKey, setLayerKey] = useState(0)
+  // Saved OCR lines replace pdf.js's text layer on a scanned page (D289).
+  const [ocr, setOcr] = useState<PagePositions | null>(null)
+  useEffect(() => {
+    if (!active) return
+    let dead = false
+    void getInfo(num).then((info) => {
+      if (!dead) setOcr(info.kind === 'ocr' ? info.pos : null)
+    })
+    return () => {
+      dead = true
+    }
+  }, [active, num, getInfo])
+  useEffect(() => {
+    if (ocr && active) onLayer()
+  }, [ocr, active, query, onLayer])
 
   // Canvas: render into a pooled canvas, then swap it in so a zoom never flashes blank.
   useEffect(() => {
@@ -145,7 +151,7 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
   useEffect(() => {
     const el = layer.current
     if (!el) return
-    if (!active) {
+    if (!active || ocr) {
       el.replaceChildren()
       return
     }
@@ -173,7 +179,7 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
       cancelled = true
       tl?.cancel()
     }
-  }, [pdf, num, active, scale, getText, onLayer])
+  }, [pdf, num, active, scale, getText, onLayer, ocr])
 
   // Highlights.
   useEffect(() => {
@@ -182,14 +188,13 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
     if (!root || !tl) return
     const divs = tl.textDivs
     const strs = tl.textContentItemsStr
-    const q = normQ(query)
-    root.querySelectorAll('mark.pdf-hit').forEach((m) => {
+    root.querySelectorAll('mark.find-hit').forEach((m) => {
       const p = m.parentElement
       if (p) p.textContent = p.dataset.str ?? p.textContent
     })
-    if (!q) return
-    const { byItem } = matchItems(strs, q)
-    byItem.forEach((hits, i) => {
+    if (!query) return
+    const { bySegment } = matchSegments(strs, query)
+    bySegment.forEach((hits, i) => {
       const div = divs[i]
       const s = strs[i]
       if (!div || !s) return
@@ -199,7 +204,7 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
       for (const hit of hits) {
         if (hit.from > pos) div.append(s.slice(pos, hit.from))
         const m = document.createElement('mark')
-        m.className = 'pdf-hit'
+        m.className = 'find-hit'
         m.dataset.hit = String(hitOffset + hit.k)
         m.textContent = s.slice(hit.from, hit.to)
         div.append(m)
@@ -212,7 +217,7 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
   }, [query, layerKey, hitOffset])
 
   useEffect(() => {
-    layer.current?.querySelectorAll('mark.pdf-hit').forEach((m) => m.classList.toggle('current', Number((m as HTMLElement).dataset.hit) === current))
+    layer.current?.querySelectorAll('mark.find-hit').forEach((m) => m.classList.toggle('current', Number((m as HTMLElement).dataset.hit) === current))
   }, [current, query, layerKey])
 
   return (
@@ -220,12 +225,26 @@ const PageSlot = memo(function PageSlot({ pdf, num, w, h, scale, active, flash, 
       {!active && <div className="pdf-slot-num">{num}</div>}
       <div className="pdf-canvas-host" ref={host} />
       <div ref={layer} style={{ position: 'absolute', inset: 0 }} />
+      {active && ocr && <OcrLayer pos={ocr} width={w} height={h} query={query} hitOffset={hitOffset} current={current} />}
     </div>
   )
 })
 
 // ── the viewer ───────────────────────────────────────────────────────────────
-export function PdfViewer({ path, target, onFailed }: { path: string; target: JumpTarget | null; onFailed?: (message: string) => void }) {
+interface ViewerProps {
+  path: string
+  target: JumpTarget | null
+  onFailed?: (message: string) => void
+  /** Saved OCR positions for scanned pages (D289), if any. */
+  positions?: PositionsSource | null
+  /** The text extracted from each page, searched on a page with neither a text layer nor
+   * positions. */
+  extracted?: { page: number; text: string }[]
+  /** Open the Text tab searching for these words. */
+  onSearchText?: (q: string) => void
+}
+
+export function PdfViewer({ path, target, onFailed, positions, extracted, onSearchText }: ViewerProps) {
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [sizes, setSizes] = useState<{ w: number; h: number }[]>([])
@@ -242,14 +261,15 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
   const textCache = useRef(new Map<number, Promise<TextContent>>())
 
   // find
-  const [findOpen, setFindOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [debounced, setDebounced] = useState('')
   const [hitCounts, setHitCounts] = useState<number[]>([])
+  const [kinds, setKinds] = useState<(PageKind | undefined)[]>([])
   const [scanning, setScanning] = useState(false)
   const [cur, setCur] = useState(0)
   const [revealTick, setRevealTick] = useState(0)
   const findInput = useRef<HTMLInputElement>(null)
+  const infoCache = useRef(new Map<number, Promise<PageInfo>>())
 
   // Load the document and every page's size (page 1 first, the rest in the background).
   useEffect(() => {
@@ -258,6 +278,7 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
     setError(null)
     setSizes([])
     textCache.current = new Map()
+    infoCache.current = new Map()
     ;(async () => {
       try {
         const doc = await openPdf(path)
@@ -394,10 +415,7 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
     goTo(target.page, true)
     setFlash({ page: Math.min(n, Math.max(1, target.page)), n: target.nonce })
     const t = setTimeout(() => setFlash(null), 1700)
-    if (target.find) {
-      setFindOpen(true)
-      setQuery(target.find)
-    }
+    if (target.find) setQuery(target.find)
     return () => clearTimeout(t)
   }, [target, pdf, cw, goTo, n])
 
@@ -433,8 +451,34 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
     [pdf]
   )
 
+  const extractedByPage = useMemo(() => new Map((extracted ?? []).map((p) => [p.page, p.text])), [extracted])
   useEffect(() => {
-    const q = normQ(debounced)
+    infoCache.current = new Map()
+  }, [positions, extractedByPage])
+
+  const getInfo = useCallback(
+    (num: number): Promise<PageInfo> => {
+      let p = infoCache.current.get(num)
+      if (p) return p
+      const fromLayer = (): Promise<PageInfo> =>
+        getText(num).then(
+          (tc) => {
+            const strs = itemStrs(tc)
+            if (strs.some((x) => x.trim())) return { kind: 'pdf', strs }
+            const text = extractedByPage.get(num)
+            return text && text.trim() ? { kind: 'extracted', text } : { kind: 'empty' }
+          },
+          () => ({ kind: 'empty' })
+        )
+      p = positions?.has(num) ? positions.get(num).then((pos) => (pos ? { kind: 'ocr', pos } : fromLayer())) : fromLayer()
+      infoCache.current.set(num, p)
+      return p
+    },
+    [getText, positions, extractedByPage]
+  )
+
+  const q = foldQuery(debounced) ? debounced : ''
+  useEffect(() => {
     setCur(0)
     if (!q || !pdf) {
       setHitCounts([])
@@ -445,21 +489,23 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
     setScanning(true)
     ;(async () => {
       const counts = new Array<number>(pdf.numPages).fill(0)
+      const found = new Array<PageKind | undefined>(pdf.numPages)
       for (let i = 1; i <= pdf.numPages; i++) {
-        try {
-          counts[i - 1] = matchItems(pageStrs(await getText(i)), q).count
-        } catch {
-          counts[i - 1] = 0
-        }
+        const info = await getInfo(i)
         if (dead) return
-        if (i % 25 === 0 || i === pdf.numPages) setHitCounts(counts.slice())
+        counts[i - 1] = countOn(info, q)
+        found[i - 1] = info.kind
+        if (i % 25 === 0 || i === pdf.numPages) {
+          setHitCounts(counts.slice())
+          setKinds(found.slice())
+        }
       }
       if (!dead) setScanning(false)
     })()
     return () => {
       dead = true
     }
-  }, [debounced, pdf, getText])
+  }, [q, pdf, getInfo])
 
   const hitOffsets = useMemo(() => {
     const o = new Array<number>(hitCounts.length)
@@ -472,11 +518,23 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
   }, [hitCounts])
   const total = hitCounts.reduce((a, b) => a + b, 0)
 
-  // Scroll the current match into view (and nudge to its page first if it isn't rendered yet).
+  // The page the current match is on, and whether it can be highlighted there.
+  const curPage = total && cur < total ? hitOffsets.findIndex((o, i) => cur >= o && cur < o + hitCounts[i]) + 1 : 0
+  const curUnplaced = curPage > 0 && kinds[curPage - 1] === 'extracted'
+
+  // Scroll the current match into view (and nudge to its page first if it isn't rendered yet). A
+  // match found only in the extracted text has no mark: its page is shown instead.
   const lastCur = useRef(-1)
   useEffect(() => {
-    if (!total || cur >= total) return
-    const mark = scroller.current?.querySelector(`mark.pdf-hit[data-hit="${cur}"]`)
+    if (!total || cur >= total || !curPage) return
+    if (curUnplaced) {
+      if (lastCur.current !== cur) {
+        goTo(curPage, false)
+        lastCur.current = cur
+      }
+      return
+    }
+    const mark = scroller.current?.querySelector(`mark.find-hit[data-hit="${cur}"]`)
     if (mark) {
       if (lastCur.current !== cur) {
         mark.scrollIntoView({ block: 'center', inline: 'nearest' })
@@ -485,31 +543,12 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
       return
     }
     lastCur.current = -1
-    let p = hitOffsets.findIndex((o, i) => cur >= o && cur < o + hitCounts[i])
-    if (p >= 0) goTo(p + 1, false)
-  }, [cur, total, revealTick, hitOffsets, hitCounts, goTo])
+    goTo(curPage, false)
+  }, [cur, total, revealTick, curPage, curUnplaced, goTo])
 
   const onLayer = useCallback(() => setRevealTick((t) => (t + 1) % 1_000_000), [])
   const step = (d: number) => total && setCur((c) => (c + d + total) % total)
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f') {
-        if ((e.target as HTMLElement | null)?.closest?.('.docv-pane-right')) return
-        e.preventDefault()
-        setFindOpen(true)
-        setTimeout(() => {
-          findInput.current?.focus()
-          findInput.current?.select()
-        })
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [])
-  useEffect(() => {
-    if (findOpen) setTimeout(() => findInput.current?.focus())
-  }, [findOpen])
 
   const commitPage = () => {
     const v = parseInt(pageText, 10)
@@ -549,49 +588,20 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
         />
         <span className="pdf-pagelabel tnum">of {n || '…'}</span>
         <span className="sep" />
+        <FindBox inputRef={findInput} query={query} onQuery={setQuery} active={!!q} total={total} current={cur} scanning={scanning} onStep={step} disabled={!n} />
+        <span className="spacer" />
         <Button variant="ghost" size="sm" icon={ZoomOut} tip="Zoom out" onClick={() => zoomBy(1 / 1.2)} disabled={!n} />
         <span className="pdf-zoomlabel">{Math.round(scale * 100)}%</span>
         <Button variant="ghost" size="sm" icon={ZoomIn} tip="Zoom in" onClick={() => zoomBy(1.2)} disabled={!n} />
         <Button variant={zoom === 'fit' ? 'soft' : 'ghost'} size="sm" icon={Maximize2} tip="Fit to width" onClick={() => setZoom('fit')} disabled={!n} />
-        <span className="spacer" />
-        <Button variant={findOpen ? 'soft' : 'ghost'} size="sm" icon={Search} tip="Find in document (Ctrl/Cmd+F)" onClick={() => setFindOpen((o) => !o)} disabled={!n} />
       </div>
-      {findOpen && (
-        <div className="pdf-find">
-          <input
-            ref={findInput}
-            className="input"
-            placeholder="Find in this document"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                step(e.shiftKey ? -1 : 1)
-              } else if (e.key === 'Escape') {
-                setFindOpen(false)
-                setQuery('')
-              }
-            }}
-            style={{ userSelect: 'text' }}
-          />
-          <span className="count">
-            {!normQ(debounced) ? '' : scanning && !total ? 'Searching…' : total ? `${cur + 1} of ${total}${scanning ? '+' : ''}` : 'No matches'}
-          </span>
-          <Button variant="ghost" size="sm" icon={ChevronUp} tip="Previous match" onClick={() => step(-1)} disabled={!total} />
-          <Button variant="ghost" size="sm" icon={ChevronDown} tip="Next match" onClick={() => step(1)} disabled={!total} />
-          <span className="spacer" />
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={X}
-            tip="Close"
-            onClick={() => {
-              setFindOpen(false)
-              setQuery('')
-            }}
-          />
-        </div>
+      {q && !scanning && !total && (
+        <FindNote action={<SearchTextInstead query={q} onSearchText={onSearchText} />}>No matches on the pages of this document.</FindNote>
+      )}
+      {curUnplaced && (
+        <FindNote action={onSearchText && <Button size="sm" variant="soft" onClick={() => onSearchText(q)}>Show in the Text tab</Button>}>
+          Page {curPage} has no text layer, so this match can’t be highlighted on the page. Watchdog found it in the text extracted from that page.
+        </FindNote>
       )}
       <div className="pdf-scroll" ref={scroller}>
         {!pdf ? (
@@ -613,10 +623,11 @@ export function PdfViewer({ path, target, onFailed }: { path: string; target: Ju
                   scale={scale}
                   active={num >= range[0] && num <= range[1]}
                   flash={flash?.page === num ? flash.n : 0}
-                  query={normQ(debounced)}
+                  query={q}
                   hitOffset={hitOffsets[i] ?? 0}
                   current={cur}
                   getText={getText}
+                  getInfo={getInfo}
                   onLayer={onLayer}
                 />
               )

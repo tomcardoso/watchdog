@@ -118,7 +118,7 @@ test('every screen renders against the demo investigation', async () => {
     // a panel that hides its overflow, such as the document viewer's toolbar.
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'documents' }))
     await page.locator('.docs-card').first().click()
-    const tipped = page.locator('.pdf-toolbar [data-tip]').first()
+    const tipped = page.locator('.pdf-toolbar [data-tip]:not([disabled])').first()
     await expect(tipped).toBeVisible({ timeout: 10_000 })
     {
       await tipped.hover()
@@ -141,6 +141,28 @@ test('every screen renders against the demo investigation', async () => {
     await page.locator('.nav-item', { hasText: 'All investigations' }).click()
     await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('projects')
     await expect(page.locator('.nav-item', { hasText: 'All investigations' })).toHaveAttribute('aria-current', 'page')
+
+    // Find in a document (D289): the box is always in the viewer's toolbar; a match on the
+    // scanned cover page is highlighted on the layer built from its saved OCR positions, and a
+    // query with no matches offers the extracted text instead.
+    const foi = await page.evaluate(async (s) => {
+      const w = window as any
+      w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
+      const vault = w.__watchdogApp.getState().project.path
+      const docs = await w.watchdog.rpc('vault.documents', { vault })
+      return docs.find((d: { filename: string }) => d.filename.startsWith('foi-response')).sha as string
+    }, slug)
+    await page.evaluate((sha) => (window as any).__watchdogApp.getState().navigate({ view: 'document', sha }), foi)
+    const findBox = page.getByRole('textbox', { name: 'Find in document' })
+    await expect(findBox).toBeEnabled({ timeout: 20_000 })
+    await findBox.fill('budgeting purposes')
+    await expect(page.locator('.find-count')).toHaveText('1 of 2', { timeout: 20_000 })
+    await findBox.press('Enter')
+    await expect(page.locator('.ocr-layer mark.find-hit.current')).toBeVisible({ timeout: 20_000 })
+    await expect(page.locator('.ocr-layer mark.find-hit.current')).toHaveText(/budgeting purposes/i)
+    await findBox.fill('no such words anywhere')
+    await page.getByRole('button', { name: 'Search the extracted text instead' }).click()
+    await expect(page.getByPlaceholder('Search the extracted text')).toHaveValue('no such words anywhere')
 
     expect(errors, 'renderer errors').toEqual([])
     await app.close()

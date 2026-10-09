@@ -120,6 +120,7 @@ EntityRow = {
 | `vault.summary` | `{vault}` | `Summary` |
 | `vault.documents` | `{vault}` | `DocumentRow[]` |
 | `vault.document` | `{vault, sha}` | `DocumentDetail` (below) |
+| `vault.textPositions` | `{vault, sha, pages?: int[]}` | `{unit: "line"\|null, engine\|null, pages: int[], boxes: {"<page>": {width, height, lines: [[left, top, right, bottom, text]]}}}` — the saved positions of OCR'd lines (D289) from `.watchdog/text-positions/<sha>.json`: `pages` lists every page that has them, `boxes` holds only the requested pages (at most 50 per call; none without `pages`). Coordinates are in the page's own units (PDF points, image pixels), origin top left; scale by the drawn size over `width`/`height`. Everything empty for a document without the file. Errors: `bad_params` (`pages` not a list of integers), `not_found` |
 | `vault.entities` | `{vault}` | `EntityRow[]` |
 | `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
 | `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, docs: string[]}]}` — `docs` are document shas, repeated (source, target, role) edges merged; stated-direction edges only, edges to unprofiled ids dropped (as `export._forward_edges`) |
@@ -152,6 +153,7 @@ DocumentDetail = DocumentRow & {
   file_metadata: object, sidecar: object|null, metadata: object|null,
   extract_model|null, extract_effort|null, record_skill_hash|null,
   duplicates: [{sha, filename, note}],          // documents this one nearly duplicates, both ways
+  positions_pages: int[],                       // pages with saved OCR line positions (D289), fetched with vault.textPositions
   media: null | {kind: "audio"|"video", duration_seconds|null, page_seconds|null,   // recordings only (D273):
           pages: [{page, start, end}], language|null, model|null}   // page n is start..end seconds; unknown fields ignored
 }

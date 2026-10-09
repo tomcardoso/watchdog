@@ -615,26 +615,76 @@
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
 }
-.pdf-find {
+/* Find in document (D289): always in the toolbar, next to the page controls. */
+.pdf-toolbar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.find-box {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 340px;
+  min-width: 200px;
+}
+.find-input {
+  flex: 1 1 auto;
+  min-width: 120px;
+}
+.find-input .input {
+  height: 28px;
+  width: 100%;
+  padding-right: 28px;
+}
+.find-clear {
+  position: absolute;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.find-clear:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.find-clear svg {
+  width: 13px;
+  height: 13px;
+}
+.find-count {
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+}
+.find-note {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
   padding: 7px 12px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--border);
-  z-index: 3;
-  animation: fade-in 120ms;
-}
-.pdf-find .input {
-  height: 28px;
-  flex: 0 1 280px;
-}
-.pdf-find .count {
   font-size: var(--fs-sm);
-  color: var(--text-3);
-  min-width: 70px;
-  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  z-index: 3;
+}
+mark.find-hit {
+  background: var(--find-hit);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0;
+}
+mark.find-hit.current {
+  background: var(--find-current);
+  outline: 2px solid var(--find-current-ring);
 }
 .pdf-scroll {
   flex: 1;
@@ -773,16 +823,35 @@
 .textLayer.selecting .endOfContent {
   top: 0;
 }
-.textLayer mark.pdf-hit {
+.textLayer mark.find-hit,
+.ocr-layer mark.find-hit {
   color: transparent;
-  background: var(--find-hit);
-  border-radius: 2px;
-  padding: 0;
   margin: 0;
 }
-.textLayer mark.pdf-hit.current {
-  background: var(--find-current);
-  outline: 2px solid var(--find-current-ring);
+
+/* Saved OCR lines over a scanned page or image (D289): invisible, selectable text. */
+.ocr-layer {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  line-height: 1;
+  z-index: 2;
+}
+.ocr-layer br {
+  user-select: none;
+}
+.ocr-line {
+  position: absolute;
+  white-space: pre;
+  color: transparent;
+  font-family: sans-serif;
+  transform-origin: 0 0;
+  cursor: text;
+  user-select: text;
+}
+.ocr-layer ::selection {
+  background: var(--pdf-selection);
+  color: transparent;
 }
 
 /* Image viewer */
@@ -793,8 +862,12 @@
   padding: 24px;
   display: flex;
 }
-.img-scroll img {
+.img-stage {
+  position: relative;
   margin: auto;
+  flex: none;
+}
+.img-scroll img {
   display: block;
   background: var(--paper);
   border-radius: 2px;

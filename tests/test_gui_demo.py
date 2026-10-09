@@ -288,3 +288,24 @@ def test_a_disputed_fact_is_shown_labelled_on_every_surface(demo_vault, tmp_path
     assert len(rows) == n + 1 and sum(1 for r in rows if ",Disputed," in r) == 1
     s = call("vault.summary", vault=str(vault))
     assert s["verification"]["disputed"] == 1 and s["headline"].startswith("Fourteen documents")
+
+
+def test_demo_scans_carry_saved_text_positions(demo_vault):
+    """D289: the scanned letter (an image) and the access decision's scanned cover page (a PDF
+    page with no text layer) have OCR line positions, as pre-processing saves them."""
+    import pypdf
+    from watchdog.pipeline import text_positions
+    vault, _, _ = demo_vault
+    documents = _registry(vault, "documents.json")
+    by_name = {Path(d["filename"]).name: sha for sha, d in documents.items()}
+    letter = by_name["whitcombe-letter-to-integrity-commissioner.png"]
+    foi = by_name["foi-response-lot-14-appraisal.pdf"]
+    assert text_positions.available_pages(vault, letter) == [1]
+    assert text_positions.available_pages(vault, foi) == [4]
+    page = text_positions.read(vault, foi, [4])["boxes"]["4"]
+    assert (page["width"], page["height"]) == (612.0, 792.0)
+    assert any("BUDGETING PURPOSES" in line[4] for line in page["lines"])
+    reader = pypdf.PdfReader(str(vault / documents[foi]["morgue_path"]))
+    assert len(reader.pages) == 4 and not (reader.pages[3].extract_text() or "").strip()
+    others = [sha for sha in documents if sha not in (letter, foi)]
+    assert all(text_positions.available_pages(vault, sha) == [] for sha in others)
