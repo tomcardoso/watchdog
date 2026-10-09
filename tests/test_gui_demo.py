@@ -4,6 +4,7 @@ subprocess, exactly as the app's developers run it."""
 
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -233,3 +234,21 @@ def test_demo_summaries_cite_facts_and_every_citation_resolves(demo_vault):
     assert "[f:" not in summary and "p. 1, disputed]]" in summary
     report = citations.check_text(summary, citations.Resolver(vault))
     assert report["citations"] and report["not_found"] == 0 and report["disputed"] == 1
+
+
+def test_app_resolves_citations_and_renders_the_linked_summary(demo_vault):
+    """D283: `vault.entity` gives the summary with its citations linked, and `vault.citations`
+    resolves each link a page holds: found with the fact and its mark, or not found."""
+    from tests.gui_support import call
+    vault, _, _ = demo_vault
+    e = call("vault.entity", vault=str(vault), id="7714882-holdings-ltd")
+    assert "[f:" not in e["synthesis"]["summary_md"] and "#^f-" in e["synthesis"]["summary_md"]
+    assert e["synthesis"]["citations"]["missing"] == 0
+    key = next(iter(re.findall(r"\[\[([^\]|]+#\^f-[0-9a-f]+)", e["synthesis"]["summary_md"])))
+    out = call("vault.citations", vault=str(vault),
+               links=[key, "documents/council-minutes-2022-02-08#^f-0000000000", "nonsense"])
+    assert out[key]["status"] == "found" and out[key]["fact"]["sha"]
+    assert out["documents/council-minutes-2022-02-08#^f-0000000000"]["status"] == "not_found"
+    assert "nonsense" not in out
+    report = call("vault.checkCitations", vault=str(vault))
+    assert report["citations"] > 0 and report["not_found"] == 0
