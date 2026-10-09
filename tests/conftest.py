@@ -35,3 +35,13 @@ def outside_a_claude_code_session(monkeypatch):
     and `watchdog search` confines itself when it sees that, so a developer running the suite
     from a session would otherwise get different results than CI."""
     monkeypatch.delenv("CLAUDECODE", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def no_investigation_key_scope():
+    """A run sets the process's key-choice scope to its vault (#690, D290); clear it around every
+    test so one test's vault never decides which key another test's lookups resolve."""
+    from watchdog.cmd import auth
+    auth.use_investigation(None)
+    yield
+    auth.use_investigation(None)

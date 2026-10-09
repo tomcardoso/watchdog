@@ -73,6 +73,9 @@ class _RunState:
     config_snapshot: "dict | None" = None
     # Whether the run writes to the global telemetry store (the `telemetry` configure key).
     telemetry_on: bool = False
+    # The label of the key a batch run submits or collects with (#690): batch-collected items are
+    # recorded without a ModelResult to carry it.
+    batch_key_label: "str | None" = None
     # Admission control's in-flight reservations (#563): sha -> estimated tokens for a document
     # admitted but whose real usage hasn't landed yet. `run()` dispatches every document at once,
     # so each one's first `_admit` check runs before any call completes; reserving eagerly lets a
@@ -108,7 +111,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   pruned: list[str] | None = None, failed: bool = False,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
-                  vault: Path | None = None, prompt_hash: str | None = None) -> None:
+                  vault: Path | None = None, prompt_hash: str | None = None,
+                  key_label: str | None = None) -> None:
     """Append one call's usage record to `_run.usage` (and the run's partial file), if a run is active.
 
     Takes explicit fields rather than a `ModelResult` so batch-collected items can be recorded too.
@@ -144,6 +148,10 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     }
     if prompt_hash is not None:
         record["prompt_hash"] = prompt_hash
+    if key_label:
+        # Which labelled key paid (#690, D290) — its label, never the key — so Usage can show
+        # cost per account.
+        record["key_label"] = key_label
     if u.get("duration_api_ms") is not None:
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
@@ -208,13 +216,13 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
                          filename=filename, detail=detail, failed=True,
                          est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                         vault=vault, prompt_hash=prompt_hash)
+                         vault=vault, prompt_hash=prompt_hash, key_label=getattr(e, "key_label", None))
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
                  est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                 vault=vault, prompt_hash=prompt_hash)
+                 vault=vault, prompt_hash=prompt_hash, key_label=getattr(r, "key_label", None))
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
@@ -407,6 +415,10 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     caller, both threaded no further than module-globals here since a single run/finalize call
     is the same one-run-per-process scope `_run.usage` itself already relies on."""
     _consolidate_orphaned_usage(vault)
+    # Every key lookup in this run process now honours this investigation's choice of labelled
+    # key (#690, D290); a chosen key that's gone fails the call rather than billing the default.
+    from watchdog.cmd import auth
+    auth.use_investigation(vault)
     _run.telemetry_on = telemetry_db.enabled()
     _run.usage = []
     _run.admission_reserved.clear()
@@ -1539,7 +1551,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
                       filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta,
                       est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                      vault=vault)
+                      vault=vault, key_label=_run.batch_key_label)
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
@@ -1826,13 +1838,21 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
     key, the same resolution `_resolve_backend_auth` uses for a live call."""
     from watchdog.cmd import auth
     provider = model_client.provider_for_backend(backend)
+    # `run()` has already scoped key lookups to this investigation (`_begin_usage_run`), so its
+    # choice of labelled key applies here too (D290).
+    try:
+        if provider == "anthropic":
+            api_key = auth.resolve_auth().get("key")
+        else:
+            api_key = auth.get_api_key(provider)
+    except auth.KeyChoiceError as e:   # the investigation's chosen key is gone (D290)
+        raise model_client.ModelError(str(e)) from None
+    _run.batch_key_label = auth.label_for_key(provider, api_key)
     if provider == "anthropic":
-        api_key = auth.resolve_auth().get("key")
         if not api_key:
             raise model_client.ModelError(
                 "claude-batch requires api-key auth mode — switch to it with `watchdog settings auth`")
     else:
-        api_key = auth.get_api_key(provider)
         if not api_key:
             raise model_client.ModelError(
                 f"the {backend} backend needs an API key — run `watchdog settings auth` to add one")

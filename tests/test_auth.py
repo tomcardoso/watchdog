@@ -432,7 +432,7 @@ def test_bare_auth_interactive_delete_existing_key(home, monkeypatch):
 def test_bare_auth_interactive_cancel_leaves_existing_key(home, monkeypatch):
     auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
     _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("openai"), "3")       # 3 = Cancel
+    _answers(monkeypatch, _provider_choice("openai"), "4")       # 4 = Cancel (3 adds a labelled key)
     auth.cmd_auth(object())
     assert auth.get_api_key("openai") == "sk-openai-old1234567"
 

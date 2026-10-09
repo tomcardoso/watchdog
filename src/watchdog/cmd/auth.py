@@ -13,8 +13,10 @@ interactive prompt to change them: pick a service, then either switch Claude's m
 (subscription/api-key) or store/replace/remove that provider's key. There is no
 separate set/get/remove/use subcommand surface.
 
-State lives in `~/.watchdog/credentials.json` (mode 0600): `{"mode", "keys": {...}}`.
-The environment variable always takes precedence over a stored key.
+State lives in `~/.watchdog/credentials.json` (mode 0600): `{"mode", "keys": {...}}`, where a
+provider holds one key or several labelled ones (#690, D290). An investigation can choose which
+labelled key it bills (`.watchdog/settings.json` in its folder); `resolve_key` is the one place a
+key is chosen. The environment variable always takes precedence over a stored key.
 """
 
 import json
@@ -141,12 +143,378 @@ def _mask(key: str) -> str:
     return f"{key[:10]}…{key[-4:]}"
 
 
-def get_api_key(provider: str = "anthropic") -> str | None:
-    """Resolve a provider's API key: environment variable first, then stored."""
+# ── labelled keys (#690, D290) ──────────────────────────────────────────────────
+# A provider can hold several keys, each with a stable id and a short label ("Personal",
+# "Globe"), one of them the default. On disk `keys[provider]` is either the old single string
+# (read as one key labelled "Default", id "default") or {"default": <id>, "items": [{"id",
+# "label", "key"}, ...]}. A provider whose only key is that "Default" one is written back as
+# the plain string, so someone who never labels a key keeps a file older versions can read.
+
+DEFAULT_LABEL = "Default"
+DEFAULT_ID = "default"
+LABEL_MAX = 40
+
+
+class KeyChoiceError(Exception):
+    """An investigation chose a labelled key this computer doesn't have (deleted, or never added
+    here because the folder came from someone else). Raised before any model call: falling back
+    to another key would bill another account (D290)."""
+
+
+def _key_items(state: dict, provider: str) -> tuple[list[dict], str | None]:
+    """A provider's stored keys as `[{"id", "label", "key"}]` and the default's id."""
+    raw = (state.get("keys") or {}).get(provider)
+    if isinstance(raw, str):
+        return ([{"id": DEFAULT_ID, "label": DEFAULT_LABEL, "key": raw}], DEFAULT_ID) if raw else ([], None)
+    if not isinstance(raw, dict):
+        return [], None
+    items = [{"id": str(i["id"]), "label": str(i.get("label") or i["id"]), "key": i["key"]}
+             for i in raw.get("items") or []
+             if isinstance(i, dict) and i.get("id") and isinstance(i.get("key"), str) and i["key"]]
+    ids = [i["id"] for i in items]
+    default = raw.get("default") if raw.get("default") in ids else (ids[0] if ids else None)
+    return items, default
+
+
+def _put_key_items(state: dict, provider: str, items: list[dict], default: str | None) -> None:
+    keys = state.setdefault("keys", {})
+    if not items:
+        keys.pop(provider, None)
+    elif len(items) == 1 and items[0]["id"] == DEFAULT_ID and items[0]["label"] == DEFAULT_LABEL:
+        keys[provider] = items[0]["key"]
+    else:
+        ids = [i["id"] for i in items]
+        keys[provider] = {"default": default if default in ids else ids[0],
+                          "items": [{"id": i["id"], "label": i["label"], "key": i["key"]} for i in items]}
+
+
+def clean_label(label, provider: str, items: list[dict], *, except_id: str | None = None) -> str:
+    """A key's label, validated: plain text, at most `LABEL_MAX` characters, unique (ignoring
+    case) among the provider's other keys. Raises ValueError with a message fit to show."""
+    text = " ".join(str(label or "").split())
+    if not text:
+        raise ValueError("Give the key a name, such as Personal or Work.")
+    if len(text) > LABEL_MAX:
+        raise ValueError(f"Keep the name to {LABEL_MAX} characters or fewer.")
+    if any(not ch.isprintable() for ch in text):
+        raise ValueError("The name can only contain plain text.")
+    if any(i["label"].casefold() == text.casefold() and i["id"] != except_id for i in items):
+        raise ValueError(f"There is already a {_PROVIDERS.get(provider, {}).get('label', provider).split(' — ')[0]} "
+                         f"key named “{text}”.")
+    return text
+
+
+def _new_key_id(items: list[dict]) -> str:
+    import secrets
+    taken = {i["id"] for i in items}
+    while True:
+        kid = "k-" + secrets.token_hex(4)
+        if kid not in taken:
+            return kid
+
+
+def list_keys(provider: str, state: dict | None = None) -> list[dict]:
+    """A provider's stored keys, masked: `[{"id", "label", "masked", "default"}]`. The key itself
+    never leaves this module through here."""
+    items, default = _key_items(state if state is not None else _load_state(), provider)
+    return [{"id": i["id"], "label": i["label"], "masked": _mask(i["key"]), "default": i["id"] == default}
+            for i in items]
+
+
+def add_key(provider: str, label: str, key: str, *, make_default: bool = False) -> str:
+    """Store a new labelled key for `provider` and return its id. The provider's first key
+    becomes its default."""
+    key = (key or "").strip()
+    if not key:
+        raise ValueError("Paste a key.")
+    state = _load_state()
+    items, default = _key_items(state, provider)
+    text = clean_label(label, provider, items)
+    kid = DEFAULT_ID if not items and text == DEFAULT_LABEL else _new_key_id(items)
+    items.append({"id": kid, "label": text, "key": key})
+    _put_key_items(state, provider, items, kid if (make_default or default is None) else default)
+    _save_state(state)
+    return kid
+
+
+def _find(items: list[dict], key_id: str) -> dict:
+    for i in items:
+        if i["id"] == key_id:
+            return i
+    raise ValueError("That key is no longer stored on this computer.")
+
+
+def rename_key(provider: str, key_id: str, label: str) -> None:
+    state = _load_state()
+    items, default = _key_items(state, provider)
+    item = _find(items, key_id)
+    item["label"] = clean_label(label, provider, items, except_id=key_id)
+    _put_key_items(state, provider, items, default)
+    _save_state(state)
+
+
+def replace_key(provider: str, key_id: str, key: str) -> None:
+    """Replace the secret of an existing labelled key, keeping its id and label (so every
+    investigation that chose it keeps billing the account it names)."""
+    key = (key or "").strip()
+    if not key:
+        raise ValueError("Paste a key.")
+    state = _load_state()
+    items, default = _key_items(state, provider)
+    _find(items, key_id)["key"] = key
+    _put_key_items(state, provider, items, default)
+    _save_state(state)
+
+
+def set_default_key(provider: str, key_id: str) -> None:
+    state = _load_state()
+    items, _default = _key_items(state, provider)
+    _find(items, key_id)
+    _put_key_items(state, provider, items, key_id)
+    _save_state(state)
+
+
+def delete_key(provider: str, key_id: str) -> None:
+    """Remove one labelled key. When it was the default, the first remaining key becomes the
+    default; an investigation that chose the deleted key stops at its next run (D290)."""
+    state = _load_state()
+    items, default = _key_items(state, provider)
+    _find(items, key_id)
+    items = [i for i in items if i["id"] != key_id]
+    _put_key_items(state, provider, items, default if default != key_id else None)
+    _save_state(state)
+
+
+def store_default_key(state: dict, provider: str, key: str) -> None:
+    """Set the provider's default key to `key` — the one-key-per-provider path the setup wizard,
+    `watchdog auth` and the app's single "Replace" use. A provider with no key gets one labelled
+    "Default"; otherwise the default key's secret is replaced and its label kept. Mutates
+    `state`; the caller saves it."""
+    items, default = _key_items(state, provider)
+    if default is None:
+        items, default = [{"id": DEFAULT_ID, "label": DEFAULT_LABEL, "key": key}], DEFAULT_ID
+    else:
+        _find(items, default)["key"] = key
+    _put_key_items(state, provider, items, default)
+
+
+def has_stored_key(state: dict, provider: str) -> bool:
+    return bool(_key_items(state, provider)[0])
+
+
+def _env_label(provider: str) -> str:
+    return f"{_PROVIDERS[provider]['env']} (environment)"
+
+
+# ── the investigation's choice ─────────────────────────────────────────────────
+# `.watchdog/settings.json` inside the investigation's folder, so the choice travels with it:
+# {"schema_version": 1, "keys": {"<provider>": {"id": "<key id>", "label": "<label>"}}}. The
+# key itself is never written there. The label is kept so a computer that doesn't have the id
+# (a shared folder) can still name the account it should bill — and match a key of that label.
+
+_SETTINGS_VERSION = 1
+
+# The investigation whose choices apply when a caller doesn't name one — set by a run's entry
+# point (`orchestrate._begin_usage_run`, `recheck.run`) in its own process. The app's sidecar,
+# which serves several investigations, never sets it and always passes `vault=` explicitly.
+_scope_vault: Path | None = None
+
+
+def use_investigation(vault: Path | None) -> None:
+    """Make `vault`'s key choices apply to every key lookup in this process that names no
+    investigation (a run's model calls). None clears it."""
+    global _scope_vault
+    _scope_vault = Path(vault) if vault is not None else None
+
+
+def investigation_settings_path(vault: Path) -> Path:
+    return Path(vault) / ".watchdog" / "settings.json"
+
+
+def _read_investigation_settings(vault: Path) -> dict:
+    data = _read_json_or(investigation_settings_path(vault), {})
+    return data if isinstance(data, dict) else {}
+
+
+def investigation_keys(vault: Path) -> dict[str, dict]:
+    """The investigation's chosen key per provider: `{provider: {"id", "label"}}`. A provider
+    absent here uses its default key."""
+    raw = _read_investigation_settings(vault).get("keys")
+    out: dict[str, dict] = {}
+    if isinstance(raw, dict):
+        for provider, choice in raw.items():
+            if provider in _PROVIDERS and isinstance(choice, dict) and (choice.get("id") or choice.get("label")):
+                out[provider] = {"id": choice.get("id"), "label": choice.get("label")}
+    return out
+
+
+def choose_key(vault: Path, provider: str, key_id: str | None) -> None:
+    """Record which of this computer's keys the investigation uses for `provider`; None returns
+    it to the default. Only the id and label are written, never the key."""
+    if provider not in _PROVIDERS:
+        raise ValueError(f"“{provider}” isn't a model provider Watchdog knows.")
+    data = _read_investigation_settings(vault)
+    keys = data.get("keys") if isinstance(data.get("keys"), dict) else {}
+    if key_id is None:
+        keys.pop(provider, None)
+    else:
+        items, _default = _key_items(_load_state(), provider)
+        item = _find(items, key_id)
+        keys[provider] = {"id": item["id"], "label": item["label"]}
+    data["schema_version"] = _SETTINGS_VERSION
+    data["keys"] = keys
+    path = investigation_settings_path(vault)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _match_choice(items: list[dict], choice: dict) -> dict | None:
+    """The stored key an investigation's choice names: by id, else by label (ignoring case) —
+    a shared folder's choice names the account, and this computer's key of that name is it."""
+    for i in items:
+        if choice.get("id") and i["id"] == choice["id"]:
+            return i
+    label = (choice.get("label") or "").casefold()
+    for i in items:
+        if label and i["label"].casefold() == label:
+            return i
+    return None
+
+
+def missing_key_message(provider: str, label: str | None) -> str:
+    name = _PROVIDERS.get(provider, {}).get("label", provider).split(" — ")[0]
+    who = f"the {name} key named “{label}”" if label else f"a {name} key"
+    return (f"This investigation is set to bill {who}, which isn't stored on this computer. "
+            f"Add a key with that name under Settings → Models & keys, or choose another key "
+            f"in this investigation's billing settings. Nothing was sent.")
+
+
+def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
+    """The one resolver for which key pays for `provider` in an investigation (D290):
+    `{"key", "id", "label", "source"}` with `source` one of `env`, `chosen`, `default`, `none`.
+
+    The environment variable overrides everything, as before. Otherwise the investigation's
+    choice applies (`vault`, or the process's `use_investigation` scope); a choice this computer
+    can't satisfy raises `KeyChoiceError` rather than falling back to another account. With no
+    choice, the provider's default key."""
+    meta = _PROVIDERS.get(provider)
+    if meta and os.environ.get(meta["env"]):
+        return {"key": os.environ[meta["env"]], "id": None, "label": _env_label(provider), "source": "env"}
+    items, default = _key_items(_load_state(), provider)
+    target = vault if vault is not None else _scope_vault
+    choice = investigation_keys(target).get(provider) if target is not None else None
+    if choice:
+        item = _match_choice(items, choice)
+        if item is None:
+            raise KeyChoiceError(missing_key_message(provider, choice.get("label")))
+        return {"key": item["key"], "id": item["id"], "label": item["label"], "source": "chosen"}
+    for i in items:
+        if i["id"] == default:
+            return {"key": i["key"], "id": i["id"], "label": i["label"], "source": "default"}
+    return {"key": None, "id": None, "label": None, "source": "none"}
+
+
+def get_api_key(provider: str = "anthropic", vault: Path | None = None) -> str | None:
+    """Resolve a provider's API key: environment variable first, then the investigation's chosen
+    key, then the default (`resolve_key`). Raises `KeyChoiceError` for a chosen key that's gone."""
+    return resolve_key(provider, vault)["key"]
+
+
+def default_key(provider: str, state: dict | None = None) -> str | None:
+    """The key a provider uses with no investigation's choice in play: the environment variable,
+    else the stored default. For status displays, which describe this computer, not a run."""
     meta = _PROVIDERS.get(provider)
     if meta and os.environ.get(meta["env"]):
         return os.environ[meta["env"]]
-    return _load_state()["keys"].get(provider)
+    items, default = _key_items(state if state is not None else _load_state(), provider)
+    return next((i["key"] for i in items if i["id"] == default), None)
+
+
+def label_for_key(provider: str, key: str | None) -> str | None:
+    """The label of the key whose secret is `key` — what usage records name as the account that
+    paid (never the key). Derived from the key actually sent, so it can't disagree with it."""
+    if not key:
+        return None
+    meta = _PROVIDERS.get(provider)
+    if meta and os.environ.get(meta["env"]) == key:
+        return _env_label(provider)
+    for i in _key_items(_load_state(), provider)[0]:
+        if i["key"] == key:
+            return i["label"]
+    return None
+
+
+def check_investigation_keys(vault: Path, providers) -> None:
+    """Raise `KeyChoiceError` if any of `providers` has a chosen key this computer lacks — the
+    check a run makes before its first model call. An environment variable satisfies it."""
+    for p in dict.fromkeys(providers):
+        if p in _PROVIDERS:
+            resolve_key(p, vault)
+
+
+def run_providers(backends) -> list[str]:
+    """The providers whose keys a run on `backends` would send (None is a bare Claude tier). A
+    Claude stage counts only in api-key mode: on a subscription no key is sent."""
+    from watchdog.model_client import provider_for_backend
+    mode = _load_state().get("mode")
+    out = []
+    for b in backends:
+        p = provider_for_backend(b)
+        if p == "anthropic" and mode != "api-key":
+            continue
+        if p not in out:
+            out.append(p)
+    return out
+
+
+def check_run_keys(vault: Path, backends) -> None:
+    """Raise `KeyChoiceError` before a run's first model call when the investigation chose a key
+    this computer lacks for a provider the run would use (D290)."""
+    check_investigation_keys(vault, run_providers(backends))
+
+
+def key_users(provider: str, key_id: str) -> list[str]:
+    """Names of the registered investigations on this computer that chose this key — what the
+    app warns about before a key is deleted. Investigations it doesn't know of aren't listed."""
+    from watchdog.cmd.base import load_projects
+    try:
+        projects = load_projects()
+    except Exception:
+        return []
+    items, _default = _key_items(_load_state(), provider)
+    names = []
+    for info in projects.values():
+        try:
+            choice = investigation_keys(Path(info["path"])).get(provider)
+        except Exception:
+            continue
+        if choice and (_match_choice(items, choice) or {}).get("id") == key_id:
+            names.append(info.get("name") or Path(info["path"]).name)
+    return sorted(names)
+
+
+def billing_summary(vault: Path, providers) -> list[dict]:
+    """Which key will pay for each of `providers` in this investigation, for the app's notices:
+    `[{"provider", "provider_label", "label", "source", "missing", "message", "several"}]`.
+    Never includes the key."""
+    state = _load_state()
+    out = []
+    for p in dict.fromkeys(providers):
+        if p not in _PROVIDERS:
+            continue
+        row = {"provider": p, "provider_label": _PROVIDERS[p]["label"].split(" — ")[0],
+               "label": None, "source": "none", "missing": False, "message": None,
+               "several": len(_key_items(state, p)[0]) > 1}
+        try:
+            r = resolve_key(p, vault)
+            row.update(label=r["label"], source=r["source"])
+        except KeyChoiceError as e:
+            choice = investigation_keys(vault).get(p) or {}
+            row.update(label=choice.get("label"), source="chosen", missing=True, message=str(e))
+        out.append(row)
+    return out
 
 
 def provider_requires_key(provider: str) -> bool:
@@ -190,10 +558,10 @@ def provider_ready(provider: str) -> bool:
     meta = _PROVIDERS.get(provider, {})
     if meta.get("base_url_key") and not get_base_url(provider):
         return False
-    return not provider_requires_key(provider) or bool(get_api_key(provider))
+    return not provider_requires_key(provider) or bool(default_key(provider))
 
 
-def resolve_auth(provider: str = "anthropic") -> dict:
+def resolve_auth(provider: str = "anthropic", vault: Path | None = None) -> dict:
     """How a model backend should authenticate for this run — the resolver #118 calls.
 
     Returns one of:
@@ -207,8 +575,8 @@ def resolve_auth(provider: str = "anthropic") -> dict:
         return {"mode": "none", "reason": "No model provider is set up. Sign in or add a key under Settings → Models & keys."}
     if mode == "subscription":
         return {"mode": "subscription"}
-    # api-key
-    key = get_api_key(provider)
+    # api-key — the investigation's chosen Anthropic key, or the default (D290)
+    key = get_api_key(provider, vault)
     return {"mode": "api-key", "key": key} if key else {
         "mode": "none", "reason": "api-key mode is set but no key is configured — run `watchdog settings auth`"}
 
@@ -250,7 +618,7 @@ def status_data() -> dict:
     if mode == "subscription":
         claude["logged_in"] = claude_code_logged_in()
     elif mode is not None:   # api-key
-        key = get_api_key()
+        key = default_key("anthropic", state)
         if key:
             claude["key_masked"] = _mask(key)
             claude["key_source"] = "env" if env_set else "stored"
@@ -267,7 +635,7 @@ def status_data() -> dict:
     for stage_key, default in _INGEST_STAGES:
         value = config.get(stage_key) or default
         provider = _ingest_stage_provider(value)
-        ready = (mode == "subscription" or bool(get_api_key("anthropic"))) if provider == "anthropic" \
+        ready = (mode == "subscription" or bool(default_key("anthropic", state))) if provider == "anthropic" \
             else provider_ready(provider)
         stages.append({"stage": stage_key[: -len("_model")], "config_key": stage_key,
                        "value": value, "provider": provider, "ready": ready})
@@ -279,7 +647,7 @@ def status_data() -> dict:
     shown_providers = {_ingest_stage_provider(config.get(k) or d) for k, d in _INGEST_STAGES}
     keys = []
     for p in _PROVIDERS:
-        key = get_api_key(p)
+        key = default_key(p, state)
         if not key:
             continue
         if p == "anthropic" and mode != "api-key":
@@ -287,7 +655,8 @@ def status_data() -> dict:
         else:
             status = "in use" if p in shown_providers else "unused"
         keys.append({"provider": p, "masked": _mask(key), "status": status,
-                     "source": "env" if os.environ.get(_PROVIDERS[p]["env"]) else "stored"})
+                     "source": "env" if os.environ.get(_PROVIDERS[p]["env"]) else "stored",
+                     "labelled": list_keys(p, state)})
 
     # Providers with a user-supplied base URL (local, openrouter — #380), whichever is set.
     base_urls = [{"provider": p, "url": u}
@@ -343,6 +712,10 @@ def _status() -> None:
         for k in d["keys"]:
             where = f"${_PROVIDERS[k['provider']]['env']}" if k["source"] == "env" else "stored"
             print(f"  {_DIM}{k['provider']:<13}{_RESET}{_CYAN}{k['masked']}{_RESET} {_DIM}({where}, {k['status']}){_RESET}")
+            if len(k["labelled"]) > 1:   # several labelled keys (#690): name each, mark the default
+                for item in k["labelled"]:
+                    tag = " — default" if item["default"] else ""
+                    print(f"  {'':<13}{_DIM}{item['label']}  {item['masked']}{tag}{_RESET}")
         print()
 
     if d["base_urls"]:
@@ -377,7 +750,7 @@ def prompt_and_store_key(provider: str, state: dict) -> bool:
         return False
     if meta["prefix"] and not key.startswith(meta["prefix"]):
         print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-    state.setdefault("keys", {})[provider] = key
+    store_default_key(state, provider, key)
     _save_state(state)
     print(f"  {_GREEN}✓{_RESET}  {meta['label']} key stored ({_mask(key)}).")
     return True
@@ -421,7 +794,7 @@ def ensure_provider_key(value: str) -> None:
     meta = _PROVIDERS.get(provider, {})
     if meta.get("base_url_key") and not get_base_url(provider):
         prompt_and_store_base_url(provider)
-    if provider_requires_key(provider) and not get_api_key(provider):
+    if provider_requires_key(provider) and not default_key(provider):
         prompt_and_store_key(provider, _load_state())
 
 
@@ -460,7 +833,7 @@ def _apply_anthropic_choice(state: dict, choice: str, *, show_detection: bool = 
         if key:
             if meta["prefix"] and not key.startswith(meta["prefix"]):
                 print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-            state["keys"]["anthropic"] = key
+            store_default_key(state, "anthropic", key)
             _save_state(state)
             print(f"\n  {_GREEN}✓{_RESET}  API key stored ({_mask(key)}).")
         else:
@@ -672,7 +1045,7 @@ def _route_ingestion_to_provider(state: dict, provider: str) -> None:
 
     if not provider_requires_key(provider):
         pass   # e.g. local — most self-hosted runners need no key at all
-    elif os.environ.get(meta["env"]) or state["keys"].get(provider):
+    elif os.environ.get(meta["env"]) or has_stored_key(state, provider):
         print(f"  {_GREEN}✓{_RESET}  {label} key already available.")
     elif not prompt_and_store_key(provider, state):
         return
@@ -725,7 +1098,7 @@ def _offer_extra_providers(state: dict) -> None:
         print(f"\n  {_BOLD}{meta['label'].split(' — ')[0]}{_RESET}")
         if meta.get("base_url_key") and not get_base_url(provider):
             prompt_and_store_base_url(provider)
-        if provider_requires_key(provider) and not (os.environ.get(meta["env"]) or state["keys"].get(provider)):
+        if provider_requires_key(provider) and not (os.environ.get(meta["env"]) or has_stored_key(state, provider)):
             prompt_and_store_key(provider, state)
 
 
@@ -789,10 +1162,13 @@ def _pick_base_url_provider_interactive(provider: str) -> None:
 
 def _pick_key_provider_interactive(provider: str, state: dict) -> None:
     """Set the provider's base URL if it needs a user-supplied one (#380), then store, replace,
-    or remove its API key — skipped for a provider that doesn't require one (`local`) unless the
-    user wants to add one anyway (some self-hosted gateways do check for one)."""
+    label or remove its API keys — skipped for a provider that doesn't require one (`local`)
+    unless the user wants to add one anyway (some self-hosted gateways do check for one).
+
+    Several labelled keys per provider (#690) get the minimum here — add one with a name, pick
+    the default, delete one; naming and choosing them per investigation is the app's job."""
     meta = _PROVIDERS[provider]
-    existing = state["keys"].get(provider)
+    items, default = _key_items(state, provider)
 
     print()
     print(f"  {_BOLD}{meta['label']}{_RESET}")
@@ -805,25 +1181,59 @@ def _pick_key_provider_interactive(provider: str, state: dict) -> None:
         print(f"  {_YELLOW}Note:{_RESET} ${meta['env']} is set in your environment and "
               f"takes precedence over a stored key.")
 
-    if not provider_requires_key(provider) and not existing:
+    if not provider_requires_key(provider) and not items:
         if not confirm(f"  {meta['label']} doesn't require a key — add one anyway?", default=False):
             print()
             return
 
-    if existing:
-        print(f"  Current key: {_CYAN}{_mask(existing)}{_RESET} {_DIM}(stored){_RESET}")
-        items = ["Replace the stored key", "Delete the stored key", "Cancel"]
-        result = pick(items, 0, title="What would you like to do?")
-        if result is CANCELLED or result == 2:
+    if items:
+        for i in items:
+            tag = f" {_DIM}(default){_RESET}" if i["id"] == default and len(items) > 1 else ""
+            print(f"  {i['label']}: {_CYAN}{_mask(i['key'])}{_RESET}{tag}")
+        options = ["Replace the default key", "Delete a key", "Add another key, with a name"]
+        if len(items) > 1:
+            options.append("Choose the default key")
+        options.append("Cancel")
+        result = pick(options, 0, title="What would you like to do?")
+        if result is CANCELLED or options[result] == "Cancel":
             return
-        if result == 1:
-            del state["keys"][provider]
-            _save_state(state)
-            print(f"  {_GREEN}Removed:{_RESET} stored key for {_BOLD}{provider}{_RESET}\n")
+        choice = options[result]
+        if choice == "Add another key, with a name":
+            _add_labelled_key_interactive(provider)
+            return
+        if choice in ("Delete a key", "Choose the default key"):
+            which = items[0] if len(items) == 1 else None
+            if which is None:
+                picked = pick([i["label"] for i in items], 0, title="Which key?")
+                if picked is CANCELLED:
+                    return
+                which = items[picked]
+            if choice == "Delete a key":
+                delete_key(provider, which["id"])
+                print(f"  {_GREEN}Removed:{_RESET} the {_BOLD}{which['label']}{_RESET} key for {provider}\n")
+            else:
+                set_default_key(provider, which["id"])
+                print(f"  {_GREEN}✓{_RESET}  {_BOLD}{which['label']}{_RESET} is now the default {provider} key.\n")
             return
 
     prompt_and_store_key(provider, state)
     print()
+
+
+def _add_labelled_key_interactive(provider: str) -> None:
+    meta = _PROVIDERS[provider]
+    try:
+        label = input("  Name for this key (e.g. Personal, Work): ").strip()
+        key = getpass(f"  Paste the {meta['label']} API key (hidden): ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    try:
+        add_key(provider, label, key)
+    except ValueError as e:
+        print(f"  {_YELLOW}!{_RESET}  {e}\n")
+        return
+    print(f"  {_GREEN}✓{_RESET}  {meta['label']} key {_BOLD}{label}{_RESET} stored ({_mask(key)}).\n")
 
 
 def cmd_auth(args) -> None:

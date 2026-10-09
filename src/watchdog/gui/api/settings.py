@@ -234,6 +234,7 @@ def _auth_status() -> dict:
     from watchdog.cmd import auth as auth_cmd
 
     d = auth_cmd.status_data()
+    state = auth_cmd._load_state()
     claude = d["claude"]
     mode = claude["mode"]
     if mode == "subscription":
@@ -261,6 +262,10 @@ def _auth_status() -> dict:
                   "detail": k["status"], "source": k["source"]} for k in d["keys"]],
         "base_urls": d["base_urls"],
         "providers": providers,
+        # Every stored key per provider, labelled and masked (#690); `users` names the registered
+        # investigations that chose it, for the warning before a delete.
+        "key_sets": {p: [{**k, "users": auth_cmd.key_users(p, k["id"])} for k in auth_cmd.list_keys(p, state)]
+                     for p in auth_cmd._PROVIDERS},
     }
 
 
@@ -296,7 +301,7 @@ def set_anthropic_mode(mode: str, key: str | None = None) -> dict:
     warning = None
     state["mode"] = mode
     if mode == "api-key" and key is not None and key.strip():
-        state["keys"]["anthropic"] = key.strip()
+        auth_cmd.store_default_key(state, "anthropic", key.strip())
         warning = _prefix_warning(meta, key.strip())
     auth_cmd._save_state(state)
     if mode == "subscription":
@@ -308,27 +313,122 @@ def set_anthropic_mode(mode: str, key: str | None = None) -> dict:
 
 
 @method("auth.setKey")
-def set_key(provider: str, key: str) -> dict:
+def set_key(provider: str, key: str, id: str | None = None) -> dict:
+    """Store a provider's key. Without `id`, the default key's secret is replaced (a provider with
+    none gets one named Default); with `id`, that labelled key's secret is."""
     from watchdog.cmd import auth as auth_cmd
 
     meta = _check_provider(provider)
     if not isinstance(key, str) or not key.strip():
         raise RpcError("Paste a key, or use remove to delete the stored one.", code="bad_params")
-    state = auth_cmd._load_state()
-    state["keys"][provider] = key.strip()
-    auth_cmd._save_state(state)
+    if id:
+        _key_op(lambda: auth_cmd.replace_key(provider, id, key))
+    else:
+        state = auth_cmd._load_state()
+        auth_cmd.store_default_key(state, provider, key.strip())
+        auth_cmd._save_state(state)
     return {**_auth_status(), "warning": _prefix_warning(meta, key.strip())}
 
 
+def _key_op(fn):
+    try:
+        return fn()
+    except ValueError as e:
+        raise RpcError(str(e), code="bad_params") from None
+
+
 @method("auth.deleteKey")
-def delete_key(provider: str) -> dict:
+def delete_key(provider: str, id: str | None = None) -> dict:
+    """Delete one labelled key (`id`), or, without `id`, every stored key for the provider."""
     from watchdog.cmd import auth as auth_cmd
 
     _check_provider(provider)
-    state = auth_cmd._load_state()
-    if state["keys"].pop(provider, None) is not None:
-        auth_cmd._save_state(state)
+    if id:
+        _key_op(lambda: auth_cmd.delete_key(provider, id))
+    else:
+        state = auth_cmd._load_state()
+        if state["keys"].pop(provider, None) is not None:
+            auth_cmd._save_state(state)
     return {**_auth_status(), "warning": None}
+
+
+@method("auth.addKey")
+def add_key(provider: str, label: str, key: str, make_default: bool = False) -> dict:
+    """Add another labelled key for a provider (#690). Its first key becomes the default."""
+    from watchdog.cmd import auth as auth_cmd
+
+    meta = _check_provider(provider)
+    if not isinstance(key, str) or not key.strip():
+        raise RpcError("Paste a key.", code="bad_params")
+    kid = _key_op(lambda: auth_cmd.add_key(provider, label, key, make_default=bool(make_default)))
+    return {**_auth_status(), "id": kid, "warning": _prefix_warning(meta, key.strip())}
+
+
+@method("auth.renameKey")
+def rename_key(provider: str, id: str, label: str) -> dict:
+    from watchdog.cmd import auth as auth_cmd
+
+    _check_provider(provider)
+    _key_op(lambda: auth_cmd.rename_key(provider, id, label))
+    return {**_auth_status(), "warning": None}
+
+
+@method("auth.setDefaultKey")
+def set_default_key(provider: str, id: str) -> dict:
+    from watchdog.cmd import auth as auth_cmd
+
+    _check_provider(provider)
+    _key_op(lambda: auth_cmd.set_default_key(provider, id))
+    return {**_auth_status(), "warning": None}
+
+
+# ── the investigation's choice of key (D290) ─────────────────────────────────────
+
+def _investigation_keys(v: Path) -> dict:
+    from watchdog.cmd import auth as auth_cmd
+    from watchdog.cmd.base import load_config
+
+    state = auth_cmd._load_state()
+    choices = auth_cmd.investigation_keys(v)
+    config = load_config()
+    used = {auth_cmd._ingest_stage_provider(config.get(k) or d) for k, d in auth_cmd._INGEST_STAGES}
+    used.add("anthropic")   # Ask Claude and Research always run on Claude
+    rows = []
+    for p, meta in auth_cmd._PROVIDERS.items():
+        keys = auth_cmd.list_keys(p, state)
+        summary = auth_cmd.billing_summary(v, [p])[0]
+        choice = choices.get(p)
+        rows.append({
+            "provider": p, "provider_label": meta["label"].split(" — ")[0],
+            "keys": [{"id": k["id"], "label": k["label"], "masked": k["masked"], "default": k["default"]}
+                     for k in keys],
+            "chosen": ({"id": choice.get("id"), "label": choice.get("label")} if choice else None),
+            "resolved_label": summary["label"], "source": summary["source"],
+            "missing": summary["missing"], "message": summary["message"],
+            "env": bool(os.environ.get(meta["env"])), "used": p in used,
+        })
+    return {"providers": rows, "claude_mode": state.get("mode")}
+
+
+@method("auth.investigationKeys")
+def investigation_keys(vault: str) -> dict:
+    """Per provider: this computer's keys (masked), the investigation's choice, and which key
+    will actually pay — or why none can."""
+    from watchdog.gui.vaultio import require_vault
+    return _investigation_keys(require_vault(vault))
+
+
+@method("auth.chooseKey")
+def choose_key(vault: str, provider: str, id: str | None = None) -> dict:
+    """Set which labelled key the investigation bills for `provider`; `id` null returns it to the
+    default. Writes `.watchdog/settings.json` in the investigation's folder (D290)."""
+    from watchdog.cmd import auth as auth_cmd
+    from watchdog.gui.vaultio import require_vault
+
+    _check_provider(provider)
+    v = require_vault(vault)
+    _key_op(lambda: auth_cmd.choose_key(v, provider, id or None))
+    return _investigation_keys(v)
 
 
 @method("auth.setBaseUrl")

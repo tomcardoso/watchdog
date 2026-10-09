@@ -271,8 +271,10 @@ class ModelError(RuntimeError):
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
-                auth_mode: str | None = None, truncated: bool = False, starved: bool = False):
+                auth_mode: str | None = None, truncated: bool = False, starved: bool = False,
+                key_label: str | None = None):
         super().__init__(message)
+        self.key_label = key_label
         self.usage = usage
         self.cost_usd = cost_usd
         self.attempts = attempts
@@ -367,6 +369,7 @@ class ModelResult:
     attempts: int = 1
     pruned: list[str] | None = None
     rate_limit: dict | None = None
+    key_label: str | None = None    # the labelled key that paid (#690), never the key itself
 
 
 # ── JSON handling ─────────────────────────────────────────────────────────────
@@ -1263,7 +1266,10 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     provider = meta.provider if chosen else "anthropic"
 
     if provider == "anthropic":
-        resolved = auth.resolve_auth()
+        try:
+            resolved = auth.resolve_auth()
+        except auth.KeyChoiceError as e:   # the investigation's chosen key is gone (D290)
+            raise ModelError(str(e)) from None
         if resolved["mode"] == "none":
             raise ModelError(resolved.get("reason", "no auth configured — run `watchdog setup`"))
         auth_mode = resolved["mode"]
@@ -1284,7 +1290,10 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
                 f"the {chosen} backend needs a base URL — run "
                 f"`watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
 
-    api_key = auth.get_api_key(provider)
+    try:
+        api_key = auth.get_api_key(provider)
+    except auth.KeyChoiceError as e:       # never fall back to another account (D290)
+        raise ModelError(str(e)) from None
     if auth.provider_requires_key(provider) and not api_key:
         raise ModelError(f"the {chosen} backend needs an API key — run `watchdog settings auth` to add one")
     return chosen, provider, api_key, "api-key", base_url
@@ -1399,6 +1408,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     on the **same** model (up to `max_retries` extra attempts) — never escalating — then raises.
     """
     chosen, provider, api_key, auth_mode, base_url = _resolve_backend_auth(backend)
+    key_label = auth.label_for_key(provider, api_key)
     backend_fn = _ABACKENDS[chosen]
     if _BACKEND_META[chosen].dynamic_base_url:
         backend_fn = partial(backend_fn, base_url=base_url)
@@ -1494,7 +1504,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                     auth_mode=auth_mode, usage=agg_usage,
                     cost_usd=round(total_cost, 6) or None,
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
-                    pruned=pruned_all or None, rate_limit=last_rate_limit,
+                    pruned=pruned_all or None, rate_limit=last_rate_limit, key_label=key_label,
                 )
             last_err = "; ".join(errors[:3])
             if len(errors) > 3:
@@ -1507,5 +1517,5 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         f"on {chosen}: {last_err}",
         usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
         model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated,
-        starved=was_starved)
+        starved=was_starved, key_label=key_label)
 
