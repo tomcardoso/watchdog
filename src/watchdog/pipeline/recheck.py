@@ -396,6 +396,9 @@ def summary(out: dict) -> str:
     head = (f"Re-checked {out['entities']} entit{'ies' if out['entities'] != 1 else 'y'} "
             f"({out['facts']} facts) in {out['calls_done']} of {out['calls_total']} "
             f"call{'s' if out['calls_total'] != 1 else ''}.")
+    if not out["calls_done"]:
+        why = f"The model call failed: {out['error']}." if out["error"] else "Stopped before the first call finished."
+        return f"{head} {why} Nothing was checked, and nothing was filed."
     found = (f" {filed} new contradiction{'s' if filed != 1 else ''} filed for Review."
              if filed else " No new contradictions were found.")
     if out["repeats"]:

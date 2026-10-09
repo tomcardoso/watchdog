@@ -315,3 +315,13 @@ def test_the_app_starts_it_as_a_job_and_keeps_the_gates(vault, monkeypatch, wdg_
 def test_main_refuses_a_folder_that_is_not_an_investigation(tmp_path, capsys):
     assert recheck.main(["--all", "--vault", str(tmp_path)]) == 1
     assert "not a Watchdog investigation" in capsys.readouterr().err
+
+
+def test_a_failed_first_call_says_nothing_was_checked(vault, monkeypatch):
+    async def failing(**kw):
+        raise model_client.ProviderAuthError("Anthropic rejected the API key")
+    monkeypatch.setattr(model_client, "acomplete_json", failing)
+    out = recheck.run(vault, ["pier-9"], model="sonnet", backend="claude-api",
+                      say=lambda m: None, warn=lambda m: None)
+    assert out["error"] and out["calls_done"] == 0 and not processing_lock(vault).exists()
+    assert recheck.summary(out).endswith("Nothing was checked, and nothing was filed.")
