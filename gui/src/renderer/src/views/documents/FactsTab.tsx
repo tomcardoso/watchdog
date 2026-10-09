@@ -3,7 +3,7 @@
 // focused fact Verified, Disputed or Can't verify (again to clear), N edits its note.
 
 import { AlertTriangle, Clock, FileText, Info, SearchX } from 'lucide-react'
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { EntityChip } from '@renderer/components/EntityChip'
 import { FactCheck, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
 import { Badge, Empty, Kbd, Segmented, cx } from '@renderer/components/ui'
@@ -72,8 +72,18 @@ export function Passage({ f, jump, hasViewer, media }: { f: Fact; jump: Jump; ha
   return null
 }
 
-export function FactsTab({ facts, jump, hasViewer, media }: { facts: Fact[]; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
+export function FactsTab({ facts, jump, hasViewer, media, focusId }: { facts: Fact[]; jump: Jump; hasViewer: boolean; media?: MediaInfo | null; focusId?: string }) {
   const [mode, setMode] = useState<Mode>('all')
+  // A cited fact (D283): scroll it into view and select it, once its row is on screen.
+  useEffect(() => {
+    if (!focusId) return
+    const t = window.setTimeout(() => {
+      const row = list.current?.querySelector<HTMLElement>(`[data-fact-id="${CSS.escape(focusId)}"]`)
+      row?.scrollIntoView({ block: 'center' })
+      row?.focus({ preventScroll: true })
+    }, 60)
+    return () => window.clearTimeout(t)
+  }, [focusId, facts])
   const [noteFor, setNoteFor] = useState<string | null>(null)
   const marks = useMarks()
   const list = useRef<HTMLDivElement>(null)
@@ -118,7 +128,7 @@ export function FactsTab({ facts, jump, hasViewer, media }: { facts: Fact[]; jum
           const mark = markOf(f)
           return (
             <article
-              className={cx('fact', f.figure_note && 'warn', mark && `is-marked-${mark.status}`)}
+              className={cx('fact', f.figure_note && 'warn', mark && `is-marked-${mark.status}`, f.id === focusId && 'is-cited')}
               key={f.id}
               data-fact-id={f.id}
               tabIndex={0}

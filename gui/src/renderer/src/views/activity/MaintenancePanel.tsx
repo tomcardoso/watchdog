@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Gauge,
   Hammer,
+  Link2,
   Lock,
   Network,
   Play,
@@ -23,7 +24,7 @@ import {
 } from 'lucide-react'
 import { LucideIcon } from 'lucide-react'
 import { ReactNode, useState } from 'react'
-import type { Effort, Estimate, RunOptions } from '@shared/api'
+import type { CitationReport, Effort, Estimate, RunOptions } from '@shared/api'
 import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
@@ -446,6 +447,54 @@ function ExportCard() {
 
 /** The cards that need the full engine: every control inside is disabled until setup has
  * finished (D272). `display: contents` keeps the grid layout untouched. */
+// Every fact citation in saved answers, threads, briefings and the current-state page, checked
+// against the stored facts (D283). Read-only: pages are never changed.
+function CitationsCard() {
+  const vault = useApp((s) => s.project?.path) ?? ''
+  const [report, setReport] = useState<CitationReport | null>(null)
+  const [busy, setBusy] = useState(false)
+  const run = async () => {
+    setBusy(true)
+    try {
+      setReport(await call('vault.checkCitations', { vault }))
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not check citations', body: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  const flagged = (report?.pages ?? []).filter((p) => p.not_found || p.disputed)
+  const open = (path: string) => navigate(path.startsWith('briefings/') || path === 'hot.md' ? { view: 'briefings', path } : { view: 'note', path })
+  return (
+    <MCard
+      icon={Link2}
+      title="Check citations"
+      note={report ? <Badge tone={report.not_found ? 'danger' : undefined}>{report.not_found ? plural(report.not_found, 'source not found', 'sources not found') : 'All found'}</Badge> : undefined}
+      footer={
+        <div className="act-cite-foot">
+          <Button size="sm" loading={busy} onClick={() => void run()}>Check now</Button>
+          {report && (
+            <div className="act-cite-result">
+              <div>
+                {plural(report.citations, 'citation')} in {plural(report.checked, 'page')}: {report.found} found, {report.not_found} not found, {report.disputed} on disputed facts.
+              </div>
+              {flagged.map((p) => (
+                <button key={p.path} className="srch-link" onClick={() => open(p.path)}>
+                  {p.path}
+                  {p.not_found ? ` · ${p.not_found} not found` : ''}
+                  {p.disputed ? ` · ${p.disputed} disputed` : ''}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      }
+    >
+      Checks that every fact a saved answer, thread or briefing cites still exists, and lists citations of facts you marked Disputed. Text written by Claude may also contain uncited narrative; that is not flagged. Nothing is changed, and no model is used.
+    </MCard>
+  )
+}
+
 function Gated({ children }: { children: ReactNode }) {
   const ready = useEngineGate().ready
   return (
@@ -545,7 +594,7 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={ScanText}
           title="Rebuild notes"
-          text="Rewrites every entity and document note from what Watchdog keeps on disk: each document's facts, the AI-written summaries and the record of merges and contradictions. No model call, no tokens. Use it if a note was deleted or edited by mistake. Your own Notes sections are kept as they are."
+          text="Rewrites every entity and document note from what Watchdog keeps on disk: each document's facts, the entity summaries and the record of merges and contradictions. No model call, no tokens. Use it if a note was deleted or edited by mistake. Your own Notes sections are kept as they are."
           label="Rebuild notes"
           onRun={async () => {
             const v = useApp.getState().project?.path
@@ -560,6 +609,7 @@ export default function MaintenancePanel() {
           }}
         />
         </Gated>
+        <CitationsCard />
         <Gated>
         <SimpleCard
           icon={Cpu}

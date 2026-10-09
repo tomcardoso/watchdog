@@ -11,7 +11,7 @@ import { useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentDetail } from '@shared/api'
 import { DetailsTab, EntitiesTab, Highlight, NotesTab, SummaryTab, TextTab } from './DocPanels'
-import { FactsTab } from './FactsTab'
+import { FactsTab, passageSnippet } from './FactsTab'
 import { MediaViewer } from './MediaViewer'
 import { JumpTarget, PdfViewer } from './PdfViewer'
 import './documents.css'
@@ -133,6 +133,7 @@ export default function DocumentView() {
   // Route-driven state: ?page= and ?tab= (re-applied whenever the route or document changes).
   const routePage = route.view === 'document' ? route.page : undefined
   const routeTab = route.view === 'document' ? route.tab : undefined
+  const routeFact = route.view === 'document' ? route.fact : undefined
   useEffect(() => {
     setTarget(routePage ? { page: routePage, nonce: Math.random() } : null)
   }, [sha, routePage])
@@ -141,6 +142,17 @@ export default function DocumentView() {
   }, [sha, routeTab])
 
   const d = q.data
+  // A citation opened this document at one fact (D283): show the Facts tab with that fact
+  // selected, and the page with its passage found.
+  useEffect(() => {
+    if (!routeFact || !d) return
+    const f = d.facts.find((x) => x.id === routeFact)
+    if (!f) return
+    setTab('facts')
+    const page = f.passage_page ?? f.page
+    const words = f.quote || (f.passage_method === 'matched' ? f.passage : null)
+    if (page) setTarget({ page, find: words ? passageSnippet(words) : undefined, nonce: Math.random() })
+  }, [routeFact, d])
   const abs = d?.original ? `${vault}/${d.original}` : null
   const title = d ? d.title || d.filename : ''
   const hasViewer = !!d && (d.ext === 'pdf' || d.pages.length > 0)
@@ -234,7 +246,7 @@ export default function DocumentView() {
                 ]}
               />
               <div className="docv-right-body" key={tab}>
-                {tab === 'facts' && <FactsTab facts={d.facts} jump={jump} hasViewer={hasViewer} media={d.media} />}
+                {tab === 'facts' && <FactsTab facts={d.facts} jump={jump} hasViewer={hasViewer} media={d.media} focusId={routeFact} />}
                 {tab === 'summary' && <SummaryTab d={d} />}
                 {tab === 'entities' && <EntitiesTab entities={d.entities} />}
                 {tab === 'text' && <TextTab pages={d.pages} jump={jump} hasViewer={hasViewer} media={d.media} />}
