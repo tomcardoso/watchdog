@@ -956,7 +956,7 @@ async def _merge_sectioned(parts, pf, sha, skill_label, skill_text, model, effor
     """Merge + whole-document digest + stamping — the steps between having every section's raw
     output and being ready for post-flight. Split out so the section-1 repair retry (#505) can
     redo it without duplicating the digest/stamp calls."""
-    extraction = merge.merge_extractions(parts)
+    extraction = merge.merge_extractions(parts, sha=sha)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
     doc = extraction.setdefault("document", {})
     page_count = pf.get("page_count") or len(pf.get("pages", []))

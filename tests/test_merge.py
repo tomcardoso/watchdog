@@ -221,3 +221,45 @@ def test_run_no_section_files_errors(tmp_path):
     vault = tmp_path / "vault"
     (vault / ".watchdog" / "tmp").mkdir(parents=True)
     assert "error" in merge.run(vault, "missing")
+
+
+# ── cross-section folds are typed and logged (D280) ───────────────────────────
+
+def _sec(entities, facts):
+    return {"document": {"key_facts": facts}, "entities": entities}
+
+
+def test_cross_section_fold_moves_the_section_facts_and_is_logged():
+    sha = "c" * 64
+    sections = [
+        _sec([{"id": "acme-corp", "name": "Acme Corp", "type": "Company", "aliases": [], "roles": []}],
+             [{"fact": "Acme Corp was incorporated.", "page": 1, "entities": ["acme-corp"]}]),
+        _sec([{"id": "acme", "name": "ACME CORP", "type": "organization", "aliases": [], "roles": []},
+              {"id": "jo", "name": "Jo Bloggs", "type": "Person", "aliases": [],
+               "roles": [{"relationship": "Director of", "target_id": "acme"}]}],
+             [{"fact": "Acme paid $5.", "page": 9, "entities": ["acme"]}]),
+    ]
+    merged = merge_extractions(sections, sha=sha)
+    facts = {f["fact"]: f for f in merged["document"]["key_facts"]}
+    assert facts["Acme paid $5."]["entities"] == ["acme-corp"]
+    assert facts["Acme paid $5."]["extracted_entities"] == ["acme"]
+    jo = next(e for e in merged["entities"] if e["id"] == "jo")
+    assert jo["roles"][0]["target_id"] == "acme-corp" and jo["roles"][0]["extracted_target_id"] == "acme"
+    [entry] = merged["identity"]["log"]
+    assert (entry["keep"]["id"], entry["merged"]["id"]) == ("acme-corp", "acme")
+    assert (entry["tier"], entry["decided_by"], entry["rule"]) == ("high", "rule", "same-document-section")
+    occ = entry["occurrences"][0]
+    assert occ["documents"] == [sha] and occ["section"] == 2 and len(occ["facts"]) == 1
+    assert entry["undo"]["available"] is False
+
+
+def test_cross_section_fold_needs_the_same_type_and_a_full_person_name():
+    sections = [
+        _sec([{"id": "pier-9", "name": "Pier 9", "type": "place", "aliases": [], "roles": []},
+              {"id": "j-smith", "name": "J. Smith", "type": "person", "aliases": [], "roles": []}], []),
+        _sec([{"id": "pier-9-project", "name": "Pier 9", "type": "proceeding", "aliases": [], "roles": []},
+              {"id": "j-smith-2", "name": "J. Smith", "type": "person", "aliases": [], "roles": []}], []),
+    ]
+    merged = merge_extractions(sections, sha="d" * 64)
+    assert {e["id"] for e in merged["entities"]} == {"pier-9", "pier-9-project", "j-smith", "j-smith-2"}
+    assert "identity" not in merged

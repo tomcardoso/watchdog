@@ -7,7 +7,8 @@ reuses the entity ids found by earlier sections. That makes this merge a pure
 set-union — no LLM reasoning:
 
   * entities grouped by id; aliases / roles unioned (the graph layer)
-  * a normalized-name pass folds any id drift (OCR variance) onto one id
+  * a normalized-name pass folds id drift (OCR variance) onto one id — same type only, a person
+    only on a full name — and logs each fold as a merge (D280)
   * document key_facts concatenated and deduped (the fact layer, including each
     fact's date / entity tags — postflight fans these back out per entity)
   * document_requests unioned across sections, deduped by normalized `what` text (#365)
@@ -20,6 +21,7 @@ import json
 from pathlib import Path
 
 from watchdog.pipeline.entity_norm import normalize_entity_name
+from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json
 
 
@@ -83,14 +85,28 @@ def _dedup_document_requests(requests: list) -> list:
     return out
 
 
-def merge_extractions(sections: list[dict]) -> dict:
-    """Merge a list of partial extraction dicts into one extraction dict."""
+def _may_fold(ent: dict, cur: dict, surface: str) -> bool:
+    """Whether a later section's entity may fold onto an earlier one by a shared name (D280): only
+    when both are the same canonical type, and for a person only on a full name — an initialled
+    or partial name is never merged automatically (D279), even within one document."""
+    if canonical_type(ent.get("type", "")) != canonical_type(cur.get("type", "")):
+        return False
+    if canonical_type(ent.get("type", "")) == "person":
+        from watchdog.pipeline.identity import is_full_person_name
+        return is_full_person_name(surface)
+    return True
+
+
+def merge_extractions(sections: list[dict], sha: str | None = None) -> dict:
+    """Merge a list of partial extraction dicts into one extraction dict.
+
+    A section that coins a new id for an entity an earlier section already named (id drift) is
+    folded onto the earlier id when `_may_fold` allows it; that section's fact tags and role
+    targets follow, and the fold is logged as a merge on the extraction's `identity` block, written
+    to the merge log when the document commits (D279, D280). With `sha`, the log records the
+    document and the moved facts' ids."""
     docs = [s.get("document") or {} for s in sections]
     document = next((dict(d) for d in docs if d), {})
-
-    key_facts: list = []
-    for d in docs:
-        key_facts.extend(d.get("key_facts", []))
 
     document_requests: list = []
     for sec in sections:
@@ -100,9 +116,12 @@ def merge_extractions(sections: list[dict]) -> dict:
     by_id: dict[str, dict] = {}
     norm_index: dict[str, str] = {}   # normalized surface form -> canonical id
     morgue_entity_id = None
+    remaps: list[dict[str, str]] = []                 # per section: drifted id -> kept id
+    folds: list[dict] = []
 
-    for sec in sections:
+    for n, sec in enumerate(sections, 1):
         morgue_entity_id = morgue_entity_id or sec.get("morgue_entity_id")
+        remap: dict[str, str] = {}
 
         for ent in sec.get("entities", []):
             eid = ent.get("id")
@@ -110,12 +129,18 @@ def merge_extractions(sections: list[dict]) -> dict:
                 continue
             surfaces = [ent.get("name", "")] + list(ent.get("aliases", []))
 
-            # Fold id drift: reuse an existing id that shares a surface form.
-            for nm in surfaces:
-                k = normalize_entity_name(nm)
-                if k and k in norm_index:
-                    eid = norm_index[k]
-                    break
+            # Fold id drift: reuse an existing id that shares a surface form, when allowed.
+            if eid not in by_id:
+                for nm in surfaces:
+                    k = normalize_entity_name(nm)
+                    if k and k in norm_index and _may_fold(ent, by_id[norm_index[k]], nm):
+                        target = norm_index[k]
+                        remap[eid] = target
+                        folds.append({"section": n, "merged": {"id": eid, "name": ent.get("name", ""),
+                                                               "type": ent.get("type", "")},
+                                      "keep": target, "surface": nm})
+                        eid = target
+                        break
 
             cur = by_id.get(eid)
             if cur is None:
@@ -141,6 +166,23 @@ def merge_extractions(sections: list[dict]) -> dict:
                 k = normalize_entity_name(nm)
                 if k:
                     norm_index.setdefault(k, eid)
+        remaps.append(remap)
+
+    # Each section's facts and role targets follow that section's folds.
+    key_facts: list = []
+    for d, remap in zip(docs, remaps):
+        for f in d.get("key_facts", []):
+            tags = f.get("entities")
+            if remap and tags and any(t in remap for t in tags):
+                f = {**f, "extracted_entities": list(tags),
+                     "entities": list(dict.fromkeys(remap.get(t, t) for t in tags))}
+            key_facts.append(f)
+    all_remaps = {k: v for r in remaps for k, v in r.items()}
+    for cur in by_id.values():
+        for role in cur["roles"]:
+            if role.get("target_id") in all_remaps:
+                role.setdefault("extracted_target_id", role["target_id"])
+                role["target_id"] = all_remaps[role["target_id"]]
 
     entities = []
     for cur in by_id.values():
@@ -183,7 +225,35 @@ def merge_extractions(sections: list[dict]) -> dict:
     }
     if document_requests:
         merged["document_requests"] = document_requests
+    if folds:
+        merged["identity"] = {"version": 1, "log": _fold_log(folds, by_id, document["key_facts"], sha)}
     return merged
+
+
+def _fold_log(folds: list[dict], by_id: dict, facts: list[dict], sha: str | None) -> list[dict]:
+    """A merge-log entry for each cross-section fold: decided by rule, high tier, with the shared
+    name and the section as evidence. Undo is not offered: the split would have to re-run the
+    section that coined the second id."""
+    from watchdog.pipeline import merge_log
+    from watchdog.pipeline.verification import fact_ids
+    ids = fact_ids(sha, [f for f in facts if (f.get("fact") or "").strip()]) if sha else []
+    moved = [f for f in facts if (f.get("fact") or "").strip()]
+    out = []
+    for fold in folds:
+        keep = by_id.get(fold["keep"], {})
+        mine = [fid for fid, f in zip(ids, moved)
+                if fold["merged"]["id"] in (f.get("extracted_entities") or [])]
+        out.append(merge_log.merge_entry(
+            keep={"id": keep.get("id"), "name": keep.get("name"), "type": canonical_type(keep.get("type", ""))},
+            merged={**fold["merged"], "type": canonical_type(fold["merged"]["type"])},
+            tier="high", decided_by="rule", rule="same-document-section",
+            reason=(f"The same name, “{fold['surface']}”, in two sections of one document that was "
+                    f"read in sections (section {fold['section']} gave it a second id)."),
+            occurrence={"sha": sha, "documents": [sha] if sha else [], "facts": mine[:5],
+                        "identifier": None, "shared": [], "section": fold["section"]},
+            undo={"version": 2, "available": False,
+                  "reason": "Merged inside one document while it was read in sections."}))
+    return out
 
 
 def run(vault: Path, sha256: str) -> dict:
@@ -199,7 +269,7 @@ def run(vault: Path, sha256: str) -> dict:
         except json.JSONDecodeError as e:
             return {"error": f"invalid section JSON {f.name}: {e}"}
 
-    merged = merge_extractions(sections)
+    merged = merge_extractions(sections, sha=sha256)
     out = tmp / f"wdg_ex_{sha256}.json"
     out.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
 
