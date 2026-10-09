@@ -255,7 +255,7 @@ whole vault (D26). Only entities named in this batch are candidates; the batch i
 `result_*.json` set, so a resumed run still re-synthesizes it (D129). `build_bundle` gives the model
 the entity's **facts** (D280), never its earlier prose: one line each with a short citation
 (`[f:` + the shortest unique prefix of the D271 hash), date, document, page, warnings, the
-reporter's Verified mark and `new` for this batch's facts. Disputed facts are withheld and counted.
+reporter's Verified mark and `new` for this batch's facts. Disputed facts are included, labelled `disputed by the reporter`, and counted.
 An entity past `FACT_MAX` (120) facts or `FACT_BUDGET_CHARS` gets this batch's facts, then verified
 ones, then the most recent, and a `selection` line says how many it sees. Calls hold at most 25
 entities (D238). The model returns a summary and an optional analysis, asked to cite fact ids where
@@ -296,7 +296,7 @@ every document's claims side by side:
   the stored and staged extractions (D280), never a note: `new_facts` (this batch's documents) and
   `stored_facts` (earlier ones), each grouped under a `[[documents/<slug>|<title>]]` heading, each
   fact with its short id, page, warnings and source passage (quote or matched passage, cut to 240
-  characters). Disputed facts are left out; `legacy_claims` join the stored side. The model compares
+  characters). Disputed facts are included, labelled; `legacy_claims` join the stored side. The model compares
   new against stored and new against new; a merged survivor's follow-up call treats every fact as
   new. An oversized entity loses its oldest stored facts, never the new ones. `apply_contradictions`
   files each conflict through `contradiction.run`, which validates both document slugs (D81).

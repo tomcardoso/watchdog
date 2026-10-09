@@ -239,7 +239,7 @@ def test_contradiction_check_reads_stored_facts_not_note_prose(tmp_path):
     assert stored.split("\n")[1].startswith("- [f:")
 
 
-def test_contradiction_check_leaves_out_disputed_facts_and_compares_all_after_a_merge(tmp_path):
+def test_contradiction_check_labels_disputed_facts_and_compares_all_after_a_merge(tmp_path):
     vault = make_vault(tmp_path)
     _stage(vault, "sha-c", "doc-c.pdf",
            [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp is insolvent.")])
@@ -250,7 +250,7 @@ def test_contradiction_check_leaves_out_disputed_facts_and_compares_all_after_a_
                                              "page": 1}}}))
     acme = next(e for e in reconcile.build_bundle(vault, ["sha-c"])["entities"]
                 if e["entity_id"] == "acme-corp")
-    assert "insolvent" not in acme["new_facts"]
+    assert "insolvent" in acme["new_facts"] and "disputed by the reporter" in acme["new_facts"]
     # A merged survivor's follow-up call compares everything: no fact is "already checked".
     followup = reconcile.build_bundle(vault, ["sha-c"], only={"acme-corp"})["entities"][0]
     assert followup["stored_facts"] == ""

@@ -81,7 +81,7 @@ def test_build_bundle_gives_the_facts_with_ids_not_the_old_prose(tmp_path):
     assert refs[ref] == sha_b_ids[0]
 
 
-def test_build_bundle_withholds_disputed_facts_and_caps_large_entities(tmp_path, monkeypatch):
+def test_build_bundle_labels_disputed_facts_and_caps_large_entities(tmp_path, monkeypatch):
     from watchdog.pipeline import synthesis_bundle, verification
     vault = make_vault(tmp_path)
     facts = [{"fact": f"Fact number {i}.", "page": 1, "date": f"20{10 + i:02d}-01-01",
@@ -99,15 +99,18 @@ def test_build_bundle_withholds_disputed_facts_and_caps_large_entities(tmp_path,
     (vault / ".watchdog" / "registry" / "verification.json").write_text(json.dumps({
         "schema_version": 1, "marks": {disputed: {"status": "disputed", "fact": "Fact number 0.",
                                                    "page": 1}}}))
+    # Uncapped first: the disputed fact is shown, labelled, never withheld.
+    full = "\n".join(build_bundle(vault, ["sha-b"])["entities"][0]["facts"])
+    assert any("Fact number 0." in ln and "disputed by the reporter" in ln for ln in full.splitlines())
     monkeypatch.setattr(synthesis_bundle, "FACT_MAX", 5)
 
     bundle = build_bundle(vault, ["sha-b"])
     alice = bundle["entities"][0]
     joined = "\n".join(alice["facts"])
-    assert "Fact number 0." not in joined and alice["withheld"] == 1
+    assert bundle["meta"]["alice-smith"]["disputed"] == 1
     assert len(alice["facts"]) == 5 and "Batch fact." in joined   # this batch's fact always kept
     assert "Fact number 11." in joined and "Fact number 1." not in joined   # then the most recent
-    assert alice["selection"].startswith("5 of the entity's 12 facts are shown")
+    assert alice["selection"].startswith("5 of the entity's 13 facts are shown")
     assert bundle["meta"]["alice-smith"]["facts_total"] == 13
 
 

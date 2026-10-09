@@ -283,7 +283,9 @@ class _FactLedger:
     """An entity's facts as the contradiction check reads them (D280): from the stored and staged
     extractions, never from a note's prose, grouped by document under a
     `[[documents/<slug>|<title>]]` heading the model copies the slug from, each with its short
-    id, page, warnings and source passage. Facts the reporter marked Disputed are left out."""
+    id, page, warnings and source passage. Facts the reporter marked Disputed are included,
+    labelled, so a conflict with one is still reported (the owner's call: disputed facts stay
+    visible everywhere, marked)."""
 
     def __init__(self, vault: Path, working: dict, staged: dict[str, dict], shas: list[str]):
         from watchdog.pipeline import entity_facts
@@ -318,6 +320,8 @@ class _FactLedger:
                 line += f" (dated {f['date']})"
             if f.get("basis") == "inferred":
                 line += " *(inferred)*"
+            if (f.get("mark") or {}).get("status") == "disputed":
+                line += " *(disputed by the reporter)*"
             line += _figure_verification_note(f)
             passage = (f.get("quote") or "").strip() or (
                 (f.get("passage") or "").strip() if f.get("passage_method") == "matched" else "")
@@ -334,8 +338,7 @@ class _FactLedger:
         document's, each in date order. `all_new` puts every fact in the first (a merged survivor,
         whose two records' facts were never compared)."""
         from watchdog.pipeline import entity_facts
-        facts = [f for f in self.index.facts_for(eid)
-                 if (f.get("mark") or {}).get("status") != "disputed"]
+        facts = list(self.index.facts_for(eid))
         refs = entity_facts.short_refs(facts)
         new = [f for f in facts if all_new or f["sha"] in self.batch]
         stored = [f for f in facts if not (all_new or f["sha"] in self.batch)]

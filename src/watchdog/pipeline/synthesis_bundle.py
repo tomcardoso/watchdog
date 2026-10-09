@@ -5,7 +5,7 @@ Gathers every entity touched this batch whose `appears_in` reaches `min_docs` ac
 hands the model the entity's FACTS — read from the stored extractions (`entity_facts`), each with
 its D271 id as a short citation, date, document, page and warnings — not its earlier prose. A large
 entity's facts are cut to a budget (this batch's facts, the reporter's verified ones, then the most
-recent), and the bundle says so. Facts the reporter marked Disputed are withheld. `apply_bundle`
+recent), and the bundle says so. Facts the reporter marked Disputed are shown, labelled. `apply_bundle`
 stores the returned prose in the registry (`synthesis`) with what it was written from, and
 re-renders the note. Library functions only, called from `orchestrate`."""
 
@@ -50,6 +50,8 @@ def _fact_line(f: dict, ref: str, new: bool) -> str:
         flags.append("verified")
     elif (f.get("mark") or {}).get("status") == "unverifiable":
         flags.append("the reporter could not verify this")
+    elif (f.get("mark") or {}).get("status") == "disputed":
+        flags.append("disputed by the reporter")
     if new:
         flags.append("new")
     if flags:
@@ -61,10 +63,11 @@ def select_facts(facts: list[dict], batch: set[str], max_facts: int | None = Non
                  budget: int | None = None) -> list[dict]:
     """The facts one synthesis call is shown, in date order: all of them when they fit; else this
     batch's facts first, then the reporter's verified ones, then the most recent, until `max_facts`
-    or `budget` characters is reached. Disputed facts are never shown."""
+    or `budget` characters is reached. Disputed facts are shown, labelled (the owner's call: a
+    disputed fact stays visible everywhere, marked as disputed)."""
     max_facts = FACT_MAX if max_facts is None else max_facts
     budget = FACT_BUDGET_CHARS if budget is None else budget
-    usable = [f for f in facts if (f.get("mark") or {}).get("status") != "disputed"]
+    usable = list(facts)
     if len(usable) <= max_facts and sum(len(f.get("fact") or "") + 60 for f in usable) <= budget:
         return entity_facts.chronological(usable)
     recent_first = list(reversed(entity_facts.chronological(usable)))
@@ -119,9 +122,9 @@ def build_bundle(vault_path: Path, shas: list[str], min_docs: int = 2) -> dict:
             continue
         facts = index.facts_for(eid)
         shown = select_facts(facts, batch)
-        withheld = sum(1 for f in facts if (f.get("mark") or {}).get("status") == "disputed")
+        disputed = sum(1 for f in facts if (f.get("mark") or {}).get("status") == "disputed")
         refs = entity_facts.short_refs(shown)
-        usable = len(facts) - withheld
+        usable = len(facts)
         if len(shown) < usable:
             selection = (f"{len(shown)} of the entity's {usable} facts are shown: this batch's, the "
                          f"reporter's verified ones, then the most recent. {usable - len(shown)} "
@@ -134,12 +137,12 @@ def build_bundle(vault_path: Path, shas: list[str], min_docs: int = 2) -> dict:
             "entity_id": eid, "name": rec.get("name", ""), "type": rec.get("type", ""),
             "aliases": (rec.get("aliases") or [])[:10],
             "documents": len(rec.get("appears_in") or []),
-            "selection": selection, "withheld": withheld,
+            "selection": selection,
             "roles": roles,
             "facts": [_fact_line(f, refs[f["id"]], f["sha"] in batch) for f in shown],
         })
         meta[eid] = {"facts_total": len(facts), "facts_shown": len(shown),
-                     "withheld_disputed": withheld,
+                     "disputed": disputed,
                      "fact_refs": {refs[f["id"]]: f["id"] for f in shown}}
 
     entities.sort(key=lambda e: e["name"].lower())
