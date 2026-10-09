@@ -10,7 +10,7 @@ import { call, errorMessage, queryClient, useRpc } from '@renderer/lib/rpc'
 import { toast } from '@renderer/lib/store'
 
 type Extended = AuthStatus & {
-  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null }
+  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null; key_label?: string | null }
   providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
   base_urls?: { provider: string; url: string }[]
 }
@@ -244,7 +244,7 @@ export default function AuthPanel() {
                 </Button>
               </div>
             )}
-            {s.claude.key_masked && mode === 'api-key' && <div className="set-meta"><span className="mono">{s.claude.key_masked}</span></div>}
+            {s.claude.key_masked && mode === 'api-key' && <div className="set-meta">{s.claude.key_label && <span>{s.claude.key_label}, the default key</span>}<span className="mono">{s.claude.key_masked}</span></div>}
           </div>
         </div>
         {s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}

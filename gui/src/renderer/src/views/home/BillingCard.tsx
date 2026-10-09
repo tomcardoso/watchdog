@@ -4,7 +4,7 @@
 // investigation uses has more than one key, when a choice has been made, or when a chosen key is
 // missing from this computer (then the next run stops before sending anything).
 
-import { CircleAlert, Wallet } from 'lucide-react'
+import { Wallet } from 'lucide-react'
 import { useState } from 'react'
 import type { InvestigationKeys } from '@shared/api'
 import { Button, Callout } from '@renderer/components/ui'
@@ -64,12 +64,12 @@ export function BillingCard({ vault }: { vault: string }) {
             {r.env && <div className="home-billing-note">A key set in your environment pays, whatever is chosen here.</div>}
             {r.provider === 'anthropic' && data.claude_mode !== 'api-key' && <div className="home-billing-note">Claude uses your subscription now; this choice applies in API-key mode.</div>}
             {r.missing && (
-              <Callout tone="warning" style={{ marginTop: 6 }} action={<Button size="sm" variant="ghost" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Models & keys</Button>}>
-                <span className="row" style={{ gap: 6, alignItems: 'flex-start' }}>
-                  <CircleAlert style={{ width: 14, height: 14, flex: 'none', marginTop: 2 }} />
-                  <span>Adding documents will stop before anything is sent. Add a {r.provider_label} key named “{r.chosen?.label}”, or choose another key.</span>
-                </span>
-              </Callout>
+              <>
+                <Callout tone="warning" style={{ marginTop: 6 }}>
+                  Adding documents will stop before anything is sent. Add {/^[AEIOU]/.test(r.provider_label) ? 'an' : 'a'} {r.provider_label} key named “{r.chosen?.label}”, or choose another key above.
+                </Callout>
+                <Button size="sm" variant="ghost" style={{ alignSelf: 'flex-start' }} onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Open Models & keys</Button>
+              </>
             )}
           </div>
         )

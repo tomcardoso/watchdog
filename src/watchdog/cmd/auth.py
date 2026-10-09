@@ -388,7 +388,7 @@ def missing_key_message(provider: str, label: str | None) -> str:
     who = f"the {name} key named “{label}”" if label else f"a {name} key"
     return (f"This investigation is set to bill {who}, which isn't stored on this computer. "
             f"Add a key with that name under Settings → Models & keys, or choose another key "
-            f"in this investigation's billing settings. Nothing was sent.")
+            f"under Billing on this investigation's Overview. Nothing has been sent.")
 
 
 def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:

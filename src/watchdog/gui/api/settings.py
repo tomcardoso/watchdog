@@ -254,7 +254,10 @@ def _auth_status() -> dict:
     return {
         "claude": {"mode": mode, "logged_in": logged_in, "reason": _claude_reason(claude),
                    "env_key_set": claude["env_key_set"], "key_masked": claude["key_masked"],
-                   "key_source": claude["key_source"]},
+                   "key_source": claude["key_source"],
+                   # The default Anthropic key's name, when there is more than one to tell apart.
+                   "key_label": next((k["label"] for k in auth_cmd.list_keys("anthropic", state) if k["default"]), None)
+                   if len(auth_cmd.list_keys("anthropic", state)) > 1 and claude["key_source"] == "stored" else None},
         "stages": [{**s, "billing": mode if s["provider"] == "anthropic" else None}
                    for s in d["stages"]],
         "keys": [{"provider": k["provider"], "masked": k["masked"],
