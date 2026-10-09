@@ -10,13 +10,19 @@ Layout::
       objects/ab/cdef…       one zlib-compressed blob per distinct file content (SHA-256 of the
                              raw bytes), so an unchanged file costs nothing and a file that
                              returns to an earlier content reuses its blob
-      log.jsonl              append-only, one line per version: {schema_version, version, at,
-                             cause, changes: [[path, blob or null (deleted)], …]}
+      log.jsonl              one line per version: {schema_version, version, at, cause,
+                             changes: [[path, blob or null (deleted)], …]}, appended to by every
+                             snapshot and rewritten only when the reporter removes a version
+                             (`remove`), which may add `removed` (how many of the version's
+                             changes were taken out) and `gaps` ({path: how many of that path's
+                             versions just before this one were removed})
       index.json             derived from the log, rebuilt from it when missing or behind: per
-                             path its [version, blob] list and the size and mtime it was last
-                             seen with (so a snapshot re-reads only files whose stat changed),
-                             and per version its time, cause and change count
-      .lock                  serializes snapshots across processes and threads
+                             path its [version, blob] list, its gaps and the size and mtime it
+                             was last seen with (so a snapshot re-reads only files whose stat
+                             changed), and per version its time, cause and change count
+      size.json              the objects' total size as of a log length, so the projects list
+                             can show a history's size without walking it
+      .lock                  serializes snapshots and removals across processes and threads
 
 What is tracked (`tracked`): Markdown files outside ``morgue/``, ``incoming/``, ``context/`` and
 hidden folders, plus the registry files that hold the investigation's data (`REGISTRY_FILES`).
@@ -77,6 +83,10 @@ _thread_lock = threading.Lock()
 
 class HistoryTooNew(Exception):
     """The store was written by a newer Watchdog; it is read-only to this one."""
+
+
+class HistoryBusy(Exception):
+    """A processing run holds the vault; the history cannot be changed by hand meanwhile."""
 
 
 # ── paths ─────────────────────────────────────────────────────────────────────────────
@@ -168,20 +178,23 @@ def _blob_path(hdir: Path, blob: str) -> Path:
     return hdir / "objects" / blob[:2] / blob[2:]
 
 
-def _put_blob(hdir: Path, data: bytes) -> str:
+def _put_blob(hdir: Path, data: bytes) -> int:
+    """Store `data`'s blob if it is not stored yet; returns the bytes written (0 when it was)."""
     blob = hashlib.sha256(data).hexdigest()
     path = _blob_path(hdir, blob)
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=".blob.", dir=path.parent)
-        try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(zlib.compress(data, 6))
-            os.replace(tmp, path)
-        except BaseException:
-            Path(tmp).unlink(missing_ok=True)
-            raise
-    return blob
+    if path.exists():
+        return 0
+    path.parent.mkdir(parents=True, exist_ok=True)
+    packed = zlib.compress(data, 6)
+    fd, tmp = tempfile.mkstemp(prefix=".blob.", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(packed)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return len(packed)
 
 
 def read_blob(vault: Path, blob: str) -> bytes:
@@ -199,6 +212,69 @@ def _write_json_atomic(path: Path, data) -> None:
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+# ── size (shown in the projects list, so it must not walk the store) ─────────────────
+
+def _walk_bytes(directory: Path) -> int:
+    total = 0
+    for root, _dirs, names in os.walk(directory):
+        for n in names:
+            try:
+                total += os.path.getsize(os.path.join(root, n))
+            except OSError:
+                pass
+    return total
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _update_size_cache(hdir: Path, prev_log_bytes: int | None, added: int) -> None:
+    """Record the objects' total size for the log's current length (under the store lock).
+    `added` bytes were written since the log was `prev_log_bytes` long; without a cache for that
+    length (or with `prev_log_bytes` None) the objects folder is walked once."""
+    path = hdir / "size.json"
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = None
+    if (prev_log_bytes is not None and isinstance(cache, dict)
+            and cache.get("log_bytes") == prev_log_bytes
+            and isinstance(cache.get("objects_bytes"), int)):
+        objects = cache["objects_bytes"] + added
+    else:
+        objects = _walk_bytes(hdir / "objects")
+    try:
+        _write_json_atomic(path, {"objects_bytes": objects,
+                                  "log_bytes": _file_size(hdir / "log.jsonl")})
+    except OSError:
+        path.unlink(missing_ok=True)
+
+
+def history_bytes(vault: Path) -> int | None:
+    """The history's size on disk, or None when the investigation has none. Cheap: three stats
+    and a small file read, falling back to walking the store when its size cache is behind (a
+    history written before the cache existed, or after a crash between the log and the cache)."""
+    hdir = history_dir(vault)
+    log = hdir / "log.jsonl"
+    try:
+        log_bytes = log.stat().st_size
+    except OSError:
+        return None
+    try:
+        cache = json.loads((hdir / "size.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = None
+    if (isinstance(cache, dict) and cache.get("log_bytes") == log_bytes
+            and isinstance(cache.get("objects_bytes"), int)):
+        return (cache["objects_bytes"] + log_bytes + _file_size(hdir / "index.json")
+                + _file_size(hdir / "size.json"))
+    return _walk_bytes(hdir)
 
 
 @contextmanager
@@ -231,14 +307,23 @@ def _repair_log_tail(log: Path) -> None:
         f.truncate(data.rfind(b"\n") + 1)
 
 
+def _changes(rec: dict) -> list[tuple[str, str | None]]:
+    return [(c[0], c[1]) for c in rec.get("changes") or [] if isinstance(c, list) and len(c) >= 2]
+
+
 def _apply(index: dict, rec: dict, offset: int) -> None:
     v = int(rec["version"])
+    changes = _changes(rec)
     index["versions"][str(v)] = {"at": rec.get("at"), "cause": rec.get("cause") or {},
-                                 "n": len(rec.get("changes") or []), "off": offset}
-    for path, blob in rec.get("changes") or []:
+                                 "n": len(changes), "off": offset,
+                                 "removed": int(rec.get("removed") or 0)}
+    gaps = rec.get("gaps") if isinstance(rec.get("gaps"), dict) else {}
+    for path, blob in changes:
         entry = index["files"].setdefault(path, {"h": [], "st": None})
         entry["h"].append([v, blob])
         entry["st"] = None
+        if gaps.get(path):
+            entry.setdefault("g", {})[str(v)] = int(gaps[path])
     index["last"] = max(index["last"], v)
 
 
@@ -310,6 +395,7 @@ def snapshot(vault: Path, cause: dict, scope=None) -> int | None:
         files = index["files"]
         changes: list[list] = []
         stats: dict[str, list | None] = {}
+        added = 0
         for rel in sorted(seen):
             st = seen[rel]
             entry = files.get(rel)
@@ -322,7 +408,7 @@ def snapshot(vault: Path, cause: dict, scope=None) -> int | None:
                 continue
             blob = hashlib.sha256(data).hexdigest()
             if blob != current:
-                _put_blob(hdir, data)
+                added += _put_blob(hdir, data)
                 changes.append([rel, blob])
             stats[rel] = list(st) if st[1] / 1e9 < started - _RACY_SECONDS else None
         for rel, entry in files.items():
@@ -343,6 +429,7 @@ def snapshot(vault: Path, cause: dict, scope=None) -> int | None:
                 os.fsync(f.fileno())
             _apply(index, rec, offset)
             index["log_bytes"] = offset + len(line)
+            _update_size_cache(hdir, offset, added)
         for rel, st in stats.items():
             if rel in files:
                 files[rel]["st"] = st
@@ -478,7 +565,7 @@ def _version_row(index: dict, v: int) -> dict:
     meta = index["versions"].get(str(v)) or {}
     cause = meta.get("cause") or {}
     return {"version": v, "at": meta.get("at"), "cause": cause, "label": label(cause),
-            "files": meta.get("n", 0)}
+            "files": meta.get("n", 0), "removed": int(meta.get("removed") or 0)}
 
 
 def file_history(vault: Path, rel: str) -> dict:
@@ -492,10 +579,13 @@ def file_history(vault: Path, rel: str) -> dict:
         current = hashlib.sha256((vault / rel).read_bytes()).hexdigest()
     except OSError:
         pass
+    gaps = entry.get("g") or {}
     rows = []
+    latest = entry["h"][-1][0] if entry["h"] else None
     for v, blob in reversed(entry["h"]):
         row = _version_row(index, v)
-        row.update({"deleted": blob is None, "current": blob is not None and blob == current})
+        row.update({"deleted": blob is None, "current": blob is not None and blob == current,
+                    "latest": v == latest, "removed_before": int(gaps.get(str(v)) or 0)})
         rows.append(row)
     return {"path": rel, "tracked": tracked(rel), "restore": restore_kind(rel),
             "exists": current is not None, "versions": rows,
@@ -546,7 +636,8 @@ def versions(vault: Path, limit: int = 100, before: int | None = None) -> dict:
                     changes = json.loads(f.readline()).get("changes") or []
                 except ValueError:
                     changes = []
-            row["changes"] = [{"path": p, "deleted": b is None} for p, b in changes]
+            row["changes"] = [{"path": p, "deleted": b is None}
+                              for p, b in _changes({"changes": changes})]
             rows.append(row)
     return {"versions": rows, "total": len(index["versions"]),
             "more": len(nums) > len(page), "too_new": bool(index.get("too_new"))}
@@ -662,12 +753,17 @@ def diff(vault: Path, rel: str, version: int, against: str = "previous") -> dict
             now = None
         before, after = _text(vault, blob), now
         base = {"before": {"version": int(version), "exists": blob is not None},
-                "after": {"version": None, "exists": now is not None}}
+                "after": {"version": None, "exists": now is not None},
+                "removed_between": 0}
     else:
         prev_blob = _blob_at(index, rel, prev)[0] if prev is not None else None
         before, after = _text(vault, prev_blob), _text(vault, blob)
+        gap = int(((index["files"].get(rel) or {}).get("g") or {}).get(str(int(version))) or 0)
+        # `removed_between`: versions of this file removed between the two compared, whose
+        # changes the diff therefore includes (D288).
         base = {"before": {"version": prev, "exists": prev_blob is not None},
-                "after": {"version": int(version), "exists": blob is not None}}
+                "after": {"version": int(version), "exists": blob is not None},
+                "removed_between": gap}
     return {"path": rel, **base, **diff_text(before, after)}
 
 
@@ -729,10 +825,14 @@ def restore(vault: Path, rel: str, version: int) -> dict:
             if not target.is_file():
                 raise CannotRestore("This note no longer exists, so its notes cannot be put back. "
                                     "Copy them from the version shown instead.")
-            from watchdog.gui.api.vault import _NOTES_PLACEHOLDER, replace_notes_body
-            current = target.read_text(encoding="utf-8")
-            placeholder = _NOTES_PLACEHOLDER[rel.split("/", 1)[0]]
-            _write_text_atomic(target, replace_notes_body(current, notes_section(old), placeholder))
+            from watchdog.gui.api.vault import (
+                _NOTES_PLACEHOLDER, notes_write_lock, replace_notes_body,
+            )
+            with notes_write_lock(vault, rel):
+                current = target.read_text(encoding="utf-8")
+                placeholder = _NOTES_PLACEHOLDER[rel.split("/", 1)[0]]
+                _write_text_atomic(target, replace_notes_body(current, notes_section(old),
+                                                              placeholder))
     new = _load_index(history_dir(vault))
     hist = (new["files"].get(rel) or {}).get("h") or []
     return {"path": rel, "part": kind, "version": hist[-1][0] if hist else None}
@@ -752,10 +852,187 @@ def clear(vault: Path) -> dict:
                                 "Watchdog.")
         for name in ("objects",):
             shutil.rmtree(hdir / name, ignore_errors=True)
-        for name in ("log.jsonl", "index.json"):
+        for name in ("log.jsonl", "index.json", "size.json"):
             (hdir / name).unlink(missing_ok=True)
     snapshot(vault, {"kind": "cleared"})
     after = stats(vault)
     return {"removed_versions": before["versions"],
             "freed_bytes": max(0, before["bytes"] - after["bytes"]),
             "versions": after["versions"], "bytes": after["bytes"]}
+
+
+# ── removing versions (D288) ──────────────────────────────────────────────────────────
+
+class CannotRemove(Exception):
+    pass
+
+
+def _read_log(hdir: Path) -> list[dict]:
+    out = []
+    log = hdir / "log.jsonl"
+    if not log.exists():
+        return out
+    with open(log, "rb") as f:
+        for raw in f:
+            if not raw.endswith(b"\n"):
+                continue
+            try:
+                rec = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(rec, dict) and "version" in rec:
+                out.append(rec)
+    return out
+
+
+def _plan(index: dict, version: int, path: str | None, older: bool) -> tuple[set, list[str]]:
+    """({(path, version)} to remove, paths kept because this version is what they hold now)."""
+    files = index["files"]
+    if path is not None:
+        hist = (files.get(path) or {}).get("h") or []
+        at = next((i for i, (v, _b) in enumerate(hist) if v == version), None)
+        if at is None:
+            raise LookupError(f"{path} has no version {version}.")
+        if at == len(hist) - 1:
+            raise CannotRemove("This is the file as it is now, so it cannot be removed from the "
+                               "history. Change or delete the text in the file itself; the "
+                               "version it replaces can then be removed.")
+        chosen = hist[:at + 1] if older else [hist[at]]
+        return {(path, v) for v, _b in chosen}, []
+    if str(version) not in index["versions"]:
+        raise LookupError(f"There is no version {version}.")
+    targets, kept = set(), []
+    for p, entry in files.items():
+        hist = entry.get("h") or []
+        for i, (v, _b) in enumerate(hist):
+            if v == version:
+                (kept.append(p) if i == len(hist) - 1 else targets.add((p, v)))
+    return targets, sorted(kept)
+
+
+def remove(vault: Path, version: int, path: str | None = None, older: bool = False,
+           dry_run: bool = False) -> dict:
+    """Remove versions from the history for good (D288): `path`'s entry at `version` (with
+    `older`, also every earlier one of that file), or, with no `path`, every file's entry in
+    `version` except those that are still the file's latest version, which describe the file as
+    it is now and are kept. The log is rewritten without them, atomically and under the store
+    lock; a blob no remaining version names is deleted; the next remaining version of each file
+    carries how many of its versions before it were removed, so its diff is labelled as spanning
+    them. Nothing about the removed content is kept. `dry_run` reports what would happen."""
+    vault = Path(vault)
+    hdir = history_dir(vault)
+    version = int(version)
+    if run_in_progress(vault):
+        raise HistoryBusy("Documents are being added to this investigation. Remove versions when "
+                          "that has finished.")
+    # Record any change made outside a recorded operation first, so a file's latest version is
+    # what it holds now and is never removed (it would be recorded again at the next snapshot).
+    safe_snapshot(vault, {"kind": "found"}, [path] if path is not None else None)
+    if not (hdir / "log.jsonl").exists():
+        raise LookupError("This investigation has no history.")
+    with _store_lock(hdir):
+        log = hdir / "log.jsonl"
+        _repair_log_tail(log)
+        index = _load_index(hdir)
+        if index.get("too_new"):
+            raise HistoryTooNew("This investigation's history was written by a newer version of "
+                                "Watchdog.")
+        targets, kept = _plan(index, version, path, older)
+        files = index["files"]
+        # Where each removed entry's gap goes: the next entry of the same file that stays.
+        moved: dict[tuple[str, int], int] = {}
+        for p in {p for p, _v in targets}:
+            entry = files[p]
+            gaps = entry.get("g") or {}
+            carry = 0
+            for v, _b in entry["h"]:
+                if (p, v) in targets:
+                    carry += 1 + int(gaps.get(str(v)) or 0)
+                elif carry:
+                    moved[(p, v)] = int(gaps.get(str(v)) or 0) + carry
+                    carry = 0
+        removed_blobs = {b for p, v in targets for vv, b in files[p]["h"] if vv == v and b}
+        records, kept_records = _read_log(hdir), []
+        for rec in records:
+            v = int(rec["version"])
+            changes = _changes(rec)
+            keep = [[p, b] for p, b in changes if (p, v) not in targets]
+            if not keep:
+                continue
+            out = {**rec, "changes": keep}
+            dropped = len(changes) - len(keep)
+            if dropped:
+                out["removed"] = int(rec.get("removed") or 0) + dropped
+            gaps = {p: n for p, n in (rec.get("gaps") or {}).items() if any(k[0] == p for k in keep)}
+            for p, _b in keep:
+                if (p, v) in moved:
+                    gaps[p] = moved[(p, v)]
+            if gaps:
+                out["gaps"] = gaps
+            else:
+                out.pop("gaps", None)
+            kept_records.append(out)
+        still = {b for rec in kept_records for _p, b in _changes(rec) if b}
+        purge = sorted(removed_blobs - still)
+        shared = sorted({(p, v) for p, v in targets
+                         for vv, b in files[p]["h"] if vv == v and b in still})
+        freed = sum(_file_size(_blob_path(hdir, b)) for b in purge)
+        result = {"removed": [{"path": p, "version": v} for p, v in sorted(targets)],
+                  "kept_current": kept, "purged": len(purge),
+                  "shared": [{"path": p, "version": v} for p, v in shared],
+                  "freed_bytes": freed, "dry_run": bool(dry_run)}
+        if dry_run or not targets:
+            return result
+        # 1. The log without the removed entries, replacing the old one in one step.
+        fd, tmp = tempfile.mkstemp(prefix=".log.", suffix=".tmp", dir=hdir)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                for rec in kept_records:
+                    f.write((json.dumps(rec, ensure_ascii=False, separators=(",", ":"))
+                             + "\n").encode("utf-8"))
+                f.flush()
+                os.fsync(f.fileno())
+            _retry(lambda: os.replace(tmp, log))
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+        # 2. The index rebuilt from it; each file's latest version is unchanged, so the stat
+        # cache that lets a snapshot skip unchanged files carries over.
+        new = _rebuild_index(hdir)
+        for p, entry in new["files"].items():
+            if p in files:
+                entry["st"] = files[p].get("st")
+        _write_json_atomic(hdir / "index.json", new)
+        # 3. Every blob no version names: the removed content, and any left by an earlier
+        # removal that stopped between its log and its blobs.
+        _sweep(hdir, still)
+        _update_size_cache(hdir, None, 0)
+        return result
+
+
+def _retry(fn, attempts: int = 10):
+    """Windows refuses to replace or delete a file another reader has open for a moment."""
+    import time
+    for i in range(attempts):
+        try:
+            return fn()
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(0.1)
+
+
+def _sweep(hdir: Path, referenced: set) -> None:
+    objects = hdir / "objects"
+    if not objects.is_dir():
+        return
+    for sub in objects.iterdir():
+        if not sub.is_dir():
+            continue
+        for f in sub.iterdir():
+            if (sub.name + f.name) not in referenced:
+                _retry(lambda f=f: f.unlink(missing_ok=True))
+        try:
+            sub.rmdir()
+        except OSError:
+            pass

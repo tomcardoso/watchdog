@@ -365,9 +365,73 @@ def test_save_notes_ignores_a_notes_heading_inside_a_code_fence(rich_vault):
     ("entities", "forbidden"), ("entities/person/nobody", "not_found"), ("../x", "bad_path"),
     (".watchdog/registry/documents", "bad_path"),
 ])
-def test_save_notes_is_limited_to_existing_entity_and_document_notes(rich_vault, path, code):
+def test_save_notes_is_limited_to_notes_and_saved_pages(rich_vault, path, code):
     assert call_error("vault.saveNotes", vault=V(rich_vault), path=path, text="x")["code"] == code
     assert not (rich_vault / "x.md").exists()
+
+
+QUERY_PAGE = """---
+id: who-paid
+question: Who paid for the pier?
+type: Query
+---
+
+## Answer
+
+Acme paid ([[documents/report-one|p. 2]]).
+
+## Notes
+
+<!-- Journalist annotations — never overwritten. -->
+"""
+
+
+@pytest.mark.parametrize("folder", ["queries", "wiki"])
+def test_save_notes_on_a_saved_page_changes_only_its_notes(rich_vault, folder):
+    from watchdog.pipeline import history
+    page = rich_vault / folder / "sub" / "who-paid.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(QUERY_PAGE)
+    call("vault.saveNotes", vault=V(rich_vault), path=f"{folder}/sub/who-paid", text="Ask the [[entities/person/jane-doe|director]].")
+    after = page.read_text()
+    assert after.startswith(QUERY_PAGE.split("## Notes")[0])
+    assert after.endswith("## Notes\n\nAsk the [[entities/person/jane-doe|director]].\n")
+    rows = history.file_history(rich_vault, f"{folder}/sub/who-paid.md")["versions"]
+    assert rows[0]["label"] == "Your notes edited in the app" and rows[0]["current"]
+    call("vault.saveNotes", vault=V(rich_vault), path=f"{folder}/sub/who-paid", text="")
+    assert page.read_text() == QUERY_PAGE          # the skills' placeholder comes back
+    assert call_error("vault.saveNotes", vault=V(rich_vault), path=folder, text="x")["code"] == "forbidden"
+
+
+def test_save_notes_waits_for_the_commit_pass_and_then_reports_busy(rich_vault, monkeypatch):
+    import threading
+    from watchdog.gui.api import vault as vault_api
+    from watchdog.pipeline.write_vault import _registry_lock
+    monkeypatch.setattr(vault_api, "_NOTES_LOCK_WAIT", 0.3)
+    reg = rich_vault / ".watchdog" / "registry"
+    page = rich_vault / "queries" / "who-paid.md"
+    page.parent.mkdir(exist_ok=True)
+    page.write_text(QUERY_PAGE)
+    held, release = threading.Event(), threading.Event()
+
+    def commit_pass():
+        with _registry_lock(reg):
+            held.set()
+            release.wait(5)
+
+    t = threading.Thread(target=commit_pass)
+    t.start()
+    held.wait(5)
+    try:
+        err = call_error("vault.saveNotes", vault=V(rich_vault), path="entities/person/jane-doe", text="x")
+        assert err["code"] == "busy"
+        # A saved page is not the pipeline's, so it never waits on the commit pass.
+        call("vault.saveNotes", vault=V(rich_vault), path="queries/who-paid", text="mine")
+    finally:
+        release.set()
+        t.join()
+    call("vault.saveNotes", vault=V(rich_vault), path="entities/person/jane-doe", text="x")
+    assert (rich_vault / "entities" / "person" / "jane-doe.md").read_text().endswith("## Notes\n\nx\n")
 
 
 # ── resolveLink ──────────────────────────────────────────────────────────────────

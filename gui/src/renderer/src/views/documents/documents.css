@@ -1128,34 +1128,6 @@
   gap: 10px;
   height: 100%;
 }
-.notes-editor .textarea {
-  flex: 1;
-  min-height: 260px;
-  font-family: var(--font-read);
-  font-size: 15.5px;
-  line-height: 1.65;
-  resize: vertical;
-  user-select: text;
-}
-.notes-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-  color: var(--text-3);
-  min-height: 20px;
-}
-.notes-status svg {
-  width: 13px;
-  height: 13px;
-}
-.notes-status.saved {
-  color: var(--success);
-}
-.notes-status.error {
-  color: var(--danger);
-}
-
 @media (max-width: 1100px) {
   .docs-inner {
     padding: 20px 20px 48px;

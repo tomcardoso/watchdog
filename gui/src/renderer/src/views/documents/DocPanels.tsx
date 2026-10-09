@@ -1,13 +1,13 @@
 // The right-hand tabs of the document reader: facts, summary, entities, text, details, notes.
 
-import { AlertTriangle, Check, ChevronRight, Copy, FileText, Search } from 'lucide-react'
-import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, ChevronRight, Copy, FileText, Search } from 'lucide-react'
+import { ReactNode, useMemo, useState } from 'react'
 import { EntityChip } from '@renderer/components/EntityChip'
 import { Markdown } from '@renderer/components/Markdown'
+import { NotesEditor, splitNotes } from '@renderer/components/NotesEditor'
 import { Button, Callout, Empty } from '@renderer/components/ui'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtDateTime, plural } from '@renderer/lib/format'
-import { call, errorMessage, invalidate } from '@renderer/lib/rpc'
 import { navigate, useVault } from '@renderer/lib/store'
 import { fmtDuration, pageLabel } from '@renderer/lib/media'
 import type { DocumentDetail, MediaInfo } from '@shared/api'
@@ -16,19 +16,6 @@ import type { JumpTarget } from './PdfViewer'
 type Jump = (t: Omit<JumpTarget, 'nonce'>) => void
 
 // ── Summary ──────────────────────────────────────────────────────────────────
-/** Split a note body at its `## Notes` section (the journalist's own). */
-export function splitNotes(body: string): { rest: string; notes: string } {
-  const lines = body.split('\n')
-  let fence = false
-  for (let i = 0; i < lines.length; i++) {
-    if (/^\s*(```|~~~)/.test(lines[i])) fence = !fence
-    if (!fence && /^##[ \t]+Notes[ \t]*$/.test(lines[i])) {
-      const notes = lines.slice(i + 1).join('\n').replace(/<!--[\s\S]*?-->/g, '').trim()
-      return { rest: lines.slice(0, i).join('\n').trim(), notes }
-    }
-  }
-  return { rest: body.trim(), notes: '' }
-}
 
 export function SummaryTab({ d }: { d: DocumentDetail }) {
   const { rest } = useMemo(() => splitNotes(d.body ?? ''), [d.body])
@@ -241,66 +228,13 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
 }
 
 // ── Notes ────────────────────────────────────────────────────────────────────
-type Save = 'idle' | 'dirty' | 'saving' | 'saved' | 'error'
-
 export function NotesTab({ d }: { d: DocumentDetail }) {
   const vault = useVault()
-  const initial = useMemo(() => splitNotes(d.body ?? '').notes, [d.body])
-  const [text, setText] = useState(initial)
-  const [state, setState] = useState<Save>('idle')
-  const [err, setErr] = useState('')
-  const latest = useRef({ text: initial, dirty: false, saved: initial })
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const path = d.note
-
-  const flush = async () => {
-    clearTimeout(timer.current)
-    const cur = latest.current
-    if (!cur.dirty || !path) return
-    setState('saving')
-    try {
-      await call('vault.saveNotes', { vault, path, text: cur.text })
-      if (latest.current.text === cur.text) latest.current.dirty = false
-      latest.current.saved = cur.text
-      setState('saved')
-      invalidate('vault.document', 'vault.note')
-    } catch (e) {
-      setErr(errorMessage(e))
-      setState('error')
-    }
-  }
-  const flushRef = useRef(flush)
-  flushRef.current = flush
-
-  useEffect(() => () => void flushRef.current(), [])
-
-  if (!path) return <Empty icon={FileText} title="No note for this document">Notes are kept in the document's own note in the vault, which doesn't exist yet.</Empty>
-
+  const saved = useMemo(() => splitNotes(d.body ?? '').notes, [d.body])
+  if (!d.note) return <Empty icon={FileText} title="No note for this document">Notes are kept in the document's own note in the vault, which doesn't exist yet.</Empty>
   return (
     <div className="notes-editor">
-      <Callout tone="info">
-        These notes are yours. Watchdog never writes to this section, so what you put here survives every run. They are saved to the document's note in the vault, and show up in Obsidian too.
-      </Callout>
-      <textarea
-        className="textarea"
-        value={text}
-        placeholder="Your own annotations, questions and follow-ups on this document."
-        onChange={(e) => {
-          setText(e.target.value)
-          latest.current.text = e.target.value
-          latest.current.dirty = e.target.value !== latest.current.saved
-          setState(latest.current.dirty ? 'dirty' : 'idle')
-          clearTimeout(timer.current)
-          timer.current = setTimeout(() => void flushRef.current(), 1800)
-        }}
-        onBlur={() => void flush()}
-      />
-      <div className={'notes-status' + (state === 'saved' ? ' saved' : state === 'error' ? ' error' : '')} aria-live="polite">
-        {state === 'saved' && (<><Check />Saved</>)}
-        {state === 'saving' && 'Saving…'}
-        {state === 'dirty' && 'Unsaved changes. Saves when you click away.'}
-        {state === 'error' && (<><AlertTriangle />Could not save: {err}</>)}
-      </div>
+      <NotesEditor key={d.note} vault={vault} path={d.note} saved={saved} label={d.title ?? d.filename} promise="Watchdog never overwrites this section, even when it rebuilds the rest of the note." placeholder="Your own annotations, questions and follow-ups on this document." />
     </div>
   )
 }

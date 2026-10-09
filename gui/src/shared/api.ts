@@ -26,6 +26,7 @@ export interface ProjectStats {
   incoming: number
   awaiting: number
   failed: number
+  history_bytes: number | null // the version history's size on disk (D288)
 }
 export interface Project {
   slug: string
@@ -578,11 +579,14 @@ export interface ChatSessionRow { session: string; mode: ChatMode; title: string
 // ── version history (D286) ───────────────────────────────────────────────────
 export type HistoryCauseKind = 'run' | 'merge' | 'undo_merge' | 'mark' | 'rebuild' | 'notes' | 'edit' | 'review' | 'session' | 'restore' | 'cleared' | 'found'
 export interface HistoryCause { kind: HistoryCauseKind; first?: boolean; incomplete?: boolean; [k: string]: unknown }
-export interface HistoryVersion { version: number; at: string | null; cause: HistoryCause; label: string; files: number }
+// `removed`: how many of this version's file changes were removed from the history (D288).
+export interface HistoryVersion { version: number; at: string | null; cause: HistoryCause; label: string; files: number; removed: number }
 export type RestoreKind = 'page' | 'notes' | 'none'
 export interface FileHistory {
   path: string; tracked: boolean; restore: RestoreKind; exists: boolean; too_new: boolean
-  versions: (HistoryVersion & { deleted: boolean; current: boolean })[]
+  // `latest`: the file's newest recorded version, which cannot be removed; `removed_before`: how
+  // many of the file's versions just before this one were removed (D288).
+  versions: (HistoryVersion & { deleted: boolean; current: boolean; latest: boolean; removed_before: number })[]
 }
 export interface DiffSegment { t: 'eq' | 'del' | 'ins'; s: string }
 export interface DiffLine { op: ' ' | '-' | '+'; old: number | null; new: number | null; segments: DiffSegment[] }
@@ -590,8 +594,17 @@ export interface FileDiff {
   path: string
   before: { version: number | null; exists: boolean }
   after: { version: number | null; exists: boolean }
+  removed_between: number // versions removed between the two compared, whose changes this diff includes (D288)
   hunks: { old_start: number; new_start: number; lines: DiffLine[] }[]
   added: number; removed: number; truncated: boolean; identical: boolean
+}
+export interface HistoryRemoval {
+  removed: { path: string; version: number }[]
+  kept_current: string[] // whole-version removal: files this version left as they are now, kept
+  purged: number // stored contents deleted from disk
+  shared: { path: string; version: number }[] // removed versions whose text another version still holds
+  freed_bytes: number
+  dry_run: boolean
 }
 export interface HistoryStats { versions: number; files: number; objects: number; bytes: number; since: string | null; too_new: boolean }
 
@@ -636,6 +649,7 @@ export interface Methods {
   'history.restore': [{ vault: string; path: string; version: number }, { path: string; part: RestoreKind; version: number | null }]
   'history.versions': [{ vault: string; limit?: number; before?: number }, { versions: (HistoryVersion & { changes: { path: string; deleted: boolean }[] })[]; total: number; more: boolean; too_new: boolean }]
   'history.stats': [{ vault: string }, HistoryStats]
+  'history.remove': [{ vault: string; version: number; path?: string; older?: boolean; dry_run?: boolean }, HistoryRemoval]
   'history.clear': [{ vault: string }, { removed_versions: number; freed_bytes: number; versions: number; bytes: number }]
 
   'verify.mark': [{ vault: string; id: string; status: VerifyStatus | null; note?: string | null }, FactMark & { id: string }]

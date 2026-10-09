@@ -3,13 +3,13 @@
 
 import {
   Archive, ArchiveRestore, BookOpenText, FolderInput, FolderOpen, FolderPlus, History, Pencil, Plus,
-  Stethoscope, TextCursorInput, Trash2, TriangleAlert, ExternalLink, MoreHorizontal, Search, Layers, Files, Clock, CircleCheck
+  Stethoscope, TextCursorInput, Trash2, TriangleAlert, ExternalLink, MoreHorizontal, Search, Layers, Files, Clock, CircleCheck, FileClock
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Field, MenuItem, Modal, Skeleton, Switch } from '@renderer/components/ui'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { runAction } from '@renderer/lib/jobs'
-import { fmtRelative, fmtNum, basename, plural } from '@renderer/lib/format'
+import { fmtBytes, fmtRelative, fmtNum, basename, plural } from '@renderer/lib/format'
 import { toast, useApp } from '@renderer/lib/store'
 import { ProjectMark } from '@renderer/shell/Sidebar'
 import type { DoctorIssue, Project } from '@shared/api'
@@ -222,6 +222,12 @@ function ProjectCard({ p, menu, onOpen, onFix, onRemove }: { p: Project; menu: M
               <Layers />
               <b className="tnum">{fmtNum(s.entities)}</b> <span>{s.entities === 1 ? 'entity' : 'entities'}</span>
             </div>
+            {s.history_bytes != null && (
+              <div className="proj-hist" data-tip="Space the version history of this investigation's notes, pages and records takes on this computer">
+                <FileClock />
+                <span className="tnum">{fmtBytes(s.history_bytes)}</span> <span>history</span>
+              </div>
+            )}
           </div>
           <div className="proj-card-foot">
             <span className="faint row gap-4">

@@ -590,36 +590,6 @@
   color: var(--accent-text);
 }
 
-/* Notes */
-.ent-notes {
-  width: 100%;
-  min-height: 130px;
-  padding: 14px 16px;
-  border-radius: var(--r-lg);
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  font-family: var(--font-read);
-  font-size: var(--fs-read);
-  line-height: 1.6;
-  color: var(--text);
-  resize: vertical;
-  user-select: text;
-  transition: border-color var(--dur), box-shadow var(--dur);
-}
-.ent-notes:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: var(--focus-ring);
-}
-.ent-notes-foot {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  color: var(--text-3);
-  font-size: var(--fs-sm);
-}
-
 /* Side column */
 .ent-rel-group + .ent-rel-group {
   margin-top: 14px;

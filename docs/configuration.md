@@ -254,7 +254,7 @@ The folders Watchdog may read and change. Watchdog only changes files in folders
 
 ### Version history
 
-How many versions the open investigation's history holds, of how many files, and how much space it takes. **Browse versions** opens **Activity → Version history**. **Clear history…** deletes every past version, including text that has since been removed from the files, after asking you to confirm. It cannot be undone. The notes, pages and records themselves are not changed and become the first version of a new history. There is nothing to set: every investigation keeps a history. See [History](app.md#history).
+How many versions the open investigation's history holds, of how many files, and how much space it takes. **Browse versions** opens **Activity → Version history**. To delete one version, such as one holding a source's name, use **Remove…** in the file's **History** (see [Removing a version](app.md#removing-a-version)). **Clear history…** deletes every past version, including text that has since been removed from the files, after asking you to confirm. It cannot be undone. The notes, pages and records themselves are not changed and become the first version of a new history. There is nothing to set: every investigation keeps a history. See [History](app.md#history).
 
 
 Lists every record skill, with a filter box. Select one to read it. Your own skills carry a **Yours** label, and **Show in folder** opens the folder where you add them. See [Skills](skills.md).

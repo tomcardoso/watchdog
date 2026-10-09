@@ -1,6 +1,6 @@
 // Electron main process: one window, the Python backend, and the bridge between them.
 
-import { BrowserWindow, app, nativeTheme, screen, shell } from 'electron'
+import { BrowserWindow, app, dialog, nativeTheme, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { buildMenu } from './menu'
 import { getPref, setPref } from './prefs'
@@ -26,6 +26,9 @@ app.on('second-instance', () => {
 })
 
 let win: BrowserWindow | null = null
+// Quitting closes the window first, so a save of the reporter's notes still in flight reaches the
+// backend (and the renderer can ask to wait) before the backend is stopped.
+let quitting = false
 
 const send = (event: string, data: unknown) => win?.webContents.send('event', event, data)
 
@@ -98,7 +101,24 @@ async function createWindow(): Promise<void> {
   }
   win.on('resize', save)
   win.on('move', save)
-  win.on('closed', () => (win = null))
+  win.on('closed', () => {
+    win = null
+    if (quitting) app.quit()
+  })
+  // The renderer prevents closing while a reporter's notes are still being saved
+  // (lib/notesSaver.ts); Electron would then refuse silently, so ask.
+  win.webContents.on('will-prevent-unload', (e) => {
+    const choice = dialog.showMessageBoxSync(win!, {
+      type: 'warning',
+      buttons: ['Wait', 'Close without saving'],
+      defaultId: 0,
+      cancelId: 0,
+      message: 'Your notes are not saved yet',
+      detail: 'Watchdog is still saving notes you wrote. Wait a moment and close again, or close now and lose the last changes.'
+    })
+    if (choice === 1) e.preventDefault()
+    else quitting = false
+  })
 
   // Links to the web open in the browser, never inside the app window.
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -142,7 +162,13 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  if (win && !quitting) {
+    e.preventDefault()
+    quitting = true
+    win.close()
+    return
+  }
   // A download in progress stops with the app and resumes at the next launch; left running, it
   // would race the next launch's own run over the same environment.
   engine.cancel()

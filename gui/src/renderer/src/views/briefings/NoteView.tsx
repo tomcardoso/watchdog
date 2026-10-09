@@ -5,6 +5,7 @@ import { FolderOpen, NotebookText } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
+import { NotesEditor, splitNotes } from '@renderer/components/NotesEditor'
 import { HistoryButton } from '@renderer/components/FileHistory'
 import { call, useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
@@ -75,7 +76,11 @@ export default function NoteView() {
 
   const fm = Object.entries(note.frontmatter ?? {}).filter(([k]) => !k.startsWith('_'))
   const title = note.title ?? note.path.replace(/\.md$/, '').split('/').pop() ?? note.path
-  const body = stripFrontmatter(note.body)
+  // A saved page (queries/, wiki/) has a Notes section the reporter writes in the app (D288); the
+  // rest of the page is the session's and is shown as it is.
+  const saved = note.kind === 'query' || note.kind === 'wiki'
+  const split = saved ? splitNotes(stripFrontmatter(note.body)) : null
+  const body = split ? split.rest : stripFrontmatter(note.body)
   const hasH1 = /^\s*#\s/.test(body)
   return (
     <div className="page">
@@ -97,6 +102,11 @@ export default function NoteView() {
         )}
         <div className="bf-measure">
           <Markdown text={hasH1 ? body.replace(/^\s*#\s.*\n?/, '') : body} />
+          {split && (
+            <div className="bf-notes">
+              <NotesEditor key={note.path} vault={vault} path={note.path} saved={split.notes} label={title} promise="Watchdog never writes to this section, and a Claude session that updates this page is told to leave it as it is." placeholder="Your own thoughts on this page: what to check next, who to call." />
+            </div>
+          )}
         </div>
       </div>
     </div>

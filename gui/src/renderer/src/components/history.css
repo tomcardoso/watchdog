@@ -222,3 +222,24 @@
 .vh-file.gone {
   text-decoration: line-through;
 }
+
+/* A place in a file's version list where versions were removed (D288). */
+.hist-removed {
+  margin: 2px 10px 6px;
+  padding-top: 2px;
+  border-top: 1px dashed var(--border-strong);
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+.hist-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--fs-sm);
+}
+.vh-actions {
+  flex-basis: 100%;
+  display: flex;
+  justify-content: flex-end;
+}

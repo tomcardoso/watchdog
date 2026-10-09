@@ -93,6 +93,27 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.getByRole('button', { name: 'Restore my notes' })).toBeVisible()
     await page.keyboard.press('Escape')
 
+    // Notes (D288): written in the app, saved even when the reporter leaves at once, rendered
+    // when not editing.
+    await page.getByRole('button', { name: 'Add notes' }).click()
+    await page.getByRole('textbox', { name: 'Your notes' }).fill('Called the clerk about **Pier 9**.')
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'timeline' }))
+    const notePath = join(root, 'vault', 'entities', 'public-body', 'city-of-port-calder.md')
+    await expect.poll(() => readFileSync(notePath, 'utf8'), { timeout: 10_000 }).toContain('Called the clerk about **Pier 9**.')
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'entity', id: 'city-of-port-calder' }))
+    await expect(page.locator('.notes-view strong')).toHaveText('Pier 9', { timeout: 10_000 })
+
+    // Removing a version (D288): an older version goes after a confirmation, and the list marks
+    // where it was.
+    await page.getByRole('button', { name: 'History', exact: true }).click()
+    await expect(page.locator('.hist-item').nth(1)).toBeVisible({ timeout: 10_000 })
+    await page.locator('.hist-item').nth(1).click()
+    await page.getByRole('button', { name: 'Remove…' }).click()
+    await expect(page.getByText('This cannot be undone')).toBeVisible()
+    await page.getByRole('button', { name: 'Remove this version' }).click()
+    await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
+    await page.keyboard.press('Escape')
+
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {

@@ -20,7 +20,7 @@ Below the screens, the sidebar shows the app's version. Right after Watchdog is 
 
 ### Investigations
 
-The list of your investigations, with each one's document and entity counts, when documents were last added, and anything that needs attention. The **⋯** menu on each offers **Open**, **Rename…**, **Edit description…**, **Move to another folder…**, **Archive** (and **Unarchive**), **Show in folder**, **Open in Obsidian**, **Processing history**, **Remove from Watchdog…** and **Remove and delete files…**. Removing from Watchdog leaves the folder where it is. **Remove and delete files…** permanently deletes the folder and its usage records, and asks you to type the investigation's name first. An existing investigation folder can be added with **Add existing folder…**, and **Settings → Check vaults** checks that every investigation's folder and registry are readable.
+The list of your investigations, with each one's document and entity counts, how much space its [version history](#history) takes, when documents were last added, and anything that needs attention. The **⋯** menu on each offers **Open**, **Rename…**, **Edit description…**, **Move to another folder…**, **Archive** (and **Unarchive**), **Show in folder**, **Open in Obsidian**, **Processing history**, **Remove from Watchdog…** and **Remove and delete files…**. Removing from Watchdog leaves the folder where it is. **Remove and delete files…** permanently deletes the folder and its usage records, and asks you to type the investigation's name first. An existing investigation folder can be added with **Add existing folder…**, and **Settings → Check vaults** checks that every investigation's folder and registry are readable.
 
 ### Overview
 
@@ -43,7 +43,7 @@ The headline from the latest briefing (its one-line account of where things stan
 
 Every document in the investigation, as a grid of first-page thumbnails or a list you can sort by date, type, pages or entities. A strip above it shows documents not yet in the investigation — waiting, read but not extracted, failed, or set aside — with the fix for each (**Retry**, **Requeue**, **Unlock…**). **Retry** puts failed documents back and runs them again; **Requeue** moves them back without running them.
 
-Open a document to read it. The original is on the left, with page navigation, zoom and find (⌘F or Ctrl+F). On the right are the facts taken from it. Each fact's page number scrolls the original to that page, facts the model inferred rather than read are marked, and figures that could not be found on the cited page carry the same note as in the notes (see [Stated vs inferred](vault.md#stated-vs-inferred)). Under each fact is its source passage, or a note that none was found, and three buttons to mark it **Verified**, **Disputed** or **Can't verify**, with an optional note. A bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact and press J and K to move, V, D or C to mark it, and N for its note. [Checking facts](investigating.md#checking-facts) explains how to use them. Other tabs show the summary, the entities it names, its full extracted text, its details and embedded metadata, and your own notes.
+Open a document to read it. The original is on the left, with page navigation, zoom and find (⌘F or Ctrl+F). On the right are the facts taken from it. Each fact's page number scrolls the original to that page, facts the model inferred rather than read are marked, and figures that could not be found on the cited page carry the same note as in the notes (see [Stated vs inferred](vault.md#stated-vs-inferred)). Under each fact is its source passage, or a note that none was found, and three buttons to mark it **Verified**, **Disputed** or **Can't verify**, with an optional note. A bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact and press J and K to move, V, D or C to mark it, and N for its note. [Checking facts](investigating.md#checking-facts) explains how to use them. Other tabs show the summary, the entities it names, its full extracted text, its details and embedded metadata, and [your notes](#your-notes).
 
 An audio or video recording opens in a player, with its transcript below. Each passage of the transcript starts with the time it was spoken; click it to play from there, and the passage being spoken is highlighted as the recording plays. A fact from a recording cites a time range, such as 10:00–15:00, instead of a page number: click it to play the passage the fact came from. In the grid and the list, a recording shows its length instead of a page count. See [Recordings](vault.md#recordings) for what a transcript can and cannot tell you.
 
@@ -51,7 +51,7 @@ An audio or video recording opens in a player, with its transcript below. Each p
 
 Every person, organization, public body, place, asset and proceeding, filterable by type, with the number of documents each appears in. **Single-source** filters to entities named in only one document, which is where a duplicate entity usually shows up.
 
-An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary written by an AI model from those facts, its citations linked to the facts they rest on (a summary written before a merge into the entity, or before a merge was undone, carries an **Out of date** warning until the next run rewrites it); then contradictions, timeline and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong), **Record a contradiction** and **Re-check contradictions**, which is also the **Re-check** button beside the Contradictions heading: it asks the AI model to compare every recorded fact about the entity with every other, after showing you how many facts and model calls that takes and what it should cost. See [Re-checking contradictions](investigating.md#re-checking-contradictions).
+An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary written by an AI model from those facts, its citations linked to the facts they rest on (a summary written before a merge into the entity, or before a merge was undone, carries an **Out of date** warning until the next run rewrites it); then contradictions, timeline, [your notes](#your-notes) and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong), **Record a contradiction** and **Re-check contradictions**, which is also the **Re-check** button beside the Contradictions heading: it asks the AI model to compare every recorded fact about the entity with every other, after showing you how many facts and model calls that takes and what it should cost. See [Re-checking contradictions](investigating.md#re-checking-contradictions).
 
 ### Network and Timeline
 
@@ -69,7 +69,7 @@ Contradictions, leads, watch-list hits, possible duplicates, merges and document
 
 ### Briefings
 
-Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved. Pinned at the top: **Current state**, the account of the whole investigation that Claude is given at the start of each conversation (built from the records when you open it, with no AI model; see [Ask Claude](investigating.md#ask-claude)), the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here).
+Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved, each with a section for [your notes](#your-notes). Pinned at the top: **Current state**, the account of the whole investigation that Claude is given at the start of each conversation (built from the records when you open it, with no AI model; see [Ask Claude](investigating.md#ask-claude)), the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here).
 
 ### Ask Claude and Web research
 
@@ -86,7 +86,7 @@ Everything the app has run, with the full output of each. **Stop** ends a run cl
 - **Jobs.** Running and finished runs. Select one to see its output.
 - **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild notes** (rewrites every entity and document note from Watchdog's records, with no model call), **Re-check contradictions** (the entity page's re-check for every entity named in two or more documents, with the cost shown before anything is sent), **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
 - **Processing history.** What was added, and when.
-- **Version history.** Every version Watchdog has recorded for this investigation, newest first, each with what caused it and the files it changed. Select a file to open its history at that version. See [History](#history).
+- **Version history.** Every version Watchdog has recorded for this investigation, newest first, each with what caused it and the files it changed. Select a file to open its history at that version. **Remove this version…** deletes what it recorded, except for files it left as they are now. See [History](#history).
 - **Usage.** What the models used and cost.
 
 ### Settings
@@ -118,7 +118,31 @@ What **Restore** does depends on what the file is:
 
 A restore is itself recorded, as "Restored by you", so it can be undone the same way.
 
-The history is kept inside the investigation's folder (see [The vault](vault.md#the-history-store)), with only one copy of each distinct version of a file, so it stays small. Text you delete from a note, a page or `context.md` stays in the history until you clear it. To remove every past version, open **Settings → Version history** and choose **Clear history…**. This cannot be undone; the files themselves stay as they are and become the first version of a new history.
+The history is kept inside the investigation's folder (see [The vault](vault.md#the-history-store)), with only one copy of each distinct version of a file, so it stays small. The investigations list shows how much space each one's history takes. Text you delete from a note, a page or `context.md` stays in the history until you remove the versions that hold it, or clear the history.
+
+### Removing a version
+
+Sometimes an earlier version holds something that should not be kept at all, such as a source's name typed into your notes. First take the text out of the file itself. Then open the file's **History**, select the version that holds it and choose **Remove…**. You can remove only that version, or that version and every earlier one of the same file. Watchdog says how many stored copies of the text will be deleted before you confirm; the deletion cannot be undone.
+
+What happens:
+
+- The text of that version is deleted from the history on this computer. If another version, of this file or another, has exactly the same text, that copy stays, and Watchdog tells you so. Other versions can hold the same words in a different text, so if you are removing a name, look through the versions that stay as well.
+- The file's newest version cannot be removed: it is the file as it is now. Change the file first, and the version it replaces can then be removed.
+- The versions either side are then compared with each other directly. The list shows where versions were removed ("1 version removed"), and the comparison says that it includes their changes.
+- The description of the version, such as the names of the documents a run added, stays in the history while other files in that version remain.
+- Nothing is recorded about what was removed, and a copy of the folder made by a backup or a sync service is not affected. Deleting a file is not a secure wipe: as with any deleted file, the disk may hold traces of it until they are overwritten.
+
+**Activity → Version history** can remove a whole version: everything it recorded, except for the files it left as they are now, whose version stays.
+
+To remove every past version at once, open **Settings → Version history** and choose **Clear history…**. This cannot be undone; the files themselves stay as they are and become the first version of a new history.
+
+## Your notes
+
+Entity pages, a document's **Notes** tab, and the answers and thread pages Claude saves (in `queries/` and `wiki/`) each have a **Your notes** section that is yours alone. It shows your notes as formatted text, with links to entities, documents and facts working as they do elsewhere. **Edit notes** (or **Add notes**) opens it for writing; **Done** or the Esc key closes it.
+
+Notes are plain Markdown, the same text you see in Obsidian: `**bold**`, lists, and `[[links]]` to other notes. They are saved a moment after you stop typing, when you click elsewhere, and when you leave the page, and each save is recorded in the file's [history](#history). If Watchdog is writing the investigation's notes at that moment, the save waits until it has finished. If a save fails, your text is kept and Watchdog tells you, with a way back to it; closing the window while notes are still being saved asks first.
+
+Watchdog never writes to this section. Entity and document notes are rebuilt from the investigation's records every time documents are added, and this section is carried over unchanged. A Claude session that updates a saved page is told to leave it as it is.
 
 ## Folder access
 

@@ -1,10 +1,11 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, NotebookPen, PencilLine, RefreshCw, ScanSearch, Sparkles, Undo2 } from 'lucide-react'
-import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, PencilLine, RefreshCw, ScanSearch, Sparkles, Undo2 } from 'lucide-react'
+import { CSSProperties, useMemo, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
 import { DisputedBadge } from '@renderer/components/FactCheck'
 import { HistoryButton } from '@renderer/components/FileHistory'
 import { Markdown } from '@renderer/components/Markdown'
+import { NotesEditor, cleanNotes } from '@renderer/components/NotesEditor'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import type { EntityDetail, Relationship, TimelineEvent } from '@shared/api'
 import { typeMeta } from '@renderer/lib/entityTypes'
@@ -380,40 +381,10 @@ function MiniTimeline({ events }: { events: TimelineEvent[] }) {
 // ── notes ────────────────────────────────────────────────────────────────────
 function NotesSection({ e }: { e: EntityDetail }) {
   const vault = useVault()
-  const initial = useMemo(() => {
-    const raw = e.sections.notes ?? ''
-    return /^\s*(<!--[\s\S]*?-->\s*)*$/.test(raw) ? '' : raw.trim()
-  }, [e.sections.notes])
-  const [text, setText] = useState(initial)
-  const [state, setState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
-  const saved = useRef(initial)
-  useEffect(() => {
-    setText(initial)
-    saved.current = initial
-    setState('idle')
-  }, [initial, e.id])
-
-  const save = async () => {
-    if (text === saved.current || !e.note) return
-    setState('saving')
-    try {
-      await call('vault.saveNotes', { vault, path: e.note, text })
-      saved.current = text
-      setState('saved')
-      invalidate('vault.entity')
-    } catch (err) {
-      setState('error')
-      toast({ kind: 'error', title: 'Notes not saved', body: errorMessage(err) })
-    }
-  }
+  if (!e.note) return null
   return (
     <section className="ent-sec">
-      <SecTitle icon={NotebookPen} title="Your notes" />
-      <textarea className="ent-notes" value={text} placeholder="Add your own observations, questions and follow-ups here." onChange={(ev) => { setText(ev.target.value); setState('idle') }} onBlur={() => void save()} aria-label="Notes" />
-      <div className="ent-notes-foot">
-        {state === 'saving' ? <span>Saving…</span> : state === 'saved' ? <span style={{ color: 'var(--success)' }}>Saved</span> : state === 'error' ? <span style={{ color: 'var(--danger)' }}>Not saved</span> : null}
-        <span>This section is yours. Watchdog never overwrites it, even when the entity is re-synthesized.</span>
-      </div>
+      <NotesEditor key={e.note} vault={vault} path={e.note} saved={cleanNotes(e.sections.notes)} label={e.name} promise="Watchdog never overwrites this section, even when it rebuilds the rest of the note from the documents." placeholder="Your own observations, questions and follow-ups on this entity." />
     </section>
   )
 }

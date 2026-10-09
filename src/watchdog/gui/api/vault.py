@@ -1,8 +1,9 @@
 """`vault.*` — reading an investigation: the registries, notes, timeline, pipeline state and the
 journalist-owned files. Everything is read from the vault's own files, in-process.
 
-Writes are limited to three, each deliberately narrow: `vault.saveNotes` (only the body of a
-note's `## Notes` section — the one part the pipeline never writes), and `vault.writeFile` (only
+Writes are limited to two, each deliberately narrow: `vault.saveNotes` (only the body of the
+`## Notes` section of an entity note, a document note or a saved page in `queries/` or `wiki/` —
+the one part neither the pipeline nor a session's skills ever write), and `vault.writeFile` (only
 `context.md` and `watchlist.md`). Both go through a temp file and `os.replace`, and each is
 recorded as a version of the file's history (D286).
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import re
+from contextlib import contextmanager
 from pathlib import Path
 
 from watchdog.gui import vaultio
@@ -25,7 +27,14 @@ _DATE_IN_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})")
 _NOTES_PLACEHOLDER = {
     "documents": "<!-- Reserved for journalist annotations — never overwritten by ingestion. -->",
     "entities": "<!-- Journalist annotations — never overwritten by ingestion. -->",
+    # Saved pages, as the query and wiki skills write them.
+    "queries": "<!-- Journalist annotations — never overwritten. -->",
+    "wiki": "<!-- Journalist annotations — never overwritten. -->",
 }
+# Notes the pipeline's commit pass rewrites around (it keeps the section by reading the file
+# under the registry lock), so a save takes that lock too.
+_PIPELINE_NOTES = ("entities", "documents")
+_NOTES_LOCK_WAIT = 3.0
 _READABLE_FILES = {"context.md", "watchlist.md", "requests.md", "log.md", "timeline.md",
                    "index.md"}
 _READABLE_DIRS = ("briefings/", "queries/", "wiki/")
@@ -464,6 +473,33 @@ def replace_notes_body(text: str, new_body: str, placeholder: str) -> str:
     return f"{head}\n\n## Notes\n\n{body}\n"
 
 
+@contextmanager
+def notes_write_lock(vault: Path, rel: str):
+    """Hold what a write to `rel`'s Notes section must hold. An entity or document note is
+    rewritten by the commit pass, which keeps the Notes section it reads under the registry
+    lock; a save waits a few seconds for that lock, then reports `busy` (the app retries) rather
+    than racing the pass. Saved pages are written only by sessions, which take no lock."""
+    if rel.split("/", 1)[0] not in _PIPELINE_NOTES:
+        yield
+        return
+    import time
+    from watchdog.pipeline.write_vault import _try_registry_lock
+    reg = vault / ".watchdog" / "registry"
+    if not reg.is_dir():
+        yield
+        return
+    deadline = time.monotonic() + _NOTES_LOCK_WAIT
+    while True:
+        with _try_registry_lock(reg) as got:
+            if got:
+                yield
+                return
+        if time.monotonic() >= deadline:
+            raise RpcError("Watchdog is writing this investigation's notes. Your notes will be "
+                           "saved when it has finished.", code="busy")
+        time.sleep(0.2)
+
+
 @method("vault.saveNotes")
 def save_notes(vault: str, path: str, text: str) -> dict:
     v = require_vault(vault)
@@ -471,14 +507,17 @@ def save_notes(vault: str, path: str, text: str) -> dict:
         raise RpcError("The notes must be text.", code="bad_params")
     rel, file = _note_candidates(v, path)
     top = rel.split("/", 1)[0]
-    if top not in ("entities", "documents") or "/" not in rel:
-        raise RpcError("Notes can only be saved on entity and document notes.", code="forbidden")
+    if top not in _NOTES_PLACEHOLDER or "/" not in rel:
+        raise RpcError("Notes can only be saved on entity and document notes and on saved pages.",
+                       code="forbidden")
     if file is None:
         raise RpcError("That note doesn't exist.", code="not_found")
     from watchdog.pipeline import history
-    with history.recording(v, {"kind": "notes"}, [rel]):
+    with notes_write_lock(v, rel), history.recording(v, {"kind": "notes"}, [rel]):
         old = vaultio.read_text(file)
-        vaultio.write_text_atomic(file, replace_notes_body(old, text, _NOTES_PLACEHOLDER[top]))
+        new = replace_notes_body(old, text, _NOTES_PLACEHOLDER[top])
+        if new != old:
+            vaultio.write_text_atomic(file, new)
     return {"ok": True}
 
 
