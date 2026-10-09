@@ -816,10 +816,14 @@ def restore(vault: Path, rel: str, version: int) -> dict:
             if not target.is_file():
                 raise CannotRestore("This note no longer exists, so its notes cannot be put back. "
                                     "Copy them from the version shown instead.")
-            from watchdog.gui.api.vault import _NOTES_PLACEHOLDER, replace_notes_body
-            current = target.read_text(encoding="utf-8")
-            placeholder = _NOTES_PLACEHOLDER[rel.split("/", 1)[0]]
-            _write_text_atomic(target, replace_notes_body(current, notes_section(old), placeholder))
+            from watchdog.gui.api.vault import (
+                _NOTES_PLACEHOLDER, notes_write_lock, replace_notes_body,
+            )
+            with notes_write_lock(vault, rel):
+                current = target.read_text(encoding="utf-8")
+                placeholder = _NOTES_PLACEHOLDER[rel.split("/", 1)[0]]
+                _write_text_atomic(target, replace_notes_body(current, notes_section(old),
+                                                              placeholder))
     new = _load_index(history_dir(vault))
     hist = (new["files"].get(rel) or {}).get("h") or []
     return {"path": rel, "part": kind, "version": hist[-1][0] if hist else None}
