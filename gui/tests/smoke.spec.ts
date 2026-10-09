@@ -114,6 +114,16 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // Releasing a recent lock leaves it in place: the app says so in its own words, never with the
+    // CLI's "Use watchdog unlock --force".
+    const lockFile = join(root, 'vault', '.watchdog', 'registry', '.processing-lock')
+    writeFileSync(lockFile, `pid: cli\nstarted_at: ${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}\n`)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'activity', tab: 'maintenance' }))
+    await page.getByRole('button', { name: 'Release lock', exact: true }).click()
+    await expect(page.locator('.toast').last()).toContainText('left in place', { timeout: 15_000 })
+    await expect(page.locator('.toast').last()).not.toContainText('watchdog')
+    rmSync(lockFile, { force: true })
+
     // With no investigation open, the sidebar's All investigations returns to the list from any
     // other screen.
     await page.evaluate(() => (window as any).__watchdogApp.getState().setProject(null))

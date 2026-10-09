@@ -28,8 +28,8 @@ import { ReactNode, useState } from 'react'
 import type { CitationReport, Effort, Estimate, RunOptions } from '@shared/api'
 import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
-import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
-import { flagsFor, runAction, startJob } from '@renderer/lib/jobs'
+import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
+import { flagsFor, runAction, startJob, unlockOutcome } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
@@ -556,8 +556,8 @@ function UnlockCard({ locks }: { locks: { chew: boolean; ingest: boolean } | nul
           if (!ok) return
         }
         const out = await runAction(['unlock', ...(force ? ['--force'] : [])])
-        toast({ kind: 'success', title: 'Lock check done', body: out.trim().split('\n').pop() || undefined })
-        void call('projects.status', { slug: useApp.getState().project!.slug })
+        toast(unlockOutcome(out))
+        invalidate('vault.', 'projects.', 'ingest.')
       }}
     />
   )
@@ -593,8 +593,9 @@ export default function MaintenancePanel() {
           label="Requeue"
           onRun={async () => {
             const out = await runAction(['requeue'])
-            toast({ kind: 'success', title: 'Documents requeued', body: out.trim().split('\n').pop() || undefined })
-            void call('vault.pipeline', { vault: project.path })
+            const n = /Requeued\s+(\d+)/.exec(out)?.[1]
+            toast(n ? { kind: 'success', title: 'Moved back into the queue', body: `${plural(Number(n), 'document')}. Run Add documents to extract them again.` } : { kind: 'info', title: 'No failed documents to requeue' })
+            invalidate('vault.', 'projects.', 'ingest.')
           }}
         />
         </Gated>

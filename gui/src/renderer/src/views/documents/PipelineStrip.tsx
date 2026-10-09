@@ -5,7 +5,7 @@ import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Lock,
 import { useEffect, useState } from 'react'
 import { Badge, Button } from '@renderer/components/ui'
 import { fmtBytes, plural } from '@renderer/lib/format'
-import { runAction } from '@renderer/lib/jobs'
+import { runAction, unlockOutcome } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { errorMessage, invalidate } from '@renderer/lib/rpc'
@@ -84,7 +84,7 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
     setBusy(force ? 'force' : 'unlock')
     try {
       const out = await runAction(force ? ['unlock', '--force'] : ['unlock'])
-      toast({ kind: 'success', title: 'Lock removed', body: out.trim().split('\n').pop() || undefined })
+      toast(unlockOutcome(out))
       invalidate('vault.', 'projects.', 'ingest.')
     } catch (e) {
       toast({ kind: 'error', title: 'Could not remove the lock', body: errorMessage(e) })
