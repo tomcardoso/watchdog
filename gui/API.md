@@ -123,6 +123,8 @@ EntityRow = {
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
 | `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes only; an empty `text` keeps the placeholder comment) — replaces only the body of the note's `## Notes` section (journalist annotations; the pipeline never writes there) |
 | `vault.resolveLink` | `{vault, target}` | `{path\|null, kind: "document"\|"entity"\|"briefing"\|"query"\|"wiki"\|"note"\|"original"\|"fulltext"\|"missing", sha\|null, page\|null}` — what a wikilink target points at (bare names resolve like Obsidian: entity id/name/alias, document slug/title/filename, top-level note) (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
+| `vault.citations` | `{vault, links: string[]}` | `{[link]: {target, block, status: "found"\|"not_found", fact: {id, sha, fact, page\|null, title\|null, note\|null, date\|null, basis\|null, mark: "verified"\|"disputed"\|"unverifiable"\|null, passage\|null, passage_page\|null}\|null, disputed?}}` — what each fact citation names (D283). A link is `<note>#^f-<id>` as written in `[[<note>#^f-<id>\|…]]`; others are ignored; at most 500. Read-only. The Markdown renderer calls it for every page it shows; a `not_found` citation is shown as "source not found", never as a link |
+| `vault.checkCitations` | `{vault}` | `{checked, citations, found, not_found, disputed, unresolved_short, pages: [{path, items, citations, found, not_found, disputed, unresolved_short}]}` — every fact citation in `queries/`, `wiki/`, `briefings/` and `hot.md` (Maintenance → Check citations; the function `watchdog check-citations` calls). Changes nothing |
 | `vault.pipeline` | `{vault}` | `PipelineState` (below) |
 | `vault.briefings` | `{vault}` | `[{path, name, kind: "briefing"\|"leads"\|"alerts"\|"research", date, title}]`, newest first |
 | `vault.notes` | `{vault}` | `[{path, kind: "query"\|"wiki", title, modified}]` — pages Claude sessions saved in `queries/` and `wiki/`, most recently modified first |
@@ -152,7 +154,7 @@ DocumentDetail = DocumentRow & {
 EntityDetail = EntityRow & {
   frontmatter: object, body: string,            // the entity note
   sections: {summary|null, analysis|null, contradictions|null, timeline|null,
-             relationships|null, notes|null},   // raw markdown per ## section; summary also reads "## Summary (AI-written)"
+             relationships|null, notes|null},   // raw markdown per ## section; summary also reads the older "## Summary (AI-written)" heading
   documents: DocumentRow[],                     // appears_in, resolved
   relationships: [{role, target_id, target_name|null, target_type|null, direction: "out"|"in",
                    docs: string[]}],
@@ -160,7 +162,9 @@ EntityDetail = EntityRow & {
   timeline: TimelineEvent[],
   facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail
   synthesis: {summary, analysis|null, by: "model"|"session"|"carried", model|null, made_at|null,
-              facts_total|null, facts_shown|null, stale: "merge"|"undo"|null} | null,   // the AI-written summary, from the registry; unknown fields ignored
+              facts_total|null, facts_shown|null, stale: "merge"|"undo"|null,
+              summary_md, analysis_md|null,     // with citations rendered as fact links (D283); show these
+              citations: {cited, linked, unknown, missing, disputed}} | null,   // the entity summary, from the registry; who wrote it is metadata, not shown (D284); unknown fields ignored
   legacy_claims: string|null      // claims an older version recorded for documents with no stored extraction (markdown)
 }
 

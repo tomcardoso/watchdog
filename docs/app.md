@@ -51,7 +51,7 @@ An audio or video recording opens in a player, with its transcript below. Each p
 
 Every person, organization, public body, place, asset and proceeding, filterable by type, with the number of documents each appears in. **Single-source** filters to entities named in only one document, which is where a duplicate entity usually shows up.
 
-An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary labelled **AI-written**, with which model wrote it and from how many facts; then contradictions, timeline and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong) and **Record a contradiction**.
+An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary written by an AI model from those facts, its citations linked to the facts they rest on; then contradictions, timeline and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong) and **Record a contradiction**.
 
 ### Network and Timeline
 

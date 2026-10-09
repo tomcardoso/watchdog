@@ -8,7 +8,7 @@ Each investigation is its own vault — an ordinary folder of markdown files (pl
 
 [Obsidian](https://obsidian.md), a free note-taking program, is optional. The vault is laid out so that Obsidian can open it, and **File → Open in Obsidian** does that if Obsidian is installed. Watchdog does not need it, and nothing on this page requires it. Any program that reads markdown will do.
 
-The vault is also safe to edit. Watchdog's internal records — machine-readable files under `.watchdog/`, including each document's extracted facts — are the source of truth, and the entity and document notes you see are generated from them. Deleting a note loses nothing: **Rebuild notes** under **Activity → Maintenance** writes every entity and document note again from those records, AI-written summaries included, without calling an AI model. Only your own **Notes** sections live in the notes alone, so they are kept as they are when a note is rebuilt, and lost if you delete the note.
+The vault is also safe to edit. Watchdog's internal records — machine-readable files under `.watchdog/`, including each document's extracted facts — are the source of truth, and the entity and document notes you see are generated from them. Deleting a note loses nothing: **Rebuild notes** under **Activity → Maintenance** writes every entity and document note again from those records, entity summaries included, without calling an AI model. Only your own **Notes** sections live in the notes alone, so they are kept as they are when a note is rebuilt, and lost if you delete the note.
 
 ## The directory tree
 
@@ -95,7 +95,7 @@ Two tables deserve attention. **Possible duplicate documents** lists documents t
 
 An entity note is a view of the investigation's records, rewritten whenever something about the entity changes. It has up to six sections:
 
-- **`## Summary (AI-written)`** — an overview of who this entity is and why they matter, written by an AI model from the entity's facts once the entity appears in two or more documents. It is labelled as AI-written, and a line under it says which model wrote it, when, and from how many of the entity's facts. Where a sentence rests on a fact, the model is asked to cite it, like `[f:3a9c]`; sentences without a citation are the model's own framing. The summary can be wrong. The facts below it are the record.
+- **`## Summary`** — an overview of who this entity is and why they matter, written by an AI model from the entity's facts once the entity appears in two or more documents. Where a sentence rests on a fact, it ends in a citation such as `(p. 4)` that links to that fact (see [Fact citations](#fact-citations)). Sentences without a citation are the model's own framing: connecting, summing up. The summary can be wrong. The facts below it are the record.
 - **`## Facts`** — every fact, from every document added so far, that is about this entity. Each line gives the fact, its document and a link to the page, any warning (*(inferred)*, a figure not found on the page), and your own check of it: **✓ verified**, **✗ disputed**, **? can't verify** or **not checked**. A fact you dispute stays in the list, labelled. Facts with dates come first, in the order the events happened; facts without their own date take their document's date. Where the model quoted the document, or Watchdog found the sentence the fact rests on, it is shown under the fact.
 - **`## Contradictions`** — places where two documents disagree about the entity, each side cited.
 - **`## Relationships`** — connections to other entities, with source citations.
@@ -103,9 +103,23 @@ An entity note is a view of the investigation's records, rewritten whenever some
 
 An entity named in many documents can have hundreds of facts. Up to 40 are listed one by one. Past that, the list is grouped by document, five facts per document plus every fact you have marked, with a link to the document's own note for the rest; the 40 most recent documents get a group each and earlier ones one line each, with a count. The full list, with source passages, is always on the entity's page in the app.
 
-Every source citation is a direct page link into the original file in the morgue — `[[morgue/.../file.pdf#page=3|p. 3]]` — so you can jump from any fact straight to the page it came from. Each fact line ends with a short marker such as `^f-3a9c5b2e1d`, which Obsidian hides; it lets other notes link to that exact fact.
+Every source citation is a direct page link into the original file in the morgue — `[[morgue/.../file.pdf#page=3|p. 3]]` — so you can jump from any fact straight to the page it came from. Each fact line, in an entity note and in its document's note, ends with a short marker such as `^f-3a9c5b2e1d`, which Obsidian hides; it lets other notes link to that exact fact.
 
-Investigations started with an earlier version of Watchdog have their notes rewritten in this form the next time documents are added, or when you choose **Rebuild notes**. Their AI-written summaries are kept and labelled as carried over. Claims recorded for documents whose extracted facts were not kept are kept too, as written, under **Earlier claims**.
+Investigations started with an earlier version of Watchdog have their notes rewritten in this form the next time documents are added, or when you choose **Rebuild notes**. Their summaries are kept. Claims recorded for documents whose extracted facts were not kept are kept too, as written, under **Earlier claims**.
+
+## Fact citations
+
+Text written by an AI model — entity summaries, briefings, the current-state page — and the pages Claude writes in Ask Claude (saved answers in `queries/`, threads in `wiki/`, research memos) cite facts by linking to the fact's line in its document's note:
+
+```
+The City paid $4,350,000 for the property ([[documents/payment-register#^f-264b05b025|p. 1]]).
+```
+
+In Obsidian the citation reads "(p. 1)" and opens the document's note at that fact. Several citations in a row read "(p. 1; p. 3)". A citation of a fact you have marked Disputed reads "(p. 1, disputed)".
+
+Watchdog checks every citation against the facts it has stored. When it writes a summary or a briefing, a citation that names no stored fact is left out, and the sentence stays; it never links a sentence to a fact the model did not cite. A citation can stop resolving later, when a document is processed again and its facts are reworded, or when a merge is undone; the app then shows it as **source not found**. **Activity → Maintenance → Check citations** lists every such citation in saved answers, threads and briefings, without changing any page.
+
+Not every sentence carries a citation, and that is expected. A model writing a summary or a briefing connects facts and frames them, and those sentences stand without one. A name, date, figure or event from a document should carry one.
 
 ## Stated vs inferred
 
@@ -129,7 +143,7 @@ Watchdog checks every number in a stated fact against the page the fact cites (a
 
 Dates are not checked this way — only figures — and roughly two to three per cent of facts carry a note, so one is worth stopping on. A fact with no note either had its figures found where it said they were, or was not checked: facts marked *(inferred)*, facts that cite no page, and facts whose page has no text are skipped.
 
-When a new document contradicts a fact already in the vault — a different address, a conflicting date, a mismatched role — that is not a basis level. It surfaces as a `[!contradiction]` callout in the entity's note, with both sources cited. The check compares each new document's facts with the facts already recorded about the entity, and the sentences on the page they rest on; it never compares against the AI-written summary. Facts you have marked Disputed are left out of the check and of the summary. A contradiction is often newsworthy in itself: two official records that disagree can be the story.
+When a new document contradicts a fact already in the vault — a different address, a conflicting date, a mismatched role — that is not a basis level. It surfaces as a `[!contradiction]` callout in the entity's note, with both sources cited. The check compares each new document's facts with the facts already recorded about the entity, and the sentences on the page they rest on; it never compares against the summary. Facts you have marked Disputed are still compared, and still shown to the summary, labelled as disputed, so a conflict with one is not missed and the summary never presents one as established. Where Watchdog knows which fact each side comes from, the side links to that fact, and a side resting on a fact you dispute ends in *disputed*. A contradiction is often newsworthy in itself: two official records that disagree can be the story.
 
 Contradictions are raised whatever the two claims are marked as — including where one side is *(inferred)* or carries a figure note. A conflict is too important to hide, and the occasional one that turns out to be the model's own error is the price of not missing a real one. Both sources and pages are always cited, so check them before you rely on it.
 

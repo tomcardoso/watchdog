@@ -56,7 +56,7 @@ The **Merges** tab has two parts. At the top is the queue of **possible same ent
 
 Below the queue is **Recent merges**: every merge, newest first, whoever made it. Each row says which records were joined, how confident the decision was, and who decided: Watchdog's rules, the AI model (by name), or the reporter who chose **Merge**. Open a row for the reason, the matching number or shared role if there was one, the facts that came with the merged record and the documents it came from. Recognising the same specific company or place name in another document is recorded too, but those rows are hidden until you turn on **Include exact-name recognitions**, so the list stays on the merges worth a look.
 
-If a merge is wrong, open its row and choose **Undo merge**. Watchdog gives the facts, documents and relationships that came with the merged record back to a record of its own, rewrites both entities' notes, and marks the pair **Not the same** so it is never merged automatically again. It calls no AI model. Three things stay with the surviving entity, and the confirmation says so: contradictions recorded while the two were joined, your own **Notes** (including any written after the merge; move what belongs to the other record by hand), and its AI-written summary, which is marked as written before the split until the next run rewrites it. A merge decided again for several documents is undone for all of them at once.
+If a merge is wrong, open its row and choose **Undo merge**. Watchdog gives the facts, documents and relationships that came with the merged record back to a record of its own, rewrites both entities' notes, and marks the pair **Not the same** so it is never merged automatically again. It calls no AI model. Three things stay with the surviving entity, and the confirmation says so: contradictions recorded while the two were joined, your own **Notes** (including any written after the merge; move what belongs to the other record by hand), and its summary, which the next run that names it rewrites. A merge decided again for several documents is undone for all of them at once.
 
 Some merges cannot be split exactly, and for those the button stays unavailable with the reason beside it: a merge made by a version of Watchdog older than this one, which did not record which facts moved; two names joined inside one long document that was read in sections; a surviving entity that was itself merged into another later (undo that one first); and a document that has been processed again since the merge. The same record is kept in `merges.md` in the investigation's folder (see [the vault layout](vault.md)), which also notes each merge that was undone.
 
@@ -133,8 +133,8 @@ Every change rewrites `verification.md` at the top of the investigation: a list 
 
 Open an entity to see everything the documents say about it.
 
-- **Facts** lists every fact about the entity from every document, in the order things happened (or **By document**), each with its document and page, any warning, and the same **Verified**, **Disputed** and **Can't verify** buttons as in the document reader, with the same keys. **Show the matched passage** (or **Show the quotation**) opens the sentence on the page the fact rests on. A fact you mark Disputed stays in the list with a **disputed** label; from the next run on, the AI-written summary is told you dispute it, so it never presents it as established, and the contradiction check still compares it, labelled. The filters show what is not checked, disputed, inferred, or carries a figure warning.
-- **Summary** is labelled **AI-written**. A model writes it from the entity's facts once the entity appears in two or more documents, and the line under it says which model, when, and from how many facts. Where it cites a fact, the citation looks like `[f:3a9c]`. Treat it as a reading aid, and the facts as the record.
+- **Facts** lists every fact about the entity from every document, in the order things happened (or **By document**), each with its document and page, any warning, and the same **Verified**, **Disputed** and **Can't verify** buttons as in the document reader, with the same keys. **Show the matched passage** (or **Show the quotation**) opens the sentence on the page the fact rests on. A fact you mark Disputed stays in the list with a **disputed** label; from the next run on, the summary is told you dispute it, so it never presents it as established, and the contradiction check still compares it, labelled. Anywhere a summary, briefing or saved answer cites it, the citation is labelled **disputed**. The filters show what is not checked, disputed, inferred, or carries a figure warning.
+- **Summary** is written by an AI model from the entity's facts once the entity appears in two or more documents. Where a sentence rests on a fact, it ends in a citation such as **p. 4**; see [Citations](#citations). Treat it as a reading aid, and the facts as the record.
 - **Contradictions**, **Timeline** and **Relationships** follow, with thumbnails of the documents it appears in.
 
 The **Notes** section is yours; Watchdog never writes to it, so anything you type there survives every run.
@@ -147,7 +147,7 @@ The **Single-source** filter is the best place to look, since a duplicate usuall
 
 The dialog shows both entities (name, type, document and relationship counts) before you commit, and asks you to tick that you understand the two become one record. A merge you regret can be split back from **Review → Merges** (see [Merges](#merges)). The duplicate's aliases, documents, relationships and timeline events all combine onto the survivor, and every relationship elsewhere that pointed at the duplicate follows. A snapshot is taken first, and the merge is recorded under your name in the merge log (Review, Merges).
 
-When it finishes, the dialog offers **Rebuild search index**, which drops the merged entity's stale entries from Search. The survivor's facts include both records' facts at once. The merge keeps only one of the two AI-written summaries, labelled as written before the merge, so when both entities had one, open the survivor and choose **Refresh summary from all sources** from its **⋯** menu, or wait for the next run that names it.
+When it finishes, the dialog offers **Rebuild search index**, which drops the merged entity's stale entries from Search. The survivor's facts include both records' facts at once. The merge keeps only one of the two summaries, so when both entities had one, open the survivor and choose **Refresh summary from all sources** from its **⋯** menu, or wait for the next run that names it.
 
 ## Timeline and Network
 
@@ -180,6 +180,14 @@ Two other modes sit at the top of the screen:
 
 - **Every investigation** answers "have I seen this name in any of my investigations?" It checks every registered, non-archived investigation and groups hits by investigation. Only entity lookups and exact matches run in this mode, because meaning-based search does not scale across investigations, so a name variant with no recorded alias and no literal occurrence will not surface. Investigations whose folder is missing are skipped and listed rather than failing the search.
 - **Check a list of names** checks a whole list against the investigation (a board roster, a sanctions list, a list of donors). Type or load one name per line and you get a report of what each name hit. A name that could not be checked is shown as "Not checked", never as "No hits". It can run across every investigation at once.
+
+### Citations
+
+Summaries, briefings, the current-state page and the pages Claude saves in Ask Claude cite the facts they rest on. A citation is a small marker such as **p. 4** at the end of a sentence. Hover over it to see the fact, its document and page, and whether you have checked it. Click it to open the document at that page, with the fact selected in the Facts list and its passage found on the page.
+
+A citation of a fact you marked Disputed reads **p. 4 · disputed**; the fact is never hidden. A citation Watchdog cannot match to a stored fact reads **source not found** and is not a link. That happens when a document is processed again and its facts are reworded, when a merge is undone, or when Claude wrote the citation wrong. Watchdog never rewrites the page; **Activity → Maintenance → Check citations** lists every such case.
+
+AI-written text can also contain sentences with no citation: a model connecting facts, summing up, or proposing what to look at next. That is expected, and it is not flagged. Anything you plan to publish should rest on cited facts you have checked.
 
 ## Ask Claude
 
@@ -237,6 +245,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Post-processing** | Finishes a batch: merges duplicate entities, flags contradictions, writes entity summaries, reconciles the timeline and writes the briefing. Safe to run again if it stops partway. |
 | **Requeue failed documents** | Moves documents that failed extraction back into the queue so a later processing run tries them again. |
 | **Lead sweep** | Runs the full lead sweep, with no model call. |
+| **Check citations** | Checks that every fact cited in saved answers, threads and briefings still exists, and lists the citations of facts you marked Disputed. Changes nothing and calls no model. |
 | **Rebuild the timeline** | Regenerates the written timeline from the underlying records. |
 | **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
 | **Usage** | Opens token, cost and timing figures for each run. |

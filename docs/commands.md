@@ -40,7 +40,7 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog settings` | Models, keys, health checks and skills — see [Settings](#settings). |
 | `watchdog setup` | Setting up Watchdog after installation; `--force` re-runs it. |
 
-`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `verify-fact`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
+`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `check-citations`, `timeline`, `reindex`, `verify-fact`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
 
 Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts and the vault's slash commands use the old names and see no note.
 
@@ -277,6 +277,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog review add-contradiction <entity-id>` | Record a contradiction you have verified, so it is tracked like the ones found during ingest. |
 | `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web — see [below](#watchdog-research). |
 | `watchdog leads [name]` | Maintenance. Print the full lead sweep — see [Leads](#leads). |
+| `watchdog check-citations [page…] [--json]` | Maintenance. Run from inside an investigation's folder: resolve every fact citation (`[[documents/<slug>#^f-…\|p. N]]`) in `queries/`, `wiki/`, `briefings/` and `hot.md`, or in the pages named, and list the ones that name no stored fact and the ones on facts you marked Disputed. Read-only; pre-approved in Ask Claude sessions, whose skills run it before filing a page. |
 | `watchdog timeline [name]` | Maintenance. Rebuild `timeline.md` from the canonical event files; deterministic, no model call. |
 | `watchdog reindex [name]` | Maintenance. Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
 | `watchdog verify-fact [fact-id]` | Maintenance. Mark a fact verified, disputed or can't verify, or list what has been marked — see [below](#watchdog-verify-fact). |
@@ -287,7 +288,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 
 ### watchdog search
 
-`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog review leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text.
+`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog review leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text. With `--json`, each source passage and each exact match in a document's text also lists `facts`: the facts recorded on that page, each with its `id`, its `cite` link (`[[documents/<slug>#^f-…|p. N]]`, the form Ask Claude pastes to cite a fact) and your verification mark.
 
 Run from inside a Claude Code session, `watchdog search` only searches the investigation the session is in. It refuses `--everywhere`, another investigation's name, and a `--batch` file outside the investigation's folder. A document can contain instructions aimed at the session, and those forms would let it read files or other investigations without asking you; run them in your own terminal instead. How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
 
