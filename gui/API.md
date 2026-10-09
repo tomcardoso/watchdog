@@ -302,7 +302,7 @@ Events: `job.started {job}`, `job.log {id, lines: LogLine[]}` (batched ≤ 10/s)
 RecheckEstimate = {
   scope: "entities"|"all",
   entities: [{id, name, facts, documents, calls}],            // what would be checked
-  skipped: [{id, name, reason: "one_document"|"too_few_facts"|"too_large"|"not_found", facts?, calls?}],
+  skipped: [{id, name, reason: "too_few_facts"|"too_large"|"not_found", facts?, calls?}],
   calls, facts,                         // model calls and facts in total
   est_tokens, real_tokens|null,         // chars/4 of the prompts; scaled by the model's tokenizer ratio
   cost_low|null, cost_high|null,        // USD at list price; null on a subscription, a local or an unpriced model

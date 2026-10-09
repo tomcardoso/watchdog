@@ -3,7 +3,7 @@
 Since D280 each run compares its new facts with the stored ones, and never two stored facts with
 each other, so a conflict between two older documents that an earlier run missed is not looked for
 again. This is the on-demand pass that does look: every stored fact of an entity (or of every
-recurring entity) goes to the finalizer's reconciliation model through the reconcile prompt's
+entity with two or more facts, including one named in a single document) goes to the finalizer's reconciliation model through the reconcile prompt's
 contradiction job and schema, unchanged, and what it finds is filed by `contradiction.run`, the
 writer every contradiction goes through.
 
@@ -142,11 +142,9 @@ def plan(vault: Path, ids: list[str] | None, model: str, backend: str | None) ->
             skipped.append({"id": eid, "name": (entry or {}).get("name") or eid, "reason": "not_found"})
             continue
         name = entry.get("name") or eid
+        # Unlike a run's contradiction check, an entity named in one document is checked too: two
+        # of its facts can disagree within that document (owner's call, D287).
         docs = len(entry.get("appears_in") or [])
-        if docs < reconcile._MIN_DOCS:
-            if ids is not None:
-                skipped.append({"id": eid, "name": name, "reason": "one_document"})
-            continue
         mine, n_facts = entity_calls(ledger, eid, entry, budget)
         if n_facts + (1 if entry.get("legacy_claims") else 0) < 2:
             if ids is not None:
@@ -392,7 +390,7 @@ def summary(out: dict) -> str:
     """The plain-language result line the job's log ends with."""
     filed = len(out["filed"])
     if not out["calls_total"]:
-        return "Nothing to re-check: no entity here has facts from two or more documents."
+        return "Nothing to re-check: no entity here has two or more facts."
     head = (f"Re-checked {out['entities']} entit{'ies' if out['entities'] != 1 else 'y'} "
             f"({out['facts']} facts) in {out['calls_done']} of {out['calls_total']} "
             f"call{'s' if out['calls_total'] != 1 else ''}.")

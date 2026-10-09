@@ -379,7 +379,7 @@ export interface Estimate {
 export interface RecheckEstimate {
   scope: 'entities' | 'all'
   entities: { id: string; name: string; facts: number; documents: number; calls: number }[]
-  skipped: { id: string; name: string; reason: 'one_document' | 'too_few_facts' | 'too_large' | 'not_found'; facts?: number; calls?: number }[]
+  skipped: { id: string; name: string; reason: 'too_few_facts' | 'too_large' | 'not_found'; facts?: number; calls?: number }[]
   calls: number
   facts: number
   est_tokens: number

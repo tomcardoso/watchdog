@@ -1,5 +1,5 @@
-// Re-check contradictions (D287): every recorded fact about an entity, or about every entity named
-// in two or more documents, is compared with every other by the AI model. The estimate comes first
+// Re-check contradictions (D287): every recorded fact about an entity, or about every entity with
+// two or more facts (one named in a single document included), is compared with every other by the AI model. The estimate comes first
 // (`contradictions.estimate`); nothing is sent until the person confirms.
 
 import { ScanSearch } from 'lucide-react'
@@ -23,7 +23,6 @@ function costText(e: RecheckEstimate): string {
 }
 
 function skippedText(s: RecheckEstimate['skipped'][number], max: number): string {
-  if (s.reason === 'one_document') return `${s.name} appears in only one document. Contradictions are looked for between documents, so there is nothing to compare yet.`
   if (s.reason === 'too_few_facts') return `${s.name} has fewer than two recorded facts, so there is nothing to compare.`
   if (s.reason === 'too_large')
     return `${s.name} has ${fmtNum(s.facts ?? 0)} facts. Comparing every pair would take ${fmtNum(s.calls ?? 0)} model calls, more than the limit of ${max} for one entity, so it is not checked. Contradictions are still looked for each time documents about it are added.`
@@ -37,7 +36,7 @@ export default function RecheckModal({ open, onClose, ids, name }: { open: boole
   const engine = useEngineGate()
   const [busy, setBusy] = useState(false)
   const e = q.data
-  const subject = all ? 'every entity named in two or more documents' : name ?? 'this entity'
+  const subject = all ? 'every entity with two or more facts' : name ?? 'this entity'
   const blocked = !e || e.calls === 0 || e.busy || !e.auth.ok || !engine.ready
 
   const start = async () => {
@@ -79,7 +78,7 @@ export default function RecheckModal({ open, onClose, ids, name }: { open: boole
     >
       <div className="col" style={{ gap: 14 }}>
         <p className="muted" style={{ margin: 0 }}>
-          When documents are added, their facts are compared with the facts already recorded. Facts already recorded are not compared with each other again, so a conflict between two earlier documents can be missed. This sends every recorded fact about {subject} to the AI model to look for conflicts among them. What it finds is added to Contradictions and to Review, like any other. Contradictions already recorded, including ones you marked handled, are not added again.
+          When documents are added, their facts are compared with the facts already recorded. Facts already recorded are not compared with each other again, so a conflict between two earlier documents can be missed, and a conflict within a single document is not looked for at all. This sends every recorded fact about {subject} to the AI model to look for conflicts among them. What it finds is added to Contradictions and to Review, like any other. Contradictions already recorded, including ones you marked handled, are not added again.
         </p>
         <EngineWait />
         {q.isError && <Callout tone="danger" title="Could not work out the estimate">{errorMessage(q.error)}</Callout>}
@@ -109,7 +108,7 @@ export default function RecheckModal({ open, onClose, ids, name }: { open: boole
                 </div>
               </div>
             )}
-            {e.calls === 0 && e.skipped.length === 0 && <Callout tone="info">No entity in this investigation appears in two or more documents yet, so there is nothing to re-check.</Callout>}
+            {e.calls === 0 && e.skipped.length === 0 && <Callout tone="info">No entity in this investigation has two or more facts yet, so there is nothing to re-check.</Callout>}
             {e.skipped.length > 0 && (
               <Callout tone={e.calls === 0 ? 'warning' : 'info'} title={e.calls === 0 ? 'Nothing to re-check' : `${plural(e.skipped.length, 'entity', 'entities')} not checked`}>
                 {e.skipped.slice(0, 4).map((s) => (

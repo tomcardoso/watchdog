@@ -510,7 +510,7 @@ function RecheckCard() {
         </Button>
       }
     >
-      When documents are added, their facts are compared with the facts already recorded, but recorded facts are not compared with each other again. This asks the AI model to compare every recorded fact about every entity named in two or more documents, and adds what it finds to Review. You see the cost before anything is sent. To check one entity, use Re-check on its page.
+      When documents are added, their facts are compared with the facts already recorded, but recorded facts are not compared with each other again, and a conflict within a single document is not looked for. This asks the AI model to compare every recorded fact about every entity with two or more facts, and adds what it finds to Review. You see the cost before anything is sent. To check one entity, use Re-check on its page.
     </MCard>
     <RecheckModal open={open} onClose={() => setOpen(false)} />
     </>
