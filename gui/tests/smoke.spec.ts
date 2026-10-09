@@ -114,6 +114,25 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // Tooltips (one layer for the app) stay inside the window, even for a control at the top edge of
+    // a panel that hides its overflow, such as the document viewer's toolbar.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'documents' }))
+    await page.locator('.docs-card').first().click()
+    const tipped = page.locator('.pdf-toolbar [data-tip]').first()
+    await expect(tipped).toBeVisible({ timeout: 10_000 })
+    {
+      await tipped.hover()
+      const tip = page.getByRole('tooltip')
+      await expect(tip).toBeVisible({ timeout: 3000 })
+      const box = (await tip.boundingBox())!
+      const view = page.viewportSize() ?? (await page.evaluate(() => ({ width: innerWidth, height: innerHeight })))
+      expect(box.y).toBeGreaterThanOrEqual(0)
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x + box.width).toBeLessThanOrEqual(view.width)
+      await page.mouse.move(1, 1)
+      await expect(tip).toBeHidden()
+    }
+
     // With no investigation open, the sidebar's All investigations returns to the list from any
     // other screen.
     await page.evaluate(() => (window as any).__watchdogApp.getState().setProject(null))

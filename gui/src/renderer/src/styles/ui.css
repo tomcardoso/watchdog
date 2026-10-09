@@ -802,47 +802,34 @@
   margin: 4px 2px;
 }
 
-/* Tooltips via data-tip */
+/* Tooltips: any [data-tip] element, drawn by components/TooltipLayer in a fixed layer placed
+   against the window, so no panel's overflow can cut one off. */
 [data-tip] {
   position: relative;
 }
-[data-tip]:hover::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: min(320px, calc(100vw - 16px));
   padding: 4px 8px;
   border-radius: 6px;
   background: var(--text);
   color: var(--bg);
   font-size: var(--fs-xs);
   font-weight: 520;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 300;
-  animation: fade-in 120ms 300ms both;
-}
-[data-tip-pos='bottom']:hover::after {
-  bottom: auto;
-  top: calc(100% + 6px);
-}
-/* A sentence rather than a label: wraps, and hangs from the right edge so it stays on screen. */
-[data-tip-pos='bottom-end']:hover::after {
-  bottom: auto;
-  top: calc(100% + 6px);
-  left: auto;
-  right: 0;
-  transform: none;
-  width: 260px;
-  white-space: normal;
   line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  animation: fade-in 120ms both;
 }
-[data-tip-pos='right']:hover::after {
-  left: calc(100% + 8px);
-  bottom: auto;
-  top: 50%;
-  transform: translateY(-50%);
+/* A sentence rather than a label wraps. */
+.tooltip-wrap {
+  width: max-content;
+  max-width: min(260px, calc(100vw - 16px));
+  white-space: normal;
+  overflow: visible;
 }
 
 .kbd {
