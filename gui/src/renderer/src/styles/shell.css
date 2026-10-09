@@ -20,8 +20,11 @@
   align-items: center;
   padding: 0 14px;
 }
+/* On macOS the window's own buttons sit in the sidebar's top-left corner (trafficLightPosition in
+   src/main/index.ts), so the name goes on its own line below them rather than beside them. */
 .platform-darwin .sidebar-drag {
-  padding-left: 84px;
+  height: auto;
+  padding: 40px 16px 12px;
 }
 .sidebar-brand {
   display: flex;

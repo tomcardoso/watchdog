@@ -82,7 +82,7 @@ async function createWindow(): Promise<void> {
     // --bg from the renderer's tokens.css, so the window doesn't flash another colour while it loads.
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#111113' : '#f4f4f5',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 16, y: 18 },
+    trafficLightPosition: { x: 16, y: 16 },
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,

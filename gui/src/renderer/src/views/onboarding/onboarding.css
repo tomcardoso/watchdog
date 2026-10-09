@@ -15,8 +15,8 @@
   padding: 18px 28px 0;
   -webkit-app-region: drag;
 }
-.platform-darwin .onb-top,
-.onb-top { padding-left: 28px; }
+/* Below the macOS window buttons, which sit in the top-left corner. */
+.platform-darwin .onb-top { padding-top: 44px; }
 .onb-brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
 .onb-brand svg { width: 22px; height: 22px; color: var(--text); }
 .onb-dots { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; font-size: var(--fs-xs); color: var(--text-3); -webkit-app-region: no-drag; }
