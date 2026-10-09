@@ -125,12 +125,12 @@ def test_an_entity_too_large_to_check_every_pair_is_left_out_and_said_so(vault, 
 def test_the_whole_investigation_packs_small_entities_together(vault):
     p = recheck.plan(vault, None, "sonnet", None)
     reg = _entities(vault)
-    recurring = {e for e, x in reg.items() if len(x.get("appears_in") or []) >= 2}
-    assert {r["id"] for r in p["entities"]} <= recurring and len(p["entities"]) > 10
-    assert len(p["calls"]) < len(p["entities"])
-    assert recheck.plan(vault, ["harbour-master-s-office"] if "harbour-master-s-office" in reg else
-                        [next(e for e, x in reg.items() if len(x.get("appears_in") or []) == 1)],
-                        "sonnet", None)["skipped"][0]["reason"] == "one_document"
+    planned = {r["id"] for r in p["entities"]}
+    assert len(planned) > 10 and len(p["calls"]) < len(p["entities"])
+    # An entity named in one document is checked too, when it has two or more facts.
+    single = {r["id"] for r in p["entities"] if r["documents"] == 1}
+    assert single, "the demo has single-document entities with several facts"
+    assert all(len(reg[e].get("appears_in") or []) == 1 for e in single)
 
 
 # ── what is sent ─────────────────────────────────────────────────────────────────────

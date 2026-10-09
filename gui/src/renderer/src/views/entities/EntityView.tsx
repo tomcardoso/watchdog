@@ -23,6 +23,12 @@ export default function EntityView() {
   const route = useApp((s) => s.route)
   const id = route.view === 'entity' ? route.id : ''
   const q = useRpc('vault.entity', id ? { vault, id } : null)
+  // The re-check plan says whether this entity is too large to re-check (D287); no model call.
+  const plan = useRpc('contradictions.estimate', id ? { vault, ids: [id] } : null, { staleTime: 60_000 })
+  const tooLarge = plan.data?.skipped.find((s) => s.reason === 'too_large')
+  const tooLargeText = tooLarge
+    ? `Too large to re-check: comparing all ${fmtNum(tooLarge.facts ?? 0)} facts would take ${fmtNum(tooLarge.calls ?? 0)} model calls, more than the limit of ${plan.data!.max_entity_calls} for one entity. Contradictions are still looked for each time documents about it are added.`
+    : undefined
   const [mergeOpen, setMergeOpen] = useState(false)
   const [contraOpen, setContraOpen] = useState(false)
   const [recheckOpen, setRecheckOpen] = useState(false)
@@ -104,7 +110,7 @@ export default function EntityView() {
                   { label: 'Open in Obsidian', icon: ExternalLink, onClick: () => void openObsidian(vault, e.note) },
                   { separator: true, label: '' },
                   { label: 'Record a contradiction…', icon: AlertTriangle, onClick: () => setContraOpen(true) },
-                  { label: 'Re-check contradictions…', icon: ScanSearch, onClick: () => setRecheckOpen(true), disabled: !!mergedInto },
+                  { label: tooLarge ? 'Re-check contradictions (too large)' : 'Re-check contradictions…', icon: ScanSearch, onClick: () => setRecheckOpen(true), disabled: !!mergedInto || !!tooLarge },
                   { label: 'Merge into another entity…', icon: GitMerge, danger: true, onClick: () => setMergeOpen(true), disabled: !!mergedInto }
                 ]}
               />
@@ -128,7 +134,7 @@ export default function EntityView() {
               )}
             </section>
 
-            <Contradictions e={e} onAdd={() => setContraOpen(true)} onRecheck={mergedInto ? undefined : () => setRecheckOpen(true)} />
+            <Contradictions e={e} onAdd={() => setContraOpen(true)} onRecheck={mergedInto ? undefined : () => setRecheckOpen(true)} tooLarge={tooLargeText} />
 
             <section className="ent-sec">
               <SecTitle icon={Clock} title="Timeline" count={e.timeline.length}>
@@ -272,7 +278,7 @@ function parseCallout(text: string): { label: string; sides: { value: string; ci
   return { label: head?.[1] ?? '', sides }
 }
 
-function Contradictions({ e, onAdd, onRecheck }: { e: EntityDetail; onAdd: () => void; onRecheck?: () => void }) {
+function Contradictions({ e, onAdd, onRecheck, tooLarge }: { e: EntityDetail; onAdd: () => void; onRecheck?: () => void; tooLarge?: string }) {
   const vault = useVault()
   const [busy, setBusy] = useState<string | null>(null)
   const list = e.contradictions
@@ -292,7 +298,7 @@ function Contradictions({ e, onAdd, onRecheck }: { e: EntityDetail; onAdd: () =>
     <section className="ent-sec">
       <SecTitle icon={AlertTriangle} title="Contradictions" count={list.length}>
         {onRecheck && (
-          <Button variant="ghost" size="sm" icon={ScanSearch} onClick={onRecheck} tip="Ask the AI model to compare every recorded fact about this entity with every other">
+          <Button variant="ghost" size="sm" icon={ScanSearch} onClick={onRecheck} disabled={!!tooLarge} tip={tooLarge ? 'Too large to re-check; see the note below' : 'Ask the AI model to compare every recorded fact about this entity with every other'}>
             Re-check
           </Button>
         )}
@@ -300,6 +306,7 @@ function Contradictions({ e, onAdd, onRecheck }: { e: EntityDetail; onAdd: () =>
           Record one
         </Button>
       </SecTitle>
+      {tooLarge && onRecheck && <div className="ent-empty-line" style={{ marginBottom: 10 }}>{tooLarge}</div>}
       {list.length === 0 ? (
         <div className="ent-empty-line">No contradictions are flagged. If you find sources that disagree, record the conflict so it is tracked here.</div>
       ) : (

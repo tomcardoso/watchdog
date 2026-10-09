@@ -307,7 +307,7 @@ every document's claims side by side:
   a contradiction (D214).
 
 - **Re-check (D287, `pipeline/recheck.py`).** Stored facts are never compared with each other by a
-  run, so the app offers an on-demand re-check of one entity or every recurring one. It sends the
+  run, so the app offers an on-demand re-check of one entity or every entity with two or more facts (a single-document one included). It sends the
   entity's facts as `new_facts` with `stored_facts` empty, through the same prompt and schema; one
   too large for a call is cut in date order into half-call blocks, each block sent as new against
   every later block as stored, the last alone, so every pair is seen once (an entity needing more
