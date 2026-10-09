@@ -123,10 +123,17 @@ def _duplicates(vault: Path, resolved: frozenset[str]) -> list[dict]:
 
 def _same_entities(vault: Path, resolved: frozenset[str]) -> list[dict]:
     """"Possible same" pairs the merge log holds open (D279), each with both sides' evidence."""
-    from watchdog.pipeline import merge_log
+    from watchdog.pipeline import merge_log, verification
     entities = _read_json_or(vault / ".watchdog" / "registry" / "entities.json", {})
+    marks = None
     out = []
     for c in merge_log.open_candidates(vault, entities=entities, resolved=resolved):
+        if marks is None:
+            marks = verification.marks(vault)
+        # Each side's facts were recorded with the pair; a fact the reporter disputes is labelled.
+        c = {**c, **{k: {**c[k], "facts": [
+            {**f, "disputed": (verification.attach(marks.get(f.get("id")), f) or {}).get("status") == "disputed"}
+            for f in c[k].get("facts") or [] if isinstance(f, dict)]} for k in ("a", "b")}}
         a, b = c["a"], c["b"]
         word = _SAME_WORD.get(a.get("type"), "entity")
         detail = [c.get("reason") or ""]

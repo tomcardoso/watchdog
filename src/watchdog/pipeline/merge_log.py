@@ -284,8 +284,12 @@ def render(vault: Path, data: dict | None = None) -> Path:
     lines += ["## Possible same entities", ""]
     if not cands:
         lines += ["None waiting.", ""]
+    marks = None
     for c in cands:
         a, b = c["a"], c["b"]
+        if marks is None:
+            from watchdog.pipeline import verification
+            marks = verification.marks(vault)
         lines.append(f"- **{_md(a['name'])}** and **{_md(b['name'])}** ({_TIER.get(c['tier'], c['tier'])})"
                      f" — {_md(c['reason'])}"
                      + (" The AI model was not confident they are the same." if c.get("model_declined") else ""))
@@ -293,8 +297,11 @@ def render(vault: Path, data: dict | None = None) -> Path:
             note = (entities.get(side["id"]) or {}).get("note_path")
             label = f"[[{note}|{_md(side['name'])}]]" if note else _md(side["name"])
             for f in side.get("facts", [])[:3]:
+                from watchdog.pipeline.verification import attach
+                disputed = (attach(marks.get(f.get("id")), f) or {}).get("status") == "disputed"
                 lines.append(f"  - {label}: {_md(f.get('fact'))} ({_md(f.get('document'))}"
-                             + (f", p. {f['page']}" if f.get("page") else "") + ")")
+                             + (f", p. {f['page']}" if f.get("page") else "") + ")"
+                             + (" · ✗ disputed" if disputed else ""))
     lines.append("")
     lines += ["## Merges", ""]
     merges = sorted(data.get("merges", []), key=lambda m: m.get("last_at") or "", reverse=True)

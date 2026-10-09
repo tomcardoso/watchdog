@@ -352,7 +352,9 @@ def index_notes(vault: Path, written: list[tuple[str, str, str]], kind: str = "e
 
 
 def _write_document_notes(vault: Path, shas, entities: dict, documents: dict) -> list[tuple[str, str, str]]:
+    from watchdog.pipeline import verification
     from watchdog.pipeline.write_vault import _assert_in_vault, _build_document_note
+    marks = verification.marks(vault)
     out = []
     for sha in sorted(shas):
         rec = documents.get(sha)
@@ -367,7 +369,8 @@ def _write_document_notes(vault: Path, shas, entities: dict, documents: dict) ->
         ents = [entities[e] for e in rec.get("entities_extracted") or [] if e in entities]
         path = _assert_in_vault(vault / f"{rec['document_note']}.md", vault, "document note_path")
         old = path.read_text(encoding="utf-8") if path.exists() else None
-        content = _build_document_note(doc, ents, rec.get("morgue_path"), rec=rec, old=old, sha=sha)
+        content = _build_document_note(doc, ents, rec.get("morgue_path"), rec=rec, old=old, sha=sha,
+                                       marks=marks)
         if content != old:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
@@ -431,8 +434,12 @@ def _stale_path(vault: Path) -> Path:
     return Path(vault) / ".watchdog" / "registry" / STALE_FILE
 
 
+DOC_PREFIX = "doc:"     # a queued document note, by sha, beside the entity ids
+
+
 def take_stale(vault: Path) -> set[str]:
-    """The entity ids whose notes a write outside the commit could not refresh, cleared."""
+    """The notes a write outside the commit could not refresh, cleared: entity ids, and documents
+    as `doc:<sha>`."""
     path = _stale_path(vault)
     ids = set(_read_json_or(path, []) or [])
     if ids:
@@ -440,23 +447,44 @@ def take_stale(vault: Path) -> set[str]:
     return ids
 
 
-def refresh(vault: Path, ids) -> bool:
-    """Re-render these entities' notes now if the registry lock is free; otherwise remember them
-    for the next commit pass, which renders them before it persists. Used after a reporter's mark,
-    which takes only the ledger's own lock (D271) and must never wait on a long commit."""
+def split_stale(items) -> tuple[set[str], set[str]]:
+    """(entity ids, document shas) from a stale-notes list."""
+    ents, docs = set(), set()
+    for i in items:
+        (docs.add(i[len(DOC_PREFIX):]) if i.startswith(DOC_PREFIX) else ents.add(i))
+    return ents, docs
+
+
+def write_queued_documents(vault: Path, shas, entities: dict, documents: dict, embed: bool = True) -> int:
+    """Re-render these documents' notes (a mark's label changed) and refresh their search rows."""
+    written = _write_document_notes(vault, set(shas) & set(documents), entities, documents)
+    index_notes(vault, written, "document", embed=embed)
+    return len(written)
+
+
+def refresh(vault: Path, ids, docs=()) -> bool:
+    """Re-render these entities' notes, and these documents' notes, now if the registry lock is
+    free; otherwise remember them for the next commit pass, which renders them before it persists.
+    Used after a reporter's mark, which takes only the ledger's own lock (D271) and must never wait
+    on a long commit."""
     from watchdog.pipeline.write_vault import _try_registry_lock, _write_json_atomic
     vault = Path(vault)
-    ids = set(ids)
+    ids, docs = set(ids), set(docs)
     reg = vault / ".watchdog" / "registry"
-    if not ids or not (reg / "entities.json").exists():
+    if not (ids or docs) or not (reg / "entities.json").exists():
         return True
     with _try_registry_lock(reg) as got:
         if got:
             # Full-text only: a mark changes a word or two of the note, not what it is about, and
             # loading the embedding model for it would stall the app. The next commit re-embeds.
-            _rebuild_unlocked(vault, ids | take_stale(vault), documents_too=False, embed=False)
+            stale_ids, stale_docs = split_stale(take_stale(vault))
+            _rebuild_unlocked(vault, ids | stale_ids, documents_too=False, embed=False)
+            if docs | stale_docs:
+                write_queued_documents(vault, docs | stale_docs,
+                                       _read_json_or(reg / "entities.json", {}),
+                                       _read_json_or(reg / "documents.json", {}), embed=False)
             return True
-    pending = set(_read_json_or(_stale_path(vault), []) or []) | ids
+    pending = set(_read_json_or(_stale_path(vault), []) or []) | ids | {DOC_PREFIX + s for s in docs}
     _write_json_atomic(_stale_path(vault), sorted(pending))
     return False
 

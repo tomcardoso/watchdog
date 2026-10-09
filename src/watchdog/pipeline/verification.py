@@ -137,6 +137,7 @@ def facts_from_note(section: str) -> list[dict]:
                 out[-1]["quote"] = line.lstrip("> ").strip() or None
             continue
         text = re.sub(r"\s+\^f-[0-9a-f]+(?:-\d+)?$", "", line[2:].strip())
+        text = re.sub(r" · ✗ disputed$", "", text)
         m = _NOTE_PAGE_RE.search(text)
         page = int(m.group(1) or m.group(2)) if m else None
         inferred = "*(inferred)*" in text
@@ -330,14 +331,22 @@ def mark(vault: Path, fid: str, status: str | None, note: str | None = None,
         data["schema_version"] = _SCHEMA_VERSION
         _save(vault, data)
         render(vault, data=data, docs=docs)
-    # Entity notes show each fact's mark (D280): refresh the notes of the entities this fact is
-    # about, now if no commit holds the registry, else at the next commit.
+    # Entity notes show each fact's mark (D280), and its document's note and the timeline label a
+    # disputed one (D285): refresh the notes of the entities this fact is about and of its
+    # document, now if no commit holds the registry, else at the next commit, and re-render the
+    # timeline when the fact is dated (it reads only the stored events, so it needs no lock).
     if current is not None and sha is not None:
         from watchdog.pipeline import entity_notes
         try:
-            entity_notes.refresh(vault, entity_notes.fact_entities(vault, sha, current))
+            entity_notes.refresh(vault, entity_notes.fact_entities(vault, sha, current), docs={sha})
         except OSError as e:
-            print(f"  Warning: entity notes not refreshed after the mark: {e}", file=sys.stderr)
+            print(f"  Warning: notes not refreshed after the mark: {e}", file=sys.stderr)
+        if (current.get("date") or "").strip() and (vault / "timeline.md").exists():
+            from watchdog.pipeline import timeline
+            try:
+                timeline.cmd_rebuild_timeline(vault, quiet=True)
+            except OSError as e:
+                print(f"  Warning: timeline not refreshed after the mark: {e}", file=sys.stderr)
     return {"id": fid, **entry}
 
 

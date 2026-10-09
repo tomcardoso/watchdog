@@ -5,7 +5,7 @@
 import { AlertTriangle, Clock, FileText, Info, SearchX } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { EntityChip } from '@renderer/components/EntityChip'
-import { FactCheck, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
+import { DisputedBadge, FactCheck, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
 import { Badge, Empty, Kbd, Segmented, cx } from '@renderer/components/ui'
 import { fmtDate } from '@renderer/lib/format'
 import { pageLabel } from '@renderer/lib/media'
@@ -160,6 +160,7 @@ export function FactsTab({ facts, jump, hasViewer, media, focusId }: { facts: Fa
                 ) : null}
                 {f.basis === 'inferred' && <Badge tone="info" icon={Info} tip={INFERRED_TIP}>inferred</Badge>}
                 {f.figure_note && <Badge tone="warning" icon={AlertTriangle} tip="A figure in this fact was not found where it was cited">check figure</Badge>}
+                {mark?.status === 'disputed' && <DisputedBadge />}
                 {f.added_by && <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>added by {f.added_by}</span>}
               </div>
               <div className="fact-text selectable">{f.fact}</div>

@@ -580,8 +580,10 @@ def raw_timeline_events(vault: Path, docs: dict) -> list[dict]:
     return events
 
 
-def timeline_event(ev: dict, docs: dict, ents: dict) -> dict:
-    """The app's `TimelineEvent` for one canonical NDJSON record."""
+def timeline_event(ev: dict, docs: dict, ents: dict, index=None) -> dict:
+    """The app's `TimelineEvent` for one canonical NDJSON record. With a `FactIndex`, `disputed`
+    says whether the reporter disputes the fact behind it (D285)."""
+    from watchdog.pipeline.timeline import event_disputed
     sha = ev.get("source_sha256") or None
     rec = docs.get(sha) if sha else None
     date = (ev.get("date") or "").strip()
@@ -595,6 +597,7 @@ def timeline_event(ev: dict, docs: dict, ents: dict) -> dict:
         "filename": (rec or {}).get("filename"),
         "page": page if isinstance(page, int) else None,
         "note": doc_note_stem(rec) if rec else None,
+        "disputed": event_disputed(ev, index),
     }
 
 
@@ -604,4 +607,6 @@ def timeline_events(vault: Path, docs: dict | None = None, ents: dict | None = N
     ents = load_entities(vault) if ents is None else ents
     raw = raw_timeline_events(vault, docs)
     raw.sort(key=lambda e: date_sort_key(e.get("date")))
-    return [timeline_event(e, docs, ents) for e in raw]
+    from watchdog.pipeline.entity_facts import FactIndex
+    index = FactIndex(vault, entities=ents, documents=docs)
+    return [timeline_event(e, docs, ents, index) for e in raw]

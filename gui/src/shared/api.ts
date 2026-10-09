@@ -182,6 +182,7 @@ export interface TimelineEvent {
   filename: string | null
   page: number | null
   note: string | null
+  disputed: boolean                    // the reporter disputes the fact behind it (D285)
 }
 
 export interface Relationship {
@@ -429,7 +430,7 @@ export interface ReviewItem { kind: ReviewKind; rid: string; title: string; deta
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
-export interface SameFact { id: string; sha: string; fact: string; page: number | null; document: string; date: string | null }
+export interface SameFact { id: string; sha: string; fact: string; page: number | null; document: string; date: string | null; disputed?: boolean }
 export interface SameSide { id: string; name: string; type: string; aliases: string[]; documents: string[]; facts: SameFact[]; roles: { relationship: string; target: string }[]; note: string | null; doc_count: number }
 export interface MergeEvidence { surface?: string | null; identifier?: { scheme: string; value: string } | null; shared?: { relationship: string; target_id: string; target_name: string }[] }
 export interface SamePair { tier: MergeTier; rule: string; model_declined: boolean; evidence: MergeEvidence; a: SameSide; b: SameSide }
@@ -450,7 +451,7 @@ export interface MergeLogEntry {
   shared: { relationship: string; target_id: string; target_name: string }[]
   documents: { sha: string; title: string }[]
   document_count: number
-  facts: { id: string; fact: string; page: number | null; sha: string; title: string }[]
+  facts: { id: string; fact: string; page: number | null; sha: string; title: string; disputed: boolean }[]
   undo_available: boolean
   undo_reason: string | null
   undone: { at: string; by: string; split_id: string } | null

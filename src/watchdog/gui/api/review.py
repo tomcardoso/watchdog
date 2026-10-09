@@ -112,11 +112,12 @@ def merge_log(vault: str, limit: int = 200) -> dict:
     resolved for display. `undo_available` says whether `merge_undo` can split the entry back
     exactly now, and `undo_reason` why not when it cannot (D280); `undone` is the undo record."""
     from watchdog.pipeline import merge_log as _log
-    from watchdog.pipeline import merge_undo
+    from watchdog.pipeline import merge_undo, verification
     from watchdog.pipeline.verification import all_facts
 
     v = require_vault(vault)
     data = _log.load(v)
+    marks = verification.marks(v)
     ents = vaultio.load_entities(v)
     docs = vaultio.load_documents(v)
     facts = None
@@ -150,7 +151,8 @@ def merge_log(vault: str, limit: int = 200) -> dict:
                            or (docs.get(s) or {}).get("filename") or s[:12]} for s in shas[:50]],
             "document_count": len(shas),
             "facts": [{"id": f, "fact": facts[f]["fact"], "page": facts[f]["page"],
-                       "sha": facts[f]["sha256"], "title": facts[f]["title"]}
+                       "sha": facts[f]["sha256"], "title": facts[f]["title"],
+                       "disputed": (verification.attach(marks.get(f), facts[f]) or {}).get("status") == "disputed"}
                       for f in fact_ids[:8] if facts and f in facts],
             "undo_available": reason is None,
             "undo_reason": reason,

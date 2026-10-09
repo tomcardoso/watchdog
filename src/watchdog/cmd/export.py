@@ -102,7 +102,9 @@ def _write_facts_csv(vault: Path, out: Path) -> tuple[Path, int, int]:
         for sha, rec in sorted(docs.items(), key=lambda kv: (kv[1].get("filename") or "", kv[0])):
             facts = verification.document_facts(vault, sha, rec)
             for fid, fact in zip(verification.fact_ids(sha, facts), facts):
-                m = marks.get(fid) or {}
+                # Only a mark made on these words counts (D271); a disputed fact is exported with
+                # its status like every other, never left out (D285).
+                m = verification.attach(marks.get(fid), fact) or {}
                 status = m.get("status")
                 n += 1
                 marked += bool(status)

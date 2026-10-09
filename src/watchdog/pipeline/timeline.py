@@ -303,14 +303,31 @@ def _load_registry(path: Path) -> dict:
     return _read_json_or(path, {})
 
 
-def _render_event_line(ev: dict, docs_reg: dict, manifest: dict) -> str:
+def event_disputed(ev: dict, index) -> bool:
+    """True when the reporter has marked the fact behind timeline event `ev` Disputed (D285: a
+    disputed fact is shown, labelled, wherever a fact is shown). `index` is an
+    `entity_facts.FactIndex`; an event whose fact can no longer be found is not labelled."""
+    from watchdog.pipeline.citations import is_disputed
+    if index is None:
+        return False
+    return is_disputed(index.matching(ev.get("source_sha256") or "", ev.get("event") or "",
+                                      ev.get("page")))
+
+
+DISPUTED_LABEL = " · ✗ disputed"       # the label entity notes put on a disputed fact's line
+
+
+def _render_event_line(ev: dict, docs_reg: dict, manifest: dict, index=None) -> str:
     """Render one canonical NDJSON record as a timeline bullet with entity and
     document attribution — the same shape write_vault's entity-note timeline uses,
-    extended to link *every* entity a cross-document-deduped event concerns (#237)."""
+    extended to link *every* entity a cross-document-deduped event concerns (#237). With a
+    `FactIndex`, an event whose fact the reporter disputes ends in the "disputed" label."""
     from watchdog.pipeline.write_vault import _defang, _page_link, _render_date
 
     rendered_date = _render_date(ev.get("date", ""))
     basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
+    if event_disputed(ev, index):
+        basis_note += DISPUTED_LABEL
 
     # Entity links: resolve each tagged id against the manifest (id → name, note_path).
     # An id missing from the manifest (e.g. a stale record) falls back to bare text.
@@ -410,11 +427,13 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
         return (0, 0)
 
     events.sort(key=lambda e: _date_sort_key(e.get("date", "")))
+    from watchdog.pipeline.entity_facts import FactIndex
+    index = FactIndex(vault, documents=docs_reg)
     lines_by_year: dict[str, list[str]] = {}
     for ev in events:
         date_str = ev.get("date", "")
         year = date_str[:4] if date_str else "Unknown"
-        lines_by_year.setdefault(year, []).append(_render_event_line(ev, docs_reg, manifest))
+        lines_by_year.setdefault(year, []).append(_render_event_line(ev, docs_reg, manifest, index))
 
     sections = [f"## {year}\n" + "\n".join(lines_by_year[year]) for year in sorted(lines_by_year)]
     content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"

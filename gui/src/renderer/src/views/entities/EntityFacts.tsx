@@ -4,7 +4,7 @@
 
 import { AlertTriangle, ChevronDown, ChevronRight, FileText, Info, ListChecks, Quote } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
-import { FactCheck, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
+import { DisputedBadge, FactCheck, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
 import { Badge, Button, Empty, Kbd, Segmented, cx } from '@renderer/components/ui'
 import { fmtDate, fmtNum } from '@renderer/lib/format'
 import { navigate } from '@renderer/lib/store'
@@ -96,7 +96,7 @@ export function EntityFacts({ facts }: { facts: EntityFact[] }) {
           </button>
           {f.basis === 'inferred' && <Badge tone="info" icon={Info} tip="Reasoned from the document, not stated in it. Verify before relying on it.">inferred</Badge>}
           {f.figure_note && <Badge tone="warning" icon={AlertTriangle} tip={f.figure_note}>check figure</Badge>}
-          {mark?.status === 'disputed' && <Badge tone="danger" tip="You marked this fact Disputed. It stays listed here and everywhere it is cited, labelled as disputed.">disputed</Badge>}
+          {mark?.status === 'disputed' && <DisputedBadge />}
         </div>
         <div className="fact-text selectable">{f.fact}</div>
         {hasPassage && (

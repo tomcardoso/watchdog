@@ -6,6 +6,7 @@ import { ArrowRight, Bot, ChevronDown, ChevronRight, GitMerge, ListChecks, Undo2
 import { useMemo, useState } from 'react'
 import type { MergeLogEntry, MergeTier, SamePair, SameSide } from '@shared/api'
 import { EntityAvatar } from '@renderer/components/EntityChip'
+import { DisputedBadge } from '@renderer/components/FactCheck'
 import { Badge, Button, Empty, ErrorNote, Skeleton, Switch, cx } from '@renderer/components/ui'
 import { typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
@@ -91,6 +92,7 @@ function Side({ side, expanded }: { side: SameSide; expanded: boolean }) {
           {facts.map((f) => (
             <li key={f.id}>
               <span>{f.fact}</span>{' '}
+              {f.disputed && <><DisputedBadge />{' '}</>}
               <button
                 className="mg-cite"
                 onClick={(e) => {
@@ -230,6 +232,7 @@ function LogRow({ m }: { m: MergeLogEntry }) {
                 {m.facts.map((f) => (
                   <li key={f.id}>
                     {f.fact}{' '}
+                    {f.disputed && <><DisputedBadge />{' '}</>}
                     <button className="mg-cite" onClick={() => navigate({ view: 'document', sha: f.sha, page: f.page ?? undefined })}>
                       {f.title}
                       {f.page ? `, p. ${f.page}` : ''}

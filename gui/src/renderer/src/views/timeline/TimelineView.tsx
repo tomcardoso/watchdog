@@ -3,6 +3,7 @@ import { AddDocumentsButton } from '@renderer/components/EngineWait'
 import { CalendarClock, FileText, MoreHorizontal, RefreshCw, Search, Users, X } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
+import { DisputedBadge } from '@renderer/components/FactCheck'
 import { Button, Dropdown, Empty, ErrorNote, Modal, Skeleton, useDebounced } from '@renderer/components/ui'
 import { ENTITY_TYPES, TimelineEvent } from '@shared/api'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
@@ -289,8 +290,9 @@ function EventRow({ ev }: { ev: TimelineEvent }) {
       <div className="tl-dot" style={{ '--dot': first ? typeMeta(first.type).color : 'var(--text-3)' } as CSSProperties} />
       <div className="tl-card">
         <div className="tl-text selectable">{ev.text}</div>
-        {(ev.entities.length > 0 || ev.sha) && (
+        {(ev.entities.length > 0 || ev.sha || ev.disputed) && (
           <div className="tl-meta">
+            {ev.disputed && <DisputedBadge />}
             {ev.entities.slice(0, 5).map((e) => <EntityChip key={e.id} id={e.id} name={e.name} type={e.type} />)}
             {ev.entities.length > 5 && <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>+{ev.entities.length - 5}</span>}
             {ev.sha && ev.filename && (

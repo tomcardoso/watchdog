@@ -5,7 +5,7 @@
 import { Check, CircleHelp, MessageSquareText, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FactMark, VerifyStatus } from '@shared/api'
-import { cx } from '@renderer/components/ui'
+import { Badge, cx } from '@renderer/components/ui'
 import { fmtDate } from '@renderer/lib/format'
 import { call, errorMessage, invalidate } from '@renderer/lib/rpc'
 import { toast, useVault } from '@renderer/lib/store'
@@ -17,6 +17,11 @@ export const STATUS_META: Record<VerifyStatus, { label: string; icon: typeof Che
   unverifiable: { label: "Can't verify", icon: CircleHelp, key: 'C', tip: 'You could not confirm or rule this out' }
 }
 export const STATUSES: VerifyStatus[] = ['verified', 'disputed', 'unverifiable']
+
+/** The label a fact the reporter disputes carries wherever it is shown (D285): never hidden. */
+export function DisputedBadge() {
+  return <Badge tone="danger" tip="You marked this fact Disputed. It stays listed everywhere it appears, labelled as disputed.">disputed</Badge>
+}
 
 /** Marks with optimistic updates: what the reporter just did shows at once, and is rolled back
  * with a message if it could not be saved. */

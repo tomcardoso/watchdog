@@ -253,3 +253,38 @@ def test_app_resolves_citations_and_renders_the_linked_summary(demo_vault):
     assert "nonsense" not in out
     report = call("vault.checkCitations", vault=str(vault))
     assert report["citations"] > 0 and report["not_found"] == 0
+
+
+def test_a_disputed_fact_is_shown_labelled_on_every_surface(demo_vault, tmp_path):
+    """D285 (the owner's call, I14): a fact the reporter marked Disputed is never hidden or
+    dropped; wherever a fact is shown it carries the "disputed" label."""
+    from tests.gui_support import call
+    from watchdog.cmd.export import _write_facts_csv
+    from watchdog.cmd.vault import _page_facts
+    from watchdog.pipeline import verification
+    vault, _, _ = demo_vault
+    disputed = [e for e in verification.entries(vault) if e["status"] == "disputed"]
+    assert len(disputed) == 1
+    d = disputed[0]
+    words = d["fact"]
+    # timeline.md and the app's Timeline, and the entity's own timeline.
+    lines = [ln for ln in (vault / "timeline.md").read_text(encoding="utf-8").splitlines() if "disputed" in ln]
+    assert len(lines) == 1 and lines[0].endswith("· ✗ disputed")
+    events = call("vault.timeline", vault=str(vault))["events"]
+    assert [e["text"] for e in events if e["disputed"]] == [words]
+    ent = call("vault.entity", vault=str(vault), id="lot-14-dockside-road")
+    assert [e["text"] for e in ent["timeline"] if e["disputed"]] == [words]
+    assert [f["fact"] for f in ent["facts"] if (f.get("mark") or {}).get("status") == "disputed"] == [words]
+    # The document reader's facts and the document note.
+    doc = call("vault.document", vault=str(vault), sha=d["sha256"])
+    assert [f["fact"] for f in doc["facts"] if (f.get("mark") or {}).get("status") == "disputed"] == [words]
+    note = (vault / f"{d['note_path']}.md").read_text(encoding="utf-8")
+    assert [ln for ln in note.splitlines() if "✗ disputed" in ln][0].startswith(f"- {words}")
+    # Search's fact lists, the export and the Overview.
+    facts_on, _ = _page_facts(vault)
+    assert any(f["mark"] == "disputed" and "disputed]]" in f["cite"] for f in facts_on(d["sha256"], d["page"]))
+    path, n, _ = _write_facts_csv(vault, tmp_path)
+    rows = path.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == n + 1 and sum(1 for r in rows if ",Disputed," in r) == 1
+    s = call("vault.summary", vault=str(vault))
+    assert s["verification"]["disputed"] == 1 and s["headline"].startswith("Fourteen documents")

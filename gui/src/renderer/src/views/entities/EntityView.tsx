@@ -2,6 +2,7 @@ import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, C
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
+import { DisputedBadge } from '@renderer/components/FactCheck'
 import { Markdown } from '@renderer/components/Markdown'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import type { EntityDetail, Relationship, TimelineEvent } from '@shared/api'
@@ -336,7 +337,7 @@ function MiniTimeline({ events }: { events: TimelineEvent[] }) {
         {shown.map((ev, i) => (
           <li key={i}>
             <div className="when">{fmtDate(ev.date)}</div>
-            <div className="what selectable">{ev.text}</div>
+            <div className="what selectable">{ev.text}{ev.disputed && <> <DisputedBadge /></>}</div>
             {ev.sha && ev.filename && (
               <div className="src">
                 <button className="ent-src" onClick={() => navigate({ view: 'document', sha: ev.sha!, page: ev.page ?? undefined })}>

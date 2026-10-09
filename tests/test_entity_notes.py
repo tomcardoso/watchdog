@@ -153,22 +153,33 @@ def test_a_mark_refreshes_the_entity_note(tmp_path):
     assert "· not checked" in note.read_text()
     verification.mark(vault, fid, "verified", by="R")
     assert "Paid $5. — [[documents/t|T]], p. 2 · ✓ verified" in note.read_text()
+    # The document note labels only a disputed fact (D285), and follows the mark both ways.
+    doc_note = vault / "documents" / "t.md"
+    assert "disputed" not in doc_note.read_text()
+    verification.mark(vault, fid, "disputed", by="R")
+    assert "- Paid $5. (p. 2) · ✗ disputed ^f-" in doc_note.read_text()
+    assert "Paid $5. — [[documents/t|T]], p. 2 · ✗ disputed" in note.read_text()
+    verification.mark(vault, fid, None, by="R")
+    assert "disputed" not in doc_note.read_text()
 
 
 def test_a_mark_during_a_commit_waits_for_that_commit(tmp_path):
-    """A mark never waits on the registry lock (D271): while a commit holds it, the entity is
-    remembered and the commit's next flush renders its note."""
+    """A mark never waits on the registry lock (D271): while a commit holds it, the entity and the
+    fact's document are remembered and the commit's next flush renders their notes (D285)."""
     from watchdog.pipeline.write_vault import RegistryBatch, _registry_lock
     vault, fid = _marked_vault(tmp_path)
     note = vault / "entities" / "person" / "x.md"
+    doc_note = vault / "documents" / "t.md"
     with _registry_lock(vault / ".watchdog" / "registry"):
         verification.mark(vault, fid, "disputed", by="R")
-    assert "· not checked" in note.read_text()
-    assert json.loads((vault / ".watchdog/registry" / entity_notes.STALE_FILE).read_text()) == ["x"]
+    assert "· not checked" in note.read_text() and "disputed" not in doc_note.read_text()
+    assert json.loads((vault / ".watchdog/registry" / entity_notes.STALE_FILE).read_text()) == [
+        "doc:" + "f" * 64, "x"]
     with RegistryBatch(vault) as batch:
         batch._pending = 1
         batch.flush()
     assert "· ✗ disputed" in note.read_text()
+    assert "- Paid $5. (p. 2) · ✗ disputed ^f-" in doc_note.read_text()
     assert not (vault / ".watchdog/registry" / entity_notes.STALE_FILE).exists()
 
 

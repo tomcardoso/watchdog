@@ -293,7 +293,9 @@ def _relationships(ent: dict, ents: dict) -> list[dict]:
     return out
 
 
-def _entity_timeline(eid: str, ent: dict, docs: dict, ents: dict) -> list[dict]:
+def _entity_timeline(v: Path, eid: str, ent: dict, docs: dict, ents: dict) -> list[dict]:
+    from watchdog.pipeline import entity_facts
+    index = entity_facts.FactIndex(v, ents, docs)
     me = vaultio.entity_ref(ents, eid)
     events = []
     for ev in ent.get("timeline_events") or []:
@@ -301,7 +303,7 @@ def _entity_timeline(eid: str, ent: dict, docs: dict, ents: dict) -> list[dict]:
             continue
         events.append(vaultio.timeline_event(
             {"date": ev.get("date"), "event": ev["event"], "page": ev.get("page"),
-             "source_sha256": ev.get("source_sha256"), "entity_ids": [eid]}, docs, ents))
+             "source_sha256": ev.get("source_sha256"), "entity_ids": [eid]}, docs, ents, index))
         events[-1]["entities"] = [me]
     events.sort(key=lambda e: vaultio.date_sort_key(e["date"]))
     return events
@@ -368,7 +370,7 @@ def entity(vault: str, id: str) -> dict:
         "documents": doc_rows,
         "relationships": _relationships(ent, ents),
         "contradictions": _contradictions(ent, sections.get("contradictions"), resolved),
-        "timeline": _entity_timeline(id, ent, docs, ents),
+        "timeline": _entity_timeline(v, id, ent, docs, ents),
     }
 
 

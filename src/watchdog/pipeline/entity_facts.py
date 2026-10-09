@@ -243,6 +243,17 @@ class FactIndex:
                              if isinstance(d, dict) and d.get("document_note")}
         return self._by_note.get((note or "").strip().removesuffix(".md"))
 
+    def matching(self, sha: str, text: str, page=None) -> dict | None:
+        """The fact of document `sha` whose words are `text` (normalized as D271 ids are), on
+        `page` when one has that page, else the first with those words. A timeline event is a
+        dated fact's text (D26), so this finds the fact behind an event to show its mark."""
+        from watchdog.pipeline.verification import normalize_fact_text
+        want = normalize_fact_text(text)
+        if not sha or not want:
+            return None
+        same = [f for f in self.document_facts(sha) if normalize_fact_text(f.get("fact") or "") == want]
+        return next((f for f in same if f.get("page") == page), same[0] if same else None)
+
     def fact(self, fid: str) -> dict | None:
         """The current fact with D271 id `fid`, or None when no committed document holds it."""
         from watchdog.pipeline.verification import sha_prefix
