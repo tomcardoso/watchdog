@@ -172,6 +172,23 @@ export interface DocumentDetail extends DocumentRow {
   duplicates: { sha: string; filename: string; note: string | null }[]
   /** Audio and video only (D273). */
   media: MediaInfo | null
+  /** Pages with saved positions of OCR'd text, fetched with `vault.textPositions` (D289). */
+  positions_pages: number[]
+}
+
+/** One page's OCR'd lines (D289): `[left, top, right, bottom, text]` in the page's own units
+ * (PDF points, or pixels for an image), origin at the top left of a `width` x `height` page. */
+export interface PagePositions {
+  width: number
+  height: number
+  lines: [number, number, number, number, string][]
+}
+
+export interface TextPositions {
+  unit: 'line' | null
+  engine: string | null
+  pages: number[]
+  boxes: Record<string, PagePositions>
 }
 
 export interface TimelineEvent {
@@ -624,6 +641,7 @@ export interface Methods {
   'vault.summary': [{ vault: string }, Summary]
   'vault.documents': [{ vault: string }, DocumentRow[]]
   'vault.document': [{ vault: string; sha: string }, DocumentDetail]
+  'vault.textPositions': [{ vault: string; sha: string; pages?: number[] }, TextPositions]
   'vault.entities': [{ vault: string }, EntityRow[]]
   'vault.entity': [{ vault: string; id: string }, EntityDetail]
   'vault.graph': [{ vault: string }, GraphData]

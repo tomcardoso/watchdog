@@ -1,94 +1,38 @@
 // One document: the original on the left (a real PDF viewer, image, web page or extracted text),
 // everything Watchdog learned from it on the right.
 
-import { ArrowLeft, BookOpen, ExternalLink, FileText, FolderOpen, Link2, MessageSquare, Minus, Plus, Quote, Users, ListChecks, Info, StickyNote } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ArrowLeft, BookOpen, ExternalLink, FileText, FolderOpen, Link2, MessageSquare, Quote, Users, ListChecks, Info, StickyNote } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
-import { Badge, Button, Callout, ErrorNote, Skeleton, Tabs } from '@renderer/components/ui'
+import { Badge, Button, ErrorNote, Skeleton, Tabs } from '@renderer/components/ui'
 import { HistoryButton } from '@renderer/components/FileHistory'
 import { fmtDate, plural } from '@renderer/lib/format'
 import { fmtDuration } from '@renderer/lib/media'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentDetail } from '@shared/api'
-import { DetailsTab, EntitiesTab, Highlight, NotesTab, SummaryTab, TextTab } from './DocPanels'
+import { DetailsTab, EntitiesTab, NotesTab, SummaryTab, TextTab } from './DocPanels'
 import { FactsTab, passageSnippet } from './FactsTab'
 import { MediaViewer } from './MediaViewer'
 import { JumpTarget, PdfViewer } from './PdfViewer'
+import { positionsSource } from './positions'
+import { ImageViewer, TextReader } from './Readers'
 import './documents.css'
 
 const BROWSER_IMAGE = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'])
 type TabId = 'facts' | 'summary' | 'entities' | 'text' | 'details' | 'notes'
 const TAB_IDS: TabId[] = ['facts', 'summary', 'entities', 'text', 'details', 'notes']
 
-function ImageViewer({ src }: { src: string }) {
-  const [zoom, setZoom] = useState<number | null>(null) // null = fit
-  const [nat, setNat] = useState<number | null>(null)
-  const box = useRef<HTMLDivElement>(null)
-  return (
-    <div className="pdf-viewer">
-      <div className="pdf-toolbar">
-        <Button variant="ghost" size="sm" icon={Minus} tip="Zoom out" onClick={() => setZoom(Math.max(0.1, (zoom ?? 1) / 1.25))} />
-        <span className="pdf-zoomlabel">{zoom ? Math.round(zoom * 100) + '%' : 'Fit'}</span>
-        <Button variant="ghost" size="sm" icon={Plus} tip="Zoom in" onClick={() => setZoom(Math.min(8, (zoom ?? 1) * 1.25))} />
-        <Button variant={zoom === null ? 'soft' : 'ghost'} size="sm" onClick={() => setZoom(null)}>Fit</Button>
-        <Button variant="ghost" size="sm" onClick={() => setZoom(1)}>100%</Button>
-      </div>
-      <div className="img-scroll" ref={box}>
-        <img
-          src={src}
-          alt="Original document"
-          onLoad={(e) => setNat((e.target as HTMLImageElement).naturalWidth)}
-          style={zoom === null || !nat ? { maxWidth: '100%', height: 'auto' } : { width: nat * zoom }}
-        />
-      </div>
-    </div>
-  )
-}
-
-function TextReader({ d, target, note, onOpen }: { d: DocumentDetail; target: JumpTarget | null; note?: string; onOpen: () => void }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [flash, setFlash] = useState<number | null>(null)
-  useEffect(() => {
-    if (!target) return
-    const el = ref.current?.querySelector(`[data-p="${target.page}"]`)
-    el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-    setFlash(target.page)
-    const t = setTimeout(() => setFlash(null), 1700)
-    return () => clearTimeout(t)
-  }, [target])
-  return (
-    <div className="pdf-viewer">
-      <div className="pdf-toolbar">
-        <span className="pdf-pagelabel">Extracted text · {plural(d.pages.length, 'page')}</span>
-        <span className="spacer" />
-        {d.original && <Button size="sm" icon={ExternalLink} onClick={onOpen}>Open original</Button>}
-      </div>
-      <div className="text-reader" ref={ref}>
-        <div className="text-reader-note">
-          <Callout tone="info">
-            {note ?? `${d.ext.toUpperCase()} files can't be shown page by page here. This is the text Watchdog extracted from the original, which is what the facts were drawn from.`}
-          </Callout>
-        </div>
-        {d.pages.length === 0 && <div className="text-reader-note faint">No extracted text is available for this document.</div>}
-        {d.pages.map((p) => (
-          <div key={p.page} data-p={p.page} className={'text-sheet' + (flash === p.page ? ' flash' : '')}>
-            <span className="text-sheet-num">p. {p.page}</span>
-            <Highlight text={p.text} q="" />
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function Original({ d, abs, target, onOpen }: { d: DocumentDetail; abs: string | null; target: JumpTarget | null; onOpen: () => void }) {
+function Original({ d, abs, target, onOpen, onSearchText }: { d: DocumentDetail; abs: string | null; target: JumpTarget | null; onOpen: () => void; onSearchText: (q: string) => void }) {
+  const vault = useVault()
   const [pdfFailed, setPdfFailed] = useState<string | null>(null)
   useEffect(() => setPdfFailed(null), [d.sha])
+  const positions = useMemo(() => (d.positions_pages?.length ? positionsSource(vault, d.sha, d.positions_pages) : null), [vault, d.sha, d.positions_pages])
   const ext = d.ext
-  if (d.media) return <MediaViewer d={d} media={d.media} abs={abs} target={target} />
-  if (abs && ext === 'pdf' && !pdfFailed) return <PdfViewer path={abs} target={target} onFailed={setPdfFailed} />
-  if (abs && BROWSER_IMAGE.has(ext)) return <ImageViewer src={window.watchdog.files.url(abs)} />
+  if (d.media) return <MediaViewer d={d} media={d.media} abs={abs} target={target} onSearchText={onSearchText} />
+  if (abs && ext === 'pdf' && !pdfFailed)
+    return <PdfViewer path={abs} target={target} onFailed={setPdfFailed} positions={positions} extracted={d.pages} onSearchText={onSearchText} />
+  if (abs && BROWSER_IMAGE.has(ext)) return <ImageViewer src={window.watchdog.files.url(abs)} positions={positions} text={d.pages[0]?.text} onSearchText={onSearchText} />
   if (abs && (ext === 'html' || ext === 'htm'))
     return (
       <div className="pdf-viewer">
@@ -100,7 +44,7 @@ function Original({ d, abs, target, onOpen }: { d: DocumentDetail; abs: string |
         <iframe className="html-frame" sandbox="" title="Original web page" src={window.watchdog.files.url(abs)} />
       </div>
     )
-  return <TextReader d={d} target={target} onOpen={onOpen} note={pdfFailed ? `The PDF could not be displayed (${pdfFailed}). Showing the extracted text instead.` : undefined} />
+  return <TextReader d={d} target={target} onOpen={onOpen} onSearchText={onSearchText} note={pdfFailed ? `The PDF could not be displayed (${pdfFailed}). Showing the extracted text instead.` : undefined} />
 }
 
 function Loading() {
@@ -130,6 +74,12 @@ export default function DocumentView() {
   const q = useRpc('vault.document', sha ? { vault, sha } : null)
   const [tab, setTab] = useState<TabId>('facts')
   const [target, setTarget] = useState<JumpTarget | null>(null)
+  // A viewer's "Search the extracted text instead" opens the Text tab with its words (D289).
+  const [textQuery, setTextQuery] = useState({ q: '', n: 0 })
+  const searchText = useCallback((q: string) => {
+    setTextQuery((t) => ({ q, n: t.n + 1 }))
+    setTab('text')
+  }, [])
 
   // Route-driven state: ?page= and ?tab= (re-applied whenever the route or document changes).
   const routePage = route.view === 'document' ? route.page : undefined
@@ -228,7 +178,7 @@ export default function DocumentView() {
         <Group orientation="horizontal" id="docv-split">
           <Panel id="original" defaultSize="56%" minSize="28%">
             <div className="docv-pane-left">
-              <Original d={d} abs={abs} target={target} onOpen={openOriginal} />
+              <Original d={d} abs={abs} target={target} onOpen={openOriginal} onSearchText={searchText} />
             </div>
           </Panel>
           <Separator className="docv-sep" />
@@ -251,7 +201,7 @@ export default function DocumentView() {
                 {tab === 'facts' && <FactsTab facts={d.facts} jump={jump} hasViewer={hasViewer} media={d.media} focusId={routeFact} />}
                 {tab === 'summary' && <SummaryTab d={d} />}
                 {tab === 'entities' && <EntitiesTab entities={d.entities} />}
-                {tab === 'text' && <TextTab pages={d.pages} jump={jump} hasViewer={hasViewer} media={d.media} />}
+                {tab === 'text' && <TextTab key={textQuery.n} initialQuery={textQuery.q} pages={d.pages} jump={jump} hasViewer={hasViewer} media={d.media} />}
                 {tab === 'details' && <DetailsTab d={d} />}
                 {tab === 'notes' && <NotesTab key={d.sha} d={d} />}
               </div>
