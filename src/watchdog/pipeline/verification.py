@@ -136,7 +136,7 @@ def facts_from_note(section: str) -> list[dict]:
             if line.startswith(">") and out and not out[-1]["quote"]:
                 out[-1]["quote"] = line.lstrip("> ").strip() or None
             continue
-        text = line[2:].strip()
+        text = re.sub(r"\s+\^f-[0-9a-f]+(?:-\d+)?$", "", line[2:].strip())
         m = _NOTE_PAGE_RE.search(text)
         page = int(m.group(1) or m.group(2)) if m else None
         inferred = "*(inferred)*" in text

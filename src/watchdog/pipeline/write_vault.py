@@ -1047,10 +1047,12 @@ def build_entity_note(
 
 
 def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str | None = None,
-                         rec: dict | None = None, old: str | None = None) -> str:
+                         rec: dict | None = None, old: str | None = None,
+                         sha: str | None = None) -> str:
     """A document note from its extraction. `rec` (the registry entry) supplies the ingestion date,
     so a rebuild gives the same note; `old` (the note on disk) supplies the journalist's Notes,
-    which are carried over unchanged (D280)."""
+    which are carried over unchanged (D280). With the document's `sha`, each fact line ends in its
+    block id (`^f-<hash>`), the target of every fact citation (D283)."""
     ingested = ((rec or {}).get("ingested_at") or "")[:10] or _today()
     fm = _frontmatter({
         "title":            doc.get("title", doc["filename"]),
@@ -1084,11 +1086,19 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
     key_facts = doc.get("key_facts", [])
     if key_facts:
         body += "\n## Key facts\n\n"
-        for kf in key_facts:
+        ids: list[str | None] = [None] * len(key_facts)
+        if sha:
+            from watchdog.pipeline.citations import block_id
+            from watchdog.pipeline.verification import fact_ids
+            kept = [i for i, kf in enumerate(key_facts)
+                    if isinstance(kf, dict) and (kf.get("fact") or "").strip()]
+            for i, fid in zip(kept, fact_ids(sha, [key_facts[i] for i in kept])):
+                ids[i] = f" ^{block_id(fid)}"
+        for kf, bid in zip(key_facts, ids):
             pg = _page_link(morgue_path or "", kf.get("page"))
             page = f" ({pg})" if pg else ""
             basis_note = " *(inferred)*" if kf.get("basis") == "inferred" else ""
-            body += f"- {_defang(kf['fact'])}{page}{basis_note}{_figure_verification_note(kf)}\n"
+            body += f"- {_defang(kf['fact'])}{page}{basis_note}{_figure_verification_note(kf)}{bid or ''}\n"
             quote = _defang((kf.get("quote") or "").strip())
             if quote:
                 body += f"  > {quote}{_quote_verification_note(kf)}\n"
@@ -1282,7 +1292,8 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
         old_doc_note = doc_note_path.read_text(encoding="utf-8") if doc_note_path.exists() else None
         doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative,
-                                                rec=documents_reg[doc_sha256], old=old_doc_note)
+                                                rec=documents_reg[doc_sha256], old=old_doc_note,
+                                                sha=doc_sha256)
         doc_note_path.write_text(doc_note_content, encoding="utf-8")
         note_index_jobs.append((f"documents/{slug}", "document", doc_title, doc_note_content))
 

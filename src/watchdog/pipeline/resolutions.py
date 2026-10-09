@@ -51,8 +51,11 @@ def _short(text: str, n: int) -> str:
 
 def _callout_text(callout: str) -> str:
     """Normalize a contradiction callout to stable text for hashing: strip blockquote
-    markers and collapse whitespace so cosmetic reflow doesn't change the id."""
+    markers and collapse whitespace so cosmetic reflow doesn't change the id. A link to a fact's
+    line (`#^f-…`) and the rendered "disputed" label are dropped too (D283): a contradiction is the
+    same one whether or not its sides link to their facts, and whatever the reporter's marks."""
     stripped = re.sub(r"(?m)^\s*>\s?", "", callout)
+    stripped = re.sub(r"#\^f-[0-9a-f]+(?:-\d+)?", "", stripped).replace(" · *disputed*", "")
     return re.sub(r"\s+", " ", stripped).strip().lower()
 
 

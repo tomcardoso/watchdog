@@ -27,10 +27,14 @@ import re
 import sys
 from pathlib import Path
 
-from watchdog.pipeline import entity_facts
+from watchdog.pipeline import citations, entity_facts
 from watchdog.pipeline.json_io import _read_json_or
 
-NOTE_FORMAT = 2
+# 3 (D283): document notes carry a block id on each fact line, so a citation can link to it, and
+# summaries render their citations as links. A vault below 3 is rebuilt once at its next commit.
+NOTE_FORMAT = 3
+# Notes below this format hold model prose that exists nowhere else (`carry_old_prose`).
+PROSE_IN_NOTE_BELOW = 2
 SYNTHESIS_VERSION = 1
 
 # A short entity note lists every fact in date order. Past FLAT_MAX facts the list is grouped by
@@ -75,7 +79,7 @@ def carry_old_prose(entry: dict, text: str | None, documents: dict | None = None
     stored extraction (`has_facts(sha)` false): those exist nowhere else and are kept, as
     written, in `entry["legacy_claims"]`."""
     from watchdog.pipeline.write_vault import _ANALYSIS_HEADER_RE, _extract_section
-    if not text or (_frontmatter_format(text) or 1) >= NOTE_FORMAT:
+    if not text or (_frontmatter_format(text) or 1) >= PROSE_IN_NOTE_BELOW:
         return False
     changed = False
     summary = _extract_section(text, "Summary")
@@ -106,11 +110,7 @@ def carry_old_prose(entry: dict, text: str | None, documents: dict | None = None
 
 # ── rendering ────────────────────────────────────────────────────────────────────────────────
 
-def block_id(fid: str) -> str:
-    """An Obsidian block id for a fact (`^f-<hash>`), so a later citation can link to its line."""
-    bits = fid.split(":")
-    h = bits[3] if len(bits) > 3 else re.sub(r"[^a-z0-9]", "", fid.lower())[-10:]
-    return f"f-{h}" + (f"-{bits[4]}" if len(bits) > 4 else "")
+block_id = citations.block_id
 
 
 def mark_label(mark: dict | None) -> str:
@@ -212,13 +212,32 @@ def safe_prose(text: str, known: set[str] | None) -> str:
     return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], out)
 
 
-def summary_section(synthesis: dict | None, known: set[str] | None = None) -> str:
-    """The `## Summary (AI-written)` body, or "" when the entity has no synthesis."""
+def _cited(text: str, synthesis: dict, known: set[str] | None, facts: dict[str, dict] | None,
+           resolver: citations.Resolver | None, stats: dict) -> str:
+    """Model prose with its citations made into links (D283): wikilinks it was given are kept only
+    when they name a known note, links written as fact links are checked, and short refs
+    (`[f:3a9c]`) are looked up in the synthesis's stored map and the entity's current facts."""
+    out = safe_prose(text, known)
+    if resolver is not None:
+        out, _ = citations.annotate_prose(out, resolver, stats)
+    out, _ = citations.render_short(out, synthesis.get("fact_refs") or {},
+                                    lambda fid: (facts or {}).get(fid), stats)
+    return out
+
+
+def summary_section(synthesis: dict | None, known: set[str] | None = None,
+                    facts: dict[str, dict] | None = None,
+                    resolver: citations.Resolver | None = None,
+                    stats: dict | None = None) -> str:
+    """The `## Summary (AI-written)` body, or "" when the entity has no synthesis. `facts` maps a
+    D271 id to the entity's current fact, so a citation links only to a fact the entity still has;
+    `stats` (when given) receives the citation counts."""
     if not isinstance(synthesis, dict) or not (synthesis.get("summary") or "").strip():
         return ""
-    parts = [safe_prose(synthesis["summary"].strip(), known)]
+    stats = stats if stats is not None else citations.new_stats()
+    parts = [_cited(synthesis["summary"].strip(), synthesis, known, facts, resolver, stats)]
     if (synthesis.get("analysis") or "").strip():
-        parts.append(safe_prose(synthesis["analysis"].strip(), known))
+        parts.append(_cited(synthesis["analysis"].strip(), synthesis, known, facts, resolver, stats))
     when = (synthesis.get("made_at") or "")[:10]
     by = synthesis.get("by")
     if by == "carried":
@@ -240,8 +259,10 @@ def summary_section(synthesis: dict | None, known: set[str] | None = None) -> st
     return "\n\n".join(parts)
 
 
-def render(entry: dict, facts: list[dict], documents: dict, contradictions: str, notes: str) -> str:
-    """The whole note for one registry entry."""
+def render(entry: dict, facts: list[dict], documents: dict, contradictions: str, notes: str,
+           resolver: citations.Resolver | None = None, stats: dict | None = None) -> str:
+    """The whole note for one registry entry. `resolver` checks fact links in the summary and the
+    contradictions (D283); `stats` receives the summary's citation counts."""
     from watchdog.pipeline.write_vault import _defang, _frontmatter, _role_line, _today
     appears = []
     for sha in entry.get("appears_in", []):
@@ -257,7 +278,8 @@ def render(entry: dict, facts: list[dict], documents: dict, contradictions: str,
     })
     body = f"\n# {_defang(entry['name'])}\n"
     known = {d.get("document_note") for d in documents.values() if isinstance(d, dict)}
-    summary = summary_section(entry.get("synthesis"), known)
+    summary = summary_section(entry.get("synthesis"), known, {f["id"]: f for f in facts},
+                              resolver, stats)
     if summary:
         body += f"\n## {SUMMARY_HEADING}\n\n{summary}\n"
     listed = facts_section(facts)
@@ -268,6 +290,8 @@ def render(entry: dict, facts: list[dict], documents: dict, contradictions: str,
                  "documents whose extraction was not kept, so they cannot be rebuilt as facts. "
                  f"Kept as written.*\n\n{entry['legacy_claims'].strip()}\n")
     if contradictions:
+        if resolver is not None:
+            contradictions = citations.annotate_callouts(contradictions, resolver)
         body += f"\n## Contradictions\n\n{contradictions}\n"
     roles = entry.get("roles", [])
     if roles:
@@ -291,6 +315,7 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
     from watchdog.pipeline.write_vault import _assert_in_vault, _extract_section
     vault = Path(vault)
     index = index or entity_facts.FactIndex(vault, entities, documents)
+    resolver = citations.Resolver(vault, index)
     resolved = resolved if resolved is not None else resolutions.resolved_ids(vault)
     out = []
     for eid in sorted(set(ids)):
@@ -306,7 +331,14 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
         entry["contradictions"] = callouts
         body = "\n\n".join(resolutions.filter_callouts(callouts, resolved))
         own_notes = (notes or {}).get(eid) or notes_section(old)
-        content = render(entry, index.facts_for(eid), documents, body, own_notes)
+        stats = citations.new_stats()
+        content = render(entry, index.facts_for(eid), documents, body, own_notes,
+                         resolver=resolver, stats=stats)
+        synthesis = entry.get("synthesis")
+        if isinstance(synthesis, dict) and synthesis.get("citations") != stats:
+            # What the rendered summary could link (D283): citations whose fact is gone or whose
+            # short ref was never in the map are dropped from the text and counted here.
+            synthesis["citations"] = stats
         if content != old:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
@@ -351,7 +383,7 @@ def _write_document_notes(vault: Path, shas, entities: dict, documents: dict) ->
         ents = [entities[e] for e in rec.get("entities_extracted") or [] if e in entities]
         path = _assert_in_vault(vault / f"{rec['document_note']}.md", vault, "document note_path")
         old = path.read_text(encoding="utf-8") if path.exists() else None
-        content = _build_document_note(doc, ents, rec.get("morgue_path"), rec=rec, old=old)
+        content = _build_document_note(doc, ents, rec.get("morgue_path"), rec=rec, old=old, sha=sha)
         if content != old:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")

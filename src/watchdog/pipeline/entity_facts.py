@@ -118,6 +118,7 @@ class FactIndex:
         self._absorbed: dict[str, list[str]] | None = None
         self._appears: dict[str, set[str]] = {}
         self._ids: dict[str, list[str]] = {}
+        self._by_note: dict[str, str] | None = None
 
     # ── documents ────────────────────────────────────────────────────────────────
 
@@ -181,12 +182,38 @@ class FactIndex:
 
     # ── an entity's facts ────────────────────────────────────────────────────────
 
+    def _row(self, sha: str, i: int, fid: str, f: dict, current: list[str], doc: dict) -> dict:
+        from watchdog.pipeline.verification import attach
+        rec = self.documents.get(sha) or {}
+        page = f.get("page") if isinstance(f.get("page"), int) and not isinstance(f.get("page"), bool) else None
+        return {
+            **{k: f.get(k) for k in ("fact", "basis", "date", "quote", "quote_verified",
+                                     "quote_found_page", "quote_spans_pages",
+                                     "figures_unverified", "figures_off_page", "passage",
+                                     "passage_page", "passage_method", "passage_score",
+                                     "added_by")},
+            "id": fid, "page": page, "sha": sha, "index": i,
+            "doc_date": doc.get("date") or rec.get("date_of_document"),
+            "title": rec.get("title") or rec.get("filename") or sha[:12],
+            "note": rec.get("document_note"), "morgue": rec.get("morgue_path"),
+            "entities": current,
+            "mark": attach(self.marks.get(fid), f),
+        }
+
+    def _current(self, sha: str, f: dict) -> list[str]:
+        current: list[str] = []
+        for t in (f.get("entities") or []):
+            if isinstance(t, str) and t:
+                r = self.resolve(sha, t)
+                if r and r not in current:
+                    current.append(r)
+        return current
+
     def facts_for(self, eid: str, shas=None) -> list[dict]:
         """Every fact tagged to `eid` in the documents it appears in (or `shas`), each a dict:
         `id`, `fact`, `page`, `basis`, `date`, `quote`, the figure and quote flags, the passage
         fields, `sha`, `index` (reading order in its document), `doc_date`, `title`, `note`,
         `morgue`, `entities` (current ids) and `mark` (the reporter's current mark, or None)."""
-        from watchdog.pipeline.verification import attach
         entry = self.entities.get(eid) or {}
         shas = list(shas) if shas is not None else list(entry.get("appears_in") or [])
         out = []
@@ -194,32 +221,40 @@ class FactIndex:
             doc = self.document(sha)
             if not doc:
                 continue
-            rec = self.documents.get(sha) or {}
-            ids = self.fact_ids(sha)
-            for i, (fid, f) in enumerate(zip(ids, doc["facts"])):
-                tags = [t for t in (f.get("entities") or []) if isinstance(t, str) and t]
-                current = []
-                for t in tags:
-                    r = self.resolve(sha, t)
-                    if r and r not in current:
-                        current.append(r)
-                if eid not in current:
-                    continue
-                page = f.get("page") if isinstance(f.get("page"), int) and not isinstance(f.get("page"), bool) else None
-                out.append({
-                    **{k: f.get(k) for k in ("fact", "basis", "date", "quote", "quote_verified",
-                                             "quote_found_page", "quote_spans_pages",
-                                             "figures_unverified", "figures_off_page", "passage",
-                                             "passage_page", "passage_method", "passage_score",
-                                             "added_by")},
-                    "id": fid, "page": page, "sha": sha, "index": i,
-                    "doc_date": doc.get("date") or rec.get("date_of_document"),
-                    "title": rec.get("title") or rec.get("filename") or sha[:12],
-                    "note": rec.get("document_note"), "morgue": rec.get("morgue_path"),
-                    "entities": current,
-                    "mark": attach(self.marks.get(fid), f),
-                })
+            for i, (fid, f) in enumerate(zip(self.fact_ids(sha), doc["facts"])):
+                current = self._current(sha, f)
+                if eid in current:
+                    out.append(self._row(sha, i, fid, f, current, doc))
         return out
+
+    def document_facts(self, sha: str) -> list[dict]:
+        """Every fact of one committed document, in reading order, shaped as `facts_for` gives
+        them. Empty when the document has no stored extraction."""
+        doc = self.document(sha)
+        if not doc:
+            return []
+        return [self._row(sha, i, fid, f, self._current(sha, f), doc)
+                for i, (fid, f) in enumerate(zip(self.fact_ids(sha), doc["facts"]))]
+
+    def sha_for_note(self, note: str) -> str | None:
+        """The document whose note is `note` (`documents/<slug>`, with or without `.md`)."""
+        if self._by_note is None:
+            self._by_note = {d.get("document_note"): sha for sha, d in self.documents.items()
+                             if isinstance(d, dict) and d.get("document_note")}
+        return self._by_note.get((note or "").strip().removesuffix(".md"))
+
+    def fact(self, fid: str) -> dict | None:
+        """The current fact with D271 id `fid`, or None when no committed document holds it."""
+        from watchdog.pipeline.verification import sha_prefix
+        prefix = sha_prefix(fid)
+        if not prefix:
+            return None
+        for sha in self.documents:
+            if sha.startswith(prefix):
+                for row in self.document_facts(sha):
+                    if row["id"] == fid:
+                        return row
+        return None
 
 
 def chronological(facts: list[dict]) -> list[dict]:
