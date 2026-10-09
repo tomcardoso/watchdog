@@ -230,7 +230,7 @@ def test_status_subscription(wdg_home):
     write_creds(wdg_home, "subscription")
     s = call("auth.status")
     assert s["claude"] == {"mode": "subscription", "logged_in": True, "reason": None, "env_key_set": False,
-                           "key_masked": None, "key_source": None}
+                           "key_masked": None, "key_source": None, "key_label": None}
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
 
 
