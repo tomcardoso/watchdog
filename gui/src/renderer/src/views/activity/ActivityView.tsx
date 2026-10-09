@@ -1,7 +1,7 @@
 // Activity: jobs and maintenance. Jobs work with no investigation open; the vault-specific tabs
 // (maintenance, processing history, usage) appear only inside one.
 
-import { Activity, History, Wrench, Coins, Terminal } from 'lucide-react'
+import { Activity, FileClock, History, Wrench, Coins, Terminal } from 'lucide-react'
 import { lazy, Suspense } from 'react'
 import { Skeleton, Tabs } from '@renderer/components/ui'
 import { useApp } from '@renderer/lib/store'
@@ -11,8 +11,9 @@ import './activity.css'
 const MaintenancePanel = lazy(() => import('./MaintenancePanel'))
 const HistoryPanel = lazy(() => import('./HistoryPanel'))
 const UsagePanel = lazy(() => import('./UsagePanel'))
+const VersionsPanel = lazy(() => import('./VersionsPanel'))
 
-type Tab = 'jobs' | 'maintenance' | 'history' | 'usage'
+type Tab = 'jobs' | 'maintenance' | 'history' | 'versions' | 'usage'
 
 export default function ActivityView() {
   const route = useApp((s) => s.route)
@@ -29,6 +30,7 @@ export default function ActivityView() {
     tabs.push(
       { value: 'maintenance', label: 'Maintenance', icon: Wrench },
       { value: 'history', label: 'Processing history', icon: History },
+      { value: 'versions', label: 'Version history', icon: FileClock },
       { value: 'usage', label: 'Usage', icon: Coins }
     )
 
@@ -48,6 +50,7 @@ export default function ActivityView() {
           {tab === 'jobs' && <JobsPanel selected={r.job} onSelect={(id) => navigate({ view: 'activity', tab: 'jobs', job: id }, { replace: true })} />}
           {tab === 'maintenance' && project && <MaintenancePanel />}
           {tab === 'history' && project && <HistoryPanel />}
+          {tab === 'versions' && project && <VersionsPanel />}
           {tab === 'usage' && project && <UsagePanel />}
         </Suspense>
       </div>

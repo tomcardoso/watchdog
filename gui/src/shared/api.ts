@@ -555,6 +555,26 @@ export interface ChatMessage {
 }
 export interface ChatSessionRow { session: string; mode: ChatMode; title: string; started: string; updated: string; model: string | null }
 
+// ── version history (D286) ───────────────────────────────────────────────────
+export type HistoryCauseKind = 'run' | 'merge' | 'undo_merge' | 'mark' | 'rebuild' | 'notes' | 'edit' | 'review' | 'session' | 'restore' | 'cleared' | 'found'
+export interface HistoryCause { kind: HistoryCauseKind; first?: boolean; incomplete?: boolean; [k: string]: unknown }
+export interface HistoryVersion { version: number; at: string | null; cause: HistoryCause; label: string; files: number }
+export type RestoreKind = 'page' | 'notes' | 'none'
+export interface FileHistory {
+  path: string; tracked: boolean; restore: RestoreKind; exists: boolean; too_new: boolean
+  versions: (HistoryVersion & { deleted: boolean; current: boolean })[]
+}
+export interface DiffSegment { t: 'eq' | 'del' | 'ins'; s: string }
+export interface DiffLine { op: ' ' | '-' | '+'; old: number | null; new: number | null; segments: DiffSegment[] }
+export interface FileDiff {
+  path: string
+  before: { version: number | null; exists: boolean }
+  after: { version: number | null; exists: boolean }
+  hunks: { old_start: number; new_start: number; lines: DiffLine[] }[]
+  added: number; removed: number; truncated: boolean; identical: boolean
+}
+export interface HistoryStats { versions: number; files: number; objects: number; bytes: number; since: string | null; too_new: boolean }
+
 // ── the method table: name → [params, result] ────────────────────────────────
 export interface Methods {
   'access.list': [Record<string, never>, { enforced: boolean; file: string; folders: { path: string; label: string; granted: string | null }[] }]
@@ -589,6 +609,14 @@ export interface Methods {
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
   'vault.migrate': [{ vault: string }, { changes: string[] }]
+
+  'history.file': [{ vault: string; path: string }, FileHistory]
+  'history.read': [{ vault: string; path: string; version: number }, { path: string; version: number; exists: boolean; text: string }]
+  'history.diff': [{ vault: string; path: string; version: number; against?: 'previous' | 'current' }, FileDiff]
+  'history.restore': [{ vault: string; path: string; version: number }, { path: string; part: RestoreKind; version: number | null }]
+  'history.versions': [{ vault: string; limit?: number; before?: number }, { versions: (HistoryVersion & { changes: { path: string; deleted: boolean }[] })[]; total: number; more: boolean; too_new: boolean }]
+  'history.stats': [{ vault: string }, HistoryStats]
+  'history.clear': [{ vault: string }, { removed_versions: number; freed_bytes: number; versions: number; bytes: number }]
 
   'verify.mark': [{ vault: string; id: string; status: VerifyStatus | null; note?: string | null }, FactMark & { id: string }]
   'verify.facts': [{ vault: string }, { summary: VerificationSummary; facts: LedgerFact[]; orphaned: OrphanMark[]; reporter: string }]

@@ -27,7 +27,9 @@ const ROUTES = [
   { view: 'ask' },
   { view: 'research' },
   { view: 'activity' },
+  { view: 'activity', tab: 'versions' },
   { view: 'settings' },
+  { view: 'settings', tab: 'history' },
   { view: 'projects' }
 ]
 
@@ -82,6 +84,15 @@ test('every screen renders against the demo investigation', async () => {
         }
       }
     }
+    // Version history (D286): an entity's History lists the demo's runs and marks, with a diff.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'entity', id: 'city-of-port-calder' }))
+    await page.getByRole('button', { name: 'History', exact: true }).click()
+    await expect(page.locator('.hist-item').first()).toBeVisible({ timeout: 10_000 })
+    expect(await page.locator('.hist-item').count()).toBeGreaterThan(1)
+    await expect(page.locator('.hist-line').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('button', { name: 'Restore my notes' })).toBeVisible()
+    await page.keyboard.press('Escape')
+
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {

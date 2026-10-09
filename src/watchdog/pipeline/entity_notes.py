@@ -432,7 +432,8 @@ def rebuild(vault: Path, ids=None, documents_too: bool = True, index_search: boo
     reg = vault / ".watchdog" / "registry"
     if not reg.is_dir():
         return {"entities": 0, "documents": 0}
-    with _registry_lock(reg):
+    from watchdog.pipeline import history
+    with _registry_lock(reg), history.recording(vault, {"kind": "rebuild"}):
         return _rebuild_unlocked(vault, ids, documents_too, index_search)
 
 

@@ -5,6 +5,7 @@ import { ArrowLeft, BookOpen, ExternalLink, FileText, FolderOpen, Link2, Message
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Group, Panel, Separator } from 'react-resizable-panels'
 import { Badge, Button, Callout, ErrorNote, Skeleton, Tabs } from '@renderer/components/ui'
+import { HistoryButton } from '@renderer/components/FileHistory'
 import { fmtDate, plural } from '@renderer/lib/format'
 import { fmtDuration } from '@renderer/lib/media'
 import { useRpc } from '@renderer/lib/rpc'
@@ -218,6 +219,7 @@ export default function DocumentView() {
             </Button>
             <Button size="sm" icon={MessageSquare} onClick={() => navigate({ view: 'ask', prompt: `/watchdog-query What does ${title} show?` })}>Ask Claude</Button>
             <Button size="sm" icon={Quote} onClick={copyCitation}>Copy citation</Button>
+            <HistoryButton vault={vault} path={d.note} title={title} />
           </div>
         </div>
       </header>

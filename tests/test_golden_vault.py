@@ -70,7 +70,11 @@ _CONTENT_EXEMPT = ("processing.log", "usage/", ".write-lock", "/tmp/", ".fulltex
 # dev machine with the model installed but are absent in CI. Like GLiNER's entity contribution,
 # embeddings are an environment-dependent enrichment, not deterministic vault state, so the golden
 # test cannot pin them without being non-portable. The notes they derive from *are* pinned.
-_PATH_EXEMPT = (".watchdog/extracted/", ".embeddings/")
+#
+# `.watchdog/history/` (D286): the version history keeps a copy of every file above as it was
+# written, timestamps included, so its blob names change on every run. Its own tests pin it
+# (`tests/test_history.py`).
+_PATH_EXEMPT = (".watchdog/extracted/", ".embeddings/", ".watchdog/history/")
 
 
 def _normalize(text: str) -> str:

@@ -3,7 +3,8 @@ journalist-owned files. Everything is read from the vault's own files, in-proces
 
 Writes are limited to three, each deliberately narrow: `vault.saveNotes` (only the body of a
 note's `## Notes` section — the one part the pipeline never writes), and `vault.writeFile` (only
-`context.md` and `watchlist.md`). Both go through a temp file and `os.replace`.
+`context.md` and `watchlist.md`). Both go through a temp file and `os.replace`, and each is
+recorded as a version of the file's history (D286).
 """
 
 from __future__ import annotations
@@ -474,8 +475,10 @@ def save_notes(vault: str, path: str, text: str) -> dict:
         raise RpcError("Notes can only be saved on entity and document notes.", code="forbidden")
     if file is None:
         raise RpcError("That note doesn't exist.", code="not_found")
-    old = vaultio.read_text(file)
-    vaultio.write_text_atomic(file, replace_notes_body(old, text, _NOTES_PLACEHOLDER[top]))
+    from watchdog.pipeline import history
+    with history.recording(v, {"kind": "notes"}, [rel]):
+        old = vaultio.read_text(file)
+        vaultio.write_text_atomic(file, replace_notes_body(old, text, _NOTES_PLACEHOLDER[top]))
     return {"ok": True}
 
 
@@ -797,7 +800,9 @@ def write_file(vault: str, path: str, text: str) -> dict:
         raise RpcError("Only context.md and watchlist.md can be written from here.", code="forbidden")
     if not isinstance(text, str):
         raise RpcError("The file contents must be text.", code="bad_params")
-    vaultio.write_text_atomic(resolve_in_vault(v, rel), text)
+    from watchdog.pipeline import history
+    with history.recording(v, {"kind": "edit", "file": rel}, [rel]):
+        vaultio.write_text_atomic(resolve_in_vault(v, rel), text)
     return {"ok": True}
 
 

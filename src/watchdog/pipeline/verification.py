@@ -282,6 +282,19 @@ def reporter_name() -> str:
 
 def mark(vault: Path, fid: str, status: str | None, note: str | None = None,
          by: str | None = None) -> dict:
+    """`_mark`, recorded as a version of the vault's history (D286). While a run is writing the
+    vault only the ledger and its page are recorded here; the notes and timeline the mark
+    refreshes then belong to the run's version."""
+    from watchdog.pipeline import history
+    scope = ["verification.md", ".watchdog/registry/verification.json"]
+    if not history.run_in_progress(vault):
+        scope += ["timeline.md", "entities/", "documents/"]
+    with history.recording(vault, {"kind": "mark", "status": status, "fact_id": fid}, scope):
+        return _mark(vault, fid, status, note, by)
+
+
+def _mark(vault: Path, fid: str, status: str | None, note: str | None = None,
+          by: str | None = None) -> dict:
     """Set (or, with `status` None, clear) the mark on one current fact. The fact must exist now:
     a mark is only ever made against words the reporter can see. Returns the stored entry, with
     its id. Raises LookupError for an unknown fact and ValueError for a bad status."""
