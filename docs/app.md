@@ -86,6 +86,7 @@ Everything the app has run, with the full output of each. **Stop** ends a run cl
 - **Jobs.** Running and finished runs. Select one to see its output.
 - **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild notes** (rewrites every entity and document note from Watchdog's records, with no model call), **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
 - **Processing history.** What was added, and when.
+- **Version history.** Every version Watchdog has recorded for this investigation, newest first, each with what caused it and the files it changed. Select a file to open its history at that version. See [History](#history).
 - **Usage.** What the models used and cost.
 
 ### Settings
@@ -94,11 +95,30 @@ Everything the app has run, with the full output of each. **Stop** ends a run cl
 
 - **Models & keys.** How Watchdog signs in to Claude and to each model provider.
 - **Folder access.** The folders Watchdog may change; see [Folder access](#folder-access).
+- **Version history.** How much history the open investigation keeps, and **Clear history…**; see [History](#history).
 - **Record skills.** The built-in document-type guides; see [Domain skills](skills.md).
 - **Appearance.** Theme, and which Python the app is using.
 - **Check vaults.** A health check on every investigation's folder.
 - **Setup.** The state of the engine, local models and helper tools; see [Setup](#setup).
 - **About.** The version and project links.
+
+## History
+
+Watchdog keeps the earlier versions of what it writes, so you can see what changed and when, and put your own writing back. A **History** button is on every entity page, every document, every briefing, the pages Claude saves, `context.md` and the watch list.
+
+History lists the file's versions, newest first. Each says when it was recorded and why, in plain words: "Documents added: council-minutes.pdf, contract.pdf and 3 more", "Merged The City into City of Port Calder (by you)", "Fact marked disputed", "Your notes edited in the app", "Written in an Ask Claude session", "Restored by you". A change Watchdog did not make itself, such as an edit in Obsidian, is recorded the next time Watchdog looks at the file, as "Changed since the last recorded version".
+
+Select a version to see what it changed: removed lines are tinted red and added lines green, and within a changed line the words that differ are marked. **Compared with now** shows the difference between that version and the file as it is today. **Copy this version** puts the whole of it on the clipboard.
+
+What **Restore** does depends on what the file is:
+
+- **Your pages.** `context.md`, the watch list, briefings and the pages Claude saves in `queries/` and `wiki/` can be put back whole with **Restore this version**.
+- **Entity and document notes.** Watchdog rebuilds these from the investigation's facts every time documents are added, so an older version of the facts or summary would only be replaced again. **Restore my notes** puts back just your **Notes** section from that version; the rest can be read and copied.
+- **Everything else.** The timeline, `requests.md`, `verification.md`, `merges.md` and Watchdog's records are generated from the investigation's data, so their history can be read and copied but not restored. To reverse a merge, use **Undo merge** in Review; to change a fact's mark, mark it again.
+
+A restore is itself recorded, as "Restored by you", so it can be undone the same way.
+
+The history is kept inside the investigation's folder (see [The vault](vault.md#the-history-store)), with only one copy of each distinct version of a file, so it stays small. Text you delete from a note, a page or `context.md` stays in the history until you clear it. To remove every past version, open **Settings → Version history** and choose **Clear history…**. This cannot be undone; the files themselves stay as they are and become the first version of a new history.
 
 ## Folder access
 

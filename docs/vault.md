@@ -20,7 +20,7 @@ my-investigation/
 ├── context/                ← background material (prior stories, notes)
 ├── morgue/                 ← original files after processing, each beside its full extracted text
 ├── .watchdog/              ← internal state: processing queue, staging area,
-│                             registries — do not edit
+│                             registries, version history — do not edit
 ├── entities/
 │   ├── person/             ← people
 │   ├── organization/       ← companies, banks, unions, funds, non-profits
@@ -55,7 +55,9 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 **`morgue/`** is where original files land after a successful run, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Watchdog's Search screen or from any program that searches files. Nothing is ever discarded: the file you dropped in is the file in the morgue.
 
-**`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, and the registries that record every entity, document, and relationship. Do not edit anything in here by hand.
+**`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, the registries that record every entity, document, and relationship, and the version history. Do not edit anything in here by hand.
+
+<a id="the-history-store"></a>**`.watchdog/history/`** holds the earlier versions of the investigation's notes, briefings, pages and records, which the app shows under **History** (see [History](app.md#history)). It covers every Markdown file outside `morgue/`, `incoming/`, `context/` and the hidden folders, and the registry files that hold the investigation's data. Original documents, extracted text, search indexes and caches are not part of it. Each distinct version of a file is stored once, compressed; a log records each version with its time and cause. On a 500-document investigation it grows by about a megabyte a run. Text you delete from a file stays here until you clear the history under **Settings → Version history**; deleting the folder by hand does the same, and Watchdog starts a new history the next time it writes.
 
 **`entities/`** holds one note per extracted entity, filed by type. Watchdog sorts every entity into one of six fixed classes: **person** (people), **organization** (companies, banks, unions, funds, non-profits), **public-body** (governments, regulators, courts, agencies), **place** (addresses, properties, locations), **asset** (vehicles, accounts, domains, shares), and **proceeding** (lawsuits, insolvencies, inquiries). Fixing the list to these six keeps the same real-world entity from being split across near-duplicate folders when the model describes it differently in two documents. These notes are the heart of the vault; their structure is described [below](#entity-notes).
 

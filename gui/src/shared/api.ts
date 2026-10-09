@@ -556,7 +556,7 @@ export interface ChatMessage {
 export interface ChatSessionRow { session: string; mode: ChatMode; title: string; started: string; updated: string; model: string | null }
 
 // ── version history (D286) ───────────────────────────────────────────────────
-export type HistoryCauseKind = 'run' | 'merge' | 'undo_merge' | 'mark' | 'rebuild' | 'notes' | 'edit' | 'review' | 'session' | 'restore' | 'cleared' | 'found' | 'baseline'
+export type HistoryCauseKind = 'run' | 'merge' | 'undo_merge' | 'mark' | 'rebuild' | 'notes' | 'edit' | 'review' | 'session' | 'restore' | 'cleared' | 'found'
 export interface HistoryCause { kind: HistoryCauseKind; first?: boolean; incomplete?: boolean; [k: string]: unknown }
 export interface HistoryVersion { version: number; at: string | null; cause: HistoryCause; label: string; files: number }
 export type RestoreKind = 'page' | 'notes' | 'none'

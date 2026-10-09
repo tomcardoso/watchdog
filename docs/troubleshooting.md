@@ -133,7 +133,7 @@ A running step refreshes its lock every five minutes, however long it runs, so a
 
 ## A note was deleted or edited by mistake
 
-Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are, but a note you deleted takes its Notes section with it, so keep anything you want to keep in a note that still exists.
+Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History](app.md#history).
 
 ## A merge joined two different people or companies
 
