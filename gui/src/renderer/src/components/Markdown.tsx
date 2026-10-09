@@ -24,6 +24,10 @@ export function wikilinksToLinks(md: string): string {
   })
 }
 
+// HTML comments (`<!-- Journalist annotations — never overwritten. -->`) are notes for whoever
+// edits the file; react-markdown would otherwise print them as text.
+const stripComments = (s: string) => s.replace(/<!--[\s\S]*?-->/g, '')
+
 type MdNode = { type: string; value?: string; children?: MdNode[]; data?: Record<string, unknown> }
 
 /** remark plugin: Obsidian callouts (`> [!kind] Title`) → blockquote with class md-callout-kind. */
@@ -122,7 +126,7 @@ function MarkdownImpl({ text, className, onWikilink, compact }: { text: string; 
   return (
     <div className={['md', 'selectable', compact && 'md-compact', className].filter(Boolean).join(' ')}>
       <ReactMarkdown remarkPlugins={[remarkGfm, remarkCallouts]} urlTransform={urlTransform} components={components}>
-        {wikilinksToLinks(text)}
+        {wikilinksToLinks(stripComments(text))}
       </ReactMarkdown>
     </div>
   )

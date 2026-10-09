@@ -15,8 +15,9 @@ a.fact-cite.pill,
   font-family: var(--font-ui);
   font-size: 0.74em;
   font-weight: 600;
-  padding: 1px 6px;
-  border: 1px solid var(--border);
+  padding: 0 5px;
+  margin: 0 1px;
+  border: 1px solid var(--border-strong);
   border-radius: var(--r-full);
   background: var(--surface-sunken);
   color: var(--text-2);
