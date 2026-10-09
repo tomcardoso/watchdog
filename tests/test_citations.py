@@ -183,3 +183,49 @@ def test_a_contradiction_side_naming_its_fact_links_to_that_fact(tmp_path):
     assert out["added"]
     again = contradiction.run(vault, "x", "Price", "$4,350,000", "reg", 4, "$1,420,000", "reg", 2)
     assert not again["added"]           # the same contradiction, with or without the fact link
+
+
+def test_search_json_lists_each_hits_facts_with_a_citation_to_paste(tmp_path):
+    """D283: `watchdog search --json` gives every passage and exact match in a document's text the
+    facts recorded on that page, with their id and the link a session pastes to cite one."""
+    from watchdog.cmd.vault import _build_search_json
+    paid, appraisal, _ = _ids()
+    vault = _vault(tmp_path)
+    verification.mark(vault, paid, "disputed", by="R")
+    out = _build_search_json(
+        "paid", [{"filename": "reg.pdf", "page": 4, "text": "paid", "score": 0.5}], [],
+        [{"kind": "corpus", "key": SHA, "title": "Payment register", "path": "morgue/reg.md",
+          "page": 2, "text": "appraisal"},
+         {"kind": "entity", "key": "x", "title": "X", "path": "entities/organization/x", "page": None,
+          "text": "X"}], vault=vault)
+    [fact] = out["passages"][0]["facts"]
+    assert fact["id"] == paid and fact["mark"] == "disputed"
+    assert fact["cite"] == f"[[documents/reg#^{citations.block_id(paid)}|p. 4, disputed]]"
+    assert [f["id"] for f in out["exact"][0]["facts"]] == [appraisal]
+    assert "facts" not in out["exact"][1]
+    page = f"The City paid {fact['cite']}."
+    assert citations.check_text(page, citations.Resolver(vault))["found"] == 1
+
+
+def test_check_citations_command_reports_and_stays_in_its_vault(tmp_path, monkeypatch, capsys):
+    import argparse
+
+    import pytest
+
+    from watchdog.cmd.citations import cmd_check_citations
+    paid = _ids()[0]
+    vault = _vault(tmp_path)
+    (vault / "queries").mkdir()
+    (vault / "queries" / "q.md").write_text(
+        f"Paid [[documents/reg#^{citations.block_id(paid)}|p. 4]]; [[documents/reg#^f-0000000000|p. 1]].")
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr("watchdog.cmd.citations.is_vault", lambda p: True)
+    cmd_check_citations(argparse.Namespace(files=["queries/q.md"], json=True))
+    report = json.loads(capsys.readouterr().out)
+    assert (report["found"], report["not_found"]) == (1, 1)
+    cmd_check_citations(argparse.Namespace(files=[], json=False))
+    assert "source not found" in capsys.readouterr().out
+    outside = tmp_path / "elsewhere.md"
+    outside.write_text("x")
+    with pytest.raises(SystemExit):
+        cmd_check_citations(argparse.Namespace(files=[str(outside)], json=True))

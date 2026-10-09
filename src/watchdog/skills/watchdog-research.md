@@ -117,7 +117,7 @@ date: <today>
 <What gap this round targeted and why.>
 
 ## Sources queued
-<Each queued source: title, source_type, and the one-line relevance. These are in the links file, to be downloaded into incoming/ when the session ends. Cite the URL.>
+<Each queued source: title, source_type, and the one-line relevance. These are in the links file, to be downloaded into incoming/ when the session ends. Cite the URL. Where the memo refers to something the vault already records, cite that fact's line in its document note, `[[documents/<slug>#^f-<id>|p. N]]`, with the block id copied exactly from the `^f-…` at the end of the fact line; never invent one.>
 
 ## Leads not queued
 <Paywalled / login-walled / database / physical-record follow-ups worth pursuing, one line each.>

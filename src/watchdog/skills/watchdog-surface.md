@@ -181,7 +181,7 @@ Print a summary: contradiction count, connection count, anomaly count, gap count
 
 ## Guidelines
 
-- **Cite everything.** Every finding must link to a specific entity note and document.
+- **Cite everything.** Every finding must link to a specific entity note and document. Where a finding rests on a recorded fact, cite the fact's line in its document note: `[[documents/<slug>#^f-<id>|p. N]]`, with the block id copied exactly from the `^f-…` at the end of the fact line in the entity or document note. Never invent an id; a fact the journalist marked disputed may be cited, described as disputed. Run `watchdog check-citations <the report's path>` before finishing and fix anything it reports as not found.
 - **Don't speculate.** Flag what the data shows; don't invent explanations.
 - **Distinguish levels of certainty.** "Shares an address" is a fact. "May be a shell company" is an inference — label it as such.
 - **Be brief.** The report is a prompt for investigation, not a comprehensive analysis. Each finding should be one short paragraph.

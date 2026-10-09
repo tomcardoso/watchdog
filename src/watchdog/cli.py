@@ -91,6 +91,7 @@ from watchdog.cmd.gui import cmd_gui
 from watchdog.cmd.merge_entities import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
+from watchdog.cmd.citations import cmd_check_citations
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
 from watchdog.cmd.verify import cmd_verify_fact
 from watchdog.cmd.review import KINDS as _REVIEW_KINDS, cmd_review
@@ -257,6 +258,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
+
+    p_cites = sub.add_parser("check-citations", help="Check the fact citations in saved answers, threads and briefings (read-only)")
+    p_cites.add_argument("files", nargs="*", help="Pages to check (default: queries/, wiki/, briefings/ and hot.md)")
+    p_cites.add_argument("--json", action="store_true", help="Print the report as JSON")
+    p_cites.set_defaults(func=cmd_check_citations)
 
     p_ask = sub.add_parser("ask", help="Open a Claude Code session to ask questions about the vault")
     p_ask.add_argument("question", nargs="*", help="A first question (omit to open the session ready for one)")

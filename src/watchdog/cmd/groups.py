@@ -82,6 +82,7 @@ MAINTENANCE = [
     ("bark", "Finish a batch: reconciliation, synthesis, briefing (step 3 of add)"),
     ("requeue", "Put failed documents back in the queue without running them"),
     ("leads", "Print the full lead sweep (`watchdog review leads` steps through it)"),
+    ("check-citations", "Check that every fact citation in a page resolves"),
     ("timeline", "Rebuild timeline.md"),
     ("reindex", "Rebuild the search index"),
     ("verify-fact", "Mark a fact verified, disputed or can't verify"),

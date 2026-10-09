@@ -76,6 +76,9 @@ _VAULT_PERMISSIONS = [
     # read-only, both run every session, so a prompt on each call was pure friction.
     "Bash(watchdog search *)",
     "Bash(watchdog leads)",
+    # The query/wiki/surface/research skills check a page's fact citations before filing it (D283);
+    # read-only, and confined to the investigation it runs in.
+    "Bash(watchdog check-citations*)",
     # /watchdog-context proposes watchlist seed terms (#229); the deterministic append+dedup
     # lives in this command, not the skill hand-editing watchlist.md.
     "Bash(watchdog watchlist-add *)",

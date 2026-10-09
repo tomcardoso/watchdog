@@ -1218,8 +1218,30 @@ _EXACT_KIND_LABELS = {
 }
 
 
+# Facts listed beside one search hit (`--json`), so a session can cite what it found (D283).
+_SEARCH_FACTS_PER_HIT = 12
+
+
+def _page_facts(vault: Path):
+    """A function (sha, page) -> the facts of that page of that document, each with its citation
+    link, for `--json` search hits. Facts whose matched passage is on the page count too."""
+    from watchdog.pipeline import citations, entity_facts
+    index = entity_facts.FactIndex(vault)
+
+    def facts(sha: str | None, page) -> list[dict]:
+        if not sha or not isinstance(page, int):
+            return []
+        out = []
+        for f in index.document_facts(sha):
+            if page in (f.get("page"), f.get("passage_page")) and f.get("note"):
+                out.append({"id": f["id"], "cite": citations.link(f), "fact": f.get("fact"),
+                            "page": f.get("page"), "mark": (f.get("mark") or {}).get("status")})
+        return out[:_SEARCH_FACTS_PER_HIT]
+    return facts, index
+
+
 def _build_search_json(query: str, passages: list[dict], notes: list[dict],
-                        exact: list[dict] | None = None) -> dict:
+                       exact: list[dict] | None = None, vault: Path | None = None) -> dict:
     """Shape `watchdog search` results for `--json` consumers (the watchdog-query semantic
     lane, scripts). Each passage carries the citable span (`text`) + its page; `score` is the
     cosine similarity (ordering already reflects fusion + rerank). ``exact`` is the full-text
@@ -1228,12 +1250,33 @@ def _build_search_json(query: str, passages: list[dict], notes: list[dict],
     This JSON shape is a stable contract for machine consumers (the `watchdog-query` skill,
     src/watchdog/skills/watchdog-query.md, and any other script parsing `--json` output) — unlike
     the human-readable text output, which may change freely, a field rename or removal here is a
-    breaking change and should not be made casually (#499)."""
+    breaking change and should not be made casually (#499).
+
+    With `vault`, each passage and each exact match in a document's text also carries `facts`:
+    the facts recorded on that page, each with its D271 `id`, the `cite` link to paste into a
+    page (`[[documents/<slug>#^f-<hash>|p. 4]]`), its text, page and the reporter's mark (D283)."""
+    facts_on, index = _page_facts(vault) if vault is not None else (None, None)
+    sha_by_name: dict = {}
+    if index is not None:
+        for sha, d in index.documents.items():
+            if isinstance(d, dict):
+                sha_by_name.setdefault(d.get("filename"), []).append(sha)
+
+    def with_facts(item: dict, sha: str | None) -> dict:
+        if facts_on is not None:
+            item["facts"] = facts_on(sha, item.get("page"))
+        return item
+
+    def by_name(name) -> str | None:
+        shas = sha_by_name.get(name) or []
+        return shas[0] if len(shas) == 1 else None
+
     return {
         "query": query,
         "passages": [
-            {"filename": r.get("filename"), "page": r.get("page"),
-             "text": r.get("text"), "score": round(float(r["score"]), 4)}
+            with_facts({"filename": r.get("filename"), "page": r.get("page"),
+                        "text": r.get("text"), "score": round(float(r["score"]), 4)},
+                       by_name(r.get("filename")))
             for r in passages
         ],
         "notes": [
@@ -1242,6 +1285,10 @@ def _build_search_json(query: str, passages: list[dict], notes: list[dict],
             for r in notes
         ],
         "exact": [
+            with_facts({"kind": r.get("kind"), "title": r.get("title"), "path": r.get("path"),
+                        "page": r.get("page"), "text": r.get("text")},
+                       r.get("key") if r.get("kind") == "corpus" else None)
+            if r.get("kind") == "corpus" else
             {"kind": r.get("kind"), "title": r.get("title"), "path": r.get("path"),
              "page": r.get("page"), "text": r.get("text")}
             for r in (exact or [])
@@ -1582,7 +1629,8 @@ def cmd_search(args) -> None:
         print(f"  {_YELLOW}Warning: exact-match search unavailable: {e}{_RESET}", file=sys.stderr)
 
     if as_json:
-        print(json.dumps(_build_search_json(args.query, passages, notes, exact), ensure_ascii=False))
+        print(json.dumps(_build_search_json(args.query, passages, notes, exact, vault=vault),
+                         ensure_ascii=False))
         return
 
     print()
