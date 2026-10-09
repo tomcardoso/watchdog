@@ -20,7 +20,7 @@ my-investigation/
 ├── context/                ← background material (prior stories, notes)
 ├── morgue/                 ← original files after processing, each beside its full extracted text
 ├── .watchdog/              ← internal state: processing queue, staging area,
-│                             registries, version history — do not edit
+│                             registries, OCR text positions, version history — do not edit
 ├── entities/
 │   ├── person/             ← people
 │   ├── organization/       ← companies, banks, unions, funds, non-profits
@@ -56,6 +56,8 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 **`morgue/`** is where original files land after a successful run, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Watchdog's Search screen or from any program that searches files. Nothing is ever discarded: the file you dropped in is the file in the morgue.
 
 **`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, the registries that record every entity, document, and relationship, and the version history. Do not edit anything in here by hand.
+
+<a id="text-positions"></a>**`.watchdog/text-positions/`** holds, for each document with scanned pages or a scanned image, where each line of OCR'd text sits on the page: one small file per document, named after its SHA-256 fingerprint, with the page's size and each line's box and text. Pre-processing writes it from the same OCR pass that produced the document's text (nothing is read twice, and the original file is never changed), and the app uses it to highlight matches on a scan and let you select its text (see [Finding words in a document](app.md#finding-words-in-a-document)). Pages that have their own text layer are not included. A document added before Watchdog kept these files has none. Deleting the folder loses no facts or text, only highlighting on scans.
 
 <a id="the-history-store"></a>**`.watchdog/history/`** holds the earlier versions of the investigation's notes, briefings, pages and records, which the app shows under **History** (see [History](app.md#history)). It covers every Markdown file outside `morgue/`, `incoming/`, `context/` and the hidden folders, and the registry files that hold the investigation's data. Original documents, extracted text, search indexes and caches are not part of it. Each distinct version of a file is stored once, compressed; a log records each version with its time and cause. On a 500-document investigation it grows by about a megabyte a run; the investigations list in the app shows each one's size. Text you delete from a file stays here until you remove the versions that hold it (see [Removing a version](app.md#removing-a-version)) or clear the history under **Settings → Version history**; deleting the folder by hand does the same, and Watchdog starts a new history the next time it writes.
 

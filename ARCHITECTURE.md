@@ -87,6 +87,12 @@ that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together.
   read the file).
 - **Output.** `.watchdog/queue/<sha>.json` (filename, page count, per-page markdown, near-dup
   result, signature, sidecar, metadata); the original moves to `.watchdog/staging/<sha>/`.
+- **OCR text positions (D289, `pipeline/text_positions.py`).** For pages read by a full-page OCR
+  pass and for images, the Docling conversion keeps its parsed pages (`generate_parsed_pages`)
+  and each OCR'd line's box (`textline_cells` with `from_ocr`, top-left origin, page units) is
+  saved, carried through sliced conversion and renumbered like the pages, then written by
+  `preprocess_batch` to `.watchdog/text-positions/<sha>.json` and never queued. Line granularity
+  (RapidOCR and Apple Vision both report lines). No second OCR pass; the original is untouched.
 
 ---
 
@@ -459,6 +465,7 @@ queries/ wiki/               session-written findings and threads
   queue/<sha>.json           chewed documents; removed after commit
   staging/<sha>/             chewed originals
   extracted/<sha>.json       staged, validated extractions; kept, and the source every entity note is rendered from (D280)
+  text-positions/<sha>.json  OCR'd lines' boxes per scanned page or image, written by pre-processing and kept (D289); none for pages with their own text layer
   timeline/                  raw and canonical NDJSON events
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
   briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283) and status line (D285)
@@ -704,6 +711,12 @@ See D45–D48.
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
   edits outside their vault. Their shell commands run in Claude Code's sandbox on macOS and are
   limited to the vault's pre-approved `watchdog` commands elsewhere (D274).
+- **Find in a document (D289).** Every viewer has a visible find box; one matcher
+  (`lib/findText.ts`: case, accents, quote style, dashes and white space ignored, matches mapped
+  back to the original characters) serves it and the Text tab. A scanned page with saved positions
+  gets an invisible, selectable layer from them (`OcrLayer`, fetched a few pages at a time through
+  `vault.textPositions`) in place of pdf.js's; a page with neither a text layer nor positions is
+  searched in its extracted text and reported, not highlighted.
 - **Version history (D286).** Entity, document, briefing and page views have a History panel
   (`history.file`, `history.diff`, `history.restore`, `history.remove`), Activity has the
   investigation's versions (`history.versions`, `history.remove` of a whole version), Settings →
