@@ -226,6 +226,22 @@ def _cited(text: str, synthesis: dict, known: set[str] | None, facts: dict[str, 
     return out
 
 
+# A summary written before the record it describes changed (a merge into it, or an undo of one)
+# says so: a warning about its accuracy, not a byline (D285). Synthesis rewrites such a summary at
+# the next post-processing run (`synthesis_bundle.build_bundle`), which drops the flag.
+STALE_NOTICES = {
+    "merge": ("This summary was written before another record was merged into this one; it will "
+              "be rewritten the next time documents are added."),
+    "undo": ("This summary was written before a merge was undone; it will be rewritten the next "
+             "time documents are added."),
+}
+
+
+def stale_notice(synthesis: dict | None) -> str | None:
+    """The warning for a summary written before its record changed, or None."""
+    return STALE_NOTICES.get((synthesis or {}).get("stale")) if isinstance(synthesis, dict) else None
+
+
 def summary_section(synthesis: dict | None, known: set[str] | None = None,
                     facts: dict[str, dict] | None = None,
                     resolver: citations.Resolver | None = None,
@@ -240,6 +256,9 @@ def summary_section(synthesis: dict | None, known: set[str] | None = None,
     parts = [_cited(synthesis["summary"].strip(), synthesis, known, facts, resolver, stats)]
     if (synthesis.get("analysis") or "").strip():
         parts.append(_cited(synthesis["analysis"].strip(), synthesis, known, facts, resolver, stats))
+    notice = stale_notice(synthesis)
+    if notice:
+        parts.append(f"> [!warning] Out of date\n> {notice}")
     return "\n\n".join(parts)
 
 

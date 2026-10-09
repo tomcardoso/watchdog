@@ -325,6 +325,8 @@ def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
     if isinstance(synth, dict) and (synth.get("summary") or "").strip():
         synthesis = {k: synth.get(k) for k in ("summary", "analysis", "by", "model", "made_at",
                                                "facts_total", "facts_shown", "stale")}
+        from watchdog.pipeline.entity_notes import stale_notice
+        synthesis["stale_notice"] = stale_notice(synth)
         # The summary as the note shows it (D283): citations rendered as links to the facts the
         # entity still has, dangling ones dropped and counted.
         from watchdog.pipeline import citations, entity_notes

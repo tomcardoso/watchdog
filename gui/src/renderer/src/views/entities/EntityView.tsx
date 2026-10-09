@@ -235,6 +235,11 @@ function SummarySection({ e }: { e: EntityDetail }) {
       </SecTitle>
       {summary?.trim() ? (
         <div className="ent-ai">
+          {e.synthesis?.stale_notice && (
+            <Callout tone="warning" title="Out of date" style={{ marginBottom: 12 }}>
+              {e.synthesis.stale_notice}
+            </Callout>
+          )}
           <Markdown text={summary} />
           {analysis?.trim() && <Markdown text={analysis} />}
         </div>

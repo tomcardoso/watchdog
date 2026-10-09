@@ -202,3 +202,14 @@ def test_main_rebuilds_the_current_vault(tmp_path, monkeypatch):
     monkeypatch.setattr("watchdog.vault_paths.is_vault", lambda p: True)
     assert entity_notes.main(["--vault", str(vault)]) == 0
     assert (vault / "entities" / "person" / "x.md").exists()
+
+
+def test_a_summary_written_before_a_merge_or_undo_says_it_is_out_of_date():
+    """D285 restores B3's removed sentence as a content warning, not a byline."""
+    base = {"summary": "Jo Roe signed it.", "model": "m", "made_at": "2026-10-01T00:00:00"}
+    assert entity_notes.summary_section(base) == "Jo Roe signed it."
+    undo = entity_notes.summary_section({**base, "stale": "undo"})
+    assert undo == ("Jo Roe signed it.\n\n> [!warning] Out of date\n> This summary was written "
+                    "before a merge was undone; it will be rewritten the next time documents are added.")
+    assert "another record was merged into this one" in entity_notes.summary_section({**base, "stale": "merge"})
+    assert "2026" not in undo                                # still no byline or date (D284)

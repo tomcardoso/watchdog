@@ -212,6 +212,7 @@ export interface EntitySynthesis {
   facts_total: number | null
   facts_shown: number | null
   stale: 'merge' | 'undo' | string | null
+  stale_notice: string | null          // the out-of-date warning the note shows (D285)
   /** The summary and analysis with their citations rendered as fact links (D283). */
   summary_md?: string
   analysis_md?: string | null

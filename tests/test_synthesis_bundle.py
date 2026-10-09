@@ -258,3 +258,25 @@ def test_apply_bundle_writes_registry_once_for_multiple(tmp_path):
     assert set(outcome["applied"]) == {"alice-smith", "acme-corp"}
     reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "alice-smith" in reg and "acme-corp" in reg
+
+
+def test_build_bundle_rewrites_a_summary_left_stale_by_a_merge_or_undo(tmp_path):
+    """D285: a summary whose note says it is out of date (written before a merge into its record,
+    or before an undo) is rewritten at the next run even when the batch does not name the entity,
+    and even when an undo left the record with one document."""
+    vault = make_vault(tmp_path)
+    stale = {"summary": "Old.", "stale": "undo"}
+    _write_registry(vault, {
+        "split-co": {"id": "split-co", "name": "Split Co", "type": "Company", "synthesis": stale,
+                     "note_path": "entities/company/split-co", "appears_in": ["sha-old"]},
+        "kept-co": {"id": "kept-co", "name": "Kept Co", "type": "Company",
+                    "synthesis": {**stale, "stale": "merge"},
+                    "note_path": "entities/company/kept-co", "appears_in": ["sha-old", "sha-x"]},
+        "quiet-co": {"id": "quiet-co", "name": "Quiet Co", "type": "Company",
+                     "synthesis": {"summary": "Fine."},
+                     "note_path": "entities/company/quiet-co", "appears_in": ["sha-old", "sha-x"]},
+    })
+    _stage_extracted(vault, tmp_path / "new", "sha-new", "new.pdf", overrides={"entities": []})
+    ids = {e["entity_id"] for e in build_bundle(vault, ["sha-new"])["entities"]}
+    assert ids == {"split-co", "kept-co"}
+    assert build_bundle(vault, [])["entities"] == []     # nothing runs without a batch

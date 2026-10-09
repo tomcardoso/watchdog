@@ -122,11 +122,18 @@ def build_bundle(vault_path: Path, shas: list[str], min_docs: int = 2) -> dict:
             eid = incoming.get("id")
             if eid:
                 touched.add(index.resolve(sha, eid) or eid)
+    # A summary written before a merge into its record, or the undo of one, is out of date and
+    # says so in its note; it is rewritten at the next run whether or not the batch names it.
+    # A record left with one document after an undo keeps its place here, since it has a summary.
+    stale = {eid for eid, rec in index.entities.items()
+             if isinstance(rec, dict) and (rec.get("synthesis") or {}).get("stale")} if shas else set()
+    touched |= stale
 
     entities, meta = [], {}
     for eid in sorted(touched):
         rec = index.entities.get(eid) or {}
-        if len(rec.get("appears_in") or []) < min_docs or not rec.get("note_path"):
+        if (len(rec.get("appears_in") or []) < (1 if eid in stale else min_docs)
+                or not rec.get("note_path")):
             continue
         facts = index.facts_for(eid)
         shown = select_facts(facts, batch)
