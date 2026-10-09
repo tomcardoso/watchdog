@@ -508,6 +508,36 @@ def _registry_lock(registry_dir: Path, name: str = ".write-lock"):
                 _msvcrt.locking(fh.fileno(), _msvcrt.LK_UNLCK, 1)
 
 
+@contextmanager
+def _try_registry_lock(registry_dir: Path, name: str = ".write-lock"):
+    """`_registry_lock` without waiting: yields True holding the lock, or False at once when
+    another writer holds it (or the platform has no lock to take)."""
+    lock_path = registry_dir / name
+    with open(lock_path, "w") as fh:
+        got = False
+        try:
+            if _HAS_FLOCK:
+                from fcntl import LOCK_NB
+                _flock(fh, _LOCK_EX | LOCK_NB)
+                got = True
+            elif _msvcrt is not None:
+                fh.write(" ")
+                fh.flush()
+                fh.seek(0)
+                _msvcrt.locking(fh.fileno(), _msvcrt.LK_NBLCK, 1)
+                got = True
+        except OSError:
+            got = False
+        try:
+            yield got
+        finally:
+            if got and _HAS_FLOCK:
+                _flock(fh, _LOCK_UN)
+            elif got and _msvcrt is not None:
+                fh.seek(0)
+                _msvcrt.locking(fh.fileno(), _msvcrt.LK_UNLCK, 1)
+
+
 def _write_json_atomic(path: Path, data) -> None:
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -607,9 +637,10 @@ class RegistryBatch:
 
     def render_notes(self) -> list[tuple[str, str, str]]:
         """Render every queued entity note from the batch's in-memory registries (D280)."""
+        from watchdog.pipeline import entity_facts, entity_notes
+        self._note_ids |= {e for e in entity_notes.take_stale(self.vault_path) if e in self.entities}
         if not self._note_ids:
             return []
-        from watchdog.pipeline import entity_facts, entity_notes
         index = entity_facts.FactIndex(self.vault_path, self.entities, self.documents,
                                        overrides=self._overrides)
         written = entity_notes.write_entities(self.vault_path, self._note_ids, self.entities,

@@ -315,13 +315,17 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
 
 
 def index_notes(vault: Path, written: list[tuple[str, str, str]], kind: str = "entity") -> None:
-    """Refresh the search indexes for notes just written (best effort, as every writer does)."""
+    """Refresh the search indexes for notes just written (best effort, as every writer does). An
+    embedding failure (the local model is missing) is reported once, not once per note."""
+    embed_ok = True
     for note_path, name, content in written:
-        try:
-            from watchdog.pipeline.embed import add_note
-            add_note(vault, note_path, content)
-        except Exception as e:  # noqa: BLE001
-            print(f"  Warning: embed index update failed for {note_path}: {e}", file=sys.stderr)
+        if embed_ok:
+            try:
+                from watchdog.pipeline.embed import add_note
+                add_note(vault, note_path, content)
+            except Exception as e:  # noqa: BLE001
+                embed_ok = False
+                print(f"  Warning: embed index update failed for {note_path}: {e}", file=sys.stderr)
         try:
             from watchdog.pipeline.fulltext import add_note as fts_add_note
             fts_add_note(vault, note_path, kind, name, content)
@@ -394,6 +398,75 @@ def rebuild(vault: Path, ids=None, documents_too: bool = True, index_search: boo
 def needs_upgrade(vault: Path) -> bool:
     """True when the vault's entity notes were last written in an older format."""
     reg = Path(vault) / ".watchdog" / "registry"
-    if not (reg / "entities.json").exists():
+    if not _read_json_or(reg / "entities.json", {}):
         return False
     return _read_json_or(reg / "registry.json", {}).get("entity_note_format") != NOTE_FORMAT
+
+
+# ── keeping notes current outside a commit ───────────────────────────────────────────────────
+
+STALE_FILE = "notes-stale.json"
+
+
+def _stale_path(vault: Path) -> Path:
+    return Path(vault) / ".watchdog" / "registry" / STALE_FILE
+
+
+def take_stale(vault: Path) -> set[str]:
+    """The entity ids whose notes a write outside the commit could not refresh, cleared."""
+    path = _stale_path(vault)
+    ids = set(_read_json_or(path, []) or [])
+    if ids:
+        path.unlink(missing_ok=True)
+    return ids
+
+
+def refresh(vault: Path, ids) -> bool:
+    """Re-render these entities' notes now if the registry lock is free; otherwise remember them
+    for the next commit pass, which renders them before it persists. Used after a reporter's mark,
+    which takes only the ledger's own lock (D271) and must never wait on a long commit."""
+    from watchdog.pipeline.write_vault import _try_registry_lock, _write_json_atomic
+    vault = Path(vault)
+    ids = set(ids)
+    reg = vault / ".watchdog" / "registry"
+    if not ids or not (reg / "entities.json").exists():
+        return True
+    with _try_registry_lock(reg) as got:
+        if got:
+            _rebuild_unlocked(vault, ids | take_stale(vault), documents_too=False)
+            return True
+    pending = set(_read_json_or(_stale_path(vault), []) or []) | ids
+    _write_json_atomic(_stale_path(vault), sorted(pending))
+    return False
+
+
+def fact_entities(vault: Path, sha: str, fact: dict) -> set[str]:
+    """The current entities one fact of document `sha` is tagged to."""
+    index = entity_facts.FactIndex(vault, marks={})
+    return {r for t in fact.get("entities") or [] if isinstance(t, str)
+            for r in [index.resolve(sha, t)] if r}
+
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m watchdog.pipeline.entity_notes [--vault DIR]`: rebuild every entity and document
+    note of the vault (default: the current folder) from stored data, with no model call. The app
+    runs this as the Maintenance job "Rebuild notes"."""
+    import argparse
+    from watchdog.vault_paths import is_vault
+    parser = argparse.ArgumentParser(description="Rebuild every entity and document note from stored data.")
+    parser.add_argument("--vault", default=".")
+    args = parser.parse_args(argv)
+    vault = Path(args.vault).resolve()
+    if not is_vault(vault):
+        print(f"Error: {vault} is not a Watchdog investigation.", file=sys.stderr)
+        return 1
+    from watchdog import progress
+    progress.emit("stage", stage="rebuild-notes", done=None, total=None)
+    out = rebuild(vault)
+    print(f"Rebuilt {out['entities']} entity notes and {out['documents']} document notes "
+          "from the stored facts. No AI model was used.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

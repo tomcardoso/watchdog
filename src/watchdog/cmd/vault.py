@@ -354,7 +354,7 @@ def cmd_new(args) -> None:
     (vault / ".watchdog" / "registry" / "registry.json").write_text(
         json.dumps(
             {"schema_version": "1", "created_at": now, "last_updated": now,
-             "document_count": 0, "entity_count": 0},
+             "document_count": 0, "entity_count": 0, "entity_note_format": 2},
             indent=2,
         ) + "\n"
     )

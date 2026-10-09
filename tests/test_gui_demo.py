@@ -175,3 +175,43 @@ def test_pdf_writer_makes_a_readable_multipage_pdf(tmp_path):
 def test_pdf_writer_refuses_an_overflowing_page(tmp_path):
     with pytest.raises(ValueError):
         demo_pdf.render_pdf([[("p", "word " * 4000)]], title="x")
+
+
+def test_deleted_notes_rebuild_identically_with_no_model(demo_vault, tmp_path, monkeypatch):
+    """D280: every entity and document note is a view of stored data, including the AI-written
+    summaries (kept in the registry) and the reporter's marks: delete them all, rebuild, and get
+    the same files back, with no model call."""
+    import shutil
+    from watchdog import model_client
+    from watchdog.pipeline import entity_notes
+    vault, _, _ = demo_vault
+    copy = tmp_path / "copy"
+    shutil.copytree(vault, copy)
+    before = {p.relative_to(copy): p.read_text(encoding="utf-8")
+              for d in ("entities", "documents") for p in (copy / d).rglob("*.md")}
+    assert any("✓ verified ^f-" in t for t in before.values())       # marks are in the notes
+    assert any("## Summary (AI-written)" in t for t in before.values())
+    for rel in before:
+        (copy / rel).unlink()
+
+    def no_model(**_kw):
+        raise AssertionError("a rebuild must not call a model")
+    monkeypatch.setattr(model_client, "acomplete_json", no_model)
+    out = entity_notes.rebuild(copy, index_search=False)
+    after = {p.relative_to(copy): p.read_text(encoding="utf-8")
+             for d in ("entities", "documents") for p in (copy / d).rglob("*.md")}
+    assert out["entities"] == len(_registry(vault, "entities.json"))
+    assert after == before
+
+
+def test_entity_note_lists_its_facts_and_a_labelled_ai_summary(demo_vault):
+    vault, _, _ = demo_vault
+    note = (vault / "entities" / "person" / "leonard-pike.md").read_text(encoding="utf-8")
+    summary = note.split("## Summary (AI-written)", 1)[1].split("\n## ", 1)[0]
+    assert "It can be wrong: the facts below are the record." in summary
+    facts = note.split("## Facts", 1)[1].split("\n## ", 1)[0]
+    lines = [ln for ln in facts.splitlines() if ln.startswith("- ")]
+    assert len(lines) >= 10                                  # every document's facts, not just one
+    assert all("[[morgue/" in ln and "#page=" in ln for ln in lines)
+    entry = _registry(vault, "entities.json")["leonard-pike"]
+    assert entry["synthesis"]["by"] == "model" and entry["synthesis"]["fact_refs"]

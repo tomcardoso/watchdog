@@ -2774,6 +2774,13 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
         _batch_exact_fold(vault, shas)
     elif not shas:
         return {"committed": 0, "written": {}}
+    # A vault whose notes predate D280 has them rebuilt from stored data once, before the first
+    # commit that would otherwise mix the two formats. No model call; the older notes' AI prose is
+    # carried into the registry rather than lost.
+    from watchdog.pipeline import entity_notes
+    if entity_notes.needs_upgrade(vault):
+        _say(f"{_DIM}→  rebuilding entity notes in the current format…{_RESET}")
+        entity_notes.rebuild(vault)
     _say(f"{_DIM}→  committing {len(shas)} document{'s' if len(shas) != 1 else ''} "
          f"to the vault…{_RESET}")
     tmp_dir = vault / ".watchdog" / "tmp"

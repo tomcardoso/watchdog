@@ -330,6 +330,14 @@ def mark(vault: Path, fid: str, status: str | None, note: str | None = None,
         data["schema_version"] = _SCHEMA_VERSION
         _save(vault, data)
         render(vault, data=data, docs=docs)
+    # Entity notes show each fact's mark (D280): refresh the notes of the entities this fact is
+    # about, now if no commit holds the registry, else at the next commit.
+    if current is not None and sha is not None:
+        from watchdog.pipeline import entity_notes
+        try:
+            entity_notes.refresh(vault, entity_notes.fact_entities(vault, sha, current))
+        except OSError as e:
+            print(f"  Warning: entity notes not refreshed after the mark: {e}", file=sys.stderr)
     return {"id": fid, **entry}
 
 

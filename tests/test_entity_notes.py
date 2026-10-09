@@ -130,3 +130,64 @@ def test_reporter_notes_survive_every_render(tmp_path):
     text = note.read_text()
     assert text.endswith("## Notes\n\nCall the clerk.\n\n## My own heading\nmore\n")
     assert "- A fact. — [[documents/t|T]], [[morgue/t.pdf#page=1|p. 1]] · not checked" in text
+
+
+def _marked_vault(tmp_path):
+    vault = _vault(tmp_path)
+    sha = "f" * 64
+    (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text(json.dumps({
+        "document": {"sha256": sha, "key_facts": [{"fact": "Paid $5.", "page": 2, "entities": ["x"]}]},
+        "entities": [{"id": "x"}]}))
+    _write(vault, "entities.json", {"x": {"id": "x", "name": "X", "type": "person",
+                                          "appears_in": [sha], "note_path": "entities/person/x"}})
+    _write(vault, "documents.json", {sha: {"title": "T", "filename": "t.pdf",
+                                           "document_note": "documents/t"}})
+    entity_notes.rebuild(vault, index_search=False)
+    fid = verification.fact_ids(sha, [{"fact": "Paid $5.", "page": 2}])[0]
+    return vault, fid
+
+
+def test_a_mark_refreshes_the_entity_note(tmp_path):
+    vault, fid = _marked_vault(tmp_path)
+    note = vault / "entities" / "person" / "x.md"
+    assert "· not checked" in note.read_text()
+    verification.mark(vault, fid, "verified", by="R")
+    assert "Paid $5. — [[documents/t|T]], p. 2 · ✓ verified" in note.read_text()
+
+
+def test_a_mark_during_a_commit_waits_for_that_commit(tmp_path):
+    """A mark never waits on the registry lock (D271): while a commit holds it, the entity is
+    remembered and the commit's next flush renders its note."""
+    from watchdog.pipeline.write_vault import RegistryBatch, _registry_lock
+    vault, fid = _marked_vault(tmp_path)
+    note = vault / "entities" / "person" / "x.md"
+    with _registry_lock(vault / ".watchdog" / "registry"):
+        verification.mark(vault, fid, "disputed", by="R")
+    assert "· not checked" in note.read_text()
+    assert json.loads((vault / ".watchdog/registry" / entity_notes.STALE_FILE).read_text()) == ["x"]
+    with RegistryBatch(vault) as batch:
+        batch._pending = 1
+        batch.flush()
+    assert "· ✗ disputed" in note.read_text()
+    assert not (vault / ".watchdog/registry" / entity_notes.STALE_FILE).exists()
+
+
+def test_an_older_vault_is_upgraded_once(tmp_path):
+    vault, _ = _marked_vault(tmp_path)
+    note = vault / "entities" / "person" / "x.md"
+    note.write_text("---\nid: x\n---\n\n# X\n\n## Summary\n\nOld prose.\n\n## Notes\n\nMine.\n")
+    _write(vault, "registry.json", {"schema_version": "1"})
+    assert entity_notes.needs_upgrade(vault)
+    entity_notes.rebuild(vault, index_search=False)
+    assert not entity_notes.needs_upgrade(vault)
+    text = note.read_text()
+    assert "## Summary (AI-written)\n\nOld prose." in text and "Paid $5." in text
+    assert text.endswith("## Notes\n\nMine.\n")
+
+
+def test_main_rebuilds_the_current_vault(tmp_path, monkeypatch):
+    vault, _ = _marked_vault(tmp_path)
+    (vault / "entities" / "person" / "x.md").unlink()
+    monkeypatch.setattr("watchdog.vault_paths.is_vault", lambda p: True)
+    assert entity_notes.main(["--vault", str(vault)]) == 0
+    assert (vault / "entities" / "person" / "x.md").exists()

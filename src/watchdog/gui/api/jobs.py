@@ -52,6 +52,17 @@ def flags(command: str, options: dict | None = None) -> dict:
     return {"args": jobs.flags_for(command, options)}
 
 
+@method("jobs.rebuildNotes")
+def rebuild_notes(vault: str) -> dict:
+    """Start the Maintenance job that rebuilds every entity and document note from stored data
+    (D280): `entity_notes.main`, the library function, run as a job like any other vault write."""
+    import sys
+    v = require_vault(vault)
+    argv = [sys.executable, "-m", "watchdog.pipeline.entity_notes"]
+    job = jobs.MANAGER.start(v, ["rebuild-notes"], "Rebuild notes", "rebuild-notes", argv=argv)
+    return job.to_dict()
+
+
 @method("action.run")
 def run_action(vault=None, args=None, timeout=None) -> dict:
     return jobs.run_action(_vault(vault), _args(args or []), float(timeout or DEFAULT_ACTION_TIMEOUT))
