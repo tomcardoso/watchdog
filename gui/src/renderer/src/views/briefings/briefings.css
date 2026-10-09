@@ -33,3 +33,9 @@
 .bf-prop dt { font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); text-transform: capitalize; }
 .bf-prop dd { margin: 1px 0 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
 @media (max-width: 900px) { .bf { grid-template-columns: 240px minmax(0, 1fr); } .bf-reader-bar { flex-wrap: wrap; padding: 10px 16px; } .bf-article { padding: 24px 16px 64px; } }
+/* A saved page's Notes section, edited in the app (D288). */
+.bf-notes {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}

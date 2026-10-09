@@ -199,3 +199,10 @@
   flex: none;
   margin-top: 2px;
 }
+/* The version history's size (D288): secondary, so smaller and pushed to the right. */
+.proj-stats > .proj-hist {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+  white-space: nowrap;
+}

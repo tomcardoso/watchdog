@@ -1,0 +1,93 @@
+/* The reporter's Notes section (NotesEditor). */
+.notes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.notes-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.notes-head h3 {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 650;
+}
+.notes-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--text-3);
+}
+.notes-input,
+.notes-view,
+.notes-empty {
+  width: 100%;
+  border-radius: var(--r-lg);
+  font-family: var(--font-read);
+  font-size: var(--fs-read);
+  line-height: 1.6;
+}
+.notes-input {
+  padding: 14px 16px;
+  border: 1px solid var(--accent);
+  box-shadow: var(--focus-ring);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+  user-select: text;
+}
+.notes-input:focus {
+  outline: none;
+}
+.notes-view {
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  background: var(--surface);
+}
+.notes-empty {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed var(--border-strong);
+  background: none;
+  color: var(--text-3);
+  text-align: left;
+  cursor: text;
+}
+.notes-empty:hover {
+  border-color: var(--accent);
+  color: var(--text-2);
+}
+.notes-empty svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.notes-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  min-height: 20px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.notes-foot svg {
+  width: 13px;
+  height: 13px;
+}
+.notes-foot.error {
+  color: var(--danger);
+}
+.notes-foot .ok {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--success);
+}
+.notes-owner {
+  color: var(--text-3);
+}
