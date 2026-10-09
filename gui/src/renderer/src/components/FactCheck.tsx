@@ -138,12 +138,16 @@ export function FactCheck({ id, mark, marks, noteOpen, setNoteOpen }: { id: stri
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             e.stopPropagation()
+            // Back to the fact's row afterwards, so J, K, V, D and C carry on from it.
+            const row = e.currentTarget.closest<HTMLElement>('[data-fact-id]')
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               saveNote()
+              setTimeout(() => row?.focus(), 0)
             } else if (e.key === 'Escape') {
               e.preventDefault()
               setNoteOpen(false)
+              setTimeout(() => row?.focus(), 0)
             }
           }}
           onBlur={saveNote}

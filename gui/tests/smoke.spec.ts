@@ -114,6 +114,20 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // Marking facts by keyboard carries on after a note: Enter saves it and returns to the row.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'entity', id: 'city-of-port-calder' }))
+    const factRow = page.locator('[data-fact-id]').first()
+    await factRow.focus()
+    await page.keyboard.press('v')
+    await expect(factRow).toHaveClass(/is-marked-verified/, { timeout: 10_000 })
+    await page.keyboard.press('n')
+    await page.keyboard.type('Checked against the minutes')
+    await page.keyboard.press('Enter')
+    await page.keyboard.press('c')
+    await expect(factRow).toHaveClass(/is-marked-unverifiable/, { timeout: 10_000 })
+    await page.keyboard.press('c')
+    await expect(factRow).not.toHaveClass(/is-marked-/, { timeout: 10_000 })
+
     // A wikilink written inside code is shown as written, not turned into a link (Briefings →
     // Current state quotes the citation form in code).
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'briefings', path: 'session-primer' }))
