@@ -195,11 +195,6 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             </Empty>
           ) : (
             <>
-              {isPrimer && (
-                <Callout tone="info">
-                  Built by Watchdog from the investigation’s records, with no AI model, each time a conversation with Claude starts. It covers the whole investigation, not only the latest run.
-                </Callout>
-              )}
               {hasChecks && (
                 <div className="bf-check-note">
                   Checkboxes here are display only. Mark items handled in <button className="srch-link" onClick={() => navigate({ view: 'review' })}>Review</button>, or tick them in the file and sync from the Handled tab.
