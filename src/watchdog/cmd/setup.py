@@ -694,8 +694,7 @@ _CONFIGURE_KEYS = {
             "When you mark a fact Verified, Disputed or Can't verify, Watchdog records who\n"
             "  marked it and when, in the investigation's verification ledger and its\n"
             "  verification.md. This is the name it records.\n"
-            "  Leave unset to use your computer account's full name, or its login name\n"
-            "  when the account has no full name."
+            "  Until you set it, Watchdog records \"Journalist\"."
         ),
         "type": "string",
         "default": None,

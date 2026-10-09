@@ -101,14 +101,11 @@ def test_marking_an_unknown_fact_or_bad_status_fails(tmp_path, wdg_home):
     assert V.parse_status("Can't verify") == "unverifiable"
 
 
-def test_reporter_name_setting_and_os_default(tmp_path, wdg_home, monkeypatch):
-    monkeypatch.setattr(V, "_os_full_name", lambda: "Pat Doe")
-    assert V.reporter_name() == "Pat Doe"
+def test_reporter_name_setting_and_neutral_default(tmp_path, wdg_home):
+    # The default is never the computer account's name (it travels with the investigation).
+    assert V.reporter_name() == "Journalist" == V.default_reporter_name()
     (wdg_home / "config.json").write_text(json.dumps({"reporter_name": "Sam Lee"}))
     assert V.reporter_name() == "Sam Lee"
-    monkeypatch.setattr(V, "_os_full_name", lambda: None)
-    monkeypatch.setattr(V.getpass, "getuser", lambda: "slee")
-    assert V.default_reporter_name() == "slee"
 
 
 # ── re-processing ─────────────────────────────────────────────────────────────────────
@@ -289,11 +286,10 @@ def test_export_writes_facts_with_passages_and_marks(rich_vault, wdg_home, monke
     assert "facts.csv" in capsys.readouterr().out
 
 
-def test_settings_offer_your_name_with_the_os_default(wdg_home, monkeypatch):
-    monkeypatch.setattr(V, "_os_full_name", lambda: "Pat Doe")
+def test_settings_offer_your_name_with_a_neutral_default(wdg_home):
     keys = {k["key"]: k for s in call("settings.schema")["sections"] for k in s["keys"]}
-    assert keys["reporter_name"]["default"] == "Pat Doe" and keys["reporter_name"]["kind"] == "text"
+    assert keys["reporter_name"]["default"] == "Journalist" and keys["reporter_name"]["kind"] == "text"
     assert call("settings.set", key="reporter_name", value="  Sam   Lee ")["value"] == "Sam Lee"
     assert V.reporter_name() == "Sam Lee"
     assert call("settings.set", key="reporter_name", value="")["value"] is None
-    assert V.reporter_name() == "Pat Doe"
+    assert V.reporter_name() == "Journalist"

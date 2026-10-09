@@ -116,7 +116,7 @@ Each fact has three buttons. Click one to record your own check, and click it ag
 - **Disputed** — the source, or another record, does not support it.
 - **Can't verify** — you could not confirm or rule it out.
 
-Watchdog records your name and the time with each mark. Once a fact is marked, **Add note** lets you write what you checked it against or why it is in doubt (up to 2,000 characters; Enter saves, Shift+Enter starts a new line, Esc closes the box). Set the name under **Settings → Verification**; see [Your name](configuration.md#verification). Marking changes nothing in the fact itself, and it never calls an AI model.
+Watchdog records your name and the time with each mark. Once a fact is marked, **Add note** lets you write what you checked it against or why it is in doubt (up to 2,000 characters; Enter saves, Shift+Enter starts a new line, Esc closes the box). Set the name under **Settings → Verification**; until you do, it records "Journalist". See [Your name](configuration.md#verification). Marking changes nothing in the fact itself, and it never calls an AI model.
 
 The bar above the facts filters them: **All**, **Not checked**, **No passage** (shown only when some facts have none), **Inferred** and **Figures**, with a count of how many you have checked. Select a fact (click it or tab to it), then use the keyboard:
 
