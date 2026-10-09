@@ -436,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Split {out['split_name']} back out of {out['keep_name']}: {out['documents']} "
           f"document{'s' if out['documents'] != 1 else ''}, {out['facts']} "
           f"fact{'s' if out['facts'] != 1 else ''}. Contradictions recorded on the joined record, "
-          f"your notes and the AI-written summary stay on {out['keep_name']}.")
+          f"your notes and the summary stay on {out['keep_name']}.")
     return 0
 
 

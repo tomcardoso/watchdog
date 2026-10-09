@@ -225,7 +225,7 @@ except the journalist's Notes is the only copy of anything.
 
 | Section | Source | Written by |
 |---|---|---|
-| `## Summary (AI-written)` | registry entry's `synthesis` (summary, analysis, model, date, facts shown/total, citation map) | synthesis (§8) or a `/watchdog-entity` session; labelled, never a fact |
+| `## Summary` | registry entry's `synthesis` (summary, analysis, model, date, facts shown/total, citation map, citation counts) | synthesis (§8) or a `/watchdog-entity` session; citations rendered as checked links (§8.6); no byline (D284), never a fact |
 | `## Facts` | every `key_facts` entry in the committed documents' stored extractions whose tags resolve to the entity | deterministic render: date order (fact date, else document date), document and page link, flags, quote or matched passage, reporter's mark, `^f-<hash>` block id; past 40 facts grouped by document (5 each plus every marked fact; the 40 most recent documents in full, earlier ones one line each) |
 | `## Earlier claims` | registry `legacy_claims` | carried once from a pre-D280 note for documents with no stored extraction |
 | `## Contradictions` | registry ledger, minus handled callouts | reconciliation (§8.5) |
@@ -261,7 +261,7 @@ ones, then the most recent, and a `selection` line says how many it sees. Calls 
 entities (D238). The model returns a summary and an optional analysis, asked to cite fact ids where
 a sentence rests on a fact (uncited framing is allowed). `apply_bundle` stores them in the
 registry's `synthesis` with the model id, counts and the short-to-full citation map, then renders
-the note; checking and linking citations is left to a later step. An entity the model omits keeps
+the note, linking each citation to its fact (§8.6). An entity the model omits keeps
 its synthesis. `/watchdog-entity` (`write_entity.py`) stores a session's summary the same way
 (`by: session`).
 
@@ -308,6 +308,39 @@ contradiction failure after commit only leaves those callouts for a later run.
 
 ---
 
+## 8.6. Fact citations
+
+**Code:** `pipeline/citations.py` (D283).
+
+A citation is a wikilink to a fact's line in its document note, `[[documents/<slug>#^f-<hash>|p. 4]]`
+(the block id is `citations.block_id` of the D271 id; every document note's fact lines carry one).
+Code makes and checks every one; no model ever writes a link a reader sees unchecked.
+
+- **Model prose with short refs** (synthesis, the briefing): the model is shown `[f:3a9c]` refs and
+  cites them; `render_short` replaces each run of refs with ` (p. 2; p. 4)`, each a link, through
+  the stored map (`synthesis.fact_refs`, `.watchdog/briefings/<ts>.json`) and a lookup of the
+  current fact — for a summary, only the entity's own current facts. An unknown ref or a fact that
+  no longer exists is dropped (the sentence stays) and counted (`synthesis.citations`, the briefing's
+  sidecar). A link to a Disputed fact is labelled `, disputed`. Summaries re-render on every note
+  write, so their links follow marks and re-processing; a briefing is rendered once, when written.
+- **Links already in text** (a `/watchdog-entity` summary; contradiction sides): `annotate_prose`
+  drops a dangling link and labels a disputed one; `annotate_callouts` falls back to a plain
+  document link and appends ` · *disputed*`. `resolutions._callout_text` ignores fact fragments and
+  that label, so a callout's id is unchanged by either.
+- **Contradictions**: reconcile may return `a_fact`/`b_fact` (the short refs it was shown);
+  `contradiction.fact_block` resolves each only within the named document, by unique prefix.
+- **Pages a session writes** (`queries/`, `wiki/`, research memos, also briefings and `hot.md`):
+  never rewritten. `check_text`/`check_vault` resolve every link and report found, not found and
+  disputed; the app calls `vault.citations` for each page it renders and shows a dangling one as
+  "source not found", `watchdog check-citations` and Maintenance → Check citations list them all.
+  `watchdog search --json` gives each passage and corpus hit the facts on its page with their
+  `cite` link, so a session cites what it found.
+
+Uncited sentences are never flagged: AI-written text may frame and connect what the cited facts
+say (the owner's call).
+
+---
+
 ## 9. Finalize (`bark`)
 
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
@@ -339,8 +372,12 @@ registry, keyed for idempotent replay (D67).
   into a day (D63). `cmd_rebuild_timeline` is the single renderer of `timeline.md`.
 - **Briefing.** One call over compact per-document results (key facts, entity names, near-dup
   alerts, contradiction flags) and the scratchpads, condensed in steps when the batch is large
-  (D238). `_write_briefing` writes `briefings/<ts>.md` (a counter suffix on collision), `hot.md`
-  and a `log.md` entry. `--skip-briefing` skips the call and those three files (D134).
+  (D238). The key facts are read from the stored extractions as citable lines
+  (`_briefing_cited_facts`: a short ref unique across the batch, date, page, warnings and the
+  reporter's mark, Disputed labelled, D283). `_write_briefing` renders the model's `[f:…]`
+  citations as links (§8.6) and writes `briefings/<ts>.md` (a counter suffix on collision),
+  `hot.md`, a `log.md` entry and `.watchdog/briefings/<ts>.json` (the ref map and citation
+  counts). `--skip-briefing` skips the call and those files (D134).
 - **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
   `watchdog review` (`cmd/review.py`) steps through the open ones, plus near-duplicate documents
@@ -389,7 +426,7 @@ lists them as "Possible duplicate documents".
 incoming/                    drop zone for chew; incoming/failed/ and incoming/skipped/ are set aside (D266)
 context/                     background material for the context interview (D266)
 entities/<type>/<id>.md      entity notes; <type> is the closed vocabulary (D105)
-documents/<slug>.md          document notes (slug gains -<sha6> when another document owns it, D241)
+documents/<slug>.md          document notes (slug gains -<sha6> when another document owns it, D241); each fact line ends in its ^f- block id, the target of every fact citation (D283)
 morgue/<entity>/<type>/…     originals + a <name>.md full-text sibling (D26); same -<sha6> rule
 timeline.md                  rendered global timeline
 briefings/                   briefings, leads, alerts, research memos
@@ -407,6 +444,7 @@ queries/ wiki/               session-written findings and threads
   extracted/<sha>.json       staged, validated extractions; kept, and the source every entity note is rendered from (D280)
   timeline/                  raw and canonical NDJSON events
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
+  briefings/<ts>.json        a briefing's short-ref → D271 id map and citation counts (D283)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   processing-state.json      present while a run is in progress
@@ -527,11 +565,11 @@ same content to the user's own model server; every other backend sends it to tha
 | verify | once per document or section, when enabled | the extraction prompt plus its facts | vault data |
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large) | candidate pairs; each recurring entity's attributed claims and roles | raw text |
-| entity-synthesis | per 25 recurring entities touched this run | each entity's current prose and fact fragments | timeline, relationships, contradictions |
+| entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
 | request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
-| briefing | once per run | brief, compact per-document results, alerts, contradiction flags, scratchpads | raw text; full notes |
+| briefing | once per run | brief, compact per-document results with citable fact lines, alerts, contradiction flags, scratchpads | raw text; full notes |
 
 ---
 
@@ -680,7 +718,15 @@ noted as such.
 - **I13 — Entity notes are views of stored facts; model prose never replaces a fact.** An entity
   note's facts are rendered by code from the stored extractions on every write, and the note can be
   rebuilt from stored data with no model call. Model prose is stored separately (the registry's
-  `synthesis`), shown under a heading that says it is AI-written, and is never an input to
-  synthesis or to the contradiction check, which read facts. *History: D26, D118, D280.* Guarded by
+  `synthesis`), shown under the note's Summary heading (no byline since D284), and is never an input to
+  synthesis or to the contradiction check, which read facts. *History: D26, D118, D280, D284.* Guarded by
   `tests/test_invariants.py::test_I13_…` and
   `tests/test_gui_demo.py::test_deleted_notes_rebuild_identically_with_no_model`.
+- **I14 — A rendered citation always resolves to a stored fact.** Wherever Watchdog shows or writes
+  a fact citation as a link — an entity summary, a briefing, `hot.md`, a contradiction side, a page
+  the app renders — code has resolved it to a fact that exists now; one that does not resolve is
+  dropped (generated text) or shown as "source not found" (a page a session wrote, never rewritten).
+  A short ref resolves only through the map stored with the text that cited it, and a contradiction
+  side only within its named document. Uncited sentences are allowed and never flagged; a Disputed
+  fact is cited and labelled, never hidden. *History: D271, D280, D283.* Guarded by
+  `tests/test_citations.py` and `tests/test_gui_demo.py::test_demo_summaries_cite_facts_and_every_citation_resolves`.

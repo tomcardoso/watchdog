@@ -60,7 +60,7 @@ Use the Read, Glob and Grep tools for files rather than shell pipelines, and pat
 | `/watchdog-query <question>` | Answer a question from the vault; file substantive answers to `queries/` |
 | `/watchdog-surface` | Find connections and anomalies across the vault |
 | `/watchdog-wiki <angle>` | Create or update investigation thread pages |
-| `/watchdog-entity <id>` | Re-write an entity's AI-written summary and timeline from every document it appears in |
+| `/watchdog-entity <id>` | Re-write an entity's summary and timeline from every document it appears in |
 | `/watchdog-health` | Check vault integrity |
 | `/watchdog-research` | Research open questions on the web (started from the app's Web research screen) |
 

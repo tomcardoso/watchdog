@@ -20,8 +20,8 @@ the document at the fact and shows it on hover). This module makes and checks th
   without changing the page. The app runs it when it shows a page; `watchdog check-citations`
   runs it as a maintenance check.
 
-Uncited sentences are allowed and never flagged: AI-written text is labelled as such, and may
-connect or frame what the cited facts say. Disputed facts are never hidden, only labelled.
+Uncited sentences are allowed and never flagged: model-written text may connect or frame what
+the cited facts say (the owner's call). Disputed facts are never hidden, only labelled.
 Nothing here calls a model or writes a file.
 """
 

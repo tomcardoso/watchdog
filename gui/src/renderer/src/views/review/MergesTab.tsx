@@ -172,7 +172,7 @@ function LogRow({ m }: { m: MergeLogEntry }) {
     const ok = await window.watchdog.dialog.confirm({
       title: `Split ${m.merged.name || m.merged.id} back out of ${keepName}?`,
       message: `The facts, documents and relationships that came with ${m.merged.name || m.merged.id} go back to a record of their own, and the two are marked "Not the same" so they are not merged again automatically.`,
-      detail: `Contradictions recorded on the joined record, your notes and the AI-written summary stay on ${keepName}. Move anything in your notes by hand if it belongs to the other record.`,
+      detail: `Contradictions recorded on the joined record, your notes and the summary stay on ${keepName}. Move anything in your notes by hand if it belongs to the other record.`,
       confirm: 'Undo merge'
     })
     if (!ok) return
