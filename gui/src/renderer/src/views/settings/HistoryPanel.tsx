@@ -25,7 +25,7 @@ export function HistoryPanel() {
     setBusy(true)
     try {
       const r = await call('history.clear', { vault })
-      invalidate('history.')
+      invalidate('history.', 'projects.')
       toast({ kind: 'success', title: 'History cleared', body: `${plural(r.removed_versions, 'version')} removed, ${fmtBytes(r.freed_bytes)} freed. The current files were kept.` })
       setConfirm(false)
     } catch (e) {

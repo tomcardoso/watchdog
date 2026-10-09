@@ -403,7 +403,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
       </section>
 
       {pf && !pf.auth.ok && (
-        <Callout tone="warning" title="No model sign-in is set up" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings' }) }}>Open Settings</Button>}>
+        <Callout tone="warning" title="No model sign-in is set up" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings', tab: 'auth' }) }}>Open Settings</Button>}>
           {pf.auth.reason ?? 'Reading works without it, but extraction needs a sign-in or API key.'}
         </Callout>
       )}
@@ -614,7 +614,7 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
         </>
       )}
       {!pf.auth.ok && (
-        <Callout tone="danger" title="Sign-in needed before this can run" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings' }) }}>Open Settings</Button>}>
+        <Callout tone="danger" title="Sign-in needed before this can run" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings', tab: 'auth' }) }}>Open Settings</Button>}>
           {pf.auth.reason ?? 'No usable sign-in or API key was found for the models above.'}
         </Callout>
       )}
