@@ -50,7 +50,8 @@ export function NotesEditor({
   const key = draftKey(vault, path)
   const draft = useDrafts((s) => s.drafts[key])
   const savedAt = useDrafts((s) => s.savedAt[key])
-  const [editing, setEditing] = useState(!!draft)
+  // Back on a note whose save failed or never started: open it for editing, with the words kept.
+  const [editing, setEditing] = useState(draft?.status === 'error' || draft?.status === 'dirty')
   const [text, setText] = useState(draft?.text ?? saved)
   const area = useRef<HTMLTextAreaElement>(null)
 
@@ -137,7 +138,6 @@ export function NotesEditor({
             Saved
           </span>
         )}
-        <span className="spacer" />
         <span className="notes-owner">
           {editing ? 'Markdown works here: **bold**, lists, and [[links]] to notes. ' : ''}
           Only you write here. {promise}

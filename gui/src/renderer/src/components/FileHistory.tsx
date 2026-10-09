@@ -261,8 +261,15 @@ function RemoveConfirm({ vault, history, version, at, onClose, onDone }: { vault
 }
 
 export function removalSummary(r: HistoryRemoval): string {
-  const parts = [r.purged ? `${plural(r.purged, 'stored text')} deleted from this computer (${fmtBytes(r.freed_bytes)}).` : 'No stored text needs deleting.']
-  if (r.shared.length) parts.push(`${plural(r.shared.length, 'version')} had the same text as a version that stays, so that text is still in the history.`)
+  const will = r.dry_run
+  const copies = plural(r.purged, 'stored copy', 'stored copies')
+  const parts = [
+    r.purged
+      ? `${copies} of the text ${will ? 'will be' : r.purged === 1 ? 'was' : 'were'} deleted from this computer (${fmtBytes(r.freed_bytes)}).`
+      : `No stored text ${will ? 'needs' : 'needed'} deleting.`
+  ]
+  if (r.shared.length)
+    parts.push(`${plural(r.shared.length, 'version')} ${r.shared.length === 1 ? 'has' : 'have'} the same text as a version that stays, so that text ${will ? 'will stay' : 'is still'} in the history.`)
   return parts.join(' ')
 }
 
@@ -288,7 +295,7 @@ export function DiffView({ d, against }: { d: FileDiff; against: Against }) {
     const before = against === 'current' ? 'this version' : d.before.version ? 'the version before' : null
     const after = against === 'current' ? 'the file now' : 'this version'
     const gap = against === 'previous' ? d.removed_between ?? 0 : 0
-    const removed = gap ? ` ${plural(gap, 'version')} between them ${gap === 1 ? 'was' : 'were'} removed from the history, so the changes shown include ${gap === 1 ? 'its' : 'theirs'}.` : ''
+    const removed = gap ? ` ${plural(gap, 'version')} between them ${gap === 1 ? 'was' : 'were'} removed from the history, so these changes include the ones ${gap === 1 ? 'it' : 'they'} made.` : ''
     if (!before)
       return gap
         ? `The earliest version still in the history; ${plural(gap, 'earlier version')} ${gap === 1 ? 'was' : 'were'} removed. Everything in it is shown as added.`
