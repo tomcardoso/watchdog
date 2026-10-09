@@ -57,6 +57,18 @@ test('every screen renders against the demo investigation', async () => {
       w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
     }, slug)
 
+    // pdf.js's image decoders (JPEG 2000, JBIG2) are shipped next to the renderer and load from it;
+    // without them a scanned page draws blank.
+    const wasm = await page.evaluate(() => new Promise<{ status: number; bytes: number }>((done) => {
+      const x = new XMLHttpRequest()
+      x.open('GET', new URL('pdfjs/wasm/openjpeg.wasm', document.baseURI).href)
+      x.responseType = 'arraybuffer'
+      x.onload = () => done({ status: x.status, bytes: (x.response as ArrayBuffer)?.byteLength ?? 0 })
+      x.onerror = () => done({ status: -1, bytes: 0 })
+      x.send()
+    }))
+    expect(wasm.bytes, 'openjpeg.wasm reachable from the renderer').toBeGreaterThan(100_000)
+
     // wdfile:// answers byte ranges, which a recording needs to seek (D273).
     const clip = join(root, 'vault', 'context', 'range-check.mp3')
     writeFileSync(clip, Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 256)))

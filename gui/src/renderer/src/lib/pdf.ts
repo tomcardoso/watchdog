@@ -12,13 +12,25 @@ export function cssVar(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
 }
 
+// Where pdf.js finds its run-time pieces (copied next to the renderer by electron.vite.config.ts):
+// without `wasmUrl`, JPEG 2000 and JBIG2 images, common in scanned records, decode to nothing and
+// the page draws blank.
+const asset = (dir: string) => new URL(`pdfjs/${dir}/`, document.baseURI).href
+const PDFJS_ASSETS = {
+  wasmUrl: asset('wasm'),
+  cMapUrl: asset('cmaps'),
+  cMapPacked: true,
+  standardFontDataUrl: asset('standard_fonts'),
+  iccUrl: asset('iccs')
+}
+
 const docs = new Map<string, Promise<PDFDocumentProxy>>()
 
 /** Open (and memoize) a PDF by absolute path. */
 export function openPdf(absPath: string): Promise<PDFDocumentProxy> {
   let p = docs.get(absPath)
   if (!p) {
-    p = pdfjs.getDocument({ url: window.watchdog.files.url(absPath) }).promise
+    p = pdfjs.getDocument({ url: window.watchdog.files.url(absPath), ...PDFJS_ASSETS }).promise
     p.catch(() => docs.delete(absPath))
     docs.set(absPath, p)
     if (docs.size > 24) {
