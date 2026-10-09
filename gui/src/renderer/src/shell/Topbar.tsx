@@ -40,7 +40,7 @@ export function Topbar() {
       />
       {project && (
         <WaitTip reason={gate.reason}>
-          <Button variant="primary" icon={FilePlus2} disabled={!gate.ready} onClick={() => openAdd()}>
+          <Button variant="primary" icon={FilePlus2} disabled={!gate.ready || project.access === false} onClick={() => openAdd()}>
             Add documents
           </Button>
         </WaitTip>

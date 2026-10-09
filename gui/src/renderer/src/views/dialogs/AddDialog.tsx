@@ -109,7 +109,7 @@ export function AddDialog() {
   }, [vault])
 
   // Whatever is already waiting in the investigation.
-  const { data: pf0, isLoading: pfLoading } = useRpc('ingest.preflight', visible && phase === 'choose' ? { vault, options: cleanOptions(options) } : null, { staleTime: 0 })
+  const { data: pf0, isLoading: pfLoading, error: pfError } = useRpc('ingest.preflight', visible && phase === 'choose' ? { vault, options: cleanOptions(options) } : null, { staleTime: 0 })
 
   const gatherFlags = async (cmd: 'add' | 'chew', o: RunOptions) => flagsFor(cmd, cleanOptions(o))
 
@@ -219,7 +219,7 @@ export function AddDialog() {
         setRetry={setRetry}
         options={options}
         setOptions={setOptions}
-        error={error}
+        error={error || (pfError ? errorMessage(pfError) : '')}
       />
       </>
     )
@@ -229,7 +229,7 @@ export function AddDialog() {
           {engine.ready ? 'Reading files stays on this computer. You confirm before anything goes to a model.' : 'Files you choose stay listed here, ready to read when setup finishes.'}
         </span>
         <Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !engine.ready} loading={busy} onClick={() => void begin()}>
+        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !!pfError || !engine.ready} loading={busy} onClick={() => void begin()}>
           Read documents
         </Button>
       </>
@@ -389,6 +389,8 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         <div className="add-label">Already waiting</div>
         {loading ? (
           <Skeleton h={18} w="60%" />
+        ) : !pf ? (
+          <div className="faint">Watchdog could not check this investigation. The reason is below.</div>
         ) : waiting.length ? (
           <ul className="add-waiting">{waiting.map((w) => <li key={w}>{w}</li>)}</ul>
         ) : (
