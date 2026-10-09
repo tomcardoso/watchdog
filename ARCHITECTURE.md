@@ -472,6 +472,7 @@ queries/ wiki/               session-written findings and threads
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
+  settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290); absent until one is chosen
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
   registry/
@@ -499,6 +500,12 @@ the function `watchdog verify-fact` calls (I10).
 **Recordings in the registry (D273).** A recording's `documents.json` entry carries the `media`
 block from pre-processing (stamped on the document at extraction): readers use the fields they
 know and ignore the rest, whatever its `format`.
+
+**Investigation settings (D290).** `.watchdog/settings.json` (`schema_version` 1) holds what belongs
+to the investigation rather than the computer, and travels with the folder: today only `keys`,
+`{provider: {id, label}}`, the labelled key each provider bills here. It is written by
+`auth.choose_key` (the app's Billing card, `auth.chooseKey`), atomically, outside the registry lock
+and history (it is not pipeline state, and a key choice is not a version of the investigation).
 
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
 through `vault_paths.py` helpers; the same migration renames an older vault's `.chew-lock`,
@@ -606,6 +613,17 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
   Sectioned documents fall back to the provider's live backend.
 - **Setup (D95, D235).** How Claude Code signs in and which provider handles ingestion are asked
   separately.
+- **Keys (D290).** `~/.watchdog/credentials.json` (0600, written atomically) holds per provider
+  either one key (the pre-D290 string, read as one key named "Default") or `{default, items: [{id,
+  label, key}]}`. `auth.resolve_key(provider, vault)` is the one resolver: the environment variable,
+  else the investigation's choice (by id, then by name, so a shared folder finds the same-named key
+  on another computer), else the default. A choice that resolves to nothing raises `KeyChoiceError`
+  (I16). A run process scopes every lookup to its vault (`auth.use_investigation`, set by
+  `_begin_usage_run`), so `model_client`, the batch path and `recheck` need no vault argument;
+  `dig`/`bark`/`add` and the re-check check up front (`auth.check_run_keys`); the app's Ask Claude
+  and Research sessions pass the resolved Anthropic key as `ANTHROPIC_API_KEY` in API-key mode.
+  Each usage record names the paying key by label (`key_label`, from the key actually sent, never
+  the key), in the vault's usage files and `telemetry.db`.
 - **Record skills (D21).** Global: the package's `skills/records/` plus `~/.watchdog/skills/records/`
   (user skills override by name). Read directly, never copied into a vault.
 - **Claude Code commands.** `/watchdog-context`, `-entity`, `-query`, `-surface`, `-wiki`, `-health`,
@@ -783,7 +801,8 @@ noted as such.
   keeps the CLI's gates (the public-records acknowledgement, confirmations before irreversible
   operations). An app-only feature with no CLI command (version history's restore, removal and clear, D286, D288)
   may change the vault through a library function directly, under the same folder access (D268),
-  the operation's locks and I7's commit discipline. The command line is expected to be removed
+  the operation's locks and I7's commit discipline; so does the investigation's choice of billing
+  key (`auth.choose_key`, D290). The command line is expected to be removed
   eventually; new features need not gain a command. *History: D265, D271, D286, D288.*
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
@@ -819,3 +838,10 @@ noted as such.
   sends facts unlabelled).
   A mark counts only while it matches the fact's words and page (D271). *History: D280, D283,
   D285.* Guarded by `tests/test_gui_demo.py::test_a_disputed_fact_is_shown_labelled_on_every_surface`.
+- **I16 — A model call never bills an account the investigation did not choose.** When an
+  investigation names a labelled key for a provider and this computer has no key by that id or name,
+  every path that would send that provider's key (processing, post-processing, the batch path, the
+  contradiction re-check, Ask Claude and Research in API-key mode) stops before any call and names the
+  missing key; none falls back to the default or another key. An environment variable still
+  overrides, as it overrides everything. *History: D290.* Guarded by
+  `tests/test_invariants.py::test_I16_…` and `tests/test_labelled_keys.py`.

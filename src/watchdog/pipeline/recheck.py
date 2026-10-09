@@ -308,6 +308,9 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
     warn = warn or (lambda m: print(m, file=sys.stderr))
     if model is None:
         backend, model, effort = finalizer_stage()
+    # The investigation's chosen key must be on this computer before any call (D290).
+    from watchdog.cmd.auth import check_run_keys
+    check_run_keys(vault, [backend])
     lock = processing_lock(vault)
     if not acquire_or_take_stale(lock, f"pid: recheck-contradictions\nstarted_at: {_iso_now()}\n",
                                  STALE_SECONDS):
@@ -363,6 +366,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
 def main(argv: list[str] | None = None) -> int:
     """`python -m watchdog.pipeline.recheck (--entity ID … | --all) [--vault DIR]`, the job the
     app's "Re-check contradictions" runs. No terminal command calls it (D287)."""
+    from watchdog.cmd.auth import KeyChoiceError
     from watchdog.vault_paths import is_vault
     parser = argparse.ArgumentParser(description="Re-check stored facts for contradictions.")
     parser.add_argument("--vault", default=".")
@@ -377,6 +381,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         out = run(vault, None if args.all else args.ids)
     except Busy as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+    except KeyChoiceError as e:      # the investigation's chosen key isn't here (D290)
         print(f"Error: {e}", file=sys.stderr)
         return 1
     except SystemExit as e:          # a bad model setting, from the shared resolvers

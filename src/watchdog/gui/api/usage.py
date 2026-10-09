@@ -46,7 +46,7 @@ def _corpus(vault: Path) -> dict | None:
 
 @method("usage.runs")
 def runs(vault: str) -> dict:
-    from watchdog.cmd.usage import _STAGE, _run_backends, _run_totals, _subscription_note
+    from watchdog.cmd.usage import _STAGE, _run_backends, _run_totals, _subscription_note, cost_by_key
     from watchdog.pipeline.orchestrate import usage_files
 
     v = require_vault(vault)
@@ -64,7 +64,7 @@ def runs(vault: str) -> dict:
             "cache_read_tokens": t["cache_read_tokens"], "cache_write_tokens": t["cache_write_tokens"],
             "cost_usd": t["cost_usd"], "latency_s": t["latency_s"],
             "backends": _run_backends(calls), "subscription": _subscription_note(calls) is not None,
-            "stages": stages,
+            "stages": stages, "by_key": cost_by_key(calls),
         })
     rows.sort(key=lambda r: r["ts"], reverse=True)
     return {"runs": rows, "corpus": _corpus(v)}
@@ -82,7 +82,7 @@ def _call_row(c: dict) -> dict:
         "latency_s": c["latency_s"], "cost_usd": c["cost_usd"],
         "cost_per_page": (c["cost_usd"] / pages) if pages else None,
         "api_ms": c.get("api_ms"), "num_turns": c.get("num_turns"),
-        "reasoning_tokens": c.get("reasoning_tokens"),
+        "reasoning_tokens": c.get("reasoning_tokens"), "key_label": c.get("key_label"),
     }
 
 
@@ -103,7 +103,7 @@ def run(vault: str, ts: str | None = None) -> dict:
     """One run's breakdown by stage (latest when `ts` is omitted), as `watchdog usage` prints it."""
     from watchdog.cmd.usage import (
         _STAGE, _STAGE_ORDER, _batch_lifecycle_note, _peak_concurrency, _stage_backends,
-        _stage_models, _subscription_note, _wall_span,
+        _stage_models, _subscription_note, _wall_span, cost_by_key,
     )
     from watchdog.pipeline.orchestrate import usage_files
 
@@ -151,6 +151,7 @@ def run(vault: str, ts: str | None = None) -> dict:
         "stages": stages,
         "totals": totals,
         "subscription_note": _subscription_note(calls),
+        "by_key": cost_by_key(calls),
         "corpus": corpus,
         "cost_per_page": (totals["cost_usd"] / pages) if pages else None,
     }

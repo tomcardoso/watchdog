@@ -234,6 +234,16 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
     return "\n".join(lines)
 
 
+def _require_investigation_keys(vault: Path, backends) -> None:
+    """Stop before any model call when the investigation chose a labelled key this computer
+    doesn't have for a provider the run would use — never bill another account instead (D290)."""
+    from watchdog.cmd.auth import KeyChoiceError, check_run_keys
+    try:
+        check_run_keys(vault, backends)
+    except KeyChoiceError as e:
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {e}\n")
+
+
 def _preview_ingest(vault: Path, args) -> tuple[str, str, dict] | None:
     """Read-only preview of what an ingest run would do — the doc/page/token cost estimate and
     which models would run each stage — shown before any ingest confirm prompt, mirroring
@@ -878,6 +888,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                      f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
     else:
         a = {"mode": None}
+    _require_investigation_keys(vault, (extract_backend, post_backend, classify_backend,
+                                        *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)))
 
     extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
                              default=defaults.EXTRACTOR_EFFORT, backend=extract_backend, model=extract_model)
@@ -1382,7 +1394,7 @@ def cmd_finalize(args) -> dict | None:
         if a["mode"] == "none":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
                      f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
-
+    _require_investigation_keys(vault, stage_backends)
 
     return _run_finalize(vault, post_model, post_effort, post_backend,
                  skip_briefing=getattr(args, "skip_briefing", False),

@@ -409,3 +409,10 @@
   color: var(--text-2);
   line-height: 1.6;
 }
+.home-billing h3 { display: flex; align-items: center; gap: 8px; }
+.home-billing h3 svg { width: 15px; height: 15px; color: var(--text-3); }
+.home-billing-sub { margin: -4px 12px 8px; color: var(--text-2); font-size: var(--fs-sm); }
+.home-billing-row { display: flex; flex-direction: column; gap: 4px; padding: 6px 12px 8px; }
+.home-billing-label { font-weight: 560; font-size: var(--fs-sm); }
+.home-billing-row .select { width: 100%; }
+.home-billing-note { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }

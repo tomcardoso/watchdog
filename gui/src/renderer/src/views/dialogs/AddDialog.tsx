@@ -11,6 +11,7 @@ import { basename, fmtCost, plural } from '@renderer/lib/format'
 import { flagsFor, startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
+import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import { progressText, STAGE_LABELS } from '@renderer/shell/JobDock'
@@ -158,7 +159,7 @@ export function AddDialog() {
       const blocked = [...pipe.chew_failed.map((f) => ({ name: f.name, reason: null as string | null })), ...pipe.skipped.map((f) => ({ name: f.name, reason: f.reason }))]
       setGate({ pf, blocked })
       setBusy(false)
-      const auto = pf.auto_approve.enabled && pf.auto_approve.approve && pf.auth.ok
+      const auto = pf.auto_approve.enabled && pf.auto_approve.approve && pf.auth.ok && !billingBlocked(pf.billing)
       const somethingToRun = countFor(pf, retry, dirs.length) > 0 || !!pf.pending_finalization || pf.staged > 0
       if (auto && somethingToRun) {
         setAutoNote(true)
@@ -268,7 +269,7 @@ export function AddDialog() {
         {nothing ? (
           <Button variant="primary" onClick={close}>Close</Button>
         ) : (
-          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready} onClick={() => void run(gate.pf, folders)}>
+          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing)} onClick={() => void run(gate.pf, folders)}>
             Acknowledge and add
           </Button>
         )}
@@ -403,6 +404,8 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
           </label>
         )}
       </section>
+
+      {pf && <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />}
 
       {pf && !pf.auth.ok && (
         <Callout tone="warning" title="No model sign-in is set up" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings', tab: 'auth' }) }}>Open Settings</Button>}>
@@ -599,6 +602,8 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
             <ShieldAlert />
             <pre>{pf.warning_text.trim()}</pre>
           </div>
+
+          <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />
 
           <div>
             <div className="add-label">Where the text goes</div>

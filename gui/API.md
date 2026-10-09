@@ -240,7 +240,7 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 
 | Method | Params | Result |
 |---|---|---|
-| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` |
+| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290) |
 | `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null}` |
 
 ```
@@ -260,8 +260,19 @@ Preflight = {
   auth: {mode: "subscription"|"api-key"|"none"|null, ok: bool, reason|null},
   models: [{stage: "classifier"|"extractor"|"finalizer"|"finalizer:<stage>", backend, model, effort|null, label}],
   auto_approve: {enabled: bool, approve: bool, blocker|null},  // ingest._auto_approve_verdict
-  warning_text: string               // the public-records warning, plain text, no ANSI
+  warning_text: string,              // the public-records warning, plain text, no ANSI
+  billing: [Billing]                 // which named key pays, per provider the run sends a key to
 }
+
+// D290. A key's name, never the key. `missing`: the investigation chose a key this computer
+// lacks; the run stops before any call, and `message` says which and where to fix it.
+Billing = {provider, provider_label, label|null, source: "env"|"chosen"|"default"|"none",
+           missing: bool, message|null, several: bool}
+LabelledKey = {id, label, masked, default: bool, users?: [investigation name]}
+InvestigationKeys = {claude_mode, providers: [{provider, provider_label, keys: [LabelledKey],
+  chosen: {id, label}|null, resolved_label|null, source, missing, message|null,
+  env: bool, used: bool}]}           // `used`: a configured stage (or Ask Claude) uses it
+KeyCost = {label|null, cost_usd, calls}   // cmd/usage.cost_by_key, most expensive first
 ```
 
 `RunOptions` → CLI flags is done by the **app** when it builds a job's `args`; the server exposes
@@ -283,7 +294,7 @@ A job is `python -m watchdog <args…>` run with the vault as its working direct
 | `jobs.flags` | `{command: "add"\|"dig"\|"bark"\|"chew", options: RunOptions}` | `{args: string[]}` |
 | `jobs.rebuildNotes` | `{vault}` | `Job` — Maintenance → "Rebuild notes": rewrites every entity and document note from stored data with no model call (`python -m watchdog.pipeline.entity_notes`, the library function, D280); waits for the full engine like `reindex` |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge" (`python -m watchdog.pipeline.merge_undo <id>`, D280). Errors: `cannot_undo` with the reason, `not_found` |
-| `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): `python -m watchdog.pipeline.recheck --entity <id>…\|--all` (D287). Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
+| `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): `python -m watchdog.pipeline.recheck --entity <id>…\|--all` (D287). Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
 | `action.run` | `{vault\|null, args: string[], timeout?: seconds}` | `{code, stdout, stderr}` — a short, synchronous command (rename, archive, unlock…) |
 
 ```
@@ -316,7 +327,7 @@ RecheckEstimate = {
 
 | Method | Params | Result |
 |---|---|---|
-| `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287). The app shows it and asks before `jobs.recheckContradictions` |
+| `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287), plus `billing: Billing[]` (D290). The app shows it and asks before `jobs.recheckContradictions` |
 
 ## search
 
@@ -372,10 +383,15 @@ sweeps and `leads` run as jobs.
 | `settings.schema` | — | `{sections: [{title, blurb, keys: SettingKey[]}]}` |
 | `settings.set` | `{key, value: string}` | `{key, value, display}` — validated by the CLI's `_coerce_value`; a bad value raises `RpcError` (code `bad_value`) with the CLI's message. An empty value clears a text/model key to its default. A secret's `value` is `null` and its `display` masked |
 | `settings.models` | — | `{models: [{value, label, id, provider, backend (null for Claude tiers), input_per_mtok\|null, output_per_mtok\|null, context_window\|null, efforts: string[], notes\|null}], efforts: string[]}` — for model pickers |
-| `auth.status` | — | `{claude: {mode, logged_in, reason\|null, env_key_set, key_masked\|null, key_source}, stages: [{stage, config_key, value, provider, ready, billing\|null}], keys: [{provider, masked, in_use: "in use"\|"unused"\|"inactive", detail, source: "stored"\|"env"}], base_urls: [{provider, url}], providers: [{provider, label, env, requires_key, base_url_setting\|null, base_url\|null, ready}]}` |
+| `auth.status` | — | `{claude: {mode, logged_in, reason\|null, env_key_set, key_masked\|null, key_source, key_label\|null}, stages: [{stage, config_key, value, provider, ready, billing\|null}], keys: [{provider, masked, in_use: "in use"\|"unused"\|"inactive", detail, source: "stored"\|"env"}], base_urls: [{provider, url}], providers: [{provider, label, env, requires_key, base_url_setting\|null, base_url\|null, ready}], key_sets: {[provider]: [LabelledKey]}}` — `keys` describes each provider's default key; `key_sets` lists every stored key (D290). `claude.key_label` names the default Anthropic key when there are several |
 | `auth.setAnthropicMode` | `{mode: "subscription"\|"api-key", key?}` | `auth.status` result plus `warning\|null` (as do `setKey`, `deleteKey`, `setBaseUrl`) |
-| `auth.setKey` | `{provider, key}` | `auth.status` result |
-| `auth.deleteKey` | `{provider}` | `auth.status` result |
+| `auth.setKey` | `{provider, key, id?}` | `auth.status` result — without `id`, replaces the default key's secret (a provider with none gets one named "Default"); with `id`, that key's secret, keeping its name |
+| `auth.deleteKey` | `{provider, id?}` | `auth.status` result — with `id`, that one key (the next becomes default if it was); without, every stored key for the provider |
+| `auth.addKey` | `{provider, label, key, make_default?: false}` | `auth.status` result plus `id` — another named key (D290); the provider's first key becomes its default. `bad_params` for an empty, over-long (40), non-plain or duplicate name |
+| `auth.renameKey` | `{provider, id, label}` | `auth.status` result — same name rules |
+| `auth.setDefaultKey` | `{provider, id}` | `auth.status` result |
+| `auth.investigationKeys` | `{vault}` | `InvestigationKeys` — per provider, this computer's keys (masked), the investigation's choice and which key will pay |
+| `auth.chooseKey` | `{vault, provider, id: string\|null}` | `InvestigationKeys` — records the investigation's key for `provider` in its `.watchdog/settings.json` (id and name, never the key); `null` returns it to the default (D290) |
 | `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result — an empty `url` removes it |
 | `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
 | `skills.read` | `{name}` | `{name, text}` |
@@ -393,8 +409,8 @@ SettingKey = {key, short, help, is_set: bool, default, current (null for secrets
 
 | Method | Params | Result |
 |---|---|---|
-| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, backends, subscription: bool, stages: {[stage]: cost_usd}}], corpus: {documents, pages}\|null}` newest first |
-| `usage.run` | `{vault, ts?}` | `{ts, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null, peak_concurrency, batch_note\|null}], totals, subscription_note\|null, corpus, cost_per_page\|null}` (latest when `ts` omitted; `ts` is the timestamp in `usage-<ts>.json`, matched as a substring; error `no_runs` when none exist) |
+| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, backends, subscription: bool, stages: {[stage]: cost_usd}, by_key: [KeyCost]}], corpus: {documents, pages}\|null}` newest first |
+| `usage.run` | `{vault, ts?}` | `{ts, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null, peak_concurrency, batch_note\|null}], totals, subscription_note\|null, by_key: [KeyCost], corpus, cost_per_page\|null}` — each call row carries `key_label\|null` (latest when `ts` omitted; `ts` is the timestamp in `usage-<ts>.json`, matched as a substring; error `no_runs` when none exist) |
 
 ## research
 
@@ -412,7 +428,7 @@ run through the Claude Agent SDK in the vault's folder, so the vault's own `.cla
 
 | Method | Params | Result |
 |---|---|---|
-| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built as the CLI builds it (`ask.prompt_for`, `/watchdog-context`, `/watchdog-research <q>`) |
+| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built as the CLI builds it (`ask.prompt_for`, `/watchdog-context`, `/watchdog-research <q>`). In API-key mode the session runs on the investigation's chosen Anthropic key, passed as `ANTHROPIC_API_KEY` (D290); `key_missing` when that key is not on this computer (also from `chat.resume`) |
 | `chat.send` | `{session, text}` | `{ok}` |
 | `chat.interrupt` | `{session}` | `{ok}` |
 | `chat.close` | `{session}` | `{ok, research_queued: int}` |

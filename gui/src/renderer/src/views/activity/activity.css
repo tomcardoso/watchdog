@@ -76,3 +76,6 @@
 }
 .act-cite-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .act-cite-result { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; font-size: var(--fs-sm); color: var(--text-2); }
+.act-bykey { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); font-size: var(--fs-sm); }
+.act-bykey-item { display: inline-flex; align-items: center; gap: 6px; }
+.act-bykey-item svg { width: 14px; height: 14px; color: var(--text-3); }

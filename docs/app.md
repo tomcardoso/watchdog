@@ -26,13 +26,15 @@ The list of your investigations, with each one's document and entity counts, how
 
 The headline from the latest briefing (its one-line account of where things stand, with its citations), the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, possible same entities, watch-list hits, disputed facts) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
 
+<a id="billing"></a>**Billing.** When you keep more than one key for a provider (see [More than one key for a provider](configuration.md#more-than-one-key-for-a-provider)), a **Billing** card on the Overview chooses which one pays for this investigation's model calls: adding documents, the finishing steps, re-checking contradictions, and Ask Claude and Web research when Claude is billed by API key. **Default** follows whichever key is the default in Settings. The choice is saved inside the investigation's folder, so it goes with the folder if you move it or share it; only the key's name is saved, never the key. On another computer, Watchdog uses that computer's key of the same name. If the chosen key is not there (you deleted it, or the folder came from someone else), Watchdog stops before sending anything and says which key it was looking for, rather than billing another account. Add a key with that name under **Settings → Models & keys**, or choose another key here. With one key per provider, the card does not appear. While Claude is on your subscription, the Anthropic choice has no effect: the subscription pays.
+
 ### Adding documents
 
 **Add documents** (top right, **File → Add Documents…**, or drop files on the window) takes you through four steps:
 
 1. **Choose.** Pick files or folders with **Choose files…** or **Choose folder…**. The dialog also shows anything already waiting in `incoming/`, and offers to retry documents that failed before. **Options** holds every setting for one run — models, effort, verification, the record skill and the rest — and **Estimate cost** shows what the run is likely to cost; **Compare all models** shows the estimate for each model.
 2. **Reading documents.** The files are copied into `incoming/` (the originals stay where they are) and converted to text on your computer. Audio and video are transcribed here, one recording at a time, which is the slowest part of this step for a long recording; the first recording also downloads the transcription model once. Nothing is sent anywhere during this step.
-3. **Before anything is sent.** The public-records warning, with the exact number of documents about to be sent and which model receives them. Nothing is sent until you choose **Acknowledge and add**. With auto-approve on and every step running on your Claude subscription, this step is skipped with a short notice; see [Auto-approve](configuration.md#auto-approve).
+3. **Before anything is sent.** The public-records warning, with the exact number of documents about to be sent and which model receives them, and, when you keep more than one key for a provider, which key will pay ("Billed to Work (OpenAI)"). Nothing is sent until you choose **Acknowledge and add**. If the investigation's chosen key is not on this computer, the dialog says so and the run cannot start; see [Billing](#billing). With auto-approve on and every step running on your Claude subscription, this step is skipped with a short notice; see [Auto-approve](configuration.md#auto-approve).
 4. **Adding.** Extraction and the finishing steps run, with each document's progress shown as it goes. **Hide** closes the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends it cleanly, and adding again resumes it.
 
 **File → Fetch Links…** downloads web pages from a list of addresses into `incoming/`, from where you add them like any other document.
@@ -81,7 +83,7 @@ Everything Watchdog writes for you to read: the briefing from each run, lead swe
 
 **Web research** has Claude propose a research mission, work through it with you, and queue the sources it keeps. When you are done, **Download** saves them into `incoming/`, from where you add them like any other document.
 
-Both run on your Claude sign-in. If Claude is not signed in, sign in under **Settings → Models & keys**.
+Both run on your Claude sign-in. If Claude is not signed in, sign in under **Settings → Models & keys**. When Claude is billed by API key, a conversation runs on the Anthropic key this investigation chose under [Billing](#billing), or the default one; if the chosen key is not on this computer, the conversation does not start.
 
 ### Activity
 
@@ -91,13 +93,13 @@ Everything the app has run, with the full output of each. **Stop** ends a run cl
 - **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild notes** (rewrites every entity and document note from Watchdog's records, with no model call), **Re-check contradictions** (the entity page's re-check for every entity with two or more facts, with the cost shown before anything is sent), **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
 - **Processing history.** What was added, and when.
 - **Version history.** Every version Watchdog has recorded for this investigation, newest first, each with what caused it and the files it changed. Select a file to open its history at that version. **Remove this version…** deletes what it recorded, except for files it left as they are now. See [History](#history).
-- **Usage.** What the models used and cost.
+- **Usage.** What the models used and cost. When more than one key has paid, it also shows the cost per key, by name, for each run and for all runs together.
 
 ### Settings
 
 **Settings** has the options grouped by topic, each explained and shown with its default; [Configuration](configuration.md) covers what they do. Along with those groups are these panels:
 
-- **Models & keys.** How Watchdog signs in to Claude and to each model provider.
+- **Models & keys.** How Watchdog signs in to Claude and to each model provider, and the keys it holds for each, including several named keys for one provider.
 - **Folder access.** The folders Watchdog may change; see [Folder access](#folder-access).
 - **Version history.** How much history the open investigation keeps, and **Clear history…**; see [History](#history).
 - **Record skills.** The built-in document-type guides; see [Domain skills](skills.md).

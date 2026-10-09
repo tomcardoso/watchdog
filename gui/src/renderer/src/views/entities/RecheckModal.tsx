@@ -5,6 +5,7 @@
 import { ScanSearch } from 'lucide-react'
 import { Button, Callout, Modal, Skeleton } from '@renderer/components/ui'
 import { EngineWait } from '@renderer/components/EngineWait'
+import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
 import { useEngineGate } from '@renderer/lib/engine'
 import type { RecheckEstimate } from '@shared/api'
 import { fmtCost, fmtNum, fmtTokens, plural } from '@renderer/lib/format'
@@ -37,7 +38,7 @@ export default function RecheckModal({ open, onClose, ids, name }: { open: boole
   const [busy, setBusy] = useState(false)
   const e = q.data
   const subject = all ? 'every entity with two or more facts' : name ?? 'this entity'
-  const blocked = !e || e.calls === 0 || e.busy || !e.auth.ok || !engine.ready
+  const blocked = !e || e.calls === 0 || e.busy || !e.auth.ok || !engine.ready || !!billingBlocked(e.billing)
 
   const start = async () => {
     setBusy(true)
@@ -108,6 +109,7 @@ export default function RecheckModal({ open, onClose, ids, name }: { open: boole
                 </div>
               </div>
             )}
+            {e.calls > 0 && <BillingNote billing={e.billing} onSettings={onClose} />}
             {e.calls === 0 && e.skipped.length === 0 && <Callout tone="info">No entity in this investigation has two or more facts yet, so there is nothing to re-check.</Callout>}
             {e.skipped.length > 0 && (
               <Callout tone={e.calls === 0 ? 'warning' : 'info'} title={e.calls === 0 ? 'Nothing to re-check' : `${plural(e.skipped.length, 'entity', 'entities')} not checked`}>

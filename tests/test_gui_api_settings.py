@@ -230,7 +230,7 @@ def test_status_subscription(wdg_home):
     write_creds(wdg_home, "subscription")
     s = call("auth.status")
     assert s["claude"] == {"mode": "subscription", "logged_in": True, "reason": None, "env_key_set": False,
-                           "key_masked": None, "key_source": None}
+                           "key_masked": None, "key_source": None, "key_label": None}
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
 
 
@@ -426,3 +426,55 @@ def test_setup_check_reads_config_and_the_model_cache(wdg_home, monkeypatch, tmp
     r = call("setup.check")
     assert r["config_exists"] is True and r["projects_dir"] == "/cases"
     assert r["gliner_model"] is True and r["playwright"] is False      # a failing probe reads as absent
+
+
+# ── labelled keys and the investigation's choice (#690, D290) ────────────────────
+
+def test_add_rename_default_and_delete_labelled_keys(wdg_home):
+    write_creds(wdg_home, "api-key", {"openai": "sk-personal-1234567890"})
+    r = call("auth.addKey", provider="openai", label="Globe", key="sk-globe-1234567890")
+    gid = r["id"]
+    rows = r["key_sets"]["openai"]
+    assert [(k["label"], k["default"]) for k in rows] == [("Default", True), ("Globe", False)]
+    assert all("1234567890" not in k["masked"] for k in rows)
+    assert "sk-globe-1234567890" not in json.dumps(r)
+    r = call("auth.renameKey", provider="openai", id="default", label="Personal")
+    assert [k["label"] for k in r["key_sets"]["openai"]] == ["Personal", "Globe"]
+    r = call("auth.setDefaultKey", provider="openai", id=gid)
+    assert [k["label"] for k in r["key_sets"]["openai"] if k["default"]] == ["Globe"]
+    r = call("auth.setKey", provider="openai", id=gid, key="sk-globe-new-0987654321")
+    assert creds(wdg_home)["keys"]["openai"]["items"][1]["key"] == "sk-globe-new-0987654321"
+    r = call("auth.deleteKey", provider="openai", id=gid)
+    assert [k["label"] for k in r["key_sets"]["openai"]] == ["Personal"]
+    assert mode_bits(wdg_home / "credentials.json") == 0o600
+
+
+def test_labelled_key_errors_are_plain(wdg_home):
+    write_creds(wdg_home, "api-key", {"openai": "sk-personal-1234567890"})
+    assert call_error("auth.addKey", provider="openai", label="default", key="sk-x-1234567890")["code"] == "bad_params"
+    assert call_error("auth.renameKey", provider="openai", id="nope", label="X")["code"] == "bad_params"
+    assert call_error("auth.addKey", provider="openai", label="Work", key=" ")["code"] == "bad_params"
+
+
+def test_investigation_choice_and_delete_warning(wdg_home, rich_vault):
+    from tests.gui_support import register
+    register(wdg_home, rich_vault)
+    write_creds(wdg_home, "api-key", {"anthropic": "sk-ant-personal-1234567890"})
+    gid = call("auth.addKey", provider="anthropic", label="Globe", key="sk-ant-globe-1234567890")["id"]
+    k = call("auth.investigationKeys", vault=str(rich_vault))
+    anth = next(p for p in k["providers"] if p["provider"] == "anthropic")
+    assert anth["chosen"] is None and anth["resolved_label"] == "Default" and anth["used"]
+    k = call("auth.chooseKey", vault=str(rich_vault), provider="anthropic", id=gid)
+    anth = next(p for p in k["providers"] if p["provider"] == "anthropic")
+    assert anth["chosen"] == {"id": gid, "label": "Globe"} and anth["source"] == "chosen"
+    settings = (rich_vault / ".watchdog" / "settings.json").read_text()
+    assert "sk-ant" not in settings
+    users = next(x for x in call("auth.status")["key_sets"]["anthropic"] if x["id"] == gid)["users"]
+    assert users == ["Rich Case"]
+    pf = call("ingest.preflight", vault=str(rich_vault))
+    assert pf["billing"][0]["label"] == "Globe" and pf["billing"][0]["missing"] is False
+    call("auth.deleteKey", provider="anthropic", id=gid)
+    pf = call("ingest.preflight", vault=str(rich_vault))
+    assert pf["billing"][0]["missing"] is True and "Globe" in pf["billing"][0]["message"]
+    k = call("auth.chooseKey", vault=str(rich_vault), provider="anthropic", id=None)
+    assert not (rich_vault / ".watchdog" / "settings.json").read_text().count("anthropic\": {")

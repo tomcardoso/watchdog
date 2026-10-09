@@ -1,41 +1,73 @@
 // Models & keys: how Watchdog signs in to Claude and to each model provider (`watchdog settings auth`).
 
-import { CheckCircle2, KeyRound, Trash2, XCircle } from 'lucide-react'
+import { CheckCircle2, KeyRound, MoreHorizontal, Pencil, Plus, Star, Trash2, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import type { AuthStatus } from '@shared/api'
-import { Badge, Button, Callout, ErrorNote, Segmented, Skeleton } from '@renderer/components/ui'
+import type { AuthStatus, LabelledKey } from '@shared/api'
+import { Badge, Button, Callout, Dropdown, ErrorNote, Segmented, Skeleton } from '@renderer/components/ui'
+import { plural } from '@renderer/lib/format'
 import { providerName } from '@renderer/components/ModelPicker'
 import { call, errorMessage, queryClient, useRpc } from '@renderer/lib/rpc'
 import { toast } from '@renderer/lib/store'
 
 type Extended = AuthStatus & {
-  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null }
+  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null; key_label?: string | null }
   providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
   base_urls?: { provider: string; url: string }[]
 }
 const FALLBACK = ['anthropic', 'openai', 'deepseek', 'gemini', 'openrouter', 'local']
 const ENV: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', local: 'LOCAL_API_KEY' }
 
-function KeyRow({ provider, label, stored, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; onStatus: (s: AuthStatus) => void }) {
-  const [editing, setEditing] = useState(false)
+type KeyForm = { kind: 'replace'; id?: string } | { kind: 'add' } | { kind: 'rename'; id: string; label: string }
+
+// One provider's keys. The common case, a single key, reads as it always has: the masked key,
+// Replace and Delete. "Add another" opens a named second key (D290); once a provider has
+// more than one, each key shows on its own line with its name, and one is the default.
+function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; onStatus: (s: AuthStatus) => void }) {
+  const [form, setForm] = useState<KeyForm | null>(null)
   const [key, setKey] = useState('')
+  const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  const open = (f: KeyForm | null) => {
+    setForm(f)
+    setKey('')
+    setName(f?.kind === 'rename' ? f.label : '')
+    setErr(null)
+  }
   const act = async (fn: () => Promise<AuthStatus>, ok: string) => {
     setBusy(true)
     try {
       const s = await fn()
       onStatus(s)
-      setEditing(false)
-      setKey('')
+      open(null)
       const w = (s as unknown as { warning?: string | null }).warning
       toast({ kind: w ? 'info' : 'success', title: ok, body: w ?? undefined })
     } catch (e) {
-      toast({ kind: 'error', title: 'Could not change the key', body: errorMessage(e) })
+      setErr(errorMessage(e))
+      if (!form) toast({ kind: 'error', title: 'Could not change the key', body: errorMessage(e) })
     } finally {
       setBusy(false)
     }
   }
+  const remove = async (k: LabelledKey | null) => {
+    const users = k?.users ?? []
+    const named = keys.length > 1 && k ? `the ${k.label} key` : `the ${label} key`
+    const message = users.length
+      ? `${users.join(', ')} ${users.length === 1 ? 'is' : 'are'} set to bill this key. ${users.length === 1 ? 'Its' : 'Their'} next run will stop, without sending anything, until you add a key with the same name or choose another key in ${users.length === 1 ? 'that investigation' : 'those investigations'}.`
+      : 'The stored key is removed from this computer. You can add it again later.'
+    const ok = await window.watchdog.dialog.confirm({ title: `Delete ${named}?`, message, confirm: 'Delete key', destructive: true })
+    if (ok) void act(() => call('auth.deleteKey', k ? { provider, id: k.id } : { provider }), 'Key deleted')
+  }
+  const submit = () => {
+    if (!form) return
+    if (form.kind === 'add') void act(() => call('auth.addKey', { provider, label: name, key }), 'Key added')
+    else if (form.kind === 'rename') void act(() => call('auth.renameKey', { provider, id: form.id, label: name }), 'Key renamed')
+    else void act(() => call('auth.setKey', form.id ? { provider, key, id: form.id } : { provider, key }), 'Key saved')
+  }
+  const ready = form?.kind === 'add' ? !!key.trim() && !!name.trim() : form?.kind === 'rename' ? !!name.trim() : !!key.trim()
   const tone = stored?.in_use === 'in use' ? 'success' : undefined
+  const env = stored?.source === 'env'
+  const several = keys.length > 1 || (keys.length === 1 && keys[0].label !== 'Default')
   return (
     <div className="set-keyrow">
       <div className="set-keyrow-main">
@@ -45,35 +77,65 @@ function KeyRow({ provider, label, stored, onStatus }: { provider: string; label
         </div>
         {stored ? (
           <>
-            <span className="mono muted">{stored.masked}</span>
+            {!several && <span className="mono muted">{stored.masked}</span>}
             <Badge tone={tone}>{stored.in_use}</Badge>
-            <Badge tip={stored.source === 'env' ? 'Set in your environment; it takes precedence over a stored key' : 'Stored in Watchdog’s credentials file'}>{stored.source === 'env' ? 'environment' : 'stored'}</Badge>
+            {(env || !several) && <Badge tip={env ? 'Set in your environment; it takes precedence over every stored key' : 'Stored in Watchdog’s credentials file'}>{env ? 'environment' : 'stored'}</Badge>}
           </>
         ) : (
           <span className="faint">No key</span>
         )}
-        <Button size="sm" icon={KeyRound} onClick={() => setEditing(!editing)}>
-          {stored ? 'Replace' : 'Add'}
-        </Button>
-        {stored?.source === 'stored' && (
-          <Button
-            size="sm"
-            variant="ghost"
-            icon={Trash2}
-            tip="Delete the stored key"
-            onClick={async () => {
-              const ok = await window.watchdog.dialog.confirm({ title: `Delete the ${label} key?`, message: 'The stored key is removed from this computer. You can add it again later.', confirm: 'Delete key', destructive: true })
-              if (ok) void act(() => call('auth.deleteKey', { provider }), 'Key deleted')
-            }}
-          />
-        )}
-      </div>
-      {editing && (
-        <div className="set-input-row" style={{ marginTop: 8 }}>
-          <input className="input" type="password" autoComplete="off" autoFocus placeholder={`Paste the ${label} key`} value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && key.trim() && void act(() => call('auth.setKey', { provider, key }), 'Key saved')} />
-          <Button variant="primary" loading={busy} disabled={!key.trim()} onClick={() => void act(() => call('auth.setKey', { provider, key }), 'Key saved')}>
-            Save key
+        {!several && (
+          <Button size="sm" icon={KeyRound} onClick={() => open(form?.kind === 'replace' ? null : { kind: 'replace' })}>
+            {keys.length ? 'Replace' : 'Add'}
           </Button>
+        )}
+        {keys.length > 0 && (
+          <Button size="sm" variant="ghost" icon={Plus} tip="Add another key for this provider, with a name, to bill a different account" onClick={() => open(form?.kind === 'add' ? null : { kind: 'add' })}>
+            Add another
+          </Button>
+        )}
+        {!several && keys.length > 0 && <Button size="sm" variant="ghost" icon={Trash2} tip="Delete the stored key" onClick={() => void remove(null)} />}
+      </div>
+      {several && (
+        <div className="set-keylist">
+          {keys.map((k) => (
+            <div key={k.id} className="set-keyitem">
+              <span className="set-keyitem-name">{k.label}</span>
+              <span className="mono muted">{k.masked}</span>
+              {k.default && <Badge tone="accent" tip="Used by every investigation that hasn’t chosen another key">Default</Badge>}
+              {(k.users?.length ?? 0) > 0 && <span className="faint set-keyitem-users" title={k.users!.join(', ')}>{plural(k.users!.length, 'investigation')}</span>}
+              <span className="spacer" />
+              <Dropdown
+                align="right"
+                trigger={(o) => <Button size="sm" variant="ghost" icon={MoreHorizontal} tip={`Change the ${k.label} key`} onClick={o} />}
+                items={[
+                  { label: 'Make default', icon: Star, disabled: k.default, onClick: () => void act(() => call('auth.setDefaultKey', { provider, id: k.id }), `${k.label} is now the default`) },
+                  { label: 'Rename', icon: Pencil, onClick: () => open({ kind: 'rename', id: k.id, label: k.label }) },
+                  { label: 'Replace the key', icon: KeyRound, onClick: () => open({ kind: 'replace', id: k.id }) },
+                  { separator: true, label: '' },
+                  { label: 'Delete', icon: Trash2, danger: true, onClick: () => void remove(k) },
+                ]}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {form && (
+        <div className="col" style={{ gap: 6, marginTop: 8 }}>
+          <div className="set-input-row">
+            {(form.kind === 'add' || form.kind === 'rename') && (
+              <input className="input set-keyname" autoFocus maxLength={40} placeholder="Name, such as Work" value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && ready && submit()} />
+            )}
+            {form.kind !== 'rename' && (
+              <input className="input" type="password" autoComplete="off" autoFocus={form.kind === 'replace'} placeholder={form.kind === 'replace' && form.id ? `Paste the new ${keys.find((k) => k.id === form.id)?.label ?? ''} key` : `Paste the ${label} key`} value={key} onChange={(e) => { setKey(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && ready && submit()} />
+            )}
+            <Button variant="primary" loading={busy} disabled={!ready} onClick={submit}>
+              {form.kind === 'rename' ? 'Rename' : 'Save key'}
+            </Button>
+            <Button variant="ghost" onClick={() => open(null)}>Cancel</Button>
+          </div>
+          {form.kind === 'add' && <div className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{keys.length === 1 ? `Your current key keeps working as the default. Each investigation can choose which key it bills, on its Overview.` : 'Each investigation can choose which key it bills, on its Overview.'}</div>}
+          {err && <div className="field-error">{err}</div>}
         </div>
       )}
     </div>
@@ -182,7 +244,7 @@ export default function AuthPanel() {
                 </Button>
               </div>
             )}
-            {s.claude.key_masked && mode === 'api-key' && <div className="set-meta"><span className="mono">{s.claude.key_masked}</span></div>}
+            {s.claude.key_masked && mode === 'api-key' && <div className="set-meta">{s.claude.key_label && <span>{s.claude.key_label}, the default key</span>}<span className="mono">{s.claude.key_masked}</span></div>}
           </div>
         </div>
         {s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
@@ -227,11 +289,11 @@ export default function AuthPanel() {
         </div>
         <div style={{ padding: '0 18px' }}>
           {providers.map((p) => (
-            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} onStatus={setStatus} />
+            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} onStatus={setStatus} />
           ))}
         </div>
         <div className="set-foot">
-          A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over a stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode.
+          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode.
         </div>
       </section>
 

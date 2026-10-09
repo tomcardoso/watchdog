@@ -384,6 +384,40 @@ export interface Preflight {
   models: { stage: string; backend: string | null; model: string; effort: string | null; label: string }[]
   auto_approve: { enabled: boolean; approve: boolean; blocker: string | null }
   warning_text: string
+  /** Which labelled key pays for each provider the run uses (#690, D290). */
+  billing?: Billing[]
+}
+
+/** One provider's paying key for a run: its label, never the key (D290). `missing` means the
+ *  investigation chose a key this computer doesn't have, and the run will stop before any call. */
+export interface Billing {
+  provider: string
+  provider_label: string
+  label: string | null
+  source: 'env' | 'chosen' | 'default' | 'none'
+  missing: boolean
+  message: string | null
+  several: boolean
+}
+
+/** A stored key, masked (`auth.status` key_sets). `users`: investigations here that chose it. */
+export interface LabelledKey { id: string; label: string; masked: string; default: boolean; users?: string[] }
+
+/** `auth.investigationKeys`: per provider, this computer's keys and the investigation's choice. */
+export interface InvestigationKeys {
+  claude_mode: string | null
+  providers: {
+    provider: string
+    provider_label: string
+    keys: LabelledKey[]
+    chosen: { id: string | null; label: string | null } | null
+    resolved_label: string | null
+    source: Billing['source']
+    missing: boolean
+    message: string | null
+    env: boolean
+    used: boolean
+  }[]
 }
 
 export interface Estimate {
@@ -407,6 +441,7 @@ export interface RecheckEstimate {
   price_multiplier: number
   model: { model: string; backend: string | null; effort: string | null; label: string; name: string }
   auth: { mode: string | null; ok: boolean; reason: string | null }
+  billing?: Billing[]
   busy: boolean
   engine_ready: boolean
   max_entity_calls: number
@@ -525,6 +560,7 @@ export interface AuthStatus {
   claude: { mode: string; logged_in: boolean; reason: string | null }
   stages: { stage: string; value: string; provider: string; ready: boolean; billing: string | null }[]
   keys: { provider: string; masked: string; in_use: string; source: 'stored' | 'env' }[]
+  key_sets?: Record<string, LabelledKey[]>
   providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
 }
 export interface SkillInfo { name: string; description: string; source: 'package' | 'user' }
@@ -561,15 +597,19 @@ export interface UsageRunRow {
   backends: string
   subscription: boolean
   stages: Record<string, number> // stage → cost
+  by_key?: KeyCost[]
   cache_read_tokens?: number
   cache_write_tokens?: number
   latency_s?: number
 }
+/** Cost per labelled key that paid (#690); `label` null for calls no stored key paid for. */
+export interface KeyCost { label: string | null; cost_usd: number; calls: number }
 export interface UsageRun {
   ts: string
   stages: { stage: string; model: string; backend: string; calls: Record<string, unknown>[]; totals: Record<string, number>; wall_seconds: number | null }[]
   totals: Record<string, number>
   subscription_note: string | null
+  by_key?: KeyCost[]
   peak_concurrency?: number | null
   batch_note?: string | null
   corpus?: { documents: number; pages: number } | null
@@ -707,8 +747,13 @@ export interface Methods {
   'settings.models': [Record<string, never>, { models: ModelChoice[]; efforts: string[] }]
   'auth.status': [Record<string, never>, AuthStatus]
   'auth.setAnthropicMode': [{ mode: 'subscription' | 'api-key'; key?: string }, AuthStatus]
-  'auth.setKey': [{ provider: string; key: string }, AuthStatus]
-  'auth.deleteKey': [{ provider: string }, AuthStatus]
+  'auth.setKey': [{ provider: string; key: string; id?: string }, AuthStatus]
+  'auth.deleteKey': [{ provider: string; id?: string }, AuthStatus]
+  'auth.addKey': [{ provider: string; label: string; key: string; make_default?: boolean }, AuthStatus & { id: string; warning?: string | null }]
+  'auth.renameKey': [{ provider: string; id: string; label: string }, AuthStatus]
+  'auth.setDefaultKey': [{ provider: string; id: string }, AuthStatus]
+  'auth.investigationKeys': [{ vault: string }, InvestigationKeys]
+  'auth.chooseKey': [{ vault: string; provider: string; id: string | null }, InvestigationKeys]
   'auth.setBaseUrl': [{ provider: 'local' | 'openrouter'; url: string }, AuthStatus]
   'skills.list': [Record<string, never>, { skills: SkillInfo[]; user_dir: string }]
   'skills.read': [{ name: string }, { name: string; text: string }]

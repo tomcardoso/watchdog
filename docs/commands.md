@@ -362,6 +362,8 @@ Prints a per-call token, cost, and latency breakdown for ingest runs, reading `.
 
 Every stage names the model it used **and the backend that served it** — and for Claude, the auth mode alongside it, as in `backend: claude-agent-sdk (subscription)`. This matters because a plain `sonnet` doesn't name a backend: a subscription routes it through Claude Code's harness, a metered key sends it straight to the API, and the two bill different numbers of input tokens for identical documents. The `--all` comparison carries the same information as a compact `Backend` column (`sdk/sub`, `api/key`), so two runs that differ only in how they reached Claude are no longer indistinguishable.
 
+When calls in a run were paid by named keys, a **By key** line under the total shows the cost per key, by name (never the key itself); `--all` shows the same across every run.
+
 When a run used a Claude subscription, the costs shown are what the same work would cost at published per-token rates — not money that was billed, since a subscription has no per-token charge. Those runs are flagged as such under the run total.
 
 Each call's usage is written to disk as soon as it completes, not just when the run finishes — so a crash, a hard interrupt, or a stop mid-finalize still leaves that run's spend on record. If a run never reaches a clean end, its in-progress file is folded into a normal recorded run the next time you run `watchdog dig` or `watchdog bark`, and shows up in `watchdog usage` from then on.
@@ -411,7 +413,9 @@ Shows how Watchdog currently authenticates to model providers, then, on a termin
 - `watchdog settings auth` — prints a **Claude Code** section (subscription/api-key mode, Claude Code login detection — Claude Code is required for the interactive investigation commands and is the ingestion default), an **Ingestion** section showing which provider each of `classifier_model`/`extractor_model`/`finalizer_model` currently resolves to and whether that provider is ready (✓/✗), and a **Provider keys** section listing every stored key, masked, and marked `(in use)` or `(unused)` depending on whether a stage is routed to it. Off a terminal, it stops there.
 - On a terminal it then asks **"Change something?"** — choose **Done — nothing to change** to leave, or pick a service (Anthropic, OpenAI, DeepSeek, or Gemini):
   - For **Anthropic**, choose between your Claude Code subscription (not metered) and a metered API key.
-  - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace an existing one, or delete it.
+  - For **OpenAI**, **DeepSeek**, or **Gemini**, store a new key, replace the default one, delete one, add another key with a name, or (with more than one) choose the default.
+
+A provider can hold several named keys (for example Personal and Work), one of them the default; the status lists each one under its provider. Which key an investigation bills is chosen in the app, under **Billing** on the investigation's Overview ([Billing](app.md#billing)); `watchdog dig`, `bark` and `add` honour that choice and stop with an error, before any model call, when the chosen key is not on this computer.
 
 There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `LOCAL_API_KEY`, `OPENROUTER_API_KEY`), which always take precedence over a stored key. `LOCAL_BASE_URL` and `OPENROUTER_BASE_URL` likewise override the `local_base_url`/`openrouter_base_url` `watchdog settings` keys for those two backends. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
 

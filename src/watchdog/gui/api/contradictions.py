@@ -48,6 +48,7 @@ def _model(backend: str | None, model: str, effort: str | None, auth_mode: str |
 
 @method("contradictions.estimate")
 def estimate(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
+    from watchdog.cmd.auth import billing_summary, run_providers
     from watchdog.gui.engine_setup import engine_ready
     from watchdog.pipeline import history, ingest_setup, recheck
 
@@ -61,6 +62,7 @@ def estimate(vault: str, ids: list[str] | None = None, all: bool = False) -> dic
     return {"scope": "all" if wanted is None else "entities",
             "entities": p["entities"], "skipped": p["skipped"], "calls": len(p["calls"]),
             "facts": p["facts"], **cost, "model": info, "auth": auth,
+            "billing": billing_summary(v, run_providers([backend])),
             "busy": history.run_in_progress(v), "engine_ready": engine_ready(),
             "max_entity_calls": recheck.MAX_ENTITY_CALLS}
 
@@ -80,6 +82,11 @@ def start(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
     auth = _auth(backend)
     if not auth["ok"]:
         raise RpcError(auth["reason"] or "No way to reach Claude is set up yet.", code="auth_required")
+    from watchdog.cmd.auth import KeyChoiceError, check_run_keys
+    try:
+        check_run_keys(v, [backend])
+    except KeyChoiceError as e:      # the investigation's chosen key isn't here (D290)
+        raise RpcError(str(e), code="key_missing") from None
     argv = [sys.executable, "-m", "watchdog.pipeline.recheck"]
     if wanted is None:
         argv.append("--all")

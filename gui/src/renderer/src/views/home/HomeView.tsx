@@ -19,6 +19,7 @@ import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { ReviewKind, Summary } from '@shared/api'
+import { BillingCard } from './BillingCard'
 import './home.css'
 
 /** A briefing's first screenful: whole paragraphs up to roughly `max` characters. */
@@ -150,6 +151,7 @@ export default function HomeView() {
               <aside className="home-side">
                 <Waiting items={waiting} s={s} empty={empty} />
                 <InProgress s={s} failedDocs={pipe?.failed ?? []} />
+                <BillingCard vault={vault} />
                 {s.top_entities.length > 0 && (
                   <section className="card home-panel">
                     <h3>Most connected</h3>

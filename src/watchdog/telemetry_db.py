@@ -55,12 +55,16 @@ CREATE TABLE IF NOT EXISTS calls (
     batch_id TEXT,
     batch_submitted_at TEXT,
     batch_ended_at TEXT,
-    batch_collected_at TEXT
+    batch_collected_at TEXT,
+    key_label TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_calls_run ON calls(run_id);
 CREATE INDEX IF NOT EXISTS idx_calls_task_model ON calls(task, model, effort);
 CREATE INDEX IF NOT EXISTS idx_calls_vault ON calls(vault_path);
 """
+
+
+_ADDED_COLUMNS = (("key_label", "TEXT"),)
 
 
 # One connection per process, reused across calls and closed at the end of a run (`close`). It is
@@ -94,6 +98,12 @@ def _connect() -> sqlite3.Connection:
     # filenames aren't recoverable from the file. Many builds default this off (D261).
     conn.execute("PRAGMA secure_delete=ON")
     conn.executescript(_SCHEMA)
+    # Columns added after a store was first created (#690: which labelled key paid).
+    have = {row[1] for row in conn.execute("PRAGMA table_info(calls)")}
+    for name, kind in _ADDED_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE calls ADD COLUMN {name} {kind}")
+    conn.commit()
     _conn, _conn_path = conn, DB_PATH
     return conn
 
@@ -187,6 +197,7 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
         json.dumps(record["rate_limit"], ensure_ascii=False) if record.get("rate_limit") else None,
         record.get("batch_id"), record.get("batch_submitted_at"),
         record.get("batch_ended_at"), record.get("batch_collected_at"),
+        record.get("key_label"),
     )
     with _lock:
         conn = _connect()
@@ -198,9 +209,9 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
                 cost_usd, latency_s, attempts, failed, end_ts,
                 reasoning_tokens, api_ms, num_turns, stop_reason, est_input_tokens,
                 prompt_hash, codebase_version, config_json, pruned_json, rate_limit_json,
-                batch_id, batch_submitted_at, batch_ended_at, batch_collected_at
+                batch_id, batch_submitted_at, batch_ended_at, batch_collected_at, key_label
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             row,
         )
         conn.commit()

@@ -201,6 +201,27 @@ def _subscription_note(calls: list[dict]) -> str | None:
     return None
 
 
+def cost_by_key(calls: list[dict]) -> list[dict]:
+    """Cost per labelled key that paid (#690, D290): `[{"label", "cost_usd", "calls"}]`, most
+    expensive first. A call with no `key_label` (a subscription call, a local model, or a record
+    from before labels) is grouped under None."""
+    out: dict = {}
+    for c in calls:
+        row = out.setdefault(c.get("key_label"), {"label": c.get("key_label"), "cost_usd": 0.0, "calls": 0})
+        row["cost_usd"] += c.get("cost_usd") or 0.0
+        row["calls"] += 1
+    return sorted(out.values(), key=lambda r: -r["cost_usd"])
+
+
+def _print_by_key(calls: list[dict]) -> None:
+    """One line naming each labelled key and what it paid, when any call carries a label."""
+    rows = cost_by_key(calls)
+    if not any(r["label"] for r in rows):
+        return
+    parts = [f"{r['label'] or 'no key'} ${r['cost_usd']:.4f}" for r in rows]
+    print(f"  {_DIM}By key:{_RESET} {'  ·  '.join(parts)}")
+
+
 _PAGE_RANGE_RE = re.compile(r"^pages (\d+)–(\d+)")
 
 
@@ -411,6 +432,7 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
         f"{_fmt(grand['cache_write_tokens'])} cache-write  ·  {_fmt(grand['output_tokens'])} out  ·  "
         f"${grand['cost_usd']:.4f}  ·  {call_time}{elapsed}"
     )
+    _print_by_key(calls)
     note = _subscription_note(calls)
     if note:
         print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{note}{_RESET}")
@@ -484,6 +506,7 @@ def _analyze_all(vault: Path) -> None:
         f"{_fmt(grand['cache_write_tokens']):>9}  {_fmt(grand['output_tokens']):>8}  "
         f"{_fmt_secs(grand['latency_s']):>7}  ${grand['cost_usd']:>7.4f}"
     )
+    _print_by_key(all_calls)
     note = _subscription_note(all_calls)
     if note:
         print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{note}{_RESET}")

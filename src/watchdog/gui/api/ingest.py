@@ -106,6 +106,13 @@ def _auth(plan: Plan) -> dict:
             "reason": a.get("reason") if mode == "none" else None}
 
 
+def _billing(vault, backends) -> list[dict]:
+    """Which labelled key will pay for each provider the run uses, and whether one the
+    investigation chose is missing from this computer (#690, D290). Never the key itself."""
+    from watchdog.cmd.auth import billing_summary, run_providers
+    return billing_summary(vault, run_providers(backends))
+
+
 def _label(backend: str | None, model: str) -> str:
     return f"{backend}:{model}" if backend else model
 
@@ -164,6 +171,7 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         "pending_finalization": (orchestrate.pending_finalization(v)
                                  if orchestrate.has_pending_finalization(v) else None),
         "auth": auth,
+        "billing": _billing(v, plan.backends),
         "models": _model_rows(plan, auth["mode"]),
         "auto_approve": {"enabled": enabled, "approve": approve, "blocker": blocker},
         "warning_text": warning,

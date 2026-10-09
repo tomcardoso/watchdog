@@ -49,6 +49,20 @@ def make_client(options):
     return ClaudeSDKClient(options)
 
 
+def session_auth_env(session: "Session") -> dict:
+    """The Anthropic key a session in API-key mode runs on: the one this investigation chose, or
+    the default (D290), passed as ANTHROPIC_API_KEY. On a subscription nothing is added and
+    Claude Code uses its own login. Raises `auth.KeyChoiceError` when the chosen key isn't on
+    this computer, before the session starts, rather than billing another account."""
+    from watchdog.cmd import auth
+    a = auth.resolve_auth("anthropic", session.vault)
+    if a.get("mode") != "api-key" or not a.get("key"):
+        session.key_label = None
+        return {}
+    session.key_label = auth.label_for_key("anthropic", a["key"])
+    return {"ANTHROPIC_API_KEY": a["key"]}
+
+
 def build_options(session: "Session", can_use_tool):
     from claude_agent_sdk import ClaudeAgentOptions
     from watchdog.model_catalog import resolve_model_id
@@ -56,7 +70,8 @@ def build_options(session: "Session", can_use_tool):
                   system_prompt={"type": "preset", "preset": "claude_code"}, can_use_tool=can_use_tool)
     # The session's `watchdog …` commands (the vault's slash commands call them) must resolve to
     # the engine this server runs in, and Claude Code must be the copy bundled with the SDK.
-    kwargs["env"] = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")])}
+    kwargs["env"] = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
+                     **session_auth_env(session)}
     from watchdog.gui.engine_setup import bundled_claude_path
     if bundled_claude_path():
         kwargs["cli_path"] = bundled_claude_path()
@@ -256,12 +271,23 @@ class Session:
         self.tools: dict[str, dict] = {}           # tool_use id -> its message
         self.stream_id: str | None = None
         self.cost = 0.0
+        self.key_label: str | None = None    # the labelled Anthropic key the session bills (#690)
         self.closed = False
 
     def record(self) -> dict:
         return {"session": self.id, "vault": str(self.vault), "mode": self.mode, "title": self.title,
                 "started": self.started, "updated": self.updated, "model": self.model,
-                "sdk_session_id": self.sdk_session_id, "cost_usd": self.cost, "messages": self.messages}
+                "sdk_session_id": self.sdk_session_id, "cost_usd": self.cost, "key_label": self.key_label,
+                "messages": self.messages}
+
+
+def _check_session_key(vault: Path) -> None:
+    """Refuse to open a session whose investigation chose an Anthropic key this computer lacks."""
+    from watchdog.cmd import auth
+    try:
+        auth.resolve_auth("anthropic", vault)
+    except auth.KeyChoiceError as e:
+        raise RpcError(str(e), code="key_missing") from None
 
 
 class ChatManager:
@@ -404,6 +430,7 @@ class ChatManager:
     def start(self, vault: Path, mode: str, model: str | None, prompt: str | None) -> dict:
         if mode not in MODES:
             raise RpcError(f"mode must be one of {', '.join(MODES)}.", code="bad_params")
+        _check_session_key(vault)
         opening = first_prompt(vault, mode, prompt)
         s = Session(vault, mode, model, _title(mode, prompt))
         self.sessions[s.id] = s
@@ -480,8 +507,10 @@ class ChatManager:
         s.messages = data.get("messages") or []
         s.sdk_session_id = data.get("sdk_session_id")
         s.cost = data.get("cost_usd") or 0.0
+        s.key_label = data.get("key_label")
         if not s.sdk_session_id:
             raise RpcError("That chat never started, so it cannot be resumed.", code="bad_params")
+        _check_session_key(s.vault)
         self.sessions[sid] = s
         self.status(s, "idle", None, s.cost)
         return {"session": sid}
