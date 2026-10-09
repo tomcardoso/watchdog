@@ -63,6 +63,28 @@ def rebuild_notes(vault: str) -> dict:
     return job.to_dict()
 
 
+@method("jobs.undoMerge")
+def undo_merge(vault: str, id: str) -> dict:
+    """Start the job that undoes one entity merge (D280): `merge_undo.main`, the library function,
+    run as a job. Refused up front, with the reason, when the merge cannot be split correctly."""
+    import sys
+    from watchdog.pipeline import merge_log, merge_undo
+    v = require_vault(vault)
+    if not isinstance(id, str) or not id.startswith("merge:"):
+        raise RpcError("Not a merge id.", code="bad_params")
+    try:
+        entry = merge_undo._find(merge_log.load(v), id)
+    except merge_undo.UndoRefused as e:
+        raise RpcError(str(e), code="not_found") from e
+    reason = merge_undo.check(v, entry)
+    if reason:
+        raise RpcError(reason, code="cannot_undo")
+    argv = [sys.executable, "-m", "watchdog.pipeline.merge_undo", id]
+    name = (entry.get("merged") or {}).get("name") or id
+    job = jobs.MANAGER.start(v, ["undo-merge", id], f"Undo merge: {name}", "undo-merge", argv=argv)
+    return job.to_dict()
+
+
 @method("action.run")
 def run_action(vault=None, args=None, timeout=None) -> dict:
     return jobs.run_action(_vault(vault), _args(args or []), float(timeout or DEFAULT_ACTION_TIMEOUT))

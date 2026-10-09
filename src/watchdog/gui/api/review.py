@@ -109,9 +109,10 @@ def watchlist(vault: str) -> dict:
 @method("review.mergeLog")
 def merge_log(vault: str, limit: int = 200) -> dict:
     """Recent entries of the merge log (D279), newest first, each with its documents and facts
-    resolved for display. `undo_available` is false: a merge cannot yet be split back apart
-    from what is on disk (see DECISIONS D279)."""
+    resolved for display. `undo_available` says whether `merge_undo` can split the entry back
+    exactly now, and `undo_reason` why not when it cannot (D280); `undone` is the undo record."""
     from watchdog.pipeline import merge_log as _log
+    from watchdog.pipeline import merge_undo
     from watchdog.pipeline.verification import all_facts
 
     v = require_vault(vault)
@@ -135,6 +136,8 @@ def merge_log(vault: str, limit: int = 200) -> dict:
         if fact_ids and facts is None:
             facts = all_facts(v)
         keep = m.get("keep") or {}
+        reason = ("This merge log was written by a newer version of Watchdog." if _log.too_new(data)
+                  else merge_undo.check(v, m, ents))
         out.append({
             "id": m.get("id"), "keep": {**keep, "exists": keep.get("id") in ents,
                                         "note": (ents.get(keep.get("id")) or {}).get("note_path")},
@@ -149,10 +152,12 @@ def merge_log(vault: str, limit: int = 200) -> dict:
             "facts": [{"id": f, "fact": facts[f]["fact"], "page": facts[f]["page"],
                        "sha": facts[f]["sha256"], "title": facts[f]["title"]}
                       for f in fact_ids[:8] if facts and f in facts],
-            "undo_available": False,
+            "undo_available": reason is None,
+            "undo_reason": reason,
+            "undone": m.get("undone") if isinstance(m.get("undone"), dict) else None,
         })
     return {"merges": out, "total": len(merges), "too_new": _log.too_new(data),
-            "undo_available": False}
+            "undo_available": not _log.too_new(data)}
 
 
 @method("review.mergePreview")

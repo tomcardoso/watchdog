@@ -613,10 +613,20 @@ def _stage_on_owner(vault: Path, shas: list[str], ids: set[str], entry: dict) ->
     path.write_text(json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _carried_in_batch(vault: Path, shas: list[str], merge_id: str) -> list[dict]:
+    """`merge_log.carried_items` for `merge_id` in every staged extraction of the batch."""
+    out = []
+    for sha, artifact in _staged_artifacts(vault, shas):
+        item = merge_log.carried_items(artifact, sha, {merge_id})
+        if item:
+            out.append(item)
+    return out
+
+
 def _snapshot_side(profile, entry: dict | None) -> dict:
-    """What a later split needs to know about a merged-away record (D279)."""
-    out = {"extracted_id": profile.id, "documents": list(profile.documents),
-           "facts": [f["id"] for f in profile.facts]}
+    """What a later split needs to know about a merged-away record (D279, D280)."""
+    out = {"version": merge_log.UNDO_VERSION, "extracted_id": profile.id,
+           "documents": list(profile.documents), "facts": [f["id"] for f in profile.facts]}
     if entry:
         out["entry"] = merge_entities.undo_snapshot(entry)
     return out
@@ -736,6 +746,9 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
             decided_by=decided_by, rule=verdict.get("rule"), reason=reason,
             occurrence=occurrence, model=model if decided_by == "model" else None,
             undo=_snapshot_side(loser, original_reg.get(merge_id)) if loser else {}, run=run_id)
+        # What in this batch carries the merged id before it is folded away (D280).
+        entry["undo"].setdefault("version", merge_log.UNDO_VERSION)
+        entry["undo"]["changes"] = _carried_in_batch(vault, shas, merge_id)
 
         if merge_id in registry_ids:
             # Both committed: full merge_entities.run surgery, same as before phase 3 — stub +

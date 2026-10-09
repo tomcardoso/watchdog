@@ -115,9 +115,32 @@ def candidate_entry(*, a, b, verdict: dict, model_declined: bool = False,
             "status": "open", "first_seen": at, "last_seen": at, "run": run}
 
 
+UNDO_VERSION = 2
+
+
+def carried_items(artifact: dict, sha: str, ids: set[str]) -> dict | None:
+    """What in one extraction carries one of `ids` right before a merge folds it away (D280): the
+    entity records with that id, each fact tagged with it (and its tags then), and each role that
+    targets it. Kept on the merge's `undo.changes`, so an undo can give exactly those back."""
+    ents = artifact.get("entities") or []
+    out = {"sha": sha, "ids": sorted(ids),
+           "entities": [i for i, e in enumerate(ents) if isinstance(e, dict) and e.get("id") in ids],
+           "facts": [[i, list(f.get("entities") or [])]
+                     for i, f in enumerate((artifact.get("document") or {}).get("key_facts") or [])
+                     if isinstance(f, dict) and set(f.get("entities") or []) & ids],
+           "roles": [[i, j] for i, e in enumerate(ents) if isinstance(e, dict)
+                     for j, r in enumerate(e.get("roles") or []) if r.get("target_id") in ids]}
+    return out if out["entities"] or out["facts"] or out["roles"] else None
+
+
 def _upsert_merge(merges: list[dict], entry: dict) -> None:
     for existing in merges:
         if existing.get("id") == entry["id"]:
+            undo = existing.setdefault("undo", {})
+            have = {c.get("sha") for c in undo.get("changes") or []}
+            for change in (entry.get("undo") or {}).get("changes") or []:
+                if change.get("sha") not in have:
+                    undo.setdefault("changes", []).append(change)
             seen = {(o.get("sha"), tuple(o.get("documents") or [])) for o in existing.get("occurrences", [])}
             for occ in entry["occurrences"]:
                 if (occ.get("sha"), tuple(occ.get("documents") or [])) not in seen:
@@ -293,8 +316,13 @@ def render(vault: Path, data: dict | None = None) -> Path:
             for sha in occ.get("documents") or ([occ["sha"]] if occ.get("sha") else []):
                 if sha not in docs:
                     docs.append(sha)
+        undone = ""
+        if isinstance(m.get("undone"), dict):
+            u = m["undone"]
+            undone = (f" **Undone** on {(u.get('at') or '')[:10]} by {_md(u.get('by'))}; the split "
+                      f"record is `{_md(u.get('split_id'))}`.")
         lines.append(f"{head} — {_TIER.get(m.get('tier'), m.get('tier'))}, decided by {who}, "
-                     f"{(m.get('last_at') or '')[:10]}. {_md(m.get('reason'))}")
+                     f"{(m.get('last_at') or '')[:10]}. {_md(m.get('reason'))}{undone}")
         if docs:
             shown = ", ".join(_doc_link(titles, s) for s in docs[:8])
             more = f" and {len(docs) - 8} more" if len(docs) > 8 else ""

@@ -166,6 +166,10 @@ def undo_snapshot(entry: dict) -> dict:
         "note_path": entry.get("note_path"),
         "roles": [{k: r.get(k) for k in ("relationship", "target_id", "source_sha256", "is_reverse")}
                   for r in entry.get("roles") or []],
+        "date_first_seen": entry.get("date_first_seen"),
+        "contradictions": list(entry.get("contradictions") or []),
+        "synthesis": entry.get("synthesis"),
+        "legacy_claims": entry.get("legacy_claims"),
     }
 
 
@@ -245,7 +249,7 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     notes_section = _extract_notes_section(keep_note_file)
     merge_note_text = merge_note_file.read_text(encoding="utf-8") if merge_note_file.exists() else ""
     merge_notes_body = _extract_section(merge_note_text, "Notes") if merge_note_text else ""
-    from watchdog.pipeline import entity_notes
+    from watchdog.pipeline import entity_notes, merge_log
     keep_synth, merge_synth = entities_reg[keep_id].get("synthesis"), entities_reg[merge_id].get("synthesis")
     def _has_facts(sha: str) -> bool:
         return (vault_path / ".watchdog" / "extracted" / f"{sha}.json").exists()
@@ -261,7 +265,10 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     # with its entry already built (`log_entry`). Either way it gets the losing record's snapshot.
     if log_entry is None:
         log_entry = _reporter_log_entry(vault_path, entities_reg[keep_id], entities_reg[merge_id])
-    log_entry.setdefault("undo", {})["entry"] = undo_snapshot(entities_reg[merge_id])
+    undo = log_entry.setdefault("undo", {})
+    undo["entry"] = undo_snapshot(entities_reg[merge_id])
+    undo.setdefault("version", merge_log.UNDO_VERSION)
+    undo.setdefault("changes", [])        # stored extractions keep the merged id (D280)
 
     stats = merge(entities_reg, keep_id, merge_id)
     keep = entities_reg[keep_id]
@@ -274,7 +281,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     backup_paths += [
         vault_path / f"{entities_reg[eid]['note_path']}.md" for eid in stats["touched_entities"]
     ]
-    from watchdog.pipeline import merge_log
     log_path = merge_log.path(vault_path)
     if log_path.exists():
         backup_paths.append(log_path)

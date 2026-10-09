@@ -380,8 +380,11 @@ def test_app_lists_the_pair_resolves_it_as_not_the_same_and_shows_the_log(tmp_pa
     assert handled[0]["kind"] == "merges"
 
     log = call("review.mergeLog", vault=str(vault))
-    assert log["undo_available"] is False and not log["too_new"]
+    assert log["undo_available"] is True and not log["too_new"]
     acme_entry = next(m for m in log["merges"] if m["keep"]["id"] == "acme-ltd")
     assert acme_entry["decided_by"] == "rule" and acme_entry["documents"][0]["sha"] == "sha-b"
     assert acme_entry["keep"]["exists"] is True
+    # Each entry says whether it can be split back now, and why not when it cannot (D280).
+    assert acme_entry["undo_available"] is (acme_entry["undo_reason"] is None)
+    assert acme_entry["undone"] is None
     json.dumps(log)

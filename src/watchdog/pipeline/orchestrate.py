@@ -2541,7 +2541,10 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
                         "type": canonical_type(entity["type"])},
                 tier="high", decided_by="rule", rule=verdict["rule"], reason=verdict["reason"],
                 occurrence=identity.evidence_record(verdict, incoming, sha),
-                undo={"extracted_id": entity.get("extracted_id", entity["id"]), "documents": [sha]},
+                undo={"version": merge_log.UNDO_VERSION,
+                      "extracted_id": entity.get("extracted_id", entity["id"]), "documents": [sha],
+                      "changes": [c for c in [merge_log.carried_items(
+                          artifact, sha, {entity["id"], entity.get("extracted_id", entity["id"])})] if c]},
                 run=_run.run_id)
             stage_identity_log(artifact, entry_log)
             profiles[existing_id].absorb(incoming)
