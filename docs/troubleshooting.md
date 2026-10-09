@@ -59,6 +59,10 @@ If a run stops with "the provider refused the credentials or account", every doc
 
 Check the key in **Settings → Models & keys**, or top up the account on the provider's site, then add the documents again. The run picks up what is still queued.
 
+## "The key this investigation bills isn't on this computer"
+
+The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](app.md#billing).
+
 ## A file landed in incoming/failed/
 
 The file could not be read when Watchdog converted it to text. It sits in `incoming/failed/` alongside an explanation of what went wrong. On the **Documents** screen, the strip above the list shows failed files. Common causes:

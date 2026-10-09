@@ -244,6 +244,16 @@ If Claude is missing from the engine, the tab says so; it ships with the engine,
 
 **Provider keys** lists each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model) with the key stored for it, shown masked. **Add** or **Replace** a key, or delete a stored one. Keys are kept on your computer in a file only you can read, and are never shown in full. A key set in your environment (for example `OPENAI_API_KEY`) always takes precedence over a stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode. Each badge says whether a key is in use.
 
+#### More than one key for a provider
+
+You can keep several keys for the same provider, each with its own name, to bill different accounts: a personal OpenAI key and one your newsroom pays for, for example. Use **Add another** beside the provider, give the key a short name (such as Personal or Work) and paste it. Names are plain text, up to 40 characters, and each provider's names must differ.
+
+Once a provider has more than one key, each one is listed with its name and its masked key. One of them is the **default**: it pays for every investigation that has not chosen another key. The **⋯** menu beside a key can make it the default, rename it, replace the key itself (keeping its name, so every investigation that chose it keeps billing that account) or delete it. If you delete a key that an investigation on this computer has chosen, Watchdog names the investigation first. Deleting the default makes the next key the default.
+
+Each investigation chooses its key under **Billing** on its Overview; see [The desktop app](app.md#billing). If you only ever have one key per provider, none of this appears: the key you add is simply used everywhere.
+
+Which key paid is recorded with every model call, by its name and never the key itself, so **Activity → Usage** can show the cost per key.
+
 **Custom endpoints** sets the base addresses for a self-hosted model and for an OpenRouter-compatible proxy (the same as Local model URL and OpenRouter URL on the Models tab).
 
 ### Folder access

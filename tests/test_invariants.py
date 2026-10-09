@@ -473,3 +473,42 @@ def test_I13_model_prose_is_never_an_input_and_notes_rebuild_from_facts(tmp_path
     assert "## Summary\n\nPROSE-ONLY-CLAIM about Alice." in text
     assert text.index("## Summary") < text.index("## Facts")
     assert "Smith is listed as director" in text.split("## Facts", 1)[1]
+
+
+# ── I16: a model call never bills an account the investigation did not choose (D290) ─────────
+
+def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
+    """Every path that would send the provider's key stops, naming the key; none uses the default."""
+    import asyncio
+    import pytest
+    from watchdog import model_client as mc
+    from watchdog.cmd import auth, base
+    from watchdog.gui import chat
+    from watchdog.gui.rpc import RpcError
+    monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home")
+    for p in auth._PROVIDERS.values():
+        monkeypatch.delenv(p["env"], raising=False)
+    vault = tmp_path / "case"
+    (vault / ".watchdog").mkdir(parents=True)
+    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-default-1234567890",
+                                                  "anthropic": "sk-ant-default-1234567890"}})
+    for provider in ("openai", "anthropic"):
+        kid = auth.add_key(provider, "Globe", f"sk-{provider}-globe-1234567890")
+        auth.choose_key(vault, provider, kid)
+        auth.delete_key(provider, kid)
+    sent = []
+
+    async def backend(*a, **k):
+        sent.append(a)
+        return {"text": "{}", "usage": {}, "cost_usd": 0.0}
+    for b in ("openai", "claude-api", "claude-agent-sdk"):
+        monkeypatch.setitem(mc._ABACKENDS, b, backend)
+    auth.use_investigation(vault)
+    for b in ("openai", None, "claude-agent-sdk"):
+        with pytest.raises(mc.ModelError, match="Globe"):
+            asyncio.run(mc.acomplete_json(task="t", prompt="p", schema={"type": "object"}, backend=b))
+    with pytest.raises(auth.KeyChoiceError):
+        auth.check_run_keys(vault, ["openai", None, "openai-batch", "claude-batch"])
+    with pytest.raises(RpcError):
+        chat.ChatManager().start(vault, "ask", None, "who")
+    assert sent == []
