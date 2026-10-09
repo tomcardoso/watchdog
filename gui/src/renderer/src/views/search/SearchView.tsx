@@ -641,9 +641,12 @@ function SyntaxPopover({ onClose, onTry }: { onClose: () => void; onTry: (q: str
       if (!ref.current?.contains(e.target as Node)) onClose()
     }
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
-    setTimeout(() => window.addEventListener('mousedown', down))
+    // Added after this click has finished; cleared with the rest, so a quick re-render cannot
+    // leave a listener behind.
+    const t = setTimeout(() => window.addEventListener('mousedown', down))
     window.addEventListener('keydown', esc)
     return () => {
+      clearTimeout(t)
       window.removeEventListener('mousedown', down)
       window.removeEventListener('keydown', esc)
     }

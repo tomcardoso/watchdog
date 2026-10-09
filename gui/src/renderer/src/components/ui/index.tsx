@@ -262,9 +262,12 @@ export function Dropdown({ trigger, items, align = 'left' }: { trigger: (open: (
       if (!menu.current?.contains(e.target as Node)) setPos(null)
     }
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setPos(null)
-    setTimeout(() => window.addEventListener('mousedown', close))
+    // Added after this click has finished; cleared with the rest, so a quick re-render cannot
+    // leave a listener behind.
+    const t = setTimeout(() => window.addEventListener('mousedown', close))
     window.addEventListener('keydown', esc)
     return () => {
+      clearTimeout(t)
       window.removeEventListener('mousedown', close)
       window.removeEventListener('keydown', esc)
     }
