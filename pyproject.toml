@@ -67,7 +67,7 @@ dependencies = [
 [project.optional-dependencies]
 tesseract = ["tesserocr"]       # Faster Tesseract OCR; requires system Tesseract headers
 web = ["playwright>=1.49"]      # Rendered web capture for `watchdog research`/`fetch` — requires `playwright install chromium`
-dev = ["pytest>=8.0", "numpy>=1.24", "ruff>=0.15"]
+dev = ["pytest>=8.0", "pytest-xdist>=3.5", "numpy>=1.24", "ruff>=0.15"]
 
 [project.scripts]
 watchdog = "watchdog.cli:main"
