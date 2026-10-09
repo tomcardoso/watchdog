@@ -143,6 +143,11 @@ function Shell() {
   useEffect(() => invalidate('vault.'), [project?.path])
 
   const view = project || ['projects', 'settings', 'activity'].includes(route.view) ? route.view : 'projects'
+  // A screen that needs an investigation, with none open, shows the list: the route says so too,
+  // so the title and the sidebar's current item match what is on screen.
+  useEffect(() => {
+    if (view !== route.view) useApp.getState().navigate({ view: 'projects' }, { replace: true })
+  }, [view, route.view])
   const View = VIEWS[view]
   return (
     <div className={`app platform-${window.watchdog.platform}`}>

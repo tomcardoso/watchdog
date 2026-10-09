@@ -114,6 +114,11 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // A wikilink written inside code is shown as written, not turned into a link (Briefings →
+    // Current state quotes the citation form in code).
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'briefings', path: 'session-primer' }))
+    await expect(page.locator('code', { hasText: '[[documents/<slug>#^f-<id>|p. N]]' }).first()).toBeVisible({ timeout: 10_000 })
+
     // A search typed on the Search screen keeps the route in step, so searching the earlier query
     // again (from the palette) runs it rather than doing nothing.
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
@@ -182,6 +187,10 @@ test('every screen renders against the demo investigation', async () => {
     await page.locator('.nav-item', { hasText: 'All investigations' }).click()
     await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('projects')
     await expect(page.locator('.nav-item', { hasText: 'All investigations' })).toHaveAttribute('aria-current', 'page')
+    // A screen that needs an investigation, with none open, shows the list and says so.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'timeline' }))
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('projects')
+    await expect(page.locator('.topbar .crumbs')).toHaveText('Investigations')
 
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
