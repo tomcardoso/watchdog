@@ -165,3 +165,21 @@ def test_check_vault_scans_session_pages_without_changing_them(tmp_path):
     assert r["checked"] == 2 and r["citations"] == 2 and r["not_found"] == 1
     assert [p["path"] for p in r["pages"]] == ["queries/who-paid.md"]
     assert q.read_text() == body
+
+
+def test_a_contradiction_side_naming_its_fact_links_to_that_fact(tmp_path):
+    """D283: reconcile may name each side's fact by its short id; the writer resolves it within the
+    named document only, links the side to the fact's line and takes the fact's page. A ref that
+    names no single fact there leaves the plain document citation."""
+    from watchdog.pipeline import contradiction
+    paid, appraisal, _ = _ids()
+    vault = _vault(tmp_path)
+    hexpart = paid.split(":")[3]
+    out = contradiction.run(vault, "x", "Price", "$4,350,000", "reg", 9, "$1,420,000", "reg", 2,
+                            a_fact=f"[f:{hexpart[:5]}]", b_fact="f:ffff")
+    callout = json.loads((vault / ".watchdog/registry/entities.json").read_text())["x"]["contradictions"][0]
+    assert f"[[documents/reg#^{citations.block_id(paid)}|Payment register]], p. 4" in callout
+    assert "[[documents/reg|Payment register]], p. 2" in callout
+    assert out["added"]
+    again = contradiction.run(vault, "x", "Price", "$4,350,000", "reg", 4, "$1,420,000", "reg", 2)
+    assert not again["added"]           # the same contradiction, with or without the fact link

@@ -27,26 +27,45 @@ from watchdog.pipeline.write_vault import (
 )
 
 
-def _cite(value: str, slug: str, title: str, page) -> str:
+def _cite(value: str, slug: str, title: str, page, block: str | None = None) -> str:
     """One callout line: ``> - **<value>** — [[documents/<slug>|<title>]], p. <n>``.
 
     The document title is registry-sourced, so it is defanged before interpolation into the
     wikilink display text (matching ``build_entity_note`` / #305); ``value`` is journalist-typed
-    and left as given. The page suffix is omitted when no page was supplied."""
-    cite = f"[[documents/{slug}|{_defang(title)}]]"
+    and left as given. The page suffix is omitted when no page was supplied. With `block` (the
+    fact's block id, D283) the link goes to that fact's line in the document note."""
+    frag = f"#^{block}" if block else ""
+    cite = f"[[documents/{slug}{frag}|{_defang(title)}]]"
     if page is not None:
         cite += f", p. {page}"
     return f"> - **{value}** — {cite}"
 
 
-def build_callout(label, a_value, a_slug, a_title, a_page, b_value, b_slug, b_title, b_page) -> str:
+def build_callout(label, a_value, a_slug, a_title, a_page, b_value, b_slug, b_title, b_page,
+                  a_block: str | None = None, b_block: str | None = None) -> str:
     """Assemble a ``[!contradiction]`` callout block in the exact shape extraction emits
     (see ``extract_instructions.md``)."""
     return (
         f"> [!contradiction] {label}\n"
-        f"{_cite(a_value, a_slug, a_title, a_page)}\n"
-        f"{_cite(b_value, b_slug, b_title, b_page)}"
+        f"{_cite(a_value, a_slug, a_title, a_page, a_block)}\n"
+        f"{_cite(b_value, b_slug, b_title, b_page, b_block)}"
     )
+
+
+def fact_block(vault: Path, documents_reg: dict, slug: str, ref) -> tuple[str | None, int | None]:
+    """The block id and page of the fact a short ref (`f:3a9c`) names within the document `slug`,
+    or (None, None) when it names no single fact there (D283). Matching within the named document
+    keeps a ref from ever landing on another document's fact."""
+    if not ref or not isinstance(ref, str):
+        return None, None
+    from watchdog.pipeline import citations, entity_facts
+    sha = next((s for s, d in documents_reg.items() if isinstance(d, dict)
+                and d.get("document_note") == f"documents/{slug}"), None)
+    if not sha:
+        return None, None
+    fact = citations.match_short(ref, entity_facts.FactIndex(vault, {}, documents_reg, marks={})
+                                 .document_facts(sha))
+    return (citations.block_id(fact["id"]), fact.get("page")) if fact else (None, None)
 
 
 def _doc_index(documents_reg: dict) -> dict:
@@ -74,7 +93,8 @@ def _resolve_doc(doc_index: dict, doc_arg: str) -> tuple[str, dict]:
 
 def _run_unlocked(vault: Path, entity_id: str, label: str,
                   a_value: str, a_doc: str, a_page,
-                  b_value: str, b_doc: str, b_page) -> dict:
+                  b_value: str, b_doc: str, b_page,
+                  a_fact: str | None = None, b_fact: str | None = None) -> dict:
     """Write a verified contradiction callout into an entity's note and registry ledger.
 
     Validates that the entity id and both document slugs exist, builds the callout, folds it
@@ -102,7 +122,14 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
 
     a_title = a_entry.get("title") or a_entry.get("filename", a_slug)
     b_title = b_entry.get("title") or b_entry.get("filename", b_slug)
-    callout = build_callout(label, a_value, a_slug, a_title, a_page, b_value, b_slug, b_title, b_page)
+    # A side naming its fact (D283) links to that fact's line; a ref that names no single fact in
+    # that document is ignored and the side cites the document and page, as before.
+    a_block, a_fpage = fact_block(vault, documents_reg, a_slug, a_fact)
+    b_block, b_fpage = fact_block(vault, documents_reg, b_slug, b_fact)
+    a_page = a_fpage if a_block and a_fpage is not None else a_page
+    b_page = b_fpage if b_block and b_fpage is not None else b_page
+    callout = build_callout(label, a_value, a_slug, a_title, a_page, b_value, b_slug, b_title, b_page,
+                            a_block, b_block)
     rid = resolutions.contradiction_id(callout)
 
     entry = entities_reg[entity_id]
@@ -138,13 +165,16 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
 
 def run(vault: Path, entity_id: str, label: str,
         a_value: str, a_doc: str, a_page,
-        b_value: str, b_doc: str, b_page) -> dict:
+        b_value: str, b_doc: str, b_page,
+        a_fact: str | None = None, b_fact: str | None = None) -> dict:
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
     from a Claude Code session or a second terminal while `watchdog bark` commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
     from watchdog.pipeline.write_vault import _registry_lock
     registry_dir = Path(vault) / ".watchdog" / "registry"
     if not registry_dir.is_dir():
-        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
+        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page,
+                             a_fact, b_fact)
     with _registry_lock(registry_dir):
-        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page)
+        return _run_unlocked(vault, entity_id, label, a_value, a_doc, a_page, b_value, b_doc, b_page,
+                             a_fact, b_fact)

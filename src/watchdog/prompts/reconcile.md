@@ -33,6 +33,7 @@ Compare every new fact with the stored facts, and the new facts with one another
 - `a_value` / `b_value` — the two conflicting values, each stated as briefly as it can be while still being clear (`$4.2M`, `insolvent as of 2023-03-01`, `sole director`). These are the two halves the journalist compares — not a retelling of the fact.
 - `a_doc` / `b_doc` — the document each value comes from: the `<slug>` out of the `[[documents/<slug>|<title>]]` heading the fact is filed under. Copy it exactly; a slug that does not name a real document is discarded.
 - `a_page` / `b_page` — the page each value appears on, when the fact records one; otherwise null.
+- `a_fact` / `b_fact` — the short id in square brackets of the fact each value comes from (`f:3a9c`), copied exactly; null when the value rests on no single listed fact.
 
 Flag a contradiction whenever you are confident the conflict is genuine. This is the only verification step there is — what you return is written into the entity's note as-is, for a journalist to act on.
 

@@ -260,6 +260,23 @@ def cite(text: str, lines: list[str]) -> str:
     return re.sub(r"([ \t]*)\{\{(.+?)\}\}", ref, text)
 
 
+def _ledger_ref(ledger: str, slug: str, phrase: str | None) -> str | None:
+    """The short id of the fact under document `slug` in a reconcile ledger that contains
+    `phrase`, or None."""
+    if not phrase:
+        return None
+    current = None
+    for line in ledger.splitlines():
+        head = re.match(r"\*\[\[documents/([^|\]]+)\|", line)
+        if head:
+            current = head.group(1)
+            continue
+        ref = re.match(r"- \[(f:[0-9a-f:]+)\]", line)
+        if current == slug and ref and phrase.lower() in line.lower():
+            return ref.group(1)
+    return None
+
+
 # ── the canned model ────────────────────────────────────────────────────────────────────────
 
 class CannedModel:
@@ -316,8 +333,13 @@ class CannedModel:
         found = []
         for c in demo_story.CONTRADICTIONS:
             if c["entity_id"] in ledger_ids and c["a_doc"] in known and c["b_doc"] in known:
-                found.append({k: c[k] for k in ("entity_id", "label", "a_value", "a_doc", "a_page",
-                                                "b_value", "b_doc", "b_page")})
+                item = {k: c[k] for k in ("entity_id", "label", "a_value", "a_doc", "a_page",
+                                          "b_value", "b_doc", "b_page")}
+                ent = next(e for e in entities if e["entity_id"] == c["entity_id"])
+                ledger = f"{ent.get('new_facts') or ''}\n{ent.get('stored_facts') or ''}"
+                for side in ("a", "b"):
+                    item[f"{side}_fact"] = _ledger_ref(ledger, c[f"{side}_doc"], c.get(f"{side}_cite"))
+                found.append(item)
         return {"merges": merges, "contradictions": found}
 
     def synthesis(self, text: str) -> dict:

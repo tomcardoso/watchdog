@@ -261,7 +261,12 @@ RECONCILE = _obj(
                              "description": "the second claim's conflicting value"},
                  "b_doc": {"type": "string",
                            "description": "the slug of the document the second claim comes from"},
-                 "b_page": {"type": ["integer", "null"]}},
+                 "b_page": {"type": ["integer", "null"]},
+                 "a_fact": {"type": ["string", "null"],
+                            "description": "the short id of the first claim's fact, e.g. "
+                                           "'f:3a9c', copied from the bundle; null if none"},
+                 "b_fact": {"type": ["string", "null"],
+                            "description": "the short id of the second claim's fact"}},
                 ["entity_id", "label", "a_value", "a_doc", "b_value", "b_doc"],
             ),
         },

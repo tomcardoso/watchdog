@@ -115,6 +115,22 @@ def render_short(text: str, refs: dict, lookup, stats: dict | None = None) -> tu
     return SHORT_RUN_RE.sub(sub, text or ""), stats
 
 
+def match_short(ref: str, facts: list[dict]) -> dict | None:
+    """The one fact in `facts` whose D271 id the short ref (`f:3a9c`, `[f:3a9c:2]`) is a window
+    onto, or None when none or several match. Used where the map from short ref to id was not
+    kept (a contradiction names its document, so matching within it is unambiguous)."""
+    m = re.fullmatch(r"\[?\s*f:([0-9a-f]{4,12})(?::(\d+))?\s*\]?", (ref or "").strip(), re.IGNORECASE)
+    if not m:
+        return None
+    hexpart, dup = m.group(1).lower(), m.group(2)
+    hits = []
+    for f in facts:
+        bits = f["id"].split(":")
+        if len(bits) > 3 and bits[3].startswith(hexpart) and (bits[4] if len(bits) > 4 else None) == dup:
+            hits.append(f)
+    return hits[0] if len(hits) == 1 else None
+
+
 class Resolver:
     """Finds the fact a citation link names: `documents/<slug>` plus a block id (or an entity note
     plus a block id, for a link to an entity note's Facts line). Read-only and cached."""
