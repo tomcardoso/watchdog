@@ -204,9 +204,9 @@ Type a question in plain language, or start from one of the shortcuts on the emp
 - `/watchdog-health` checks integrity: orphaned notes, broken links, registry mismatches, open contradictions.
 - `/watchdog-context` and **Seed investigation context** tell Watchdog what you want to find out. Claude reads the background files in `context/`, interviews you where they fall short, and writes `context.md` as open questions rather than conclusions. An existing one is updated, not replaced. The brief is sent to the AI model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it and how to phrase it.
 
-A selector at the top of the screen chooses the Claude model for new conversations: Default (Claude Code's own setting), Sonnet, Opus or Haiku. The cost so far is shown beside it; on a subscription this is what it would cost at published rates, not what you are billed.
+A selector at the top of the screen chooses the Claude model for new conversations: Default (Claude's own default model), Sonnet, Opus or Haiku. The cost so far is shown beside it; on a subscription this is what it would cost at published rates, not what you are billed.
 
-Ask Claude needs Claude Code signed in. If a question will not start, check **Settings → Models & keys**.
+Ask Claude needs Claude signed in. If a question will not start, check **Settings → Models & keys**.
 
 ## Web research
 
@@ -251,7 +251,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Usage** | Opens token, cost and timing figures for each run. |
 | **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. |
 | **Release a stuck lock** | An interrupted run can leave a lock that stops the next one starting. This releases a stale one; a recent-looking lock is left alone unless you force it. |
-| **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude Code settings after you update Watchdog. |
+| **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude settings after you update Watchdog. |
 
 Running processing and post-processing separately, rather than back to back, is also how you compare finishing models against the same extraction. The **Processing history** tab beside Maintenance shows what each run added.
 

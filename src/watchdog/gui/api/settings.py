@@ -222,7 +222,7 @@ def _claude_reason(claude: dict) -> str | None:
         return "Claude access isn't set up yet."
     if mode == "subscription":
         if not claude["logged_in"]:
-            return "Claude Code login not detected — run claude in a terminal to sign in."
+            return "Claude is not signed in. Use Sign in under Settings → Models & keys."
         if claude["env_key_set"]:
             return ("ANTHROPIC_API_KEY is set in your environment, and the Agent SDK uses it before "
                     "the subscription login, so runs would be metered.")

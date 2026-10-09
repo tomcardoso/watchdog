@@ -269,7 +269,7 @@ export function SetupPanel() {
         <div style={{ padding: '0 18px 10px' }}>
           {MODEL_LABELS.map(([key, label, hint]) => (m ? <Item key={key} ok={m[key] !== false} label={label} hint={hint} optional /> : null))}
           {m && <Item ok={!!m.ocr} label={m.ocr ? `Text recognition for scans (${m.ocr})` : 'Text recognition for scans'} hint="No OCR engine is installed. Repair the engine to add one." />}
-          {m && <Item ok={!!m.claude_cli} label="Claude Code (for Ask Claude and Research)" hint="Comes with the engine. Repair the engine if it is missing." />}
+          {m && <Item ok={!!m.claude_cli} label="Claude (for Ask Claude and Research)" hint="Comes with the engine. Repair the engine if it is missing." />}
           {m && m.transcription_model && <TranscriptionModel m={m} onDone={() => void models.refetch()} />}
         </div>
       </section>

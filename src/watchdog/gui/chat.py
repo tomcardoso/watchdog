@@ -30,7 +30,7 @@ from watchdog.gui.rpc import RpcError
 
 MODES = ("ask", "context", "research")
 _AUTH_HINT = ("Claude is not signed in. Sign in under Settings → Models & keys, then try again.")
-_MISSING_HINT = ("Claude Code, which comes with Watchdog's engine, could not be started. Repair the "
+_MISSING_HINT = ("Claude, which comes with Watchdog's engine, could not be started. Repair the "
                  "engine under Settings → Setup, then try again.")
 
 

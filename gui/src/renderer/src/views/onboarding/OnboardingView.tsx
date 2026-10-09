@@ -428,7 +428,7 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
             </div>
             {error && <Callout tone="danger">{error}</Callout>}
             <Callout tone="info" title="Ask Claude needs a Claude sign-in">
-              The question-and-answer screens run in Claude Code, which always uses Claude. Sign in with your Claude account to use them. This is optional now and
+              The question-and-answer screens always use Claude. Sign in with your Claude account to use them. This is optional now and
               can be done later in Settings.
               <div style={{ marginTop: 8 }}>
                 {claudeIn ? <div className="onb-ok"><CheckCircle2 /> Signed in to Claude</div> : <ClaudeSignIn label="Sign in to Claude (optional)" onSignedIn={() => setClaudeIn(true)} />}
