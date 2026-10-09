@@ -307,6 +307,27 @@ def _entity_timeline(eid: str, ent: dict, docs: dict, ents: dict) -> list[dict]:
     return events
 
 
+def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
+    """The entity's facts from the stored extractions, in date order, as the app shows them, plus
+    its AI-written synthesis from the registry (D280)."""
+    from watchdog.pipeline import entity_facts
+    index = entity_facts.FactIndex(v, ents, docs)
+    rows = []
+    for f in entity_facts.chronological(index.facts_for(eid)):
+        row = fact_row({**f, "entities": f.get("entities") or []}, f["id"], ents, f.get("mark"))
+        row.update({"sha": f["sha"], "title": f.get("title"), "doc_date": f.get("doc_date") or None,
+                    "note": f.get("note")})
+        rows.append(row)
+    synth = (ents.get(eid) or {}).get("synthesis")
+    synthesis = None
+    if isinstance(synth, dict) and (synth.get("summary") or "").strip():
+        synthesis = {k: synth.get(k) for k in ("summary", "analysis", "by", "model", "made_at",
+                                               "facts_total", "facts_shown", "stale")}
+    legacy = (ents.get(eid) or {}).get("legacy_claims")
+    return {"facts": rows, "synthesis": synthesis,
+            "legacy_claims": legacy if isinstance(legacy, str) and legacy.strip() else None}
+
+
 @method("vault.entity")
 def entity(vault: str, id: str) -> dict:
     from watchdog.pipeline import resolutions
@@ -323,12 +344,14 @@ def entity(vault: str, id: str) -> dict:
     appears = [s for s in (ent.get("appears_in") or []) if s in docs]
     doc_rows = vaultio.sorted_document_rows(v, {s: docs[s] for s in appears})
     return {
+        **_entity_facts(v, id, ents, docs),
         **row,
         "frontmatter": parsed["frontmatter"] if parsed else {},
         "body": parsed["body"] if parsed else "",
         "sections": {k: (sections.get(k) or None)
                      for k in ("summary", "analysis", "contradictions", "timeline", "relationships",
-                               "notes")},
+                               "notes")}
+        | {"summary": sections.get("summary") or sections.get("summary (ai-written)") or None},
         "documents": doc_rows,
         "relationships": _relationships(ent, ents),
         "contradictions": _contradictions(ent, sections.get("contradictions"), resolved),

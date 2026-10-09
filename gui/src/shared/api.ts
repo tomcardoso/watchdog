@@ -193,6 +193,26 @@ export interface Relationship {
   docs: string[]
 }
 
+/** One of an entity's facts (D280): a document fact tagged to the entity, with its source. */
+export interface EntityFact extends Fact {
+  sha: string
+  title: string | null
+  doc_date: string | null
+  note: string | null
+}
+
+/** The AI-written summary of an entity, kept in the registry (D280). */
+export interface EntitySynthesis {
+  summary: string
+  analysis: string | null
+  by: 'model' | 'session' | 'carried' | string | null
+  model: string | null
+  made_at: string | null
+  facts_total: number | null
+  facts_shown: number | null
+  stale: 'merge' | 'undo' | string | null
+}
+
 export interface EntityDetail extends EntityRow {
   frontmatter: Record<string, unknown>
   body: string
@@ -208,6 +228,9 @@ export interface EntityDetail extends EntityRow {
   relationships: Relationship[]
   contradictions: { rid: string; summary: string; text: string; resolved: boolean }[]
   timeline: TimelineEvent[]
+  facts: EntityFact[]                  // every fact tagged to the entity, in date order (D280)
+  synthesis: EntitySynthesis | null
+  legacy_claims: string | null         // claims an older version recorded with no stored extraction
 }
 
 export interface GraphData {
@@ -382,6 +405,8 @@ export interface MergeLogEntry {
   document_count: number
   facts: { id: string; fact: string; page: number | null; sha: string; title: string }[]
   undo_available: boolean
+  undo_reason: string | null
+  undone: { at: string; by: string; split_id: string } | null
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────
@@ -524,6 +549,8 @@ export interface Methods {
   'jobs.list': [Record<string, never>, Job[]]
   'jobs.get': [{ id: string }, Job & { log: LogLine[] }]
   'jobs.flags': [{ command: 'add' | 'dig' | 'bark' | 'chew'; options: RunOptions }, { args: string[] }]
+  'jobs.rebuildNotes': [{ vault: string }, Job]
+  'jobs.undoMerge': [{ vault: string; id: string }, Job]
   'action.run': [{ vault: string | null; args: string[]; timeout?: number }, ActionResult]
 
   'search.query': [{ vault: string; query: string; top?: number; threshold?: number | null; rerank?: boolean }, SearchResult]

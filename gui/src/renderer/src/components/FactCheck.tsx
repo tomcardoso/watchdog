@@ -31,7 +31,7 @@ export function useMarks() {
       try {
         const saved = await call('verify.mark', { vault, id, status, note: note === undefined ? prev?.note ?? null : note })
         setLocal((m) => ({ ...m, [id]: saved.status ? { status: saved.status, note: saved.note, by: saved.by, at: saved.at } : null }))
-        invalidate('vault.document', 'vault.summary', 'verify.')
+        invalidate('vault.document', 'vault.entity', 'vault.summary', 'verify.')
       } catch (e) {
         setLocal((m) => ({ ...m, [id]: prev }))
         toast({ kind: 'error', title: 'Could not save your check', body: errorMessage(e) })

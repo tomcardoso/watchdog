@@ -1,16 +1,16 @@
 // Review → Merges (D279): a "possible same" pair shown side by side, and the merge log — every
-// merge Watchdog's rules, the AI model or a reporter made, with the evidence for it. The log is
-// read-only here: splitting a merge back apart is not possible yet, and the page says so.
+// merge Watchdog's rules, the AI model or a reporter made, with the evidence for it, and "Undo
+// merge", which splits a merge back exactly by what its entry recorded (D280), or says why not.
 
 import { ArrowRight, Bot, ChevronDown, ChevronRight, GitMerge, ListChecks, Undo2, UserRound } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { MergeLogEntry, MergeTier, SamePair, SameSide } from '@shared/api'
 import { EntityAvatar } from '@renderer/components/EntityChip'
-import { Badge, Button, Callout, Empty, ErrorNote, Skeleton, Switch, cx } from '@renderer/components/ui'
+import { Badge, Button, Empty, ErrorNote, Skeleton, Switch, cx } from '@renderer/components/ui'
 import { typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
-import { useRpc } from '@renderer/lib/rpc'
-import { navigate, useVault } from '@renderer/lib/store'
+import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
+import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 
 const TIER: Record<MergeTier, { label: string; tone?: 'success' | 'warning' | 'info' | 'accent' }> = {
   high: { label: 'High confidence', tone: 'success' },
@@ -136,9 +136,6 @@ export function MergeLogSection() {
           </label>
         )}
       </div>
-      <Callout tone="info" title="Undo is not available yet">
-        A merge cannot yet be split back into two entities from the app: the merged page&apos;s summary and your notes on it cannot be divided reliably. Each entry keeps what a later version needs to do it. If a merge is wrong, note it on the entity&apos;s page.
-      </Callout>
       {q.error ? (
         <ErrorNote error={q.error} retry={() => void q.refetch()} />
       ) : q.isLoading ? (
@@ -167,8 +164,29 @@ function decidedBy(m: MergeLogEntry): { icon: typeof Bot; text: string } {
 
 function LogRow({ m }: { m: MergeLogEntry }) {
   const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const vault = useVault()
   const who = decidedBy(m)
   const keepName = m.keep.name || m.keep.id
+  const undo = async () => {
+    const ok = await window.watchdog.dialog.confirm({
+      title: `Split ${m.merged.name || m.merged.id} back out of ${keepName}?`,
+      message: `The facts, documents and relationships that came with ${m.merged.name || m.merged.id} go back to a record of their own, and the two are marked "Not the same" so they are not merged again automatically.`,
+      detail: `Contradictions recorded on the joined record, your notes and the AI-written summary stay on ${keepName}. Move anything in your notes by hand if it belongs to the other record.`,
+      confirm: 'Undo merge'
+    })
+    if (!ok) return
+    setBusy(true)
+    try {
+      const job = await call('jobs.undoMerge', { vault, id: m.id })
+      useApp.getState().upsertJob(job)
+      toast({ kind: 'info', title: 'Undoing the merge', body: 'Follow it in Activity. The merge log updates when it finishes.' })
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not undo the merge', body: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
   return (
     <div className={cx('mg-row', open && 'open')}>
       <button className="mg-row-main" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
@@ -238,9 +256,14 @@ function LogRow({ m }: { m: MergeLogEntry }) {
                 Open {keepName}
               </Button>
             )}
-            <Button size="sm" icon={Undo2} disabled tip="Not available yet. Splitting a merged entity needs a later version of Watchdog.">
-              Undo merge
-            </Button>
+            {m.undone ? (
+              <Badge icon={Undo2}>Undone {fmtDate(m.undone.at)}</Badge>
+            ) : (
+              <Button size="sm" icon={Undo2} disabled={!m.undo_available} loading={busy} tip={m.undo_available ? 'Split this merge back into two entities' : m.undo_reason ?? undefined} onClick={() => void undo()}>
+                Undo merge
+              </Button>
+            )}
+            {!m.undone && !m.undo_available && m.undo_reason && <span className="faint">{m.undo_reason}</span>}
             {m.first_at && fmtDate(m.first_at) !== fmtDate(m.at) && <span className="faint">First merged {fmtDate(m.first_at)}</span>}
           </div>
         </div>

@@ -543,6 +543,25 @@ export default function MaintenancePanel() {
         />
         <Gated>
         <SimpleCard
+          icon={ScanText}
+          title="Rebuild notes"
+          text="Rewrites every entity and document note from what Watchdog keeps on disk: each document's facts, the AI-written summaries and the record of merges and contradictions. No model call, no tokens. Use it if a note was deleted or edited by mistake. Your own Notes sections are kept as they are."
+          label="Rebuild notes"
+          onRun={async () => {
+            const v = useApp.getState().project?.path
+            if (!v) return
+            try {
+              const job = await call('jobs.rebuildNotes', { vault: v })
+              useApp.getState().upsertJob(job)
+              navigate({ view: 'activity', job: job.id })
+            } catch (e) {
+              toast({ kind: 'error', title: 'Could not start rebuilding notes', body: errorMessage(e) })
+            }
+          }}
+        />
+        </Gated>
+        <Gated>
+        <SimpleCard
           icon={Cpu}
           title="Rebuild the search index"
           text="Rebuilds the semantic and full-text indexes from what is already on disk: no OCR, no model calls, no tokens. Run it after changing the embedding model in Settings, since vectors from two models cannot be mixed, or after merging entities."

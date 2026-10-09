@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, MessageSquare, MoreHorizontal, Network, NotebookPen, PencilLine, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, NotebookPen, PencilLine, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
@@ -10,6 +10,7 @@ import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import ContradictionModal from './ContradictionModal'
+import { EntityFacts } from './EntityFacts'
 import MergeModal from './MergeModal'
 import './entities.css'
 
@@ -73,6 +74,7 @@ export default function EntityView() {
             )}
             <div className="ent-facts">
               <Fact v={fmtNum(e.doc_count)} l={e.doc_count === 1 ? 'document' : 'documents'} />
+              <Fact v={fmtNum(e.facts.length)} l={e.facts.length === 1 ? 'fact' : 'facts'} />
               <Fact v={fmtNum(e.role_count)} l={e.role_count === 1 ? 'relationship' : 'relationships'} />
               <Fact v={fmtNum(e.timeline.length)} l={e.timeline.length === 1 ? 'timeline event' : 'timeline events'} />
               <Fact v={fmtDate(e.first_seen) || '—'} l="First seen" small />
@@ -105,27 +107,19 @@ export default function EntityView() {
 
         <div className="ent-cols">
           <div className="ent-main-col">
+            <SummarySection e={e} />
+
             <section className="ent-sec">
-              <SecTitle icon={BookOpen} title="Summary">
-                <Button variant="ghost" size="sm" icon={Sparkles} onClick={() => navigate({ view: 'ask', prompt: `/watchdog-entity ${e.id}` })} tip="Re-synthesize from every source in a Claude session">
-                  Refresh from all sources
-                </Button>
-              </SecTitle>
-              {e.sections.summary?.trim() ? (
-                <Markdown text={e.sections.summary} />
-              ) : (
-                <Empty icon={BookOpen} title="No summary yet">
-                  Summaries are written when the entity appears across enough material to synthesize. “Refresh from all sources” asks Claude to write one from everything on file.
-                </Empty>
+              <SecTitle icon={ListChecks} title="Facts" count={e.facts.length} />
+              <EntityFacts facts={e.facts} />
+              {e.legacy_claims && (
+                <div className="ent-legacy">
+                  <div className="ent-legacy-head">Earlier claims</div>
+                  <p className="faint">Recorded by an earlier version of Watchdog from documents whose extraction was not kept, so they cannot be shown as facts. Kept as written.</p>
+                  <Markdown text={e.legacy_claims} compact />
+                </div>
               )}
             </section>
-
-            {e.sections.analysis?.trim() && (
-              <section className="ent-sec">
-                <SecTitle icon={FileText} title="Analysis" />
-                <Markdown text={e.sections.analysis} />
-              </section>
-            )}
 
             <Contradictions e={e} onAdd={() => setContraOpen(true)} />
 
@@ -222,6 +216,53 @@ function StubNotice({ id }: { id: string }) {
     >
       This note is now a redirect. Its aliases, documents, roles and timeline were folded into the surviving entity, which holds the full record.
     </Callout>
+  )
+}
+
+// ── the AI-written summary ───────────────────────────────────────────────────
+function provenance(e: EntityDetail): string {
+  const s = e.synthesis
+  if (!s) return 'Written by an AI model. It can be wrong: check it against the facts below.'
+  const when = s.made_at ? ` on ${fmtDate(s.made_at.slice(0, 10))}` : ''
+  let text: string
+  if (s.by === 'carried') text = 'Carried over from an earlier version of Watchdog, which wrote it from the entity’s earlier notes rather than from its facts.'
+  else if (s.by === 'session') text = `Written in a Claude session${when}.`
+  else {
+    const counts = s.facts_total != null && s.facts_shown != null ? (s.facts_shown < s.facts_total ? ` from ${fmtNum(s.facts_shown)} of ${fmtNum(s.facts_total)} facts` : ` from ${fmtNum(s.facts_total)} facts`) : ''
+    text = `Written by an AI model${s.model ? ` (${s.model})` : ''}${when}${counts}.`
+  }
+  if (s.stale === 'merge') text += ' It was written before another record was merged into this one.'
+  if (s.stale === 'undo') text += ' It was written before a merge of this record was undone.'
+  return `${text} It can be wrong: check it against the facts below.`
+}
+
+function SummarySection({ e }: { e: EntityDetail }) {
+  const summary = e.synthesis?.summary ?? e.sections.summary
+  const analysis = e.synthesis?.analysis
+  return (
+    <section className="ent-sec">
+      <SecTitle icon={BookOpen} title="Summary">
+        {summary?.trim() && (
+          <Badge icon={Sparkles} tip="Written by an AI model from this entity’s facts. The facts below are the record.">
+            AI-written
+          </Badge>
+        )}
+        <Button variant="ghost" size="sm" icon={Sparkles} onClick={() => navigate({ view: 'ask', prompt: `/watchdog-entity ${e.id}` })} tip="Re-synthesize from every source in a Claude session">
+          Refresh from all sources
+        </Button>
+      </SecTitle>
+      {summary?.trim() ? (
+        <div className="ent-ai">
+          <Markdown text={summary} />
+          {analysis?.trim() && <Markdown text={analysis} />}
+          <p className="ent-ai-prov">{provenance(e)}</p>
+        </div>
+      ) : (
+        <Empty icon={BookOpen} title="No summary yet">
+          An AI-written summary is added once the entity appears in two or more documents. Its facts below are the record either way.
+        </Empty>
+      )}
+    </section>
   )
 }
 

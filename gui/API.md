@@ -152,12 +152,16 @@ DocumentDetail = DocumentRow & {
 EntityDetail = EntityRow & {
   frontmatter: object, body: string,            // the entity note
   sections: {summary|null, analysis|null, contradictions|null, timeline|null,
-             relationships|null, notes|null},   // raw markdown per ## section
+             relationships|null, notes|null},   // raw markdown per ## section; summary also reads "## Summary (AI-written)"
   documents: DocumentRow[],                     // appears_in, resolved
   relationships: [{role, target_id, target_name|null, target_type|null, direction: "out"|"in",
                    docs: string[]}],
   contradictions: [{rid, summary, text, resolved: bool}],
-  timeline: TimelineEvent[]
+  timeline: TimelineEvent[],
+  facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail
+  synthesis: {summary, analysis|null, by: "model"|"session"|"carried", model|null, made_at|null,
+              facts_total|null, facts_shown|null, stale: "merge"|"undo"|null} | null,   // the AI-written summary, from the registry; unknown fields ignored
+  legacy_claims: string|null      // claims an older version recorded for documents with no stored extraction (markdown)
 }
 
 TimelineEvent = {
@@ -237,6 +241,8 @@ A job is `python -m watchdog <args…>` run with the vault as its working direct
 | `jobs.list` | — | `Job[]` (running and the last 50 finished) |
 | `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
 | `jobs.flags` | `{command: "add"\|"dig"\|"bark"\|"chew", options: RunOptions}` | `{args: string[]}` |
+| `jobs.rebuildNotes` | `{vault}` | `Job` — Maintenance → "Rebuild notes": rewrites every entity and document note from stored data with no model call (`python -m watchdog.pipeline.entity_notes`, the library function, D280); waits for the full engine like `reindex` |
+| `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge" (`python -m watchdog.pipeline.merge_undo <id>`, D280). Errors: `cannot_undo` with the reason, `not_found` |
 | `action.run` | `{vault\|null, args: string[], timeout?: seconds}` | `{code, stdout, stderr}` — a short, synchronous command (rename, archive, unlock…) |
 
 ```
@@ -274,7 +280,9 @@ MergeLogEntry = {id, keep: {id, name, type, exists, note|null}, merged: {id, nam
                  tier: "high"|"medium"|"low"|"manual", decided_by: "rule"|"model"|"reporter", rule|null,
                  reason, model|null, reporter|null, same_name: bool, at, first_at,
                  identifier|null, shared: [...], documents: [{sha, title}], document_count,
-                 facts: [{id, fact, page, sha, title}], undo_available: false}
+                 facts: [{id, fact, page, sha, title}], undo_available: bool,
+                 undo_reason: string|null,            // why it cannot be undone now, in plain words (D280)
+                 undone: {at, by, split_id}|null}
 ```
 
 A `merges` item is a "possible same" pair from `.watchdog/registry/merges.json` (D279). Resolving
@@ -290,7 +298,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `review.sync` | `{vault}` | `{resolved: string[], unresolved: string[]}` — `resolutions.sync_from_briefings` |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
 | `review.watchlist` | `{vault}` | `{terms: string[], text}` |
-| `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: false}` — newest first, documents and facts resolved for display; read-only |
+| `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |
 | `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
 
 `merge-entities` (with `--force` after the app's own confirmation), `contradiction-add`, `watchlist`

@@ -873,3 +873,79 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── facts and the AI-written summary (D280) ─────────────────────────────── */
+.ent-ai {
+  padding: 14px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+}
+.ent-ai .md + .md {
+  margin-top: 12px;
+}
+.ent-ai-prov {
+  margin: 10px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.ent-fact-src {
+  max-width: 100%;
+}
+.ent-fact-src .truncate {
+  max-width: 420px;
+}
+.ent-fact-toggle {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+  width: fit-content;
+}
+.ent-fact-toggle:hover {
+  color: var(--accent-text);
+}
+.ent-fact-toggle:focus-visible {
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+.ent-fact-toggle svg {
+  width: 12px;
+  height: 12px;
+}
+.ent-fact-group {
+  margin-bottom: 16px;
+}
+.ent-fact-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  font-size: var(--fs-sm);
+  font-weight: 620;
+  color: var(--text-2);
+}
+.ent-fact-group-head svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-3);
+}
+.ent-fact-group-head .count {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.ent-legacy {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.ent-legacy-head {
+  font-weight: 650;
+  font-size: var(--fs-sm);
+  margin-bottom: 4px;
+}

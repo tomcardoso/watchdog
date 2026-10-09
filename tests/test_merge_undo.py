@@ -155,3 +155,16 @@ def test_the_app_starts_undo_as_a_job_and_refuses_with_the_reason(vault, monkeyp
     assert call_error("jobs.undoMerge", vault=str(vault), id=refused["id"])["code"] == "cannot_undo"
     call("jobs.rebuildNotes", vault=str(vault))
     assert started[-1][0] == ["rebuild-notes"]
+
+
+def test_the_entity_page_gets_every_fact_and_the_ai_summary(vault, monkeypatch):
+    from tests.gui_support import call
+    monkeypatch.setattr("watchdog.gui.vaultio.require_granted", lambda p: None)
+    e = call("vault.entity", vault=str(vault), id="leonard-pike")
+    assert len(e["facts"]) == len(_facts(vault, "leonard-pike")) >= 10
+    first = e["facts"][0]
+    assert first["id"].startswith("fact:1:") and first["sha"] and first["title"]
+    assert {"passage", "passage_method", "mark", "doc_date"} <= set(first)
+    assert any(f["mark"] for f in e["facts"])
+    assert e["synthesis"]["by"] == "model" and e["synthesis"]["summary"]
+    assert e["sections"]["summary"]                    # the note's AI-written section, for older readers

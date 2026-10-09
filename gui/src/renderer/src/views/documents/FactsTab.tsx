@@ -29,7 +29,7 @@ export function passageSnippet(q: string): string {
   return words.slice(0, 7).join(' ')
 }
 
-function Passage({ f, jump, hasViewer, media }: { f: Fact; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
+export function Passage({ f, jump, hasViewer, media }: { f: Fact; jump: Jump; hasViewer: boolean; media?: MediaInfo | null }) {
   const page = f.passage_page ?? f.page
   const findLabel = media ? 'play from here' : 'find on page'
   const on = (p: number) => (media ? `at ${pageLabel(media, p)}` : `on ${pageLabel(null, p)}`)

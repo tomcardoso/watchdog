@@ -314,10 +314,12 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
     return out
 
 
-def index_notes(vault: Path, written: list[tuple[str, str, str]], kind: str = "entity") -> None:
+def index_notes(vault: Path, written: list[tuple[str, str, str]], kind: str = "entity",
+                embed: bool = True) -> None:
     """Refresh the search indexes for notes just written (best effort, as every writer does). An
-    embedding failure (the local model is missing) is reported once, not once per note."""
-    embed_ok = True
+    embedding failure (the local model is missing) is reported once, not once per note. With
+    `embed` false only the full-text index is refreshed."""
+    embed_ok = embed
     for note_path, name, content in written:
         if embed_ok:
             try:
@@ -357,7 +359,8 @@ def _write_document_notes(vault: Path, shas, entities: dict, documents: dict) ->
     return out
 
 
-def _rebuild_unlocked(vault: Path, ids=None, documents_too: bool = True, index_search: bool = True) -> dict:
+def _rebuild_unlocked(vault: Path, ids=None, documents_too: bool = True, index_search: bool = True,
+                      embed: bool = True) -> dict:
     from watchdog.pipeline.write_vault import _write_json_atomic, _update_manifest
     reg = vault / ".watchdog" / "registry"
     entities = _read_json_or(reg / "entities.json", {})
@@ -373,8 +376,8 @@ def _rebuild_unlocked(vault: Path, ids=None, documents_too: bool = True, index_s
         _write_json_atomic(reg / "entities.json", entities)
         _update_manifest(vault, entities)
     if index_search:
-        index_notes(vault, written, "entity")
-        index_notes(vault, docs_written, "document")
+        index_notes(vault, written, "entity", embed=embed)
+        index_notes(vault, docs_written, "document", embed=embed)
     registry = _read_json_or(reg / "registry.json", {})
     if registry.get("entity_note_format") != NOTE_FORMAT and ids is None:
         registry["entity_note_format"] = NOTE_FORMAT
@@ -433,7 +436,9 @@ def refresh(vault: Path, ids) -> bool:
         return True
     with _try_registry_lock(reg) as got:
         if got:
-            _rebuild_unlocked(vault, ids | take_stale(vault), documents_too=False)
+            # Full-text only: a mark changes a word or two of the note, not what it is about, and
+            # loading the embedding model for it would stall the app. The next commit re-embeds.
+            _rebuild_unlocked(vault, ids | take_stale(vault), documents_too=False, embed=False)
             return True
     pending = set(_read_json_or(_stale_path(vault), []) or []) | ids
     _write_json_atomic(_stale_path(vault), sorted(pending))
