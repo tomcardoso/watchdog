@@ -386,7 +386,11 @@ class CannedModel:
 
     def briefing(self, text: str) -> dict:
         from watchdog.gui import demo_story
-        return demo_story.BRIEFINGS["main" if "council-minutes" in text else "early"]
+        canned = demo_story.BRIEFINGS["main" if "council-minutes" in text else "early"]
+        rows = json.loads(text.split("RESULTS:\n", 1)[1].split("\n\nNEAR-DUP ALERTS:", 1)[0])
+        lines = [ln for r in rows for ln in r.get("key_facts") or [] if isinstance(ln, str)]
+        return {k: cite(v, lines) if isinstance(v, str) else [cite(x, lines) for x in v]
+                for k, v in canned.items()}
 
     async def __call__(self, *, task, prompt, schema, model=None, backend=None, max_retries=1,
                        effort=None):

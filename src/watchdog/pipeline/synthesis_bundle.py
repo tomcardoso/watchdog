@@ -29,6 +29,25 @@ FACT_BUDGET_CHARS = 24_000
 _ROLE_MAX = 15
 
 
+def fact_flags(f: dict) -> list[str]:
+    """The warnings and the reporter's mark a model is shown beside a fact: `inferred`, a figure
+    warning, `verified`, `the reporter could not verify this`, `disputed by the reporter`."""
+    flags = []
+    if f.get("basis") == "inferred":
+        flags.append("inferred")
+    figure = _figure_verification_note(f).strip().removeprefix("*(").removesuffix(")*")
+    if figure:
+        flags.append(figure)
+    status = (f.get("mark") or {}).get("status")
+    if status == "verified":
+        flags.append("verified")
+    elif status == "unverifiable":
+        flags.append("the reporter could not verify this")
+    elif status == "disputed":
+        flags.append("disputed by the reporter")
+    return flags
+
+
 def _fact_line(f: dict, ref: str, new: bool) -> str:
     bits = [f"[{ref}]"]
     if f.get("date"):
@@ -40,18 +59,7 @@ def _fact_line(f: dict, ref: str, new: bool) -> str:
     if f.get("page"):
         src += f", p. {f['page']}"
     bits.append(f"— {src}")
-    flags = []
-    if f.get("basis") == "inferred":
-        flags.append("inferred")
-    figure = _figure_verification_note(f).strip().removeprefix("*(").removesuffix(")*")
-    if figure:
-        flags.append(figure)
-    if (f.get("mark") or {}).get("status") == "verified":
-        flags.append("verified")
-    elif (f.get("mark") or {}).get("status") == "unverifiable":
-        flags.append("the reporter could not verify this")
-    elif (f.get("mark") or {}).get("status") == "disputed":
-        flags.append("disputed by the reporter")
+    flags = fact_flags(f)
     if new:
         flags.append("new")
     if flags:

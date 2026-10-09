@@ -285,8 +285,10 @@ BRIEFINGS = {
             "Ask why the City paid Tideway Marine Services directly when Tideway is Northgate's subcontractor.",
         ],
         "anomalies": [
-            "The City paid $4,350,000 for 14 Dockside Road against a $1,420,000 appraisal.",
-            "The contract price is $3,740,000 above the figure in the City's announcement.",
+            "The City paid $4,350,000 for 14 Dockside Road {{City paid $4,350,000 to 7714882}} against a $1,420,000 "
+            "appraisal {{market value of 14 Dockside Road at $1,420,000}}.",
+            "The contract price is $3,740,000 above the figure in the City's announcement "
+            "{{Total Contract Price is $52,340,000}}.",
         ],
         "emerging_patterns": [
             "Every payment in the register was approved by the Director of Procurement and Real Property under "
@@ -324,26 +326,27 @@ BRIEFINGS = {
         "connections": [
             "Meridian Shoreline Developments Inc. owns Northgate Civil Works Ltd., and its chief executive "
             "Tomasz Wieczorek replaced Marcus Teague as director of 7714882 Holdings Ltd. on January 15, 2022, "
-            "so Meridian sat on both sides of the City's purchase and its Pier 9 award.",
+            "so Meridian sat on both sides of the City's purchase and its Pier 9 award {{records Marcus Teague's resignation}}.",
             "Marcus Teague, 7714882's director until January 2022, is Councillor Dana Whitcombe's brother-in-law; "
-            "Whitcombe chaired the committee and moved both motions.",
+            "Whitcombe chaired the committee and moved both motions {{is her brother-in-law}}{{voted 8 to 3}}{{voted 7 to 3}}.",
             "410 Wharf Street is the address of Meridian, Northgate and, from January 2022, 7714882 Holdings.",
         ],
         "leads": [
             "Get the City Clerk's record of the April 11, 2022 disclosure Whitcombe says she made - it would "
             "settle the contradiction between her letter and the April 26 minutes.",
             "Find out who owns 7714882 Holdings Ltd. The registry records no beneficial owner, but its address "
-            "and director both moved to Meridian before the sale.",
+            "and director both moved to Meridian before the sale {{does not record the beneficial owners}}.",
             "Check whether the City filed a notice of appeal from the November 30, 2023 reasons.",
             "Ask for the Integrity Commissioner's notice of inquiry IC-2022-07 and any published decision.",
         ],
         "anomalies": [
             "The City paid 7714882 Holdings $4,350,000 on March 4, 2022, $450,000 more than the $3,900,000 "
-            "Council approved.",
+            "Council approved {{could not reconcile the Land Registry}}.",
             "Teague signed the February 28, 2022 transfer as Director six weeks after his registered "
-            "resignation.",
+            "resignation {{executed for 7714882 Holdings Ltd. by Marcus Teague}}.",
             "The Pier 9 berth permits that staff said would expire on September 30, 2022 had been renewed to "
-            "December 31, 2025 on March 3, 2022.",
+            "December 31, 2025 on March 3, 2022 {{berth permits expire on September 30, 2022}}"
+            "{{renewed the Pier 9 berth permits}}.",
         ],
         "emerging_patterns": [
             "Both transactions went to Council on urgency arguments that later records undercut: a vendor "

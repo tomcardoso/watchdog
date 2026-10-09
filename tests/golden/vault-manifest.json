@@ -1,5 +1,6 @@
 {
   ".fulltext/index.db": "<exempt>",
+  ".watchdog/briefings/<DATE>-<TIME>.json": "d637fe17308d6e88",
   ".watchdog/registry/.write-lock": "<exempt>",
   ".watchdog/registry/documents.json": "8459a400a5ff1d98",
   ".watchdog/registry/entities.json": "57001e3eec96317f",

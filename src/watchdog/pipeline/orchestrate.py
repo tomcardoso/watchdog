@@ -642,7 +642,9 @@ def _briefing_facts(doc: dict) -> list[dict]:
     """Project key_facts down to what the briefing needs — the fact text and, when the fact is a
     datable occurrence, its date (for chronology). Drops page/basis/entities/quote, which are
     noise for narrative briefing. This is what now supplies the briefing its figures and timeline,
-    in place of the scratchpad's hand-retyped 'Key figures'/'Chronological' sections (#150)."""
+    in place of the scratchpad's hand-retyped 'Key figures'/'Chronological' sections (#150). The
+    briefing call itself replaces these with citable lines read from the stored extractions
+    (`_briefing_cited_facts`, D283); the digest and a document with no stored extraction use them."""
     out = []
     for f in doc.get("key_facts", []):
         item = {"fact": f["fact"]}
@@ -650,6 +652,35 @@ def _briefing_facts(doc: dict) -> list[dict]:
             item["date"] = f["date"]
         out.append(item)
     return out
+
+
+def _briefing_cited_facts(vault: Path, results: list) -> tuple[list, dict]:
+    """Copies of the batch's result rows whose `key_facts` are the documents' stored facts as
+    citable lines (D283): a short ref unique across the batch, the fact, its date and page, and
+    any warning or reporter's mark (`inferred`, a figure warning, `verified`, `disputed by the
+    reporter`). Returns the rows and the map from each short ref to its D271 id, which is stored
+    with the briefing so its citations can be linked. A document with no stored extraction keeps
+    the row it had, uncitable."""
+    from watchdog.pipeline import entity_facts
+    from watchdog.pipeline.synthesis_bundle import fact_flags
+    from watchdog.pipeline.write_vault import _defang
+    index = entity_facts.FactIndex(vault)
+    per = {r["sha256"]: index.document_facts(r["sha256"]) for r in results if r.get("sha256")}
+    refs = entity_facts.short_refs([f for facts in per.values() for f in facts])
+    rows = []
+    for r in results:
+        facts = per.get(r.get("sha256"))
+        if not facts:
+            rows.append(r)
+            continue
+        lines = []
+        for f in facts:
+            line = f"[{refs[f['id']]}] " + (f"({f['date']}) " if f.get("date") else "")
+            line += _defang(f.get("fact") or "") + (f" (p. {f['page']})" if f.get("page") else "")
+            flags = fact_flags(f)
+            lines.append(line + (f" [{'; '.join(flags)}]" if flags else ""))
+        rows.append({**r, "key_facts": lines})
+    return rows, {ref: fid for fid, ref in refs.items()}
 
 
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None,
@@ -1995,17 +2026,30 @@ def _fit_briefing_inputs(results: list, scratchpads: list, budget: int
 
 
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
-                    contradiction_flags: list, n_new_requests: int = 0) -> str:
+                    contradiction_flags: list, n_new_requests: int = 0,
+                    fact_refs: dict | None = None) -> str:
     # The prompt is given display names (`_with_entity_names`); this catches an id the model
     # picked up from a scratchpad and returned as a whole list item (#342).
+    from watchdog.pipeline import citations, entity_facts
     names = _load_entity_names(vault)
-    what_was_ingested = _resolve_names(b.get("what_was_ingested", []), names)
+    # Citations (D283): each `[f:3a9c]` the model wrote becomes a link to the fact's line in its
+    # document note, through the map of the short refs the prompt showed. One the map does not
+    # hold, or whose fact is gone, is left out and counted; uncited sentences stay as written.
+    index = entity_facts.FactIndex(vault)
+    cite_stats = citations.new_stats()
+
+    def cited(items: list) -> list:
+        return [citations.render_short(x, fact_refs or {}, index.fact, cite_stats)[0]
+                if isinstance(x, str) else x for x in items]
+
+    what_was_ingested = cited(_resolve_names(b.get("what_was_ingested", []), names))
     new_entities = _resolve_names(b.get("new_entities", []), names)
-    connections = _resolve_names(b.get("connections", []), names)
-    leads = _resolve_names(b.get("leads", []), names)
-    anomalies = _resolve_names(b.get("anomalies", []), names)
-    emerging_patterns = _resolve_names(b.get("emerging_patterns", []), names)
-    open_questions = _resolve_names(b.get("open_questions", []), names)
+    connections = cited(_resolve_names(b.get("connections", []), names))
+    leads = cited(_resolve_names(b.get("leads", []), names))
+    anomalies = cited(_resolve_names(b.get("anomalies", []), names))
+    emerging_patterns = cited(_resolve_names(b.get("emerging_patterns", []), names))
+    open_questions = cited(_resolve_names(b.get("open_questions", []), names))
+    status = cited([b.get("investigation_status", "")])[0]
 
     now = datetime.datetime.now()
     slug = now.strftime("%Y-%m-%d-%H-%M")
@@ -2036,12 +2080,19 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                  f"{'s' if n_new_requests != 1 else ''} — see [[requests|requests.md]]\n")
     (vault / "briefings").mkdir(exist_ok=True)
     (vault / "briefings" / f"{slug}.md").write_text(body, encoding="utf-8")
+    # The short-ref map and what the citations resolved to, kept with the briefing (D283).
+    from watchdog.pipeline.write_vault import _write_json_atomic
+    (vault / ".watchdog" / "briefings").mkdir(parents=True, exist_ok=True)
+    _write_json_atomic(vault / ".watchdog" / "briefings" / f"{slug}.json",
+                       {"version": 1, "briefing": f"briefings/{slug}.md",
+                        "fact_refs": dict(sorted((fact_refs or {}).items())),
+                        "citations": cite_stats})
     _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
 
     hot_content = (
         f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
         f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
-        f"## Investigation status\n\n{b.get('investigation_status', '')}\n\n"
+        f"## Investigation status\n\n{status}\n\n"
         f"## Recent additions\n\n{_lines(new_entities)}\n\n"
         f"## Emerging patterns\n\n{_lines(emerging_patterns)}\n\n"
         f"## Open questions\n\n{_lines(open_questions)}\n"
@@ -2357,7 +2408,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         budget = chunking.prompt_budget_chars(briefing_model, briefing_backend, vault)
         brief_dups, brief_flags, budget = _fit_briefing_alerts(neardup_alerts, contradiction_flags,
                                                                budget)
-        brief_results, brief_pads, condensed = _fit_briefing_inputs(ok, scratchpads, budget)
+        cited, fact_refs = _briefing_cited_facts(vault, ok)
+        brief_results, brief_pads, condensed = _fit_briefing_inputs(cited, scratchpads, budget)
         if condensed:
             _say(f"{_DIM}   large batch — briefing input condensed ({condensed['level']}){_RESET}")
         try:
@@ -2370,7 +2422,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     condensed=condensed),
                 effort=post_effort, vault=vault)
             out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
-                                              n_new_requests)
+                                              n_new_requests, fact_refs=fact_refs)
         except (model_client.RateLimitError, model_client.ProviderAuthError) as e:
             out["briefing_error"] = str(e)
             if isinstance(e, model_client.ProviderAuthError):

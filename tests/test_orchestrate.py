@@ -457,6 +457,61 @@ def test_write_briefing_handles_missing_manifest(tmp_path):
     assert "acme-corp" in (vault / slug_path).read_text(encoding="utf-8")
 
 
+def _briefing_vault(tmp_path):
+    """A vault with one committed document and two stored facts, the second disputed."""
+    from watchdog.pipeline import verification
+    vault = make_vault(tmp_path)
+    sha = "b" * 64
+    facts = [{"fact": "The City paid $4,350,000.", "page": 4, "basis": "inferred"},
+             {"fact": "The appraisal said $1,420,000.", "page": 2, "date": "2021-12-10"}]
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text(json.dumps({
+        "document": {"sha256": sha, "key_facts": facts}, "entities": []}))
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        sha: {"title": "Register", "filename": "reg.pdf", "document_note": "documents/reg"}}))
+    ids = verification.fact_ids(sha, facts)
+    verification.mark(vault, ids[1], "disputed", by="R")
+    return vault, sha, ids
+
+
+def test_briefing_is_given_citable_facts_with_page_flags_and_marks(tmp_path):
+    """D283: the briefing sees each fact with a short ref, its page, its warnings and the
+    reporter's mark (Disputed included, labelled), and the ref map goes back to the D271 ids."""
+    vault, sha, ids = _briefing_vault(tmp_path)
+    rows, refs = orchestrate._briefing_cited_facts(
+        vault, [{"sha256": sha, "filename": "reg.pdf", "key_facts": [{"fact": "x"}]},
+                {"sha256": "z" * 64, "filename": "gone.pdf", "key_facts": [{"fact": "kept"}]}])
+    lines = rows[0]["key_facts"]
+    assert sorted(refs.values()) == sorted(ids)
+    ref = {v: k for k, v in refs.items()}
+    assert lines[0] == f"[{ref[ids[0]]}] The City paid $4,350,000. (p. 4) [inferred]"
+    assert lines[1] == f"[{ref[ids[1]]}] (2021-12-10) The appraisal said $1,420,000. (p. 2) [disputed by the reporter]"
+    assert rows[1]["key_facts"] == [{"fact": "kept"}]          # no stored extraction: unchanged
+
+
+def test_write_briefing_links_its_citations_and_stores_the_ref_map(tmp_path):
+    from watchdog.pipeline import citations
+    vault, sha, ids = _briefing_vault(tmp_path)
+    refs = {"f:aaaa": ids[0], "f:bbbb": ids[1], "f:cccc": "fact:1:" + sha[:12] + ":0000000000"}
+    b = {"investigation_status": "The price outran the appraisal [f:aaaa][f:bbbb].",
+         "what_was_ingested": ["reg.pdf - Payment register"],
+         "anomalies": ["Paid four times the appraisal [f:aaaa]. Unsupported [f:cccc]. Invented [f:dddd]."],
+         "open_questions": ["Who gained? An uncited question."]}
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [], fact_refs=refs)
+    text = (vault / slug_path).read_text(encoding="utf-8")
+    paid = f"[[documents/reg#^{citations.block_id(ids[0])}|p. 4]]"
+    disputed = f"[[documents/reg#^{citations.block_id(ids[1])}|p. 2, disputed]]"
+    assert f"- Paid four times the appraisal ({paid}). Unsupported. Invented.\n" in text
+    assert "[f:" not in text
+    hot = (vault / "hot.md").read_text(encoding="utf-8")
+    assert f"The price outran the appraisal ({paid}; {disputed})." in hot
+    assert "Who gained? An uncited question." in hot
+    side = json.loads((vault / ".watchdog" / "briefings" /
+                       (Path(slug_path).stem + ".json")).read_text(encoding="utf-8"))
+    assert side["fact_refs"] == refs and side["briefing"] == slug_path
+    assert side["citations"] == {"cited": 5, "linked": 3, "unknown": 1, "missing": 1, "disputed": 1}
+
+
 def test_select_kept_keeps_survivors_in_original_order():
     """timeline-dedup returns `groups`; Python re-selects the authoritative originals (which carry
     source_sha256/page/basis), order-preserving, dropping each group's folded duplicates."""
