@@ -70,7 +70,7 @@ Before spending anything, confirm two things with the journalist:
 
 ## 3. Open the links file
 
-Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and `watchdog`, `watchdog chew`, and `watchdog status` all warn that they're still pending. `watchdog research` downloads every row into `incoming/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
+Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`, with no header row. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and `watchdog`, `watchdog chew`, and `watchdog status` all warn that they're still pending. `watchdog research` downloads every row into `incoming/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
 
 Write it with the Write tool (rewriting the whole file as it grows — keep the running list in mind and update the file whenever you add a source). A row looks like:
 
