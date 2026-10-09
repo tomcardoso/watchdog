@@ -316,6 +316,10 @@
 .page {
   height: 100%;
   overflow: auto;
+  /* Keep the scrollbar's space whether or not the page scrolls, so centred content doesn't move
+     sideways between a short page and a long one (with scrollbars always shown, as on a Mac with a
+     mouse attached). */
+  scrollbar-gutter: stable;
   animation: fade-in 180ms var(--ease);
 }
 .page-inner {
