@@ -937,3 +937,28 @@
   font-size: var(--fs-sm);
   margin-bottom: 4px;
 }
+
+/* Re-check contradictions (D287): the estimate's four figures */
+.rc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+}
+.rc-stats > div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.rc-stats .v {
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.rc-stats .l {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}

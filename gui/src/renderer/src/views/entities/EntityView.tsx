@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, NotebookPen, PencilLine, RefreshCw, Sparkles, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, NotebookPen, PencilLine, RefreshCw, ScanSearch, Sparkles, Undo2 } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
@@ -14,6 +14,7 @@ import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import ContradictionModal from './ContradictionModal'
 import { EntityFacts } from './EntityFacts'
 import MergeModal from './MergeModal'
+import RecheckModal from './RecheckModal'
 import './entities.css'
 
 export default function EntityView() {
@@ -23,6 +24,7 @@ export default function EntityView() {
   const q = useRpc('vault.entity', id ? { vault, id } : null)
   const [mergeOpen, setMergeOpen] = useState(false)
   const [contraOpen, setContraOpen] = useState(false)
+  const [recheckOpen, setRecheckOpen] = useState(false)
 
   if (q.isLoading) return <PageSkeleton />
   if (q.isError || !q.data)
@@ -101,6 +103,7 @@ export default function EntityView() {
                   { label: 'Open in Obsidian', icon: ExternalLink, onClick: () => void openObsidian(vault, e.note) },
                   { separator: true, label: '' },
                   { label: 'Record a contradiction…', icon: AlertTriangle, onClick: () => setContraOpen(true) },
+                  { label: 'Re-check contradictions…', icon: ScanSearch, onClick: () => setRecheckOpen(true), disabled: !!mergedInto },
                   { label: 'Merge into another entity…', icon: GitMerge, danger: true, onClick: () => setMergeOpen(true), disabled: !!mergedInto }
                 ]}
               />
@@ -124,7 +127,7 @@ export default function EntityView() {
               )}
             </section>
 
-            <Contradictions e={e} onAdd={() => setContraOpen(true)} />
+            <Contradictions e={e} onAdd={() => setContraOpen(true)} onRecheck={mergedInto ? undefined : () => setRecheckOpen(true)} />
 
             <section className="ent-sec">
               <SecTitle icon={Clock} title="Timeline" count={e.timeline.length}>
@@ -162,6 +165,7 @@ export default function EntityView() {
       </div>
 
       <MergeModal open={mergeOpen} onClose={() => setMergeOpen(false)} initialMerge={e.id} />
+      <RecheckModal open={recheckOpen} onClose={() => setRecheckOpen(false)} ids={[e.id]} name={e.name} />
       <ContradictionModal open={contraOpen} onClose={() => setContraOpen(false)} entityId={e.id} entityName={e.name} entityDocs={e.documents} />
     </div>
   )
@@ -267,7 +271,7 @@ function parseCallout(text: string): { label: string; sides: { value: string; ci
   return { label: head?.[1] ?? '', sides }
 }
 
-function Contradictions({ e, onAdd }: { e: EntityDetail; onAdd: () => void }) {
+function Contradictions({ e, onAdd, onRecheck }: { e: EntityDetail; onAdd: () => void; onRecheck?: () => void }) {
   const vault = useVault()
   const [busy, setBusy] = useState<string | null>(null)
   const list = e.contradictions
@@ -286,6 +290,11 @@ function Contradictions({ e, onAdd }: { e: EntityDetail; onAdd: () => void }) {
   return (
     <section className="ent-sec">
       <SecTitle icon={AlertTriangle} title="Contradictions" count={list.length}>
+        {onRecheck && (
+          <Button variant="ghost" size="sm" icon={ScanSearch} onClick={onRecheck} tip="Ask the AI model to compare every recorded fact about this entity with every other">
+            Re-check
+          </Button>
+        )}
         <Button variant="ghost" size="sm" icon={PencilLine} onClick={onAdd}>
           Record one
         </Button>
