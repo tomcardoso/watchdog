@@ -25,7 +25,7 @@ _NOTES_PLACEHOLDER = {
     "documents": "<!-- Reserved for journalist annotations — never overwritten by ingestion. -->",
     "entities": "<!-- Journalist annotations — never overwritten by ingestion. -->",
 }
-_READABLE_FILES = {"context.md", "watchlist.md", "requests.md", "hot.md", "log.md", "timeline.md",
+_READABLE_FILES = {"context.md", "watchlist.md", "requests.md", "log.md", "timeline.md",
                    "index.md"}
 _READABLE_DIRS = ("briefings/", "queries/", "wiki/")
 _WRITABLE_FILES = {"context.md", "watchlist.md"}
@@ -513,7 +513,7 @@ def fact_citations(vault: str, links: list) -> dict:
 
 @method("vault.checkCitations")
 def check_citations(vault: str) -> dict:
-    """Every fact citation in `queries/`, `wiki/`, `briefings/` and `hot.md`, resolved against the
+    """Every fact citation in `queries/`, `wiki/` and `briefings/`, resolved against the
     stored facts (the maintenance check `watchdog check-citations` runs). Changes nothing."""
     from watchdog.pipeline import citations
     return citations.check_vault(require_vault(vault))

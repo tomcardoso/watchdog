@@ -2070,6 +2070,14 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
         f"## Anomalies worth a closer look\n\n"
         f"{_lines(anomalies) if anomalies else 'Nothing flagged.'}\n"
     )
+    # What hot.md used to carry (D285): the patterns, open questions and one-line status the
+    # model wrote for this batch now stay in the briefing itself.
+    if emerging_patterns:
+        body += f"\n## Emerging patterns\n\n{_lines(emerging_patterns)}\n"
+    if open_questions:
+        body += f"\n## Open questions\n\n{_lines(open_questions)}\n"
+    if status.strip():
+        body += f"\n## Where things stand\n\n{status.strip()}\n"
     if neardup_alerts:
         body += "\n## Near-duplicate alerts\n\n" + "\n".join(
             f"- {a['filename']}: {a['similarity']:.0%} similar to an existing document"
@@ -2085,20 +2093,15 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
     (vault / ".watchdog" / "briefings").mkdir(parents=True, exist_ok=True)
     _write_json_atomic(vault / ".watchdog" / "briefings" / f"{slug}.json",
                        {"version": 1, "briefing": f"briefings/{slug}.md",
+                        "status": status.strip(),
                         "fact_refs": dict(sorted((fact_refs or {}).items())),
                         "citations": cite_stats})
     _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
 
-    hot_content = (
-        f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
-        f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
-        f"## Investigation status\n\n{status}\n\n"
-        f"## Recent additions\n\n{_lines(new_entities)}\n\n"
-        f"## Emerging patterns\n\n{_lines(emerging_patterns)}\n\n"
-        f"## Open questions\n\n{_lines(open_questions)}\n"
-    )
-    (vault / "hot.md").write_text(hot_content, encoding="utf-8")
-    _fts_add_note_safe(vault, "hot", "hot", "Hot cache", hot_content)
+    # hot.md is retired (D285): sessions get a primer built by code at their start
+    # (`cmd/primer.py`), and the Overview reads `status` from the sidecar above. A hot.md an older
+    # Watchdog wrote stays on disk untouched; only its stale full-text row is dropped.
+    _fts_add_note_safe(vault, "hot", "hot", "", "")
 
     entry = (f"\n## {now.strftime('%Y-%m-%d %H:%M')} — Ingest\n\n"
              f"- **Files:** {len(results)} processed\n- **New entities:** {n_new}\n"
@@ -2367,14 +2370,14 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     _say(f"{_DIM}   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
          f"{n_events} event{'s' if n_events != 1 else ''}{_RESET}")
 
-    # 3. Briefing + hot.md + log.md (model writes prose; Python writes the files).
+    # 3. Briefing + log.md (model writes prose; Python writes the files).
     ok = [r for r in results if r.get("status") == "ok"]
     ok_shas = {r["sha256"] for r in ok}   # this run's committed documents (also used by 5b below)
     if skip_briefing:
         # #410: an intentional skip, not a failure — leave `briefing`/`briefing_error` alone so
         # this doesn't trip the "post-processing didn't finish" path (that's for a briefing that
-        # was attempted and failed). hot.md and log.md's per-run entry are both written by
-        # `_write_briefing`, so neither updates this run either — only the briefing model call
+        # was attempted and failed). log.md's per-run entry is written by `_write_briefing`, so
+        # it doesn't update this run either — only the briefing model call
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
         _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM} (--skip-briefing){_RESET}")
@@ -2939,7 +2942,7 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
     """Resolve, commit and post-process the pending batch.
 
     Order: exact-name fold → pre-commit reconciliation → commit pass (sorted sha order) →
-    post-ingest (contradictions, entity synthesis, timeline, briefing/hot.md/log). Used at the end of
+    post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
     a run, by standalone `watchdog bark`, and to resume an interrupted finalize. Consumed inputs are
     cleared only on a clean pass. If reconciliation fails, nothing commits and the batch stays
     pending (I7).

@@ -174,6 +174,30 @@ def _rewrite_permission(rule: str) -> str:
                 .replace(LEGACY_CONTEXT_NAME, CONTEXT_NAME))
 
 
+# The vault's SessionStart hook (D285): a primer Watchdog builds from the vault's records, printed
+# into every Ask Claude session at its start and after compaction. Vaults made before it `cat`ed
+# `hot.md` instead; `retire_hot_md_hook` swaps that command for this one.
+SESSION_HOOK_COMMAND = "watchdog session-primer"
+
+
+def _is_legacy_session_hook(command) -> bool:
+    return isinstance(command, str) and "hot.md" in command and "cat" in command
+
+
+def retire_hot_md_hook(settings: dict) -> bool:
+    """Point a settings dict's SessionStart hook that printed `hot.md` at the session primer.
+    Returns True when anything changed. Other hooks are left alone."""
+    changed = False
+    hooks = settings.get("hooks") if isinstance(settings, dict) else None
+    groups = hooks.get("SessionStart") if isinstance(hooks, dict) else None
+    for group in groups if isinstance(groups, list) else []:
+        for hook in (group.get("hooks") or []) if isinstance(group, dict) else []:
+            if isinstance(hook, dict) and _is_legacy_session_hook(hook.get("command")):
+                hook["command"] = SESSION_HOOK_COMMAND
+                changed = True
+    return changed
+
+
 def _rewrite_settings(vault: Path) -> bool:
     import json
     path = vault / ".claude" / "settings.json"
@@ -182,7 +206,7 @@ def _rewrite_settings(vault: Path) -> bool:
     try:
         settings = json.loads(path.read_text(encoding="utf-8"))
         perms = settings.get("permissions")
-        changed = False
+        changed = retire_hot_md_hook(settings)
         for key in ("allow", "deny", "ask"):
             rules = perms.get(key) if isinstance(perms, dict) else None
             if isinstance(rules, list):
@@ -204,7 +228,8 @@ def _rewrite_settings(vault: Path) -> bool:
 def migrate_folder_names(vault: Path) -> list[str]:
     """Rename a pre-D266 vault's `_INCOMING/` (and its `_FAILED`/`_SKIPPED`) and `_CONTEXT/` to
     their current names, and rewrite any permission rules in `.claude/settings.json` that name
-    them, and rename its working files (D276). Idempotent; never deletes a document or note. When
+    them, and rename its working files (D276), and point a session hook that printed `hot.md` at
+    the session primer (D285). Idempotent; never deletes a document or note. When
     both an old and a new folder exist, the old one's contents are moved into the new one (a
     clashing file is renamed with a `-migrated` suffix).
     Returns a description of each change made (empty when there was nothing to do)."""
@@ -226,7 +251,7 @@ def migrate_folder_names(vault: Path) -> list[str]:
     except OSError as e:
         changes.append(f"stopped early: {e}")
     if _rewrite_settings(vault):
-        changes.append(".claude/settings.json permissions updated")
+        changes.append(".claude/settings.json updated")
     return changes
 
 

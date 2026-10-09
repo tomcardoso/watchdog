@@ -407,7 +407,7 @@ def test_cmd_new_creates_bases_dashboard(configured):
     assert "dashboard" in index.lower()
 
 
-def test_cmd_new_session_start_hook_loads_hot_md(configured):
+def test_cmd_new_session_start_hook_runs_the_session_primer(configured):
     cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
     settings = json.loads(
         (configured / "city-hall-probe" / ".claude" / "settings.json").read_text()
@@ -417,7 +417,8 @@ def test_cmd_new_session_start_hook_loads_hot_md(configured):
     # one hook covers fresh start, resume, and post-compaction reload
     assert "startup" in matcher and "resume" in matcher and "compact" in matcher
     cmd = hooks[0]["hooks"][0]["command"]
-    assert "hot.md" in cmd
+    assert cmd == "watchdog session-primer" and "hot.md" not in cmd    # D285
+    assert not (configured / "city-hall-probe" / "hot.md").exists()
     # the queue-reminder hook is preserved alongside it
     assert "UserPromptSubmit" in settings["hooks"]
 
@@ -460,11 +461,11 @@ def test_refresh_skills_replaces_watchdogs_section_and_keeps_the_users_notes(con
     fresh = path.read_text()
     assert fresh.startswith("<!-- watchdog:begin") and fresh.rstrip().endswith("<!-- watchdog:end -->")
     assert "# City Hall Probe — Watchdog" in fresh
-    stale = fresh.replace("read `hot.md`", "read `stale.md`") + "\nMy own note: check the 2019 minutes.\n"
+    stale = fresh.replace("Read `context.md`", "Read `stale.md`") + "\nMy own note: check the 2019 minutes.\n"
     path.write_text(stale)
     cli.cmd_refresh_skills(args(name="city-hall-probe"))
     text = path.read_text()
-    assert "read `hot.md`" in text and "stale.md" not in text
+    assert "Read `context.md`" in text and "stale.md" not in text and "hot.md" not in text
     assert text.endswith("\nMy own note: check the 2019 minutes.\n")
     assert not list(path.parent.glob("CLAUDE.md.before-refresh*"))
 

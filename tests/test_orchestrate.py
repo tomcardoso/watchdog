@@ -395,7 +395,7 @@ def test_compact_result_carries_est_input_tokens_when_given():
 
 def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
     """#342: on backends that echo the internal id rather than the display name for a new
-    entity, the briefing and hot.md must still show the display name — resolved deterministically
+    entity, the briefing must still show the display name — resolved deterministically
     against the registry manifest for this batch, rather than trusting the model."""
     vault = make_vault(tmp_path)
     (vault / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps({
@@ -412,8 +412,8 @@ def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
     slug_path = orchestrate._write_briefing(vault, b, [], [], [])
 
     briefing_text = (vault / slug_path).read_text(encoding="utf-8")
-    hot_text = (vault / "hot.md").read_text(encoding="utf-8")
-    for text in (briefing_text, hot_text):
+    assert not (vault / "hot.md").exists()                # retired (D285)
+    for text in (briefing_text,):
         assert "Andrew Hanrahan" in text
         assert "Financial Services Regulatory Authority" in text
         assert "andrew-hanrahan" not in text
@@ -503,12 +503,15 @@ def test_write_briefing_links_its_citations_and_stores_the_ref_map(tmp_path):
     disputed = f"[[documents/reg#^{citations.block_id(ids[1])}|p. 2, disputed]]"
     assert f"- Paid four times the appraisal ({paid}). Unsupported. Invented.\n" in text
     assert "[f:" not in text
-    hot = (vault / "hot.md").read_text(encoding="utf-8")
-    assert f"The price outran the appraisal ({paid}; {disputed})." in hot
-    assert "Who gained? An uncited question." in hot
+    # What hot.md carried now stays in the briefing (D285), and the status in its sidecar too.
+    assert not (vault / "hot.md").exists()
+    assert (f"## Where things stand\n\nThe price outran the appraisal ({paid}; {disputed}).\n"
+            in text)
+    assert "## Open questions\n\n- Who gained? An uncited question.\n" in text
     side = json.loads((vault / ".watchdog" / "briefings" /
                        (Path(slug_path).stem + ".json")).read_text(encoding="utf-8"))
     assert side["fact_refs"] == refs and side["briefing"] == slug_path
+    assert side["status"] == f"The price outran the appraisal ({paid}; {disputed})."
     assert side["citations"] == {"cited": 5, "linked": 3, "unknown": 1, "missing": 1, "disputed": 1}
 
 
@@ -769,10 +772,10 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     assert r["status"] == "ok" and r["entity_count"] == 1
     assert r["new_entities"] == ["acme-corp"] and r["document_type"] == "Annual Report"
 
-    # post-ingest ran: briefing + hot.md + log.md + timeline written
+    # post-ingest ran: briefing + log.md + timeline written; hot.md never (D285)
     assert "post_ingest" in summary
     assert list((vault / "briefings").glob("*.md"))
-    assert (vault / "hot.md").exists()
+    assert not (vault / "hot.md").exists()
     assert "— Ingest" in (vault / "log.md").read_text()
     assert (vault / "timeline.md").exists()
 
@@ -3673,7 +3676,7 @@ def test_post_ingest_skip_briefing_makes_no_briefing_call(tmp_path, monkeypatch)
     assert out.get("briefing_error") is None
     assert out.get("briefing_skipped") is True
     assert not (vault / "briefings").exists()   # no briefing file written
-    assert not (vault / "hot.md").exists()      # hot.md is only written by _write_briefing
+    assert not (vault / "hot.md").exists()      # retired (D285)
 
 
 def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):

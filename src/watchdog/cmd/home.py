@@ -18,22 +18,56 @@ _BRIEFING_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}(-\d+)?\.md$")
 _WID = re.compile(r"<!--wid:(alert:[^>]+?)-->")
 
 
-def _latest_briefing(vault: Path) -> Path | None:
+def _briefing_order(p: Path) -> tuple[str, int]:
+    """Sort key for a run briefing: its minute, then the `-2`, `-3` a second briefing in the same
+    minute takes (which a plain name sort puts before the first)."""
+    m = _BRIEFING_NAME.match(p.name)
+    return (p.name[:16], int(m.group(1)[1:]) if m and m.group(1) else 1)
+
+
+def run_briefings(vault: Path) -> list[Path]:
+    """The run briefings in `briefings/`, newest first."""
     d = vault / "briefings"
     if not d.is_dir():
+        return []
+    return sorted((p for p in d.glob("*.md") if _BRIEFING_NAME.match(p.name)),
+                  key=_briefing_order, reverse=True)
+
+
+def _latest_briefing(vault: Path) -> Path | None:
+    found = run_briefings(vault)
+    return found[0] if found else None
+
+
+def briefing_status(vault: Path, briefing: Path) -> str | None:
+    """The one-line investigation status the briefing's run wrote, from its JSON sidecar
+    (`.watchdog/briefings/<name>.json`, D285). Markdown, with any fact citations as links; None for
+    a briefing written before the sidecar kept it."""
+    import json
+    side = vault / ".watchdog" / "briefings" / f"{briefing.stem}.json"
+    try:
+        data = json.loads(side.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return None
-    found = [p for p in d.glob("*.md") if _BRIEFING_NAME.match(p.name)]
-    return max(found, key=lambda p: p.name) if found else None
+    status = data.get("status") if isinstance(data, dict) else None
+    return status.strip() if isinstance(status, str) and status.strip() else None
 
 
 def _headline(vault: Path) -> str | None:
-    """The first line of `hot.md`'s investigation status, which the latest briefing wrote."""
-    hot = vault / "hot.md"
-    if not hot.exists():
-        return None
-    text = hot.read_text(encoding="utf-8", errors="replace")
-    m = re.search(r"^## Investigation status\s*\n+(.+)$", text, flags=re.M)
-    return m.group(1).strip() if m and m.group(1).strip() else None
+    """The latest briefing's status line (D285), as Markdown."""
+    latest = _latest_briefing(vault)
+    return briefing_status(vault, latest) if latest is not None else None
+
+
+_LINK = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]*))?\]\]")
+
+
+def plain_links(text: str) -> str:
+    """`text` with each wikilink reduced to its label (a fact citation becomes "(p. 4)")."""
+    def label(m: re.Match) -> str:
+        shown = m.group(2) if m.group(2) is not None else m.group(1).rsplit("/", 1)[-1]
+        return f"({shown})" if "#^f-" in m.group(1) else shown
+    return _LINK.sub(label, text)
 
 
 def _open_alerts(vault: Path, resolved: frozenset[str]) -> int:
@@ -97,7 +131,7 @@ def render(name: str, s: dict) -> str:
     if s["briefing"]:
         lines.append(f"\n  {_BOLD}Latest briefing{_RESET}  {_DIM}{s['briefing'].stem}{_RESET}")
         if s["headline"]:
-            lines.append(f"    {s['headline']}")
+            lines.append(f"    {plain_links(s['headline'])}")
         rel = f"briefings/{s['briefing'].name}"
         lines.append(f"    {_CYAN}{note_link(s['vault'], rel)}{_RESET}")
     else:

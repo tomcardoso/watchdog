@@ -1,7 +1,7 @@
 <!-- watchdog:begin — Watchdog rewrites everything down to the end marker when it updates this investigation's Claude setup. Put your own notes below it. -->
 # {name} — Watchdog
 
-At the start of every session: (1) read `hot.md` for a summary of recent activity and open questions; (2) read `context.md` to understand what this investigation is about. This session runs inside the Watchdog desktop app. If the user asks about documents that haven't appeared yet, they may still be waiting for pre-processing (converting the files on this computer), processing (extracting facts with a model) or post-processing (merging entities and writing the briefing); the Documents screen and Activity in the app show what is waiting.
+Each session starts with a primer Watchdog builds from the investigation's records (it is loaded automatically, and again after the conversation is compacted): the journalist's questions, the counts, the most-mentioned entities, what is waiting on the journalist and the latest briefings. It covers the whole investigation. Read `context.md` for the full statement of what this investigation is about. This session runs inside the Watchdog desktop app. If the user asks about documents that haven't appeared yet, they may still be waiting for pre-processing (converting the files on this computer), processing (extracting facts with a model) or post-processing (merging entities and writing the briefing); the Documents screen and Activity in the app show what is waiting.
 
 The vault is written by Watchdog's pipeline, which the journalist runs from the app — not by this session. Entity notes, document notes, the registry, and `timeline.md` are pipeline-owned: read them freely, but change them only through the `watchdog` commands below, never by editing the files or the registry by hand.
 
@@ -20,7 +20,6 @@ The vault is written by Watchdog's pipeline, which the journalist runs from the 
 | `requests.md` | Documents worth going to get, as cited by the vault's own documents |
 | `wiki/` | Investigation thread pages — matured angles that deepen over time |
 | `queries/` | Saved answers to questions — substantive findings filed here so explorations compound |
-| `hot.md` | Session-to-session context cache — updated after every processing run |
 | `log.md` | Processing history |
 | `context.md` | Investigation intent and key questions — read this before every skill |
 | `.watchdog/` | Pipeline state and indexes — read `.watchdog/registry/manifest.json` for entity lookups; never edit |

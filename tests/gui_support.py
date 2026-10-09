@@ -244,7 +244,12 @@ def make_rich_vault(tmp_path: Path) -> Path:
         "term": "Ghost Ltd", "filename": "report-two.pdf", "document_note": "documents/report-two",
         "entity": None, "rid": resolutions.alert_id(SHA2, "Ghost Ltd"), "page": 1,
         "snippet": "…a subsidiary of Ghost Ltd…"}])
-    _write(vault / "hot.md", "# Hot cache\n\n## Investigation status\n\nThree reports in; one date conflict.\n")
+    # The newest briefing's status, kept in its sidecar (D285); an older Watchdog's hot.md is left
+    # in the folder and never read.
+    _write(vault / ".watchdog" / "briefings" / "2026-03-03-08-00.json",
+           json.dumps({"version": 1, "briefing": "briefings/2026-03-03-08-00.md",
+                       "status": "Three reports in; one date conflict.", "fact_refs": {}}))
+    _write(vault / "hot.md", "# Hot cache\n\n## Investigation status\n\nA stale hot.md line.\n")
     _write(vault / "watchlist.md", "# Watch list\n#\nGhost Ltd\n/Roe,?\\s+Bob/\n")
     _write(vault / "context.md", "# Context\n\nAbout Acme.\n")
     _write(vault / "log.md", "# Log\n")

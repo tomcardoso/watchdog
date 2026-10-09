@@ -1,7 +1,7 @@
 """`watchdog check-citations [FILE…] [--json]` — check the fact citations in a vault's pages (D283).
 
-Read-only, no model, no lock. Every `[[documents/<slug>#^f-<hash>|…]]` link in `queries/`, `wiki/`,
-`briefings/` and `hot.md` (or in the files named) is resolved against the stored facts; the report
+Read-only, no model, no lock. Every `[[documents/<slug>#^f-<hash>|…]]` link in `queries/`, `wiki/`
+and `briefings/` (or in the files named) is resolved against the stored facts; the report
 lists citations whose fact no longer exists and those on facts the reporter disputes. Uncited
 sentences are not reported. Pages are never changed. A Claude session runs it before filing a page;
 it only ever reads the investigation it is run in."""

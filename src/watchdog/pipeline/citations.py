@@ -251,7 +251,7 @@ def check_text(text: str, resolver: Resolver) -> dict:
 
 # Pages a Claude session or Watchdog writes as prose that may cite facts.
 CHECKED_DIRS = ("queries", "wiki", "briefings")
-CHECKED_FILES = ("hot.md",)
+CHECKED_FILES: tuple[str, ...] = ()       # hot.md was checked here until it was retired (D285)
 
 
 def pages(vault: Path) -> list[Path]:

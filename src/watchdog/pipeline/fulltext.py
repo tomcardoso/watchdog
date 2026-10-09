@@ -3,7 +3,7 @@ Full-text (exact-term) search index for watchdog investigations (#109).
 
 Complementary to embed.py's semantic index: a local SQLite FTS5 table over raw source
 text (from the morgue) and every note the pipeline generates (entities, documents,
-timeline, briefings, hot cache, run log). Where embed.py answers "what's most relevant",
+timeline, briefings, run log). Where embed.py answers "what's most relevant",
 this answers "every place this exact term or phrase appears" — the recall lane for names,
 case numbers, and other tokens that never made it into a synthesized note.
 
@@ -85,7 +85,7 @@ def add_document(vault_path: Path, filename: str, sha256: str, pages: list[dict]
 
 
 def add_note(vault_path: Path, note_path: str, kind: str, title: str, text: str) -> None:
-    """Index one generated note (kind: entity/document/timeline/briefing/hot/log) as a
+    """Index one generated note (kind: entity/document/timeline/briefing/log) as a
     single row. ``note_path`` is the delete-before-insert key, so re-writing the same note
     (synthesis, a timeline rebuild) replaces its row rather than duplicating it."""
     body = (text or "").strip()

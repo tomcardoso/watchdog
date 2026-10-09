@@ -859,6 +859,7 @@ def cmd_refresh_skills(args) -> None:
     read_scope_added = False
     deny_added = False
     hook_updated = False
+    session_hook_updated = False
     if settings_path.exists():
         try:
             settings = _read_json(settings_path)
@@ -904,12 +905,15 @@ def cmd_refresh_skills(args) -> None:
                         hook["command"] = _PROMPT_HOOK_COMMAND
                         hook_updated = True
 
-            if removed or added or read_scope_added or deny_added or hook_updated:
+            from watchdog.vault_paths import retire_hot_md_hook
+            session_hook_updated = retire_hot_md_hook(settings)
+
+            if removed or added or read_scope_added or deny_added or hook_updated or session_hook_updated:
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
             # Nothing was written, so nothing above may be reported as done.
             added, removed = [], []
-            read_scope_added = deny_added = hook_updated = False
+            read_scope_added = deny_added = hook_updated = session_hook_updated = False
             print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
                   f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
 
@@ -924,6 +928,9 @@ def cmd_refresh_skills(args) -> None:
         print(f"  {_GREEN}Watchdog's keys protected{_RESET}  {_DIM}sessions in this vault can't read or edit ~/.watchdog{_RESET}")
     if hook_updated:
         print(f"  {_GREEN}Prompt hook updated{_RESET}  {_DIM}no longer needs python3 on PATH{_RESET}")
+    if session_hook_updated:
+        print(f"  {_GREEN}Session hook updated{_RESET}  {_DIM}sessions now start with a primer built "
+              f"from the whole investigation, not hot.md{_RESET}")
     for change in _migrate_vault_views(vault):
         print(f"  {_GREEN}Updated{_RESET}  {_DIM}{change}{_RESET}")
     claude_md = _refresh_vault_claude_md(vault)

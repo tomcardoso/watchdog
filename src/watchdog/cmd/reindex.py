@@ -65,14 +65,12 @@ def _title_from_note(text: str) -> str:
 
 def _fixed_note_specs(vault: Path) -> list[tuple[Path, str, str]]:
     """(path, kind, title) for generated notes outside entities/ and documents/ — timeline,
-    briefings, hot cache, run log, and the human-authored investigation context (#109: the
+    briefings, run log, and the human-authored investigation context (#109: the
     full-text index covers everything a journalist might grep for, not just entity/document
     notes)."""
     specs: list[tuple[Path, str, str]] = []
     if (vault / "timeline.md").exists():
         specs.append((vault / "timeline.md", "timeline", "Timeline"))
-    if (vault / "hot.md").exists():
-        specs.append((vault / "hot.md", "hot", "Hot cache"))
     if (vault / "log.md").exists():
         specs.append((vault / "log.md", "log", "Run log"))
     if (vault / "context.md").exists():

@@ -141,7 +141,13 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
     (b / "leads-2026-10-03.md").write_text("not an ingest briefing")
     (b / "alerts-2026-10-03.md").write_text(
         "- [ ] **x** <!--wid:alert:abc1234:t1-->\n- [ ] **y** <!--wid:alert:def5678:t2-->\n")
-    (vault / "hot.md").write_text("# Hot cache\n\n## Investigation status\n\nContract went to a new firm.\n")
+    # A retired hot.md (D285) is never read: the headline comes from the latest briefing's sidecar.
+    (vault / "hot.md").write_text("# Hot cache\n\n## Investigation status\n\nAn old hot.md line.\n")
+    side = vault / ".watchdog" / "briefings"
+    side.mkdir(parents=True)
+    (side / "2026-10-01-09-00.json").write_text(json.dumps({"status": "An older status."}))
+    (side / "2026-10-03-16-12.json").write_text(json.dumps(
+        {"status": "Contract went to a new firm [[documents/d#^f-abc|p. 2]]."}))
     reg = vault / ".watchdog" / "registry"
     reg.mkdir()
     (reg / "resolutions.json").write_text(json.dumps({"resolved": {"alert:def5678:t2": {}}}))
@@ -153,11 +159,12 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
 
     s = home.summary(vault)
     assert s["briefing"].name == "2026-10-03-16-12.md"
-    assert s["headline"] == "Contract went to a new firm."
+    assert s["headline"] == "Contract went to a new firm [[documents/d#^f-abc|p. 2]]."
     assert (s["contradictions"], s["leads"], s["near_duplicates"], s["alerts"]) == (1, 1, 1, 1)
     assert home.has_work(s)
     out = _plain(home.render("Probe", s))
-    for text in ("Contract went to a new firm.", "contradiction", "open lead",
+    assert "old hot.md" not in out and "[[" not in out
+    for text in ("Contract went to a new firm (p. 2).", "contradiction", "open lead",
                  "possible duplicate document", "watch-list hit", "file in incoming/",
                  "watchdog add", 'watchdog ask "…"'):
         assert text in out

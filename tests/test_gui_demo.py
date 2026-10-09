@@ -34,9 +34,10 @@ def _registry(vault: Path, name: str) -> dict:
 
 def test_vault_is_a_real_vault_with_the_template_files(demo_vault):
     vault, _, _ = demo_vault
-    for name in ("index.md", "dashboard.base", "context.md", "watchlist.md", "hot.md", "log.md",
+    for name in ("index.md", "dashboard.base", "context.md", "watchlist.md", "log.md",
                  "timeline.md", "requests.md", ".claude/CLAUDE.md", ".claude/settings.json"):
         assert (vault / name).exists(), name
+    assert not (vault / "hot.md").exists()          # retired (D285)
     assert "Strathmore Public Affairs" in (vault / "watchlist.md").read_text(encoding="utf-8")
 
 

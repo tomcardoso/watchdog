@@ -1213,7 +1213,7 @@ def _windowed_snippet(text: str, terms: list[str], width: int) -> str:
 
 _EXACT_KIND_LABELS = {
     "corpus": "Source document", "entity": "Entity note", "document": "Document note",
-    "timeline": "Timeline", "briefing": "Briefing", "hot": "Hot cache",
+    "timeline": "Timeline", "briefing": "Briefing",
     "log": "Run log", "context": "Context",
 }
 

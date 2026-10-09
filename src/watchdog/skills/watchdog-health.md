@@ -89,7 +89,6 @@ Read `.watchdog/registry/registry.json`. Compare `document_count` and `entity_co
 
 Also check that the following files exist at the vault root. Report any that are missing:
 - `timeline.md` — `MISSING FILE: timeline.md (rebuild with: watchdog timeline)`
-- `hot.md` — `MISSING FILE: hot.md (created automatically by processing; create manually if needed)`
 - `log.md` — `MISSING FILE: log.md (created automatically by processing; create manually if needed)`
 
 ---

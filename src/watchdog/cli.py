@@ -260,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_leads.set_defaults(func=cmd_leads)
 
     p_cites = sub.add_parser("check-citations", help="Check the fact citations in saved answers, threads and briefings (read-only)")
-    p_cites.add_argument("files", nargs="*", help="Pages to check (default: queries/, wiki/, briefings/ and hot.md)")
+    p_cites.add_argument("files", nargs="*", help="Pages to check (default: queries/, wiki/ and briefings/)")
     p_cites.add_argument("--json", action="store_true", help="Print the report as JSON")
     p_cites.set_defaults(func=cmd_check_citations)
 
@@ -670,7 +670,8 @@ def main() -> None:
 
     # Internal pipeline commands — dispatched before argparse so they never
     # appear in tab completion
-    _INTERNAL_CMDS = {"prompt-status", "research-fetch", "research-seen", "watchlist-add"}
+    _INTERNAL_CMDS = {"prompt-status", "research-fetch", "research-seen", "session-primer",
+                      "watchlist-add"}
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
         _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
@@ -691,6 +692,12 @@ def main() -> None:
                 line = None
             if line:
                 print(line)
+        elif cmd == "session-primer":
+            # The vault's SessionStart hook (D285): prints where the investigation stands; never
+            # fails a session's start.
+            from pathlib import Path
+            from watchdog.cmd.primer import cmd_session_primer
+            cmd_session_primer(Path(".").resolve())
         elif cmd == "watchlist-add":
             _p.add_argument("terms", nargs="+")
             cmd_watchlist_add(_p.parse_args(sys.argv[2:]))

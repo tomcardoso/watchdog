@@ -81,7 +81,7 @@ def test_methods_tolerate_a_bare_vault_directory(tmp_path):
     assert call("vault.briefings", vault=v) == []
     assert call("vault.requests", vault=v) == {"open": [], "resolved_count": 0}
     assert call("vault.contextFiles", vault=v) == []
-    assert call("vault.readFile", vault=v, path="hot.md") == {"text": "", "exists": False}
+    assert call("vault.readFile", vault=v, path="log.md") == {"text": "", "exists": False}
     p = call("vault.pipeline", vault=v)
     assert p["incoming"] == [] and p["queued"] == [] and p["pending_finalization"] is None
     call("vault.summary", vault=v)
@@ -459,7 +459,7 @@ def test_notes_lists_queries_and_wiki_pages_newest_first(rich_vault):
 
 
 def test_read_file_allow_list(rich_vault):
-    ok = ["context.md", "watchlist.md", "requests.md", "hot.md", "log.md", "timeline.md", "index.md",
+    ok = ["context.md", "watchlist.md", "requests.md", "log.md", "timeline.md", "index.md",
           "briefings/leads-2026-03-03.md", "queries/x.md", "wiki/y.md"]
     for path in ok:
         r = call("vault.readFile", vault=V(rich_vault), path=path)
@@ -467,7 +467,7 @@ def test_read_file_allow_list(rich_vault):
     assert call("vault.readFile", vault=V(rich_vault), path="context.md") == {
         "text": "# Context\n\nAbout Acme.\n", "exists": True}
     assert call("vault.readFile", vault=V(rich_vault), path="index.md")["exists"] is False
-    for bad in ("entities/person/jane-doe.md", ".watchdog/registry/documents.json", "../x", "/etc/passwd",
+    for bad in ("hot.md", "entities/person/jane-doe.md", ".watchdog/registry/documents.json", "../x", "/etc/passwd",
                 "briefings/../context.md/../hot2.md", "documents/report-one.md"):
         assert call_error("vault.readFile", vault=V(rich_vault), path=bad)["code"] in ("forbidden", "bad_path")
 

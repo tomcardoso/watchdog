@@ -7,7 +7,7 @@ import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
-from watchdog.vault_paths import incoming_dir, is_set_aside, is_vault
+from watchdog.vault_paths import SESSION_HOOK_COMMAND, incoming_dir, is_set_aside, is_vault
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
@@ -157,12 +157,12 @@ def _vault_settings() -> dict:
             "deny": list(_VAULT_DENY),
         },
         "hooks": {
-            # Load hot.md into context at the start of a session — and again after compaction,
-            # which drops hook-injected context. SessionStart stdout is added to Claude's
-            # context, so `cat` is all it takes.
+            # A primer of where the investigation stands, built by code from the vault's records
+            # (D285), loaded at the start of a session and again after compaction, which drops
+            # hook-injected context. SessionStart stdout is added to Claude's context.
             "SessionStart": [
                 {"matcher": "startup|resume|compact",
-                 "hooks": [{"type": "command", "command": "[ -f hot.md ] && cat hot.md || true"}]},
+                 "hooks": [{"type": "command", "command": SESSION_HOOK_COMMAND}]},
             ],
             "UserPromptSubmit": [
                 {"matcher": "", "hooks": [{"type": "command", "command": _PROMPT_HOOK_COMMAND}]},
