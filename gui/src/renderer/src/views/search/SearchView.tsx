@@ -143,6 +143,8 @@ export default function SearchView() {
     setSubmitted(t)
     setSel(-1)
     push(t)
+    // Keep the route in step, so the palette's search for an earlier query, and Back, still run.
+    navigate({ view: 'search', query: t }, { replace: true })
   }
 
   const here = useRpc(

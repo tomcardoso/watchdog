@@ -114,6 +114,15 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // A search typed on the Search screen keeps the route in step, so searching the earlier query
+    // again (from the palette) runs it rather than doing nothing.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
+    await page.locator('.srch-input').fill('harbour')
+    await page.locator('.srch-input').press('Enter')
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.query)).toBe('harbour')
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
+    await expect(page.locator('.srch-input')).toHaveValue('contract')
+
     // Releasing a recent lock leaves it in place: the app says so in its own words, never with the
     // CLI's "Use watchdog unlock --force".
     const lockFile = join(root, 'vault', '.watchdog', 'registry', '.processing-lock')
