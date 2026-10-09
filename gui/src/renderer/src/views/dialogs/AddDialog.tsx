@@ -8,7 +8,7 @@ import {
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Badge, Button, Callout, Empty, Field, Modal, Progress, Skeleton, Spinner, Switch } from '@renderer/components/ui'
 import { basename, fmtCost, plural } from '@renderer/lib/format'
-import { flagsFor, startJob, waitForJob } from '@renderer/lib/jobs'
+import { flagsFor, startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
@@ -252,7 +252,7 @@ export function AddDialog() {
       <>
         <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>You can close this window. Reading continues, and the window reopens when it needs you.</span>
         <Button variant="ghost" onClick={close}>Hide</Button>
-        {rj && <Button onClick={() => void call('jobs.cancel', { id: rj.id })}>Stop</Button>}
+        {rj && <Button onClick={() => stopJob(rj.id)}>Stop</Button>}
       </>
     )
   } else if (effective === 'gate' && gate) {
@@ -283,7 +283,7 @@ export function AddDialog() {
         <>
           <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>Closing this window does not stop the run. Progress stays in the corner.</span>
           <Button variant="ghost" onClick={close}>Hide</Button>
-          {job && <Button onClick={() => void call('jobs.cancel', { id: job.id })}>Stop</Button>}
+          {job && <Button onClick={() => stopJob(job.id)}>Stop</Button>}
         </>
       ) : (
         <DoneFooter job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths([]); setRetry(false) }} />

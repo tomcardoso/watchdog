@@ -77,3 +77,8 @@ export function unlockOutcome(out: string): { kind: 'success' | 'info'; title: s
   if (removed) return { kind: 'success', title: 'Lock removed' }
   return { kind: 'info', title: 'No lock to remove' }
 }
+
+/** Stop a job, saying so when the stop could not be sent (the job may have ended already). */
+export function stopJob(id: string): void {
+  call('jobs.cancel', { id }).catch((e) => toast({ kind: 'error', title: 'Could not stop it', body: e instanceof Error ? e.message : String(e) }))
+}
