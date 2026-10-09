@@ -633,7 +633,7 @@ export default function MaintenancePanel() {
           title="Refresh Claude setup"
           text={
             <>
-              Updates this investigation’s shortcuts, Claude instructions and Claude Code settings after you upgrade Watchdog. Your own notes below the end marker in <span className="mono">.claude/CLAUDE.md</span> are kept. Record skills are global and never need this.
+              Updates this investigation’s shortcuts, Claude instructions and Claude settings after you upgrade Watchdog. Your own notes below the end marker in <span className="mono">.claude/CLAUDE.md</span> are kept. Record skills are global and never need this.
             </>
           }
           label="Refresh now"

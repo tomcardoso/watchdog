@@ -56,7 +56,7 @@ export class ClaudeSignIn {
       })
     }
     const cli = this.cli()
-    if (!cli) return Promise.resolve({ ok: false, message: 'Claude Code was not found in the engine. Repair the engine in Settings, then try again.' })
+    if (!cli) return Promise.resolve({ ok: false, message: 'Claude was not found in the engine. Repair the engine in Settings, then try again.' })
     return new Promise((resolve) => {
       let done = false
       const finish = (r: { ok: boolean; message: string | null }) => {
@@ -83,7 +83,7 @@ export class ClaudeSignIn {
       }
       createInterface({ input: child.stdout! }).on('line', watch)
       createInterface({ input: child.stderr! }).on('line', watch)
-      child.on('error', (e) => finish({ ok: false, message: `Claude Code could not be started: ${e.message}` }))
+      child.on('error', (e) => finish({ ok: false, message: `Claude could not be started: ${e.message}` }))
       child.on('close', (code) => {
         if (done) return
         // The command can exit once the browser step is complete; the status is the truth.

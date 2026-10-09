@@ -701,18 +701,18 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         if rejected:
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         if _looks_like_billing(str(e), err_text):
-            raise ProviderAuthError(f"Claude Code account can't pay for this call: {err_text or e}") from e
+            raise ProviderAuthError(f"Claude account can't pay for this call: {err_text or e}") from e
         if _looks_like_rate_limit(api_status, notice, str(e), err_text):
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         if _looks_like_auth_failure(api_status, str(e), err_text):
-            raise ProviderAuthError(f"Claude Code could not authenticate: {err_text or e}") from e
+            raise ProviderAuthError(f"Claude could not authenticate: {err_text or e}") from e
         raise
     if not rejected and is_error and _looks_like_billing(out["text"]):
-        raise ProviderAuthError(f"Claude Code account can't pay for this call: {out['text']}")
+        raise ProviderAuthError(f"Claude account can't pay for this call: {out['text']}")
     if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
     if is_error and _looks_like_auth_failure(api_status, out["text"]):
-        raise ProviderAuthError(f"Claude Code could not authenticate: {out['text']}")
+        raise ProviderAuthError(f"Claude could not authenticate: {out['text']}")
     return out
 
 

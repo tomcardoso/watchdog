@@ -238,7 +238,7 @@ def test_status_subscription_without_a_login_or_with_an_env_key(wdg_home, monkey
     write_creds(wdg_home, "subscription")
     monkeypatch.setattr("watchdog.cmd.auth.claude_code_logged_in", lambda: False)
     c = call("auth.status")["claude"]
-    assert c["logged_in"] is False and "login not detected" in c["reason"]
+    assert c["logged_in"] is False and "not signed in" in c["reason"]
     monkeypatch.setattr("watchdog.cmd.auth.claude_code_logged_in", lambda: True)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-envenvenvenv1234")
     c = call("auth.status")["claude"]

@@ -153,7 +153,7 @@ export default function AuthPanel() {
       <section className="card set-card">
         <div className="set-card-head">
           <div>
-            <div className="card-title">Claude Code</div>
+            <div className="card-title">Claude</div>
             <div className="card-sub">Required for Ask and Research, and the default for adding documents.</div>
           </div>
           <span className="spacer" />
@@ -187,8 +187,8 @@ export default function AuthPanel() {
         </div>
         {s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
         {info.data && !info.data.claude_code.installed && (
-          <Callout tone="warning" title="Claude Code is not installed" style={{ margin: '0 18px 16px' }}>
-            Ask, Research and context seeding need it. Install it from claude.ai/download, then sign in.
+          <Callout tone="warning" title="Claude is missing from the engine" style={{ margin: '0 18px 16px' }}>
+            Ask, Research and context seeding need it. It comes with the engine: repair the engine under Settings → Setup, then sign in.
           </Callout>
         )}
       </section>
