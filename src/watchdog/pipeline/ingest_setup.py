@@ -344,6 +344,47 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
     return result
 
 
+# Output tokens per input token assumed for a contradiction re-check (D287) when this vault has no
+# post-processing history to measure it from: the low and high ends of the range. A re-check's
+# answer is a short list of conflicts, usually empty, so its output is a small share of its input.
+_RECHECK_OUTPUT_RATIO = (0.02, 0.10)
+
+
+def recheck_cost_estimate(vault: Path, est_tokens: int, model: str, backend: str | None,
+                          max_runs: int = 3) -> dict:
+    """What a contradiction re-check of `est_tokens` (chars/4 of its prompts) would cost on the
+    configured finalizer `model` (D287), at that model's list price: input tokens scaled by the
+    model's tokenizer ratio and priced as cache misses (the `_catalog_cost_projection` rule), output
+    tokens as a share of input — from this vault's standalone post-processing history at the high
+    end when it has some, else `_RECHECK_OUTPUT_RATIO`. `backend` is the effective backend
+    (`claude-agent-sdk` for a subscription). No dollar figure on a subscription, a local model, or a
+    model the catalogue does not price."""
+    from watchdog import model_catalog, model_client
+    result = {"est_tokens": est_tokens, "real_tokens": None, "cost_low": None, "cost_high": None,
+              "subscription": backend == "claude-agent-sdk", "price_multiplier": 1.0}
+    if backend == "local":
+        result["real_tokens"] = est_tokens
+        return result
+    model_id = model_client.resolve_model_id(model)
+    real = round(est_tokens * model_client.tokenizer_ratio(model, backend, vault))
+    result["real_tokens"] = real
+    if result["subscription"]:
+        return result
+    entry = next((m for m in model_catalog.all_models()
+                  if m["id"].lower() == model_catalog.canonical_id(model_id).lower()), None)
+    if entry is None:
+        return result
+    low_ratio, high_ratio = _RECHECK_OUTPUT_RATIO
+    measured = _output_token_ratio(vault, max_runs, finalize_only=True)
+    if measured is not None:
+        high_ratio = max(low_ratio, min(measured, 1.0))
+    multiplier = model_catalog.price_multiplier(entry["id"])
+    result["price_multiplier"] = multiplier
+    result["cost_low"] = real * (entry["input"] + low_ratio * entry["output"]) * multiplier
+    result["cost_high"] = real * (entry["input"] + high_ratio * entry["output"]) * multiplier
+    return result
+
+
 def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         finalizer_model: str = defaults.FINALIZER_MODEL,
         wipe_pending: bool = True, force_lock: bool = False) -> dict:

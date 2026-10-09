@@ -17,6 +17,7 @@ import {
   Play,
   RefreshCw,
   Coins,
+  ScanSearch,
   ScanText,
   Sparkles,
   Telescope,
@@ -34,6 +35,7 @@ import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import { usePublicRecordsGate } from './PublicRecordsGate'
+import RecheckModal from '../entities/RecheckModal'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -495,6 +497,26 @@ function CitationsCard() {
   )
 }
 
+function RecheckCard() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+    <MCard
+      icon={ScanSearch}
+      title="Re-check contradictions"
+      footer={
+        <Button size="sm" icon={Play} onClick={() => setOpen(true)}>
+          Estimate the cost…
+        </Button>
+      }
+    >
+      When documents are added, their facts are compared with the facts already recorded, but recorded facts are not compared with each other again. This asks the AI model to compare every recorded fact about every entity named in two or more documents, and adds what it finds to Review. You see the cost before anything is sent. To check one entity, use Re-check on its page.
+    </MCard>
+    <RecheckModal open={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
 function Gated({ children }: { children: ReactNode }) {
   const ready = useEngineGate().ready
   return (
@@ -610,6 +632,9 @@ export default function MaintenancePanel() {
         />
         </Gated>
         <CitationsCard />
+        <Gated>
+          <RecheckCard />
+        </Gated>
         <Gated>
         <SimpleCard
           icon={Cpu}

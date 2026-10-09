@@ -19,16 +19,17 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   `watchdog …` command as a subprocess (see `jobs.*` and `action.run`), so the app and the terminal
   can never disagree about what a command does. Thin in-process mutations are used only where the
   CLI's own code is already a library function (resolutions, settings, auth keys, the `## Notes`
-  section of a note). App-only features with no CLI command (`history.restore`, `history.clear`)
-  call their library function directly (D286, I10).
+  section of a note). App-only features with no CLI command (`history.restore`, `history.clear`, and
+  `jobs.recheckContradictions`, which runs a library module as a job) call their library
+  function directly (D286, D287, I10).
 - **Folder access (D268).** When the app starts the server with `WATCHDOG_ENFORCE_ACCESS=1`, any
   call naming a vault outside the folders in `~/.watchdog/access.json`, and any `jobs.start` or
   `action.run` there, fails with `RpcError(code="not_granted", data={"path"})`. The server only
   reads that file (`access.list`); grants are made by the main process (`window.watchdog.access`).
 - **Engine setup (D272).** While the app's engine is still installing its background phase, the
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
-  then refuse `add`, `chew`, `dig`, `bark`, `ingest`, `watch`, `requeue`, `reindex` and
-  `merge-entities` (grouped forms and aliases included) with
+  then refuse `add`, `chew`, `dig`, `bark`, `ingest`, `watch`, `requeue`, `reindex`,
+  `merge-entities`, Rebuild notes, Undo merge and Re-check contradictions (grouped forms and aliases included) with
   `RpcError(code="engine_not_ready", data={"command"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by reused
@@ -277,6 +278,7 @@ A job is `python -m watchdog <args…>` run with the vault as its working direct
 | `jobs.flags` | `{command: "add"\|"dig"\|"bark"\|"chew", options: RunOptions}` | `{args: string[]}` |
 | `jobs.rebuildNotes` | `{vault}` | `Job` — Maintenance → "Rebuild notes": rewrites every entity and document note from stored data with no model call (`python -m watchdog.pipeline.entity_notes`, the library function, D280); waits for the full engine like `reindex` |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge" (`python -m watchdog.pipeline.merge_undo <id>`, D280). Errors: `cannot_undo` with the reason, `not_found` |
+| `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): `python -m watchdog.pipeline.recheck --entity <id>…\|--all` (D287). Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
 | `action.run` | `{vault\|null, args: string[], timeout?: seconds}` | `{code, stdout, stderr}` — a short, synchronous command (rename, archive, unlock…) |
 
 ```
@@ -290,6 +292,26 @@ ProgressState = { stage|null, done|null, total|null, current|null, docs: {[sha]:
 
 Events: `job.started {job}`, `job.log {id, lines: LogLine[]}` (batched ≤ 10/s),
 `job.progress {id, progress: ProgressState, event}`, `job.finished {job}`.
+
+## contradictions
+
+```
+RecheckEstimate = {
+  scope: "entities"|"all",
+  entities: [{id, name, facts, documents, calls}],            // what would be checked
+  skipped: [{id, name, reason: "one_document"|"too_few_facts"|"too_large"|"not_found", facts?, calls?}],
+  calls, facts,                         // model calls and facts in total
+  est_tokens, real_tokens|null,         // chars/4 of the prompts; scaled by the model's tokenizer ratio
+  cost_low|null, cost_high|null,        // USD at list price; null on a subscription, a local or an unpriced model
+  subscription: bool, price_multiplier, // a time-of-day rate in force now (D217)
+  model: {model, backend|null, effort|null, label, name},     // the configured reconciliation (finalizer) model
+  auth: {mode, ok, reason|null}, busy: bool, engine_ready: bool, max_entity_calls
+}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287). The app shows it and asks before `jobs.recheckContradictions` |
 
 ## search
 

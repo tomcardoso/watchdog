@@ -52,7 +52,8 @@ COMMANDS = ("add", "dig", "bark", "chew")
 # form, the incoming-folder watcher, putting failed documents back in the queue, and anything that
 # rewrites the semantic search index. Refused with `engine_not_ready` until the engine is complete.
 ADD_COMMANDS = frozenset({"add", "chew", "dig", "bark", "ingest", "watch", "requeue"})
-INDEX_COMMANDS = frozenset({"reindex", "merge-entities", "rebuild-notes", "undo-merge"})
+INDEX_COMMANDS = frozenset({"reindex", "merge-entities", "rebuild-notes", "undo-merge",
+                            "recheck-contradictions"})
 ENGINE_BUSY_OTHER = ("Watchdog is still setting up. This will be available when it finishes, "
                      "in a few minutes.")
 

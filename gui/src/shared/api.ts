@@ -374,6 +374,26 @@ export interface Estimate {
   all_models: { label: string; provider: string; cost_usd: number; note: string | null }[] | null
 }
 
+/** `contradictions.estimate`: what a contradiction re-check would send and cost (D287). */
+export interface RecheckEstimate {
+  scope: 'entities' | 'all'
+  entities: { id: string; name: string; facts: number; documents: number; calls: number }[]
+  skipped: { id: string; name: string; reason: 'one_document' | 'too_few_facts' | 'too_large' | 'not_found'; facts?: number; calls?: number }[]
+  calls: number
+  facts: number
+  est_tokens: number
+  real_tokens: number | null
+  cost_low: number | null
+  cost_high: number | null
+  subscription: boolean
+  price_multiplier: number
+  model: { model: string; backend: string | null; effort: string | null; label: string; name: string }
+  auth: { mode: string | null; ok: boolean; reason: string | null }
+  busy: boolean
+  engine_ready: boolean
+  max_entity_calls: number
+}
+
 // ── jobs ─────────────────────────────────────────────────────────────────────
 export type JobState = 'running' | 'done' | 'failed' | 'cancelled'
 export interface DocProgress { filename: string; state: string; detail: string | null }
@@ -631,6 +651,8 @@ export interface Methods {
   'jobs.flags': [{ command: 'add' | 'dig' | 'bark' | 'chew'; options: RunOptions }, { args: string[] }]
   'jobs.rebuildNotes': [{ vault: string }, Job]
   'jobs.undoMerge': [{ vault: string; id: string }, Job]
+  'jobs.recheckContradictions': [{ vault: string; ids?: string[]; all?: boolean }, Job]
+  'contradictions.estimate': [{ vault: string; ids?: string[]; all?: boolean }, RecheckEstimate]
   'action.run': [{ vault: string | null; args: string[]; timeout?: number }, ActionResult]
 
   'search.query': [{ vault: string; query: string; top?: number; threshold?: number | null; rerank?: boolean }, SearchResult]
