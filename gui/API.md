@@ -228,7 +228,7 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 | `history.restore` | `{vault, path, version}` | `{path, part: "page"\|"notes", version}` — `page` (`context.md`, `watchlist.md`, `briefings/`, `queries/`, `wiki/`) writes the version back whole; `notes` (`entities/`, `documents/`) puts back only its `## Notes` section; anything else fails with `cannot_restore`, as does a version recording a deletion. Recorded as a new version, cause `restore` ("Restored by you") |
 | `history.versions` | `{vault, limit?: 100, before?}` | `{versions: (HistoryVersion & {changes: [{path, deleted}]})[], total, more, too_new}` newest first; `before` pages back |
 | `history.stats` | `{vault}` | `{versions, files, objects, bytes, since\|null, too_new}` |
-| `history.clear` | `{vault}` | `{removed_versions, freed_bytes, versions, bytes}` — deletes every past version and records the current files as the first version of a new history (cause `cleared`). Irreversible: the app confirms first |
+| `history.clear` | `{vault}` | `{removed_versions, freed_bytes, versions, bytes}` — deletes every past version and records the current files as the first version of a new history (cause `cleared`). Irreversible: the app confirms first. Refused with `busy` while a run holds the vault |
 
 ## ingest — before a pipeline run
 

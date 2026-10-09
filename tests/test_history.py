@@ -407,5 +407,10 @@ def test_app_edits_record_versions_and_history_api(vault):
     resp = server.handle({"id": 1, "method": "history.restore",
                           "params": {"vault": v, "path": "timeline.md", "version": 1}})
     assert resp["error"]["code"] in ("cannot_restore", "not_found")
+    from watchdog.vault_paths import processing_lock
+    processing_lock(vault).write_text("pid: cli\n")
+    resp = server.handle({"id": 1, "method": "history.clear", "params": {"vault": v}})
+    assert resp["error"]["code"] == "busy"
+    processing_lock(vault).unlink()
     cleared = call("history.clear", vault=v)
     assert cleared["versions"] == 1 and cleared["removed_versions"] > 1

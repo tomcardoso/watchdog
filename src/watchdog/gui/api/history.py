@@ -95,4 +95,7 @@ def stats(vault: str) -> dict:
 def clear(vault: str) -> dict:
     from watchdog.pipeline import history
     v = require_vault(vault)
+    if history.run_in_progress(v):
+        raise RpcError("Documents are being added to this investigation. Clear the history when "
+                       "that has finished.", code="busy")
     return _errors(lambda: history.clear(v))
