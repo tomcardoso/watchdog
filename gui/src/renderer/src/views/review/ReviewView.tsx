@@ -26,6 +26,7 @@ import {
 import { Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DocumentRequest, DocumentRow, ReviewItem, ReviewKind } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Kbd, Skeleton, Tabs, cx } from '@renderer/components/ui'
+import { HistoryButton } from '@renderer/components/FileHistory'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { Markdown, useOpenWikilink } from '@renderer/components/Markdown'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
@@ -816,6 +817,7 @@ function WatchlistTab({ vault }: { vault: string }) {
           <div className="rv-toolbar">
             <span className="faint">{terms.length ? plural(terms.length, 'term') : 'No terms yet'}</span>
             <span className="spacer" />
+            <HistoryButton vault={vault} path="watchlist.md" size="md" variant="ghost" />
             <Button icon={Save} variant={dirty ? 'primary' : 'default'} disabled={!dirty} loading={saving} onClick={() => void save()}>
               Save watch list
             </Button>

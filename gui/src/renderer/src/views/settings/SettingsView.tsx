@@ -1,7 +1,7 @@
 // Settings: every `watchdog settings` key as a form, plus sign-in and keys, skills, appearance,
 // the vault check, setup and about. Works with no investigation open.
 
-import { BookOpen, FolderLock, HeartPulse, Info, KeyRound, Palette, Wrench } from 'lucide-react'
+import { BookOpen, FileClock, FolderLock, HeartPulse, Info, KeyRound, Palette, Wrench } from 'lucide-react'
 import { LucideIcon } from 'lucide-react'
 import { Callout, ErrorNote, Skeleton, cx } from '@renderer/components/ui'
 import { useRpc } from '@renderer/lib/rpc'
@@ -9,6 +9,7 @@ import { navigate, useApp } from '@renderer/lib/store'
 import AuthPanel from './AuthPanel'
 import { AboutPanel, AppearancePanel, DoctorPanel, SetupPanel, SkillsPanel } from './MiscPanels'
 import { FolderAccessPanel } from './FolderAccessPanel'
+import { HistoryPanel } from './HistoryPanel'
 import { SettingField } from './SettingField'
 import './settings.css'
 
@@ -16,6 +17,7 @@ const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(
 const OTHER: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'auth', label: 'Models & keys', icon: KeyRound },
   { id: 'access', label: 'Folder access', icon: FolderLock },
+  { id: 'history', label: 'Version history', icon: FileClock },
   { id: 'skills', label: 'Record skills', icon: BookOpen },
   { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'doctor', label: 'Check vaults', icon: HeartPulse },
@@ -85,6 +87,7 @@ export default function SettingsView() {
           <main className="set-main">
             {tab === 'auth' && <><h2 className="set-title">Models & keys</h2><p className="set-blurb">How Watchdog signs in to Claude and to each model provider.</p><AuthPanel /></>}
             {tab === 'access' && <><h2 className="set-title">Folder access</h2><p className="set-blurb">The folders Watchdog may read and change.</p><FolderAccessPanel /></>}
+            {tab === 'history' && <><h2 className="set-title">Version history</h2><p className="set-blurb">Earlier versions of the open investigation’s notes, pages and records.</p><HistoryPanel /></>}
             {tab === 'skills' && <><h2 className="set-title">Record skills</h2><SkillsPanel /></>}
             {tab === 'appearance' && <><h2 className="set-title">Appearance</h2><AppearancePanel /></>}
             {tab === 'doctor' && <><h2 className="set-title">Check vaults</h2><DoctorPanel /></>}

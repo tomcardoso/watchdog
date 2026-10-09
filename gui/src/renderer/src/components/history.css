@@ -1,0 +1,223 @@
+/* Version history (D286): the version list beside a before/after diff. */
+
+.hist {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 420px;
+  max-height: calc(100vh - 200px);
+}
+.hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 4px 0 0;
+  overflow: auto;
+  border-right: 1px solid var(--border);
+}
+.hist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  margin-bottom: 2px;
+  border-radius: var(--r-md);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+.hist-item:hover {
+  background: var(--hover);
+}
+.hist-item.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.hist-item-label {
+  font-weight: 560;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.hist-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.hist-tag {
+  font-size: var(--fs-xs);
+  padding: 0 6px;
+  border-radius: var(--r-full);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.hist-tag.warn {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+.hist-main {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+.hist-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hist-explain {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+.hist-diff {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.hist-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: var(--fs-sm);
+}
+.hist-counts {
+  display: inline-flex;
+  gap: 10px;
+}
+.hist-counts .ins {
+  color: var(--success);
+}
+.hist-counts .del {
+  color: var(--danger);
+}
+.hist-same {
+  padding: 24px;
+  color: var(--text-3);
+  text-align: center;
+}
+.hist-lines {
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  background: var(--surface);
+}
+.hist-line {
+  display: grid;
+  grid-template-columns: 3.4em 3.4em 1.4em minmax(0, 1fr);
+}
+.hist-line.ins {
+  background: var(--diff-ins-bg);
+}
+.hist-line.del {
+  background: var(--diff-del-bg);
+}
+.hist-num {
+  color: var(--text-3);
+  text-align: right;
+  padding-right: 8px;
+  user-select: none;
+  font-size: var(--fs-xs);
+  line-height: 1.9;
+}
+.hist-mark {
+  user-select: none;
+  color: var(--text-3);
+}
+.hist-line.ins .hist-mark {
+  color: var(--success);
+}
+.hist-line.del .hist-mark {
+  color: var(--danger);
+}
+.hist-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding-right: 12px;
+}
+.hist-text .w-ins {
+  background: var(--diff-ins-word);
+  border-radius: 2px;
+}
+.hist-text .w-del {
+  background: var(--diff-del-word);
+  border-radius: 2px;
+  text-decoration: line-through;
+  text-decoration-color: var(--danger);
+}
+.hist-gap {
+  padding: 2px 12px;
+  color: var(--text-3);
+  background: var(--surface-sunken);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+}
+
+/* Activity → Version history: the investigation's versions, newest first */
+.vh-row {
+  border-bottom: 1px solid var(--border);
+  padding: 10px 2px;
+}
+.vh-row:last-child {
+  border-bottom: none;
+}
+.vh-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+.vh-head .t {
+  font-weight: 580;
+}
+.vh-head .m {
+  color: var(--text-3);
+  font-size: var(--fs-sm);
+}
+.vh-files {
+  margin: 8px 0 2px 2px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.vh-file {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  border-radius: var(--r-full);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.vh-file:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.vh-file.gone {
+  text-decoration: line-through;
+}

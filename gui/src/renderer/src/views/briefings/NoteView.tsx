@@ -5,6 +5,7 @@ import { FolderOpen, NotebookText } from 'lucide-react'
 import { useEffect } from 'react'
 import { Button, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
+import { HistoryButton } from '@renderer/components/FileHistory'
 import { call, useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import './briefings.css'
@@ -35,6 +36,7 @@ export function NoteActions({ path }: { path: string }) {
       <Button size="sm" variant="ghost" icon={FolderOpen} onClick={() => window.watchdog.shell.showItemInFolder(`${vault}/${file}`)}>
         Show in folder
       </Button>
+      <HistoryButton vault={vault} path={file} variant="ghost" />
     </div>
   )
 }

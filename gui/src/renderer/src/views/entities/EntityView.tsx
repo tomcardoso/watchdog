@@ -3,6 +3,7 @@ import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
 import { DisputedBadge } from '@renderer/components/FactCheck'
+import { HistoryButton } from '@renderer/components/FileHistory'
 import { Markdown } from '@renderer/components/Markdown'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import type { EntityDetail, Relationship, TimelineEvent } from '@shared/api'
@@ -91,6 +92,7 @@ export default function EntityView() {
               <Button icon={CalendarClock} onClick={() => navigate({ view: 'timeline', entity: e.id })}>
                 Timeline
               </Button>
+              <HistoryButton vault={vault} path={e.note} title={e.name} size="md" />
               <Dropdown
                 align="left"
                 trigger={(open) => <Button variant="ghost" icon={MoreHorizontal} tip="More actions" onClick={open} />}

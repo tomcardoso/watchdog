@@ -163,6 +163,12 @@
   --find-current: rgba(250, 204, 21, 0.9);
   --find-current-ring: rgba(161, 98, 7, 0.95);
 
+  /* Version history diffs (D286): a line's tint, and the stronger tint of the words that changed */
+  --diff-ins-bg: rgba(43, 122, 75, 0.1);
+  --diff-ins-word: rgba(43, 122, 75, 0.26);
+  --diff-del-bg: rgba(192, 50, 43, 0.08);
+  --diff-del-word: rgba(192, 50, 43, 0.22);
+
   /* Controls */
   --switch-knob: #ffffff;
   --switch-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
@@ -186,6 +192,10 @@
 
 :root[data-theme='dark'] {
   --overlay: rgba(0, 0, 0, 0.66);
+  --diff-ins-bg: rgba(92, 186, 132, 0.11);
+  --diff-ins-word: rgba(92, 186, 132, 0.3);
+  --diff-del-bg: rgba(239, 107, 95, 0.11);
+  --diff-del-word: rgba(239, 107, 95, 0.3);
   --paper-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 36px -10px rgba(0, 0, 0, 0.7);
   --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px -8px rgba(0, 0, 0, 0.6);
 }
