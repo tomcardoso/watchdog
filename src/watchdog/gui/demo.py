@@ -245,6 +245,21 @@ def check_story(docs: list[dict]) -> list[str]:
 UNSURE_SAME_NAME = {"tomasz-wieczorek"}
 
 
+def cite(text: str, lines: list[str]) -> str:
+    """Canned prose with each `{{phrase}}` replaced by the short citation (`[f:3a9c]`) of the one
+    fact line in `lines` that contains the phrase, as a model citing its facts would (D283). A
+    phrase no line contains is left out, as a model can cite only the facts it is shown (the early
+    batch sees fewer); one that matches several lines is a mistake in the story data."""
+    def ref(m: re.Match) -> str:
+        phrase = m.group(2).lower()
+        hits = {r.group(1) for ln in lines if phrase in ln.lower()
+                for r in [re.match(r"\[(f:[0-9a-f:]+)\]", ln.lstrip("- "))] if r}
+        if len(hits) > 1:
+            raise RuntimeError(f"demo: citation {m.group(2)!r} matches {len(hits)} facts")
+        return f"{m.group(1)}[{hits.pop()}]" if hits else ""
+    return re.sub(r"([ \t]*)\{\{(.+?)\}\}", ref, text)
+
+
 # ── the canned model ────────────────────────────────────────────────────────────────────────
 
 class CannedModel:
@@ -314,9 +329,9 @@ class CannedModel:
             if canned is None:
                 self.unsynthesized.add(ent["entity_id"])
                 continue
-            item = {"entity_id": ent["entity_id"], "summary": canned[0]}
+            item = {"entity_id": ent["entity_id"], "summary": cite(canned[0], ent["facts"])}
             if canned[1]:
-                item["analysis"] = canned[1]
+                item["analysis"] = cite(canned[1], ent["facts"])
             out.append(item)
         return {"entity_syntheses": out}
 

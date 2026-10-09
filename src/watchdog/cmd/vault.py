@@ -354,7 +354,8 @@ def cmd_new(args) -> None:
     (vault / ".watchdog" / "registry" / "registry.json").write_text(
         json.dumps(
             {"schema_version": "1", "created_at": now, "last_updated": now,
-             "document_count": 0, "entity_count": 0, "entity_note_format": 2},
+             "document_count": 0, "entity_count": 0,
+             "entity_note_format": _note_format()},
             indent=2,
         ) + "\n"
     )
@@ -1246,6 +1247,11 @@ def _build_search_json(query: str, passages: list[dict], notes: list[dict],
             for r in (exact or [])
         ],
     }
+
+
+def _note_format() -> int:
+    from watchdog.pipeline.entity_notes import NOTE_FORMAT
+    return NOTE_FORMAT
 
 
 def _read_batch_terms(path: Path) -> list[str]:

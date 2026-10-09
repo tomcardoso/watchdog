@@ -215,3 +215,20 @@ def test_entity_note_lists_its_facts_and_a_labelled_ai_summary(demo_vault):
     assert all("[[morgue/" in ln and "#page=" in ln for ln in lines)
     entry = _registry(vault, "entities.json")["leonard-pike"]
     assert entry["synthesis"]["by"] == "model" and entry["synthesis"]["fact_refs"]
+
+
+def test_demo_summaries_cite_facts_and_every_citation_resolves(demo_vault):
+    """D283: the canned syntheses cite facts the way a model does; every citation renders as a link
+    to an existing fact line, and the one on the disputed payment is labelled."""
+    from watchdog.pipeline import citations
+    vault, _, _ = demo_vault
+    ents = _registry(vault, "entities.json")
+    stats = [e["synthesis"]["citations"] for e in ents.values()
+             if isinstance(e.get("synthesis"), dict) and e["synthesis"].get("citations")]
+    assert sum(s["linked"] for s in stats) >= 10
+    assert all(s["unknown"] == 0 and s["missing"] == 0 for s in stats)
+    note = (vault / "entities" / "organization" / "7714882-holdings-ltd.md").read_text(encoding="utf-8")
+    summary = note.split("## Summary (AI-written)", 1)[1].split("\n## Facts", 1)[0]
+    assert "[f:" not in summary and "p. 1, disputed]]" in summary
+    report = citations.check_text(summary, citations.Resolver(vault))
+    assert report["citations"] and report["not_found"] == 0 and report["disputed"] == 1

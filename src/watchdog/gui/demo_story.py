@@ -53,47 +53,49 @@ SYNTHESIS = {
     "dana-whitcombe": (
         "Dana Whitcombe is the Ward 4 city councillor who chairs the Planning and Procurement Committee. She "
         "moved both Council motions at the centre of this investigation: the February 8, 2022 purchase of 14 "
-        "Dockside Road and the April 26, 2022 award of the Pier 9 contract. Meridian's lobbyist reported three "
-        "contacts with her between November 2021 and April 2022, and she is the sister-in-law of Marcus "
-        "Teague, the former director of the company that sold the City the property.",
+        "Dockside Road and the April 26, 2022 award of the Pier 9 contract {{voted 8 to 3}}{{voted 7 to 3}}. Meridian's lobbyist reported three "
+        "contacts with her between November 2021 and April 2022 {{Two of the three reported contacts}}, and she is the sister-in-law of Marcus "
+        "Teague, the former director of the company that sold the City the property {{is her brother-in-law}}.",
         "The minutes of both meetings ([[documents/council-minutes-2022-02-08|February 8]], "
         "[[documents/council-minutes-2022-04-26|April 26]]) record no declaration of interest. Whitcombe's "
         "own [[documents/whitcombe-letter-to-integrity-commissioner|letter to the Integrity Commissioner]] "
         "says she disclosed the family relationship to the City Clerk on April 11, 2022 and was told it was "
-        "on file; the Clerk's record of that disclosure has not been seen. The "
+        "on file {{because the Clerk advised her}}; the Clerk's record of that disclosure has not been seen. The "
         "[[documents/city-auditor-procurement-review-ar-2023-04|City Auditor]] flagged the absence of a "
         "recorded conflict, and the Integrity Commissioner's inquiry (IC-2022-07) is still open."),
     "marcus-teague": (
         "Marcus Teague was the first director and president of 7714882 Holdings Ltd., the numbered company "
         "that bought 14 Dockside Road in April 2021 and sold it to the City ten months later. The registry "
-        "records his resignation effective January 15, 2022, when Meridian's chief executive replaced him. He "
+        "records his resignation effective January 15, 2022, when Meridian's chief executive replaced him "
+        "{{records Marcus Teague's resignation}}. He "
         "is the brother-in-law of Councillor Dana Whitcombe.",
         "The [[documents/parcel-register-14-dockside-road|land title]] shows Teague signing the February 28, "
-        "2022 transfer to the City as a director, six weeks after the registry's "
+        "2022 transfer to the City as a director {{executed for 7714882 Holdings Ltd. by Marcus Teague}}, six weeks after the registry's "
         "[[documents/7714882-holdings-corporate-profile|Notice of Change]] says he resigned. Either the "
         "filing or the transfer is wrong about who could bind the company that day."),
     "7714882-holdings-ltd": (
         "7714882 Holdings Ltd. is a numbered company incorporated March 9, 2021. It bought 14 Dockside Road "
-        "from the Estate of Albert Kessler for $1,150,000 and sold it to the City of Port Calder on February "
-        "28, 2022 for $4,350,000. In January 2022 its director changed from Marcus Teague to Meridian chief "
+        "from the Estate of Albert Kessler for $1,150,000 {{transferred 14 Dockside Road to 7714882 Holdings Ltd. for $1,150,000}} "
+        "and sold it to the City of Port Calder on February 28, 2022 for $4,350,000 {{stated consideration of $4,350,000}}{{City paid $4,350,000 to 7714882}}. In January 2022 its director changed from Marcus Teague to Meridian chief "
         "executive Tomasz Wieczorek and its registered office moved to Meridian's address.",
         "The company held the property for about ten months and resold it at roughly 3.8 times its cost, to a "
         "buyer whose price was nearly three times the City's own appraisal. The registry records no "
-        "beneficial owner."),
+        "beneficial owner {{does not record the beneficial owners}}."),
     "lot-14-dockside-road": (
         "14 Dockside Road (Lot 14, Plan DP-2217) is the last privately held parcel on the Pier 9 approach. The "
         "Estate of Albert Kessler held it from 1987 until April 2021; 7714882 Holdings Ltd. owned it until the "
         "City bought it on February 28, 2022.",
-        "Three prices circulate: $1,420,000 (the December 2021 appraisal, released in "
+        "Three prices circulate: $1,420,000 (the December 2021 appraisal {{market value of 14 Dockside Road at $1,420,000}}, released in "
         "[[documents/foi-response-lot-14-appraisal|January 2023]]), $3,900,000 (what "
         "[[documents/council-minutes-2022-02-08|Council approved]]) and $4,350,000 (the "
         "[[documents/parcel-register-14-dockside-road|land title]] and the City's own payment on March 4, "
-        "2022). Council was told an appraisal supported its price; the appraisal says otherwise."),
+        "2022). Council was told an appraisal supported its price {{described as the amount supported}}; the "
+        "appraisal says otherwise {{not derived from the released appraisal}}."),
     "northgate-civil-works": (
         "Northgate Civil Works Ltd. is the Port Calder contractor that won the $48,600,000 Pier 9 marine "
-        "servicing contract (C-2022-041) without a public tender. It is a wholly owned subsidiary of "
+        "servicing contract (C-2022-041) without a public tender {{no public call for tenders}}. It is a wholly owned subsidiary of "
         "Meridian Shoreline Developments Inc., shares Meridian's building at 410 Wharf Street, and was paid "
-        "$23,120,000 in four progress payments by September 30, 2022.",
+        "$23,120,000 in four progress payments by September 30, 2022 {{totalled $23,120,000 over four}}.",
         "The executed [[documents/contract-c-2022-041-pier-9-servicing|contract price]] is $52,340,000, which "
         "is $3,740,000 more than [[documents/council-minutes-2022-04-26|Council approved]]. A "
         "[[documents/citizens-v-city-reasons-for-judgment|court]] set the award aside as to unperformed work "
