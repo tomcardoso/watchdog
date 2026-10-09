@@ -25,8 +25,10 @@ set by CI from the tag; it doesn't need bumping by hand.
 
 ## Signing
 
-Both platforms sign in CI when their secrets are set, and build unsigned otherwise. Local builds
-are unsigned.
+Both platforms sign in CI when their secrets are set, and build unsigned otherwise. A local Mac
+build is signed whenever a Developer ID Application certificate is in the keychain (electron-builder
+finds it on its own), and notarized only when `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and
+`APPLE_TEAM_ID` are set; without one it is unsigned. A local Windows build is unsigned.
 
 **macOS** — signed with a Developer ID certificate and notarized by Apple. Repository secrets:
 `APPLE_CERTIFICATE` (the .p12, base64-encoded), `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`,
