@@ -66,9 +66,10 @@ def test_demo_primer_covers_the_whole_investigation(demo):
                     "**Possible same entities, not merged (1)**", "**Facts the reporter disputes (1)**"):
         assert heading in text, heading
     assert "|p. 1, disputed]]" in text                      # a disputed fact, cited and labelled
-    # The last briefings, newest first (a second briefing in one minute is the newer).
+    # The last briefings, newest first. The demo writes both within seconds, so the second is
+    # either a later minute or the same minute with a "-2" suffix, depending on the clock.
     first, second = [ln for ln in text.splitlines() if ln.startswith("- [[briefings/")]
-    assert "-2|" in first and "Fourteen documents now document" in first
+    assert "Fourteen documents now document" in first
     assert "The first four documents show" in second
     assert not (vault / "hot.md").exists()
 

@@ -37,7 +37,9 @@ interface Props {
 export function DocThumb({ sha, ext, original, title, summary, width = 220, className, style }: Props) {
   const vault = useVault()
   const abs = original ? `${vault}/${original}` : null
-  const key = `${sha}-w${width}`
+  // The `r2` invalidates thumbnails cached before pdf.js could decode JPEG 2000 and JBIG2 scans,
+  // which were saved blank. Bump it whenever rendering changes what a thumbnail looks like.
+  const key = `${sha}-w${width}-r2`
   const [src, setSrc] = useState<string | null>(() => mem.get(key) ?? null)
   const [failed, setFailed] = useState(false)
   const ref = useRef<HTMLDivElement>(null)

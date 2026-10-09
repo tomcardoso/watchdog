@@ -88,6 +88,8 @@ pipx inject watchdog-intel pytest numpy
 
 (`pipx run pytest` creates an isolated venv without watchdog's deps and will fail to collect most tests — don't use it for development.)
 
+**Faster: `scripts/check.sh`** runs the Python half (ruff, then the suite on every core with `pytest-xdist`, in the `dev` extra) and the app half (typecheck, unit tests, build, the end-to-end tests side by side) at the same time; `scripts/check.sh py` or `scripts/check.sh app` runs one half. Set `PYTHON` to the interpreter with Watchdog's dependencies (e.g. `PYTHON=~/.local/pipx/venvs/watchdog-intel/bin/python`, after `pipx inject watchdog-intel pytest-xdist`). While iterating, run the tests a change touches; run the whole script once before merging.
+
 **No `pipx` available (e.g. a fresh container)?** Don't `pip install -e .[dev]` — that pulls in docling's full tree (torch, onnxruntime, …) and can take several minutes. Mirror `.github/workflows/ci.yml`'s `test` job instead: `pip install --no-deps -e .` plus the explicit lightweight dependency list from that job (pyyaml, pypdf, argcomplete, numpy, pytest, pytest-timeout, jsonschema, httpx, truststore, nh3, python-docx, python-pptx, openpyxl, Pillow, defusedxml) in a venv. Add `ruff` too if you also need to lint.
 
 Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. `CONFIG_FILE` lives in more than one module: patch `watchdog.config.CONFIG_FILE` as well as `watchdog.cmd.base`'s, or a config read falls through to the real `~/.watchdog/config.json`. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
