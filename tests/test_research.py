@@ -95,6 +95,17 @@ def test_ssl_context_relaxes_strict_verification_only():
     assert ctx.check_hostname                               # hostname checking still on
 
 
+def test_ssl_context_uses_the_operating_system_trust_store():
+    # A newsroom proxy's root CA is installed in the OS store, which Python's default store misses.
+    import truststore
+    assert isinstance(research._ssl_context(), truststore.SSLContext)
+
+
+def test_worklist_skips_a_column_header_row():
+    text = "url\ttitle\tsource_type\trelevance\nhttps://example.org/a\tA\tnews\twhy\n"
+    assert [e["url"] for e in research.parse_worklist(text)] == ["https://example.org/a"]
+
+
 def test_fetch_and_wayback_openers_use_relaxed_context():
     import ssl
     import urllib.request

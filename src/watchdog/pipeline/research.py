@@ -109,7 +109,12 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def _ssl_context() -> ssl.SSLContext:
-    """Default TLS verification minus `VERIFY_X509_STRICT` (on by default since Python 3.13).
+    """TLS verified against the operating system's trust store, minus `VERIFY_X509_STRICT`.
+
+    The OS store (macOS Keychain, Windows certificate store, Linux system bundle, via `truststore`)
+    is where a newsroom's IT installs the root of its TLS-inspecting proxy; Python's own default
+    store doesn't see it, so every fetch failed with "self-signed certificate in certificate chain"
+    on such a machine. The model clients already verify this way (D122).
 
     Corporate TLS-inspecting proxies — common on newsroom-managed machines — re-sign every
     connection with a CA that is often not RFC 5280-strict (e.g. missing the keyUsage extension),
@@ -118,7 +123,8 @@ def _ssl_context() -> ssl.SSLContext:
     on; only the extension-conformance check that mainstream clients don't enforce is dropped.
     Without this, every intercepted HTTPS fetch fails and research/fetch is unusable on such
     machines (#243)."""
-    ctx = ssl.create_default_context()
+    import truststore
+    ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.verify_flags &= ~ssl.VERIFY_X509_STRICT
     return ctx
 
@@ -314,13 +320,16 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
 
 def parse_worklist(text: str) -> list[dict]:
     """Parse a TSV worklist: `url[<TAB>title[<TAB>source_type[<TAB>relevance]]]` per line.
-    Blank lines and `#` comments are skipped."""
+    Blank lines, `#` comments and a column-header row (`url<TAB>title…`, which a research session
+    sometimes writes) are skipped."""
     entries = []
     for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         cols = line.split("\t")
+        if cols[0].strip().lower() == "url":
+            continue
         entries.append({
             "url": cols[0].strip(),
             "title": cols[1].strip() if len(cols) > 1 else "",
