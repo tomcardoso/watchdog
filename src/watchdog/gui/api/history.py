@@ -1,8 +1,8 @@
 """`history.*` — the version history of every file Watchdog generates or the app edits (D286).
 
-App-only: there is no terminal command. Reads come from `pipeline/history`; the two writes,
-restoring a version and clearing the history, call its library functions directly, the first
-vault mutation with no CLI equivalent (D286 amends I10). Folder access (D268) still applies: the
+App-only: there is no terminal command. Reads come from `pipeline/history`; the writes,
+restoring a version, removing versions (D288) and clearing the history, call its library
+functions directly, the first vault mutations with no CLI equivalent (D286 amends I10). Folder access (D268) still applies: the
 vault must be allowed, and the audit hook refuses any write outside it.
 """
 
@@ -39,6 +39,10 @@ def _errors(fn):
         raise RpcError(str(e), code="history_too_new")
     except history.CannotRestore as e:
         raise RpcError(str(e), code="cannot_restore")
+    except history.CannotRemove as e:
+        raise RpcError(str(e), code="cannot_remove")
+    except history.HistoryBusy as e:
+        raise RpcError(str(e), code="busy")
     except (KeyError, LookupError):
         raise RpcError("That version is not in this file's history.", code="not_found")
 
@@ -99,3 +103,16 @@ def clear(vault: str) -> dict:
         raise RpcError("Documents are being added to this investigation. Clear the history when "
                        "that has finished.", code="busy")
     return _errors(lambda: history.clear(v))
+
+
+@method("history.remove")
+def remove(vault: str, version: int, path: str | None = None, older: bool = False,
+           dry_run: bool = False) -> dict:
+    """Remove a version from the history for good (D288): one file's version (`path`; with
+    `older`, also every earlier version of that file), or with no `path` a whole version, minus
+    the files it left as they are now. `dry_run` reports what would be removed."""
+    from watchdog.pipeline import history
+    v = require_vault(vault)
+    n = _version(version)
+    rel = _path(v, path) if path is not None else None
+    return _errors(lambda: history.remove(v, n, rel, older=bool(older), dry_run=bool(dry_run)))

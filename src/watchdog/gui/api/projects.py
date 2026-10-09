@@ -69,8 +69,18 @@ def project_dict(slug: str, info: dict) -> dict:
             "incoming": _count_incoming(vault) if live else 0,
             "awaiting": (_count_awaiting_dig(vault) + _count_awaiting_bark(vault)) if live else 0,
             "failed": _failed(vault) if live else 0,
+            # The version history's size on disk (D288), from a small cache the store keeps.
+            "history_bytes": _history_bytes(vault) if live else None,
         },
     }
+
+
+def _history_bytes(vault: Path) -> int | None:
+    from watchdog.pipeline import history
+    try:
+        return history.history_bytes(vault)
+    except OSError:
+        return None
 
 
 @method("projects.list")
