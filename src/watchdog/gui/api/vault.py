@@ -323,6 +323,19 @@ def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
     if isinstance(synth, dict) and (synth.get("summary") or "").strip():
         synthesis = {k: synth.get(k) for k in ("summary", "analysis", "by", "model", "made_at",
                                                "facts_total", "facts_shown", "stale")}
+        # The summary as the note shows it (D283): citations rendered as links to the facts the
+        # entity still has, dangling ones dropped and counted.
+        from watchdog.pipeline import citations, entity_notes
+        known = {d.get("document_note") for d in docs.values() if isinstance(d, dict)}
+        by_id = {f["id"]: f for f in index.facts_for(eid)}
+        resolver = citations.Resolver(v, index)
+        stats = citations.new_stats()
+        synthesis["summary_md"] = entity_notes._cited(synth["summary"].strip(), synth, known,
+                                                      by_id, resolver, stats)
+        synthesis["analysis_md"] = (entity_notes._cited(synth["analysis"].strip(), synth, known,
+                                                        by_id, resolver, stats)
+                                    if (synth.get("analysis") or "").strip() else None)
+        synthesis["citations"] = stats
     legacy = (ents.get(eid) or {}).get("legacy_claims")
     return {"facts": rows, "synthesis": synthesis,
             "legacy_claims": legacy if isinstance(legacy, str) and legacy.strip() else None}
@@ -478,6 +491,32 @@ def _doc_by_morgue(docs: dict, rel: str) -> str | None:
         if isinstance(morgue, str) and (morgue == rel or Path(morgue).with_suffix("") == base):
             return sha
     return None
+
+
+@method("vault.citations")
+def fact_citations(vault: str, links: list) -> dict:
+    """What each fact citation names (D283). `links` are `<note>#^<block id>` strings, as written
+    in a page's `[[<note>#^f-…|…]]` links; each maps to `{status: "found", fact, disputed}` or
+    `{status: "not_found"}`. Read-only; at most 500 per call."""
+    from watchdog.pipeline import citations
+    v = require_vault(vault)
+    resolver = citations.Resolver(v)
+    out: dict = {}
+    for key in (links if isinstance(links, list) else [])[:500]:
+        if not isinstance(key, str) or key in out:
+            continue
+        target, sep, block = key.partition("#^")
+        if sep and target.strip() and block.startswith("f-"):
+            out[key] = citations.check_link(resolver, target.strip(), block.strip())
+    return out
+
+
+@method("vault.checkCitations")
+def check_citations(vault: str) -> dict:
+    """Every fact citation in `queries/`, `wiki/`, `briefings/` and `hot.md`, resolved against the
+    stored facts (the maintenance check `watchdog check-citations` runs). Changes nothing."""
+    from watchdog.pipeline import citations
+    return citations.check_vault(require_vault(vault))
 
 
 @method("vault.resolveLink")

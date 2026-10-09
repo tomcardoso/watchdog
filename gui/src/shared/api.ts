@@ -211,6 +211,53 @@ export interface EntitySynthesis {
   facts_total: number | null
   facts_shown: number | null
   stale: 'merge' | 'undo' | string | null
+  /** The summary and analysis with their citations rendered as fact links (D283). */
+  summary_md?: string
+  analysis_md?: string | null
+  citations?: CitationCounts
+}
+
+/** How a text's fact citations resolved (D283). */
+export interface CitationCounts {
+  cited: number
+  linked: number
+  unknown: number
+  missing: number
+  disputed: number
+}
+
+/** The fact a citation link names. */
+export interface CitedFact {
+  id: string
+  sha: string
+  fact: string
+  page: number | null
+  title: string | null
+  note: string | null
+  date: string | null
+  basis: string | null
+  mark: VerifyStatus | null
+  passage: string | null
+  passage_page: number | null
+}
+
+export interface CitationStatus {
+  target: string
+  block: string
+  status: 'found' | 'not_found'
+  fact: CitedFact | null
+  disputed?: boolean
+  label?: string | null
+}
+
+export interface CitationReport {
+  checked: number
+  citations: number
+  found: number
+  not_found: number
+  disputed: number
+  unresolved_short: number
+  pages: { path: string; items: CitationStatus[]; citations: number; found: number; not_found: number; disputed: number; unresolved_short: number }[]
 }
 
 export interface EntityDetail extends EntityRow {
@@ -529,6 +576,8 @@ export interface Methods {
   'vault.note': [{ vault: string; path: string }, Note]
   'vault.saveNotes': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.resolveLink': [{ vault: string; target: string }, ResolvedLink]
+  'vault.citations': [{ vault: string; links: string[] }, Record<string, CitationStatus>]
+  'vault.checkCitations': [{ vault: string }, CitationReport]
   'vault.pipeline': [{ vault: string }, PipelineState]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]

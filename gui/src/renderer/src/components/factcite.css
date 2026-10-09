@@ -1,0 +1,104 @@
+/* Fact citations (D283): a page marker that opens the fact, with the fact on hover. */
+.fact-cite-wrap {
+  position: relative;
+  display: inline;
+}
+.md a.fact-cite,
+a.fact-cite {
+  color: var(--accent-text);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.md a.fact-cite.pill,
+a.fact-cite.pill,
+.fact-cite.pill {
+  font-family: var(--font-ui);
+  font-size: 0.74em;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  color: var(--text-2);
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.md a.fact-cite:hover,
+a.fact-cite:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+.fact-cite.is-pending {
+  color: var(--text-3);
+}
+.md a.fact-cite.is-disputed,
+a.fact-cite.is-disputed {
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.fact-cite-flag {
+  margin-left: 5px;
+  font-weight: 650;
+  text-transform: lowercase;
+}
+.fact-cite-flag::before {
+  content: '· ';
+}
+.fact-cite-missing {
+  font-family: var(--font-ui);
+  font-size: 0.74em;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-full);
+  color: var(--text-3);
+  white-space: nowrap;
+  vertical-align: 1px;
+  cursor: help;
+}
+.fact-cite-card {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 300;
+  width: 320px;
+  max-width: 70vw;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-md);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 450;
+  line-height: 1.45;
+  color: var(--text);
+  white-space: normal;
+  text-align: left;
+  pointer-events: none;
+}
+.fact-cite-wrap:hover .fact-cite-card,
+.fact-cite-wrap:focus-within .fact-cite-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fade-in 120ms 200ms both;
+}
+.fact-cite-src {
+  color: var(--text-2);
+  font-size: var(--fs-xs);
+}
+.fact-cite-mark {
+  color: var(--text-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+.fact-cite-mark.is-verified {
+  color: var(--success);
+}
+.fact-cite-mark.is-disputed {
+  color: var(--danger);
+}

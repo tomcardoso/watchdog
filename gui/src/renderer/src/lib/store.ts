@@ -9,7 +9,7 @@ export type Route =
   | { view: 'projects' }
   | { view: 'home' }
   | { view: 'documents'; filter?: string }
-  | { view: 'document'; sha: string; page?: number; tab?: string }
+  | { view: 'document'; sha: string; page?: number; tab?: string; fact?: string }
   | { view: 'entities'; type?: string }
   | { view: 'entity'; id: string }
   | { view: 'graph'; focus?: string }

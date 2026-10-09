@@ -1,11 +1,15 @@
 // Renders a vault note's markdown the way Obsidian would, minus Obsidian: `[[wikilinks]]` become
 // in-app navigation, `> [!contradiction]` callouts get their own styling, and raw HTML (the
-// pipeline's `<!-- … -->` markers) is dropped, never rendered.
+// pipeline's `<!-- … -->` markers) is dropped, never rendered. A link to a fact's line
+// (`[[documents/<slug>#^f-…|p. 4]]`, D283) is checked against the stored facts and shown as a
+// fact citation: a link with the fact on hover, labelled when disputed, "source not found" when
+// it names no stored fact.
 
-import { memo, ReactNode, useCallback } from 'react'
+import { memo, ReactNode, useCallback, useMemo } from 'react'
 import ReactMarkdown, { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { call } from '@renderer/lib/rpc'
+import { call, useRpc } from '@renderer/lib/rpc'
+import { FactCite, citationKey, citationKeys } from '@renderer/components/FactCite'
 import { navigate, toast, useVault } from '@renderer/lib/store'
 import '@renderer/styles/markdown.css'
 
@@ -72,11 +76,16 @@ export function useOpenWikilink(): (target: string) => Promise<void> {
 
 function MarkdownImpl({ text, className, onWikilink, compact }: { text: string; className?: string; onWikilink?: (target: string) => void; compact?: boolean }) {
   const open = useOpenWikilink()
+  const vault = useVault()
   const follow = onWikilink ?? ((t: string) => void open(t))
+  const keys = useMemo(() => citationKeys(text), [text])
+  const cites = useRpc('vault.citations', vault && keys.length ? { vault, links: keys } : null, { staleTime: 30_000 })
   const components: Components = {
     a: ({ href, children }) => {
       if (href?.startsWith('wikilink:')) {
         const target = decodeURIComponent(href.slice('wikilink:'.length))
+        const key = citationKey(target)
+        if (key) return <FactCite label={children} status={cites.data?.[key] ?? (cites.isError ? { target, block: '', status: 'found', fact: null } : undefined)} />
         const isPage = /#page=\d+/.test(target)
         return (
           <a
