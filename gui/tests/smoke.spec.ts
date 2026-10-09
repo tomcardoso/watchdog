@@ -114,6 +114,15 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // With no investigation open, the sidebar's All investigations returns to the list from any
+    // other screen.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().setProject(null))
+    await page.locator('.nav-item', { hasText: 'Activity' }).click()
+    await expect(page.locator('.nav-item', { hasText: 'All investigations' })).not.toHaveAttribute('aria-current', 'page')
+    await page.locator('.nav-item', { hasText: 'All investigations' }).click()
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('projects')
+    await expect(page.locator('.nav-item', { hasText: 'All investigations' })).toHaveAttribute('aria-current', 'page')
+
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
