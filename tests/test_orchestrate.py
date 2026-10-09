@@ -1141,7 +1141,7 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
     monkeypatch.setattr(orchestrate.synthesis_bundle, "build_bundle",
                         lambda vault, shas: {"entities": [{"id": "e1", "name": "E1"}]})
     monkeypatch.setattr(orchestrate.synthesis_bundle, "apply_bundle",
-                        lambda res_path, vault: {"applied": ["e1"]})
+                        lambda res_path, vault, meta=None: {"applied": ["e1"]})
 
     seen = []
 

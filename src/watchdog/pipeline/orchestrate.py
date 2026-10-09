@@ -2215,13 +2215,15 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     break   # every later chunk would hit the same limit
                 continue
             answered = True
-            syntheses.extend(r.parsed.get("entity_syntheses") or [])
+            syntheses.extend({**item, "model": r.model} for item in r.parsed.get("entity_syntheses") or []
+                             if isinstance(item, dict))
         if answered:
             res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
             res_path.write_text(json.dumps({"entity_syntheses": syntheses}, ensure_ascii=False),
                                 encoding="utf-8")
             try:
-                out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+                out["synthesized"] = len(synthesis_bundle.apply_bundle(
+                    res_path, vault, meta=bundle.get("meta")).get("applied", []))
             except OSError as e:
                 # The registry lock timed out (Windows). Recording the error keeps this run's
                 # post-ingest inputs, so the next `watchdog bark` redoes the synthesis.

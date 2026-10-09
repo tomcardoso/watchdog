@@ -160,7 +160,7 @@ def _post_ingest_with(vault, monkeypatch, n_entities, fail_call=None):
         "entities": [{"entity_id": f"e{i}", "name": f"E{i}"} for i in range(n_entities)]})
     applied = []
 
-    def fake_apply(res_path, vault):
+    def fake_apply(res_path, vault, meta=None):
         ids = [s["entity_id"] for s in json.loads(res_path.read_text())["entity_syntheses"]]
         applied.append(ids)
         return {"applied": ids}
