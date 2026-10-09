@@ -2951,6 +2951,35 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
     overwritten. `skip_briefing` skips only the briefing call. `finalizer_overrides` routes
     individual post-ingest stages to other models. `benchmark_arm_id` tags telemetry when finalize
     runs on its own."""
+    # One version of the vault's history per run (D286), recorded after the commit and
+    # post-processing, with the documents the run added as its cause.
+    from watchdog.pipeline import history
+    shas = _pending_commits(vault, force_shas=force_shas)
+    with history.recording(vault, _history_cause(vault, shas)):
+        return await _finalize(vault, post_model=post_model, brief=brief, results=results,
+                               post_effort=post_effort, post_backend=post_backend,
+                               force_shas=force_shas, skip_briefing=skip_briefing,
+                               finalizer_overrides=finalizer_overrides,
+                               benchmark_arm_id=benchmark_arm_id)
+
+
+_HISTORY_NAMES_MAX = 200
+
+
+def _history_cause(vault: Path, shas: list[str]) -> dict:
+    """The history cause of a run: the file names of the documents it commits."""
+    names = []
+    for sha in shas[:_HISTORY_NAMES_MAX]:
+        art = _read_json_or(vault / ".watchdog" / "extracted" / f"{sha}.json", None)
+        doc = (art or {}).get("document") if isinstance(art, dict) else None
+        names.append((doc or {}).get("filename") or _queued_filename(vault, sha) or sha[:12])
+    return {"kind": "run", "documents": names, "document_count": len(shas)}
+
+
+async def _finalize(vault: Path, *, post_model: str, brief: str | None, results: list | None,
+                    post_effort: str | None, post_backend: str | None,
+                    force_shas: list[str] | None, skip_briefing: bool,
+                    finalizer_overrides: dict | None, benchmark_arm_id: str | None) -> dict:
     standalone_usage = _run.usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
         config_snapshot = {"post_model": post_model, "post_effort": post_effort,

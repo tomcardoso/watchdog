@@ -389,9 +389,16 @@ def run(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = 
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
     from a Claude Code session or a second terminal while `watchdog bark` commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
+    from watchdog.pipeline import history
     from watchdog.pipeline.write_vault import _registry_lock
     registry_dir = Path(vault_path) / ".watchdog" / "registry"
     if not registry_dir.is_dir():
         return _run_unlocked(vault_path, keep_id, merge_id, log_entry)
     with _registry_lock(registry_dir):
-        return _run_unlocked(vault_path, keep_id, merge_id, log_entry)
+        ents = _read_json_or(registry_dir / "entities.json", {})
+        cause = {"kind": "merge", "keep": (ents.get(keep_id) or {}).get("name") or keep_id,
+                 "merged": (ents.get(merge_id) or {}).get("name") or merge_id,
+                 "by": "reporter" if log_entry is None else (log_entry.get("decided_by") or "rule")}
+        # A version of the vault's history (D286); inside a processing run it is the run's.
+        with history.recording(vault_path, cause):
+            return _run_unlocked(vault_path, keep_id, merge_id, log_entry)

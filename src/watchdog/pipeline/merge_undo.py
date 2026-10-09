@@ -414,10 +414,16 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
 def undo(vault: Path, merge_id: str, by: str | None = None) -> dict:
     """Undo one merge under the registry lock. Raises `UndoRefused` with the reason when it
     cannot be done correctly."""
+    from watchdog.pipeline import history
     from watchdog.pipeline.write_vault import _registry_lock
     vault = Path(vault)
     with _registry_lock(_reg(vault)):
-        return _undo_unlocked(vault, merge_id, by)
+        entry = _find(merge_log.load(vault), merge_id) or {}
+        cause = {"kind": "undo_merge", "merge_id": merge_id,
+                 "keep": (entry.get("keep") or {}).get("name"),
+                 "split": (entry.get("merged") or {}).get("name")}
+        with history.recording(vault, cause):     # a version of the vault's history (D286)
+            return _undo_unlocked(vault, merge_id, by)
 
 
 def main(argv: list[str] | None = None) -> int:

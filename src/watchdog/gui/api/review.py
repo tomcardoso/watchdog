@@ -28,6 +28,16 @@ def _rids(rids) -> list[str]:
     return clean
 
 
+def _recording(v, count: int, resolved: bool):
+    """A version of the vault's history for a Review change (D286): the resolutions store and
+    the briefings whose checkboxes it ticks."""
+    from watchdog.pipeline import history
+    scope = [".watchdog/registry/resolutions.json"]
+    if not history.run_in_progress(v):
+        scope.append("briefings/")
+    return history.recording(v, {"kind": "review", "count": count, "resolved": resolved}, scope)
+
+
 @method("review.items")
 def items(vault: str, kinds: list[str] | None = None) -> dict:
     from watchdog.cmd.review import KINDS, open_items
@@ -48,8 +58,9 @@ def resolve(vault: str, rids: list[str]) -> dict:
 
     v = require_vault(vault)
     ids = _rids(rids)
-    added = resolutions.resolve(v, ids, label="review")
-    resolutions.tick_in_briefings(v, ids)
+    with _recording(v, len(ids), True):
+        added = resolutions.resolve(v, ids, label="review")
+        resolutions.tick_in_briefings(v, ids)
     return {"resolved": added}
 
 
@@ -59,8 +70,9 @@ def unresolve(vault: str, rids: list[str]) -> dict:
 
     v = require_vault(vault)
     ids = _rids(rids)
-    removed = resolutions.unresolve(v, ids)
-    resolutions.tick_in_briefings(v, ids, ticked=False)
+    with _recording(v, len(ids), False):
+        removed = resolutions.unresolve(v, ids)
+        resolutions.tick_in_briefings(v, ids, ticked=False)
     return {"unresolved": removed}
 
 

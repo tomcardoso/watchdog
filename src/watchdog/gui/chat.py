@@ -211,6 +211,15 @@ def _block_text(content) -> str:
     return "\n".join(part.get("text", "") for part in content if isinstance(part, dict))
 
 
+def _record_session(vault: Path, kind: str = "session") -> None:
+    """Around each turn, record the vault's history (D286): before it, anything changed since the
+    last version; after it, what the session changed — its own pages, and, unless a run is
+    writing the vault, anything else it changed through the vault's commands."""
+    from watchdog.pipeline import history
+    scope = ["queries/", "wiki/", "context.md"] if history.run_in_progress(vault) else None
+    history.safe_snapshot(vault, {"kind": kind}, scope)
+
+
 def _title(mode: str, text: str | None) -> str:
     text = " ".join((text or "").split())
     base = {"ask": "Ask", "context": "Seed context", "research": "Research"}[mode]
@@ -337,6 +346,7 @@ class ChatManager:
             if s.closed:
                 return
             self.status(s, "thinking")
+            await asyncio.to_thread(_record_session, s.vault, "found")
             try:
                 await self._connect(s)
                 await s.client.query(prompt)
@@ -348,6 +358,7 @@ class ChatManager:
                 self.status(s, "error", _friendly(e))
             finally:
                 self.save(s)
+                await asyncio.to_thread(_record_session, s.vault)
 
     def _handle(self, s: Session, message) -> None:
         from claude_agent_sdk import (AssistantMessage, ResultMessage, StreamEvent, TextBlock,
