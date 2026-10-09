@@ -28,8 +28,10 @@ def test_project_shape_and_stats(rich_vault, wdg_home):
         "slug": "rich", "name": "Rich Case", "description": "A test case", "path": str(rich_vault),
         "archived": False, "created": "2026-01-02T03:04:05", "health": None, "access": True,
         "stats": {"documents": 3, "entities": 3, "last_ingest": "2026-03-03T08:00:00Z",
-                  "incoming": 2, "awaiting": 2, "failed": 1},
+                  "incoming": 2, "awaiting": 2, "failed": 1, "history_bytes": p["stats"]["history_bytes"]},
     }
+    from watchdog.pipeline import history
+    assert p["stats"]["history_bytes"] == history.history_bytes(rich_vault)
 
 
 def test_health_missing_not_a_vault_and_corrupt(rich_vault, wdg_home, tmp_path):
@@ -46,7 +48,8 @@ def test_health_missing_not_a_vault_and_corrupt(rich_vault, wdg_home, tmp_path):
     assert by_slug["corrupt"]["health"] == "registry_corrupt"
     for slug in ("gone", "plain"):
         assert by_slug[slug]["stats"] == {"documents": 0, "entities": 0, "last_ingest": None,
-                                          "incoming": 0, "awaiting": 0, "failed": 0}
+                                          "incoming": 0, "awaiting": 0, "failed": 0,
+                                          "history_bytes": None}
 
 
 def test_a_vault_with_no_registry_yet_reads_as_empty(wdg_home, tmp_path):
