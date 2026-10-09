@@ -2,7 +2,7 @@
 
 import { Square, SquareArrowOutUpRight } from 'lucide-react'
 import { Button, Progress } from '@renderer/components/ui'
-import { call } from '@renderer/lib/rpc'
+import { stopJob } from '@renderer/lib/jobs'
 import { useApp } from '@renderer/lib/store'
 import type { Job } from '@shared/api'
 
@@ -59,7 +59,7 @@ export function JobDock() {
               <span className="spinner" />
               <span className="title grow truncate">{j.label}</span>
               <Button variant="ghost" size="sm" icon={SquareArrowOutUpRight} tip="Show output" onClick={() => navigate({ view: 'activity', job: j.id })} />
-              <Button variant="ghost" size="sm" icon={Square} tip="Stop" onClick={() => void call('jobs.cancel', { id: j.id })} />
+              <Button variant="ghost" size="sm" icon={Square} tip="Stop" onClick={() => stopJob(j.id)} />
             </div>
             <div className="detail truncate">{p.text}</div>
             <Progress value={p.done} max={p.total ?? 1} indeterminate={!p.total} />

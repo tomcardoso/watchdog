@@ -8,7 +8,7 @@ import {
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Badge, Button, Callout, Empty, Field, Modal, Progress, Skeleton, Spinner, Switch } from '@renderer/components/ui'
 import { basename, fmtCost, plural } from '@renderer/lib/format'
-import { flagsFor, startJob, waitForJob } from '@renderer/lib/jobs'
+import { flagsFor, startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
@@ -50,6 +50,9 @@ export function AddDialog() {
   const [busy, setBusy] = useState(false)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
+  // The investigation this flow belongs to: every step runs there, even if the reporter switches
+  // investigation while files are read or the gate waits.
+  const flowVault = useRef(vault)
 
   // Opening: start fresh unless a run is under way (the dialog can be closed and reopened).
   useEffect(() => {
@@ -87,9 +90,26 @@ export function AddDialog() {
   const close = () => useApp.getState().closeAdd()
   const job: Job | undefined = addJob ? jobs[addJob] : undefined
   const effective: Phase = phase === 'running' && job && job.state !== 'running' ? 'done' : phase
+  // A finished run is 'done', so reopening the dialog (or dropping files) starts afresh.
+  useEffect(() => {
+    if (effective === 'done' && phase === 'running') setPhase('done')
+  }, [effective, phase])
+
+  // Another investigation opened: anything not under way belonged to the previous one.
+  useEffect(() => {
+    if (flowVault.current === vault) return
+    if (phaseRef.current === 'reading' || phaseRef.current === 'running') return
+    flowVault.current = vault
+    setPhase('choose')
+    setPaths(useApp.getState().addOpen?.paths ?? [])
+    setRetry(false)
+    setGate(null)
+    setAddJob(null)
+    setError('')
+  }, [vault])
 
   // Whatever is already waiting in the investigation.
-  const { data: pf0, isLoading: pfLoading } = useRpc('ingest.preflight', visible && phase === 'choose' ? { vault, options: cleanOptions(options) } : null, { staleTime: 0 })
+  const { data: pf0, isLoading: pfLoading, error: pfError } = useRpc('ingest.preflight', visible && phase === 'choose' ? { vault, options: cleanOptions(options) } : null, { staleTime: 0 })
 
   const gatherFlags = async (cmd: 'add' | 'chew', o: RunOptions) => flagsFor(cmd, cleanOptions(o))
 
@@ -97,6 +117,7 @@ export function AddDialog() {
   const begin = async () => {
     setError('')
     setBusy(true)
+    flowVault.current = vault
     const needIncoming = (pf0?.incoming ?? 0) > 0
     try {
       let chewFlags: string[] = []
@@ -113,7 +134,7 @@ export function AddDialog() {
         const p = work[i]
         const label = p ? `Reading ${basename(p)}` : 'Reading documents'
         setReadState({ i, n: work.length, job: null, label })
-        const j = await startJob(p ? ['chew', p, ...chewFlags] : ['chew', ...chewFlags], label, 'chew')
+        const j = await startJob(p ? ['chew', p, ...chewFlags] : ['chew', ...chewFlags], label, 'chew', vault)
         setReadState({ i, n: work.length, job: j.id, label })
         const fin = await waitForJob(j.id)
         if (fin.state === 'cancelled') {
@@ -165,7 +186,7 @@ export function AddDialog() {
       const flags = await gatherFlags('add', addOpts)
       const n = countFor(pf, retry, dirs.length)
       const label = n > 0 ? `Adding ${plural(n, 'document')}` : 'Finishing the batch'
-      const j = await startJob(['add', '--skip-warning', ...flags, ...(retry ? ['--retry'] : []), ...dirs], label, 'add')
+      const j = await startJob(['add', '--skip-warning', ...flags, ...(retry ? ['--retry'] : []), ...dirs], label, 'add', flowVault.current)
       setAddJob(j.id)
       setPhase('running')
     } catch (e) {
@@ -198,7 +219,7 @@ export function AddDialog() {
         setRetry={setRetry}
         options={options}
         setOptions={setOptions}
-        error={error}
+        error={error || (pfError ? errorMessage(pfError) : '')}
       />
       </>
     )
@@ -208,7 +229,7 @@ export function AddDialog() {
           {engine.ready ? 'Reading files stays on this computer. You confirm before anything goes to a model.' : 'Files you choose stay listed here, ready to read when setup finishes.'}
         </span>
         <Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !engine.ready} loading={busy} onClick={() => void begin()}>
+        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !!pfError || !engine.ready} loading={busy} onClick={() => void begin()}>
           Read documents
         </Button>
       </>
@@ -231,7 +252,7 @@ export function AddDialog() {
       <>
         <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>You can close this window. Reading continues, and the window reopens when it needs you.</span>
         <Button variant="ghost" onClick={close}>Hide</Button>
-        {rj && <Button onClick={() => void call('jobs.cancel', { id: rj.id })}>Stop</Button>}
+        {rj && <Button onClick={() => stopJob(rj.id)}>Stop</Button>}
       </>
     )
   } else if (effective === 'gate' && gate) {
@@ -254,7 +275,7 @@ export function AddDialog() {
       </>
     )
   } else if (effective === 'running' || effective === 'done') {
-    title = effective === 'done' ? 'Finished' : job?.label ?? 'Adding documents'
+    title = effective !== 'done' ? job?.label ?? 'Adding documents' : job?.state === 'done' ? 'Finished' : job?.state === 'cancelled' ? 'Stopped' : job?.exit_code === 2 ? 'Paused' : 'Did not finish'
     sub = undefined
     body = <RunStep job={job} done={effective === 'done'} autoNote={autoNote} startAtWrite={!!gate && countFor(gate.pf, retry, folders.length) === 0} />
     footer =
@@ -262,7 +283,7 @@ export function AddDialog() {
         <>
           <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>Closing this window does not stop the run. Progress stays in the corner.</span>
           <Button variant="ghost" onClick={close}>Hide</Button>
-          {job && <Button onClick={() => void call('jobs.cancel', { id: job.id })}>Stop</Button>}
+          {job && <Button onClick={() => stopJob(job.id)}>Stop</Button>}
         </>
       ) : (
         <DoneFooter job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths([]); setRetry(false) }} />
@@ -368,6 +389,8 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         <div className="add-label">Already waiting</div>
         {loading ? (
           <Skeleton h={18} w="60%" />
+        ) : !pf ? (
+          <div className="faint">Watchdog could not check this investigation. The reason is below.</div>
         ) : waiting.length ? (
           <ul className="add-waiting">{waiting.map((w) => <li key={w}>{w}</li>)}</ul>
         ) : (
@@ -382,7 +405,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
       </section>
 
       {pf && !pf.auth.ok && (
-        <Callout tone="warning" title="No model sign-in is set up" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings' }) }}>Open Settings</Button>}>
+        <Callout tone="warning" title="No model sign-in is set up" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings', tab: 'auth' }) }}>Open Settings</Button>}>
           {pf.auth.reason ?? 'Reading works without it, but extraction needs a sign-in or API key.'}
         </Callout>
       )}
@@ -593,7 +616,7 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
         </>
       )}
       {!pf.auth.ok && (
-        <Callout tone="danger" title="Sign-in needed before this can run" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings' }) }}>Open Settings</Button>}>
+        <Callout tone="danger" title="Sign-in needed before this can run" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings', tab: 'auth' }) }}>Open Settings</Button>}>
           {pf.auth.reason ?? 'No usable sign-in or API key was found for the models above.'}
         </Callout>
       )}
@@ -660,8 +683,11 @@ function DocState({ state }: { state: string }) {
 function RunStep({ job, done, autoNote, startAtWrite }: { job?: Job; done: boolean; autoNote: boolean; startAtWrite: boolean }) {
   const vault = useVault()
   const stage = job?.progress.stage
-  const active = done ? 4 : stage && stage in STAGE_STEP ? Math.max(1, STAGE_STEP[stage]) : startAtWrite ? 2 : 1
   const ok = job?.state === 'done'
+  // A run that stopped short keeps its steps where it stopped: only a finished run is all done.
+  // Extraction also reports 'done' when it ends, so a failed run there stops at Extract.
+  const at = done && !ok && stage === 'done' ? 'dig' : stage
+  const active = done && ok ? 4 : at && at in STAGE_STEP ? Math.max(1, STAGE_STEP[at]) : startAtWrite ? 2 : 1
   const { data: summary } = useRpc('vault.summary', done && ok ? { vault } : null, { staleTime: 0 })
   const tail = (useApp((s) => (job ? s.jobs[job.id]?.log : undefined)) ?? []).slice(-40)
   return (
@@ -672,7 +698,7 @@ function RunStep({ job, done, autoNote, startAtWrite }: { job?: Job; done: boole
           <li key={s} className={i < active ? 'done' : i === active ? 'now' : ''}>
             <span className="bar" />
             <span className="t">{s}</span>
-            <span className="d">{i === active && stage ? STAGE_LABELS[stage] ?? stage : i < active ? 'Done' : ''}</span>
+            <span className="d">{i === active && at ? (done && !ok ? 'Stopped here' : STAGE_LABELS[at] ?? at) : i < active ? 'Done' : ''}</span>
           </li>
         ))}
       </ol>
@@ -693,9 +719,9 @@ function RunStep({ job, done, autoNote, startAtWrite }: { job?: Job; done: boole
           {!ok && job.state === 'failed' && job.exit_code !== 2 && (
             <>
               <Callout tone="danger" title="The run did not finish">
-                The output below says why. Documents already extracted are kept; fix the cause, then run Add again. “Retry failed documents” picks up any that failed.
+                The output below says why. Documents already extracted are kept; fix the cause, then run Add again, ticking the box to retry any documents that failed.
               </Callout>
-              <div className="log add-log">{tail.map((l, i) => <div key={i} className={l.stream === 'err' ? 'err' : undefined}>{l.text}</div>)}</div>
+              <div className="log add-log" ref={(el) => el?.scrollTo({ top: el.scrollHeight })}>{tail.map((l, i) => <div key={i} className={l.stream === 'err' ? 'err' : undefined}>{l.text}</div>)}</div>
             </>
           )}
         </>

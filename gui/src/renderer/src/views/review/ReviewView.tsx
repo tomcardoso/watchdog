@@ -100,7 +100,7 @@ function useTriage(vault: string) {
       setUndoStack((s) => [...s, { rids, label }])
       try {
         await call('review.resolve', { vault, rids })
-        invalidate('review.', 'vault.summary', 'vault.requests')
+        invalidate('review.', 'vault.summary', 'vault.requests', 'vault.entity')
       } catch (e) {
         setHidden((h) => {
           const n = new Set(h)
@@ -125,7 +125,7 @@ function useTriage(vault: string) {
         last.rids.forEach((r) => n.delete(r))
         return n
       })
-      invalidate('review.', 'vault.summary', 'vault.requests')
+      invalidate('review.', 'vault.summary', 'vault.requests', 'vault.entity')
       return last
     } catch (e) {
       toast({ kind: 'error', title: 'Could not undo', body: errorMessage(e) })
@@ -680,7 +680,7 @@ function HandledTab({ vault }: { vault: string }) {
     setBusy(rid)
     try {
       await call('review.unresolve', { vault, rids: [rid] })
-      invalidate('review.', 'vault.summary', 'vault.requests')
+      invalidate('review.', 'vault.summary', 'vault.requests', 'vault.entity')
       toast({ kind: 'success', title: 'Brought back', body: 'It is open again in its queue.' })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not bring it back', body: errorMessage(e) })
@@ -692,7 +692,7 @@ function HandledTab({ vault }: { vault: string }) {
     setSyncing(true)
     try {
       const r = await call('review.sync', { vault })
-      invalidate('review.', 'vault.summary', 'vault.requests')
+      invalidate('review.', 'vault.summary', 'vault.requests', 'vault.entity')
       toast({
         kind: 'success',
         title: r.resolved.length || r.unresolved.length ? 'Briefings synced' : 'Already in step',

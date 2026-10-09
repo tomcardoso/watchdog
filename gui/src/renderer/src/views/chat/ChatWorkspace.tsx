@@ -77,6 +77,7 @@ export default function ChatWorkspace(p: Props) {
   const stick = useRef(true)
   const composer = useRef<HTMLTextAreaElement>(null)
   const handledPrompt = useRef(false)
+  const lastPrompt = useRef<string | null>(null)
 
   // ── event application ──────────────────────────────────────────────────────
   const applyDelta = useCallback((d: { message_id: string; text: string }) => {
@@ -256,7 +257,11 @@ export default function ChatWorkspace(p: Props) {
     if (p.session && p.session !== sessionRef.current) void openSaved(p.session)
   }, [p.session]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    if (p.prompt && !handledPrompt.current && !sessionRef.current) {
+    // A prompt arriving while a conversation is open (the palette's "Ask Claude") goes into it,
+    // as if typed.
+    if (!p.prompt) lastPrompt.current = null
+    else if (p.prompt !== lastPrompt.current) {
+      lastPrompt.current = p.prompt
       handledPrompt.current = true
       void begin(p.prompt)
     }

@@ -9,8 +9,8 @@ import { ENTITY_TYPES, TimelineEvent } from '@shared/api'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { startJob } from '@renderer/lib/jobs'
-import { useRpc } from '@renderer/lib/rpc'
-import { navigate, useApp, useVault } from '@renderer/lib/store'
+import { errorMessage, useRpc } from '@renderer/lib/rpc'
+import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import './timeline.css'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -265,7 +265,7 @@ export default function TimelineView() {
         footer={
           <>
             <Button onClick={() => setRebuildOpen(false)}>Cancel</Button>
-            <Button variant="primary" icon={RefreshCw} onClick={() => { setRebuildOpen(false); void startJob(['timeline'], 'Rebuilding timeline.md') }}>Rebuild</Button>
+            <Button variant="primary" icon={RefreshCw} onClick={() => { setRebuildOpen(false); void startJob(['timeline'], 'Rebuilding timeline.md').catch((e) => toast({ kind: 'error', title: 'Could not start the rebuild', body: errorMessage(e) })) }}>Rebuild</Button>
           </>
         }
       >

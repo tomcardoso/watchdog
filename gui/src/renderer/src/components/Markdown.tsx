@@ -15,13 +15,24 @@ import '@renderer/styles/markdown.css'
 
 const WIKILINK = /(!?)\[\[([^\]|#\n]+)(#[^\]|\n]*)?(?:\|([^\]\n]+))?\]\]/g
 
-/** `[[target#frag|text]]` → `[text](wikilink:target%23frag)` so react-markdown parses it as a link. */
+// Code, fenced or inline, where `[[…]]` is literal text and must stay as written.
+const CODE = /(```[\s\S]*?(?:```|$)|~~~[\s\S]*?(?:~~~|$)|`[^`\n]*`)/g
+
+/** `[[target#frag|text]]` → `[text](wikilink:target%23frag)` so react-markdown parses it as a link.
+ * Code is left alone: a wikilink written there is an example, not a link. */
 export function wikilinksToLinks(md: string): string {
-  return md.replace(WIKILINK, (_m, _bang, target: string, frag: string | undefined, text: string | undefined) => {
-    const label = (text ?? target.split('/').pop() ?? target).replace(/([[\]])/g, '\\$1')
-    const href = 'wikilink:' + encodeURIComponent(target.trim() + (frag ?? ''))
-    return `[${label}](${href})`
-  })
+  return md
+    .split(CODE)
+    .map((part, i) =>
+      i % 2
+        ? part
+        : part.replace(WIKILINK, (_m, _bang, target: string, frag: string | undefined, text: string | undefined) => {
+            const label = (text ?? target.split('/').pop() ?? target).replace(/([[\]])/g, '\\$1')
+            const href = 'wikilink:' + encodeURIComponent(target.trim() + (frag ?? ''))
+            return `[${label}](${href})`
+          })
+    )
+    .join('')
 }
 
 // HTML comments (`<!-- Journalist annotations — never overwritten. -->`) are notes for whoever

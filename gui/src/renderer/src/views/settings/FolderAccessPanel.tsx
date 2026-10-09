@@ -5,9 +5,21 @@ import { FolderLock, FolderPlus, Trash2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button, Callout, Empty } from '@renderer/components/ui'
 import { fmtDate } from '@renderer/lib/format'
-import { invalidate } from '@renderer/lib/rpc'
-import { toast } from '@renderer/lib/store'
+import { call, invalidate } from '@renderer/lib/rpc'
+import { toast, useApp } from '@renderer/lib/store'
 import type { FolderGrant } from '@shared/api'
+
+/** The open investigation's access may have just changed: reload it, so its screens ask for
+ * access (or stop asking) instead of failing on every read. */
+async function refreshOpen(): Promise<void> {
+  const open = useApp.getState().project
+  if (!open) return
+  try {
+    useApp.setState({ project: await call('projects.get', { slug: open.slug }) })
+  } catch {
+    /* removed meanwhile; the list will show it */
+  }
+}
 
 export function FolderAccessPanel() {
   const [grants, setGrants] = useState<FolderGrant[] | null>(null)
@@ -19,6 +31,7 @@ export function FolderAccessPanel() {
     if (picked) {
       reload()
       invalidate('projects.')
+      void refreshOpen()
     }
   }
   const remove = async (g: FolderGrant) => {
@@ -31,6 +44,7 @@ export function FolderAccessPanel() {
     })
     if (!ok) return
     setGrants(await window.watchdog.access.revoke(g.path))
+    await refreshOpen()
     invalidate()
     toast({ kind: 'info', title: 'Access removed', body: g.path })
   }

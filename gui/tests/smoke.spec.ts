@@ -114,6 +114,46 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.hist-removed').first()).toBeVisible({ timeout: 10_000 })
     await page.keyboard.press('Escape')
 
+    // Marking facts by keyboard carries on after a note: Enter saves it and returns to the row.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'entity', id: 'city-of-port-calder' }))
+    const factRow = page.locator('[data-fact-id]').first()
+    await factRow.focus()
+    await page.keyboard.press('v')
+    await expect(factRow).toHaveClass(/is-marked-verified/, { timeout: 10_000 })
+    await page.keyboard.press('n')
+    await expect(page.locator('.fcheck-textarea')).toBeFocused()
+    await page.keyboard.type('Checked against the minutes')
+    await page.keyboard.press('Enter')
+    await expect(factRow).toBeFocused()
+    await page.keyboard.press('c')
+    await expect(factRow).toHaveClass(/is-marked-unverifiable/, { timeout: 10_000 })
+    await page.keyboard.press('c')
+    await expect(factRow).not.toHaveClass(/is-marked-/, { timeout: 10_000 })
+
+    // A wikilink written inside code is shown as written, not turned into a link (Briefings →
+    // Current state quotes the citation form in code).
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'briefings', path: 'session-primer' }))
+    await expect(page.locator('code', { hasText: '[[documents/<slug>#^f-<id>|p. N]]' }).first()).toBeVisible({ timeout: 10_000 })
+
+    // A search typed on the Search screen keeps the route in step, so searching the earlier query
+    // again (from the palette) runs it rather than doing nothing.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
+    await page.locator('.srch-input').fill('harbour')
+    await page.locator('.srch-input').press('Enter')
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.query)).toBe('harbour')
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
+    await expect(page.locator('.srch-input')).toHaveValue('contract')
+
+    // Releasing a recent lock leaves it in place: the app says so in its own words, never with the
+    // CLI's "Use watchdog unlock --force".
+    const lockFile = join(root, 'vault', '.watchdog', 'registry', '.processing-lock')
+    writeFileSync(lockFile, `pid: cli\nstarted_at: ${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}\n`)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'activity', tab: 'maintenance' }))
+    await page.getByRole('button', { name: 'Release lock', exact: true }).click()
+    await expect(page.locator('.toast').last()).toContainText('left in place', { timeout: 15_000 })
+    await expect(page.locator('.toast').last()).not.toContainText('watchdog')
+    rmSync(lockFile, { force: true })
+
     // Tooltips (one layer for the app) stay inside the window, even for a control at the top edge of
     // a panel that hides its overflow, such as the document viewer's toolbar.
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'documents' }))
@@ -133,6 +173,28 @@ test('every screen renders against the demo investigation', async () => {
       await expect(tip).toBeHidden()
     }
 
+    // Add documents belongs to one investigation: a gate left open there is not shown, or run, in
+    // another one.
+    const second = await page.evaluate(async (dir) => {
+      const w = window as any
+      const r = await w.watchdog.rpc('action.run', { vault: null, args: ['new', 'Second Look', '--dir', dir] })
+      if (r.code !== 0) return r.stderr || r.stdout
+      return (await w.watchdog.rpc('projects.list', {})).find((p: { name: string }) => p.name === 'Second Look')?.slug ?? 'not listed'
+    }, root)
+    expect(second).toMatch(/^second-look/)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().openAdd())
+    await page.getByRole('button', { name: 'Read documents' }).click()
+    await expect(page.getByText('Before anything is sent', { exact: true })).toBeVisible({ timeout: 60_000 })
+    await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
+    await page.evaluate(async (s) => {
+      const w = window as any
+      w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
+      w.__watchdogApp.getState().openAdd()
+    }, second)
+    await expect(page.locator('.modal').getByText('Add documents', { exact: true })).toBeVisible()
+    await expect(page.getByText('Before anything is sent', { exact: true })).toHaveCount(0)
+    await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
+
     // With no investigation open, the sidebar's All investigations returns to the list from any
     // other screen.
     await page.evaluate(() => (window as any).__watchdogApp.getState().setProject(null))
@@ -141,6 +203,10 @@ test('every screen renders against the demo investigation', async () => {
     await page.locator('.nav-item', { hasText: 'All investigations' }).click()
     await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('projects')
     await expect(page.locator('.nav-item', { hasText: 'All investigations' })).toHaveAttribute('aria-current', 'page')
+    // A screen that needs an investigation, with none open, shows the list and says so.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'timeline' }))
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('projects')
+    await expect(page.locator('.topbar .crumbs')).toHaveText('Investigations')
 
     // Find in a document (D289): the box is always in the viewer's toolbar; a match on the
     // scanned cover page is highlighted on the layer built from its saved OCR positions, and a

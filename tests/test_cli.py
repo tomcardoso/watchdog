@@ -690,6 +690,16 @@ def test_obsidian_config_path_windows(monkeypatch):
     assert "appdata" in str(p).lower()
 
 
+
+def test_obsidian_config_path_linux_without_xdg(monkeypatch, tmp_path):
+    # Unset XDG_CONFIG_HOME means ~/.config, never a folder under the working directory.
+    monkeypatch.setattr("watchdog.cmd.vault.sys.platform", "linux")
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setattr("watchdog.cmd.vault.Path.home", lambda: tmp_path)
+    assert cli._obsidian_config_path() == tmp_path / ".config" / "obsidian" / "obsidian.json"
+    monkeypatch.setenv("XDG_CONFIG_HOME", "/xdg")
+    assert cli._obsidian_config_path() == Path("/xdg") / "obsidian" / "obsidian.json"
+
 # ── cmd_obsidian ──────────────────────────────────────────────────────────────
 
 def test_cmd_obsidian_opens_url(configured, monkeypatch):
