@@ -106,7 +106,7 @@ export function Sidebar() {
         />
       ) : (
         <div style={{ padding: '0 10px 10px' }}>
-          <button className="nav-item" aria-current="page">
+          <button className="nav-item" aria-current={route.view === 'projects' ? 'page' : undefined} onClick={() => navigate({ view: 'projects' })}>
             <LayoutGrid />
             <span>All investigations</span>
           </button>
