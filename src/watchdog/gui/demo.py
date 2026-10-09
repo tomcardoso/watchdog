@@ -156,8 +156,10 @@ def render_files(docs: list[dict], out_dir: Path) -> None:
             doc["md"] = demo_pdf.write_pdf(path, doc["pages"], title=doc["title"],
                                            author=doc.get("author") or "", footer=doc.get("footer"),
                                            created=created)
+            # A scanned page's OCR line positions, as pre-processing saves them (D289).
+            doc["positions"] = demo_pdf.scan_pages(doc["pages"])
         else:
-            demo_pdf.write_scanned_letter(path, doc["pages"][0])
+            doc["positions"] = {"1": demo_pdf.write_scanned_letter(path, doc["pages"][0])}
             doc["md"] = [_letter_markdown(doc["pages"][0])]
         doc["path"] = path
 
@@ -451,7 +453,7 @@ class CannedModel:
 def _stage_chewed(vault: Path, docs: list[dict]) -> None:
     """Do what chew does for each document: stage the file, compute its near-duplicate matches
     against the vault and the rest of the batch, and write the queue descriptor."""
-    from watchdog.pipeline import file_metadata, sidecar
+    from watchdog.pipeline import file_metadata, sidecar, text_positions
     from watchdog.pipeline.preprocess_batch import NearDupIndex, _compute_near_dup
     index = NearDupIndex.from_vault(vault)
     for doc in docs:
@@ -471,6 +473,10 @@ def _stage_chewed(vault: Path, docs: list[dict]) -> None:
             "file_metadata": file_metadata.extract(doc["path"]),
             "source_path": f".watchdog/staging/{sha}/{doc['file']}",
         }
+        scanned = sorted(int(n) for n in doc.get("positions") or {})
+        if scanned and doc["kind"] == "pdf":
+            result["metadata"].update(ocr_used=True, source_type="docling", ocr_pages=scanned)
+        text_positions.write(vault, sha, text_positions.block(doc.get("positions") or {}, "demo"))
         result["near_dup"] = _compute_near_dup(result, vault, index=index)
         result["document_type"] = None
         raw_sidecar = f"source: {doc['source']}\nobtained: {doc['obtained']}\n"

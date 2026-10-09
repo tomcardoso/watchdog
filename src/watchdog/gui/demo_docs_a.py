@@ -444,6 +444,14 @@ DOCS_A.append(dict(
          ("p", "Fees: no fee is charged for this decision. You may ask the Information Commissioner to review "
                "this decision within 30 days of receiving it."),
          ("p", "Anita Sandhu, City Clerk and Access Coordinator, January 19, 2023.")],
+        # The released cover page, as the Clerk's office scanned it: no text layer of its own.
+        [("scan", ["MACASKILL & ROWE APPRAISALS LTD.", "",
+                   "Appraisal Report", "14 Dockside Road, Port Calder", "",
+                   "Prepared for: City of Port Calder, Procurement and Real Property",
+                   "Effective date of value: December 10, 2021",
+                   "Report date: December 14, 2021", "",
+                   "PREPARED FOR INTERNAL BUDGETING PURPOSES ONLY", "",
+                   "Appraiser's licence no.: [severed, s. 14]"])],
     ],
     ents=["city-of-port-calder", "anita-sandhu", "macaskill-rowe-appraisals", "owen-macaskill",
           "lot-14-dockside-road", "port-calder-city-council"],

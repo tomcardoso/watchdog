@@ -20,6 +20,10 @@ A page is a list of blocks, each a tuple whose first item names it:
     ("rule",)                            horizontal line
     ("space", points)                    vertical gap
 
+A page that is a single ("scan", lines) block is drawn as a scanned image instead (no text layer),
+the way a scanned attachment sits inside an otherwise born-digital PDF; its Markdown is the text
+OCR would have read from it.
+
 Text is plain ASCII. A page whose content would run past the bottom margin raises `ValueError`,
 so a layout mistake in the story data fails loudly instead of clipping silently.
 """
@@ -229,7 +233,8 @@ def render_pdf(pages: list[list[tuple]], *, title: str, author: str = "",
     `footer` is a format string taking `{n}` and `{total}`, drawn on every page and included in
     that page's Markdown (a page number is part of what a reader sees on the page)."""
     total = len(pages)
-    rendered = [_render_page(blocks, footer.format(n=i, total=total) if footer else None)
+    rendered = [(None, [scan_markdown(blocks[0][1])]) if _is_scan(blocks) else
+                _render_page(blocks, footer.format(n=i, total=total) if footer else None)
                 for i, blocks in enumerate(pages, 1)]
     objects: list[bytes] = []
 
@@ -252,7 +257,21 @@ def render_pdf(pages: list[list[tuple]], *, title: str, author: str = "",
 
     page_ids = []
     font_res = " ".join(f"/{k} {v} 0 R" for k, v in fonts.items())
-    for pg, _ in rendered:
+    for i, (pg, _) in enumerate(rendered):
+        if pg is None:
+            # A scanned page: one greyscale image filling the sheet, and no text.
+            img, _boxes = scan_image(pages[i][0][1], seed=7 + i, signature=False)
+            raw = zlib.compress(img.tobytes(), 9)
+            image = add(f"<< /Type /XObject /Subtype /Image /Width {img.width} /Height {img.height} "
+                        f"/ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode "
+                        f"/Length {len(raw)} >>\nstream\n".encode() + raw + b"\nendstream")
+            ops = zlib.compress(f"q {PAGE_W} 0 0 {PAGE_H} 0 0 cm /Im1 Do Q".encode(), 9)
+            content = add(b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(ops)
+                          + ops + b"\nendstream")
+            page_ids.append(add(
+                f"<< /Type /Page /Parent {tree} 0 R /MediaBox [0 0 {PAGE_W} {PAGE_H}] "
+                f"/Resources << /XObject << /Im1 {image} 0 R >> >> /Contents {content} 0 R >>".encode()))
+            continue
         stream = zlib.compress("\n".join(pg.ops).encode("latin-1"), 9)
         content = add(b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(stream)
                       + stream + b"\nendstream")
@@ -277,6 +296,16 @@ def render_pdf(pages: list[list[tuple]], *, title: str, author: str = "",
     return bytes(out), [_split_markdown(md) for _, md in rendered]
 
 
+def _is_scan(blocks: list[tuple]) -> bool:
+    return len(blocks) == 1 and blocks[0][0] == "scan"
+
+
+def scan_pages(pages: list[list[tuple]]) -> dict[str, dict]:
+    """The OCR line positions of each scanned page of `pages`, keyed by 1-based page number."""
+    return {str(i): scan_page_positions(blocks[0][1], seed=7 + i - 1)
+            for i, blocks in enumerate(pages, 1) if _is_scan(blocks)}
+
+
 def write_pdf(path: Path, pages: list[list[tuple]], **kwargs) -> list[str]:
     """`render_pdf` to a file; returns the per-page Markdown."""
     data, markdown = render_pdf(pages, **kwargs)
@@ -284,14 +313,20 @@ def write_pdf(path: Path, pages: list[list[tuple]], **kwargs) -> list[str]:
     return markdown
 
 
-def write_scanned_letter(path: Path, lines: list[str], *, seed: int = 7) -> None:
-    """Draw `lines` as a slightly skewed, speckled page scan (PNG) with a scrawled signature.
+SCAN_W, SCAN_H = 1275, 1650                 # 8.5 x 11 in at 150 dpi
+_SCAN_ANGLE = -0.8
 
-    Deterministic for a given `seed`. Pillow is a dependency of the package already."""
+
+def scan_image(lines: list[str], *, seed: int = 7, signature: bool = True):
+    """Draw `lines` as a slightly skewed, speckled page scan, optionally with a scrawled
+    signature. Returns the greyscale Pillow image and each drawn line's box on it as
+    `[left, top, right, bottom, text]` in pixels, as an OCR engine would report the line (the
+    skew applied). Deterministic for a given `seed`. Pillow is a dependency of the package."""
+    import math
     from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
     rng = random.Random(seed)
-    w, h = 1275, 1650                       # 8.5 x 11 in at 150 dpi
+    w, h = SCAN_W, SCAN_H
     img = Image.new("L", (w, h), 236)
     d = ImageDraw.Draw(img)
     try:
@@ -299,26 +334,74 @@ def write_scanned_letter(path: Path, lines: list[str], *, seed: int = 7) -> None
         bold = ImageFont.load_default(size=31)
     except TypeError:                       # very old Pillow: fixed-size bitmap font only
         body = bold = ImageFont.load_default()
+    boxes: list[list] = []
     y = 190
     for i, text in enumerate(lines):
         font = bold if text.isupper() and text.strip() else body
-        d.text((150 + rng.randint(-2, 2), y), text, fill=38 + rng.randint(0, 14), font=font)
+        x = 150 + rng.randint(-2, 2)
+        d.text((x, y), text, fill=38 + rng.randint(0, 14), font=font)
+        if text.strip():
+            boxes.append([*d.textbbox((x, y), text, font=font), text])
         y += 44 if text else 26
-    # Signature scrawl: a jittery polyline.
-    x, sy = 150, y + 30
-    pts = []
-    for _ in range(26):
-        x += rng.randint(8, 16)
-        pts.append((x, sy + rng.randint(-26, 26)))
-    d.line(pts, fill=40, width=3)
+    if signature:
+        # Signature scrawl: a jittery polyline.
+        x, sy = 150, y + 30
+        pts = []
+        for _ in range(26):
+            x += rng.randint(8, 16)
+            pts.append((x, sy + rng.randint(-26, 26)))
+        d.line(pts, fill=40, width=3)
     # Fold line, paper grain and speckle.
     d.line([(0, h // 3), (w, h // 3 + 3)], fill=222, width=2)
     for _ in range(2600):
         px, py = rng.randrange(w), rng.randrange(h)
         d.point((px, py), fill=rng.randint(150, 215))
-    img = img.rotate(-0.8, resample=Image.BICUBIC, fillcolor=228)
+    img = img.rotate(_SCAN_ANGLE, resample=Image.BICUBIC, fillcolor=228)
     img = img.filter(ImageFilter.GaussianBlur(0.6))
+
+    # The same rotation applied to each line's corners (Pillow turns the picture
+    # counter-clockwise about its centre by the angle), then the box around them.
+    th = math.radians(_SCAN_ANGLE)
+    cx, cy = w / 2, h / 2
+
+    def turn(px: float, py: float) -> tuple[float, float]:
+        dx, dy = px - cx, py - cy
+        return cx + dx * math.cos(th) + dy * math.sin(th), cy - dx * math.sin(th) + dy * math.cos(th)
+
+    out = []
+    for left, top, right, bottom, text in boxes:
+        pts = [turn(left, top), turn(right, top), turn(left, bottom), turn(right, bottom)]
+        xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+        out.append([round(min(xs), 1), round(min(ys), 1), round(max(xs), 1), round(max(ys), 1), text])
+    return img, out
+
+
+def scan_markdown(lines: list[str]) -> str:
+    """The text OCR would read from a scan of `lines`: blank-line separated paragraphs."""
+    paragraphs: list[list[str]] = [[]]
+    for line in lines:
+        if line.strip():
+            paragraphs[-1].append(line.strip())
+        elif paragraphs[-1]:
+            paragraphs.append([])
+    return "\n\n".join(" ".join(p) for p in paragraphs if p)
+
+
+def write_scanned_letter(path: Path, lines: list[str], *, seed: int = 7) -> dict:
+    """Write `lines` as a scanned letter (PNG). Returns the page's OCR line positions in the
+    `text_positions` page form (pixels, top-left origin)."""
+    img, boxes = scan_image(lines, seed=seed)
     img.save(path, format="PNG", dpi=(150, 150), optimize=True)
+    return {"width": float(SCAN_W), "height": float(SCAN_H), "lines": boxes}
+
+
+def scan_page_positions(lines: list[str], *, seed: int = 7) -> dict:
+    """The OCR line positions of a ("scan", lines) PDF page, in points (top-left origin)."""
+    _, boxes = scan_image(lines, seed=seed, signature=False)
+    fx, fy = PAGE_W / SCAN_W, PAGE_H / SCAN_H
+    return {"width": float(PAGE_W), "height": float(PAGE_H),
+            "lines": [[round(a * fx, 1), round(b * fy, 1), round(c * fx, 1), round(e * fy, 1), t]
+                      for a, b, c, e, t in boxes]}
 
 
 def write_docx(path: Path, title: str, paragraphs: list[str],
