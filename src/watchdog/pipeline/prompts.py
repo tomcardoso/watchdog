@@ -294,15 +294,18 @@ def build_reconcile_prompt(bundle: dict) -> str:
       answers by pair index, so it cannot invent an id. Only medium-confidence pairs reach here
       (D279): `reconcile.build_bundle` merges high-confidence ones in code and leaves low ones for
       the reporter. A same-name pair is flagged `same_name` and carries each side's facts.
-    * **ENTITIES** — the contradiction question. Each recurring entity's full source-attributed
-      claim ledger (its note's `## Analysis`, which carries a `[[documents/<slug>|<title>]]`
-      block per document), plus its roles and any contradictions already recorded.
+    * **ENTITIES** — the contradiction question. Each recurring entity's facts from the stored
+      extractions (D280), split into this batch's `new_facts` and the earlier `stored_facts`, each
+      group filed under a `[[documents/<slug>|<title>]]` heading, each fact with its short id, page,
+      warnings and source passage; plus its roles and any contradictions already recorded. Never a
+      note's prose.
     """
     return (
         f"{_text('reconcile')}\n\n"
         f"CANDIDATE PAIRS (possible duplicate entities — confirm or reject each):\n"
         f"{json.dumps(bundle.get('pairs', []), ensure_ascii=False)}\n\n"
-        f"ENTITIES (each with the claims recorded about it, by source document):\n"
+        f"ENTITIES (each with the facts recorded about it: this batch's new facts and the stored "
+        f"facts from earlier documents, by source document):\n"
         f"{json.dumps(bundle.get('entities', []), ensure_ascii=False)}"
     )
 

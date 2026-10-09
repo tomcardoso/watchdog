@@ -55,7 +55,7 @@ def _pair(i):
 
 
 def _entity(i, claims="c"):
-    return {"entity_id": f"e{i}", "name": f"E {i}", "claims": claims}
+    return {"entity_id": f"e{i}", "name": f"E {i}", "new_facts": "n", "stored_facts": claims}
 
 
 def test_chunk_bundle_that_fits_is_one_identical_chunk():
@@ -85,14 +85,15 @@ def test_chunk_bundle_renumbers_pairs_per_chunk_and_maps_back():
     assert merged["contradictions"] == [{"x": 1}, {"x": 2}]
 
 
-def test_chunk_bundle_trims_an_oversized_ledger_keeping_the_newest_claims():
+def test_chunk_bundle_trims_the_oldest_stored_facts_keeping_the_newest():
     claims = "OLD " * 2000 + "NEWEST CLAIM"
     budget = 1000
     chunks = reconcile.chunk_bundle({"pairs": [], "entities": [_entity(0, claims)]}, budget)
     kept = chunks[0]["entities"][0]
     assert chunking.json_size(kept) <= budget
-    assert kept["claims"].startswith(reconcile._TRIMMED)
-    assert kept["claims"].endswith("NEWEST CLAIM")
+    assert kept["stored_facts"].startswith(reconcile._TRIMMED)
+    assert kept["stored_facts"].endswith("NEWEST CLAIM")
+    assert kept["new_facts"] == "n"
 
 
 # ── _reconcile_pre_commit: several calls, one atomic outcome ─────────────────

@@ -25,10 +25,7 @@ from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.timeline import remap_entity_ids
-from watchdog.pipeline.write_vault import (
-    _doc_slug, _extract_analysis, _extract_summary, _merge_entity, _new_entity,
-    _render_evidence_fragments,
-)
+from watchdog.pipeline.write_vault import _doc_slug, _merge_entity, _new_entity
 
 # Structural words carry no identifying signal, so they are dropped before names are compared —
 # otherwise "University of Toronto" and "University of Waterloo" share half their tokens ("university",
@@ -49,7 +46,10 @@ _JACCARD_MIN = 0.5
 _MAX_PAIRS = 2000
 
 # Marker prefixed to an entity's claim ledger when `chunk_bundle` had to trim it to fit one call.
-_TRIMMED = "[earlier claims omitted to fit one reconciliation call]\n"
+_TRIMMED = "[the oldest stored facts are omitted to fit one reconciliation call]\n"
+
+# A passage is shown beside a fact, cut to this many characters.
+_PASSAGE_CHARS = 240
 
 # An entity needs claims in at least this many documents before two of them can disagree — the same
 # recurrence gate synthesis uses (D26).
@@ -279,6 +279,73 @@ def _staged_artifacts(vault: Path, shas: list[str]) -> list[tuple[str, dict]]:
     return out
 
 
+class _FactLedger:
+    """An entity's facts as the contradiction check reads them (D280): from the stored and staged
+    extractions, never from a note's prose, grouped by document under a
+    `[[documents/<slug>|<title>]]` heading the model copies the slug from, each with its short
+    id, page, warnings and source passage. Facts the reporter marked Disputed are left out."""
+
+    def __init__(self, vault: Path, working: dict, staged: dict[str, dict], shas: list[str]):
+        from watchdog.pipeline import entity_facts
+        from watchdog.pipeline.write_vault import _unique_doc_slug
+        documents = dict(_read_json_or(vault / ".watchdog" / "registry" / "documents.json", {}))
+        for sha, art in staged.items():
+            if sha in documents:
+                continue
+            doc = art.get("document") or {}
+            filename = doc.get("filename", "")
+            slug = _unique_doc_slug(vault, _doc_slug(filename), sha, filename, documents)
+            documents[sha] = {"title": doc.get("title") or filename, "filename": filename,
+                              "document_note": f"documents/{slug}",
+                              "date_of_document": doc.get("date_of_document")}
+        self.batch = set(shas)
+        self.working = working
+        self.index = entity_facts.FactIndex(vault, working, documents, overrides=staged)
+
+    def _render(self, facts: list[dict], refs: dict[str, str]) -> str:
+        from watchdog.pipeline.write_vault import _defang, _figure_verification_note
+        out, current = [], None
+        for f in facts:
+            if f["sha"] != current:
+                current = f["sha"]
+                date = f" ({f['doc_date']})" if f.get("doc_date") else ""
+                slug = (f.get("note") or "").removeprefix("documents/")
+                out.append(f"*[[documents/{slug}|{_defang(f.get('title') or '')}]]{date}:*")
+            line = f"- [{refs[f['id']]}] {_defang(f.get('fact') or '')}"
+            if f.get("page"):
+                line += f" (p. {f['page']})"
+            if f.get("date"):
+                line += f" (dated {f['date']})"
+            if f.get("basis") == "inferred":
+                line += " *(inferred)*"
+            line += _figure_verification_note(f)
+            passage = (f.get("quote") or "").strip() or (
+                (f.get("passage") or "").strip() if f.get("passage_method") == "matched" else "")
+            if passage:
+                passage = _defang(passage)
+                if len(passage) > _PASSAGE_CHARS:
+                    passage = passage[:_PASSAGE_CHARS].rsplit(" ", 1)[0] + "…"
+                line += f" — source passage: “{passage}”"
+            out.append(line)
+        return "\n".join(out)
+
+    def blocks(self, eid: str, all_new: bool = False) -> tuple[str, str]:
+        """(new facts, stored facts) for `eid`: this batch's documents' facts, and every earlier
+        document's, each in date order. `all_new` puts every fact in the first (a merged survivor,
+        whose two records' facts were never compared)."""
+        from watchdog.pipeline import entity_facts
+        facts = [f for f in self.index.facts_for(eid)
+                 if (f.get("mark") or {}).get("status") != "disputed"]
+        refs = entity_facts.short_refs(facts)
+        new = [f for f in facts if all_new or f["sha"] in self.batch]
+        stored = [f for f in facts if not (all_new or f["sha"] in self.batch)]
+        stored_text = self._render(entity_facts.chronological(stored), refs)
+        legacy = (self.working.get(eid) or {}).get("legacy_claims")
+        if legacy:
+            stored_text = (legacy.strip() + "\n\n" + stored_text).strip()
+        return self._render(entity_facts.chronological(new), refs), stored_text
+
+
 def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> dict:
     """Assemble the one reconciliation call's input: candidate duplicate pairs, and the claim
     ledger of every entity that could hold a contradiction — reconstructed from the staged batch
@@ -290,26 +357,19 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
     artifact's entities, via the same `write_vault._new_entity`/`_merge_entity` the real commit
     uses — standing in for "the registry once this batch commits," without writing anything.
 
-    The **claim ledger** is normally an entity note's ``## Analysis`` section, which `write_vault`
-    appends to per document at commit time. Pre-commit that block doesn't exist yet for this
-    batch's own claims, so it's reconstructed here from the existing note (if any) plus one
-    rendered block per staged document that touched the entity — close enough to feed the model,
-    even though it won't be byte-identical to what `write_vault` eventually writes.
+    Each recurring entity's **facts** come from the stored extractions of committed documents and
+    the staged extractions of this batch (`_FactLedger`, D280) — never from a note's prose — split
+    into this batch's new facts and the stored facts they are checked against.
     """
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
     original_reg = _read_json_or(entities_path, {})
 
     working = deepcopy(original_reg)
-    # eid -> this batch's (sha, document, entity) contributions, in `shas` order (sorted, D126),
-    # so a per-entity claim/summary reconstruction below sees documents in the same order commit
-    # will actually process them.
-    contributions: dict[str, list[tuple[str, dict, dict]]] = {}
     touched: set[str] = set()
     staged: dict[str, dict] = {}
 
     for sha, artifact in _staged_artifacts(vault, shas):
         staged[sha] = artifact
-        doc = artifact.get("document") or {}
         for entity in artifact.get("entities", []):
             eid = entity.get("id")
             if not eid:
@@ -319,9 +379,9 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
                 _merge_entity(working[eid], entity, sha)
             else:
                 working[eid] = _new_entity(entity, sha)
-            contributions.setdefault(eid, []).append((sha, doc, entity))
 
     entities = []
+    ledger = _FactLedger(vault, working, staged, shas)
     for eid in sorted(touched):
         if only is not None and eid not in only:
             continue
@@ -330,29 +390,14 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
             continue
         if len(entry.get("appears_in", [])) < _MIN_DOCS:
             continue           # one document cannot contradict itself
-        note = vault / f"{entry.get('note_path', '')}.md"
-        claims = _extract_analysis(note) if eid in original_reg else ""
-        summary = _extract_summary(note) or ""
-        for sha, doc, entity in contributions.get(eid, []):
-            if entity.get("summary"):
-                summary = entity["summary"]
-            rendered = _render_evidence_fragments(entity.get("evidence_fragments") or [])
-            if not rendered:
-                continue
-            slug = _doc_slug(doc.get("filename", ""))
-            title = doc.get("title") or doc.get("filename", "")
-            date = doc.get("date_of_document")
-            header = f"*{date}, via [[documents/{slug}|{title}]]:*" if date \
-                else f"*via [[documents/{slug}|{title}]]:*"
-            block = f"{header}\n{rendered}"
-            claims = (claims.rstrip() + "\n\n" + block).lstrip() if claims else block
+        new, stored = ledger.blocks(eid, all_new=only is not None)
         entities.append({
             "entity_id": eid,
             "name": entry.get("name", ""),
             "type": entry.get("type", ""),
             "aliases": entry.get("aliases", []),
-            "summary": summary,
-            "claims": claims,
+            "new_facts": new,
+            "stored_facts": stored,
             "roles": _roles_digest(entry.get("roles", [])),
             "contradictions": entry.get("contradictions") or [],
         })
@@ -405,14 +450,10 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
             verdicts.append(verdict)
     for index, pair in enumerate(pairs):
         pair["index"] = index
-    summaries: dict[str, str] = {e["entity_id"]: e["summary"] for e in entities}
     for pair in pairs:
         for side in ("a", "b"):
-            eid = pair[side]["id"]
-            if eid not in summaries:
-                note = vault / f"{working[eid].get('note_path', '')}.md"
-                summaries[eid] = _extract_summary(note) or ""
-            pair[side]["summary"] = _orienting_line(summaries[eid])
+            synthesis = working[pair[side]["id"]].get("synthesis") or {}
+            pair[side]["summary"] = _orienting_line(synthesis.get("summary") or "")
 
     return {"entities": entities, "pairs": pairs, "pairs_dropped": max(0, len(ranked) - _MAX_PAIRS),
             "pair_verdicts": verdicts, "rule_merges": rule_merges, "candidates": candidates,
@@ -420,19 +461,19 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
 
 
 def _trim_claims(entity: dict, budget: int) -> dict:
-    """Fit one entity into `budget` characters by dropping the *oldest* part of its claim ledger.
+    """Fit one entity into `budget` characters by dropping the *oldest* of its stored facts.
 
-    A hub entity named in hundreds of documents can carry a ledger larger than a whole call. The
-    ledger is source-attributed blocks in commit order, so its tail holds this batch's new claims —
-    the ones a contradiction check exists for — and the head is what goes. Returns the entity
+    A hub entity named in hundreds of documents can carry more stored facts than a whole call
+    holds. They are listed in date order, so the head is the oldest and is what goes; this
+    batch's new facts — the ones the check exists for — are kept whole. Returns the entity
     unchanged when it already fits."""
     size = json_size(entity)
     if size <= budget:
         return entity
-    claims = entity.get("claims") or ""
-    keep = max(0, len(claims) - (size - budget) - len(_TRIMMED) - 64)
+    stored = entity.get("stored_facts") or ""
+    keep = max(0, len(stored) - (size - budget) - len(_TRIMMED) - 64)
     trimmed = dict(entity)
-    trimmed["claims"] = _TRIMMED + claims[len(claims) - keep:] if keep else _TRIMMED
+    trimmed["stored_facts"] = _TRIMMED + stored[len(stored) - keep:] if keep else _TRIMMED
     return trimmed
 
 

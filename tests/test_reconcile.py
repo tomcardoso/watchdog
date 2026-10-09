@@ -206,29 +206,54 @@ def test_build_bundle_gates_contradiction_candidates_on_recurrence(tmp_path):
     assert "carol-jones" not in ids      # appears_in only sha-d (this batch)
 
 
-def test_build_bundle_claims_come_from_the_analysis_ledger(tmp_path):
-    """The per-entity claim record the pass reasons over is reconstructed from the already-
-    committed note's ## Analysis section (source-attributed, exactly what a contradiction check
-    needs) plus this batch's own staged claim, rendered in the same shape."""
+def test_contradiction_check_reads_stored_facts_not_note_prose(tmp_path):
+    """D280: the contradiction check compares this batch's new facts with the entity's stored
+    facts — from the committed document's stored extraction, with page and passage — and never
+    with a note's Summary or Analysis prose."""
     vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / "sha-a.json").write_text(json.dumps({
+        "document": {"sha256": "sha-a", "filename": "doc-a.pdf", "passages_version": 1,
+                     "key_facts": [{"fact": "Acme Corp reported $10M revenue.", "page": 3,
+                                    "entities": ["acme-corp"], "passage_method": "matched",
+                                    "passage": "Revenue for the year was $10,000,000.",
+                                    "passage_page": 3}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company"}]}))
     acme_note = vault / "entities" / "company" / "acme-corp.md"
-    # write_vault appends one *<date>, via [[documents/<slug>|<title>]]:* block per document,
-    # followed by that document's claim bullets — reproduce that shape directly on the note.
-    acme_note.write_text(
-        acme_note.read_text().replace(
-            "## Notes",
-            "## Analysis\n\n*2024-01-01, via [[documents/doc-a|Doc A]]:*\n"
-            "- Acme Corp reported $10M revenue. (p. 3)\n\n## Notes",
-        )
-    )
+    acme_note.write_text(acme_note.read_text().replace(
+        "## Notes", "## Summary\n\nAcme had about $12M in revenue, the model says.\n\n## Notes"))
     _stage(vault, "sha-c", "doc-c.pdf",
-          [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp opened a new office.")])
+           [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp reported $14M revenue.")])
+
     bundle = reconcile.build_bundle(vault, ["sha-c"])
     acme = next(e for e in bundle["entities"] if e["entity_id"] == "acme-corp")
     assert acme["roles"]                 # roles digest is carried for role-vs-role conflicts
-    assert "via [[documents/doc-a|Doc A]]" in acme["claims"]         # pre-existing (committed)
-    assert "Acme Corp reported $10M revenue." in acme["claims"]     # pre-existing (committed)
-    assert "Acme Corp opened a new office." in acme["claims"]       # this batch's own staged claim
+    assert "summary" not in acme and "claims" not in acme
+    assert "$12M" not in json.dumps(acme)                               # never the prose
+    assert "Acme Corp reported $14M revenue." in acme["new_facts"]      # this batch
+    assert "[[documents/doc-c|doc-c.pdf]]" in acme["new_facts"]
+    stored = acme["stored_facts"]
+    assert "*[[documents/doc-a|Doc A]]" in stored                       # the committed document's slug
+    assert "Acme Corp reported $10M revenue. (p. 3)" in stored
+    assert "source passage: “Revenue for the year was $10,000,000.”" in stored
+    assert stored.split("\n")[1].startswith("- [f:")
+
+
+def test_contradiction_check_leaves_out_disputed_facts_and_compares_all_after_a_merge(tmp_path):
+    vault = make_vault(tmp_path)
+    _stage(vault, "sha-c", "doc-c.pdf",
+           [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp is insolvent.")])
+    from watchdog.pipeline import verification
+    fid = verification.fact_ids("sha-c", [{"fact": "Acme Corp is insolvent.", "page": 1}])[0]
+    (vault / ".watchdog" / "registry" / "verification.json").write_text(json.dumps({
+        "schema_version": 1, "marks": {fid: {"status": "disputed", "fact": "Acme Corp is insolvent.",
+                                             "page": 1}}}))
+    acme = next(e for e in reconcile.build_bundle(vault, ["sha-c"])["entities"]
+                if e["entity_id"] == "acme-corp")
+    assert "insolvent" not in acme["new_facts"]
+    # A merged survivor's follow-up call compares everything: no fact is "already checked".
+    followup = reconcile.build_bundle(vault, ["sha-c"], only={"acme-corp"})["entities"][0]
+    assert followup["stored_facts"] == ""
 
 
 def test_build_bundle_empty_when_nothing_staged(tmp_path):

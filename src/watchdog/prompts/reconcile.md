@@ -25,18 +25,18 @@ When in doubt, do not merge. A missed merge leaves two notes a journalist can jo
 
 ## Job 2 — Contradiction detection
 
-ENTITIES lists each recurring entity with the claims recorded about it, grouped by the source document each claim came from. Two documents can disagree about the same entity — a date, a figure, an ownership share, a role, a status — and until now nothing in the pipeline compared them.
+ENTITIES lists each recurring entity with the facts recorded about it, taken from the source documents themselves. `new_facts` are the facts from the documents just added; `stored_facts` are the facts from every earlier document. Each group is filed under the `[[documents/<slug>|<title>]]` heading of the document it comes from, and each fact carries a short id in square brackets, its page, any warning, and, where one was found, the source passage it rests on. Two documents can disagree about the same entity — a date, a figure, an ownership share, a role, a status.
 
-Read each entity's claims across its documents and flag material discrepancies. For each one, return an entry in `contradictions`:
+Compare every new fact with the stored facts, and the new facts with one another, and flag material discrepancies. Stored facts were already checked against one another when they arrived, so do not compare two stored facts; when `stored_facts` is empty, compare the new facts with one another. Read the source passage where there is one: it is the document's own wording, and it settles what a paraphrased fact means. For each discrepancy, return an entry in `contradictions`:
 - `entity_id` — copied verbatim from the bundle.
 - `label` — a short name for the conflict, e.g. `Insolvency date`, `Ownership share`, `Reported revenue`.
-- `a_value` / `b_value` — the two conflicting values, each stated as briefly as it can be while still being clear (`$4.2M`, `insolvent as of 2023-03-01`, `sole director`). These are the two halves the journalist compares — not a retelling of the claim.
-- `a_doc` / `b_doc` — the document each value comes from: the `<slug>` out of the `[[documents/<slug>|<title>]]` heading the claim is filed under. Copy it exactly; a slug that does not name a real document is discarded.
-- `a_page` / `b_page` — the page each value appears on, when the claim records one; otherwise null.
+- `a_value` / `b_value` — the two conflicting values, each stated as briefly as it can be while still being clear (`$4.2M`, `insolvent as of 2023-03-01`, `sole director`). These are the two halves the journalist compares — not a retelling of the fact.
+- `a_doc` / `b_doc` — the document each value comes from: the `<slug>` out of the `[[documents/<slug>|<title>]]` heading the fact is filed under. Copy it exactly; a slug that does not name a real document is discarded.
+- `a_page` / `b_page` — the page each value appears on, when the fact records one; otherwise null.
 
 Flag a contradiction whenever you are confident the conflict is genuine. This is the only verification step there is — what you return is written into the entity's note as-is, for a journalist to act on.
 
-A claim's basis is **not** a reason to withhold. Flag the conflict even where one or both sides are marked `(inferred)`, or carry the note `not found in the document — may be derived`, or `found on another page`. A contradiction is among the most valuable things this pipeline surfaces, and a reader already knows a model produces some noise; a missed conflict between two records costs far more than one that turns out to be the extractor's own reasoning error. Every contradiction cites both documents and pages, so the journalist can check it. Report what the claims say and let them judge.
+A claim's basis is **not** a reason to withhold. Flag the conflict even where one or both facts are marked `(inferred)`, or carry the note `not found in the document — may be derived`, or `found on another page`. A contradiction is among the most valuable things this pipeline surfaces, and a reader already knows a model produces some noise; a missed conflict between two records costs far more than one that turns out to be the extractor's own reasoning error. Every contradiction cites both documents and pages, so the journalist can check it. Report what the claims say and let them judge.
 
 Do NOT flag:
 - a value that was simply **updated** between documents, where both are true at their own dates: a share price, a headcount, a balance, an address, a role someone held and then left. A contradiction is two claims that cannot both be true; a change over time is chronology. If the two documents' dates explain the difference, it is not a contradiction.
