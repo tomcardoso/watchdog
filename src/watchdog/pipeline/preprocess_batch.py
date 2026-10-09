@@ -17,7 +17,7 @@ from pathlib import Path
 
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog import progress
-from watchdog.pipeline import sidecar, transcribe
+from watchdog.pipeline import sidecar, text_positions, transcribe
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
@@ -688,6 +688,9 @@ def _run_ingest_inner(
                         live.note(f"       {_YELLOW}⚠{_RESET}  {_DIM}sidecar field(s) not recognized, dropped: "
                                   f"{', '.join(dropped)}{_RESET}")
                     sidecar_path.unlink(missing_ok=True)
+                    # OCR'd lines' positions go to their own file, kept past the commit, never
+                    # into the queue descriptor the model's input is read from (D289).
+                    text_positions.write(vault, sha256, result.pop("text_positions", None))
                     (queue / f"{sha256}.json").write_text(
                         json.dumps(result, ensure_ascii=False)
                     )
