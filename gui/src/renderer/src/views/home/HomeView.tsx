@@ -91,7 +91,7 @@ export default function HomeView() {
                     {s.headline && (
                       <blockquote className="home-pull">
                         <span className="eyebrow">Where things stand</span>
-                        <p>{s.headline}</p>
+                        <Markdown text={s.headline} compact className="home-pull-text" />
                       </blockquote>
                     )}
                     <section className="card home-briefing">

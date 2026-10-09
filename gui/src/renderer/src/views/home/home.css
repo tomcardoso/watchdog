@@ -119,7 +119,8 @@
   padding: 2px 0 2px 22px;
   border-left: 3px solid var(--accent);
 }
-.home-pull p {
+.home-pull p,
+.home-pull .home-pull-text p {
   margin: 6px 0 0;
   font-family: var(--font-read);
   font-size: 20px;

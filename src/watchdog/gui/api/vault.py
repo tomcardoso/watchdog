@@ -780,6 +780,15 @@ def read_file(vault: str, path: str) -> dict:
     return {"text": vaultio.read_text(target), "exists": True}
 
 
+@method("vault.sessionPrimer")
+def session_primer(vault: str) -> dict:
+    """The primer every Ask Claude session starts with (D285), built now from the vault's records
+    exactly as `watchdog session-primer` prints it. Read-only, no model."""
+    from watchdog.cmd import primer
+    text = primer.build(require_vault(vault))
+    return {"text": text, "chars": len(text), "budget": primer.BUDGET_CHARS}
+
+
 @method("vault.writeFile")
 def write_file(vault: str, path: str, text: str) -> dict:
     v = require_vault(vault)

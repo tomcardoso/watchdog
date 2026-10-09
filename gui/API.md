@@ -80,7 +80,8 @@ afterwards.
 ```
 Summary = {               // cmd/home.summary(), made JSON-safe
   name, path,
-  briefing: {path, name, date}|null, headline|null,
+  briefing: {path, name, date}|null,
+  headline|null,         // the latest briefing's status line, Markdown with fact links, from its sidecar (D285)
   contradictions, leads, near_duplicates, possible_same, alerts, // waiting on you
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
@@ -124,11 +125,12 @@ EntityRow = {
 | `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes only; an empty `text` keeps the placeholder comment) — replaces only the body of the note's `## Notes` section (journalist annotations; the pipeline never writes there) |
 | `vault.resolveLink` | `{vault, target}` | `{path\|null, kind: "document"\|"entity"\|"briefing"\|"query"\|"wiki"\|"note"\|"original"\|"fulltext"\|"missing", sha\|null, page\|null}` — what a wikilink target points at (bare names resolve like Obsidian: entity id/name/alias, document slug/title/filename, top-level note) (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
 | `vault.citations` | `{vault, links: string[]}` | `{[link]: {target, block, status: "found"\|"not_found", fact: {id, sha, fact, page\|null, title\|null, note\|null, date\|null, basis\|null, mark: "verified"\|"disputed"\|"unverifiable"\|null, passage\|null, passage_page\|null}\|null, disputed?}}` — what each fact citation names (D283). A link is `<note>#^f-<id>` as written in `[[<note>#^f-<id>\|…]]`; others are ignored; at most 500. Read-only. The Markdown renderer calls it for every page it shows; a `not_found` citation is shown as "source not found", never as a link |
-| `vault.checkCitations` | `{vault}` | `{checked, citations, found, not_found, disputed, unresolved_short, pages: [{path, items, citations, found, not_found, disputed, unresolved_short}]}` — every fact citation in `queries/`, `wiki/`, `briefings/` and `hot.md` (Maintenance → Check citations; the function `watchdog check-citations` calls). Changes nothing |
+| `vault.checkCitations` | `{vault}` | `{checked, citations, found, not_found, disputed, unresolved_short, pages: [{path, items, citations, found, not_found, disputed, unresolved_short}]}` — every fact citation in `queries/`, `wiki/` and `briefings/` (Maintenance → Check citations; the function `watchdog check-citations` calls). Changes nothing |
 | `vault.pipeline` | `{vault}` | `PipelineState` (below) |
 | `vault.briefings` | `{vault}` | `[{path, name, kind: "briefing"\|"leads"\|"alerts"\|"research", date, title}]`, newest first |
 | `vault.notes` | `{vault}` | `[{path, kind: "query"\|"wiki", title, modified}]` — pages Claude sessions saved in `queries/` and `wiki/`, most recently modified first |
-| `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `hot.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` |
+| `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` (not `hot.md`, retired in D285) |
+| `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as `watchdog session-primer` prints it for the SessionStart hook (`cmd/primer.build`, D285). Briefings → Current state shows it. Read-only, no model |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md` |
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
@@ -163,6 +165,7 @@ EntityDetail = EntityRow & {
   facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail
   synthesis: {summary, analysis|null, by: "model"|"session"|"carried", model|null, made_at|null,
               facts_total|null, facts_shown|null, stale: "merge"|"undo"|null,
+              stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)
               summary_md, analysis_md|null,     // with citations rendered as fact links (D283); show these
               citations: {cited, linked, unknown, missing, disputed}} | null,   // the entity summary, from the registry; who wrote it is metadata, not shown (D284); unknown fields ignored
   legacy_claims: string|null      // claims an older version recorded for documents with no stored extraction (markdown)
@@ -170,7 +173,8 @@ EntityDetail = EntityRow & {
 
 TimelineEvent = {
   date, precision: "day"|"month"|"year"|null, text,
-  entities: [{id, name, type}], sha|null, filename|null, page|null, note|null
+  entities: [{id, name, type}], sha|null, filename|null, page|null, note|null,
+  disputed: bool         // the reporter disputes the fact behind the event; show the label (D285)
 }
 
 PipelineState = {
@@ -279,12 +283,12 @@ SamePair   = {tier: "high"|"medium"|"low", rule, model_declined: bool,
               evidence: {surface, identifier: {scheme, value}|null, shared: [{relationship, target_id, target_name}]},
               a: SameSide, b: SameSide}
 SameSide   = {id, name, type, aliases, documents: sha[], doc_count, note|null,
-              facts: [{id, sha, fact, page, document, date}], roles: [{relationship, target}]}
+              facts: [{id, sha, fact, page, document, date, disputed: bool}], roles: [{relationship, target}]}
 MergeLogEntry = {id, keep: {id, name, type, exists, note|null}, merged: {id, name, type},
                  tier: "high"|"medium"|"low"|"manual", decided_by: "rule"|"model"|"reporter", rule|null,
                  reason, model|null, reporter|null, same_name: bool, at, first_at,
                  identifier|null, shared: [...], documents: [{sha, title}], document_count,
-                 facts: [{id, fact, page, sha, title}], undo_available: bool,
+                 facts: [{id, fact, page, sha, title, disputed: bool}], undo_available: bool,
                  undo_reason: string|null,            // why it cannot be undone now, in plain words (D280)
                  undone: {at, by, split_id}|null}
 ```

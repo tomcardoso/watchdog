@@ -1,6 +1,7 @@
 // Everything Watchdog writes for the journalist, as a reading list: briefings, lead
-// sweeps, watch-list alerts and research memos, plus the three living files (current state,
-// processing history, investigation context) pinned above them.
+// sweeps, watch-list alerts and research memos, plus three living pages pinned above them: the
+// current state (the session primer Claude starts each conversation with, built now from the
+// investigation's records, D285), the processing history and the investigation context.
 
 import { Activity, Bell, FileText, History, Lightbulb, MessageCircle, MessageSquareQuote, Network, Pencil, Save, Search, Target, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -14,8 +15,11 @@ import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { NoteActions, stripFrontmatter } from './NoteView'
 import './briefings.css'
 
+// Not a file: the primer is built on request (`vault.sessionPrimer`), as each session builds it.
+const PRIMER = 'session-primer'
+
 const PINNED: { path: string; label: string; sub: string; icon: LucideIcon }[] = [
-  { path: 'hot.md', label: 'Current state', sub: 'Where the investigation stands now', icon: Activity },
+  { path: PRIMER, label: 'Current state', sub: 'What Claude is told at the start of each conversation', icon: Activity },
   { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History },
   { path: 'context.md', label: 'Investigation context', sub: 'Your questions and what you know', icon: Target }
 ]
@@ -121,7 +125,12 @@ export default function BriefingsView() {
 
 function Reader({ path, row }: { path: string; row?: BriefingRow }) {
   const vault = useVault()
-  const q = useRpc('vault.readFile', vault ? { vault, path } : null, { staleTime: 5_000 })
+  const isPrimer = path === PRIMER
+  const file = useRpc('vault.readFile', vault && !isPrimer ? { vault, path } : null, { staleTime: 5_000 })
+  const primer = useRpc('vault.sessionPrimer', vault && isPrimer ? { vault } : null, { staleTime: 5_000 })
+  const q = isPrimer
+    ? { ...primer, data: primer.data ? { text: primer.data.text, exists: true } : undefined }
+    : file
   const pinned = PINNED.find((p) => p.path === path)
   const isContext = path === 'context.md'
   const [editing, setEditing] = useState(false)
@@ -160,7 +169,7 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             <Button size="sm" icon={Pencil} onClick={() => { setDraft(text); setEditing(true) }}>Edit</Button>
           </>
         )}
-        {!editing && <NoteActions path={path} />}
+        {!editing && !isPrimer && <NoteActions path={path} />}
       </div>
       <div className="bf-reader-scroll">
         <div className="bf-measure bf-article">
@@ -182,10 +191,15 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             </>
           ) : !q.data?.exists || !body.trim() ? (
             <Empty icon={FileText} title={pinned ? `${pinned.label} is empty` : 'Nothing here'} action={isContext ? <Button icon={Pencil} onClick={() => { setDraft(text); setEditing(true) }}>Write context</Button> : undefined}>
-              {path === 'hot.md' || path === 'log.md' ? 'This file is written at the end of a run that produces a briefing.' : 'This file does not exist yet.'}
+              {path === 'log.md' ? 'This file is written at the end of a run that produces a briefing.' : 'This file does not exist yet.'}
             </Empty>
           ) : (
             <>
+              {isPrimer && (
+                <Callout tone="info">
+                  Built by Watchdog from the investigation’s records, with no AI model, each time a conversation with Claude starts. It covers the whole investigation, not only the latest run.
+                </Callout>
+              )}
               {hasChecks && (
                 <div className="bf-check-note">
                   Checkboxes here are display only. Mark items handled in <button className="srch-link" onClick={() => navigate({ view: 'review' })}>Review</button>, or tick them in the file and sync from the Handled tab.

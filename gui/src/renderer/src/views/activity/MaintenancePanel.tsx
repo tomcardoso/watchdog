@@ -340,7 +340,7 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
               <ModelPicker compact value={stage[k] ?? ''} onChange={(v) => setStage({ ...stage, [k]: v })} models={models} emptyLabel="Same as finalizer" />
             </Row>
           ))}
-          <Row label="Skip the briefing" hint="Finishes everything else but makes no briefing call. hot.md and the log entry are skipped too.">
+          <Row label="Skip the briefing" hint="Finishes everything else but makes no briefing call. The log entry is skipped too.">
             <Switch checked={skip} onChange={setSkip} label="Skip briefing" />
           </Row>
         </>
@@ -464,7 +464,7 @@ function CitationsCard() {
     }
   }
   const flagged = (report?.pages ?? []).filter((p) => p.not_found || p.disputed)
-  const open = (path: string) => navigate(path.startsWith('briefings/') || path === 'hot.md' ? { view: 'briefings', path } : { view: 'note', path })
+  const open = (path: string) => navigate(path.startsWith('briefings/') ? { view: 'briefings', path } : { view: 'note', path })
   return (
     <MCard
       icon={Link2}

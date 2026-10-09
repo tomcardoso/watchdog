@@ -140,3 +140,12 @@ def test_an_older_vaults_hot_md_hook_becomes_the_primer_and_hot_md_is_kept(tmp_p
     # The old file is the reporter's: left exactly as it was.
     assert (vault / "hot.md").read_text() == "# Hot cache\n\nthe reporter's old file\n"
     assert migrate_folder_names(vault) == []                 # idempotent
+
+
+def test_the_app_shows_the_same_primer(demo):
+    """Briefings → Current state reads `vault.sessionPrimer`, the function the hook prints (I10)."""
+    from tests.gui_support import call
+    vault, _ = demo
+    out = call("vault.sessionPrimer", vault=str(vault))
+    assert out["text"] == primer.build(vault)
+    assert out["chars"] == len(out["text"]) <= out["budget"] == primer.BUDGET_CHARS
