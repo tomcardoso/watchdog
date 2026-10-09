@@ -1,10 +1,11 @@
 // Usage: what each processing run cost, with a per-stage breakdown. Bars are drawn with plain CSS.
 
-import { BadgeInfo, Coins } from 'lucide-react'
+import { BadgeInfo, Coins, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Callout, Empty, ErrorNote, Skeleton, Stat, cx } from '@renderer/components/ui'
 import { useRpc } from '@renderer/lib/rpc'
-import { fmtCost, fmtDateTime, fmtDuration, fmtNum, fmtTokens } from '@renderer/lib/format'
+import { fmtCost, fmtDateTime, fmtDuration, fmtNum, fmtTokens, plural } from '@renderer/lib/format'
+import type { KeyCost } from '@shared/api'
 import { useApp } from '@renderer/lib/store'
 
 const STAGE_COLOR: Record<string, string> = {
@@ -25,6 +26,35 @@ function stageCosts(stages: unknown): [string, number][] {
   return Object.entries(stages as Record<string, unknown>)
     .map(([k, v]) => [k, Number(v) || 0] as [string, number])
     .filter(([, v]) => v > 0)
+}
+
+/** Cost per labelled key (D290), when any call names one — the account that paid. */
+function ByKey({ rows, title }: { rows?: KeyCost[]; title: string }) {
+  if (!rows || !rows.some((k) => k.label)) return null
+  return (
+    <div className="act-bykey">
+      <span className="eyebrow">{title}</span>
+      {rows.map((k) => (
+        <span key={k.label ?? ''} className="act-bykey-item">
+          <Wallet />
+          <span className={k.label ? undefined : 'muted'}>{k.label ?? 'No stored key'}</span>
+          <b className="tnum">{fmtCost(k.cost_usd)}</b>
+          <span className="faint">{plural(k.calls, 'call')}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function sumByKey(runs: { by_key?: KeyCost[] }[]): KeyCost[] {
+  const m = new Map<string | null, KeyCost>()
+  for (const r of runs) for (const k of r.by_key ?? []) {
+    const cur = m.get(k.label) ?? { label: k.label, cost_usd: 0, calls: 0 }
+    cur.cost_usd += k.cost_usd
+    cur.calls += k.calls
+    m.set(k.label, cur)
+  }
+  return [...m.values()].sort((a, b) => b.cost_usd - a.cost_usd)
 }
 
 function RunDetail({ vault, ts }: { vault: string; ts: string }) {
@@ -53,6 +83,7 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
           Costs shown are what the work would cost at published per-token rates, not money that was charged. A Claude subscription has no per-token charge.
         </Callout>
       )}
+      <ByKey rows={r.by_key} title="Paid by" />
       <div className="card" style={{ overflow: 'hidden' }}>
         <table className="table">
           <thead>
@@ -129,6 +160,7 @@ export default function UsagePanel() {
   const present = [...new Set(runs.flatMap((r) => stageCosts(r.stages).map(([k]) => k)))]
   return (
     <div className="col" style={{ gap: 18 }}>
+      <ByKey rows={sumByKey(runs)} title="All runs, by key" />
       <div className="card act-runs">
         <div className="act-runs-head">
           <div className="card-title">Runs</div>

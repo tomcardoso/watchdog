@@ -971,3 +971,8 @@
   font-size: var(--fs-sm);
   color: var(--text-3);
 }
+
+/* Which labelled key pays for a run */
+.billing-note { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface-2); font-size: var(--fs-sm); color: var(--text-2); line-height: 1.5; }
+.billing-note > svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--text-3); }
+.billing-note b { color: var(--text); font-weight: 600; }

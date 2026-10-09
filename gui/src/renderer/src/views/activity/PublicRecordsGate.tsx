@@ -7,6 +7,7 @@ import { ShieldAlert } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import type { Preflight, RunOptions } from '@shared/api'
 import { Button, Callout, Modal } from '@renderer/components/ui'
+import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
 import { call, errorMessage } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp } from '@renderer/lib/store'
@@ -47,7 +48,7 @@ export function usePublicRecordsGate() {
           // Nothing will reach a model, so there is nothing to acknowledge.
           const job = await startJob(run.args, run.label, run.kind)
           navigate({ view: 'activity', job: job.id })
-        } else if (pf.auto_approve.approve) {
+        } else if (pf.auto_approve.approve && !billingBlocked(pf.billing)) {
           toast({ kind: 'info', title: `Sending ${plural(pf.documents_to_send, 'document')} to the model`, body: 'Auto-approve is on and every step uses your Claude subscription.' })
           await launch(run)
         } else {
@@ -80,7 +81,7 @@ export function usePublicRecordsGate() {
           </Button>
           <Button
             variant="primary"
-            disabled={!pf?.auth.ok}
+            disabled={!pf?.auth.ok || !!billingBlocked(pf?.billing)}
             onClick={() => {
               const run = pending!.run
               setPending(null)
@@ -107,6 +108,7 @@ export function usePublicRecordsGate() {
               ))}
             </div>
           )}
+          <BillingNote billing={pf.billing} onSettings={() => setPending(null)} />
           {pf.auto_approve.enabled && pf.auto_approve.blocker && (
             <Callout tone="info" title="Auto-approve is on, but this run still asks">
               {pf.auto_approve.blocker}
