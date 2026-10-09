@@ -331,7 +331,7 @@ Every item in the leads, alerts, and document-request reports carries a short re
 
 ### watchdog review merge-entities
 
-Folds a duplicate entity into another when the same real-world person or company was extracted under two ids. It unions aliases, document appearances, roles, and timeline events onto the surviving entity; remaps every relationship anywhere in the registry that targeted the losing id; carries the losing entity's Analysis section over with provenance intact; and redirects the losing note to a stub pointing at the survivor.
+Folds a duplicate entity into another when the same real-world person or company was extracted under two ids. It unions aliases, document appearances, roles, and timeline events onto the surviving entity; remaps every relationship anywhere in the registry that targeted the losing id; lets the survivor's note list both records' facts (they are rendered from the documents, D280); and redirects the losing note to a stub pointing at the survivor.
 
 ```bash
 watchdog review merge-entities <keep-id> <merge-id>

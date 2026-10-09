@@ -37,7 +37,7 @@ The headline from the latest briefing, the briefing itself, what is waiting on y
 
 **File → Fetch Links…** downloads web pages from a list of addresses into `incoming/`, from where you add them like any other document.
 
-**Until setup has finished**, adding documents is turned off: the **Add documents** button, dropping files on the window, **Finish adding** on the Overview, the actions under **Documents → Pipeline**, and in **Activity → Maintenance** the incoming-folder watcher, pre-processing, processing, post-processing, **Requeue** and **Rebuild the search index**. Each says why: "Watchdog is still setting up. You can add documents when it finishes, in a few minutes." If you open the Add documents window another way, it shows the same note and how far along setup is; files you choose stay listed, ready to read when setup finishes. Merging two entities waits too, because it rewrites the search index. Fetching links still works, since it only downloads into `incoming/`.
+**Until setup has finished**, adding documents is turned off: the **Add documents** button, dropping files on the window, **Finish adding** on the Overview, the actions under **Documents → Pipeline**, and in **Activity → Maintenance** the incoming-folder watcher, pre-processing, processing, post-processing, **Requeue**, **Rebuild notes** and **Rebuild the search index**. Each says why: "Watchdog is still setting up. You can add documents when it finishes, in a few minutes." If you open the Add documents window another way, it shows the same note and how far along setup is; files you choose stay listed, ready to read when setup finishes. Merging two entities, and undoing a merge, wait too, because they rewrite the search index. Fetching links still works, since it only downloads into `incoming/`.
 
 ### Documents
 
@@ -51,7 +51,7 @@ An audio or video recording opens in a player, with its transcript below. Each p
 
 Every person, organization, public body, place, asset and proceeding, filterable by type, with the number of documents each appears in. **Single-source** filters to entities named in only one document, which is where a duplicate entity usually shows up.
 
-An entity's page shows its summary, analysis, contradictions, timeline and relationships, and thumbnails of the documents it appears in. The **⋯** menu holds **Merge into…** (which cannot be undone, and is explained before it runs) and **Record a contradiction**.
+An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary labelled **AI-written**, with which model wrote it and from how many facts; then contradictions, timeline and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong) and **Record a contradiction**.
 
 ### Network and Timeline
 
@@ -65,7 +65,7 @@ Three kinds of result, kept separate: exact matches (every place the words appea
 
 ### Review
 
-Contradictions, leads, watch-list hits, possible duplicates, merges and document requests, one tab each, plus a **Verification** tab: every fact in the investigation with your own check of it, a progress bar and filters (not checked, disputed, can't verify, verified, no passage, and changed since marked). See [Checking facts](investigating.md#the-verification-tab). Mark an item handled and it stops appearing in briefings and on the Overview. The keyboard works here too: J and K move between items, H marks one handled, O opens it, U undoes. The **Merges** tab lists pairs of records that may be one person or company, to merge or mark not the same, and every merge Watchdog or you have made, with who decided and why; see [Merges](investigating.md#merges). The **Handled** tab brings items back, and can pick up checkboxes you ticked in the briefing files. The **Watch list** tab edits the list of names and terms to watch for, and can check every document against it.
+Contradictions, leads, watch-list hits, possible duplicates, merges and document requests, one tab each, plus a **Verification** tab: every fact in the investigation with your own check of it, a progress bar and filters (not checked, disputed, can't verify, verified, no passage, and changed since marked). See [Checking facts](investigating.md#the-verification-tab). Mark an item handled and it stops appearing in briefings and on the Overview. The keyboard works here too: J and K move between items, H marks one handled, O opens it, U undoes. The **Merges** tab lists pairs of records that may be one person or company, to merge or mark not the same, and every merge Watchdog or you have made, with who decided and why, and **Undo merge** where a merge can be split back exactly; see [Merges](investigating.md#merges). The **Handled** tab brings items back, and can pick up checkboxes you ticked in the briefing files. The **Watch list** tab edits the list of names and terms to watch for, and can check every document against it.
 
 ### Briefings
 
@@ -84,7 +84,7 @@ Both run on your Claude sign-in. If Claude is not signed in, sign in under **Set
 Everything the app has run, with the full output of each. **Stop** ends a run cleanly so it can be resumed. The tabs:
 
 - **Jobs.** Running and finished runs. Select one to see its output.
-- **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
+- **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild notes** (rewrites every entity and document note from Watchdog's records, with no model call), **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.
 - **Processing history.** What was added, and when.
 - **Usage.** What the models used and cost.
 

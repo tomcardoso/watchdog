@@ -38,7 +38,7 @@ A facet narrows which notes you read, not what you conclude from them — read t
 Read the relevant vault files. Prioritise in this order:
 
 1. **`.watchdog/registry/manifest.json`** — lightweight index of every entity: `id`, `name`, `type`, `aliases`, `note_path`. Read this first to find which entities are relevant to the question. Match on name and all aliases.
-2. **Entity notes** — read only the specific notes identified in step 1 (use the `note_path` field, append `.md`). Each note has a `## Summary`, `## Timeline`, `## Analysis`, and `## Relationships`.
+2. **Entity notes** — read only the specific notes identified in step 1 (use the `note_path` field, append `.md`). Each note has a `## Facts` list (every fact about the entity, each citing its document and page, with the journalist's check: verified, disputed, can't verify or not checked), usually a `## Summary (AI-written)` written by a model from those facts, and `## Relationships`. Cite the facts, not the summary.
 3. **timeline.md** — global chronological view across all entities; use this for "when did X happen?" or "what happened in year Y?" questions
 4. **Document notes** (`documents/*.md`) — for the source documents those entities appear in
 5. **Briefings** (`briefings/*.md`) — for previous analysis that may be relevant

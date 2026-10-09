@@ -91,7 +91,7 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
           <>
             <label className="checkbox" style={{ marginRight: 'auto', color: 'var(--text-2)' }}>
               <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
-              <span>{engine.ready ? 'I understand this cannot be undone from the app' : ENGINE_WAIT_OTHER}</span>
+              <span>{engine.ready ? 'I understand the two become one record (Review → Merges can split them back)' : ENGINE_WAIT_OTHER}</span>
             </label>
             <Button onClick={close}>Cancel</Button>
             <Button variant="danger" icon={GitMerge} disabled={!keep || !merge || keep === merge || !ack || preview.isLoading || preview.isError || !engine.ready} onClick={() => void run()}>

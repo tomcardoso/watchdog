@@ -131,6 +131,14 @@ If a run was interrupted, a lock file can be left behind that blocks the next ru
 
 A running step refreshes its lock every five minutes, however long it runs, so a lock only ages once the run that held it has stopped. If the lock is recent (under 30 minutes old), Watchdog leaves it alone, because the run may still be going. Check the **Jobs** tab to make sure nothing is running. Once you are sure, switch on **Force** and choose **Force release**.
 
+## A note was deleted or edited by mistake
+
+Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the AI-written summaries, and calls no AI model. Your own **Notes** sections are kept as they are, but a note you deleted takes its Notes section with it, so keep anything you want to keep in a note that still exists.
+
+## A merge joined two different people or companies
+
+Open **Review → Merges**, find the merge under **Recent merges**, and choose **Undo merge**. If the button is unavailable, the reason is shown beside it; see [Merges](investigating.md#merges).
+
 ## Updates fail
 
 If the **Update available** button shows **The update could not be downloaded. Try again in a moment**, check your connection and choose it again. If **Restart to update** says Watchdog could not restart into the update, quit Watchdog completely and open it again to finish updating.

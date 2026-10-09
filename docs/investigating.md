@@ -56,7 +56,9 @@ The **Merges** tab has two parts. At the top is the queue of **possible same ent
 
 Below the queue is **Recent merges**: every merge, newest first, whoever made it. Each row says which records were joined, how confident the decision was, and who decided: Watchdog's rules, the AI model (by name), or the reporter who chose **Merge**. Open a row for the reason, the matching number or shared role if there was one, the facts that came with the merged record and the documents it came from. Recognising the same specific company or place name in another document is recorded too, but those rows are hidden until you turn on **Include exact-name recognitions**, so the list stays on the merges worth a look.
 
-A merge cannot yet be undone from the app. The merged page's summary and any notes you wrote on it cannot be split back reliably, so the **Undo merge** button is shown but not yet available. Each log entry keeps what a later version needs to split it. If you find a wrong merge, note it on the entity's page. The same record is kept in `merges.md` in the investigation's folder (see [the vault layout](vault.md)).
+If a merge is wrong, open its row and choose **Undo merge**. Watchdog gives the facts, documents and relationships that came with the merged record back to a record of its own, rewrites both entities' notes, and marks the pair **Not the same** so it is never merged automatically again. It calls no AI model. Three things stay with the surviving entity, and the confirmation says so: contradictions recorded while the two were joined, your own **Notes** (including any written after the merge; move what belongs to the other record by hand), and its AI-written summary, which is marked as written before the split until the next run rewrites it. A merge decided again for several documents is undone for all of them at once.
+
+Some merges cannot be split exactly, and for those the button stays unavailable with the reason beside it: a merge made by a version of Watchdog older than this one, which did not record which facts moved; two names joined inside one long document that was read in sections; a surviving entity that was itself merged into another later (undo that one first); and a document that has been processed again since the merge. The same record is kept in `merges.md` in the investigation's folder (see [the vault layout](vault.md)), which also notes each merge that was undone.
 
 ### Document requests
 
@@ -129,7 +131,13 @@ Every change rewrites `verification.md` at the top of the investigation: a list 
 
 **Entities** lists every person, organization, public body, place, asset and proceeding Watchdog found, filterable by type, with the number of documents each appears in. Search it by name or alias, and sort it by most documents, name, most recent update or most contradictions. Filters narrow it to entities with contradictions, entities with no summary written yet, and single-source entities.
 
-Open an entity to see its summary, analysis, contradictions, timeline and relationships, and thumbnails of the documents it appears in. Every fact links to the page it came from. The **Notes** section is yours; Watchdog never writes to it, so anything you type there survives every run.
+Open an entity to see everything the documents say about it.
+
+- **Facts** lists every fact about the entity from every document, in the order things happened (or **By document**), each with its document and page, any warning, and the same **Verified**, **Disputed** and **Can't verify** buttons as in the document reader, with the same keys. **Show the matched passage** (or **Show the quotation**) opens the sentence on the page the fact rests on. A fact you mark Disputed stays in the list with a **disputed** label; it is left out of the AI-written summary and the contradiction check from the next run on. The filters show what is not checked, disputed, inferred, or carries a figure warning.
+- **Summary** is labelled **AI-written**. A model writes it from the entity's facts once the entity appears in two or more documents, and the line under it says which model, when, and from how many facts. Where it cites a fact, the citation looks like `[f:3a9c]`. Treat it as a reading aid, and the facts as the record.
+- **Contradictions**, **Timeline** and **Relationships** follow, with thumbnails of the documents it appears in.
+
+The **Notes** section is yours; Watchdog never writes to it, so anything you type there survives every run.
 
 ### Duplicate entities
 
@@ -137,9 +145,9 @@ Sometimes the same real-world person or company ends up extracted as two entitie
 
 The **Single-source** filter is the best place to look, since a duplicate usually appears in only one document. A pair of near-duplicate documents on the Duplicates tab often produces two copies of the same entities as well. To fold one entity into the other, select the two on the Entities screen and choose **Merge…**, or open one and choose **Merge into another entity…** from its **⋯** menu.
 
-The dialog shows both entities (name, type, document and relationship counts) before you commit, and asks you to tick that you understand the merge cannot be undone from the app. The duplicate's aliases, documents, relationships and timeline events all combine onto the survivor, and every relationship elsewhere that pointed at the duplicate follows. A snapshot is taken first, and the merge is recorded under your name in the merge log (Review, Merges).
+The dialog shows both entities (name, type, document and relationship counts) before you commit, and asks you to tick that you understand the two become one record. A merge you regret can be split back from **Review → Merges** (see [Merges](#merges)). The duplicate's aliases, documents, relationships and timeline events all combine onto the survivor, and every relationship elsewhere that pointed at the duplicate follows. A snapshot is taken first, and the merge is recorded under your name in the merge log (Review, Merges).
 
-When it finishes, the dialog offers **Rebuild search index**, which drops the merged entity's stale entries from Search. The merge keeps only one of the two written summaries, so when both entities had one, open the survivor and choose **Refresh summary from all sources** from its **⋯** menu. That asks Claude to rewrite its Summary and Timeline from every source.
+When it finishes, the dialog offers **Rebuild search index**, which drops the merged entity's stale entries from Search. The survivor's facts include both records' facts at once. The merge keeps only one of the two AI-written summaries, labelled as written before the merge, so when both entities had one, open the survivor and choose **Refresh summary from all sources** from its **⋯** menu, or wait for the next run that names it.
 
 ## Timeline and Network
 

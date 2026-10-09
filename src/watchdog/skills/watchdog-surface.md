@@ -28,7 +28,7 @@ Build a working index in memory:
 - Entity ID → type, name, aliases, note_path (from manifest)
 - Document → document_type, entities_extracted, document_note (from documents.json; a document's own date is the `date_of_document` frontmatter field in its note)
 
-**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Summary`, `## Timeline`, `## Analysis`, or `## Relationships` content. Do not read all notes upfront.
+**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Facts` (every fact about the entity, with its document and page, dated facts in date order), `## Summary (AI-written)` or `## Relationships` content. Do not read all notes upfront.
 
 ---
 
@@ -56,7 +56,7 @@ Find groups of companies that share 2 or more of: the same address, the same dir
 
 ### Timeline anomalies
 
-Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
+Read the dated entries of each entity's `## Facts` section and the global `timeline.md`. Look for:
 - An entity that appears in a document dated significantly earlier than `date_first_seen` in the registry (may indicate a missed prior document)
 - A company formed or dissolved within 30 days of a large transaction involving it
 - Clusters of events from multiple entities that all fall within a narrow date window — these often indicate a coordinated action worth examining
@@ -73,7 +73,7 @@ For each callout found:
 
 Also perform a cross-document scan for contradictions not yet flagged:
 
-For each entity that appears in 3 or more documents, compare the following fields across all documents it appears in (read from the `## Timeline` and `## Relationships` sections of the entity note, and from the source documents if needed):
+For each entity that appears in 3 or more documents, compare the following fields across all documents it appears in (read from the `## Facts` and `## Relationships` sections of the entity note, and from the source documents if needed):
 - Date of incorporation / formation / registration
 - Registered address or business address
 - Director or officer appointments (is the person listed as the same role in all documents?)
@@ -91,7 +91,7 @@ Include all contradictions (pre-existing callouts and new candidates, labelled a
 
 ### Disproportionate transactions
 
-Transactions are recorded as facts and timeline events, not as entities: find them in entity notes' `## Timeline` sections and in `timeline.md`. Compare their amounts to the apparent scale of the entities involved (revenue, assets mentioned in nearby documents). Flag any transaction that is more than 2x the annual revenue of either party, or that involves round numbers with no stated purpose.
+Transactions are recorded as facts and timeline events, not as entities: find them in entity notes' `## Facts` sections and in `timeline.md`. Compare their amounts to the apparent scale of the entities involved (revenue, assets mentioned in nearby documents). Flag any transaction that is more than 2x the annual revenue of either party, or that involves round numbers with no stated purpose.
 
 ### Dormant entities in active documents
 

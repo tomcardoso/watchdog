@@ -30,7 +30,7 @@ Read existing thread pages — list them with the Glob tool (`wiki/**/*.md`).
 
 Do **not** load all entity notes or document notes upfront. Read individual notes on demand as you identify angles worth a thread. Use `note_path` from the manifest and `document_note` from documents.json to read specific notes when needed.
 
-For each central entity you decide to write about, read its note to get the `## Summary` section — this is the synthesized overview of who the entity is and their significance.
+For each central entity you decide to write about, read its note's `## Summary (AI-written)` section — a model's overview of who the entity is and their significance — and check what you use against the `## Facts` list below it, which cites each document and page.
 
 ---
 

@@ -218,18 +218,31 @@ extraction prompt.
 
 ## 7. Entity notes
 
-| Section | Kind | Written by |
-|---|---|---|
-| `## Summary` | prose | bundled synthesis, once an entity is in 2+ documents (§8) |
-| `## Analysis` | tagged-fact claims, then prose | deterministic claims; synthesized prose once 2+ documents |
-| `## Contradictions` | cited callouts | reconciliation (§8.5); append-only, deduped |
-| `## Timeline` | dated events | deterministic, sorted by event date |
-| `## Relationships` | roles | deterministic merge |
-| `## Notes` | journalist annotations | never touched |
+**Code:** `pipeline/entity_facts.py`, `pipeline/entity_notes.py` (D280).
 
-Structured content is merged deterministically; prose is synthesized. Contradictions stay a
-discrete cited log rather than prose or a timeline (sorting them by document date would be the
-wrong axis).
+An entity note is a view, rendered whole from stored data every time it is written; nothing in it
+except the journalist's Notes is the only copy of anything.
+
+| Section | Source | Written by |
+|---|---|---|
+| `## Summary (AI-written)` | registry entry's `synthesis` (summary, analysis, model, date, facts shown/total, citation map) | synthesis (§8) or a `/watchdog-entity` session; labelled, never a fact |
+| `## Facts` | every `key_facts` entry in the committed documents' stored extractions whose tags resolve to the entity | deterministic render: date order (fact date, else document date), document and page link, flags, quote or matched passage, reporter's mark, `^f-<hash>` block id; past 40 facts grouped by document (5 each plus every marked fact; the 40 most recent documents in full, earlier ones one line each) |
+| `## Earlier claims` | registry `legacy_claims` | carried once from a pre-D280 note for documents with no stored extraction |
+| `## Contradictions` | registry ledger, minus handled callouts | reconciliation (§8.5) |
+| `## Relationships` | registry roles | deterministic merge |
+| `## Notes` | the note on disk | the journalist; never touched |
+
+A fact's tag is resolved to a current entity by `FactIndex.resolve`: the tag itself when that
+entity lists the document, else the merge log's chain from a merged-away id to a record that lists
+it, ignoring undone merges. The commit pass renders the notes of every entity a flush touched,
+once, before the registries persist (`RegistryBatch.render_notes`). A reporter's mark re-renders
+the fact's entities' notes when the registry lock is free, else queues them in
+`registry/notes-stale.json` for the next flush. `entity_notes.rebuild` (the Maintenance job "Rebuild
+notes") rewrites every entity and document note from the registries and stored extractions with no
+model call; rebuilding the demo after deleting every note gives identical files. A vault whose
+`registry.json` lacks `entity_note_format: 2` is rebuilt once at its next commit, carrying older
+notes' AI prose into `synthesis` (`by: carried`). Timeline events live in the registry and
+`timeline.md`; the note's chronological Facts list replaces its old Timeline section.
 
 ---
 
@@ -237,14 +250,20 @@ wrong axis).
 
 **Code:** `pipeline/synthesis_bundle.py`, `pipeline/finalize_entity.py`.
 
-An entity earns a synthesized Summary once its `appears_in` reaches 2 documents, counted across the
+An entity earns a synthesized summary once its `appears_in` reaches 2 documents, counted across the
 whole vault (D26). Only entities named in this batch are candidates; the batch is the run's
-`result_*.json` set, so a resumed run still re-synthesizes it (D129). `build_bundle` rebuilds each
-entity's per-document fragments from the staged extractions, and the model rewrites Summary and
-Analysis in calls of at most 25 entities (D238). Synthesis never touches Contradictions, Timeline,
-Relationships or Notes; an entity the model omits keeps its prose. The prompt weights the whole
-body of evidence, so one passing mention doesn't redefine an established entity.
-`/watchdog-entity` (`write_entity.py`) is the on-demand full rebuild from every source.
+`result_*.json` set, so a resumed run still re-synthesizes it (D129). `build_bundle` gives the model
+the entity's **facts** (D280), never its earlier prose: one line each with a short citation
+(`[f:` + the shortest unique prefix of the D271 hash), date, document, page, warnings, the
+reporter's Verified mark and `new` for this batch's facts. Disputed facts are withheld and counted.
+An entity past `FACT_MAX` (120) facts or `FACT_BUDGET_CHARS` gets this batch's facts, then verified
+ones, then the most recent, and a `selection` line says how many it sees. Calls hold at most 25
+entities (D238). The model returns a summary and an optional analysis, asked to cite fact ids where
+a sentence rests on a fact (uncited framing is allowed). `apply_bundle` stores them in the
+registry's `synthesis` with the model id, counts and the short-to-full citation map, then renders
+the note; checking and linking citations is left to a later step. An entity the model omits keeps
+its synthesis. `/watchdog-entity` (`write_entity.py`) stores a session's summary the same way
+(`by: session`).
 
 ---
 
@@ -273,10 +292,16 @@ every document's claims side by side:
   pass; merged survivors get one contradiction-only follow-up call over their joined record.
   Every merge and candidate is staged on an extraction's `identity` block and written to
   `registry/merges.json` at commit (§12).
-- **Contradiction detection.** For each entity in 2+ documents, the model compares its
-  source-attributed claims and returns structured conflicts. `apply_contradictions` files each
-  through `contradiction.run`, which validates both document slugs (D81). Applied **after** commit,
-  because it needs the committed documents registry. Basis does not gate a contradiction (D214).
+- **Contradiction detection.** For each entity in 2+ documents, `_FactLedger` reads its facts from
+  the stored and staged extractions (D280), never a note: `new_facts` (this batch's documents) and
+  `stored_facts` (earlier ones), each grouped under a `[[documents/<slug>|<title>]]` heading, each
+  fact with its short id, page, warnings and source passage (quote or matched passage, cut to 240
+  characters). Disputed facts are left out; `legacy_claims` join the stored side. The model compares
+  new against stored and new against new; a merged survivor's follow-up call treats every fact as
+  new. An oversized entity loses its oldest stored facts, never the new ones. `apply_contradictions`
+  files each conflict through `contradiction.run`, which validates both document slugs (D81).
+  Applied **after** commit, because it needs the committed documents registry. Basis does not gate
+  a contradiction (D214).
 
 A reconcile failure defers the whole batch: nothing commits, and the next `bark` retries (I7). A
 contradiction failure after commit only leaves those callouts for a later run.
@@ -303,7 +328,8 @@ registry, keyed for idempotent replay (D67).
 
 **Post-ingest:**
 
-- **Contradictions** (§8.5), then **entity synthesis** (§8).
+- **Contradictions** (§8.5), then **entity synthesis** (§8). Before the commit pass, a vault whose
+  notes predate D280 is rebuilt once (§7).
 - **Timeline.** Each document stages raw `{date}_{sha7}.ndjson` files; `timeline.collisions`
   promotes uncontested dates and returns dates with events from several documents (including
   several from one batch, D240). Each colliding date gets one dedup call (five dates at a time, at
@@ -378,11 +404,11 @@ queries/ wiki/               session-written findings and threads
 .watchdog/
   queue/<sha>.json           chewed documents; removed after commit
   staging/<sha>/             chewed originals
-  extracted/<sha>.json       staged, validated extractions (kept as an audit record)
+  extracted/<sha>.json       staged, validated extractions; kept, and the source every entity note is rendered from (D280)
   timeline/                  raw and canonical NDJSON events
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
   research/                  research worklist (§14)
-  backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, a fresh run's wipe of leftovers)
+  backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
   registry/
@@ -390,6 +416,7 @@ queries/ wiki/               session-written findings and threads
     resolutions.json requests.json batch-pending.json
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
+    notes-stale.json         entities whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
     .processing-lock .write-lock .verification-lock
@@ -430,7 +457,8 @@ permissions, the prompt hook and dashboard views in existing vaults.
 
 **Merging entities (D54).** `watchdog merge-entities <keep> <merge>` unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
-what it changes. It keeps one Summary and suggests `/watchdog-entity` when both had one.
+what it changes. The merged id's facts reach the survivor through the merge log (§7). It keeps one
+`synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one.
 
 **The merge log (D279).** `registry/merges.json` (`schema_version` 1) records every merge — keep
 and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the
@@ -441,7 +469,18 @@ an entry. It is written only in the finalize commit (`RegistryBatch.flush`, befo
 idempotently) or by `merge_entities.run`, under the registry lock, and regenerates `merges.md`. Each
 entry's `undo` keeps the merged record's extracted id, documents and fact ids, its registry
 snapshot and the backup path; the staged extraction keeps each moved entity's `extracted_id` and
-each fact's `extracted_entities`. There is no split yet: it needs the facts-as-data entity rebuild.
+each fact's `extracted_entities`. Since D280, `undo.version` 2 adds `changes`: per document, the
+entity records, facts (with their tags then) and roles that carried the merged id just before the
+fold (`merge_log.carried_items`); a recurring decision accumulates them. A same-document section
+fold (`merge.py`, D282) is logged with rule `same-document-section` and `undo.available: false`.
+
+**Undo merge (D281).** `pipeline/merge_undo.py` (the app's job `jobs.undoMerge`) re-tags the
+recorded items to the split record (the merged id when free), marks the entry `undone`, rebuilds
+both registry entries' documents, aliases, roles and timeline events from the extractions,
+re-points and restores third records' roles, retags timeline NDJSON from the facts, marks the pair
+"Not the same", and renders the notes. Contradictions, the journalist's Notes and the AI summary
+stay with the survivor. `merge_undo.check` refuses, with a reason, pre-D280 entries, section folds,
+undone entries, a survivor merged away later, a merged id now taken, or a reprocessed document.
 
 ---
 
@@ -635,5 +674,13 @@ noted as such.
   high-confidence rule, a model judgement of a medium-confidence pair, or a reporter's merge; a
   person is never merged on a name alone, and initialled or partial names are never merged
   automatically. Every merge is written to `registry/merges.json` with who decided and the
-  evidence, and a pair the reporter marked "Not the same" is never merged automatically.
-  *History: D127, D279.*
+  evidence, including a fold inside one document read in sections, and a pair the reporter marked
+  "Not the same" (or whose merge was undone) is never merged automatically.
+  *History: D127, D279, D281, D282.*
+- **I13 — Entity notes are views of stored facts; model prose never replaces a fact.** An entity
+  note's facts are rendered by code from the stored extractions on every write, and the note can be
+  rebuilt from stored data with no model call. Model prose is stored separately (the registry's
+  `synthesis`), shown under a heading that says it is AI-written, and is never an input to
+  synthesis or to the contradiction check, which read facts. *History: D26, D118, D280.* Guarded by
+  `tests/test_invariants.py::test_I13_…` and
+  `tests/test_gui_demo.py::test_deleted_notes_rebuild_identically_with_no_model`.

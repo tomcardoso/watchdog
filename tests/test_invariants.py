@@ -442,3 +442,34 @@ def test_I12_every_automatic_fold_is_recorded_in_the_merge_log(tmp_path):
     entry = next(m for m in log["merges"] if m["merged"]["id"] == "ernst-young")
     assert (entry["keep"]["id"], entry["tier"], entry["decided_by"]) == ("ey", "high", "rule")
     assert entry["rule"] and entry["occurrences"][0]["documents"] == ["sha-b"]
+
+
+def test_I13_model_prose_is_never_an_input_and_notes_rebuild_from_facts(tmp_path):
+    """An entity's stored AI summary reaches neither synthesis nor the contradiction check, both of
+    which read the entity's facts; and its note rebuilds, facts and summary, from stored data."""
+    import json as _json
+    from watchdog.pipeline import entity_notes, reconcile, synthesis_bundle
+    from watchdog.pipeline.write_vault import run as wv_run
+    from tests.test_write_vault import make_extraction, make_vault
+    vault = make_vault(tmp_path)
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
+    wv_run(make_extraction(tmp_path), vault)
+    wv_run(make_extraction(tmp_path, {"document": {"sha256": "def456", "filename": "two.pdf"}}), vault)
+    reg = vault / ".watchdog" / "registry" / "entities.json"
+    ents = _json.loads(reg.read_text())
+    ents["alice-smith"]["synthesis"] = {"summary": "PROSE-ONLY-CLAIM about Alice.", "analysis": "",
+                                        "by": "model"}
+    reg.write_text(_json.dumps(ents))
+
+    synth = _json.dumps(synthesis_bundle.build_bundle(vault, ["def456"]))
+    assert "Smith is listed as director" in synth and "PROSE-ONLY-CLAIM" not in synth
+    ledger = _json.dumps(reconcile.build_bundle(vault, ["def456"])["entities"])
+    assert "Smith is listed as director" in ledger and "PROSE-ONLY-CLAIM" not in ledger
+
+    note = vault / "entities" / "person" / "alice-smith.md"
+    note.unlink()
+    entity_notes.rebuild(vault, index_search=False)
+    text = note.read_text()
+    assert "## Summary (AI-written)\n\nPROSE-ONLY-CLAIM about Alice." in text
+    assert text.index("## Summary (AI-written)") < text.index("## Facts")
+    assert "Smith is listed as director" in text.split("## Facts", 1)[1]
