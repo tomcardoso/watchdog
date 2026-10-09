@@ -116,15 +116,12 @@ def test_force_reingest_replaces_committed_note_and_registry_entry_in_place(tmp_
     assert len(doc_notes) == 1
     assert "Acme Restated Annual Report" in doc_note_path.read_text()
 
-    # Replace-not-append on the entity note's Analysis block: the old fact text is gone, the new
-    # one is present, and there is exactly one dated entry for this document (not two).
+    # The entity note's Facts are rendered from the re-extraction: the old fact text is gone and
+    # the new one is present exactly once (D280).
     entity_note_after = entity_note_path.read_text()
     assert "Acme filed in 2024" not in entity_note_after
-    assert "$9,000,000" in entity_note_after
-    # (The entity's `appears_in` frontmatter also links to the document note, so count only the
-    # Analysis block's own "*<date>, via [[doc|title]]:*" attribution line, which is the part
-    # that would double if the document's contribution were appended instead of replaced.)
-    assert entity_note_after.count(f"via [[{docs_after[SHA]['document_note']}|") == 1
+    assert sum(1 for ln in entity_note_after.splitlines()
+               if ln.startswith("- ") and "$9,000,000" in ln) == 1
 
 
 # ── Extraction-time skip-site bypass (the three sites #424 touches) ──────────────────────────

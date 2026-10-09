@@ -44,9 +44,18 @@ def make_extraction(tmp_path: Path, overrides: dict | None = None) -> Path:
             "near_duplicate_of": None,
             "minhash": [],
             "summary": "A test annual report.",
+            # Facts tagged to the entities they are about: an entity note's Facts section is
+            # rendered from these (D280); postflight's per-entity fragments below are derived.
             "key_facts": [
                 {"fact": "Revenue was $1M.", "page": 3, "basis": "stated",
-                 "quote": "Total revenue for the year was $1,000,000."},
+                 "quote": "Total revenue for the year was $1,000,000.", "entities": ["acme-corp"]},
+                {"fact": "Smith is listed as director with significant share holdings.",
+                 "page": 2, "basis": "stated", "entities": ["alice-smith"],
+                 "quote": "Ms. Smith holds 4,200,000 common shares of Acme Corp."},
+                {"fact": "Continued as director", "date": "2024", "page": 2, "basis": "inferred",
+                 "entities": ["alice-smith"]},
+                {"fact": "Appointed director of Acme Corp", "date": "2020-03-15", "page": 2,
+                 "basis": "stated", "entities": ["alice-smith"]},
             ],
         },
         "entities": [
@@ -136,18 +145,20 @@ def test_new_entity_note_has_summary_section(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Summary" in content
-    assert "Alice Smith is a director of Acme Corp." in content
+    # A one-document entity has no AI-written summary: only a model writes one, at synthesis.
+    assert "## Summary" not in content
+    assert "Alice Smith is a director of Acme Corp." not in content
 
 
-def test_entity_note_has_analysis_section(tmp_path):
+def test_entity_note_has_facts_section(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Analysis" in content
+    assert "## Facts" in content and "## Analysis" not in content
     assert "Smith is listed as director" in content
+    assert "Revenue was $1M." not in content          # tagged to Acme, not to Smith
 
 
 def test_entity_note_analysis_omitted_when_null(tmp_path):
@@ -183,7 +194,9 @@ def test_omitted_basis_renders_unmarked(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path, {
-        "document": {"key_facts": [{"fact": "Revenue was $1M.", "page": 3}]},          # no basis ⇒ stated
+        "document": {"key_facts": [{"fact": "Revenue was $1M.", "page": 3},          # no basis ⇒ stated
+                                   {"fact": "Appointed director", "date": "2020",
+                                    "entities": ["alice-smith"]}]},
         "entities": [
             {"id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
              "summary": "A director.",
@@ -383,7 +396,9 @@ def test_existing_entity_notes_section_preserved(tmp_path):
     assert "My hand-written note." in content
 
 
-def test_analysis_accumulates_across_ingests(tmp_path):
+def test_old_note_claims_without_a_stored_extraction_are_kept(tmp_path):
+    """A note written before D280 holds per-document claim blocks; a block whose document has no
+    stored extraction exists nowhere else, so it is carried into the registry and kept."""
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
@@ -413,20 +428,27 @@ def test_analysis_accumulates_across_ingests(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Prior finding." in content
+    assert "## Earlier claims" in content and "Prior finding." in content
     assert "Smith is listed as director" in content
-    # Journalist note must survive too
     assert "Journalist note." in content
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert "Prior finding." in entry["legacy_claims"]
+
+    # A second write reads the registry, not the note, and keeps them once.
+    run(make_extraction(tmp_path), vault)
+    assert (vault / "entities" / "person" / "alice-smith.md").read_text().count("Prior finding.") == 1
 
 
-def test_summary_replaced_on_reingest(tmp_path):
+def test_old_summary_is_carried_as_ai_written(tmp_path):
+    """An older note's Summary is model prose that exists nowhere else: the first rewrite moves it
+    into the registry's synthesis record, labelled as carried over, instead of dropping it."""
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     existing_note = vault / "entities" / "person" / "alice-smith.md"
     existing_note.write_text(
         "---\nid: alice-smith\n---\n\n"
-        "## Summary\n\nOld stale summary.\n\n"
+        "## Summary\n\nOld summary.\n\n"
         "## Notes\n\n"
     )
     existing_entities = {
@@ -449,8 +471,10 @@ def test_summary_replaced_on_reingest(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Old stale summary." not in content
-    assert "Alice Smith is a director of Acme Corp." in content
+    assert "## Summary (AI-written)\n\nOld summary." in content
+    assert "Carried over from an earlier version of Watchdog" in content
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert entry["synthesis"]["summary"] == "Old summary." and entry["synthesis"]["by"] == "carried"
 
 
 # ── Entity merge ──────────────────────────────────────────────────────────────
@@ -856,14 +880,16 @@ def test_missing_source_file_does_not_raise(tmp_path):
 
 # ── Timeline ──────────────────────────────────────────────────────────────────
 
-def test_entity_note_has_timeline_section(tmp_path):
+def test_entity_note_dates_facts_instead_of_a_timeline_section(tmp_path):
+    """The Facts list is chronological and shows each dated fact's date, so the note no longer
+    repeats the dated facts in a separate Timeline section (D280)."""
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Timeline" in content
-    assert "Appointed director of Acme Corp" in content
+    assert "## Timeline" not in content
+    assert "**15 Mar 2020** — Appointed director of Acme Corp" in content
 
 
 def test_timeline_day_precision_rendered(tmp_path):
@@ -1108,16 +1134,17 @@ def test_document_note_notes_quote_spans_pages(tmp_path):
     assert "*(quote spans pages 2–3)*" in content
 
 
-def test_entity_analysis_renders_claim_reason_and_quote(tmp_path):
+def test_entity_facts_render_source_mark_and_quote(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    # claim bullet, its `— reason`, page link, and the verbatim quote as a blockquote
-    assert "## Analysis" in content
-    assert "- Smith is listed as director with significant share holdings." in content
-    assert "— establishes control of Acme" in content
+    # fact bullet, its document and page link, its check status, and the quote as a blockquote
+    assert "## Facts" in content
+    assert ("- Smith is listed as director with significant share holdings. — "
+            "[[documents/test-doc|Test Document]], [[morgue/") in content
+    assert "· not checked ^f-" in content
     assert "  > Ms. Smith holds 4,200,000 common shares of Acme Corp." in content
 
 
@@ -1594,8 +1621,7 @@ def test_reingest_same_document_is_idempotent(tmp_path):
     run(_real_sha_extraction(tmp_path), vault)
 
     note = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    # The claim lives only in ## Analysis; a doubled entry would count it twice.
-    assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
+    # The fact is rendered from the stored extraction, so a second write cannot double it.
     assert note.count("Smith is listed as director") == 1
 
 
@@ -1633,7 +1659,7 @@ def test_repair_retry_converges_after_crash_before_registry_persist(tmp_path, mo
     entities = json.loads((vault / ".watchdog/registry/entities.json").read_text())
     assert _REAL_SHA in entities["alice-smith"]["appears_in"]
     note = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert wv._extract_section(note, "Analysis").count("via [[documents/test-doc") == 1
+    assert note.count("Smith is listed as director") == 1
 
 
 class _FakeMsvcrt:

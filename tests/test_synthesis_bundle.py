@@ -198,12 +198,11 @@ def test_apply_bundle_writes_prose_preserves_structured_sections(tmp_path):
 
     assert outcome["applied"] == ["alice-smith"]
     note = _note(vault)
-    assert "SYNTHESIZED summary across sources." in _extract_section(note, "Summary")
-    assert "SYNTHESIZED analysis." in _extract_section(note, "Analysis")
-    assert "Old summary." not in note and "Old finding." not in note
-    # Structured sections untouched:
+    summary = _extract_section(note, "Summary (AI-written)")
+    assert "SYNTHESIZED summary across sources." in summary and "SYNTHESIZED analysis." in summary
+    assert "Old finding." not in note
+    # Structured sections are rendered from data, untouched by the prose:
     assert "[!contradiction]" in _extract_section(note, "Contradictions")
-    assert "Appointed director" in _extract_section(note, "Timeline")
     assert "Acme Corp" in _extract_section(note, "Relationships")
 
 
@@ -219,8 +218,10 @@ def test_apply_bundle_skips_unknown_id_and_empty_summary(tmp_path):
 
     assert outcome["applied"] == []
     assert set(outcome["skipped"]) == {"ghost-entity", "alice-smith"}
-    # alice-smith keeps her carried-forward summary, untouched.
-    assert "Alice Smith is a director of Acme Corp." in _note(vault)
+    # Nothing was stored, so alice-smith still has no AI-written summary.
+    assert "## Summary" not in _note(vault)
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert "synthesis" not in entry
 
 
 def test_apply_bundle_writes_registry_once_for_multiple(tmp_path):

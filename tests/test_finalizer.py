@@ -22,19 +22,19 @@ CALLOUT = "> [!contradiction] role\n> - **director** — [[documents/a|A]], p.1 
 def test_contradictions_go_to_own_section_not_analysis(tmp_path):
     vault = make_vault(tmp_path)
     wv_run(make_extraction(tmp_path, {
+        "document": {"key_facts": [{"fact": "Holds significant shares.", "basis": "stated",
+                                    "entities": ["alice-smith"]}]},
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
-            "summary": "A director.",
-            "evidence_fragments": [{"claim": "Holds significant shares.", "basis": "stated"}],
             "contradictions": [CALLOUT],
             "timeline_events": [], "roles": [],
         }],
     }), vault)
 
-    analysis = _extract_section(_note(vault), "Analysis")
+    facts = _extract_section(_note(vault), "Facts")
     contradictions = _extract_section(_note(vault), "Contradictions")
-    assert "Holds significant shares." in analysis
-    assert "[!contradiction]" not in analysis        # callout is NOT in Analysis
+    assert "Holds significant shares." in facts
+    assert "[!contradiction]" not in facts           # callout is NOT among the facts
     assert "[!contradiction]" in contradictions       # it IS in its own section
 
 
@@ -60,8 +60,6 @@ def test_finalizer_replaces_summary_and_analysis_preserves_rest(tmp_path):
     wv_run(make_extraction(tmp_path, {
         "entities": [{
             "id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
-            "summary": "Old summary.",
-            "evidence_fragments": [{"claim": "Old finding.", "basis": "stated"}],
             "contradictions": [CALLOUT],
             "timeline_events": [{"date": "2020-03-15", "event": "Appointed director", "page": 2, "basis": "stated"}],
             "roles": [{"relationship": "Director of", "target_id": "acme-corp", "target_type": "Company",
@@ -79,10 +77,14 @@ def test_finalizer_replaces_summary_and_analysis_preserves_rest(tmp_path):
     fe.run(synth, vault)
 
     note = _note(vault)
-    assert "SYNTHESIZED summary across sources." in _extract_section(note, "Summary")
-    assert "SYNTHESIZED analysis." in _extract_section(note, "Analysis")
-    assert "Old summary." not in note and "Old finding." not in note
-    # Structured sections untouched:
+    summary = _extract_section(note, "Summary (AI-written)")
+    assert "SYNTHESIZED summary across sources." in summary
+    assert "SYNTHESIZED analysis." in summary
+    assert "It can be wrong: the facts below are the record." in summary
+    # The prose is stored in the registry, so a rebuilt note gets it back with no model call.
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert entry["synthesis"]["summary"] == "SYNTHESIZED summary across sources."
+    # The facts and structured sections are rendered from data, untouched by the prose:
+    assert "Appointed director of Acme Corp" in _extract_section(note, "Facts")
     assert "[!contradiction]" in _extract_section(note, "Contradictions")
-    assert "Appointed director" in _extract_section(note, "Timeline")
     assert "Acme Corp" in _extract_section(note, "Relationships")

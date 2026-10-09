@@ -89,10 +89,13 @@ def test_timeline_replaced_not_accumulated(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    # Old event should be gone — replaced, not accumulated
+    # Old event should be gone — replaced, not accumulated. The session's events live in the
+    # registry (the app's entity timeline); the note lists facts, not a Timeline section (D280).
     assert "Old event from prior ingest" not in content
-    assert "Transferred shares with no equity received" in content
-    assert "Listed as director in annual report" in content
+    assert "## Timeline" not in content
+    events = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]["timeline_events"]
+    assert {e["event"] for e in events} == {"Transferred shares with no equity received",
+                                            "Listed as director in annual report"}
 
 
 def test_timeline_events_replaced_in_registry(tmp_path):
@@ -110,14 +113,14 @@ def test_timeline_events_replaced_in_registry(tmp_path):
     assert not any("Old event" in e["event"] for e in events)
 
 
-def test_timeline_sorted_in_note(tmp_path):
+def test_session_summary_is_stored_as_ai_written(tmp_path):
     vault = make_vault(tmp_path)
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    pos_2015 = content.find("Transferred shares")
-    pos_2019 = content.find("Listed as director")
-    assert pos_2015 < pos_2019
+    assert "## Summary (AI-written)" in content and "Written in a Claude session" in content
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert entry["synthesis"]["by"] == "session"
 
 
 # ── Preserved sections ────────────────────────────────────────────────────────

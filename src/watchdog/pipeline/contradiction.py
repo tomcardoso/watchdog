@@ -14,7 +14,6 @@ No model calls. Run from inside the vault it mutates, the same convention
 """
 
 import json
-import sys
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
@@ -22,13 +21,9 @@ from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
     _write_json_atomic,
     _defang,
-    _extract_analysis,
     _extract_contradictions,
-    _extract_notes_section,
-    _extract_summary,
     _today,
     _update_manifest,
-    build_entity_note,
 )
 
 
@@ -128,31 +123,11 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
 
     entry["date_last_updated"] = _today()
 
-    # Re-render the note from the registry, applying the resolved-contradiction overlay to the
-    # body (the ledger keeps the full list; the body is a filtered render) and preserving the
-    # note-only prose sections the registry does not carry.
-    resolved = resolutions.resolved_ids(vault)
-    contradictions_body = "\n\n".join(resolutions.filter_callouts(all_callouts, resolved))
-    summary = _extract_summary(note_path)
-    analysis = _extract_analysis(note_path)
-    notes_section = _extract_notes_section(note_path)
-
-    note_path.parent.mkdir(parents=True, exist_ok=True)
-    note_content = build_entity_note(
-        entry, notes_section, documents_reg, summary, analysis, contradictions_body
-    )
-    note_path.write_text(note_content, encoding="utf-8")
-
-    try:
-        from watchdog.pipeline.embed import add_note
-        add_note(vault, entry["note_path"], note_content)
-    except Exception as e:
-        print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
-    try:
-        from watchdog.pipeline.fulltext import add_note as fts_add_note
-        fts_add_note(vault, entry["note_path"], "entity", entry["name"], note_content)
-    except Exception as e:
-        print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+    # Re-render the note from data (D280): the registry ledger, with the resolved-contradiction
+    # overlay applied to the body, plus the facts, synthesis, relationships and journalist notes.
+    from watchdog.pipeline import entity_notes
+    written = entity_notes.write_entities(vault, [entity_id], entities_reg, documents_reg)
+    entity_notes.index_notes(vault, written)
 
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault, entities_reg)

@@ -495,8 +495,13 @@ def unresolved_contradictions(ent: dict, resolved: frozenset[str]) -> list[str]:
 def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> dict:
     """The app's `EntityRow` for one `entities.json` record."""
     note_stem = ent.get("note_path")
-    parsed = parse_note_file(note_file(vault, note_stem) or Path("/nonexistent"))
-    summary_text = (parsed or {}).get("sections", {}).get("summary") if parsed else None
+    synthesis = ent.get("synthesis") if isinstance(ent.get("synthesis"), dict) else None
+    if synthesis is not None or "synthesis" in ent:
+        # The AI-written summary lives in the registry (D280); the note is a view of it.
+        summary_text = (synthesis or {}).get("summary")
+    else:   # a note written before D280
+        parsed = parse_note_file(note_file(vault, note_stem) or Path("/nonexistent"))
+        summary_text = (parsed or {}).get("sections", {}).get("summary") if parsed else None
     summary = first_paragraph(summary_text)
     return {
         "id": eid,

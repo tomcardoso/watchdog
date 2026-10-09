@@ -85,7 +85,7 @@ def test_contradictions_synthesis_and_merges(demo_vault):
     flagged = [e for e in entities.values() if e.get("contradictions")]
     assert len(flagged) >= 2
     note = (vault / "entities" / "person" / "dana-whitcombe.md").read_text(encoding="utf-8")
-    assert "[!contradiction]" in note and "## Summary" in note and "## Analysis" in note
+    assert "[!contradiction]" in note and "## Summary (AI-written)" in note and "## Facts" in note
     # Two reconciliation merges folded the variant ids away.
     assert "planning-procurement-committee" not in entities
     assert "port-calder-land-registry" not in entities

@@ -527,7 +527,9 @@ def test_real_pipeline_vault(tmp_path, monkeypatch):
     assert [e["id"] for e in detail["entities"]] == ["acme-corp"]
     ents = call("vault.entities", vault=v)
     assert ents[0]["id"] == "acme-corp" and ents[0]["doc_count"] == 2
-    assert ents[0]["type"] == "organization" and ents[0]["has_summary"] is True
+    # Only synthesis writes a summary (the fixture's model returns none); an extraction's own
+    # per-entity summary is no longer written into the note (D280).
+    assert ents[0]["type"] == "organization" and ents[0]["has_summary"] is False
     ent = call("vault.entity", vault=v, id="acme-corp")
     assert len(ent["documents"]) == 2 and ent["sections"]["notes"].startswith("<!--")
     assert call("vault.graph", vault=v)["nodes"][0]["id"] == "acme-corp"

@@ -314,14 +314,16 @@ def test_run_updates_registry_entity_count(tmp_path):
     assert registry["entity_count"] == 3
 
 
-def test_run_concatenates_analysis_with_provenance(tmp_path):
+def test_run_keeps_both_records_claims(tmp_path):
+    """Both notes predate stored extractions here, so their claim blocks exist only in the notes:
+    the merge carries both into the survivor's registry entry and renders them (D280)."""
     vault = make_vault(tmp_path)
     run(vault, "alice-smith", "a-smith-duplicate")
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
     assert "Alice Smith is listed as director" in content
     assert "Signed as officer of Acme Corp" in content
-    assert "Merged from" in content
+    assert "## Earlier claims" in content
     assert "a-smith-duplicate" in content
 
 

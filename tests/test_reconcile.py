@@ -172,8 +172,14 @@ def _stage(vault: Path, sha: str, filename: str, entities: list[dict], *, date="
     touched-this-run. Each entity dict is already in post-postflight shape (id/name/type/aliases/
     roles/evidence_fragments/timeline_events)."""
     (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    # Each fragment is a fact on the document tagged to its entity, the shape postflight fans out
+    # from (D26); entity notes and the contradiction ledger read the facts (D280).
+    key_facts = [{"fact": f["claim"], "page": f.get("page"), "basis": f.get("basis", "stated"),
+                  "entities": [e["id"]]}
+                 for e in entities for f in e.get("evidence_fragments") or []]
     artifact = {
-        "document": {"sha256": sha, "filename": filename, "title": filename, "date_of_document": date},
+        "document": {"sha256": sha, "filename": filename, "title": filename, "date_of_document": date,
+                     "key_facts": key_facts},
         "entities": entities,
     }
     (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text(json.dumps(artifact))
@@ -491,7 +497,7 @@ def test_taxonomy_existing_existing_gets_full_merge_entities_surgery(tmp_path, m
     assert list((vault / ".watchdog" / "backups").glob("*-merge-entities"))   # a real backup snapshot
 
     note = (vault / "entities" / "company" / "acme-corp.md").read_text()
-    assert "Merged from" in note
+    assert "Filed in Ontario." in note       # the merged record's claim, kept (D280)
     assert "Acme Corp signed a new lease." in note
 
     log = json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())

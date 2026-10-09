@@ -1,19 +1,13 @@
 #!/usr/bin/env python3
 """
-Write a finalizer's synthesized prose into an entity note.
+Store a finalizer's synthesized prose for an entity and re-render its note (D280).
 
-Used by post-ingest after it reconciles an entity's per-document fragments. The
-shared ``apply_one`` writer replaces *only* the prose sections — ## Summary and
-## Analysis — leaving the append-only ## Contradictions log, the
-deterministically-merged ## Timeline, ## Relationships, and the journalist
-## Notes untouched. It backs the bulk synthesis path (``synthesis_bundle.py``'s
-``apply_bundle``, called from `orchestrate.py`); this module's own ``main()``
-below is a standalone single-entity entry point (not wired into the `watchdog`
-CLI), runnable as ``python -m watchdog.pipeline.finalize_entity``.
-
-Unlike watchdog-write-entity (the /watchdog-entity full refresh, which also
-re-synthesizes the Timeline), this is a narrow prose-only write — it never reads
-or rewrites structured sections.
+Used by post-ingest after synthesis. The prose is stored in the registry entry's `synthesis`
+record and shown in the note under "Summary (AI-written)"; every other section of the note is
+rendered from data (`entity_notes`), and the journalist's ## Notes are never touched. It backs the
+bulk synthesis path (``synthesis_bundle.apply_bundle``, called from `orchestrate.py`); this
+module's own ``main()`` below is a standalone single-entity entry point (not wired into the
+`watchdog` CLI), runnable as ``python -m watchdog.pipeline.finalize_entity``.
 
 Usage:
     python -m watchdog.pipeline.finalize_entity --entity-id alice-smith --extraction .watchdog/tmp/wdg_synth-alice-smith.json [--vault .]
@@ -31,10 +25,7 @@ import sys
 from pathlib import Path
 
 from watchdog.pipeline.write_vault import (
-    _extract_notes_section,
-    _extract_contradictions,
     _update_manifest,
-    build_entity_note,
     _today,
 )
 
@@ -46,45 +37,37 @@ def apply_one(
     vault_path: Path,
     entities_reg: dict,
     documents_reg: dict,
+    meta: dict | None = None,
 ) -> bool:
-    """Write one entity's synthesized prose into its note.
+    """Store one entity's synthesized prose and re-render its note.
 
-    Replaces only ## Summary and ## Analysis; preserves Contradictions, Timeline,
-    Relationships, and journalist Notes. Mutates the entry's date_last_updated in
-    ``entities_reg`` but does not persist entities.json — the caller writes the
-    registry once after applying every entity. Returns False if the entity is
-    unknown (caller decides whether that is an error or a skip).
-
-    Shared by this module's standalone single-entity entry point and the bulk
-    synthesis_bundle.apply_bundle path.
-    """
+    The prose is kept in the registry entry's `synthesis` record (D280), with who wrote it and
+    from how many facts (`meta`), and the note is rendered from data: the prose under "Summary
+    (AI-written)", the facts, contradictions, relationships and the journalist's Notes untouched.
+    Mutates ``entities_reg`` but does not persist entities.json — the caller writes the registry
+    once after applying every entity. Returns False if the entity is unknown."""
+    from watchdog.pipeline import entity_notes
+    from watchdog.pipeline.write_vault import _now_iso
     if entity_id not in entities_reg:
         return False
 
     entry = entities_reg[entity_id]
-    note_path = vault_path / f"{entry['note_path']}.md"
-
-    # Timeline and Relationships come from the registry entry unchanged; contradictions
-    # and journalist notes are preserved from the existing note. Only the prose is new.
-    notes_section = _extract_notes_section(note_path)
-    contradictions = _extract_contradictions(note_path)
+    meta = dict(meta or {})
+    entry["synthesis"] = {
+        "version": entity_notes.SYNTHESIS_VERSION,
+        "summary": (new_summary or "").strip(),
+        "analysis": (new_analysis or "").strip(),
+        "by": meta.pop("by", "model"),
+        "model": meta.pop("model", None),
+        "made_at": meta.pop("made_at", None) or _now_iso(),
+        "facts_total": meta.pop("facts_total", None),
+        "facts_shown": meta.pop("facts_shown", None),
+        "fact_refs": meta.pop("fact_refs", {}) or {},
+        **meta,
+    }
     entry["date_last_updated"] = _today()
-
-    note_path.parent.mkdir(parents=True, exist_ok=True)
-    note_content = build_entity_note(
-        entry, notes_section, documents_reg, new_summary, new_analysis, contradictions
-    )
-    note_path.write_text(note_content, encoding="utf-8")
-    try:
-        from watchdog.pipeline.embed import add_note
-        add_note(vault_path, entry["note_path"], note_content)
-    except Exception as e:
-        print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
-    try:
-        from watchdog.pipeline.fulltext import add_note as fts_add_note
-        fts_add_note(vault_path, entry["note_path"], "entity", entry["name"], note_content)
-    except Exception as e:
-        print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+    written = entity_notes.write_entities(vault_path, [entity_id], entities_reg, documents_reg)
+    entity_notes.index_notes(vault_path, written)
     return True
 
 

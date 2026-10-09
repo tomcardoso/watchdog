@@ -535,6 +535,9 @@ class RegistryBatch:
         self._undo: tuple | None = None
         self._merge_log: list[dict] = []     # merge-log entries of the documents written so far
         self._merge_log_mark = 0
+        self._note_ids: set[str] = set()     # entities whose notes the next flush renders (D280)
+        self._overrides: dict[str, dict] = {}
+        self._pending_notes: tuple | None = None
 
     def __enter__(self) -> "RegistryBatch":
         self.registry_dir.mkdir(parents=True, exist_ok=True)
@@ -571,6 +574,7 @@ class RegistryBatch:
             return
         entities, doc_sha256, document, missing = self._undo
         del self._merge_log[self._merge_log_mark:]
+        self._pending_notes = None
         for eid, entry in entities.items():
             if entry is missing:
                 self.entities.pop(eid, None)
@@ -586,11 +590,32 @@ class RegistryBatch:
         """Record one document written; flush once `flush_every` have accumulated. `after_flush`
         runs once that document's registry entries are on disk."""
         self._undo = None
+        if self._pending_notes is not None:
+            ids, sha, extraction = self._pending_notes
+            self._note_ids |= ids
+            self._overrides[sha] = extraction
+            self._pending_notes = None
         self._pending += 1
         if after_flush is not None:
             self._after_flush.append(after_flush)
         if self._pending >= self.flush_every:
             self.flush()
+
+    def notes_for(self, entity_ids: set[str], doc_sha256: str, extraction: dict) -> None:
+        """Queue the notes one document's write touched, rendered at the flush that commits it."""
+        self._pending_notes = (set(entity_ids), doc_sha256, extraction)
+
+    def render_notes(self) -> list[tuple[str, str, str]]:
+        """Render every queued entity note from the batch's in-memory registries (D280)."""
+        if not self._note_ids:
+            return []
+        from watchdog.pipeline import entity_facts, entity_notes
+        index = entity_facts.FactIndex(self.vault_path, self.entities, self.documents,
+                                       overrides=self._overrides)
+        written = entity_notes.write_entities(self.vault_path, self._note_ids, self.entities,
+                                              self.documents, index=index)
+        self._note_ids, self._overrides = set(), {}
+        return written
 
     def log_merges(self, entries: list[dict]) -> None:
         """Queue a document's merge-log entries (D279) for the flush that commits it."""
@@ -601,6 +626,7 @@ class RegistryBatch:
             return
         # Before the registries: a crash in between leaves entries for documents a replay commits
         # again, and `merge_log.record` is idempotent, so the log never misses a committed merge.
+        written = self.render_notes()
         logged = bool(self._merge_log)
         if logged:
             from watchdog.pipeline import merge_log
@@ -609,6 +635,9 @@ class RegistryBatch:
         _persist_registries(self.vault_path, self.entities, self.documents)
         if logged:
             merge_log.render(self.vault_path)     # after the registries, so it names the documents
+        if written:
+            from watchdog.pipeline import entity_notes
+            entity_notes.index_notes(self.vault_path, written)
         self._pending = 0
         callbacks, self._after_flush = self._after_flush, []
         for callback in callbacks:
@@ -986,14 +1015,19 @@ def build_entity_note(
     return fm + body + notes_section
 
 
-def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str | None = None) -> str:
+def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str | None = None,
+                         rec: dict | None = None, old: str | None = None) -> str:
+    """A document note from its extraction. `rec` (the registry entry) supplies the ingestion date,
+    so a rebuild gives the same note; `old` (the note on disk) supplies the journalist's Notes,
+    which are carried over unchanged (D280)."""
+    ingested = ((rec or {}).get("ingested_at") or "")[:10] or _today()
     fm = _frontmatter({
         "title":            doc.get("title", doc["filename"]),
         "type":             "Document",
         "document_type":    doc.get("document_type"),
         "file":             doc["filename"],
         "date_of_document": doc.get("date_of_document"),
-        "date_ingested":    _today(),
+        "date_ingested":    ingested,
         "source":           doc.get("source"),
         "obtained":         doc.get("obtained"),
         "entities_mentioned": [
@@ -1033,7 +1067,12 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         for e in entity_entries:
             body += f"- [[entities/{_type_dir(e['type'])}/{e['id']}|{_defang(e['name'])}]]\n"
 
-    body += "\n## Notes\n\n<!-- Reserved for journalist annotations — never overwritten by ingestion. -->\n"
+    from watchdog.pipeline.entity_notes import _NOTES_RE
+    m = _NOTES_RE.search(old or "")
+    if m:
+        body += "\n" + old[m.start():]
+    else:
+        body += "\n## Notes\n\n<!-- Reserved for journalist annotations — never overwritten by ingestion. -->\n"
 
     return fm + body
 
@@ -1045,10 +1084,17 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     """Commit one staged extraction to the vault. With `batch` (#696), the registries are read
     from and left in the batch's memory — persisting them is the batch's flush, not this call's —
     and the batch already holds the registry lock."""
-    extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
+    raw = extraction_path.read_text(encoding="utf-8")
+    extraction = json.loads(raw)
     doc = extraction.get("document")
     if not doc:
         sys.exit(f"Error: extraction JSON missing required 'document' key ({extraction_path.name})")
+    # The stored extraction is the record every entity note is rendered from (D280), so a document
+    # committed from anywhere else is kept there too, as committed.
+    stored = vault_path / ".watchdog" / "extracted" / f"{doc.get('sha256')}.json"
+    if doc.get("sha256") and extraction_path.resolve() != stored.resolve():
+        stored.parent.mkdir(parents=True, exist_ok=True)
+        stored.write_text(raw, encoding="utf-8")
     incoming_entities = extraction.get("entities", [])
     # Collapse each entity's model-invented type onto the closed vocabulary (#335) before it
     # becomes load-bearing — the stored registry type, the `entities/<type>/` folder, the note
@@ -1176,68 +1222,25 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             document_note=documents_reg[doc_sha256]["document_note"],
         )
 
-        # ── 3. Write entity notes ─────────────────────────────────────────────
+        # ── 3. Entity notes ───────────────────────────────────────────────────
         #
-        # Steps 3–4 write the vault notes (the human-facing artifacts); the derived search
-        # indexes are deferred to step 6, *after* the registries persist, since they are
-        # rebuilt-from-source data that a re-run regenerates (#259). The notes themselves are
-        # idempotent per document: the ## Analysis block is keyed by this document (doc-note
-        # link) and replaced, not appended, so a repair retry converges instead of doubling
-        # claims.
-
-        incoming_by_id = {e["id"]: e for e in incoming_entities}
+        # An entity note is a view of stored data (D280): its Facts section is rendered from every
+        # stored extraction that tags the entity, so it is rebuilt whole, never appended to. In a
+        # batch the notes of every entity a flush covers are rendered once, at that flush, before
+        # the registries persist; alone, they are rendered here. Either way a repair retry
+        # converges, since the render reads only data.
 
         # (note_path, kind, title, content) tuples replayed into the embed + FTS indexes
         # after the commit point.
         note_index_jobs: list[tuple[str, str, str, str]] = []
-
-        for eid in modified:
-            entry = entities_reg[eid]
-            note_path = _assert_in_vault(
-                vault_path / f"{entry['note_path']}.md", vault_path, "entity note_path"
-            )
-            note_path.parent.mkdir(parents=True, exist_ok=True)
-
-            notes_section = _extract_notes_section(note_path)
-
-            incoming = incoming_by_id.get(eid, {})
-            # Extraction no longer emits a per-entity summary (#140). A recurring entity
-            # (appears_in >= 2) gets a model-synthesized summary in post-ingest; a single-document
-            # entity is a deterministic stub with no Summary section (its facts live in ## Analysis).
-            # So the only summary at write time is a carried one from a prior synthesis.
-            new_summary = incoming.get("summary") or _extract_summary(note_path)
-
-            doc_note = documents_reg[doc_sha256]["document_note"]
-            # Replace-not-append: drop any block this document contributed on a prior (crashed)
-            # attempt before adding it back, so a repair retry doesn't duplicate the entry (#259).
-            existing_analysis = _drop_analysis_entry(_extract_analysis(note_path), doc_note)
-            new_analysis_text = _render_evidence_fragments(
-                incoming.get("evidence_fragments") or [],
-                documents_reg[doc_sha256]["morgue_path"],
-            )
-            if new_analysis_text:
-                entry_line = f"*{_today()}, via [[{doc_note}|{_defang(doc_title)}]]:*\n{new_analysis_text}"
-                accumulated = (
-                    existing_analysis.rstrip() + "\n\n" + entry_line
-                ).lstrip() if existing_analysis else entry_line
-            else:
-                accumulated = existing_analysis
-
-            # The registry entry is the contradiction ledger (#282); the note body is a
-            # filtered render of it. Fold in any note-only callouts too (self-healing
-            # backfill for pre-#282 vaults, or a stray hand-edit) before filtering (#288).
-            all_callouts = resolutions.dedup_callouts(
-                list(entry.get("contradictions") or [])
-                + resolutions.split_callouts(_extract_contradictions(note_path))
-            )
-            entry["contradictions"] = all_callouts
-            contradictions = "\n\n".join(resolutions.filter_callouts(all_callouts, resolved_ids))
-
-            note_content = build_entity_note(
-                entry, notes_section, documents_reg, new_summary, accumulated, contradictions
-            )
-            note_path.write_text(note_content, encoding="utf-8")
-            note_index_jobs.append((entry["note_path"], "entity", entry["name"], note_content))
+        if batch is None:
+            from watchdog.pipeline import entity_facts, entity_notes
+            index = entity_facts.FactIndex(vault_path, entities_reg, documents_reg,
+                                           overrides={doc_sha256: extraction})
+            for np_, name, content in entity_notes.write_entities(
+                    vault_path, modified, entities_reg, documents_reg, index=index,
+                    resolved=resolved_ids):
+                note_index_jobs.append((np_, "entity", name, content))
 
         # ── 4. Write document note ────────────────────────────────────────────
 
@@ -1246,7 +1249,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         )
         doc_note_path.parent.mkdir(parents=True, exist_ok=True)
         entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
-        doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative)
+        old_doc_note = doc_note_path.read_text(encoding="utf-8") if doc_note_path.exists() else None
+        doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative,
+                                                rec=documents_reg[doc_sha256], old=old_doc_note)
         doc_note_path.write_text(doc_note_content, encoding="utf-8")
         note_index_jobs.append((f"documents/{slug}", "document", doc_title, doc_note_content))
 
@@ -1264,6 +1269,8 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
                 merge_log.render(vault_path)
         elif identity_log:
             batch.log_merges(identity_log)
+        if batch is not None:
+            batch.notes_for(modified, doc_sha256, extraction)
 
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(

@@ -38,14 +38,11 @@ from pathlib import Path
 from watchdog.vault_paths import is_vault
 from watchdog.pipeline.write_vault import (
     _defang_links,
-    _extract_analysis,
-    _extract_contradictions,
-    _extract_notes_section,
+    _now_iso,
     _registry_lock,
     _today,
     _update_manifest,
     _write_json_atomic,
-    build_entity_note,
 )
 from watchdog.pipeline.timeline import cmd_rebuild_timeline
 
@@ -88,36 +85,27 @@ def run(extraction_path: Path, vault_path: Path) -> None:
             sys.exit(f"Error: entity '{entity_id}' not found in entities.json")
 
         entry = entities_reg[entity_id]
-        note_path = vault_path / f"{entry['note_path']}.md"
-
         # Replace timeline events entirely (full refresh from all documents)
         entry["timeline_events"] = new_events
         entry["date_last_updated"] = _today()
 
-        # Preserve existing analysis and contradictions — entity refresh doesn't touch them
-        existing_analysis = _extract_analysis(note_path)
-        existing_contradictions = _extract_contradictions(note_path)
-        notes_section = _extract_notes_section(note_path)
-
-        note_path.parent.mkdir(parents=True, exist_ok=True)
-        note_content = build_entity_note(
-            entry, notes_section, documents_reg, new_summary, existing_analysis, existing_contradictions
-        )
-        note_path.write_text(note_content, encoding="utf-8")
+        # The session's summary is AI-written prose: stored as the entity's synthesis record and
+        # shown under "Summary (AI-written)"; the rest of the note is rendered from data (D280).
+        from watchdog.pipeline import entity_notes
+        if new_summary:
+            old = entry.get("synthesis") or {}
+            entry["synthesis"] = {
+                "version": entity_notes.SYNTHESIS_VERSION, "summary": new_summary,
+                "analysis": old.get("analysis") or "",
+                "by": "session", "model": None, "made_at": _now_iso(),
+                "facts_total": None, "facts_shown": None, "fact_refs": {},
+            }
+        written = entity_notes.write_entities(vault_path, [entity_id], entities_reg, documents_reg)
         _write_json_atomic(entities_path, entities_reg)
         _update_manifest(vault_path, entities_reg)
         cmd_rebuild_timeline(vault_path, quiet=True)
 
-    try:
-        from watchdog.pipeline.embed import add_note
-        add_note(vault_path, entry["note_path"], note_content)
-    except Exception as e:
-        print(f"  Warning: embed index update failed for {entry['note_path']}: {e}", file=sys.stderr)
-    try:
-        from watchdog.pipeline.fulltext import add_note as fts_add_note
-        fts_add_note(vault_path, entry["note_path"], "entity", entry["name"], note_content)
-    except Exception as e:
-        print(f"  Warning: full-text index update failed for {entry['note_path']}: {e}", file=sys.stderr)
+    entity_notes.index_notes(vault_path, written)
 
     # The refresh JSON was scratch input; clearing it here saves the skill a `rm` call (and its
     # permission prompt).
