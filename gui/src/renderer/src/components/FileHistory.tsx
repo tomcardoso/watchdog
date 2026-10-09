@@ -86,7 +86,7 @@ export function FileHistoryModal({ vault, path, title, initialVersion, onClose }
                   <span className="spacer" />
                   <CopyVersion vault={vault} path={h.path} version={row.version} disabled={row.deleted} />
                   {h.restore !== 'none' && (
-                    <Button size="sm" variant="primary" icon={RotateCcw} disabled={row.deleted || row.current || h.too_new} onClick={() => setConfirm(true)} tip={row.current ? 'This is the file as it is now' : undefined}>
+                    <Button size="sm" variant="primary" icon={RotateCcw} disabled={row.deleted || row.current || h.too_new} onClick={() => setConfirm(true)}>
                       {h.restore === 'notes' ? 'Restore my notes' : 'Restore this version'}
                     </Button>
                   )}
@@ -186,8 +186,8 @@ export function DiffView({ d, against }: { d: FileDiff; against: Against }) {
         <span className="spacer" />
         {!d.identical && (
           <span className="hist-counts tnum">
-            <span className="ins">+{plural(d.added, 'line')}</span>
-            <span className="del">−{plural(d.removed, 'line')}</span>
+            {d.added > 0 && <span className="ins">+{plural(d.added, 'line')}</span>}
+            {d.removed > 0 && <span className="del">−{plural(d.removed, 'line')}</span>}
           </span>
         )}
       </div>

@@ -3,9 +3,9 @@
 .hist {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 16px;
-  min-height: 420px;
-  max-height: calc(100vh - 200px);
+  height: max(320px, min(640px, calc(100vh - 230px)));
 }
 .hist-list {
   list-style: none;
@@ -197,6 +197,7 @@
 .vh-head .m {
   color: var(--text-3);
   font-size: var(--fs-sm);
+  white-space: nowrap;
 }
 .vh-files {
   margin: 8px 0 2px 2px;

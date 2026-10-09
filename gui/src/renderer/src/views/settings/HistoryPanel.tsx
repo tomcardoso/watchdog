@@ -48,7 +48,7 @@ export function HistoryPanel() {
           <div className="col gap-12">
             <div className="muted">
               {st.data!.versions
-                ? <>{plural(st.data!.versions, 'version')} of {plural(st.data!.files, 'file')}, {fmtBytes(st.data!.bytes)} on disk, since {fmtDateTime(st.data!.since)}.</>
+                ? <>{plural(st.data!.versions, 'version')} of {plural(st.data!.files, 'file')}, {fmtBytes(st.data!.bytes)} on disk. The earliest is from {fmtDateTime(st.data!.since)}</>
                 : 'No versions recorded yet.'}
             </div>
             <div>
