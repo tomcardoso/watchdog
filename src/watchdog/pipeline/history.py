@@ -429,6 +429,15 @@ def label(cause: dict | None) -> str:
         status = c.get("status")
         text = {"verified": "Fact marked verified", "disputed": "Fact marked disputed",
                 "unverifiable": "Fact marked unverifiable"}.get(status, "Fact mark cleared")
+    elif kind == "recheck":
+        names = [n for n in c.get("names") or [] if isinstance(n, str)]
+        more = int(c.get("count") or len(names)) - len(names)
+        if c.get("all"):
+            text = "Contradictions re-checked: the whole investigation"
+        elif names:
+            text = f"Contradictions re-checked: {', '.join(names)}" + (f" and {more} more" if more > 0 else "")
+        else:
+            text = "Contradictions re-checked"
     elif kind == "rebuild":
         text = "Notes rebuilt from stored data"
     elif kind == "notes":
