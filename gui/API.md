@@ -19,8 +19,8 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   `watchdog …` command as a subprocess (see `jobs.*` and `action.run`), so the app and the terminal
   can never disagree about what a command does. Thin in-process mutations are used only where the
   CLI's own code is already a library function (resolutions, settings, auth keys, the `## Notes`
-  section of a note). App-only features with no CLI command (`history.restore`, `history.clear`)
-  call their library function directly (D286, I10).
+  section of a note). App-only features with no CLI command (`history.restore`, `history.remove`,
+  `history.clear`) call their library function directly (D286, D288, I10).
 - **Folder access (D268).** When the app starts the server with `WATCHDOG_ENFORCE_ACCESS=1`, any
   call naming a vault outside the folders in `~/.watchdog/access.json`, and any `jobs.start` or
   `action.run` there, fails with `RpcError(code="not_granted", data={"path"})`. The server only
@@ -57,7 +57,8 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 Project = {
   slug, name, description|null, path, archived: bool, created|null,
   health: null | "missing" | "not_a_vault" | "registry_corrupt",   // _check_project_health
-  stats: { documents, entities, last_ingest|null, incoming, awaiting, failed },
+  stats: { documents, entities, last_ingest|null, incoming, awaiting, failed,
+           history_bytes|null },   // the version history's size on disk, from a cache (D288); null with none
   access: bool   // false when folder access is enforced and the vault isn't in an allowed folder
 }
 ```
@@ -123,7 +124,7 @@ EntityRow = {
 | `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, docs: string[]}]}` — `docs` are document shas, repeated (source, target, role) edges merged; stated-direction edges only, edges to unprofiled ids dropped (as `export._forward_edges`) |
 | `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
-| `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes only; an empty `text` keeps the placeholder comment) — replaces only the body of the note's `## Notes` section (journalist annotations; the pipeline never writes there). Recorded as a version of the note's history (D286) |
+| `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes and saved pages in `queries/…`/`wiki/…` only, else `forbidden`; an empty `text` keeps the placeholder comment) — replaces only the body of the file's `## Notes` section (journalist annotations; neither the pipeline nor the skills write there). An entity or document note save takes the registry lock the commit pass holds, waiting up to 3 s, then fails with `busy` (the app retries). Recorded as a version of the file's history (D286, D288) |
 | `vault.resolveLink` | `{vault, target}` | `{path\|null, kind: "document"\|"entity"\|"briefing"\|"query"\|"wiki"\|"note"\|"original"\|"fulltext"\|"missing", sha\|null, page\|null}` — what a wikilink target points at (bare names resolve like Obsidian: entity id/name/alias, document slug/title/filename, top-level note) (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
 | `vault.citations` | `{vault, links: string[]}` | `{[link]: {target, block, status: "found"\|"not_found", fact: {id, sha, fact, page\|null, title\|null, note\|null, date\|null, basis\|null, mark: "verified"\|"disputed"\|"unverifiable"\|null, passage\|null, passage_page\|null}\|null, disputed?}}` — what each fact citation names (D283). A link is `<note>#^f-<id>` as written in `[[<note>#^f-<id>\|…]]`; others are ignored; at most 500. Read-only. The Markdown renderer calls it for every page it shows; a `not_found` citation is shown as "source not found", never as a link |
 | `vault.checkCitations` | `{vault}` | `{checked, citations, found, not_found, disputed, unresolved_short, pages: [{path, items, citations, found, not_found, disputed, unresolved_short}]}` — every fact citation in `queries/`, `wiki/` and `briefings/` (Maintenance → Check citations; the function `watchdog check-citations` calls). Changes nothing |
@@ -216,18 +217,20 @@ with `history_too_new`.
 ```
 HistoryVersion = {version, at, cause: {kind: "run"|"merge"|"undo_merge"|"mark"|"rebuild"|"notes"|"edit"|"review"|"session"|"restore"|"cleared"|"found", first?, incomplete?, …},
                   label,          // the plain-language line to show ("Documents added: a.pdf and 2 more")
-                  files}          // how many files the version changed
+                  files,          // how many files the version changed
+                  removed}        // how many of its changes were removed from the history (D288)
 DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins", s}]}   // one segment = a whole added or removed line; several = words inside a changed line
 ```
 
 | Method | Params | Result |
 |---|---|---|
-| `history.file` | `{vault, path}` | `{path, tracked, restore: "page"\|"notes"\|"none", exists, too_new, versions: (HistoryVersion & {deleted, current})[]}` newest first. Records the file first if it changed since its last version (a session's page, an Obsidian edit), unless a run holds the vault |
+| `history.file` | `{vault, path}` | `{path, tracked, restore: "page"\|"notes"\|"none", exists, too_new, versions: (HistoryVersion & {deleted, current, latest, removed_before})[]}` newest first; `latest` is the file's newest version (never removable), `removed_before` how many of its versions just before this one were removed. Records the file first if it changed since its last version (a session's page, an Obsidian edit), unless a run holds the vault |
 | `history.read` | `{vault, path, version}` | `{path, version, exists, text}` |
-| `history.diff` | `{vault, path, version, against?: "previous"\|"current"}` | `{path, before: {version\|null, exists}, after: {version\|null, exists}, hunks: [{old_start, new_start, lines: DiffLine[]}], added, removed, truncated, identical}` — three lines of context; at most 4,000 lines shown (`truncated`), the counts always complete |
+| `history.diff` | `{vault, path, version, against?: "previous"\|"current"}` | `{path, before: {version\|null, exists}, after: {version\|null, exists}, removed_between, hunks: [{old_start, new_start, lines: DiffLine[]}], added, removed, truncated, identical}` — three lines of context; at most 4,000 lines shown (`truncated`), the counts always complete; `removed_between` counts versions removed between the two compared (0 against `current`) |
 | `history.restore` | `{vault, path, version}` | `{path, part: "page"\|"notes", version}` — `page` (`context.md`, `watchlist.md`, `briefings/`, `queries/`, `wiki/`) writes the version back whole; `notes` (`entities/`, `documents/`) puts back only its `## Notes` section; anything else fails with `cannot_restore`, as does a version recording a deletion. Recorded as a new version, cause `restore` ("Restored by you") |
 | `history.versions` | `{vault, limit?: 100, before?}` | `{versions: (HistoryVersion & {changes: [{path, deleted}]})[], total, more, too_new}` newest first; `before` pages back |
 | `history.stats` | `{vault}` | `{versions, files, objects, bytes, since\|null, too_new}` |
+| `history.remove` | `{vault, version, path?, older?: false, dry_run?: false}` | `{removed: [{path, version}], kept_current: [path], purged, shared: [{path, version}], freed_bytes, dry_run}` — D288. With `path`: that file's version (with `older`, also every earlier one); the file's newest version fails with `cannot_remove`. Without: every file's entry in `version` except files whose newest version it is (`kept_current`). Rewrites the log without them under the store lock and deletes every stored blob no remaining version names (`purged`; `shared` lists removed versions whose text another version still holds). Irreversible: the app confirms first, from a `dry_run`. `busy` while a run holds the vault; `not_found` for an unknown version |
 | `history.clear` | `{vault}` | `{removed_versions, freed_bytes, versions, bytes}` — deletes every past version and records the current files as the first version of a new history (cause `cleared`). Irreversible: the app confirms first. Refused with `busy` while a run holds the vault |
 
 ## ingest — before a pipeline run

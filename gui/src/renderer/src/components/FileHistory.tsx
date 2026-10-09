@@ -100,7 +100,6 @@ export function FileHistoryModal({ vault, path, title, initialVersion, onClose }
                     variant="ghost"
                     icon={Trash2}
                     disabled={row.latest || h.too_new}
-                    tip={row.latest ? 'This is the file as it is now, so it cannot be removed from the history. Change the file itself first; the version it replaces can then be removed.' : 'Delete this version from the history for good'}
                     onClick={() => setRemoving(true)}
                   >
                     Remove…
@@ -111,7 +110,10 @@ export function FileHistoryModal({ vault, path, title, initialVersion, onClose }
                     </Button>
                   )}
                 </div>
-                <p className="hist-explain faint">{RESTORE_NOTE[h.restore]}</p>
+                <p className="hist-explain faint">
+                  {RESTORE_NOTE[h.restore]}
+                  {row.latest && ' This version is the file as it is now, so it cannot be removed from the history: change the file first, and the version it replaces can then be removed.'}
+                </p>
                 <DiffPane vault={vault} path={h.path} version={row.version} against={against} />
               </>
             )}

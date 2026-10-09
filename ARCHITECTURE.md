@@ -452,7 +452,7 @@ queries/ wiki/               session-written findings and threads
   briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283) and status line (D285)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
-  history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, .lock
+  history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
   registry/
@@ -515,17 +515,21 @@ citation-checked.
 **Version history (D286).** `pipeline/history.py` versions every tracked file: Markdown outside
 `morgue/`, `incoming/`, `context/` and hidden folders, plus `entities`, `documents`, `merges`,
 `verification`, `resolutions` and `requests` `.json`. Blobs are content-addressed and compressed;
-`log.jsonl` (`schema_version` per line) is append-only and the source of truth; `index.json`
-(per path its versions and last-seen size and mtime, per version its cause and log offset) is
-rebuilt from it when missing or behind. Each write point wraps itself in
+`log.jsonl` (`schema_version` per line) is the source of truth, appended to by every snapshot and
+rewritten only by `history.remove` (D288); `index.json` (per path its versions, removal gaps and
+last-seen size and mtime, per version its cause and log offset) is rebuilt from it when missing or
+behind; `size.json` caches the objects' total for the projects list. Each write point wraps itself in
 `history.recording(vault, cause, scope)` under its own lock: finalize (one version per run, the
 documents as cause), `merge_entities.run`, `merge_undo.undo`, `entity_notes.rebuild`,
 `verification.mark`, the app's `saveNotes`/`writeFile`/Review resolutions, each Ask Claude turn,
 and restores. Entering records changes made since the last version (cause `found`); recordings
 nest, so a merge inside a run is part of the run's version. While a run holds the vault, a small
 edit records only its own files. Restore writes a page back whole, an entity or document note's
-Notes section only, and nothing else (generated files and registries are view-only). App-only
-(I10).
+Notes section only, and nothing else (generated files and registries are view-only). Removing a
+version (D288) rewrites the log without that file's entry (or a whole version's, minus files it
+left as they are now) atomically under the store lock, records on the file's next remaining entry
+how many versions were removed before it (`gaps`) and nothing else, then deletes every blob no
+line names; a file's newest entry is never removed. App-only (I10).
 
 **Merging entities (D54).** `watchdog merge-entities <keep> <merge>` unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
@@ -689,9 +693,16 @@ See D45–D48.
   edits outside their vault. Their shell commands run in Claude Code's sandbox on macOS and are
   limited to the vault's pre-approved `watchdog` commands elsewhere (D274).
 - **Version history (D286).** Entity, document, briefing and page views have a History panel
-  (`history.file`, `history.diff`, `history.restore`), Activity has the investigation's versions
-  (`history.versions`), and Settings → Version history shows the store's size and clears it
-  (`history.clear`). These call `pipeline/history` in-process; there is no CLI command.
+  (`history.file`, `history.diff`, `history.restore`, `history.remove`), Activity has the
+  investigation's versions (`history.versions`, `history.remove` of a whole version), Settings →
+  Version history shows the store's size and clears it (`history.clear`), and each project card
+  its size (`stats.history_bytes`, D288). These call `pipeline/history` in-process; there is no CLI
+  command.
+- **Notes (D288).** Entity notes, document notes and saved pages (`queries/`, `wiki/`) share one
+  editor (`NotesEditor`, `lib/notesSaver.ts`) that writes only the `## Notes` section through
+  `vault.saveNotes`; saves outlive the screen, retry while the commit pass holds the registry lock
+  and keep a draft on failure, and quitting closes the window first so an outstanding save reaches
+  the backend.
 - **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
@@ -741,10 +752,10 @@ noted as such.
 - **I10 — The app adds no pipeline behaviour.** Every vault mutation the desktop app makes runs the
   CLI command that makes it in the terminal, or the library function that command calls; the app
   keeps the CLI's gates (the public-records acknowledgement, confirmations before irreversible
-  operations). An app-only feature with no CLI command (version history's restore and clear, D286)
+  operations). An app-only feature with no CLI command (version history's restore, removal and clear, D286, D288)
   may change the vault through a library function directly, under the same folder access (D268),
   the operation's locks and I7's commit discipline. The command line is expected to be removed
-  eventually; new features need not gain a command. *History: D265, D271, D286.*
+  eventually; new features need not gain a command. *History: D265, D271, D286, D288.*
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes
