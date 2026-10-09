@@ -96,7 +96,7 @@ export function EntityFacts({ facts }: { facts: EntityFact[] }) {
           </button>
           {f.basis === 'inferred' && <Badge tone="info" icon={Info} tip="Reasoned from the document, not stated in it. Verify before relying on it.">inferred</Badge>}
           {f.figure_note && <Badge tone="warning" icon={AlertTriangle} tip={f.figure_note}>check figure</Badge>}
-          {mark?.status === 'disputed' && <Badge tone="danger" tip="You marked this fact Disputed. It stays listed here, and is left out of AI summaries and contradiction checks.">disputed</Badge>}
+          {mark?.status === 'disputed' && <Badge tone="danger" tip="You marked this fact Disputed. It stays listed here and everywhere it is cited, labelled as disputed.">disputed</Badge>}
         </div>
         <div className="fact-text selectable">{f.fact}</div>
         {hasPassage && (

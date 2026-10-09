@@ -2,8 +2,9 @@
 
 An entity note is rendered entirely from data the vault already keeps:
 
-* **Summary (AI-written)** — the registry entry's `synthesis` record: the model's summary and
-  analysis, which model wrote it, when, and from how many of the entity's facts. Never a fact.
+* **Summary** — the registry entry's `synthesis` record: the model's summary and analysis, its
+  citations rendered as links to the facts (D283). Which model wrote it, when, and from how many
+  facts stays in the record, not in the note (D284).
 * **Facts** — every fact tagged to the entity in the stored extractions (`entity_facts`), with its
   document, page link, flags, passage and the reporter's mark. Code renders it; no model writes it.
 * **Contradictions** — the registry's contradiction ledger, minus the ones marked handled.
@@ -47,7 +48,7 @@ FULL_GROUPS = 40
 _MARKS = {"verified": "✓ verified", "disputed": "✗ disputed", "unverifiable": "? can't verify"}
 _NOTES_DEFAULT = "\n## Notes\n\n<!-- Journalist annotations — never overwritten by ingestion. -->\n"
 _NOTES_RE = re.compile(r"^## Notes[ \t]*$", re.MULTILINE)
-SUMMARY_HEADING = "Summary (AI-written)"
+SUMMARY_HEADING = "Summary"
 
 
 # ── reading the note on disk ─────────────────────────────────────────────────────────────────
@@ -229,7 +230,8 @@ def summary_section(synthesis: dict | None, known: set[str] | None = None,
                     facts: dict[str, dict] | None = None,
                     resolver: citations.Resolver | None = None,
                     stats: dict | None = None) -> str:
-    """The `## Summary (AI-written)` body, or "" when the entity has no synthesis. `facts` maps a
+    """The `## Summary` body, or "" when the entity has no synthesis. No line says who wrote it
+    (D284): the model, date and counts stay in the registry's `synthesis` record. `facts` maps a
     D271 id to the entity's current fact, so a citation links only to a fact the entity still has;
     `stats` (when given) receives the citation counts."""
     if not isinstance(synthesis, dict) or not (synthesis.get("summary") or "").strip():
@@ -238,24 +240,6 @@ def summary_section(synthesis: dict | None, known: set[str] | None = None,
     parts = [_cited(synthesis["summary"].strip(), synthesis, known, facts, resolver, stats)]
     if (synthesis.get("analysis") or "").strip():
         parts.append(_cited(synthesis["analysis"].strip(), synthesis, known, facts, resolver, stats))
-    when = (synthesis.get("made_at") or "")[:10]
-    by = synthesis.get("by")
-    if by == "carried":
-        prov = ("Carried over from an earlier version of Watchdog, which wrote it from the "
-                "entity's earlier notes rather than from its facts.")
-    elif by == "session":
-        prov = f"Written in a Claude session{f' on {when}' if when else ''}."
-    else:
-        model = f" ({synthesis['model']})" if synthesis.get("model") else ""
-        counts = ""
-        if isinstance(synthesis.get("facts_shown"), int) and isinstance(synthesis.get("facts_total"), int):
-            counts = (f" from {synthesis['facts_shown']} of {synthesis['facts_total']} facts"
-                      if synthesis["facts_shown"] < synthesis["facts_total"]
-                      else f" from {synthesis['facts_total']} facts")
-        prov = f"Written by an AI model{model}{f' on {when}' if when else ''}{counts}."
-    if synthesis.get("stale") == "merge":
-        prov += " It was written before another record was merged into this one."
-    parts.append(f"*{prov} It can be wrong: the facts below are the record.*")
     return "\n\n".join(parts)
 
 

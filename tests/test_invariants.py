@@ -470,6 +470,6 @@ def test_I13_model_prose_is_never_an_input_and_notes_rebuild_from_facts(tmp_path
     note.unlink()
     entity_notes.rebuild(vault, index_search=False)
     text = note.read_text()
-    assert "## Summary (AI-written)\n\nPROSE-ONLY-CLAIM about Alice." in text
-    assert text.index("## Summary (AI-written)") < text.index("## Facts")
+    assert "## Summary\n\nPROSE-ONLY-CLAIM about Alice." in text
+    assert text.index("## Summary") < text.index("## Facts")
     assert "Smith is listed as director" in text.split("## Facts", 1)[1]

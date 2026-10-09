@@ -439,7 +439,7 @@ def test_old_note_claims_without_a_stored_extraction_are_kept(tmp_path):
     assert (vault / "entities" / "person" / "alice-smith.md").read_text().count("Prior finding.") == 1
 
 
-def test_old_summary_is_carried_as_ai_written(tmp_path):
+def test_old_summary_is_carried_into_the_registry(tmp_path):
     """An older note's Summary is model prose that exists nowhere else: the first rewrite moves it
     into the registry's synthesis record, labelled as carried over, instead of dropping it."""
     vault = make_vault(tmp_path)
@@ -471,8 +471,7 @@ def test_old_summary_is_carried_as_ai_written(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Summary (AI-written)\n\nOld summary." in content
-    assert "Carried over from an earlier version of Watchdog" in content
+    assert "## Summary\n\nOld summary." in content
     entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
     assert entry["synthesis"]["summary"] == "Old summary." and entry["synthesis"]["by"] == "carried"
 

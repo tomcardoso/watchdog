@@ -218,7 +218,7 @@ def test_apply_bundle_writes_prose_preserves_structured_sections(tmp_path):
 
     assert outcome["applied"] == ["alice-smith"]
     note = _note(vault)
-    summary = _extract_section(note, "Summary (AI-written)")
+    summary = _extract_section(note, "Summary")
     assert "SYNTHESIZED summary across sources." in summary and "SYNTHESIZED analysis." in summary
     assert "Old finding." not in note
     # Structured sections are rendered from data, untouched by the prose:

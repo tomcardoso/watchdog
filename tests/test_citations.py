@@ -78,7 +78,7 @@ def test_the_entity_note_summary_renders_citations_and_counts_drops(tmp_path):
                               "fact_refs": {"f:aaaa": paid, "f:bbbb": appraisal}})
     entity_notes.rebuild(vault, index_search=False)
     note = (vault / "entities" / "organization" / "x.md").read_text()
-    summary = note.split("## Summary (AI-written)", 1)[1].split("\n## ", 1)[0]
+    summary = note.split("## Summary", 1)[1].split("\n## ", 1)[0]
     assert f"X paid $4,350,000 ([[documents/reg#^{citations.block_id(paid)}|p. 4]])." in summary
     assert "It says so." in summary and "[f:" not in summary
     assert f"lower ([[documents/reg#^{citations.block_id(appraisal)}|p. 2]])." in summary
@@ -115,7 +115,7 @@ def test_session_written_fact_links_are_checked(tmp_path):
                               "by": "session", "fact_refs": {}})
     verification.mark(vault, paid, "disputed", by="R")
     entity_notes.rebuild(vault, index_search=False)
-    summary = (vault / "entities/organization/x.md").read_text().split("## Summary (AI-written)")[1]
+    summary = (vault / "entities/organization/x.md").read_text().split("## Summary")[1]
     disputed = f"[[documents/reg#^{citations.block_id(paid)}|p. 4, disputed]]"
     assert f"Paid {disputed}. Also. Both ({disputed})." in summary
 

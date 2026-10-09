@@ -219,35 +219,16 @@ function StubNotice({ id }: { id: string }) {
   )
 }
 
-// ── the AI-written summary ───────────────────────────────────────────────────
-function provenance(e: EntityDetail): string {
-  const s = e.synthesis
-  if (!s) return 'Written by an AI model. It can be wrong: check it against the facts below.'
-  const when = s.made_at ? ` on ${fmtDate(s.made_at.slice(0, 10))}` : ''
-  let text: string
-  if (s.by === 'carried') text = 'Carried over from an earlier version of Watchdog, which wrote it from the entity’s earlier notes rather than from its facts.'
-  else if (s.by === 'session') text = `Written in a Claude session${when}.`
-  else {
-    const counts = s.facts_total != null && s.facts_shown != null ? (s.facts_shown < s.facts_total ? ` from ${fmtNum(s.facts_shown)} of ${fmtNum(s.facts_total)} facts` : ` from ${fmtNum(s.facts_total)} facts`) : ''
-    text = `Written by an AI model${s.model ? ` (${s.model})` : ''}${when}${counts}.`
-  }
-  if (s.stale === 'merge') text += ' It was written before another record was merged into this one.'
-  if (s.stale === 'undo') text += ' It was written before a merge of this record was undone.'
-  return `${text} It can be wrong: check it against the facts below.`
-}
-
+// ── the summary ──────────────────────────────────────────────────────────────
+// Shown as written, with its citations as links to the facts (D283). Who wrote it, when and from
+// how many facts stays in the registry, not on the page (D284).
 function SummarySection({ e }: { e: EntityDetail }) {
-  const summary = e.synthesis?.summary ?? e.sections.summary
-  const analysis = e.synthesis?.analysis
+  const summary = e.synthesis?.summary_md ?? e.synthesis?.summary ?? e.sections.summary
+  const analysis = e.synthesis ? e.synthesis.analysis_md ?? e.synthesis.analysis : null
   return (
     <section className="ent-sec">
       <SecTitle icon={BookOpen} title="Summary">
-        {summary?.trim() && (
-          <Badge icon={Sparkles} tip="Written by an AI model from this entity’s facts. The facts below are the record.">
-            AI-written
-          </Badge>
-        )}
-        <Button variant="ghost" size="sm" icon={Sparkles} onClick={() => navigate({ view: 'ask', prompt: `/watchdog-entity ${e.id}` })} tip="Re-synthesize from every source in a Claude session">
+        <Button variant="ghost" size="sm" icon={Sparkles} onClick={() => navigate({ view: 'ask', prompt: `/watchdog-entity ${e.id}` })} tip="Re-write the summary from every source in a Claude session">
           Refresh from all sources
         </Button>
       </SecTitle>
@@ -255,11 +236,10 @@ function SummarySection({ e }: { e: EntityDetail }) {
         <div className="ent-ai">
           <Markdown text={summary} />
           {analysis?.trim() && <Markdown text={analysis} />}
-          <p className="ent-ai-prov">{provenance(e)}</p>
         </div>
       ) : (
         <Empty icon={BookOpen} title="No summary yet">
-          An AI-written summary is added once the entity appears in two or more documents. Its facts below are the record either way.
+          A summary is added once the entity appears in two or more documents. Its facts below are the record either way.
         </Empty>
       )}
     </section>

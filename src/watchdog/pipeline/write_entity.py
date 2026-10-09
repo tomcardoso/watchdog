@@ -90,7 +90,7 @@ def run(extraction_path: Path, vault_path: Path) -> None:
         entry["date_last_updated"] = _today()
 
         # The session's summary is AI-written prose: stored as the entity's synthesis record and
-        # shown under "Summary (AI-written)"; the rest of the note is rendered from data (D280).
+        # shown under "Summary"; the rest of the note is rendered from data (D280).
         from watchdog.pipeline import entity_notes
         if new_summary:
             old = entry.get("synthesis") or {}

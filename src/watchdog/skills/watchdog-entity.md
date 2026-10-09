@@ -82,7 +82,7 @@ watchdog write-entity --entity-id <entity-id> --extraction .watchdog/tmp/entity-
 
 `write-entity` deletes the scratch file once it has been applied, so there is nothing to clean up.
 
-`watchdog write-entity` stores your summary as the entity's AI-written summary (shown under `## Summary (AI-written)`) and replaces its timeline events in the registry. The rest of the note is rendered from data: its `## Facts` list, contradictions, relationships, and the journalist's `## Notes`, which are never touched. The vault-wide `timeline.md` is built from every document's extracted events, not from entity notes, so this refresh does not change it.
+`watchdog write-entity` stores your summary as the entity's AI-written summary (shown under `## Summary`) and replaces its timeline events in the registry. The rest of the note is rendered from data: its `## Facts` list, contradictions, relationships, and the journalist's `## Notes`, which are never touched. The vault-wide `timeline.md` is built from every document's extracted events, not from entity notes, so this refresh does not change it.
 
 Print a completion line after each entity:
 ```

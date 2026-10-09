@@ -85,7 +85,7 @@ def test_contradictions_synthesis_and_merges(demo_vault):
     flagged = [e for e in entities.values() if e.get("contradictions")]
     assert len(flagged) >= 2
     note = (vault / "entities" / "person" / "dana-whitcombe.md").read_text(encoding="utf-8")
-    assert "[!contradiction]" in note and "## Summary (AI-written)" in note and "## Facts" in note
+    assert "[!contradiction]" in note and "## Summary" in note and "## Facts" in note
     # Two reconciliation merges folded the variant ids away.
     assert "planning-procurement-committee" not in entities
     assert "port-calder-land-registry" not in entities
@@ -190,7 +190,7 @@ def test_deleted_notes_rebuild_identically_with_no_model(demo_vault, tmp_path, m
     before = {p.relative_to(copy): p.read_text(encoding="utf-8")
               for d in ("entities", "documents") for p in (copy / d).rglob("*.md")}
     assert any("✓ verified ^f-" in t for t in before.values())       # marks are in the notes
-    assert any("## Summary (AI-written)" in t for t in before.values())
+    assert any("## Summary" in t for t in before.values())
     for rel in before:
         (copy / rel).unlink()
 
@@ -204,11 +204,12 @@ def test_deleted_notes_rebuild_identically_with_no_model(demo_vault, tmp_path, m
     assert after == before
 
 
-def test_entity_note_lists_its_facts_and_a_labelled_ai_summary(demo_vault):
+def test_entity_note_lists_its_facts_under_a_plain_summary(demo_vault):
     vault, _, _ = demo_vault
     note = (vault / "entities" / "person" / "leonard-pike.md").read_text(encoding="utf-8")
-    summary = note.split("## Summary (AI-written)", 1)[1].split("\n## ", 1)[0]
-    assert "It can be wrong: the facts below are the record." in summary
+    assert "\n## Summary\n" in note
+    summary = note.split("## Summary", 1)[1].split("\n## ", 1)[0]
+    assert "Written by" not in summary and "It can be wrong" not in summary   # no byline (D284)
     facts = note.split("## Facts", 1)[1].split("\n## ", 1)[0]
     lines = [ln for ln in facts.splitlines() if ln.startswith("- ")]
     assert len(lines) >= 10                                  # every document's facts, not just one
@@ -228,7 +229,7 @@ def test_demo_summaries_cite_facts_and_every_citation_resolves(demo_vault):
     assert sum(s["linked"] for s in stats) >= 10
     assert all(s["unknown"] == 0 and s["missing"] == 0 for s in stats)
     note = (vault / "entities" / "organization" / "7714882-holdings-ltd.md").read_text(encoding="utf-8")
-    summary = note.split("## Summary (AI-written)", 1)[1].split("\n## Facts", 1)[0]
+    summary = note.split("## Summary", 1)[1].split("\n## Facts", 1)[0]
     assert "[f:" not in summary and "p. 1, disputed]]" in summary
     report = citations.check_text(summary, citations.Resolver(vault))
     assert report["citations"] and report["not_found"] == 0 and report["disputed"] == 1

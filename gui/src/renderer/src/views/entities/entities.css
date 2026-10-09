@@ -874,21 +874,9 @@
   }
 }
 
-/* ── facts and the AI-written summary (D280) ─────────────────────────────── */
-.ent-ai {
-  padding: 14px 16px;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--r-lg);
-  background: var(--surface-2);
-}
+/* ── facts and the summary (D280, D284) ──────────────────────────────────── */
 .ent-ai .md + .md {
   margin-top: 12px;
-}
-.ent-ai-prov {
-  margin: 10px 0 0;
-  font-size: var(--fs-xs);
-  color: var(--text-3);
-  line-height: 1.45;
 }
 .ent-fact-src {
   max-width: 100%;

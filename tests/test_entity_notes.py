@@ -181,7 +181,7 @@ def test_an_older_vault_is_upgraded_once(tmp_path):
     entity_notes.rebuild(vault, index_search=False)
     assert not entity_notes.needs_upgrade(vault)
     text = note.read_text()
-    assert "## Summary (AI-written)\n\nOld prose." in text and "Paid $5." in text
+    assert "## Summary\n\nOld prose." in text and "Paid $5." in text
     assert text.endswith("## Notes\n\nMine.\n")
 
 

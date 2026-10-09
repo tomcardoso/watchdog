@@ -3,7 +3,7 @@
 Store a finalizer's synthesized prose for an entity and re-render its note (D280).
 
 Used by post-ingest after synthesis. The prose is stored in the registry entry's `synthesis`
-record and shown in the note under "Summary (AI-written)"; every other section of the note is
+record and shown in the note under "Summary"; every other section of the note is
 rendered from data (`entity_notes`), and the journalist's ## Notes are never touched. It backs the
 bulk synthesis path (``synthesis_bundle.apply_bundle``, called from `orchestrate.py`); this
 module's own ``main()`` below is a standalone single-entity entry point (not wired into the
@@ -42,8 +42,8 @@ def apply_one(
     """Store one entity's synthesized prose and re-render its note.
 
     The prose is kept in the registry entry's `synthesis` record (D280), with who wrote it and
-    from how many facts (`meta`), and the note is rendered from data: the prose under "Summary
-    (AI-written)", the facts, contradictions, relationships and the journalist's Notes untouched.
+    from how many facts (`meta`), and the note is rendered from data: the prose under "Summary",
+    the facts, contradictions, relationships and the journalist's Notes untouched.
     Mutates ``entities_reg`` but does not persist entities.json — the caller writes the registry
     once after applying every entity. Returns False if the entity is unknown."""
     from watchdog.pipeline import entity_notes

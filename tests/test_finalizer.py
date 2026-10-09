@@ -77,10 +77,10 @@ def test_finalizer_replaces_summary_and_analysis_preserves_rest(tmp_path):
     fe.run(synth, vault)
 
     note = _note(vault)
-    summary = _extract_section(note, "Summary (AI-written)")
+    summary = _extract_section(note, "Summary")
     assert "SYNTHESIZED summary across sources." in summary
     assert "SYNTHESIZED analysis." in summary
-    assert "It can be wrong: the facts below are the record." in summary
+    assert "It can be wrong" not in summary and "AI model" not in summary     # no byline (D284)
     # The prose is stored in the registry, so a rebuilt note gets it back with no model call.
     entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
     assert entry["synthesis"]["summary"] == "SYNTHESIZED summary across sources."

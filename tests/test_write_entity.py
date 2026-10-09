@@ -113,12 +113,12 @@ def test_timeline_events_replaced_in_registry(tmp_path):
     assert not any("Old event" in e["event"] for e in events)
 
 
-def test_session_summary_is_stored_as_ai_written(tmp_path):
+def test_session_summary_is_stored_with_who_wrote_it(tmp_path):
     vault = make_vault(tmp_path)
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Summary (AI-written)" in content and "Written in a Claude session" in content
+    assert "\n## Summary\n" in content and "Written in a Claude session" not in content
     entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
     assert entry["synthesis"]["by"] == "session"
 

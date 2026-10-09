@@ -28,7 +28,7 @@ Build a working index in memory:
 - Entity ID → type, name, aliases, note_path (from manifest)
 - Document → document_type, entities_extracted, document_note (from documents.json; a document's own date is the `date_of_document` frontmatter field in its note)
 
-**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Facts` (every fact about the entity, with its document and page, dated facts in date order), `## Summary (AI-written)` or `## Relationships` content. Do not read all notes upfront.
+**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Facts` (every fact about the entity, with its document and page, dated facts in date order), `## Summary` or `## Relationships` content. Do not read all notes upfront.
 
 ---
 
