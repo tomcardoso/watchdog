@@ -306,6 +306,18 @@ every document's claims side by side:
   Applied **after** commit, because it needs the committed documents registry. Basis does not gate
   a contradiction (D214).
 
+- **Re-check (D287, `pipeline/recheck.py`).** Stored facts are never compared with each other by a
+  run, so the app offers an on-demand re-check of one entity or every recurring one. It sends the
+  entity's facts as `new_facts` with `stored_facts` empty, through the same prompt and schema; one
+  too large for a call is cut in date order into half-call blocks, each block sent as new against
+  every later block as stored, the last alone, so every pair is seen once (an entity needing more
+  than 45 calls is left out and said so). Small entities share a call. Findings are dropped when
+  they cite the same two facts (or, lacking fact links, the same two pages) as a recorded or
+  handled contradiction or an earlier finding, then filed by `contradiction.run`. It runs as a job
+  under the processing lock, records its calls (`task: reconcile`) in a usage file and one history
+  version; the app shows `contradictions.estimate` (calls, tokens, list-price cost on the
+  configured model) and asks first.
+
 A reconcile failure defers the whole batch: nothing commits, and the next `bark` retries (I7). A
 contradiction failure after commit only leaves those callouts for a later run.
 
@@ -692,6 +704,10 @@ See D45–D48.
   (`history.file`, `history.diff`, `history.restore`), Activity has the investigation's versions
   (`history.versions`), and Settings → Version history shows the store's size and clears it
   (`history.clear`). These call `pipeline/history` in-process; there is no CLI command.
+- **Re-check contradictions (D287).** An entity page's Re-check and Maintenance's whole-investigation
+  card call `contradictions.estimate`, then `jobs.recheckContradictions`, which runs `python -m
+  watchdog.pipeline.recheck` as a job (engine-gated, refused while a run holds the vault). No CLI
+  command.
 - **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.

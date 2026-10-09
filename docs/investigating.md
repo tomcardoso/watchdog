@@ -27,6 +27,16 @@ When a new document disagrees with something already in the investigation, the e
 
 If you spot a conflict that Watchdog missed, open the entity and choose **Record a contradiction…** from its **⋯** menu. You give a short label for the disputed fact, then each side's claim, source document and (optionally) page.
 
+<a id="re-checking-contradictions"></a>
+
+#### Re-checking contradictions
+
+Each time documents are added, their facts are compared with the facts already recorded. Facts already recorded are not compared with each other again, so if two earlier documents disagree and that run missed it, nothing looks again on its own. **Re-check** beside an entity's Contradictions heading (also **Re-check contradictions…** in its **⋯** menu) does look: it sends every recorded fact about the entity to the AI model you chose for post-processing in Settings and asks it to find facts that cannot both be true. To do the same for every entity named in two or more documents, use **Activity → Maintenance → Re-check contradictions**.
+
+Before anything is sent you see how many facts and model calls it takes, about how many tokens, and what that should cost at the model's list price (on a Claude subscription there is no separate charge). Nothing runs until you confirm. Every pair of facts is shown to the model at least once; a large entity is split across several calls to do that. An entity so large that this would take more than 45 calls is not re-checked, and the confirmation says so; its new documents are still checked as they arrive.
+
+What it finds is filed like any other contradiction: on the entity's page with both sources linked to their facts, and on the Contradictions tab in Review. Facts you have marked Disputed are compared too, labelled. A conflict already recorded is not added again, and neither is one you marked handled, however the model words it this time. The re-check waits if documents are being added, can be stopped from Activity (what the finished calls found is kept), and appears in the investigation's version history as "Contradictions re-checked".
+
 ### Leads
 
 At the end of every run, Watchdog sweeps the whole entity graph with plain code, no AI call, and lists what it finds on the **Leads** tab. It flags four things:
