@@ -143,6 +143,28 @@ test('every screen renders against the demo investigation', async () => {
       await expect(tip).toBeHidden()
     }
 
+    // Add documents belongs to one investigation: a gate left open there is not shown, or run, in
+    // another one.
+    const second = await page.evaluate(async (dir) => {
+      const w = window as any
+      const r = await w.watchdog.rpc('action.run', { vault: null, args: ['new', 'Second Look', '--dir', dir] })
+      if (r.code !== 0) return r.stderr || r.stdout
+      return (await w.watchdog.rpc('projects.list', {})).find((p: { name: string }) => p.name === 'Second Look')?.slug ?? 'not listed'
+    }, root)
+    expect(second).toMatch(/^second-look/)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().openAdd())
+    await page.getByRole('button', { name: 'Read documents' }).click()
+    await expect(page.getByText('Before anything is sent', { exact: true })).toBeVisible({ timeout: 60_000 })
+    await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
+    await page.evaluate(async (s) => {
+      const w = window as any
+      w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
+      w.__watchdogApp.getState().openAdd()
+    }, second)
+    await expect(page.locator('.modal').getByText('Add documents', { exact: true })).toBeVisible()
+    await expect(page.getByText('Before anything is sent', { exact: true })).toHaveCount(0)
+    await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
+
     // With no investigation open, the sidebar's All investigations returns to the list from any
     // other screen.
     await page.evaluate(() => (window as any).__watchdogApp.getState().setProject(null))
