@@ -37,7 +37,6 @@ readable list of every marked fact, so the vault stays a folder of Markdown file
 from __future__ import annotations
 
 import datetime
-import getpass
 import hashlib
 import json
 import os
@@ -240,41 +239,18 @@ def parse_status(value: str | None) -> str | None:
     raise ValueError(f"Unknown status '{value}'. Use verified, disputed, cant-verify or clear.")
 
 
-def _os_full_name() -> str | None:
-    if sys.platform == "win32":
-        try:
-            import ctypes
-            size = ctypes.c_ulong(0)
-            fn = ctypes.windll.secur32.GetUserNameExW   # type: ignore[attr-defined]
-            fn(3, None, ctypes.byref(size))             # 3 = NameDisplay
-            buf = ctypes.create_unicode_buffer(size.value)
-            if size.value and fn(3, buf, ctypes.byref(size)):
-                return buf.value.strip() or None
-        except Exception:  # noqa: BLE001 — a display name is a nicety
-            return None
-        return None
-    try:
-        import pwd
-        gecos = pwd.getpwuid(os.getuid()).pw_gecos
-    except (ImportError, KeyError, OSError):
-        return None
-    name = (gecos or "").split(",")[0].strip()
-    return name or None
+# Used until the reporter sets their own. Deliberately not the computer account's name: the ledger and
+# verification.md travel with the investigation folder, and a name nobody chose should not.
+DEFAULT_REPORTER_NAME = "Journalist"
 
 
 def default_reporter_name() -> str:
-    """The OS account's full name where the system has one, else the login name."""
-    name = _os_full_name()
-    if name:
-        return name
-    try:
-        return getpass.getuser()
-    except Exception:  # noqa: BLE001 — no login name in some sandboxes
-        return "Unknown"
+    """The name recorded with a mark until the reporter sets `reporter_name`."""
+    return DEFAULT_REPORTER_NAME
 
 
 def reporter_name() -> str:
-    """The `reporter_name` setting ("Your name"), or the OS default."""
+    """The `reporter_name` setting ("Your name"), or "Journalist" when it is unset."""
     from watchdog import config as user_config
     value = user_config.get("reporter_name", None)
     return value.strip() if isinstance(value, str) and value.strip() else default_reporter_name()

@@ -11,6 +11,7 @@ import { DropOverlay } from './shell/DropOverlay'
 import { JobDock } from './shell/JobDock'
 import { Sidebar } from './shell/Sidebar'
 import { Toasts } from './shell/Toasts'
+import { TooltipLayer } from './components/TooltipLayer'
 import { Topbar } from './shell/Topbar'
 import { GlobalDialogs } from './views/dialogs/GlobalDialogs'
 import { VIEWS } from './views'
@@ -175,8 +176,11 @@ function Shell() {
 
 export default function App() {
   return (
-    <BackendGate>
-      <Shell />
-    </BackendGate>
+    <>
+      <BackendGate>
+        <Shell />
+      </BackendGate>
+      <TooltipLayer />
+    </>
   )
 }
