@@ -267,6 +267,13 @@
   font-size: 14px;
   -webkit-app-region: drag;
 }
+/* The screen's own title stays whole; the investigation's name gives way first. */
+.topbar .crumbs > span:last-child {
+  flex-shrink: 0;
+}
+.topbar .crumbs .dim {
+  min-width: 0;
+}
 .topbar .crumbs .sep {
   color: var(--text-3);
   font-weight: 400;
