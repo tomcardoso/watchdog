@@ -162,7 +162,10 @@ def _obsidian_config_path() -> Path:
     elif sys.platform == "win32":
         return Path(os.environ["APPDATA"]) / "obsidian" / "obsidian.json"
     else:
-        cfg_home = Path(os.environ.get("XDG_CONFIG_HOME", "")) or Path.home() / ".config"
+        # An unset or empty XDG_CONFIG_HOME means ~/.config. (`Path("")` is ".", which is truthy,
+        # so `Path(env or "") or default` would write obsidian.json under the working directory.)
+        xdg = os.environ.get("XDG_CONFIG_HOME")
+        cfg_home = Path(xdg) if xdg else Path.home() / ".config"
         return cfg_home / "obsidian" / "obsidian.json"
 
 
