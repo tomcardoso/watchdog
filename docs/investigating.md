@@ -119,7 +119,7 @@ The bar above the facts filters them: **All**, **Not checked**, **No passage** (
 
 ### The Verification tab
 
-**Review → Verification** lists every fact in the investigation with the same buttons, a progress bar ("12 of 340 facts verified") and a filter: **Not checked**, **Disputed**, **Can't verify**, **Verified**, **No passage**, and **Changed since marked** when there are any. It opens on Disputed when something is disputed, otherwise on Not checked. A fact you have just marked stays in the list until you change the filter, so you can undo it. After V, D or C the focus moves on to the next fact. J and K move, N edits the note, and O (or Enter) opens the document at that fact's page. The Overview shows how many facts are verified, and lists disputed facts among what is waiting on you.
+**Review → Verification** lists every fact in the investigation with the same buttons, a progress bar ("12 of 340 facts verified") and a filter: **Not checked**, **Disputed**, **Can't verify**, **Verified**, **No passage**, and **Changed since marked** when there are any. It opens on Disputed when something is disputed, otherwise on Not checked. A fact you mark Disputed is never hidden: wherever it appears (the document's facts, the entity's facts, the Timeline, Review, citations, the notes in the investigation folder and the account Claude starts each conversation with) it carries the label **disputed**. A fact you have just marked stays in the list until you change the filter, so you can undo it. After V, D or C the focus moves on to the next fact. J and K move, N edits the note, and O (or Enter) opens the document at that fact's page. The Overview shows how many facts are verified, and lists disputed facts among what is waiting on you.
 
 If a document is processed again and a fact's wording or page changes, your mark stays with the old wording and appears under **Changed since marked**. It is never moved to the new wording, because you did not check those words. Check the new fact and mark it again.
 
@@ -183,7 +183,7 @@ Two other modes sit at the top of the screen:
 
 ### Citations
 
-Summaries, briefings, the current-state page and the pages Claude saves in Ask Claude cite the facts they rest on. A citation is a small marker such as **p. 4** at the end of a sentence. Hover over it to see the fact, its document and page, and whether you have checked it. Click it to open the document at that page, with the fact selected in the Facts list and its passage found on the page.
+Summaries, briefings and the pages Claude saves in Ask Claude cite the facts they rest on. A citation is a small marker such as **p. 4** at the end of a sentence. Hover over it to see the fact, its document and page, and whether you have checked it. Click it to open the document at that page, with the fact selected in the Facts list and its passage found on the page.
 
 A citation of a fact you marked Disputed reads **p. 4 · disputed**; the fact is never hidden. A citation Watchdog cannot match to a stored fact reads **source not found** and is not a link. That happens when a document is processed again and its facts are reworded, when a merge is undone, or when Claude wrote the citation wrong. Watchdog never rewrites the page; **Activity → Maintenance → Check citations** lists every such case.
 
@@ -193,7 +193,7 @@ AI-written text can also contain sentences with no citation: a model connecting 
 
 **Ask Claude** is a conversation with Claude Code about the investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, and asks you before doing anything the investigation's settings do not already allow.
 
-Each conversation starts fresh, but Claude reads `hot.md` first: a current-state summary of the investigation, rewritten after every run. That is what lets you continue across many separate conversations without losing context. Past conversations are listed on the left and can be picked up again.
+Each conversation starts fresh, but Claude is first given a short account of where the whole investigation stands: the questions in your investigation context, how many documents, entities and facts there are and how many facts you have checked, the entities named most often, what is waiting on you (contradictions, leads, documents to request, possible same entities, facts you dispute) and the latest briefings. Watchdog builds it from the investigation's records each time a conversation starts, without an AI model, so it is always current and covers every document, not only the latest run. That is what lets you continue across many separate conversations without losing context. You can read the same account under **Briefings → Current state**. Past conversations are listed on the left and can be picked up again.
 
 Type a question in plain language, or start from one of the shortcuts on the empty screen:
 
@@ -231,7 +231,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 
 ## Briefings
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (`hot.md`), **Processing history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (the account of the whole investigation that Claude is given at the start of each conversation, built when you open it), **Processing history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
 
 ## Maintenance runs
 

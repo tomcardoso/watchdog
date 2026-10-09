@@ -18,7 +18,7 @@ The dialog asks for three things:
 - **One-line description.** Optional, and you can change it later from the Overview. It is the first thing Watchdog knows about your investigation, which is useful when you have several open at once.
 - **Where to keep it.** The default is the investigations folder you chose in setup. If you pick a different folder, Watchdog asks permission to work there; see [Folder access](app.md#folder-access).
 
-Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up its structure, including the `incoming/` and `context/` folders, the starting notes (`hot.md`, `log.md`, `context.md`, `index.md`), and the settings for Claude. The [vault guide](vault.md) explains every folder and file.
+Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up its structure, including the `incoming/` and `context/` folders, the starting notes (`log.md`, `context.md`, `index.md`), and the settings for Claude. The [vault guide](vault.md) explains every folder and file.
 
 The investigation opens on its **Overview**. It is empty until you add documents.
 
@@ -99,7 +99,7 @@ Choose **Review** to work through contradictions, leads, watch-list hits, possib
 
 Choose **Ask Claude** and type a question, such as "Who are the directors of Shell Co Ltd?". Claude answers using only the documents in your investigation, and cites the source for every claim. You can follow up ("what else has she signed?") in the same conversation. Past conversations are listed on the left, and you can start a new one with **New conversation**.
 
-Start a new conversation for a new line of inquiry rather than reusing one that has run long. At the start of each conversation, Claude reads the current-state summary (`hot.md`) automatically, so it knows where the investigation stands without re-reading everything, and a fresh conversation has the most working room for your questions.
+Start a new conversation for a new line of inquiry rather than reusing one that has run long. At the start of each conversation, Claude is given a short account of where the whole investigation stands, which Watchdog builds from its records, so it knows the state of things without re-reading everything, and a fresh conversation has the most working room for your questions.
 
 If Claude needs to do something your settings do not already allow, Watchdog asks you first.
 

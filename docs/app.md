@@ -24,7 +24,7 @@ The list of your investigations, with each one's document and entity counts, whe
 
 ### Overview
 
-The headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, possible same entities, watch-list hits, disputed facts) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
+The headline from the latest briefing (its one-line account of where things stand, with its citations), the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, possible same entities, watch-list hits, disputed facts) and what is in progress (files waiting to be added, documents that failed, research links not yet downloaded). Each item links to the screen that deals with it. You can edit the investigation's description here, and **Ask Claude**, **Search**, **Open in Obsidian** and **Show folder** are a click away.
 
 ### Adding documents
 
@@ -51,13 +51,13 @@ An audio or video recording opens in a player, with its transcript below. Each p
 
 Every person, organization, public body, place, asset and proceeding, filterable by type, with the number of documents each appears in. **Single-source** filters to entities named in only one document, which is where a duplicate entity usually shows up.
 
-An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary written by an AI model from those facts, its citations linked to the facts they rest on; then contradictions, timeline and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong) and **Record a contradiction**.
+An entity's page shows every fact about it from every document, with your check of each and the source passage on request; a summary written by an AI model from those facts, its citations linked to the facts they rest on (a summary written before a merge into the entity, or before a merge was undone, carries an **Out of date** warning until the next run rewrites it); then contradictions, timeline and relationships, and thumbnails of the documents it appears in. See [Entities](investigating.md#entities). The **⋯** menu holds **Merge into…** (explained before it runs, and undone from Review → Merges if it was wrong) and **Record a contradiction**.
 
 ### Network and Timeline
 
 **Network** draws the entities as a graph: each dot is an entity, sized by how many documents name it and coloured by type, and each line is a relationship. Hover to see a dot's connections, click to see its details, double-click to open it.
 
-**Timeline** lays out every dated event by year and month, with links to the page each came from. Filter it to one entity to follow that entity through the record.
+**Timeline** lays out every dated event by year and month, with links to the page each came from. An event whose fact you marked Disputed stays in place, labelled **disputed**. Filter it to one entity to follow that entity through the record.
 
 ### Search
 
@@ -69,7 +69,7 @@ Contradictions, leads, watch-list hits, possible duplicates, merges and document
 
 ### Briefings
 
-Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved. The current-state summary (`hot.md`), the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here) are pinned at the top.
+Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved. Pinned at the top: **Current state**, the account of the whole investigation that Claude is given at the start of each conversation (built from the records when you open it, with no AI model; see [Ask Claude](investigating.md#ask-claude)), the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here).
 
 ### Ask Claude and Web research
 

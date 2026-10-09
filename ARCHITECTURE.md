@@ -252,7 +252,10 @@ notes' AI prose into `synthesis` (`by: carried`). Timeline events live in the re
 
 An entity earns a synthesized summary once its `appears_in` reaches 2 documents, counted across the
 whole vault (D26). Only entities named in this batch are candidates; the batch is the run's
-`result_*.json` set, so a resumed run still re-synthesizes it (D129). `build_bundle` gives the model
+`result_*.json` set, so a resumed run still re-synthesizes it (D129). An entity whose `synthesis`
+is marked `stale` (written before a merge into it, or an undo of one) is a candidate at every run
+until rewritten, even with one document left, and its note and app page carry an "Out of date"
+warning until then (`entity_notes.STALE_NOTICES`, D285). `build_bundle` gives the model
 the entity's **facts** (D280), never its earlier prose: one line each with a short citation
 (`[f:` + the shortest unique prefix of the D271 hash), date, document, page, warnings, the
 reporter's Verified mark and `new` for this batch's facts. Disputed facts are included, labelled `disputed by the reporter`, and counted.
@@ -329,7 +332,7 @@ Code makes and checks every one; no model ever writes a link a reader sees unche
   that label, so a callout's id is unchanged by either.
 - **Contradictions**: reconcile may return `a_fact`/`b_fact` (the short refs it was shown);
   `contradiction.fact_block` resolves each only within the named document, by unique prefix.
-- **Pages a session writes** (`queries/`, `wiki/`, research memos, also briefings and `hot.md`):
+- **Pages a session writes** (`queries/`, `wiki/`, research memos, also briefings):
   never rewritten. `check_text`/`check_vault` resolve every link and report found, not found and
   disputed; the app calls `vault.citations` for each page it renders and shows a dangling one as
   "source not found", `watchdog check-citations` and Maintenance → Check citations list them all.
@@ -375,9 +378,11 @@ registry, keyed for idempotent replay (D67).
   (D238). The key facts are read from the stored extractions as citable lines
   (`_briefing_cited_facts`: a short ref unique across the batch, date, page, warnings and the
   reporter's mark, Disputed labelled, D283). `_write_briefing` renders the model's `[f:…]`
-  citations as links (§8.6) and writes `briefings/<ts>.md` (a counter suffix on collision),
-  `hot.md`, a `log.md` entry and `.watchdog/briefings/<ts>.json` (the ref map and citation
-  counts). `--skip-briefing` skips the call and those files (D134).
+  citations as links (§8.6) and writes `briefings/<ts>.md` (a counter suffix on collision; its
+  emerging patterns, open questions and one-line status included), a `log.md` entry and
+  `.watchdog/briefings/<ts>.json` (the ref map, citation counts and the status line the Overview
+  shows as its headline). `--skip-briefing` skips the call and those files (D134). It no longer
+  writes `hot.md` (D285): see the session primer, §12.
 - **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
   `watchdog review` (`cmd/review.py`) steps through the open ones, plus near-duplicate documents
@@ -433,7 +438,7 @@ briefings/                   briefings, leads, alerts, research memos
 requests.md                  open document requests
 verification.md              generated list of the facts a reporter has marked (D271); never hand-edited
 merges.md                    generated record of every entity merge and open "possible same" pair (D279)
-context.md / hot.md / log.md investigation context, session cache, run log
+context.md / log.md          investigation context, run log (an older vault's hot.md is left in place, unread, D285)
 index.md / dashboard.base    landing page and Obsidian Bases dashboard (D42)
 queries/ wiki/               session-written findings and threads
 .embeddings/ .fulltext/      search indexes
@@ -444,7 +449,7 @@ queries/ wiki/               session-written findings and threads
   extracted/<sha>.json       staged, validated extractions; kept, and the source every entity note is rendered from (D280)
   timeline/                  raw and canonical NDJSON events
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
-  briefings/<ts>.json        a briefing's short-ref → D271 id map and citation counts (D283)
+  briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283) and status line (D285)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   processing-state.json      present while a run is in progress
@@ -454,7 +459,7 @@ queries/ wiki/               session-written findings and threads
     resolutions.json requests.json batch-pending.json
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
-    notes-stale.json         entities whose notes a mark could not refresh, rendered by the next commit flush (D280)
+    notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
     .processing-lock .write-lock .verification-lock
@@ -492,6 +497,19 @@ filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` remo
 session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/tmp/`,
 `.watchdog/research/`) and a few deterministic commands. `refresh-skills` updates commands,
 permissions, the prompt hook and dashboard views in existing vaults.
+
+**Session primer (D285).** The vault's SessionStart hook (matcher `startup|resume|compact`) runs
+`watchdog session-primer`, an internal command that prints `cmd/primer.build(vault)`: the questions
+in `context.md`, counts and verification progress, the most-mentioned entities with note links,
+open contradictions, leads, document requests, possible same entities and disputed facts (with
+citation links), the last three briefings with their status lines, and how to cite. It is read from
+the registry, the ledger, the merge log and the requests ledger with no model call, built fresh for
+every session, and budgeted (`BUDGET_CHARS`, 6,000 characters; lists shrink from five items to
+none until it fits). It never fails a session's start. The app shows the same text under Briefings →
+Current state (`vault.sessionPrimer`). An older vault's hook, which `cat`ed `hot.md`, is rewritten by
+the D266 migration on first use (`vault_paths.retire_hot_md_hook`), which also refreshes its
+`.claude/CLAUDE.md`; `hot.md` itself is left on disk and is no longer read, indexed or
+citation-checked.
 
 **Merging entities (D54).** `watchdog merge-entities <keep> <merge>` unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
@@ -723,10 +741,17 @@ noted as such.
   `tests/test_invariants.py::test_I13_…` and
   `tests/test_gui_demo.py::test_deleted_notes_rebuild_identically_with_no_model`.
 - **I14 — A rendered citation always resolves to a stored fact.** Wherever Watchdog shows or writes
-  a fact citation as a link — an entity summary, a briefing, `hot.md`, a contradiction side, a page
+  a fact citation as a link — an entity summary, a briefing, a contradiction side, a page
   the app renders — code has resolved it to a fact that exists now; one that does not resolve is
   dropped (generated text) or shown as "source not found" (a page a session wrote, never rewritten).
   A short ref resolves only through the map stored with the text that cited it, and a contradiction
   side only within its named document. Uncited sentences are allowed and never flagged; a Disputed
   fact is cited and labelled, never hidden. *History: D271, D280, D283.* Guarded by
   `tests/test_citations.py` and `tests/test_gui_demo.py::test_demo_summaries_cite_facts_and_every_citation_resolves`.
+- **I15 — A disputed fact is labelled wherever a fact is shown, and never dropped.** A fact the
+  reporter marked Disputed stays in every list, note, timeline, export, search result and session
+  primer that would hold it, carrying the label "disputed"; no step filters it out. The synthesis,
+  briefing and contradiction-check inputs include it, labelled (the same-name comparison of D279
+  sends facts unlabelled).
+  A mark counts only while it matches the fact's words and page (D271). *History: D280, D283,
+  D285.* Guarded by `tests/test_gui_demo.py::test_a_disputed_fact_is_shown_labelled_on_every_surface`.

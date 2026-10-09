@@ -34,7 +34,6 @@ my-investigation/
 ├── queries/                ← saved answers to questions you have asked
 ├── .fulltext/              ← full-text search index
 ├── .embeddings/            ← semantic search index
-├── hot.md                  ← current session state, rewritten after every run
 ├── log.md                  ← append-only processing history
 ├── timeline.md             ← chronological event log across the investigation
 ├── context.md              ← your investigation intent and key questions
@@ -60,7 +59,7 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 **`entities/`** holds one note per extracted entity, filed by type. Watchdog sorts every entity into one of six fixed classes: **person** (people), **organization** (companies, banks, unions, funds, non-profits), **public-body** (governments, regulators, courts, agencies), **place** (addresses, properties, locations), **asset** (vehicles, accounts, domains, shares), and **proceeding** (lawsuits, insolvencies, inquiries). Fixing the list to these six keeps the same real-world entity from being split across near-duplicate folders when the model describes it differently in two documents. These notes are the heart of the vault; their structure is described [below](#entity-notes).
 
-**`documents/`** holds one note per added document: what it is, what was extracted from it, and a link to the original in the morgue.
+**`documents/`** holds one note per added document: what it is, what was extracted from it, and a link to the original in the morgue. A fact you have marked Disputed ends in **✗ disputed** there; it is never removed.
 
 **`briefings/`** collects the reports Watchdog writes after each run: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. [Investigating](investigating.md) explains how to work with each.
 
@@ -72,9 +71,9 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 ### The root files
 
-- **`hot.md`** — a current-state summary of the investigation, rewritten after every run. Claude reads it at the start of each session to orient itself without re-reading the vault.
+- **`hot.md`** — investigations started with an earlier version of Watchdog have one: a summary the briefing model rewrote after every run. Watchdog no longer writes or reads it, and leaves it where it is; you can delete it. Each Ask Claude conversation now starts with an account of the whole investigation that Watchdog builds from the records (see [Ask Claude](investigating.md#ask-claude)).
 - **`log.md`** — an append-only, human-readable record of every run.
-- **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view.
+- **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view. An event whose fact you have marked Disputed ends in **✗ disputed**.
 - **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**. It is sent to the AI model with every document you add, so write it as open questions and keep confidential material out of it; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended).
 - **`watchlist.md`** — terms you want flagged when they appear in new documents, one per line. Edit it on the **Watch list** tab of Review; the format and the scan are covered in [Investigating](investigating.md#the-watch-list).
 - **`requests.md`** — documents named in what you have already added that you could go and get: a hearing transcript an order cites, an enabling regulation, a referenced filing. Regenerated after every run and covered in [Investigating](investigating.md#document-requests).
@@ -95,7 +94,7 @@ Two tables deserve attention. **Possible duplicate documents** lists documents t
 
 An entity note is a view of the investigation's records, rewritten whenever something about the entity changes. It has up to six sections:
 
-- **`## Summary`** — an overview of who this entity is and why they matter, written by an AI model from the entity's facts once the entity appears in two or more documents. Where a sentence rests on a fact, it ends in a citation such as `(p. 4)` that links to that fact (see [Fact citations](#fact-citations)). Sentences without a citation are the model's own framing: connecting, summing up. The summary can be wrong. The facts below it are the record.
+- **`## Summary`** — an overview of who this entity is and why they matter, written by an AI model from the entity's facts once the entity appears in two or more documents. Where a sentence rests on a fact, it ends in a citation such as `(p. 4)` that links to that fact (see [Fact citations](#fact-citations)). Sentences without a citation are the model's own framing: connecting, summing up. The summary can be wrong. The facts below it are the record. A summary written before another record was merged into this one, or before a merge was undone, ends in an **Out of date** warning; the next run that adds documents rewrites it.
 - **`## Facts`** — every fact, from every document added so far, that is about this entity. Each line gives the fact, its document and a link to the page, any warning (*(inferred)*, a figure not found on the page), and your own check of it: **✓ verified**, **✗ disputed**, **? can't verify** or **not checked**. A fact you dispute stays in the list, labelled. Facts with dates come first, in the order the events happened; facts without their own date take their document's date. Where the model quoted the document, or Watchdog found the sentence the fact rests on, it is shown under the fact.
 - **`## Contradictions`** — places where two documents disagree about the entity, each side cited.
 - **`## Relationships`** — connections to other entities, with source citations.
@@ -109,7 +108,7 @@ Investigations started with an earlier version of Watchdog have their notes rewr
 
 ## Fact citations
 
-Text written by an AI model — entity summaries, briefings, the current-state page — and the pages Claude writes in Ask Claude (saved answers in `queries/`, threads in `wiki/`, research memos) cite facts by linking to the fact's line in its document's note:
+Text written by an AI model — entity summaries and briefings — and the pages Claude writes in Ask Claude (saved answers in `queries/`, threads in `wiki/`, research memos) cite facts by linking to the fact's line in its document's note:
 
 ```
 The City paid $4,350,000 for the property ([[documents/payment-register#^f-264b05b025|p. 1]]).
