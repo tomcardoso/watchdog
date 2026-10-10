@@ -262,11 +262,53 @@ def summary_section(synthesis: dict | None, known: set[str] | None = None,
     return "\n\n".join(parts)
 
 
+def _relationship_line(row: dict, documents: dict) -> str:
+    """One relationship of the entity with one counterpart (D291): the label (the canonical one
+    when the wordings were grouped), the counterpart, date ranges, `*(inferred)*` when every source
+    is, each source document and page, and the documents' own wordings when they differ from the
+    label."""
+    from watchdog.pipeline.write_vault import _defang, _page_link, _type_dir, slugify
+    other = (f"[[entities/{_type_dir(row['other_type'])}/{slugify(row['other'])}|"
+             f"{_defang(row['other_name'])}]]")
+    label = _defang(row["label"])
+    dates = f" — {'; '.join(_defang(d) for d in row['date_ranges'])}" if row["date_ranges"] else ""
+    basis = " *(inferred)*" if row["basis"] == "inferred" else ""
+    parts, seen = [], set()
+    for src in row["sources"]:
+        mark = (src["sha"], src["page"])
+        if mark in seen:
+            continue
+        seen.add(mark)
+        doc = documents.get(src["sha"] or "") or {}
+        note, title = doc.get("document_note", ""), doc.get("title") or doc.get("filename", "")
+        if note and title:
+            pg = _page_link(doc.get("morgue_path", ""), src["page"])
+            parts.append(f"[[{note}|{_defang(title)}]]" + (f", {pg}" if pg else ""))
+        elif src["page"]:
+            parts.append(_page_link("", src["page"]))
+    source = (" — via " + "; ".join(parts)) if parts else ""
+    words = [w["text"] for w in row["wordings"]]
+    written = ""
+    if len(words) > 1 or (words and words[0].casefold() != row["label"].casefold()):
+        written = " · as written: " + ", ".join(f'"{_defang(w)}"' for w in words)
+    if row["direction"] == "in":
+        return f"- {other} — {label}{dates}{basis}{source}{written}"
+    return f"- {label} {other}{dates}{basis}{source}{written}"
+
+
+def relationships_section(rows: list[dict], documents: dict) -> str:
+    return "\n".join(_relationship_line(r, documents) for r in rows)
+
+
 def render(entry: dict, facts: list[dict], documents: dict, contradictions: str, notes: str,
-           resolver: citations.Resolver | None = None, stats: dict | None = None) -> str:
+           resolver: citations.Resolver | None = None, stats: dict | None = None,
+           relationships: list[dict] | None = None) -> str:
     """The whole note for one registry entry. `resolver` checks fact links in the summary and the
-    contradictions (D283); `stats` receives the summary's citation counts."""
-    from watchdog.pipeline.write_vault import _defang, _frontmatter, _role_line, _today
+    contradictions (D283); `stats` receives the summary's citation counts. `relationships` are the
+    entity's rows from `relationships.View.for_entity` (D291); without them the entry's own roles
+    are grouped by wording alone."""
+    from watchdog.pipeline import relationships as rel
+    from watchdog.pipeline.write_vault import _defang, _frontmatter, _today
     appears = []
     for sha in entry.get("appears_in", []):
         doc = documents.get(sha, {})
@@ -296,9 +338,9 @@ def render(entry: dict, facts: list[dict], documents: dict, contradictions: str,
         if resolver is not None:
             contradictions = citations.annotate_callouts(contradictions, resolver)
         body += f"\n## Contradictions\n\n{contradictions}\n"
-    roles = entry.get("roles", [])
-    if roles:
-        body += "\n## Relationships\n\n" + "\n".join(_role_line(r, documents) for r in roles) + "\n"
+    rows = relationships if relationships is not None else rel.rows_for_entry(entry)
+    if rows:
+        body += "\n## Relationships\n\n" + relationships_section(rows, documents) + "\n"
     return fm + body + notes
 
 
@@ -316,9 +358,11 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
     record's notes over)."""
     from watchdog.pipeline import resolutions
     from watchdog.pipeline.write_vault import _assert_in_vault, _extract_section
+    from watchdog.pipeline import relationships as rel
     vault = Path(vault)
     index = index or entity_facts.FactIndex(vault, entities, documents)
     resolver = citations.Resolver(vault, index)
+    view = rel.View(vault, index=index)
     resolved = resolved if resolved is not None else resolutions.resolved_ids(vault)
     out = []
     for eid in sorted(set(ids)):
@@ -336,7 +380,7 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
         own_notes = (notes or {}).get(eid) or notes_section(old)
         stats = citations.new_stats()
         content = render(entry, index.facts_for(eid), documents, body, own_notes,
-                         resolver=resolver, stats=stats)
+                         resolver=resolver, stats=stats, relationships=view.for_entity(eid))
         synthesis = entry.get("synthesis")
         if isinstance(synthesis, dict) and synthesis.get("citations") != stats:
             # What the rendered summary could link (D283): citations whose fact is gone or whose

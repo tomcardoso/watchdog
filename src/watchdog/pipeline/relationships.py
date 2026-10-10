@@ -252,57 +252,10 @@ class View:
 
     # grouped
     def groups(self) -> dict[tuple, list[dict]]:
-        """(from, to) → its relationships, one per canonical group: `from`, `to`, `label` (the
-        canonical label, else the wording most documents use), `keys`, `group` (the log entry's id,
-        when grouped), `wordings` (each distinct wording with its sources), `sources` (sha, page,
-        wording, basis, date_range), `docs` (distinct shas), `basis` (inferred only when every
-        source is), `date_ranges`, `to_name`, `to_type`."""
-        if self._groups is not None:
-            return self._groups
-        active = self.active_groups()
-        buckets: dict[tuple, dict[str, list[dict]]] = {}
-        for s in self.statements():
-            g = active.get((s["from"], s["to"], s["key"]))
-            bucket = g["id"] if g else "key:" + s["key"]
-            buckets.setdefault((s["from"], s["to"]), {}).setdefault(bucket, []).append(s)
-        out: dict[tuple, list[dict]] = {}
-        for pair, by_bucket in buckets.items():
-            rows = []
-            for bucket, stmts in by_bucket.items():
-                stmts.sort(key=lambda s: (self._doc_order(s["sha"]), s["page"] or 0, s["label"]))
-                g = active.get((pair[0], pair[1], stmts[0]["key"])) if bucket.startswith("rel:") else None
-                wordings: dict[str, dict] = {}
-                for s in stmts:
-                    w = wordings.setdefault(s["label"].casefold(), {"text": s["label"], "sources": []})
-                    w["sources"].append({"sha": s["sha"], "page": s["page"]})
-                counts = Counter(s["label"] for s in stmts)
-                common = sorted(counts, key=lambda w: (-counts[w], w))[0]
-                label = (g.get("canonical") or "").strip() if g else ""
-                docs = []
-                for s in stmts:
-                    if s["sha"] and s["sha"] not in docs:
-                        docs.append(s["sha"])
-                ranges = []
-                for s in stmts:
-                    if s["date_range"] and s["date_range"] not in ranges:
-                        ranges.append(s["date_range"])
-                rows.append({
-                    "from": pair[0], "to": pair[1], "label": label or common,
-                    "keys": sorted({s["key"] for s in stmts}),
-                    "group": g.get("id") if g else None,
-                    "wordings": list(wordings.values()),
-                    "sources": [{k: s[k] for k in ("sha", "page", "label", "basis", "date_range")}
-                                for s in stmts],
-                    "docs": docs,
-                    "basis": "inferred" if all(s["basis"] == "inferred" for s in stmts) else "stated",
-                    "date_ranges": ranges,
-                    "to_name": next((s["to_name"] for s in stmts if s["to_name"]), None),
-                    "to_type": next((s["to_type"] for s in stmts if s["to_type"]), None),
-                })
-            rows.sort(key=lambda r: (-len(r["docs"]), r["label"].casefold()))
-            out[pair] = rows
-        self._groups = out
-        return out
+        """(from, to) → its relationships, one per canonical group (see `group_statements`)."""
+        if self._groups is None:
+            self._groups = group_statements(self.statements(), self.active_groups(), self._doc_order)
+        return self._groups
 
     def _doc_order(self, sha: str | None) -> tuple:
         rec = self.documents.get(sha or "") or {}
@@ -340,12 +293,14 @@ class View:
                 continue
             for r in group:
                 out = frm == eid
-                rows.append({**r, "direction": "out" if out else "in", "other": to if out else frm})
-
-        def name(r):
-            other = self.entities.get(r["other"]) or {}
-            return (other.get("name") or r.get("to_name") or r["other"]).casefold()
-        rows.sort(key=lambda r: (name(r), r["direction"] != "out", r["label"].casefold()))
+                other = to if out else frm
+                rec = self.entities.get(other) or {}
+                rows.append({**r, "direction": "out" if out else "in", "other": other,
+                             "other_name": rec.get("name") or r.get("to_name") or other,
+                             "other_type": rec.get("type") or r.get("to_type") or "Unknown",
+                             "profiled": other in self.entities})
+        rows.sort(key=lambda r: (r["other_name"].casefold(), r["direction"] != "out",
+                                 r["label"].casefold()))
         return rows
 
     def canonical(self, frm: str, to: str, label: str) -> str:
@@ -388,6 +343,90 @@ class View:
             labels.sort(key=lambda x: (-x["docs"], x["label"].casefold()))
             out.append({"from": pair[0], "to": pair[1], "labels": labels[:MAX_KEYS_PER_PAIR]})
         return out
+
+
+def group_statements(statements: list[dict], active: dict[tuple, dict],
+                     doc_order=lambda sha: (sha or "",)) -> dict[tuple, list[dict]]:
+    """(from, to) → its relationships, one per canonical group: `from`, `to`, `label` (the
+    canonical label, else the wording most documents use), `keys`, `group` (the log entry's id,
+    when grouped), `wordings` (each distinct wording with its sources), `sources` (sha, page,
+    wording, basis, date_range), `docs` (distinct shas), `basis` (inferred only when every source
+    is), `date_ranges`, `to_name`, `to_type`. `active` maps (from, to, key) to a log group."""
+    buckets: dict[tuple, dict[str, list[dict]]] = {}
+    for s in statements:
+        g = active.get((s["from"], s["to"], s["key"]))
+        bucket = g["id"] if g else "key:" + s["key"]
+        buckets.setdefault((s["from"], s["to"]), {}).setdefault(bucket, []).append(s)
+    out: dict[tuple, list[dict]] = {}
+    for pair, by_bucket in buckets.items():
+        rows = []
+        for bucket, stmts in by_bucket.items():
+            stmts.sort(key=lambda s: (doc_order(s["sha"]), s["page"] or 0, s["label"]))
+            g = active.get((pair[0], pair[1], stmts[0]["key"])) if not bucket.startswith("key:") else None
+            wordings: dict[str, dict] = {}
+            for s in stmts:
+                w = wordings.setdefault(s["label"].casefold(), {"text": s["label"], "sources": []})
+                w["sources"].append({"sha": s["sha"], "page": s["page"]})
+            counts = Counter(s["label"] for s in stmts)
+            common = sorted(counts, key=lambda w: (-counts[w], w))[0]
+            label = (g.get("canonical") or "").strip() if g else ""
+            docs: list[str] = []
+            ranges: list[str] = []
+            for s in stmts:
+                if s["sha"] and s["sha"] not in docs:
+                    docs.append(s["sha"])
+                if s["date_range"] and s["date_range"] not in ranges:
+                    ranges.append(s["date_range"])
+            rows.append({
+                "from": pair[0], "to": pair[1], "label": label or common,
+                "keys": sorted({s["key"] for s in stmts}),
+                "group": g.get("id") if g else None,
+                "wordings": list(wordings.values()),
+                "sources": [{k: s[k] for k in ("sha", "page", "label", "basis", "date_range")}
+                            for s in stmts],
+                "docs": docs,
+                "basis": "inferred" if all(s["basis"] == "inferred" for s in stmts) else "stated",
+                "date_ranges": ranges,
+                "to_name": next((s["to_name"] for s in stmts if s["to_name"]), None),
+                "to_type": next((s["to_type"] for s in stmts if s["to_type"]), None),
+            })
+        rows.sort(key=lambda r: (-len(r["docs"]), r["label"].casefold()))
+        out[pair] = rows
+    return out
+
+
+def rows_for_entry(entry: dict) -> list[dict]:
+    """`View.for_entity` rows from one registry entry's own roles (forward and reverse), grouped
+    by normalized wording only: for rendering a note with no vault to read."""
+    eid = entry.get("id") or ""
+    stmts, seen = [], set()
+    for r in entry.get("roles") or []:
+        if not isinstance(r, dict):
+            continue
+        label = (r.get("relationship") or "").strip()
+        other = r.get("target_id")
+        if not label or not other or other == eid:
+            continue
+        frm, to = (other, eid) if r.get("is_reverse") else (eid, other)
+        mark = (frm, to, label.casefold(), r.get("source_sha256") or "")
+        if mark in seen:
+            continue
+        seen.add(mark)
+        stmts.append({"from": frm, "to": to, "label": label, "key": normalize(label),
+                      "sha": r.get("source_sha256"), "page": _page(r.get("page")),
+                      "basis": "inferred" if r.get("basis") == "inferred" else "stated",
+                      "date_range": (r.get("date_range") or "").strip() or None,
+                      "to_name": r.get("target_name"), "to_type": r.get("target_type")})
+    rows = []
+    for (frm, to), group in group_statements(stmts, {}).items():
+        for r in group:
+            out = frm == eid
+            other = to if out else frm
+            rows.append({**r, "direction": "out" if out else "in", "other": other,
+                         "other_name": r.get("to_name") or other,
+                         "other_type": r.get("to_type") or "Unknown", "profiled": True})
+    rows.sort(key=lambda r: (r["other_name"].casefold(), r["direction"] != "out", r["label"].casefold()))
+    return rows
 
 
 # ── the model's answer, applied by code ─────────────────────────────────────────────────
