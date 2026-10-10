@@ -147,8 +147,7 @@ def _format(open_: list[dict]) -> str:
     lines = [
         "# Documents to request\n",
         "*Regenerated on each ingest — lists only what is still outstanding.*\n",
-        "*Handled in Watchdog: Review → Requests. This file is a read-only summary; the "
-        "`<!--wid:…-->` comments hold each item's id for the app.*\n",
+        "*Handled in Watchdog: Review → Requests. This file is a read-only summary.*\n",
     ]
     for dtype in sorted(by_type):
         lines.append(f"\n## {dtype}\n")
