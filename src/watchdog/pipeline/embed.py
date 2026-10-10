@@ -78,6 +78,15 @@ def _model_name() -> str:
     return _config_get("embed_model", _MODEL_DEFAULT)
 
 
+def embedder_available() -> bool:
+    """Whether an embedding model can be loaded at all (fastembed installed, or one already
+    in place), so a caller can fail with a sentence before it starts changing an index."""
+    if _embedder is not None:
+        return True
+    import importlib.util
+    return importlib.util.find_spec("fastembed") is not None
+
+
 def _get_embedder():
     global _embedder
     if _embedder is None:

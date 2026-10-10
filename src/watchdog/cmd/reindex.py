@@ -10,6 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
+from watchdog.appmode import hint as _hint
 from watchdog.cmd.base import _BOLD, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline.json_io import _read_json_or
 
@@ -97,6 +98,14 @@ def cmd_reindex(args) -> None:
     entities_path = reg_dir / "entities.json"
     if entities_path.exists():
         entities_reg = _read_json_or(entities_path, {}, catch=(json.JSONDecodeError,))
+
+    # Check the search packages before the old index is deleted below: an installation without
+    # them must fail with one plain sentence and leave the existing index alone.
+    if not embed.embedder_available():
+        sys.exit("Error: the search tools (fastembed) are not installed, so the search index "
+                 "cannot be rebuilt. The existing index has not been changed."
+                 + _hint(" Reinstall Watchdog with its search tools to fix this.",
+                         " Reinstalling the app restores them."))
 
     print()
     print(f"  {_BOLD}Reindexing{_RESET} {_DIM}— {info['name']}{_RESET}")
