@@ -17,6 +17,7 @@ from pathlib import Path
 
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog import progress
+from watchdog.appmode import hint as _hint, under_app
 from watchdog.pipeline import sidecar, text_positions, transcribe
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
@@ -233,9 +234,9 @@ def _resolve_workers(
     # A worker count below 1 reaches ThreadPoolExecutor's own `max_workers must be greater than
     # 0` ValueError (#636) — catch it here with a clear message instead.
     if explicit_pre is not None and explicit_pre < 1:
-        sys.exit(f"Error: --chew-workers must be at least 1 (got {explicit_pre}).")
+        sys.exit(f"Error: {_hint('--chew-workers', 'The pre-processing worker count')} must be at least 1 (got {explicit_pre}).")
     if explicit_chunk is not None and explicit_chunk < 1:
-        sys.exit(f"Error: --chunk-workers must be at least 1 (got {explicit_chunk}).")
+        sys.exit(f"Error: {_hint('--chunk-workers', 'The chunk worker count')} must be at least 1 (got {explicit_chunk}).")
 
     cfg = user_config.read()
 
@@ -492,8 +493,11 @@ def run_ingest(
     started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     if not acquire_or_take_stale(lock_file, f"started_at: {started_at}\npid: {os.getpid()}\n",
                                  STALE_SECONDS):
-        sys.exit("\n  Error: a chew is already in progress on this vault. "
-                 "Wait for it to finish, or run: watchdog unlock\n")
+        sys.exit(_hint("\n  Error: a chew is already in progress on this vault. "
+                       "Wait for it to finish, or run: watchdog unlock\n",
+                       "\n  Error: pre-processing is already in progress on this investigation. "
+                       "Wait for it to finish, or use Activity → Maintenance → Release a stuck lock "
+                       "if it is stale.\n"))
 
     from watchdog.pipeline.locks import heartbeat
     try:
@@ -525,7 +529,8 @@ def _run_ingest_inner(
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
-            print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM}.{_RESET}\n")
+            run_it = _hint(f" Run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM}.", "")
+            print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready.{run_it}{_RESET}\n")
         else:
             print(f"\n  {_DIM}incoming/ is empty — nothing to chew.{_RESET}\n")
         return
@@ -729,7 +734,7 @@ def _run_ingest_inner(
     print()
     print(f"  {'  ·  '.join(parts)}")
 
-    if ok and show_ingest_hint:
+    if ok and show_ingest_hint and not under_app():
         print()
         print(f"  Run:  {_CYAN}watchdog dig{_RESET}")
 

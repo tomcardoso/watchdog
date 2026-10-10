@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog import defaults
+from watchdog.appmode import hint as _hint
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
@@ -413,7 +414,9 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         if age is None or age < STALE_SECONDS:
             ts = lock_started_at(lock_file)
             when = f" (lock acquired {ts})" if ts else ""
-            return {"error": f"ingest already running{when}; if stale, run: watchdog unlock"}
+            return {"error": f"ingest already running{when}; "
+                             + _hint("if stale, run: watchdog unlock",
+                                     "if it is stale, use Activity → Maintenance → Release a stuck lock")}
         return None
 
     if total == 0 and not force_lock:
@@ -435,7 +438,9 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
     if not acquire_or_take_stale(lock_file, f"pid: cli\nstarted_at: {started_at}\n", STALE_SECONDS):
         err = _live_lock_error()
         return err if err is not None else {
-            "error": "ingest already running; if stale, run: watchdog unlock"}
+            "error": "ingest already running; "
+                     + _hint("if stale, run: watchdog unlock",
+                             "if it is stale, use Activity → Maintenance → Release a stuck lock")}
 
     # Fresh run — clear the post-ingest inputs (per-doc results and scratchpads) left by a
     # prior ingest so the finalizer gate + briefing see only this run's documents. Skipped when

@@ -15,6 +15,7 @@ import json
 import sys
 from pathlib import Path
 
+from watchdog.appmode import hint as _hint
 from watchdog.vault_paths import is_vault
 from watchdog.pipeline.json_io import _read_json_or
 
@@ -448,5 +449,6 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
 def main_rebuild() -> None:
     vault = Path(".").resolve()
     if not is_vault(vault):
-        sys.exit("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.")
+        sys.exit(_hint("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.",
+                       "Error: this folder is not an investigation."))
     cmd_rebuild_timeline(vault)

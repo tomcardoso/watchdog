@@ -22,6 +22,8 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
+from watchdog.appmode import hint as _hint
+
 _DB_REL = Path(".fulltext") / "index.db"
 
 _SCHEMA = """
@@ -54,7 +56,7 @@ def _connection(vault_path: Path):
         conn.close()
         raise RuntimeError(
             "This Python's sqlite3 build has no FTS5 support — full-text search is "
-            "unavailable. Semantic search (watchdog search) still works."
+            "unavailable. Semantic search " + _hint("(watchdog search) ", "") + "still works."
         ) from e
     try:
         yield conn
