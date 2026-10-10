@@ -361,7 +361,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     The single global-timeline renderer (#237): reads the cross-document-deduped canonical
     NDJSON and resolves each record's ``source_sha256`` / ``page`` / ``entity_ids`` into
     document links and entity links, grouped by year. Every command that touches the vault
-    (``ingest``, ``merge-entities``, ``write-entity``, standalone ``watchdog timeline``)
+    (``ingest``, ``merge-entities``, a session's entity refresh, standalone ``watchdog timeline``)
     renders through here, so ``timeline.md``'s shape no longer depends on which ran last.
 
     Returns (date_count, event_count) so callers can report progress.

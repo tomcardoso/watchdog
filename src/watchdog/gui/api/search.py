@@ -1,10 +1,10 @@
-"""`search.*` — the semantic + exact lanes of `watchdog search`, batch term checks, and the
+"""`search.*` — the semantic + exact lanes of search, batch term checks, and the
 cross-investigation "have I seen this name anywhere?" lookup.
 
-`search.query` runs `embed.search` and `fulltext.search` exactly as `cmd_search` does and returns
-the CLI's `--json` shape (`cmd/vault._build_search_json`), each item enriched with the document
+`search.query` runs `embed.search` and `fulltext.search` as a session's `search` tool does and
+returns the same JSON shape (`cmd/vault._build_search_json`), each item enriched with the document
 sha, its note and its original so the app can link straight to them. The batch and everywhere
-lookups share the CLI's own data functions (`batch_report`, `everywhere_report`). Without
+lookups share the library's data functions (`batch_report`, `everywhere_report`). Without
 fastembed installed the semantic lane reports `semantic_error` and the exact lane still answers.
 """
 

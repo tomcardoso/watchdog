@@ -6,8 +6,8 @@ only, so a session after a one-document batch started out knowing about one docu
 is read from the vault's records instead, with no model call: the questions in `context.md`, the
 counts and the reporter's verification progress, the most-mentioned entities, what is waiting on
 the reporter (contradictions, leads, document requests, possible same entities, disputed facts),
-and the last few briefings. It is printed by `watchdog session-primer`, which the vault's
-SessionStart hook runs, so it is never stale and never a file a session can edit.
+and the last few briefings. The app adds it to every session's system prompt when the session
+connects (D299), so it is never stale and never a file a session can edit.
 
 It is loaded into every session, so it is budgeted (`BUDGET_CHARS`): each list shows a few items
 and says how many more there are, and the lists shrink until the whole primer fits.
@@ -243,7 +243,7 @@ def render(data: dict, per_list: int = _LIST_LEVELS[0]) -> str:
     waiting += _list("Open contradictions", [_safe(i["title"]) for i in data["contradictions"]],
                      per_list, "app: Review")
     waiting += _list("Open leads", [_safe(i["title"]) for i in data["leads"]], per_list,
-                     "`watchdog leads`")
+                     "the `mcp__watchdog__leads` tool")
     waiting += _list("Documents to request", [_safe(r.get("what") or "") for r in data["requests"]],
                      per_list, "`requests.md`")
     waiting += _list("Possible same entities, not merged", [_safe(i["title"]) for i in data["merges"]],
@@ -263,7 +263,7 @@ def render(data: dict, per_list: int = _LIST_LEVELS[0]) -> str:
 
     lines += ["## Citing", "",
               "Cite a recorded fact by linking to its line in its document note, "
-              "`[[documents/<slug>#^f-<id>|p. N]]`; `watchdog search \"<query>\" --json` lists each "
+              "`[[documents/<slug>#^f-<id>|p. N]]`; the `mcp__watchdog__search` tool lists each "
               "hit's facts with a ready `cite`. Never invent an id. A disputed fact may be cited, "
               "described as disputed."]
     return "\n".join(lines).rstrip() + "\n"
@@ -281,18 +281,15 @@ def build(vault: Path, budget: int = BUDGET_CHARS) -> str:
     return text
 
 
-def cmd_session_primer(vault: Path) -> None:
-    """The vault's SessionStart hook: print the primer, and never fail a session's start."""
-    import sys
+def session_text(vault: Path) -> str:
+    """The primer an Ask Claude session starts with (D299): `build`, or an empty string outside an
+    investigation, or a short fallback when a record can't be read. Never raises, because a broken
+    record must not stop a session."""
     from watchdog.vault_paths import is_vault
     try:
         if not is_vault(vault):
-            return
-        text = build(vault)
+            return ""
+        return build(vault)
     except Exception as e:                      # a broken record must not stop a session
-        text = (f"Watchdog could not build this investigation's primer ({type(e).__name__}). "
+        return (f"Watchdog could not build this investigation's primer ({type(e).__name__}). "
                 "Read `context.md` and the newest file in `briefings/` to orient yourself.\n")
-    try:
-        sys.stdout.write(text)
-    except (OSError, UnicodeEncodeError):
-        sys.stdout.buffer.write(text.encode("utf-8", errors="replace"))

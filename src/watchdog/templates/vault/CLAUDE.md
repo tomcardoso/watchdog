@@ -3,7 +3,7 @@
 
 Each session starts with a primer Watchdog builds from the investigation's records (it is loaded automatically, and again after the conversation is compacted): the journalist's questions, the counts, the most-mentioned entities, what is waiting on the journalist and the latest briefings. It covers the whole investigation. Read `context.md` for the full statement of what this investigation is about. This session runs inside the Watchdog desktop app. If the user asks about documents that haven't appeared yet, they may still be waiting for pre-processing (converting the files on this computer), processing (extracting facts with a model) or post-processing (merging entities and writing the briefing); the Documents screen and Activity in the app show what is waiting.
 
-The vault is written by Watchdog's pipeline, which the journalist runs from the app — not by this session. Entity notes, document notes, the registry, and `timeline.md` are pipeline-owned: read them freely, but change them only through the `watchdog` commands below, never by editing the files or the registry by hand.
+The vault is written by Watchdog's pipeline, which the journalist runs from the app — not by this session. Entity notes, document notes, the registry, and `timeline.md` are pipeline-owned: read them freely, but change them only through Watchdog's tools below, never by editing the files or the registry by hand.
 
 ## Vault layout
 
@@ -24,24 +24,26 @@ The vault is written by Watchdog's pipeline, which the journalist runs from the 
 | `context.md` | Investigation intent and key questions — read this before every skill |
 | `.watchdog/` | Pipeline state and indexes — read `.watchdog/registry/manifest.json` for entity lookups; never edit |
 
-## Pre-authorized operations
+## What this session can do
 
-These are allowed in `.claude/settings.json`, so they run without asking:
+There is no shell in this session. Use the Read, Glob and Grep tools for files, with paths relative to the vault root, and Watchdog's own tools for everything else. These run without asking:
 
-| Operation | Permitted pattern |
-|-----------|------------------|
-| Read any file within this vault | always allowed |
-| Write/edit `queries/`, `wiki/`, `briefings/` pages, `context.md` | auto-allowed |
-| Write scratch files in `.watchdog/tmp/` | auto-allowed |
-| `watchdog search "<query>" --json` | auto-allowed |
-| `watchdog leads` | auto-allowed |
-| `watchdog check-citations [page]` | auto-allowed — checks a page's fact citations, changes nothing |
-| `watchdog write-entity --entity-id <id> --extraction <file>` | auto-allowed (used by `/watchdog-entity`) |
-| `watchdog contradiction-add …` | auto-allowed — only after the journalist confirms a candidate |
-| `watchdog watchlist-add "<term>" …` | auto-allowed (used by `/watchdog-context`) |
-| `watchdog timeline` | auto-allowed |
+| Operation | How |
+|-----------|-----|
+| Read any file within this vault | Read, Glob, Grep |
+| Write/edit `queries/`, `wiki/`, `briefings/` pages, `context.md` | Write, Edit |
+| Search the documents by meaning and exact wording | `mcp__watchdog__search` |
+| The lead sweep over the entity graph | `mcp__watchdog__leads` |
+| Check a page's fact citations (changes nothing) | `mcp__watchdog__check_citations` |
+| Sources the investigation already has (web research) | `mcp__watchdog__research_seen` |
+| Store a refreshed entity summary and timeline | `mcp__watchdog__write_entity` (used by `/watchdog-entity`) |
+| Record a contradiction | `mcp__watchdog__contradiction_add` — only after the journalist confirms a candidate |
+| Add watch-list terms | `mcp__watchdog__watchlist_add` (used by `/watchdog-context`) |
+| Rebuild `timeline.md` | `mcp__watchdog__timeline` |
 
-Use the Read, Glob and Grep tools for files rather than shell pipelines, and paths relative to the vault root; shell commands other than those above may be refused. Never pass `--vault` to a watchdog command — every command defaults to the current directory, and naming another path could touch a different investigation. Don't run `watchdog chew`, `dig`, `bark` or `unlock` (pre-processing, processing, post-processing, releasing a lock) from this session: the journalist runs them from the app.
+Every tool works on this investigation only. Adding documents (pre-processing, processing and post-processing), merging entities and marking items handled are the journalist's to do in the app, not this session's.
+
+Watchdog's tools exist only in the app's Ask Claude. Opened in Claude Code outside the app, this folder gives Claude these instructions and the vault's permission rules, but none of the tools: read the notes directly instead, and tell the journalist that searching, checking citations and writing entity summaries need the app.
 
 ## Hard rules
 

@@ -2,7 +2,7 @@
 reporter rather than for Claude.
 
 The primer (`cmd/primer.py`, D285) is the text every Ask Claude session starts with. It carries
-instructions meant for the model (how to cite a fact, a `watchdog search … --json` command line)
+instructions meant for the model (how to cite a fact, the name of a session tool)
 and points to files and commands, under a budget that shrinks its lists. The app showed it
 verbatim, so a reporter read model instructions and terminal commands. This renders the same
 records (`primer.gather`, so the two never disagree on a count) without the instructions, with

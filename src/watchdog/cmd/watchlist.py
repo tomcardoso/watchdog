@@ -1,6 +1,4 @@
 """`watchdog watchlist` — sweep the whole vault against `watchlist.md` (#220).
-Also `watchdog watchlist-add` — an internal command `/watchdog-context` shells out to, to
-append proposed seed terms deterministically (#229).
 
 `pipeline.watchlist.scan` normally only sees the current ingest run's documents (D35), so
 adding a term never re-checks documents ingested before it was added. This command builds a
@@ -9,11 +7,7 @@ key is a `sha256` already known to have a `morgue_path`, so each is treated as a
 — and hands it to the unchanged `scan`/`write_alerts` pair the per-run path already uses. Read-
 only except for the alerts file it writes; no lock, no model call."""
 
-import json
-import sys
-from pathlib import Path
 
-from watchdog.vault_paths import is_vault
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline import watchlist as _watchlist
 from watchdog.pipeline.json_io import _read_json_or
@@ -52,14 +46,3 @@ def cmd_watchlist(args) -> None:
           f"{n_docs} document{'s' if n_docs != 1 else ''}){_RESET}")
     print(f"  {_GREEN}Written to{_RESET} {_CYAN}{relpath}{_RESET}")
     print()
-
-
-def cmd_watchlist_add(args) -> None:
-    """Internal command (`watchdog watchlist-add <term>...`) `/watchdog-context` shells out
-    to — deterministic append + dedup belongs in Python, not in the model hand-editing
-    watchlist.md (#229). Prints `{"added": [...], "skipped": N}` for the skill to read."""
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    added = _watchlist.add_terms(vault, args.terms)
-    print(json.dumps({"added": added, "skipped": len(args.terms) - len(added)}, ensure_ascii=False))

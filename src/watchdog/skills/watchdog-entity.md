@@ -1,5 +1,5 @@
 ---
-description: Deep refresh of an entity's Summary and Timeline, re-synthesized from every document it appears in (writes via watchdog write-entity)
+description: Deep refresh of an entity's Summary and Timeline, re-synthesized from every document it appears in (writes through the write_entity tool)
 argument-hint: <entity-id> [entity-id ...]
 ---
 
@@ -54,9 +54,9 @@ Re-read all document notes and extract every datable event involving this entity
 
 Include only events that directly involve this entity — not background context. The Timeline **replaces** the existing one entirely (this is a full re-extraction, not an append).
 
-### 5. Write the refresh JSON and call watchdog write-entity
+### 5. Store the refresh with the write_entity tool
 
-Build the extraction JSON:
+Call the `mcp__watchdog__write_entity` tool with:
 
 ```json
 {
@@ -74,15 +74,9 @@ Build the extraction JSON:
 }
 ```
 
-Write it to `.watchdog/tmp/entity-refresh-<entity-id>.json` using the Write tool, then run:
+Never edit the entity note or the registry yourself.
 
-```bash
-watchdog write-entity --entity-id <entity-id> --extraction .watchdog/tmp/entity-refresh-<entity-id>.json
-```
-
-`write-entity` deletes the scratch file once it has been applied, so there is nothing to clean up.
-
-`watchdog write-entity` stores your summary as the entity's AI-written summary (shown under `## Summary`) and replaces its timeline events in the registry. The rest of the note is rendered from data: its `## Facts` list, contradictions, relationships, and the journalist's `## Notes`, which are never touched. The vault-wide `timeline.md` is built from every document's extracted events, not from entity notes, so this refresh does not change it.
+The tool stores your summary as the entity's AI-written summary (shown under `## Summary`) and replaces its timeline events in the registry. The rest of the note is rendered from data: its `## Facts` list, contradictions, relationships, and the journalist's `## Notes`, which are never touched. The vault-wide `timeline.md` is built from every document's extracted events, not from entity notes, so this refresh does not change it.
 
 Print a completion line after each entity:
 ```

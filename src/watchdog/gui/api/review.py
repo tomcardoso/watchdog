@@ -122,7 +122,7 @@ def watchlist(vault: str) -> dict:
 
 @method("review.watchlistAdd")
 def watchlist_add(vault: str, term: str) -> dict:
-    """Add one term to `watchlist.md` (the file `watchdog watchlist-add` appends to). Blank,
+    """Add one term to `watchlist.md` (the file a session's `watchlist_add` tool appends to). Blank,
     duplicate and malformed terms are refused with a plain message."""
     from watchdog.pipeline import watchlist as _watchlist
 
