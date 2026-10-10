@@ -63,21 +63,6 @@ export function onJobFinished(job: Job): void {
   window.watchdog.notify(ok ? `${job.label} finished` : `${job.label} needs attention`, 'Watchdog')
 }
 
-/** What `watchdog unlock` did, in the app's words. Its own output names terminal commands
- * ("Use watchdog unlock --force…"), and it exits 0 when it leaves a recent lock in place. */
-export function unlockOutcome(out: string): { kind: 'success' | 'info'; title: string; body?: string } {
-  const recent = /Lock is recent/i.test(out)
-  const removed = /Removed:/i.test(out)
-  if (recent)
-    return {
-      kind: 'info',
-      title: removed ? 'One lock removed, one left in place' : 'The lock was left in place',
-      body: 'It is less than 30 minutes old, so a run may still be working. If you are sure nothing is running, force it off.'
-    }
-  if (removed) return { kind: 'success', title: 'Lock removed' }
-  return { kind: 'info', title: 'No lock to remove' }
-}
-
 /** Stop a job, saying so when the stop could not be sent (the job may have ended already). */
 export function stopJob(id: string): void {
   call('jobs.cancel', { id }).catch((e) => toast({ kind: 'error', title: 'Could not stop it', body: e instanceof Error ? e.message : String(e) }))

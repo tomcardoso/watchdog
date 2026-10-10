@@ -85,7 +85,7 @@ def test_status(rich_vault, wdg_home):
     assert s["project"]["slug"] == "rich"
     assert s["by_type"] == {"person": 2, "organization": 1}
     assert s["documents_by_type"] == {"Annual Report": 4}
-    assert s["locks"] == {"chew": True, "ingest": False}
+    assert s["locks"] == {"chew": {"where": "unknown", "host": None, "started_at": None}, "ingest": None}
     assert s["pending_finalization"] == {"docs": 0, "entities": 0}
     assert s["size_bytes"] > 1000
 
@@ -94,7 +94,7 @@ def test_status_of_a_missing_folder_is_empty_not_an_error(wdg_home, tmp_path):
     register(wdg_home, tmp_path / "gone", slug="gone", name="Gone")
     s = call("projects.status", slug="gone")
     assert s["project"]["health"] == "missing" and s["by_type"] == {} and s["size_bytes"] == 0
-    assert s["locks"] == {"chew": False, "ingest": False} and s["pending_finalization"] is None
+    assert s["locks"] == {"chew": None, "ingest": None} and s["pending_finalization"] is None
 
 
 def test_log_returns_the_last_lines(rich_vault, wdg_home):

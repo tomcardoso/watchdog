@@ -300,8 +300,8 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
     a failed call ends the calls early; what the finished calls found is still filed."""
     from watchdog import model_client
     from watchdog.pipeline import history, orchestrate, prompts, schemas
-    from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
-    from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS
+    from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat, lock_contents, release_lock
     from watchdog.vault_paths import processing_lock
 
     vault = Path(vault)
@@ -312,7 +312,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
     from watchdog.cmd.auth import check_run_keys
     check_run_keys(vault, [backend])
     lock = processing_lock(vault)
-    if not acquire_or_take_stale(lock, f"pid: recheck-contradictions\nstarted_at: {_iso_now()}\n",
+    if not acquire_or_take_stale(lock, lock_contents("recheck-contradictions"),
                                  STALE_SECONDS):
         raise Busy(BUSY)
     try:
@@ -360,7 +360,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
                 out.update(_file(vault, found, entities, _ledger(vault, entities), warn))
             return out
     finally:
-        lock.unlink(missing_ok=True)
+        release_lock(lock)
 
 
 def main(argv: list[str] | None = None) -> int:

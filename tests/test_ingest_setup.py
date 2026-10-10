@@ -88,7 +88,7 @@ def test_queued_files_acquires_lock_and_writes_state(tmp_path):
 
     lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     assert lock_file.exists()
-    assert "pid: cli" in lock_file.read_text()
+    assert "label: cli" in lock_file.read_text()
 
 
 def test_queue_file_paths_are_vault_relative(tmp_path):
@@ -169,7 +169,7 @@ def test_stale_lock_is_replaced(tmp_path):
     result = run(vault)
 
     assert result["lock_acquired"] is True
-    assert "pid: cli" in lock_file.read_text()
+    assert "label: cli" in lock_file.read_text()
 
 
 def test_malformed_lock_is_refused_not_deleted(tmp_path):

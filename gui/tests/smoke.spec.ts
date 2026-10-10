@@ -164,14 +164,18 @@ test('every screen renders against the demo investigation', async () => {
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
     await expect(page.locator('.srch-input')).toHaveValue('contract')
 
-    // Releasing a recent lock leaves it in place: the app says so in its own words, never with the
-    // CLI's "Use watchdog unlock --force".
+    // Locks clear themselves (D293): the app offers no unlock control, and a run on another
+    // computer (a synced folder) is reported as such, not as something to release.
     const lockFile = join(root, 'vault', '.watchdog', 'registry', '.processing-lock')
-    writeFileSync(lockFile, `pid: cli\nstarted_at: ${new Date().toISOString().replace(/\.\d+Z$/, 'Z')}\n`)
+    const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+    writeFileSync(lockFile, `pid: 1\nhost: newsroom-laptop\nmachine: 0123456789abcdef\nlabel: cli\nstarted_at: ${now}\n`)
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'activity', tab: 'maintenance' }))
-    await page.getByRole('button', { name: 'Release lock', exact: true }).click()
-    await expect(page.locator('.toast').last()).toContainText('left in place', { timeout: 15_000 })
-    await expect(page.locator('.toast').last()).not.toContainText('watchdog')
+    await expect(page.getByText('Requeue failed documents').first()).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByText('Release a stuck lock')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /Release lock|Force release|Unlock/ })).toHaveCount(0)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'documents' }))
+    await expect(page.locator('.pipe-summary')).toContainText('being added on another computer', { timeout: 15_000 })
+    await expect(page.getByRole('button', { name: /Unlock/ })).toHaveCount(0)
     rmSync(lockFile, { force: true })
 
     // Tooltips (one layer for the app) stay inside the window, even for a control at the top edge of

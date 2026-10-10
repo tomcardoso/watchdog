@@ -1549,8 +1549,10 @@ def cmd_configure(args) -> None:
 
 
 def cmd_unlock(args) -> None:
-    from watchdog.pipeline.ingest_setup import STALE_SECONDS
-    from watchdog.pipeline.locks import lock_age_seconds
+    """Remove a lock by hand, for terminal users. Runs and the app already take over a lock whose
+    run died, or one past the age window when its run can't be checked (D293); what is left for
+    this command is a lock a run still holds, which only `--force` removes."""
+    from watchdog.pipeline import locks as _locks
     inferred = not args.project
     if args.project:
         _, info = _find_project(args.project)
@@ -1561,7 +1563,7 @@ def cmd_unlock(args) -> None:
             sys.exit(_hint("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.",
                            "Error: this folder is not an investigation."))
 
-    locks = [
+    lock_files = [
         (preprocessing_lock(vault), ".preprocessing-lock", "pre-processing"),
         (processing_lock(vault),    ".processing-lock",    "processing"),
     ]
@@ -1569,24 +1571,31 @@ def cmd_unlock(args) -> None:
     print()
     found_any = False
     ingest_lock_held = False
-    for lock_path, lock_name, op_name in locks:
-        if not lock_path.exists():
+    for lock_path, lock_name, op_name in lock_files:
+        holder = _locks.inspect(lock_path)
+        if holder is None:
             continue
         found_any = True
-        age = lock_age_seconds(lock_path)
-        age_str = "unknown age" if age is None else f"{int(age // 60)}m ago"
-        # An unparseable lock is treated as stale here, unlike the automatic takeover in
-        # `locks.acquire_or_take_stale`: running `unlock` is the user's explicit decision.
-        if age is None or age >= STALE_SECONDS or args.force:
-            lock_path.unlink()
+        age_str = f"updated {int(holder['age'] // 60)}m ago"
+        if holder["state"] == _locks.DEAD:
+            age_str = "its run had stopped"
+        if holder["state"] in _locks.TAKEABLE or args.force:
+            # The same removal the app's status calls make for an abandoned lock (I10).
+            if not _locks.clear_abandoned(lock_path):
+                lock_path.unlink(missing_ok=True)
             print(f"  {_GREEN}Removed:{_RESET} {_BOLD}{lock_name}{_RESET}  {_DIM}({age_str}){_RESET}")
+            continue
+        if op_name == "processing":
+            ingest_lock_held = True
+        if holder["where"] == "elsewhere":
+            who = f"a run on {holder.get('host') or 'another computer'}"
+        elif holder["where"] == "here" and holder["age"] >= _locks.STALE_SECONDS:
+            who = "a process that is still running on this computer"
         else:
-            if op_name == "processing":
-                ingest_lock_held = True
-            print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
-            force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"  # terminal only
-            print(_hint(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.",
-                        "  Turn on Force to remove it anyway, only if nothing is running."))
+            who = "a run that may still be working"
+        print(f"  {_YELLOW}Lock is in use{_RESET} ({age_str}) — {op_name} is held by {who}.")
+        force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"  # terminal only
+        print(_hint(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.", ""))
 
     if not found_any:
         print(f"  {_DIM}No locks found — nothing to do.{_RESET}")

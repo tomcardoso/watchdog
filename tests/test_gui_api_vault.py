@@ -534,7 +534,7 @@ def test_pipeline_state(rich_vault):
     assert p["failed"] == [{"sha": "c" * 64, "filename": "broken.pdf",
                             "reason": "model returned invalid JSON"}]
     assert p["pending_finalization"] == {"docs": 0, "entities": 0}
-    assert p["locks"] == {"chew": False, "ingest": False} and p["research_urls"] == 2
+    assert p["locks"] == {"chew": None, "ingest": None} and p["research_urls"] == 2
     assert p["batch_pending"] is None
 
 
@@ -545,7 +545,8 @@ def test_pipeline_locks_and_batch(rich_vault):
     from watchdog.pipeline import batch_extract
     batch_extract.write_state(rich_vault, {"batch_id": "b1", "shas": [SHA1]})
     p = call("vault.pipeline", vault=V(rich_vault))
-    assert p["locks"] == {"chew": True, "ingest": True}
+    assert p["locks"] == {"chew": {"where": "unknown", "host": None, "started_at": None}, "ingest": {"where": "unknown", "host": None, "started_at": None}}
+    assert p["stopped_run"] is None
     assert p["batch_pending"]["batch_id"] == "b1"
 
 
@@ -673,3 +674,98 @@ def test_current_state_rpc_is_the_reader_version(rich_vault):
     out = call("vault.currentState", vault=V(rich_vault))
     assert "## The record" in out["text"] and "## Citing" not in out["text"]
     assert "## Citing" in call("vault.sessionPrimer", vault=V(rich_vault))["text"]
+
+
+# ── D293: locks clear themselves; the app reports holders, never offers to unlock ────────────
+
+def _dead_pid() -> int:
+    import subprocess
+    import sys
+    proc = subprocess.Popen([sys.executable, "-c", "pass"])
+    proc.wait()
+    return proc.pid
+
+
+def _lock_text(pid: int, *, machine: str | None = None, host: str | None = None, label="cli") -> str:
+    from datetime import datetime, timezone
+    from watchdog.pipeline import locks
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return (f"pid: {pid}\nhost: {host or locks.hostname()}\nmachine: {machine or locks.machine_id()}\n"
+            f"label: {label}\nstarted_at: {now}\n")
+
+
+@pytest.fixture
+def _no_notes():
+    from watchdog.gui import runlocks
+    runlocks._NOTES.clear()
+    yield
+    runlocks._NOTES.clear()
+
+
+def test_pipeline_clears_a_dead_runs_lock_and_says_so_once(rich_vault, _no_notes):
+    from watchdog.pipeline import locks
+    if locks.machine_id() is None:
+        pytest.skip("no machine id on this platform")
+    lock = rich_vault / ".watchdog" / "registry" / ".processing-lock"
+    lock.write_text(_lock_text(_dead_pid()))
+    p = call("vault.pipeline", vault=V(rich_vault))
+    assert not lock.exists()
+    assert p["locks"] == {"chew": None, "ingest": None}
+    assert p["stopped_run"].startswith("A run stopped before it finished.")
+    # Still there on the next look, until a new run starts.
+    assert call("vault.pipeline", vault=V(rich_vault))["stopped_run"] == p["stopped_run"]
+    from watchdog.gui.runlocks import forget_note
+    forget_note(rich_vault)
+    assert call("vault.pipeline", vault=V(rich_vault))["stopped_run"] is None
+
+
+def test_a_run_the_reporter_stopped_gets_no_note(rich_vault, _no_notes, monkeypatch):
+    from watchdog.gui import jobs
+    from watchdog.pipeline import locks
+    if locks.machine_id() is None:
+        pytest.skip("no machine id on this platform")
+    pid = _dead_pid()
+
+    class _Proc:
+        def __init__(self, pid):
+            self.pid = pid
+
+    job = jobs.Job(rich_vault, ["add"], "Add documents", "add")
+    job.proc, job.cancel_requests, job.state = _Proc(pid), 2, "cancelled"
+    monkeypatch.setitem(jobs.MANAGER.jobs, job.id, job)
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(_lock_text(pid, label="chew"))
+    p = call("vault.pipeline", vault=V(rich_vault))
+    assert p["locks"]["chew"] is None and p["stopped_run"] is None
+
+
+def test_a_live_run_here_and_one_on_another_computer(rich_vault, _no_notes):
+    import os
+    from watchdog.pipeline import locks
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(locks.lock_contents("chew"))
+    (rich_vault / ".watchdog" / "registry" / ".processing-lock").write_text(
+        _lock_text(os.getpid(), machine="0123456789abcdef", host="newsroom-laptop"))
+    p = call("vault.pipeline", vault=V(rich_vault))
+    here = "here" if locks.machine_id() else "elsewhere"
+    assert p["locks"]["chew"]["where"] == here
+    assert p["locks"]["ingest"]["where"] == "elsewhere"
+    assert p["locks"]["ingest"]["host"] == "newsroom-laptop"
+    assert p["stopped_run"] is None
+
+
+def test_a_stopped_run_note_survives_a_run_on_another_computer_that_was_already_going(rich_vault, _no_notes):
+    from datetime import datetime, timedelta, timezone
+    from watchdog.pipeline import locks
+    if locks.machine_id() is None:
+        pytest.skip("no machine id on this platform")
+    (rich_vault / ".watchdog" / "registry" / ".processing-lock").write_text(_lock_text(_dead_pid()))
+    earlier = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(
+        f"pid: 7\nhost: newsroom-laptop\nmachine: 0123456789abcdef\nlabel: chew\nstarted_at: {earlier}\n")
+    p = call("vault.pipeline", vault=V(rich_vault))
+    assert p["locks"]["chew"]["where"] == "elsewhere"
+    assert p["stopped_run"] is not None
+    # A run that starts after the note replaces it.
+    later = (datetime.now(timezone.utc) + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(
+        f"pid: 7\nhost: newsroom-laptop\nmachine: 0123456789abcdef\nlabel: chew\nstarted_at: {later}\n")
+    assert call("vault.pipeline", vault=V(rich_vault))["stopped_run"] is None

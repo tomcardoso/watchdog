@@ -69,7 +69,7 @@ Project = {
 | `projects.list` | `{all?: bool}` | `Project[]` (archived only when `all`) |
 | `projects.get` | `{slug}` | `Project` — exact slug or unique prefix; errors `not_found` / `ambiguous` |
 | `projects.forPath` | `{path}` | `Project \| null` — the registered project at that folder |
-| `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: bool, ingest: bool}, pending_finalization: {...}\|null, size_bytes}` |
+| `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: RunLock\|null, ingest: RunLock\|null}, stopped_run: string\|null, pending_finalization: {...}\|null, size_bytes}` — `RunLock` is `{where: "here"\|"elsewhere"\|"unknown", host, started_at}`. Reading it clears a lock whose run has died (`locks.clear_abandoned`, the function `watchdog unlock` calls, I10), so a lock reported here is a run in progress (D293) |
 | `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — the last `lines` (default 500) of `.watchdog/registry/processing.log` |
 | `projects.doctor` | — | `{issues: [{kind: "missing"\|"schema"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
 
@@ -192,7 +192,8 @@ PipelineState = {
   queued:    [{sha, filename, page_count|null, est_tokens|null, staged: bool}],  // chewed; staged = extracted awaiting bark
   failed:    [{sha, filename, reason|null}],                  // queue/_failed/
   pending_finalization: {docs, entities}|null,
-  locks: {chew: bool, ingest: bool},
+  locks: {chew: RunLock|null, ingest: RunLock|null},         // D293: a lock whose run died is cleared first
+  stopped_run: string|null,                                   // one line when a run here stopped before it finished
   research_urls: int,
   batch_pending: object|null                                  // batch_extract.read_state
 }
@@ -298,7 +299,7 @@ A job is `python -m watchdog <args…>` run with the vault as its working direct
 | `jobs.rebuildNotes` | `{vault}` | `Job` — Maintenance → "Rebuild notes": rewrites every entity and document note from stored data with no model call (`python -m watchdog.pipeline.entity_notes`, the library function, D280); waits for the full engine like `reindex` |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge" (`python -m watchdog.pipeline.merge_undo <id>`, D280). Errors: `cannot_undo` with the reason, `not_found` |
 | `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): `python -m watchdog.pipeline.recheck --entity <id>…\|--all` (D287). Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
-| `action.run` | `{vault\|null, args: string[], timeout?: seconds}` | `{code, stdout, stderr}` — a short, synchronous command (rename, archive, unlock…) |
+| `action.run` | `{vault\|null, args: string[], timeout?: seconds}` | `{code, stdout, stderr}` — a short, synchronous command (rename, archive…) |
 
 ```
 Job = { id, label, kind, vault|null, args, state: "running"|"done"|"failed"|"cancelled",

@@ -260,7 +260,6 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
 | **Usage** | Opens token, cost and timing figures for each run. |
 | **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. A relationship whose wordings were grouped is exported under the label the app shows, with each document's own wording beside it. |
-| **Release a stuck lock** | An interrupted run can leave a lock that stops the next one starting. This releases a stale one; a recent-looking lock is left alone unless you force it. |
 | **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude settings after you update Watchdog. |
 
 Running processing and post-processing separately, rather than back to back, is also how you compare finishing models against the same extraction. The **Processing history** tab beside Maintenance shows what each run added.

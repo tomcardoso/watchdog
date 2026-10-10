@@ -229,6 +229,9 @@ class JobManager:
         with self.lock:
             self.jobs[job.id] = job
             self._prune()
+        if vault is not None:
+            from watchdog.gui.runlocks import forget_note
+            forget_note(vault)
         rpc.emit("job.started", {"job": job.to_dict()})
         readers = [threading.Thread(target=self._read, args=(job, job.proc.stdout, "out"), daemon=True),
                    threading.Thread(target=self._read, args=(job, job.proc.stderr, "err"), daemon=True)]

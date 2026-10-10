@@ -14,6 +14,7 @@ import { Markdown } from '@renderer/components/Markdown'
 import { typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtNum, fmtRelative, plural } from '@renderer/lib/format'
 import { runAction, startJob } from '@renderer/lib/jobs'
+import { runLockState, type RunLockState } from '@renderer/lib/runlock'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
@@ -73,7 +74,7 @@ export default function HomeView() {
           <HomeSkeleton />
         ) : (
           <>
-            {s.has_work && <WorkBanner s={s} locked={!!pipe?.locks.ingest || !!pipe?.locks.chew} />}
+            {s.has_work && <WorkBanner s={s} run={runLockState(pipe?.locks)} stopped={pipe?.stopped_run ?? null} />}
             {empty ? (
               <DropCard />
             ) : (
@@ -249,7 +250,7 @@ function Header() {
 }
 
 // ── Finish adding ────────────────────────────────────────────────────────────
-function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
+function WorkBanner({ s, run, stopped }: { s: Summary; run: RunLockState | null; stopped: string | null }) {
   const engine = useEngineGate()
   const n = s.incoming + s.awaiting_dig + s.awaiting_bark
   const text =
@@ -264,10 +265,10 @@ function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
     <div className="home-banner">
       <div className="ico"><FilePlus2 /></div>
       <div className="grow">
-        <div className="t">{text}</div>
-        <div className="s">{locked ? 'A run is already in progress for this investigation.' : engine.reason ?? sub}</div>
+        <div className="t">{run ? run.title : text}</div>
+        <div className="s">{run ? run.detail : engine.reason ?? stopped ?? sub}</div>
       </div>
-      <Button variant="primary" size="lg" disabled={locked || !engine.ready} onClick={() => useApp.getState().openAdd()}>
+      <Button variant="primary" size="lg" disabled={!!run || !engine.ready} onClick={() => useApp.getState().openAdd()}>
         {n > 0 ? `Finish adding ${plural(n, 'document')}` : 'Finish the batch'}
       </Button>
     </div>

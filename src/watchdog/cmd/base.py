@@ -742,16 +742,21 @@ def _launch_claude(vault: Path, prompt: str | None = None, model: str | None = N
 
 
 def _check_vault_locks(vault: Path, slug: str) -> None:
-    chew_lock   = preprocessing_lock(vault)
-    ingest_lock = processing_lock(vault)
-    if chew_lock.exists():
-        sys.exit(_hint(f"Error: chew is in progress. Wait for it to finish or run: watchdog unlock {slug}",
-                       "Error: pre-processing is in progress. Wait for it to finish, or use "
-                       "Activity → Maintenance → Release a stuck lock if it is stale."))
-    if ingest_lock.exists():
-        sys.exit(_hint(f"Error: ingest is in progress. Wait for it to finish or run: watchdog unlock {slug}",
-                       "Error: adding documents is in progress. Wait for it to finish, or use "
-                       "Activity → Maintenance → Release a stuck lock if it is stale."))
+    """Refuse to rename, move or delete an investigation while a run holds it. A lock whose run
+    died, or one past the age window when its run can't be checked, holds nothing (D293)."""
+    from watchdog.pipeline import locks
+    for lock, stage, app_stage in ((preprocessing_lock(vault), "chew", "pre-processing"),
+                                   (processing_lock(vault), "ingest", "adding documents")):
+        holder = locks.held(lock)
+        if holder is None:
+            continue
+        elsewhere = holder["where"] == "elsewhere"
+        where = f" on {holder.get('host') or 'another computer'}" if elsewhere else ""
+        sys.exit(_hint(f"Error: {stage} is in progress{where}. Wait for it to finish, or if it is "
+                       f"stuck run: watchdog unlock {slug} --force",
+                       f"Error: {app_stage} is in progress"
+                       f"{' on another computer' if elsewhere else ''}. "
+                       "Try again when it has finished."))
 
 
 def _flag_label(action) -> str:

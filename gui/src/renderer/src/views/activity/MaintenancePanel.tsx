@@ -12,7 +12,6 @@ import {
   Gauge,
   Hammer,
   Link2,
-  Lock,
   Network,
   Play,
   RefreshCw,
@@ -29,7 +28,7 @@ import type { CitationReport, Effort, Estimate, RunOptions } from '@shared/api'
 import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
-import { flagsFor, runAction, startJob, unlockOutcome } from '@renderer/lib/jobs'
+import { flagsFor, runAction, startJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
@@ -526,48 +525,10 @@ function Gated({ children }: { children: ReactNode }) {
   )
 }
 
-function UnlockCard({ locks }: { locks: { chew: boolean; ingest: boolean } | null }) {
-  const [force, setForce] = useState(false)
-  const held = locks && (locks.chew || locks.ingest)
-  return (
-    <SimpleCard
-      icon={Lock}
-      title="Release a stuck lock"
-      tone={locks ? <Badge tone={held ? 'warning' : 'success'}>{held ? `${[locks.chew && 'pre-processing', locks.ingest && 'processing'].filter(Boolean).join(' and ')} lock held` : 'No locks'}</Badge> : undefined}
-      text={
-        <>
-          An interrupted run can leave a lock that stops the next one starting. This releases a stale pre-processing or processing lock; one that looks recent is left alone unless you force it.
-          <span className="act-force">
-            <Switch checked={force} onChange={setForce} label="Force" />
-            <span>Remove it even if recent. Only do this if nothing is running.</span>
-          </span>
-        </>
-      }
-      label={force ? 'Force release' : 'Release lock'}
-      onRun={async () => {
-        if (force) {
-          const ok = await window.watchdog.dialog.confirm({
-            title: 'Force the lock off?',
-            message: 'If a run is still working, removing its lock lets a second run start on the same files.',
-            detail: 'Only continue if you are sure nothing is running — check the Jobs tab first.',
-            confirm: 'Force release',
-            destructive: true
-          })
-          if (!ok) return
-        }
-        const out = await runAction(['unlock', ...(force ? ['--force'] : [])])
-        toast(unlockOutcome(out))
-        invalidate('vault.', 'projects.', 'ingest.')
-      }}
-    />
-  )
-}
-
 export default function MaintenancePanel() {
   const project = useApp((s) => s.project!)
   const models = useModels()
   const pipeline = useRpc('vault.pipeline', { vault: project.path })
-  const status = useRpc('projects.status', { slug: project.slug })
   const p = pipeline.data
   return (
     <div className="col" style={{ gap: 16 }}>
@@ -653,7 +614,6 @@ export default function MaintenancePanel() {
           Tokens, cost and timing for each processing run, by stage. It only reads recorded files, so it is free to look.
         </MCard>
         <ExportCard />
-        <UnlockCard locks={status.data?.locks ?? null} />
         <SimpleCard
           icon={BookOpen}
           title="Refresh Claude setup"

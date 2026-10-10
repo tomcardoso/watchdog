@@ -52,9 +52,9 @@ _WAIT_BUFFER_SECONDS = 30
 # Fallback sleep when RateLimitError carried no `resets_at` — true for the claude-api and
 # OpenAI-compatible backends, which don't report a reset timestamp (only claude-agent-sdk does).
 _WAIT_FALLBACK_SECONDS = 15 * 60
-# Sleep in chunks under ingest_setup.STALE_SECONDS (30 min), refreshing the lock after each —
-# otherwise a wait longer than the staleness window would make a live --wait run look abandoned.
-_WAIT_REFRESH_SECONDS = 20 * 60
+# Sleep in chunks, refreshing the lock after each. The heartbeat already stamps it from its own
+# thread throughout; this is a second beat inside the age window (`ingest_setup.STALE_SECONDS`).
+_WAIT_REFRESH_SECONDS = 5 * 60
 
 
 def _effort(flag_val, config_val, *, default=None, backend=None, model=None):
@@ -1132,8 +1132,11 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     run_skip_finalize = no_finalize or force
 
     def _release_lock() -> None:
-        (processing_lock(vault)).unlink(missing_ok=True)
-        (processing_state(vault)).unlink(missing_ok=True)
+        from watchdog.pipeline.locks import release_lock
+        lock = processing_lock(vault)
+        release_lock(lock)
+        if not lock.exists():       # another run took it over: its state file is its own
+            (processing_state(vault)).unlink(missing_ok=True)
 
     if confirm:
         auto = _auto_approve_on(config)
@@ -1464,17 +1467,14 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     `finalizer_overrides` (#433) passes straight through to `orchestrate.finalize` — per-stage
     model/backend overrides for reconciliation, synthesis, timeline, and briefing."""
     from watchdog.pipeline import orchestrate
-    from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat, lock_started_at
-    from watchdog.pipeline.ingest_setup import STALE_SECONDS, _iso_now
+    from watchdog.pipeline.locks import acquire_or_take_stale, heartbeat, held, lock_contents, release_lock
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS, busy_message
     lock = processing_lock(vault)
     # Atomic acquisition (#257): the shared .processing-lock means a running ingest or a second
-    # finalize is excluded without a check-then-write race; a >30-min stale lock is taken over.
-    if not acquire_or_take_stale(lock, f"pid: cli-finalize\nstarted_at: {_iso_now()}\n", STALE_SECONDS):
-        ts = lock_started_at(lock)
-        when = f" (lock acquired {ts})" if ts else ""
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or bark is already running{when}.\n"
-                 + _hint(f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n",
-                         "  If it is stale, use Activity → Maintenance → Release a stuck lock.\n"))
+    # finalize is excluded without a check-then-write race; an abandoned lock is taken over (D293).
+    if not acquire_or_take_stale(lock, lock_contents("cli-finalize"), STALE_SECONDS):
+        sys.exit(f"\n  {_YELLOW}Error:{_RESET} "
+                 + busy_message(held(lock, STALE_SECONDS), "an ingest or bark is") + "\n")
     stages = "entity reconciliation + synthesis + timeline" if skip_briefing else \
         "entity reconciliation + synthesis + timeline + briefing"
     print(f"\n  {_DIM}Finishing the batch — {stages} (model: {_RESET}"
@@ -1491,7 +1491,7 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
                                                    finalizer_overrides=finalizer_overrides,
                                                    benchmark_arm_id=benchmark_arm_id))
     finally:
-        lock.unlink(missing_ok=True)
+        release_lock(lock)
 
     if out.get("error") or out.get("briefing_error"):
         reason = out.get("error") or out.get("briefing_error")

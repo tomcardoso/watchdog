@@ -109,7 +109,7 @@ function JobDetail({ job }: { job: Job & { log: LogLine[] } }) {
       const ok = await window.watchdog.dialog.confirm({
         title: 'Stop immediately?',
         message: 'This ends the process without letting it save.',
-        detail: 'Documents already finished are kept; the one in progress stays queued and starts again next time. A lock may be left behind; Activity → Maintenance → Release a stuck lock clears it.',
+        detail: 'Documents already finished are kept; the one in progress stays queued and starts again next time.',
         confirm: 'Stop immediately',
         destructive: true
       })

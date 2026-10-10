@@ -475,9 +475,11 @@ def recording(vault: Path, cause: dict, scope=None):
 
 
 def run_in_progress(vault: Path) -> bool:
-    """True while a processing run holds the vault (its files are changing under it)."""
+    """True while a processing run holds the vault (its files are changing under it). A lock its
+    run left behind when it died holds nothing (D293)."""
+    from watchdog.pipeline.locks import held
     from watchdog.vault_paths import processing_lock
-    return processing_lock(Path(vault)).exists()
+    return held(processing_lock(Path(vault))) is not None
 
 
 def note_seen(vault: Path, rel: str) -> None:

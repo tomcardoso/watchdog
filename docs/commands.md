@@ -283,7 +283,7 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog verify-fact [fact-id]` | Maintenance. Mark a fact verified, disputed or can't verify, or list what has been marked — see [below](#watchdog-verify-fact). |
 | `watchdog usage [name]` | Maintenance. Per-call token/cost/latency breakdown for ingest runs — see [below](#watchdog-usage). |
 | `watchdog export [name]` | Maintenance. Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
-| `watchdog unlock [name]` | Maintenance. Release a stale chew or ingest lock; `--force` removes it even if recent. |
+| `watchdog unlock [name]` | Maintenance. Remove a chew or ingest lock by hand; `--force` removes one a run still holds. Locks normally clear themselves. |
 | `watchdog gui` | Maintenance. Open the Watchdog desktop app — see [below](#watchdog-gui). |
 
 ### watchdog search
@@ -390,7 +390,7 @@ The default CSV format also writes `facts.csv`: one row for every fact, with its
 
 ### watchdog unlock
 
-Releases a stale lock left behind by an interrupted chew or ingest — both lock types are checked. A lock that looks recent is left alone unless you pass `--force`. Run it from inside the vault, or pass the investigation name.
+Removes a chew or ingest lock by hand. It is rarely needed: a lock records the process that holds it and the computer it runs on, and any run, or the app, removes a lock at once when that process has ended on this computer. A lock from another computer sharing the folder is removed once it has gone 15 minutes without an update (a running process updates it every two minutes). So what `unlock` finds is usually a lock a run still holds: it says which (on this computer, or on another one by name) and leaves it unless you pass `--force`. Use `--force` only when you know the run has stopped, for example a run on another computer that was shut down a moment ago. Run it from inside the vault, or pass the investigation name. The app has no equivalent control.
 
 ### watchdog gui
 

@@ -104,11 +104,19 @@ A run resolves auth, takes the run lock, scans the queue, and runs `orchestrate.
 Models, efforts, concurrency and classification come from `watchdog settings` or per-run flags;
 their defaults live in `watchdog/defaults.py`.
 
-- **Locks (D66, D69).** The ingest, finalize and chew locks are created with `O_CREAT|O_EXCL`. A
-  lock older than 30 minutes (`STALE_SECONDS`) is taken over; one with an unreadable timestamp is
-  left for `watchdog unlock`. A running holder re-stamps its lock every five minutes from a daemon
-  thread, so a long run never looks stale. A finer `.write-lock` (`flock`/`msvcrt`) serializes
-  registry writes.
+- **Locks (D66, D69, D293).** The ingest, finalize, chew and re-check locks are created with
+  `O_CREAT|O_EXCL` and record their holder: pid, the process's start time, host name, a hashed
+  machine id, a label and `started_at`, which a heartbeat thread re-stamps every two minutes.
+  `locks.inspect` judges a lock: written on this computer (same machine id) and its process gone,
+  or its pid now started at another time, it is dead and taken over at once; its process verified
+  running, it is never taken over. Any lock that can't be checked (another computer on a synced
+  folder, an older `pid: cli` lock, a platform that reports no start time) is taken over once
+  `started_at` (else the file's mtime) is 15 minutes old (`STALE_SECONDS`). A takeover holds an
+  `O_EXCL` claim file and re-reads the lock before replacing it, so two takers can't both win; a
+  holder's release and heartbeat leave alone a lock another process now holds. The app's status
+  calls clear abandoned locks (`gui/runlocks.py`) and report the holder; `watchdog unlock` remains
+  for the terminal only. The history store's `.lock` and the registry's `.write-lock`
+  (`flock`/`msvcrt`) are OS locks, released by the system when their process dies.
 - **Estimates (D72, D135, D143).** `--estimate` multiplies the queue's token estimate (chars/4,
   calibrated against this vault's past runs) by this vault's recent $/token, as a range. `bark
   --estimate` prices the staged batch from standalone-finalize history. `--estimate-all` prices
@@ -712,7 +720,7 @@ See D45–D48.
   line-delimited JSON-RPC over its stdio. Reads run in-process; `sys.stdout` is pointed at stderr so
   a library `print()` can't corrupt the protocol.
 - **Mutations are CLI commands.** `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
-  `merge-entities`…) and `action.run` (quick ones: `projects rename`, `unlock`…) run
+  `merge-entities`…) and `action.run` (quick ones: `projects rename`, `projects archive`…) run
   `python -m watchdog <args>` in the vault with stdin closed, `NO_COLOR=1` and
   `WATCHDOG_PROGRESS=1`. `progress.emit` then writes prefixed JSON lines (chew files, per-document
   extraction states, finalize stages) that the server turns into `job.progress` events; without the
