@@ -123,7 +123,8 @@ EntityRow = {
 | `vault.textPositions` | `{vault, sha, pages?: int[]}` | `{unit: "line"\|null, engine\|null, pages: int[], boxes: {"<page>": {width, height, lines: [[left, top, right, bottom, text]]}}}` — the saved positions of OCR'd lines (D289) from `.watchdog/text-positions/<sha>.json`: `pages` lists every page that has them, `boxes` holds only the requested pages (at most 50 per call; none without `pages`). Coordinates are in the page's own units (PDF points, image pixels), origin top left; scale by the drawn size over `width`/`height`. Everything empty for a document without the file. Errors: `bad_params` (`pages` not a list of integers), `not_found` |
 | `vault.entities` | `{vault}` | `EntityRow[]` |
 | `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
-| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, docs: string[]}]}` — `docs` are document shas, repeated (source, target, role) edges merged; stated-direction edges only, edges to unprofiled ids dropped (as `export._forward_edges`) |
+| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View` |
+| `vault.relationshipSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping's wordings apart again (`relationships.split`, D291): recorded in `registry/relationships.json` and the vault's history, the two entities' notes refreshed; later runs never regroup those wordings. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
 | `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes and saved pages in `queries/…`/`wiki/…` only, else `forbidden`; an empty `text` keeps the placeholder comment) — replaces only the body of the file's `## Notes` section (journalist annotations; neither the pipeline nor the skills write there). An entity or document note save takes the registry lock the commit pass holds, waiting up to 3 s, then fails with `busy` (the app retries). Recorded as a version of the file's history (D286, D288) |
@@ -164,7 +165,8 @@ EntityDetail = EntityRow & {
              relationships|null, notes|null},   // raw markdown per ## section; summary also reads the older "## Summary (AI-written)" heading
   documents: DocumentRow[],                     // appears_in, resolved
   relationships: [{role, target_id, target_name|null, target_type|null, direction: "out"|"in",
-                   docs: string[]}],
+                   docs: string[], group|null, wordings: [{text, sources: [{sha, page}]}],
+                   sources: [{sha, page, wording}]}],   // one row per counterpart, direction and meaning (D291); role is the canonical label
   contradictions: [{rid, summary, text, resolved: bool}],
   timeline: TimelineEvent[],
   facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail

@@ -203,6 +203,15 @@ export interface TimelineEvent {
   disputed: boolean                    // the reporter disputes the fact behind it (D285)
 }
 
+/** One document's wording of a relationship, with where each document states it (D291). */
+export interface RelationshipWording {
+  text: string
+  sources: { sha: string | null; page: number | null }[]
+}
+
+/** One relationship of an entity with one counterpart (D291): `role` is the canonical label when
+ * the documents' wordings were grouped (`group` is then the grouping's id), else the wording most
+ * of its documents use; `wordings` are the documents' own words. */
 export interface Relationship {
   role: string
   target_id: string
@@ -210,6 +219,34 @@ export interface Relationship {
   target_type: string | null
   direction: 'out' | 'in'
   docs: string[]
+  group: string | null
+  wordings: RelationshipWording[]
+  sources: { sha: string | null; page: number | null; wording: string }[]
+}
+
+/** One relationship on a graph edge, in its own direction (D291). */
+export interface GraphRelationship {
+  from: string
+  to: string
+  label: string
+  group: string | null
+  docs: string[]
+  basis: 'stated' | 'inferred'
+  date_ranges: string[]
+  wordings: RelationshipWording[]
+}
+
+/** One edge per pair of entities (D291): `labels` lists every distinct relationship between
+ * them, `role` joins them, `docs` are the documents stating any of them, `directed` is true when
+ * every relationship runs source → target. */
+export interface GraphEdge {
+  source: string
+  target: string
+  role: string
+  labels: string[]
+  docs: string[]
+  directed: boolean
+  relationships: GraphRelationship[]
 }
 
 /** One of an entity's facts (D280): a document fact tagged to the entity, with its source. */
@@ -302,7 +339,8 @@ export interface EntityDetail extends EntityRow {
 
 export interface GraphData {
   nodes: { id: string; name: string; type: string; doc_count: number }[]
-  edges: { source: string; target: string; role: string; docs: string[] }[] // docs: document sha256s
+  edges: GraphEdge[] // docs: document sha256s
+  documents: Record<string, { title: string; note: string | null }>
 }
 
 export type NoteKind = 'entity' | 'document' | 'briefing' | 'query' | 'wiki' | 'other'
@@ -685,6 +723,7 @@ export interface Methods {
   'vault.entities': [{ vault: string }, EntityRow[]]
   'vault.entity': [{ vault: string; id: string }, EntityDetail]
   'vault.graph': [{ vault: string }, GraphData]
+  'vault.relationshipSplit': [{ vault: string; group: string }, { group: string; status: string; by: string | null; at: string | null }]
   'vault.timeline': [{ vault: string }, { events: TimelineEvent[] }]
   'vault.note': [{ vault: string; path: string }, Note]
   'vault.saveNotes': [{ vault: string; path: string; text: string }, { ok: boolean }]
