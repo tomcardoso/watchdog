@@ -13,6 +13,7 @@ from pathlib import Path
 
 from watchdog.vault_paths import context_dir, incoming_dir, is_vault
 from watchdog import defaults, interactive
+from watchdog.appmode import hint as _hint, under_app
 from watchdog.cmd.base import (
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _count_queued,
@@ -172,9 +173,9 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
     rather than a separate estimate per model per pipeline stage, which is what keeps this
     readable as the catalog grows. `rows` is already sorted by `cost` ascending."""
     if not rows:
-        return (f"  {_DIM}Not enough usage history yet to project other models — run an ingest "
-                f"or bark first, then re-run with {_RESET}{_CYAN}--estimate-all{_RESET}"
-                f"{_DIM}.{_RESET}")
+        return (f"  {_DIM}Not enough usage history yet to project other models"
+                + _hint(f" — run an ingest or bark first, then re-run with {_RESET}{_CYAN}--estimate-all{_RESET}{_DIM}",
+                        "; it needs a few finished runs") + f".{_RESET}")
     name_w = max(len(r["name"]) for r in rows)
     lines = [f"  {_DIM}Projected list price by model, cheapest first {_RESET}{_DIM}(every input "
              f"token priced as a cache miss — a rough ceiling, not what you'd actually pay with "
@@ -337,7 +338,8 @@ def _run_preprocess(
         if not files:
             queued = len(list(queue.glob("*.json"))) if queue.exists() else 0
             if queued:
-                print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready. Run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}.{_RESET}\n")
+                run_it = _hint(f" Run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}.", "")
+                print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready.{run_it}{_RESET}\n")
             else:
                 print(f"\n  {_DIM}incoming/ is empty — nothing to chew.{_RESET}\n")
             return
@@ -414,7 +416,7 @@ def cmd_chew(args) -> dict | None:
 
     new_queued = _count_queued(vault) - queued_before
     if new_queued > 0:
-        _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} chewed — run watchdog dig.")
+        _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} pre-processed" + _hint(" — run watchdog dig.", "."))
         return _offer_ingest(args, vault)
     return None
 
@@ -518,7 +520,8 @@ def _offer_ingest(args, vault: Path) -> dict | None:
         # Reached from `watchdog chew` (manual control) or the guided `watchdog` walk (bare) —
         # point back at whichever got here, not the retired `watchdog ingest` (#441, D138).
         next_cmd = "watchdog dig" if getattr(args, "command", None) == "chew" else "watchdog"
-        print(f"  Run:  {_CYAN}{next_cmd}{_RESET}\n")
+        if not under_app():
+            print(f"  Run:  {_CYAN}{next_cmd}{_RESET}\n")
 
 
 def _wait_seconds(resets_at: int | None) -> tuple[int, bool]:
@@ -535,8 +538,9 @@ def _wait_for_rate_limit(lock_file: Path, resets_at: int | None) -> None:
     sleep_s, exact = _wait_seconds(resets_at)
     wake_at = datetime.now().astimezone() + timedelta(seconds=sleep_s)
     note = "" if exact else f"{_DIM} (estimated — the provider didn't report a reset time){_RESET}"
+    stop = _hint(f"{_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop", "Use Stop in Activity to stop")
     print(f"\n  {_YELLOW}Rate limit{_RESET}{_DIM} — resuming at{_RESET} {_BOLD}{wake_at:%H:%M}{_RESET}"
-          f"{note}{_DIM}. {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are saved.{_RESET}\n")
+          f"{note}{_DIM}. {stop}; finished documents are saved.{_RESET}\n")
     remaining = sleep_s
     while remaining > 0:
         chunk = min(remaining, _WAIT_REFRESH_SECONDS)
@@ -609,12 +613,15 @@ def _handle_force_gate(vault: Path, summary: dict, post_model: str,
     targets = _forced_overwrite_targets(vault, summary)
     if targets:
         n = len(targets)
-        print(f"\n  {_YELLOW}--force replaces {n} note{'s' if n != 1 else ''} already in the vault:{_RESET}")
+        replaces = _hint("--force replaces", "Re-extracting replaces")
+        print(f"\n  {_YELLOW}{replaces} {n} note{'s' if n != 1 else ''} already in the vault:{_RESET}")
         for _, note in targets:
             print(f"    {_CYAN}{note}{_RESET}")
         if not interactive.confirm("\n  Overwrite and finalize?", default=False):
+            later = _hint(f"run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later to complete it",
+                          "finish it later under Activity → Maintenance → Post-processing")
             print(f"\n  {_DIM}Cancelled — nothing overwritten. The re-extracted batch is staged; "
-                  f"run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later to complete it.{_RESET}")
+                  f"{later}.{_RESET}")
             return
     summary["finalize_skipped"] = False
     summary["post_ingest"] = _run_finalize(vault, post_model, post_effort, post_backend,
@@ -709,8 +716,10 @@ def _quarantine_notice(n: int) -> str:
     the Ctrl+C message, and the empty-queue checks — same wording everywhere a quarantined
     document could otherwise go unmentioned."""
     return (f"{_YELLOW}{n} document{'s' if n != 1 else ''} need attention{_RESET}"
-            f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
-            f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if n != 1 else 'it'}.{_RESET}")
+            + _hint(f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
+                    f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if n != 1 else 'it'}.{_RESET}",
+                    f"{_DIM} — retry {'them' if n != 1 else 'it'} with Activity → Maintenance → "
+                    f"Requeue failed documents.{_RESET}"))
 
 
 @contextlib.contextmanager
@@ -849,7 +858,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 print(f"\n  {_quarantine_notice(failed)}{_DIM} Nothing else is queued.{_RESET}\n")
             else:
                 print(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
-                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n")
+                print(_hint(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n",
+                            f"  {_DIM}Pre-process some documents first.{_RESET}\n"))
             return
         # Claude's auth mode only matters for the estimate when the extractor is actually
         # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
@@ -885,7 +895,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         a = resolve_auth()
         if a["mode"] == "none":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+                     + _hint(f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n",
+                             f"  {_DIM}Choose how to authenticate in Settings.{_RESET}\n"))
     else:
         a = {"mode": None}
     _require_investigation_keys(vault, (extract_backend, post_backend, classify_backend,
@@ -936,8 +947,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         if is_dig:
             # `dig` never finalizes, so there's nothing to decide: the staged batch waits for the
             # next `watchdog bark`, which finalizes it together with whatever this run extracts.
+            finisher = _hint(f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM}", "post-processing")
             print(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — "
-                  f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} will finish it together with "
+                  f"{finisher} will finish it together with "
                   f"this run.{_RESET}")
             if not new_docs:
                 print(f"  {_DIM}Nothing new to extract.{_RESET}\n")
@@ -960,7 +972,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
             if non_interactive:
                 sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is waiting to be finished in "
                          f"this vault — refusing to prompt for a decision in a non-interactive run.\n"
-                         f"  Run {_CYAN}watchdog bark{_RESET} to finish it, then retry.\n")
+                         + _hint(f"  Run {_CYAN}watchdog bark{_RESET} to finish it, then retry.\n",
+                                 "  Finish it under Activity → Maintenance → Post-processing, then retry.\n"))
             print(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM}.{_RESET}")
             options = [
                 f"Finalize it together with the new documents {_DIM}— extract the new docs, then "
@@ -975,7 +988,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                 out = _run_finalize(vault, post_model, post_effort, post_backend,
                                     skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
                 if not (out.get("error") or out.get("briefing_error")):
-                    print(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n")
+                    print(_hint(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n",
+                                f"  {_DIM}The queued documents have not been processed yet. Add documents again to process them.{_RESET}\n"))
                 return out
 
     from watchdog.pipeline import batch_extract
@@ -1005,14 +1019,18 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
             # requeue attempt in between (or a concurrent `watchdog requeue`) can have already
             # emptied _failed/, and "run watchdog requeue" would be a dead end at that point.
             if _failed_count(vault):
-                print(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
-                      f"{_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} again.{_RESET}\n")
+                print(_hint(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
+                            f"{_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} again.{_RESET}\n",
+                            f"\n  {_DIM}When ready, use Activity → Maintenance → Requeue failed documents, "
+                            f"then add documents again.{_RESET}\n"))
             elif is_add:
-                print(f"\n  {_DIM}Nothing new to add. Drop files in {_RESET}{_CYAN}incoming/{_RESET}"
-                      f"{_DIM}, or pass them: {_RESET}{_CYAN}watchdog add <files or folders>{_RESET}\n")
+                print(_hint(f"\n  {_DIM}Nothing new to add. Drop files in {_RESET}{_CYAN}incoming/{_RESET}"
+                            f"{_DIM}, or pass them: {_RESET}{_CYAN}watchdog add <files or folders>{_RESET}\n",
+                            f"\n  {_DIM}Nothing new to add. Choose files or folders in Add documents.{_RESET}\n"))
             else:
                 print(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
-                print(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n")
+                print(_hint(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n",
+                            f"  {_DIM}Pre-process some documents first.{_RESET}\n"))
             return
 
     only_shas = None
@@ -1063,7 +1081,9 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # is extraction, which is where the 50% discount is worth having.
         if a["mode"] != "api-key":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
-                     f"(it needs a metered key) — switch to it with {_CYAN}watchdog settings auth{_RESET}.\n")
+                     f"(it needs a metered key) — "
+                     + _hint(f"switch to it with {_CYAN}watchdog settings auth{_RESET}.\n",
+                             "switch to it in Settings.\n"))
     # openai-batch (#530) needs no equivalent check — OpenAI has no subscription auth mode in
     # this codebase, so it's already covered by the ordinary api-key resolution above.
     # The verification pass (#535): flag beats config, config beats off. Off is the default
@@ -1079,19 +1099,25 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # Name whichever turned it on, so the fix the message implies is the one that works —
         # "--verify isn't supported" is unhelpful advice to someone who never typed it.
         source = ("--verify" if verify_flag else f"{_CYAN}verify_extraction{_RESET}")
+        if under_app():
+            source = "Verification"
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {source} isn't supported with {extract_backend} — "
                  f"the verification pass re-reads a document immediately after extracting it, and "
                  f"a batch's results come back hours later in a separate run.\n"
                  + ("" if verify_flag else
-                    f"  Pass {_CYAN}--no-verify{_RESET} for this run, or turn the setting off.\n"))
+                    _hint(f"  Pass {_CYAN}--no-verify{_RESET} for this run, or turn the setting off.\n",
+                          "  Turn the verification setting off, or choose another extraction model.\n")))
     wait = getattr(args, "wait", False)
     if is_add and extract_backend not in BATCH_BACKENDS:
         # `add` sees a run through: a rate limit pauses it until the limit resets.
         wait = True
     if wait and extract_backend in BATCH_BACKENDS:
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
-                 f"batch already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} "
-                 f"later to collect it.\n")
+        sys.exit(_hint(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
+                       f"batch already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} "
+                       f"later to collect it.\n",
+                       f"\n  {_YELLOW}Error:{_RESET} Waiting for a rate limit isn't supported with "
+                       f"{extract_backend} — a batch already runs in the background; add documents "
+                       f"again later to collect it.\n"))
     # `max_rate_limit_waits` is an internal knob, not a user-facing flag or `configure` key
     # (#559) — like `no_finalize` above, it exists only for the benchmark harness, which needs
     # `--wait`'s resume loop bounded so a rate-limited arm surfaces as a partial result instead
@@ -1125,7 +1151,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
             # No leading blank line — pick()'s own close-out already leaves one (#411).
             # Declining `chew`'s offer points at `dig`, as chew's own decline path does.
             hint = "watchdog dig" if command == "chew" else pipeline_hint
-            print(f"  When ready, run:  {_CYAN}{hint}{_RESET}\n")
+            if not under_app():
+                print(f"  When ready, run:  {_CYAN}{hint}{_RESET}\n")
             return
 
     import asyncio
@@ -1146,14 +1173,16 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         said_since_pick = True
 
     if force:
-        _say_since_pick(f"  {_YELLOW}--force{_RESET}{_DIM}: re-extracting even where a cached "
+        _say_since_pick(f"  {_YELLOW}{_hint('--force', 'Re-extract')}{_RESET}{_DIM}: re-extracting even where a cached "
                         f"extraction or a committed vault note already exists.{_RESET}")
     if no_finalize:
         # `no_finalize` is only ever set by `cmd_extract` (dig) — there is no user-facing
         # `--no-finalize` flag to reference here (#456).
-        _say_since_pick(f"  {_DIM}Running {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} and stopping "
-                        f"after extraction — run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later "
-                        f"to complete the batch.{_RESET}")
+        _say_since_pick(_hint(f"  {_DIM}Running {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} and stopping "
+                              f"after extraction — run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later "
+                              f"to complete the batch.{_RESET}",
+                              f"  {_DIM}Processing only, stopping after extraction. Finish the batch later "
+                              f"under Activity → Maintenance → Post-processing.{_RESET}"))
     if extract_backend in BATCH_BACKENDS:
         sync_backend = "claude-api" if extract_backend == "claude-batch" else "openai"
         _say_since_pick(f"  {_DIM}{extract_backend}: sectioned documents (if any) extract via "
@@ -1163,7 +1192,8 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
                         f"reasoning; the pipeline runs in Python.{_RESET}")
         print(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
               f"row is normal, not a stall.{_RESET}")
-        print(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n")
+        print(_hint(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n",
+                    f"  {_DIM}Use Stop in Activity to stop; finished documents are kept.{_RESET}\n"))
     lock_file = processing_lock(vault)
     from watchdog.pipeline.locks import heartbeat
     try:
@@ -1210,9 +1240,10 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # path extraction gets — meaning this message, not `_print_ingest_summary`, is the one
         # place that needs to mention a document quarantined earlier in the same run.
         _release_lock()
+        resume = _hint(f"Re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} to resume.",
+                       "Add documents again to resume.")
         print(f"\n  {_YELLOW}Ingest cancelled.{_RESET}{_DIM} Documents that finished before the "
-              f"interrupt are saved; the one in progress may be incomplete. Re-run "
-              f"{_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} to resume.{_RESET}\n")
+              f"interrupt are saved; the one in progress may be incomplete. {resume}{_RESET}\n")
         failed = _failed_count(vault)
         if failed:
             print(f"  {_quarantine_notice(failed)}\n")
@@ -1272,31 +1303,45 @@ def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> Non
             # Reconciliation failed before the commit pass (#403 phase 3): nothing was written to
             # the vault yet — the extracted documents are staged and a re-run picks up where it
             # stopped, so don't imply they're already saved.
-            print(f"  {_DIM}Nothing was written to the vault yet; re-run {_RESET}"
-                  f"{_CYAN}watchdog bark{_RESET}{_DIM} once the cause above is fixed (for a rate "
-                  f"limit, once it resets) to finish the ingest.{_RESET}")
+            print(_hint(f"  {_DIM}Nothing was written to the vault yet; re-run {_RESET}"
+                        f"{_CYAN}watchdog bark{_RESET}{_DIM} once the cause above is fixed (for a rate "
+                        f"limit, once it resets) to finish the ingest.{_RESET}",
+                        f"  {_DIM}Nothing was written to the vault yet. Run post-processing again "
+                        f"(Activity → Maintenance → Post-processing) once the cause above is fixed "
+                        f"(for a rate limit, once it resets).{_RESET}"))
         else:
-            print(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
-                  f"{_CYAN}watchdog bark{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}")
+            print(_hint(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
+                        f"{_CYAN}watchdog bark{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}",
+                        f"  {_DIM}Documents are saved with their extracted claims. Run post-processing "
+                        f"(Activity → Maintenance → Post-processing) to complete the summaries "
+                        f"and the briefing.{_RESET}"))
     elif (summary.get("post_ingest") or {}).get("briefing_skipped"):
-        print(f"\n  {_DIM}Briefing skipped{_RESET} {_DIM}({_RESET}{_CYAN}--skip-briefing{_RESET}"
-              f"{_DIM}) — entities synthesized and the timeline rebuilt.{_RESET}")
+        skipped = _hint(f"({_RESET}{_CYAN}--skip-briefing{_RESET}{_DIM}) ", "")
+        print(f"\n  {_DIM}Briefing skipped {skipped}— entities synthesized and the timeline rebuilt.{_RESET}")
     usage = summary.get("usage")
     if usage:
         cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""
         print(f"  {_DIM}{ext} doc{'s' if ext != 1 else ''} · "
               f"{usage['input_tokens']:,} in / {usage['output_tokens']:,} out tokens{cost}{_RESET}")
     if batch_pending:
-        print(f"\n  {_DIM}A batch extraction is in flight — re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}"
-              f"{_DIM} later to check on it and collect results.{_RESET}\n")
+        print(_hint(f"\n  {_DIM}A batch extraction is in flight — re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}"
+                    f"{_DIM} later to check on it and collect results.{_RESET}\n",
+                    f"\n  {_DIM}A batch extraction is in flight. Add documents again later to check on it "
+                    f"and collect results.{_RESET}\n"))
     elif cancelled:
-        print(f"\n  {_DIM}Re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} to process the remaining documents.{_RESET}\n")
+        print(_hint(f"\n  {_DIM}Re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} to process the remaining documents.{_RESET}\n",
+                    f"\n  {_DIM}Add documents again to process the remaining ones.{_RESET}\n"))
     elif summary.get("finalize_skipped"):
         print(f"\n  {_DIM}Extraction staged, post-processing skipped{_RESET} "
               f"{_DIM}({_RESET}{_BOLD}{ext}{_RESET}{_DIM} document{'s' if ext != 1 else ''} on disk).{_RESET}")
-        print(f"  {_DIM}Finish when ready — run it once for the vault as-is, or copy the vault "
-              f"folder to try more than one finalizer:{_RESET}")
-        print(f"  {_CYAN}watchdog bark{_RESET}\n")
+        if under_app():
+            print(f"  {_DIM}Finish when ready under Activity → Maintenance → Post-processing.{_RESET}\n")
+        else:
+            print(f"  {_DIM}Finish when ready — run it once for the vault as-is, or copy the vault "
+                  f"folder to try more than one finalizer:{_RESET}")
+            print(f"  {_CYAN}watchdog bark{_RESET}\n")
+    elif under_app():
+        pass    # the app shows what to do next in its own screens
     elif pipeline_hint == "watchdog add":
         print(f"\n  {_DIM}Next:{_RESET} {_CYAN}watchdog{_RESET}{_DIM} for what's waiting on you · "
               f"{_RESET}{_CYAN}watchdog ask{_RESET}{_DIM} to ask questions · {_RESET}"
@@ -1359,7 +1404,8 @@ def cmd_finalize(args) -> dict | None:
 
     from watchdog.pipeline import orchestrate
     if not orchestrate.has_pending_finalization(vault):
-        print(f"\n  {_DIM}Nothing to finish — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} first.{_RESET}\n")
+        print(_hint(f"\n  {_DIM}Nothing to finish — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} first.{_RESET}\n",
+                    f"\n  {_DIM}Nothing to finish. Process documents first.{_RESET}\n"))
         return
 
     config = load_config()
@@ -1393,7 +1439,8 @@ def cmd_finalize(args) -> dict | None:
         a = resolve_auth()
         if a["mode"] == "none":
             sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                     f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n")
+                     + _hint(f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n",
+                             f"  {_DIM}Choose how to authenticate in Settings.{_RESET}\n"))
     _require_investigation_keys(vault, stage_backends)
 
     return _run_finalize(vault, post_model, post_effort, post_backend,
@@ -1428,7 +1475,8 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
         ts = lock_started_at(lock)
         when = f" (lock acquired {ts})" if ts else ""
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} an ingest or bark is already running{when}.\n"
-                 f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n")
+                 + _hint(f"  If stale, run {_CYAN}watchdog unlock{_RESET}.\n",
+                         "  If it is stale, use Activity → Maintenance → Release a stuck lock.\n"))
     stages = "entity reconciliation + synthesis + timeline" if skip_briefing else \
         "entity reconciliation + synthesis + timeline + briefing"
     print(f"\n  {_DIM}Finishing the batch — {stages} (model: {_RESET}"
@@ -1450,8 +1498,10 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     if out.get("error") or out.get("briefing_error"):
         reason = out.get("error") or out.get("briefing_error")
         print(f"\n  {_YELLOW}The batch didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
-        print(f"  {_DIM}Nothing is lost — re-run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} once the "
-              f"cause above is fixed (for a rate limit, once it resets).{_RESET}\n")
+        print(_hint(f"  {_DIM}Nothing is lost — re-run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} once the "
+                    f"cause above is fixed (for a rate limit, once it resets).{_RESET}\n",
+                    f"  {_DIM}Nothing is lost. Run post-processing again once the cause above is fixed "
+                    f"(for a rate limit, once it resets).{_RESET}\n"))
         return out
     n = out.get("synthesized", 0)
     parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]
@@ -1585,7 +1635,8 @@ def cmd_requeue(args) -> None:
         print(f"\n  {_DIM}No documents in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — nothing to requeue.{_RESET}\n")
         return
     print(f"\n  {_GREEN}Requeued {_BOLD}{n}{_RESET}{_GREEN} document{'s' if n != 1 else ''}{_RESET}"
-          f"{_DIM} — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} to retry.{_RESET}\n")
+          + _hint(f"{_DIM} — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} to retry.{_RESET}\n",
+                  f"{_DIM} — add documents again to retry.{_RESET}\n"))
 
 
 def cmd_context(args) -> None:
