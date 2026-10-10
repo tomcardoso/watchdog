@@ -298,22 +298,29 @@ def _contradictions(ent: dict, note_section: str | None, resolved: frozenset[str
     return out
 
 
-def _relationships(ent: dict, ents: dict) -> list[dict]:
+def _wordings(row: dict) -> list[dict]:
+    return [{"text": w["text"], "sources": [{"sha": x["sha"], "page": x["page"]} for x in w["sources"]]}
+            for w in row["wordings"]]
+
+
+def _relationships(v: Path, eid: str, ent: dict) -> list[dict]:
+    """The entity's relationships, one row per counterpart, direction and meaning (D291): `role`
+    is the canonical label, `wordings` the documents' own words with their sources, `group` the
+    grouping's id when the wordings were grouped (so the reporter can split it)."""
+    from watchdog.pipeline import relationships
+    view = relationships.View(v, docs=ent.get("appears_in") or [])
     out = []
-    for r in ent.get("roles") or []:
-        if not isinstance(r, dict):
-            continue
-        tid = r.get("target_id")
-        target = ents.get(tid) if tid else None
-        sha = r.get("source_sha256")
+    for r in view.for_entity(eid):
         out.append({
-            "role": r.get("relationship") or "",
-            "target_id": tid,
-            "target_name": (target or {}).get("name") or r.get("target_name") or None,
-            "target_type": (vaultio.entity_type((target or {}).get("type") or r.get("target_type"))
-                            if (target or r.get("target_type")) else None),
-            "direction": "in" if r.get("is_reverse") else "out",
-            "docs": [sha] if sha else [],
+            "role": r["label"],
+            "target_id": r["other"],
+            "target_name": r["other_name"] if r["profiled"] or r["other_name"] != r["other"] else None,
+            "target_type": vaultio.entity_type(r["other_type"]) if r["other_type"] != "Unknown" else None,
+            "direction": r["direction"],
+            "docs": r["docs"],
+            "group": r["group"],
+            "wordings": _wordings(r),
+            "sources": [{"sha": x["sha"], "page": x["page"], "wording": x["label"]} for x in r["sources"]],
         })
     return out
 
@@ -395,7 +402,7 @@ def entity(vault: str, id: str) -> dict:
                                "notes")}
         | {"summary": sections.get("summary") or sections.get("summary (ai-written)") or None},
         "documents": doc_rows,
-        "relationships": _relationships(ent, ents),
+        "relationships": _relationships(v, id, ent),
         "contradictions": _contradictions(ent, sections.get("contradictions"), resolved),
         "timeline": _entity_timeline(v, id, ent, docs, ents),
     }
@@ -403,25 +410,61 @@ def entity(vault: str, id: str) -> dict:
 
 # ── graph and timeline ───────────────────────────────────────────────────────────
 
+def _edge_labels(rows: list[dict]) -> list[str]:
+    """Every distinct relationship on a pair, best documented first; none is ever left out."""
+    labels: list[str] = []
+    for r in rows:
+        if r["label"].casefold() not in {x.casefold() for x in labels}:
+            labels.append(r["label"])
+    return labels
+
+
 @method("vault.graph")
 def graph(vault: str) -> dict:
-    from watchdog.cmd.export import _forward_edges
+    """One edge per pair of profiled entities, whatever the direction or wording (D291), with each
+    relationship between them, its documents and pages, and the documents' own wordings."""
+    from watchdog.pipeline import relationships
 
     v = require_vault(vault)
+    docs = vaultio.load_documents(v)
     ents = {k: e for k, e in vaultio.load_entities(v).items() if isinstance(e, dict)}
     nodes = [{"id": eid, "name": e.get("name") or eid, "type": vaultio.entity_type(e.get("type")),
               "doc_count": len(e.get("appears_in") or [])} for eid, e in ents.items()]
     nodes.sort(key=lambda n: (-n["doc_count"], n["name"].lower()))
-    edges, _dangling = _forward_edges(ents)
-    merged: dict[tuple, dict] = {}
-    for e in edges:
-        key = (e["start"], e["end"], e["type"])
-        item = merged.setdefault(key, {"source": e["start"], "target": e["end"], "role": e["type"],
-                                       "docs": []})
-        sha = e.get("source_sha256")
-        if sha and sha not in item["docs"]:
-            item["docs"].append(sha)
-    return {"nodes": nodes, "edges": list(merged.values())}
+    view = relationships.View(v)
+    edges, cited = [], set()
+    for e in view.edges():
+        rels = [{"from": r["from"], "to": r["to"], "label": r["label"], "group": r["group"],
+                 "docs": r["docs"], "basis": r["basis"], "date_ranges": r["date_ranges"],
+                 "wordings": _wordings(r)} for r in e["relationships"]]
+        cited.update(e["docs"])
+        labels = _edge_labels(e["relationships"])
+        edges.append({"source": e["a"], "target": e["b"], "role": " · ".join(labels),
+                      "labels": labels, "docs": e["docs"], "directed": e["directed"],
+                      "relationships": rels})
+    documents = {sha: {"title": (docs.get(sha) or {}).get("title") or (docs.get(sha) or {}).get("filename") or sha[:12],
+                       "note": (docs.get(sha) or {}).get("document_note") or None}
+                 for sha in sorted(cited) if sha in docs}
+    return {"nodes": nodes, "edges": edges, "documents": documents}
+
+
+@method("vault.relationshipSplit")
+def relationship_split(vault: str, group: str) -> dict:
+    """Show a grouping's wordings apart again (D291), through `relationships.split`, the library
+    function that records it (an app-only operation, I10). Later runs never regroup them."""
+    from watchdog.pipeline import relationships
+
+    v = require_vault(vault)
+    if not isinstance(group, str) or not group.startswith("rel:"):
+        raise RpcError("That is not a relationship grouping.", code="bad_params")
+    try:
+        entry = relationships.split(v, group)
+    except LookupError:
+        raise RpcError("That grouping is no longer in effect.", code="not_found")
+    except ValueError as e:
+        raise RpcError(str(e), code="log_too_new")
+    return {"group": entry["id"], "status": entry["status"], "by": entry.get("split_by"),
+            "at": entry.get("split_at")}
 
 
 @method("vault.timeline")

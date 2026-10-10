@@ -136,15 +136,17 @@ def _page(value) -> int | None:
 
 class View:
     """Every stated relationship of a vault, grouped. `index` is an `entity_facts.FactIndex` (a
-    commit pass passes its in-memory one); `log` the grouping log (read when omitted)."""
+    commit pass passes its in-memory one); `log` the grouping log (read when omitted). `docs`
+    limits the stored extractions read to those shas (an entity's page needs only its own)."""
 
-    def __init__(self, vault: Path, index=None, log: dict | None = None):
+    def __init__(self, vault: Path, index=None, log: dict | None = None, docs=None):
         from watchdog.pipeline import entity_facts
         self.vault = Path(vault)
         self.index = index if index is not None else entity_facts.FactIndex(self.vault, marks={})
         self.entities = self.index.entities
         self.documents = self.index.documents
         self.log = log if log is not None else load(self.vault)
+        self.docs = set(docs) if docs is not None else None
         self._statements: list[dict] | None = None
         self._groups: dict[tuple, list[dict]] | None = None
         self._active: dict[tuple, dict] | None = None
@@ -207,6 +209,8 @@ class View:
                     None if to in self.entities else (r.get("target_name") or tid),
                     None if to in self.entities else r.get("target_type"))
         for sha in sorted(self.documents):
+            if self.docs is not None and sha not in self.docs:
+                continue
             doc = self.index.document(sha)
             for eid, label, tid, page, basis, date_range in (doc or {}).get("roles") or []:
                 frm = self.index.resolve(sha, eid)
@@ -258,9 +262,12 @@ class View:
         return self._groups
 
     def _doc_order(self, sha: str | None) -> tuple:
+        """Sources in document-date order (undated last), then title."""
+        from watchdog.pipeline.entity_facts import _date_key
         rec = self.documents.get(sha or "") or {}
-        return (str(rec.get("date_of_document") or "9999"), str(rec.get("title") or rec.get("filename") or ""),
-                sha or "")
+        date = ((self.index.document(sha) or {}).get("date") if sha else None) or rec.get("date_of_document")
+        return (_date_key(date if isinstance(date, str) else None),
+                str(rec.get("title") or rec.get("filename") or ""), sha or "")
 
     def edges(self, profiled_only: bool = True) -> list[dict]:
         """One edge per unordered pair, for the network: `a`/`b` (the pair, `a` the source of its
@@ -367,8 +374,9 @@ def group_statements(statements: list[dict], active: dict[tuple, dict],
             for s in stmts:
                 w = wordings.setdefault(s["label"].casefold(), {"text": s["label"], "sources": []})
                 w["sources"].append({"sha": s["sha"], "page": s["page"]})
+            # The wording most of its documents use; on a tie, the earliest document's.
             counts = Counter(s["label"] for s in stmts)
-            common = sorted(counts, key=lambda w: (-counts[w], w))[0]
+            common = max(counts, key=lambda w: counts[w])
             label = (g.get("canonical") or "").strip() if g else ""
             docs: list[str] = []
             ranges: list[str] = []
