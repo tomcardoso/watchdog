@@ -701,3 +701,22 @@ def test_a_live_run_here_and_one_on_another_computer(rich_vault, _no_notes):
     assert p["locks"]["ingest"]["where"] == "elsewhere"
     assert p["locks"]["ingest"]["host"] == "newsroom-laptop"
     assert p["stopped_run"] is None
+
+
+def test_a_stopped_run_note_survives_a_run_on_another_computer_that_was_already_going(rich_vault, _no_notes):
+    from datetime import datetime, timedelta, timezone
+    from watchdog.pipeline import locks
+    if locks.machine_id() is None:
+        pytest.skip("no machine id on this platform")
+    (rich_vault / ".watchdog" / "registry" / ".processing-lock").write_text(_lock_text(_dead_pid()))
+    earlier = (datetime.now(timezone.utc) - timedelta(minutes=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(
+        f"pid: 7\nhost: newsroom-laptop\nmachine: 0123456789abcdef\nlabel: chew\nstarted_at: {earlier}\n")
+    p = call("vault.pipeline", vault=V(rich_vault))
+    assert p["locks"]["chew"]["where"] == "elsewhere"
+    assert p["stopped_run"] is not None
+    # A run that starts after the note replaces it.
+    later = (datetime.now(timezone.utc) + timedelta(minutes=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(
+        f"pid: 7\nhost: newsroom-laptop\nmachine: 0123456789abcdef\nlabel: chew\nstarted_at: {later}\n")
+    assert call("vault.pipeline", vault=V(rich_vault))["stopped_run"] is None

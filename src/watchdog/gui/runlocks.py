@@ -78,13 +78,16 @@ def run_locks(vault: Path) -> dict:
         if cleared and cleared["where"] != "elsewhere" and not _stopped_by_reporter(_pid(cleared["raw"])):
             label = "chew" if key == "chew" else (cleared.get("label") or "")
             with _NOTES_LOCK:
-                _NOTES[_key(vault)] = {"text": _NOTE_TEXT.get(label, _DEFAULT_NOTE)}
+                _NOTES[_key(vault)] = {"text": _NOTE_TEXT.get(label, _DEFAULT_NOTE),
+                                       "at": locks._iso_now()}
         holder = locks.held(path)
         out[key] = _public(holder) if holder else None
     with _NOTES_LOCK:
-        if out["chew"] or out["ingest"]:
-            _NOTES.pop(_key(vault), None)          # a new run has started: the note is old news
         note = _NOTES.get(_key(vault))
+        # A run that started after the note was made (here or elsewhere) makes it old news.
+        if note and any(h and (h.get("started_at") or "") > note["at"] for h in out.values()):
+            _NOTES.pop(_key(vault), None)
+            note = None
     return {"locks": out, "stopped_run": note["text"] if note else None}
 
 
