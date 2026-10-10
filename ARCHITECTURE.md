@@ -769,6 +769,19 @@ See D45–D48.
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
   edits outside their vault. Their shell commands run in Claude Code's sandbox on macOS and are
   limited to the vault's pre-approved `watchdog` commands elsewhere (D274).
+- **API keys (D295).** `~/.watchdog/credentials.json` keeps its structure (providers, key ids,
+  names, the default) in the clear and each secret as `{"enc": "safeStorage:v1", "data", "masked"}`,
+  encrypted by the main process with Electron `safeStorage` (Keychain, DPAPI, a Linux keyring;
+  Linux `basic_text` counts as none, and keys then stay plaintext in the 0600 file, with a warning in
+  Settings). Python never decrypts. When a backend starts, before the window can reach it, the main
+  process (`gui/src/main/secrets.ts`, `keystore.ts`) encrypts any plaintext keys in place and sends
+  the decrypted keys with `secrets.provide` on the backend's stdin; the backend keeps them in memory
+  (`watchdog/keystore.py`) and hands each job only the key per provider its vault resolves to, as one
+  JSON line on the job's stdin (`WATCHDOG_SECRETS=stdin`), never in an environment variable or argv.
+  A pasted key is sealed by the main process (`key_enc`) before the backend stores it; the window
+  can't call `secrets.provide`. A process without the key it needs (the terminal CLI, or a key that
+  failed to decrypt) raises `KeyLockedError`, a `KeyChoiceError`, so it stops before any call;
+  environment variables still override every stored key.
 - **Find in a document (D289).** Every viewer has a visible find box; one matcher
   (`lib/findText.ts`: case, accents, quote style, dashes and white space ignored, matches mapped
   back to the original characters) serves it and the Text tab. A scanned page with saved positions
@@ -883,6 +896,8 @@ noted as such.
   investigation names a labelled key for a provider and this computer has no key by that id or name,
   every path that would send that provider's key (processing, post-processing, the batch path, the
   contradiction re-check, Ask Claude and Research in API-key mode) stops before any call and names the
-  missing key; none falls back to the default or another key. An environment variable still
-  overrides, as it overrides everything. *History: D290.* Guarded by
-  `tests/test_invariants.py::test_I16_…` and `tests/test_labelled_keys.py`.
+  missing key; none falls back to the default or another key. The same holds when the key is stored
+  encrypted by the app and this process can't read it (the command line, or a key that failed to
+  decrypt): it stops and says why. An environment variable still overrides, as it overrides
+  everything. *History: D290, D295.* Guarded by `tests/test_invariants.py::test_I16_…`,
+  `tests/test_labelled_keys.py` and `tests/test_keystore.py`.

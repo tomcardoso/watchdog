@@ -2,7 +2,7 @@
 
 import { CheckCircle2, KeyRound, MoreHorizontal, Pencil, Plus, Star, Trash2, XCircle } from 'lucide-react'
 import { useState } from 'react'
-import type { AuthStatus, LabelledKey } from '@shared/api'
+import type { AuthStatus, KeyStorage, LabelledKey } from '@shared/api'
 import { Badge, Button, Callout, Dropdown, ErrorNote, Segmented, Skeleton } from '@renderer/components/ui'
 import { plural } from '@renderer/lib/format'
 import { providerName } from '@renderer/components/ModelPicker'
@@ -16,6 +16,37 @@ type Extended = AuthStatus & {
 }
 const FALLBACK = ['anthropic', 'openai', 'deepseek', 'gemini', 'openrouter', 'local']
 const ENV: Record<string, string> = { anthropic: 'ANTHROPIC_API_KEY', openai: 'OPENAI_API_KEY', deepseek: 'DEEPSEEK_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', local: 'LOCAL_API_KEY' }
+
+// Where keys are kept (D295), in the words the Provider keys card uses.
+function storageLine(st: KeyStorage | undefined): string {
+  if (st?.store === 'encrypted') {
+    if (st.backend === 'keychain') return 'Encrypted on this computer with a key kept in your macOS Keychain. Never shown in full.'
+    if (st.backend === 'dpapi') return 'Encrypted on this computer with Windows’ protection for your user account. Never shown in full.'
+    return 'Encrypted on this computer with a key kept in your system keyring. Never shown in full.'
+  }
+  if (st?.store === 'plaintext') return 'Not encrypted: kept in a file on this computer that only your user account can read. Never shown in full.'
+  return 'Stored on this computer in a file only you can read. Never shown in full.'
+}
+
+function StorageNotes({ st }: { st: KeyStorage | undefined }) {
+  if (!st) return null
+  const linux = st.backend !== 'keychain' && st.backend !== 'dpapi'
+  return (
+    <>
+      {st.store === 'plaintext' && (
+        <Callout tone="warning" title="Your keys are not encrypted on this computer" style={{ margin: '0 18px 12px' }}>
+          Watchdog found no secure storage it can use here, so your keys are kept unencrypted in a file only your user account can read. Anyone who can sign in as you, or who has a copy of your home folder, such as a backup, could read them.
+          {linux ? ' On Linux, installing and unlocking a keyring such as GNOME Keyring or KWallet, then restarting Watchdog, lets it encrypt them.' : ''} Use keys with a monthly spending limit.
+        </Callout>
+      )}
+      {st.locked > 0 && (
+        <Callout tone="warning" title={`${st.locked === 1 ? 'One stored key' : `${st.locked} stored keys`} can’t be read on this computer`} style={{ margin: '0 18px 12px' }}>
+          {st.locked === 1 ? 'It was' : 'They were'} encrypted by Watchdog under another user account or computer, or the system’s secure storage was reset. Replace or delete {st.locked === 1 ? 'it' : 'them'} below. Until then, anything that needs {st.locked === 1 ? 'it' : 'them'} stops without sending anything.
+        </Callout>
+      )}
+    </>
+  )
+}
 
 type KeyForm = { kind: 'replace'; id?: string } | { kind: 'add' } | { kind: 'rename'; id: string; label: string }
 
@@ -79,7 +110,7 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
           <>
             {!several && <span className="mono muted">{stored.masked}</span>}
             <Badge tone={tone}>{stored.in_use}</Badge>
-            {(env || !several) && <Badge tip={env ? 'Set in your environment; it takes precedence over every stored key' : 'Stored in Watchdog’s credentials file'}>{env ? 'environment' : 'stored'}</Badge>}
+            {(env || !several) && <Badge tip={env ? 'Set in your environment; it takes precedence over every stored key' : keys[0]?.encrypted ? 'Stored encrypted in Watchdog’s credentials file' : 'Stored in Watchdog’s credentials file'}>{env ? 'environment' : keys[0]?.locked ? 'can’t be read' : keys[0]?.encrypted ? 'encrypted' : 'stored'}</Badge>}
           </>
         ) : (
           <span className="faint">No key</span>
@@ -102,6 +133,7 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
             <div key={k.id} className="set-keyitem">
               <span className="set-keyitem-name">{k.label}</span>
               <span className="mono muted">{k.masked}</span>
+              {k.locked && <Badge tone="warning" tip="Encrypted under another user account or computer; replace or delete it">can’t be read</Badge>}
               {k.default && <Badge tone="accent" tip="Used by every investigation that hasn’t chosen another key">Default</Badge>}
               {(k.users?.length ?? 0) > 0 && <span className="faint set-keyitem-users" title={k.users!.join(', ')}>{plural(k.users!.length, 'investigation')}</span>}
               <span className="spacer" />
@@ -284,16 +316,17 @@ export default function AuthPanel() {
         <div className="set-card-head">
           <div>
             <div className="card-title">Provider keys</div>
-            <div className="card-sub">Stored on this computer in a file only you can read. Never shown in full.</div>
+            <div className="card-sub set-keystore" data-store={s.storage?.store ?? 'unknown'}>{storageLine(s.storage)}</div>
           </div>
         </div>
+        <StorageNotes st={s.storage} />
         <div style={{ padding: '0 18px' }}>
           {providers.map((p) => (
             <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} onStatus={setStatus} />
           ))}
         </div>
         <div className="set-foot">
-          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode.
+          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode. Use a key made for Watchdog, with a monthly spending limit set with the provider, so a mistake can’t run up an open-ended bill.
         </div>
       </section>
 

@@ -260,7 +260,10 @@ All six must report `OK`. If any fails, stop — a single changed byte makes run
 
 ## Step 2 — check auth
 
-You need Anthropic and DeepSeek credentials stored:
+You need Anthropic and DeepSeek credentials. Keys the desktop app stored are encrypted and the
+scripts here can't read them (D295): export them for the session instead (`ANTHROPIC_API_KEY`,
+`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), which always take precedence over a stored
+key. A key stored in plain text (no app, or no secure storage) still works. Check with:
 
 ```
 watchdog auth

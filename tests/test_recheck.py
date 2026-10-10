@@ -296,7 +296,7 @@ def test_the_estimate_prices_the_calls_on_the_finalizer_model(vault, monkeypatch
 def test_the_app_starts_it_as_a_job_and_keeps_the_gates(vault, monkeypatch, wdg_home):  # noqa: F811
     from watchdog.gui import jobs
     started = []
-    monkeypatch.setattr(jobs.MANAGER, "start", lambda v, args, label, kind, argv=None: (
+    monkeypatch.setattr(jobs.MANAGER, "start", lambda v, args, label, kind, argv=None, secrets=None: (
         started.append((args, label, argv)) or type("J", (), {"to_dict": lambda self: {"id": "j"}})()))
     monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "none", "reason": "No key."})
     assert call_error("jobs.recheckContradictions", vault=str(vault), ids=["pier-9"])["code"] == "auth_required"

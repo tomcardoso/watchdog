@@ -63,6 +63,20 @@ Check the key in **Settings → Models & keys**, or top up the account on the pr
 
 The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](app.md#billing).
 
+## macOS asks whether Watchdog may use its "Safe Storage" in your Keychain
+
+Watchdog encrypts your API keys with a key kept in your login Keychain, named "Watchdog Safe Storage". macOS lets the app that created that item read it without asking. It asks when a differently signed copy of the app tries: a test build, a copy built from source, or a release signed by a different developer. Choose **Always Allow** if you trust the copy you are running; choose **Deny** and Watchdog can't read your stored keys, so anything that needs one stops without sending anything. Updates to Watchdog's engine never cause this prompt; only the app itself reads the Keychain.
+
+If you denied it by mistake, open Keychain Access, find "Watchdog Safe Storage", add Watchdog under **Access Control**, then restart Watchdog.
+
+## "Watchdog couldn't read the key from this computer's secure storage"
+
+The key was encrypted under another user account or on another computer, or the system's secure storage was reset (on Linux, the keyring may not be running or unlocked). **Settings → Models & keys** marks such keys "can't be read". Replace each one with the key itself, or delete it. On Linux, check that your keyring is unlocked, then restart Watchdog.
+
+## The command line says keys are stored by the Watchdog app
+
+The `watchdog` command line can't read keys the app has encrypted, and stops before sending anything. To use it, set the provider's environment variable for that session, for example `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`; it always takes precedence over a stored key. The command line also refuses to store a key beside the app's encrypted ones: add keys in the app. See [Commands](commands.md#watchdog-settings-auth).
+
 ## A file landed in incoming/failed/
 
 The file could not be read when Watchdog converted it to text. It sits in `incoming/failed/` alongside an explanation of what went wrong. On the **Documents** screen, the strip above the list shows failed files. Common causes:

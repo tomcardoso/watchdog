@@ -45,3 +45,14 @@ def no_investigation_key_scope():
     auth.use_investigation(None)
     yield
     auth.use_investigation(None)
+
+
+@pytest.fixture(autouse=True)
+def no_app_provided_keys(monkeypatch):
+    """Keys the app hands a process live in `watchdog.keystore`'s memory (D295); clear them around
+    every test, and never let a test read its keys from the suite's own stdin."""
+    from watchdog import keystore
+    monkeypatch.delenv(keystore.SECRETS_ENV, raising=False)
+    keystore.forget()
+    yield
+    keystore.forget()

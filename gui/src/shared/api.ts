@@ -454,7 +454,20 @@ export interface Billing {
 }
 
 /** A stored key, masked (`auth.status` key_sets). `users`: investigations here that chose it. */
-export interface LabelledKey { id: string; label: string; masked: string; default: boolean; users?: string[] }
+export interface LabelledKey { id: string; label: string; masked: string; default: boolean; users?: string[]; encrypted?: boolean; locked?: boolean }
+
+/** Where this computer's keys are kept (D295). `store`: `encrypted` with the operating system's
+ * secure storage (`backend`: keychain, dpapi, gnome_libsecret, kwallet…), `plaintext` in a file only
+ * the user's account can read (`reason`: no secure storage, or Linux's `basic_text`), or `unknown`
+ * when the backend runs without the app. `locked` counts stored keys that could not be decrypted. */
+export interface KeyStorage {
+  store: 'encrypted' | 'plaintext' | 'unknown'
+  backend: string | null
+  reason: 'unavailable' | 'basic_text' | null
+  encrypted: number
+  plaintext: number
+  locked: number
+}
 
 /** `auth.investigationKeys`: per provider, this computer's keys and the investigation's choice. */
 export interface InvestigationKeys {
@@ -614,6 +627,7 @@ export interface AuthStatus {
   stages: { stage: string; value: string; provider: string; ready: boolean; billing: string | null }[]
   keys: { provider: string; masked: string; in_use: string; source: 'stored' | 'env' }[]
   key_sets?: Record<string, LabelledKey[]>
+  storage?: KeyStorage
   providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
 }
 export interface SkillInfo { name: string; description: string; source: 'package' | 'user' }

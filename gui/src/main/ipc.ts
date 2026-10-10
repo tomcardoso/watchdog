@@ -11,11 +11,13 @@ import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
 import { addGrant, listGrants, requestGrant, revokeGrant } from './access'
 import { getThumb, putThumb } from './thumbs'
+import { prepareRequest } from './secrets'
 
 export function registerIpc(backend: PythonBackend, engine: Engine, claude: ClaudeSignIn, getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('rpc', async (_e, method: string, params: unknown) => {
     try {
-      const result = await backend.call(method, params)
+      // A pasted key is encrypted here before the backend sees it to store (D295).
+      const result = await backend.call(method, prepareRequest(method, params))
       if (method === 'projects.list') refreshRoots()
       return { ok: true, result }
     } catch (err) {

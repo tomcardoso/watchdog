@@ -115,6 +115,12 @@ def sandbox_settings() -> dict:
             "allowWrite": [str(home)],
             # The folder-access list and the provider keys are never a command's to change.
             "denyWrite": [str(home / "access.json"), str(home / "credentials.json")],
+            # Nor a command's to read (D295): the provider keys, and the app's own state, which
+            # holds every investigation's saved Ask Claude conversations. The rest of the folder
+            # stays readable because the session's `watchdog` commands need it: the registry and
+            # settings, record skills, the usage database, and `access.json`, which they read to
+            # enforce folder access (an unreadable list grants nothing, so every write would fail).
+            "denyRead": [str(home / "credentials.json"), str(home / "gui")],
         },
     }
 

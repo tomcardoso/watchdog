@@ -5,6 +5,10 @@ Settings and credentials are written the way the CLI writes them: `settings.set`
 own `_coerce_value` and `_persist` (so validation messages, side effects and the 0600 file mode
 are identical), and `auth.*` use `cmd/auth`'s `_load_state`/`_save_state` and its concurrency
 auto-tune helpers. Secrets never travel back to the app: a stored key is returned masked only.
+
+Under the app, the methods that take a key (`auth.setAnthropicMode`, `auth.setKey`, `auth.addKey`)
+also receive `key_enc`, the key encrypted by the app's main process; only that blob is written to
+disk (D295). The main process adds it; the renderer never sees or sends it.
 """
 
 from __future__ import annotations
@@ -249,7 +253,7 @@ def _auth_status() -> dict:
             "base_url_setting": meta.get("base_url_key"),
             "base_url": auth_cmd.get_base_url(p) if meta.get("base_url_key") else None,
             "ready": auth_cmd.provider_ready(p) if p != "anthropic" else bool(
-                mode == "subscription" or auth_cmd.get_api_key("anthropic")),
+                mode == "subscription" or auth_cmd.default_key("anthropic", state)),
         })
     return {
         "claude": {"mode": mode, "logged_in": logged_in, "reason": _claude_reason(claude),
@@ -269,7 +273,24 @@ def _auth_status() -> dict:
         # investigations that chose it, for the warning before a delete.
         "key_sets": {p: [{**k, "users": auth_cmd.key_users(p, k["id"])} for k in auth_cmd.list_keys(p, state)]
                      for p in auth_cmd._PROVIDERS},
+        "storage": _storage(state),
     }
+
+
+def _storage(state: dict) -> dict:
+    """Where this computer's keys are kept, for Settings → Models & keys (D295). `store` is
+    "encrypted" (the app encrypts each key with the operating system's secure storage),
+    "plaintext" (no usable secure storage: a 0600 file) or "unknown" (no app said: a backend run
+    outside the app). `locked` counts stored keys this process can't read."""
+    from watchdog import keystore
+    from watchdog.cmd import auth as auth_cmd
+
+    st = keystore.status()
+    items = [i for p in auth_cmd._PROVIDERS for i in auth_cmd._key_items(state, p)[0]]
+    return {"store": st["store"] or "unknown", "backend": st["backend"], "reason": st["reason"],
+            "encrypted": sum(1 for i in items if not isinstance(i["stored"], str)),
+            "plaintext": sum(1 for i in items if isinstance(i["stored"], str)),
+            "locked": sum(1 for i in items if i["key"] is None)}
 
 
 @method("auth.status")
@@ -292,7 +313,7 @@ def _prefix_warning(meta: dict, key: str) -> str | None:
 
 
 @method("auth.setAnthropicMode")
-def set_anthropic_mode(mode: str, key: str | None = None) -> dict:
+def set_anthropic_mode(mode: str, key: str | None = None, key_enc: dict | None = None) -> dict:
     """Switch Claude between your subscription login and a metered API key, as `watchdog settings
     auth` does — including the concurrency tune a subscription needs and an API key undoes."""
     from watchdog.cmd import auth as auth_cmd
@@ -304,7 +325,7 @@ def set_anthropic_mode(mode: str, key: str | None = None) -> dict:
     warning = None
     state["mode"] = mode
     if mode == "api-key" and key is not None and key.strip():
-        auth_cmd.store_default_key(state, "anthropic", key.strip())
+        _key_op(lambda: auth_cmd.store_default_key(state, "anthropic", key.strip(), enc=key_enc))
         warning = _prefix_warning(meta, key.strip())
     auth_cmd._save_state(state)
     if mode == "subscription":
@@ -316,7 +337,7 @@ def set_anthropic_mode(mode: str, key: str | None = None) -> dict:
 
 
 @method("auth.setKey")
-def set_key(provider: str, key: str, id: str | None = None) -> dict:
+def set_key(provider: str, key: str, id: str | None = None, key_enc: dict | None = None) -> dict:
     """Store a provider's key. Without `id`, the default key's secret is replaced (a provider with
     none gets one named Default); with `id`, that labelled key's secret is."""
     from watchdog.cmd import auth as auth_cmd
@@ -325,10 +346,10 @@ def set_key(provider: str, key: str, id: str | None = None) -> dict:
     if not isinstance(key, str) or not key.strip():
         raise RpcError("Paste a key, or use remove to delete the stored one.", code="bad_params")
     if id:
-        _key_op(lambda: auth_cmd.replace_key(provider, id, key))
+        _key_op(lambda: auth_cmd.replace_key(provider, id, key, enc=key_enc))
     else:
         state = auth_cmd._load_state()
-        auth_cmd.store_default_key(state, provider, key.strip())
+        _key_op(lambda: auth_cmd.store_default_key(state, provider, key.strip(), enc=key_enc))
         auth_cmd._save_state(state)
     return {**_auth_status(), "warning": _prefix_warning(meta, key.strip())}
 
@@ -356,14 +377,15 @@ def delete_key(provider: str, id: str | None = None) -> dict:
 
 
 @method("auth.addKey")
-def add_key(provider: str, label: str, key: str, make_default: bool = False) -> dict:
+def add_key(provider: str, label: str, key: str, make_default: bool = False,
+            key_enc: dict | None = None) -> dict:
     """Add another labelled key for a provider (#690). Its first key becomes the default."""
     from watchdog.cmd import auth as auth_cmd
 
     meta = _check_provider(provider)
     if not isinstance(key, str) or not key.strip():
         raise RpcError("Paste a key.", code="bad_params")
-    kid = _key_op(lambda: auth_cmd.add_key(provider, label, key, make_default=bool(make_default)))
+    kid = _key_op(lambda: auth_cmd.add_key(provider, label, key, make_default=bool(make_default), enc=key_enc))
     return {**_auth_status(), "id": kid, "warning": _prefix_warning(meta, key.strip())}
 
 

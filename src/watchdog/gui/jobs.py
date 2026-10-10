@@ -9,6 +9,10 @@ events; every other line goes to a ring buffer (the last 5,000) and out as batch
 
 Cancelling sends Ctrl+C (SIGINT, or CTRL_BREAK_EVENT on Windows) so the CLI's own graceful stop
 runs; a second cancel kills the process.
+
+Keys the app stores encrypted reach a command on its stdin, one JSON line, then end of input
+(`WATCHDOG_SECRETS=stdin`, D295): only the key per provider the investigation resolves to, and
+never through the environment or argv, which other programs and crash reports can see.
 """
 
 from __future__ import annotations
@@ -92,6 +96,29 @@ def _clock(seconds) -> str:
     s = max(0, int(seconds or 0))
     h, m, sec = s // 3600, s % 3600 // 60, s % 60
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
+
+
+def _secrets(vault: Path | None) -> dict[str, str]:
+    """The encrypted keys a command in `vault` may use (`auth.secrets_for_run`). A failure here
+    must not stop the command: it then finds the key locked and stops with that reason itself."""
+    try:
+        from watchdog.cmd.auth import secrets_for_run
+        return secrets_for_run(vault)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _hand_over(proc: subprocess.Popen, keys: dict[str, str]) -> None:
+    from watchdog.keystore import child_input
+    try:
+        proc.stdin.write(child_input(keys))
+    except OSError:
+        pass   # the command already exited; its own error says why
+    finally:
+        try:
+            proc.stdin.close()
+        except OSError:
+            pass
 
 
 def command_argv(args: list[str]) -> list[str]:
@@ -209,7 +236,7 @@ class JobManager:
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
     def start(self, vault: Path | None, args: list[str], label: str, kind: str | None,
-              argv: list[str] | None = None) -> Job:
+              argv: list[str] | None = None, secrets: bool | None = None) -> Job:
         """`argv` replaces the `python -m watchdog <args>` process, for the one job that runs
         another module (`setup.downloadModel`); `args` still labels the job."""
         require_engine(args)
@@ -217,15 +244,23 @@ class JobManager:
         job = Job(vault, args, label, kind)
         env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "WATCHDOG_APP": "1",
                "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+        # A `watchdog` command reads its keys; another module (`argv`) only when it says it calls a
+        # model (`secrets=True`, as the contradiction re-check does) and reads them itself.
+        keys = _secrets(vault) if (argv is None if secrets is None else secrets) else {}
+        if keys:
+            env["WATCHDOG_SECRETS"] = "stdin"
         popen_kwargs: dict = {}
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         try:
             job.proc = subprocess.Popen(
                 argv or command_argv(args), cwd=str(vault) if vault else None, env=env,
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **popen_kwargs)
+                stdin=subprocess.PIPE if keys else subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, **popen_kwargs)
         except OSError as e:
             raise rpc.RpcError(f"Could not start the command: {e}") from e
+        if keys:
+            _hand_over(job.proc, keys)
         with self.lock:
             self.jobs[job.id] = job
             self._prune()
@@ -336,9 +371,14 @@ def run_action(vault: Path | None, args: list[str], timeout: float) -> dict:
     env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_APP": "1", "PYTHONIOENCODING": "utf-8",
            "PYTHONUNBUFFERED": "1"}
     env.pop("WATCHDOG_PROGRESS", None)
+    keys = _secrets(vault)
+    if keys:
+        env["WATCHDOG_SECRETS"] = "stdin"
+    from watchdog.keystore import child_input
     try:
         done = subprocess.run(command_argv(args), cwd=str(vault) if vault else None, env=env,
-                              stdin=subprocess.DEVNULL, capture_output=True, timeout=timeout)
+                              input=child_input(keys) if keys else None,
+                              stdin=None if keys else subprocess.DEVNULL, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired as e:
         raise rpc.RpcError(f"The command did not finish within {int(timeout)} seconds.",
                            code="timeout") from e

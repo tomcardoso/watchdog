@@ -612,10 +612,23 @@ def main() -> None:
     """Run the command. Under the app, a missing Python package is a setup problem, not a bug a
     reader can act on: say so in one sentence instead of a traceback in the job log."""
     from watchdog.appmode import under_app
+    from watchdog.cmd.auth import KeyChoiceError
+    from watchdog.keystore import read_stdin
+    # A job the app starts is handed the keys its investigation uses on stdin, never in its
+    # environment or arguments (D295).
+    read_stdin()
     if not under_app():
-        return _main()
+        try:
+            return _main()
+        except KeyChoiceError as e:
+            # A key this process can't use (chosen but not stored here, or stored encrypted by the
+            # app): stop with the reason, not a traceback. Nothing was sent (I16).
+            sys.exit(f"Error: {e}")
     try:
         return _main()
+    except KeyChoiceError as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
     except ModuleNotFoundError as e:
         name = (e.name or "a required package").split(".")[0]
         print(f"A component this step needs ({name}) is missing from this installation of "

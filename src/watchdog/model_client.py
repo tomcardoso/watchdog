@@ -349,6 +349,24 @@ _AUTH_HINTS = ("invalid api key", "authentication_error", "invalid x-api-key", "
                "oauth token has expired")
 
 
+def _scrub(text: str, api_key: str | None) -> str:
+    """`text` with the key that was sent masked out. A provider's error body is kept in the
+    message for its reason, and the message reaches job logs, failure records and the app; a
+    proxy or self-hosted server that echoes the Authorization header back must not carry the key
+    with it (D295)."""
+    if not api_key or not text or api_key not in text:
+        return text
+    from watchdog.cmd.auth import _mask
+    return text.replace(api_key, _mask(api_key))
+
+
+def _scrubbed(e: Exception, api_key: str | None) -> Exception:
+    """`e` with the key masked out of its message, for errors raised past this module."""
+    if api_key and any(isinstance(a, str) and api_key in a for a in e.args):
+        e.args = tuple(_scrub(a, api_key) if isinstance(a, str) else a for a in e.args)
+    return e
+
+
 def _looks_like_auth_failure(api_status, *texts: str) -> bool:
     """True for a 401/403, a billing refusal, or CLI text reporting a bad or missing login."""
     if api_status in (401, 403):
@@ -1148,7 +1166,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if resp.status_code >= 400:
         # The provider's own JSON error body is the only place the real reason lives ("invalid
         # model", "context length exceeded", "insufficient_quota") — keep it in the message.
-        detail = (resp.text or "").strip()[:500]
+        detail = _scrub((resp.text or "").strip(), api_key)[:500]
         if resp.status_code in (401, 403):
             raise ProviderAuthError(f"{base_url} rejected the API key (HTTP {resp.status_code}): {detail}")
         if resp.status_code == 402 or _looks_like_billing(detail):
@@ -1438,10 +1456,10 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         try:
             out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
                                                   api_key, max_tokens, effort_arg, task)
-        except (RateLimitError, ModelError, ProviderAuthError):
-            raise
+        except (RateLimitError, ModelError, ProviderAuthError) as e:
+            raise _scrubbed(e, api_key)
         except Exception as e:                  # any backend/transport failure → typed error
-            raise ModelError(f"{chosen} backend error: {e}") from e
+            raise ModelError(_scrub(f"{chosen} backend error: {e}", api_key)) from e
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
         # Accumulate usage across every attempt (not just the one that ends up succeeding) so a

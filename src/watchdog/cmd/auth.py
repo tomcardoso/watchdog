@@ -14,7 +14,9 @@ interactive prompt to change them: pick a service, then either switch Claude's m
 separate set/get/remove/use subcommand surface.
 
 State lives in `~/.watchdog/credentials.json` (mode 0600): `{"mode", "keys": {...}}`, where a
-provider holds one key or several labelled ones (#690, D290). An investigation can choose which
+provider holds one key or several labelled ones (#690, D290). Under the desktop app each key is an
+encrypted blob only the app can open (`watchdog.keystore`, D295); this process sees the keys the app
+gave it, and a terminal command sees none and must use the environment variable. An investigation can choose which
 labelled key it bills (`.watchdog/settings.json` in its folder); `resolve_key` is the one place a
 key is chosen. The environment variable always takes precedence over a stored key.
 """
@@ -26,7 +28,7 @@ import sys
 from getpass import getpass
 from pathlib import Path
 
-from watchdog import defaults
+from watchdog import defaults, keystore
 from watchdog.cmd import base
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.interactive import CANCELLED, confirm, pick
@@ -149,6 +151,11 @@ def _mask(key: str) -> str:
 # (read as one key labelled "Default", id "default") or {"default": <id>, "items": [{"id",
 # "label", "key"}, ...]}. A provider whose only key is that "Default" one is written back as
 # the plain string, so someone who never labels a key keeps a file older versions can read.
+#
+# Under the app every secret (that single string, or an item's "key") is an encrypted blob
+# instead (D295). In memory an item is {"id", "label", "key", "stored", "masked"}: `stored` is what
+# the file holds and is written back unchanged, `key` the usable key, or None when the stored blob
+# wasn't given to this process ("locked"), and `masked` what a display shows.
 
 DEFAULT_LABEL = "Default"
 DEFAULT_ID = "default"
@@ -161,16 +168,44 @@ class KeyChoiceError(Exception):
     to another key would bill another account (D290)."""
 
 
+class KeyLockedError(KeyChoiceError):
+    """The key that would pay is stored encrypted by the app and this process wasn't given it: a
+    terminal command, or an app process the app couldn't decrypt the key for (D295). A
+    `KeyChoiceError`, so every path that stops before a model call for a missing key stops here
+    too, and none falls back to another key."""
+
+
+def _secret(stored) -> tuple[str | None, str | None] | None:
+    """A stored secret as `(key, masked)`, `key` None when it is an encrypted blob this process
+    wasn't given. None when `stored` isn't a secret at all."""
+    if isinstance(stored, str):
+        return (stored, _mask(stored)) if stored else None
+    if keystore.is_blob(stored):
+        key = keystore.reveal(stored)
+        masked = stored.get("masked") if isinstance(stored.get("masked"), str) else None
+        return key, masked or (_mask(key) if key else "(encrypted)")
+    return None
+
+
+def _item(kid: str, label: str, stored) -> dict | None:
+    secret = _secret(stored)
+    if secret is None:
+        return None
+    return {"id": kid, "label": label, "key": secret[0], "stored": stored, "masked": secret[1]}
+
+
 def _key_items(state: dict, provider: str) -> tuple[list[dict], str | None]:
-    """A provider's stored keys as `[{"id", "label", "key"}]` and the default's id."""
+    """A provider's stored keys as `[{"id", "label", "key", "stored", "masked"}]` and the
+    default's id. `key` is None for an encrypted key this process wasn't given (D295)."""
     raw = (state.get("keys") or {}).get(provider)
-    if isinstance(raw, str):
-        return ([{"id": DEFAULT_ID, "label": DEFAULT_LABEL, "key": raw}], DEFAULT_ID) if raw else ([], None)
+    if isinstance(raw, str) or keystore.is_blob(raw):
+        item = _item(DEFAULT_ID, DEFAULT_LABEL, raw)
+        return ([item], DEFAULT_ID) if item else ([], None)
     if not isinstance(raw, dict):
         return [], None
-    items = [{"id": str(i["id"]), "label": str(i.get("label") or i["id"]), "key": i["key"]}
-             for i in raw.get("items") or []
-             if isinstance(i, dict) and i.get("id") and isinstance(i.get("key"), str) and i["key"]]
+    items = [it for it in (_item(str(i["id"]), str(i.get("label") or i["id"]), i.get("key"))
+                           for i in raw.get("items") or [] if isinstance(i, dict) and i.get("id"))
+             if it is not None]
     ids = [i["id"] for i in items]
     default = raw.get("default") if raw.get("default") in ids else (ids[0] if ids else None)
     return items, default
@@ -181,11 +216,38 @@ def _put_key_items(state: dict, provider: str, items: list[dict], default: str |
     if not items:
         keys.pop(provider, None)
     elif len(items) == 1 and items[0]["id"] == DEFAULT_ID and items[0]["label"] == DEFAULT_LABEL:
-        keys[provider] = items[0]["key"]
+        keys[provider] = items[0]["stored"]
     else:
         ids = [i["id"] for i in items]
         keys[provider] = {"default": default if default in ids else ids[0],
-                          "items": [{"id": i["id"], "label": i["label"], "key": i["key"]} for i in items]}
+                          "items": [{"id": i["id"], "label": i["label"], "key": i["stored"]} for i in items]}
+
+
+def _has_blobs(state: dict) -> bool:
+    return any(i["stored"] is not None and not isinstance(i["stored"], str)
+               for p in _PROVIDERS for i in _key_items(state, p)[0])
+
+
+APP_STORES_KEYS = ("Keys on this computer are stored by the Watchdog app, encrypted, so the command "
+                   "line can't change them. Add or replace keys in the app, under Settings → Models & keys.")
+
+
+def _seal(state: dict, key: str, enc: dict | None) -> dict | str:
+    """What the file stores for a new or replaced `key` (D295): the app's encrypted blob when it
+    sent one, else the key itself — but never plaintext beside the app's encrypted keys, or when
+    the app has said it encrypts. `remember`s the key, so this process can use it at once."""
+    if enc is not None:
+        if not keystore.is_blob(enc):
+            raise ValueError("The key arrived in a form Watchdog doesn't recognise, so it wasn't saved.")
+        blob = {"enc": enc["enc"], "data": enc["data"], "masked": _mask(key)}
+        keystore.remember(blob, key)
+        return blob
+    if keystore.encrypting():
+        raise ValueError("Watchdog couldn't encrypt this key, so it wasn't saved. Restart Watchdog "
+                         "and try again.")
+    if keystore.status()["store"] is None and _has_blobs(state):
+        raise ValueError(APP_STORES_KEYS)
+    return key
 
 
 def clean_label(label, provider: str, items: list[dict], *, except_id: str | None = None) -> str:
@@ -217,13 +279,15 @@ def list_keys(provider: str, state: dict | None = None) -> list[dict]:
     """A provider's stored keys, masked: `[{"id", "label", "masked", "default"}]`. The key itself
     never leaves this module through here."""
     items, default = _key_items(state if state is not None else _load_state(), provider)
-    return [{"id": i["id"], "label": i["label"], "masked": _mask(i["key"]), "default": i["id"] == default}
+    return [{"id": i["id"], "label": i["label"], "masked": i["masked"], "default": i["id"] == default,
+             "encrypted": not isinstance(i["stored"], str), "locked": i["key"] is None}
             for i in items]
 
 
-def add_key(provider: str, label: str, key: str, *, make_default: bool = False) -> str:
+def add_key(provider: str, label: str, key: str, *, make_default: bool = False,
+            enc: dict | None = None) -> str:
     """Store a new labelled key for `provider` and return its id. The provider's first key
-    becomes its default."""
+    becomes its default. `enc` is the app's encrypted form of `key` (D295)."""
     key = (key or "").strip()
     if not key:
         raise ValueError("Paste a key.")
@@ -231,7 +295,8 @@ def add_key(provider: str, label: str, key: str, *, make_default: bool = False) 
     items, default = _key_items(state, provider)
     text = clean_label(label, provider, items)
     kid = DEFAULT_ID if not items and text == DEFAULT_LABEL else _new_key_id(items)
-    items.append({"id": kid, "label": text, "key": key})
+    stored = _seal(state, key, enc)
+    items.append({"id": kid, "label": text, "key": key, "stored": stored, "masked": _mask(key)})
     _put_key_items(state, provider, items, kid if (make_default or default is None) else default)
     _save_state(state)
     return kid
@@ -253,7 +318,7 @@ def rename_key(provider: str, key_id: str, label: str) -> None:
     _save_state(state)
 
 
-def replace_key(provider: str, key_id: str, key: str) -> None:
+def replace_key(provider: str, key_id: str, key: str, *, enc: dict | None = None) -> None:
     """Replace the secret of an existing labelled key, keeping its id and label (so every
     investigation that chose it keeps billing the account it names)."""
     key = (key or "").strip()
@@ -261,7 +326,7 @@ def replace_key(provider: str, key_id: str, key: str) -> None:
         raise ValueError("Paste a key.")
     state = _load_state()
     items, default = _key_items(state, provider)
-    _find(items, key_id)["key"] = key
+    _find(items, key_id).update(key=key, stored=_seal(state, key, enc), masked=_mask(key))
     _put_key_items(state, provider, items, default)
     _save_state(state)
 
@@ -285,16 +350,18 @@ def delete_key(provider: str, key_id: str) -> None:
     _save_state(state)
 
 
-def store_default_key(state: dict, provider: str, key: str) -> None:
+def store_default_key(state: dict, provider: str, key: str, *, enc: dict | None = None) -> None:
     """Set the provider's default key to `key` — the one-key-per-provider path the setup wizard,
     `watchdog auth` and the app's single "Replace" use. A provider with no key gets one labelled
     "Default"; otherwise the default key's secret is replaced and its label kept. Mutates
-    `state`; the caller saves it."""
+    `state`; the caller saves it. `enc` is the app's encrypted form of `key` (D295); raises
+    ValueError when the key may not be written as plain text."""
     items, default = _key_items(state, provider)
+    secret = {"key": key, "stored": _seal(state, key, enc), "masked": _mask(key)}
     if default is None:
-        items, default = [{"id": DEFAULT_ID, "label": DEFAULT_LABEL, "key": key}], DEFAULT_ID
+        items, default = [{"id": DEFAULT_ID, "label": DEFAULT_LABEL, **secret}], DEFAULT_ID
     else:
-        _find(items, default)["key"] = key
+        _find(items, default).update(secret)
     _put_key_items(state, provider, items, default)
 
 
@@ -391,6 +458,26 @@ def missing_key_message(provider: str, label: str | None) -> str:
             f"under Billing on this investigation's Overview. Nothing has been sent.")
 
 
+def locked_key_message(provider: str, label: str | None) -> str:
+    meta = _PROVIDERS.get(provider, {})
+    name = meta.get("label", provider).split(" — ")[0]
+    from watchdog.appmode import under_app
+    if under_app():
+        which = f"the {name} key named “{label}”" if label and label != DEFAULT_LABEL else f"your {name} key"
+        return (f"Watchdog couldn't read {which} from this computer's secure storage. Restart "
+                f"Watchdog; if this keeps happening, add the key again under Settings → Models & "
+                f"keys. Nothing has been sent.")
+    return (f"Your {name} key is stored by the Watchdog app, encrypted, and the command line can't "
+            f"read it. To use the command line, set {meta.get('env', 'the key')} in your "
+            f"environment. Nothing has been sent.")
+
+
+def _usable(provider: str, item: dict) -> dict:
+    if item["key"] is None:
+        raise KeyLockedError(locked_key_message(provider, item["label"]))
+    return item
+
+
 def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
     """The one resolver for which key pays for `provider` in an investigation (D290):
     `{"key", "id", "label", "source"}` with `source` one of `env`, `chosen`, `default`, `none`.
@@ -409,11 +496,34 @@ def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
         item = _match_choice(items, choice)
         if item is None:
             raise KeyChoiceError(missing_key_message(provider, choice.get("label")))
+        item = _usable(provider, item)
         return {"key": item["key"], "id": item["id"], "label": item["label"], "source": "chosen"}
     for i in items:
         if i["id"] == default:
+            i = _usable(provider, i)
             return {"key": i["key"], "id": i["id"], "label": i["label"], "source": "default"}
     return {"key": None, "id": None, "label": None, "source": "none"}
+
+
+def secrets_for_run(vault: Path | None) -> dict[str, str]:
+    """The encrypted keys a `watchdog` job in `vault` may use, as `{blob data: key}` for
+    `keystore.read_stdin` (D295): per provider, only the key the investigation resolves to (its
+    choice, else the default), and nothing where the environment variable overrides it or the key
+    is stored in plain text (the job reads that from the file, as before). A job outside an
+    investigation gets nothing."""
+    if vault is None:
+        return {}
+    state = _load_state()
+    out: dict[str, str] = {}
+    for p, meta in _PROVIDERS.items():
+        if os.environ.get(meta["env"]):
+            continue
+        items, default = _key_items(state, p)
+        choice = investigation_keys(vault).get(p)
+        item = _match_choice(items, choice) if choice else next((i for i in items if i["id"] == default), None)
+        if item and item["key"] and keystore.is_blob(item["stored"]):
+            out[item["stored"]["data"]] = item["key"]
+    return out
 
 
 def get_api_key(provider: str = "anthropic", vault: Path | None = None) -> str | None:
@@ -430,6 +540,15 @@ def default_key(provider: str, state: dict | None = None) -> str | None:
         return os.environ[meta["env"]]
     items, default = _key_items(state if state is not None else _load_state(), provider)
     return next((i["key"] for i in items if i["id"] == default), None)
+
+
+def default_masked(provider: str, state: dict | None = None) -> str | None:
+    """`default_key`, masked — also for a default key that is stored encrypted and locked here."""
+    meta = _PROVIDERS.get(provider)
+    if meta and os.environ.get(meta["env"]):
+        return _mask(os.environ[meta["env"]])
+    items, default = _key_items(state if state is not None else _load_state(), provider)
+    return next((i["masked"] for i in items if i["id"] == default), None)
 
 
 def label_for_key(provider: str, key: str | None) -> str | None:
@@ -618,9 +737,9 @@ def status_data() -> dict:
     if mode == "subscription":
         claude["logged_in"] = claude_code_logged_in()
     elif mode is not None:   # api-key
-        key = default_key("anthropic", state)
-        if key:
-            claude["key_masked"] = _mask(key)
+        masked = default_masked("anthropic", state)
+        if masked:
+            claude["key_masked"] = masked
             claude["key_source"] = "env" if env_set else "stored"
 
     # Ingestion: which provider each pipeline stage is actually routed to, and whether that
@@ -647,15 +766,19 @@ def status_data() -> dict:
     shown_providers = {_ingest_stage_provider(config.get(k) or d) for k, d in _INGEST_STAGES}
     keys = []
     for p in _PROVIDERS:
-        key = default_key(p, state)
-        if not key:
+        masked = default_masked(p, state)
+        if not masked:
             continue
         if p == "anthropic" and mode != "api-key":
             status = f"inactive — {mode} mode" if mode else "inactive — not configured"
         else:
             status = "in use" if p in shown_providers else "unused"
-        keys.append({"provider": p, "masked": _mask(key), "status": status,
-                     "source": "env" if os.environ.get(_PROVIDERS[p]["env"]) else "stored",
+        env = bool(os.environ.get(_PROVIDERS[p]["env"]))
+        keys.append({"provider": p, "masked": masked, "status": status,
+                     "source": "env" if env else "stored",
+                     # Stored encrypted by the app and not readable by this process (D295): a
+                     # terminal command, which must use the environment variable instead.
+                     "locked": not env and default_key(p, state) is None,
                      "labelled": list_keys(p, state)})
 
     # Providers with a user-supplied base URL (local, openrouter — #380), whichever is set.
@@ -710,12 +833,17 @@ def _status() -> None:
     if d["keys"]:
         print(f"  {_DIM}Providers{_RESET}")
         for k in d["keys"]:
-            where = f"${_PROVIDERS[k['provider']]['env']}" if k["source"] == "env" else "stored"
+            where = f"${_PROVIDERS[k['provider']]['env']}" if k["source"] == "env" else (
+                "stored by the app, encrypted" if k.get("locked") else "stored")
             print(f"  {_DIM}{k['provider']:<13}{_RESET}{_CYAN}{k['masked']}{_RESET} {_DIM}({where}, {k['status']}){_RESET}")
             if len(k["labelled"]) > 1:   # several labelled keys (#690): name each, mark the default
                 for item in k["labelled"]:
                     tag = " — default" if item["default"] else ""
                     print(f"  {'':<13}{_DIM}{item['label']}  {item['masked']}{tag}{_RESET}")
+        if any(k.get("locked") for k in d["keys"]):
+            print(f"  {_YELLOW}Note:{_RESET} {_DIM}keys stored by the Watchdog app are encrypted and the command line "
+                  f"can't read them; set the provider's environment variable (such as{_RESET} "
+                  f"{_CYAN}ANTHROPIC_API_KEY{_RESET}{_DIM}) to use one here.{_RESET}")
         print()
 
     if d["base_urls"]:
@@ -750,7 +878,11 @@ def prompt_and_store_key(provider: str, state: dict) -> bool:
         return False
     if meta["prefix"] and not key.startswith(meta["prefix"]):
         print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-    store_default_key(state, provider, key)
+    try:
+        store_default_key(state, provider, key)
+    except ValueError as e:   # the app stores this computer's keys, encrypted (D295)
+        print(f"  {_YELLOW}!{_RESET}  {e}")
+        return False
     _save_state(state)
     print(f"  {_GREEN}✓{_RESET}  {meta['label']} key stored ({_mask(key)}).")
     return True
@@ -833,7 +965,11 @@ def _apply_anthropic_choice(state: dict, choice: str, *, show_detection: bool = 
         if key:
             if meta["prefix"] and not key.startswith(meta["prefix"]):
                 print(f"  {_YELLOW}!{_RESET}  Key doesn't start with '{meta['prefix']}' — storing it anyway.")
-            store_default_key(state, "anthropic", key)
+            try:
+                store_default_key(state, "anthropic", key)
+            except ValueError as e:   # the app stores this computer's keys, encrypted (D295)
+                print(f"\n  {_YELLOW}!{_RESET}  {e}")
+                return printed
             _save_state(state)
             print(f"\n  {_GREEN}✓{_RESET}  API key stored ({_mask(key)}).")
         else:
@@ -1189,7 +1325,7 @@ def _pick_key_provider_interactive(provider: str, state: dict) -> None:
     if items:
         for i in items:
             tag = f" {_DIM}(default){_RESET}" if i["id"] == default and len(items) > 1 else ""
-            print(f"  {i['label']}: {_CYAN}{_mask(i['key'])}{_RESET}{tag}")
+            print(f"  {i['label']}: {_CYAN}{i['masked']}{_RESET}{tag}")
         options = ["Replace the default key", "Delete a key", "Add another key, with a name"]
         if len(items) > 1:
             options.append("Choose the default key")

@@ -419,6 +419,13 @@ Shows how Watchdog currently authenticates to model providers, then, on a termin
 
 A provider can hold several named keys (for example Personal and Work), one of them the default; the status lists each one under its provider. Which key an investigation bills is chosen in the app, under **Billing** on the investigation's Overview ([Billing](app.md#billing)); `watchdog dig`, `bark` and `add` honour that choice and stop with an error, before any model call, when the chosen key is not on this computer.
 
+**Keys stored by the app.** The desktop app encrypts stored keys with your computer's secure storage, which only the app can read ([Where keys are stored](configuration.md#where-keys-are-stored)). The command line lists them, masked and marked "stored by the app, encrypted", but can't use them: a command that needs one stops before any model call and names the environment variable to set. It also won't store a new key beside them, so add or replace keys in the app. To use the command line, or the benchmark scripts in `benchmarks/`, set the key in its environment variable for that session:
+
+```
+export ANTHROPIC_API_KEY=sk-ant-…
+watchdog dig
+```
+
 There is no separate `set`/`get`/`use`/`remove` subcommand — this one interactive flow covers all of it. Keys can also come from the standard environment variables (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `LOCAL_API_KEY`, `OPENROUTER_API_KEY`), which always take precedence over a stored key. `LOCAL_BASE_URL` and `OPENROUTER_BASE_URL` likewise override the `local_base_url`/`openrouter_base_url` `watchdog settings` keys for those two backends. Routing a pipeline stage to another provider is covered in [Model backends](configuration.md#model-backends).
 
 ### watchdog setup

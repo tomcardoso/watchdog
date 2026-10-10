@@ -367,7 +367,9 @@ def main(argv: list[str] | None = None) -> int:
     """`python -m watchdog.pipeline.recheck (--entity ID … | --all) [--vault DIR]`, the job the
     app's "Re-check contradictions" runs. No terminal command calls it (D287)."""
     from watchdog.cmd.auth import KeyChoiceError
+    from watchdog.keystore import read_stdin
     from watchdog.vault_paths import is_vault
+    read_stdin()   # the keys the app hands this job, as for a `watchdog` command (D295)
     parser = argparse.ArgumentParser(description="Re-check stored facts for contradictions.")
     parser.add_argument("--vault", default=".")
     group = parser.add_mutually_exclusive_group(required=True)
