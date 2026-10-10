@@ -15,25 +15,24 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   `entities/person/jane-doe.md`). Note paths may omit `.md`, as wikilinks do.
 - Timestamps are ISO-8601 strings. Counts are integers. Missing optional data is `null`, never an
   absent key.
-- **Reads** run in-process. **Mutations** that the CLI already implements run the real
-  `watchdog …` command as a subprocess (see `jobs.*` and `action.run`), so the app and the terminal
-  can never disagree about what a command does. Thin in-process mutations are used only where the
-  CLI's own code is already a library function (resolutions, settings, auth keys, the `## Notes`
-  section of a note). App-only features with no CLI command (`history.restore`, `history.remove`,
-  `history.clear`, and `jobs.recheckContradictions`, which runs a library module as a job) call
-  their library function directly (D286, D287, D288, I10).
+- **Reads** run in-process. **Mutations** are operations (`watchdog.ops`, D298): library functions
+  with typed parameters, each run in a worker process (`python -m watchdog.worker`) through
+  `jobs.start` (long ones, followed in the job dock) or `action.run` (quick ones), so a crash or a
+  hung model call never takes the server down. A few small writes run in-process through their
+  library functions (resolutions, settings, auth keys, the `## Notes` section of a note, version
+  history's restore, removal and clear; D286, D288, I10).
 - **Folder access (D268).** When the app starts the server with `WATCHDOG_ENFORCE_ACCESS=1`, any
   call naming a vault outside the folders in `~/.watchdog/access.json`, and any `jobs.start` or
   `action.run` there, fails with `RpcError(code="not_granted", data={"path"})`. The server only
   reads that file (`access.list`); grants are made by the main process (`window.watchdog.access`).
 - **Engine setup (D272).** While the app's engine is still installing its background phase, the
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
-  then refuse `add`, `chew`, `dig`, `bark`, `ingest`, `watch`, `requeue`, `reindex`,
-  `merge-entities`, Rebuild notes, Undo merge and Re-check contradictions (grouped forms and aliases included) with
-  `RpcError(code="engine_not_ready", data={"command"})`, and `search.query` skips the
+  then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
+  `requeue`) or `index` (`reindex`, `merge-entities`, `undo-merge`, `rebuild-notes`,
+  `recheck-contradictions`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
-- Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by reused
-  CLI code is converted to an error with its message (leading `Error:` stripped).
+- Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
+  code is converted to an error with its message (leading `Error:` stripped).
 
 ---
 
@@ -73,10 +72,11 @@ Project = {
 | `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — the last `lines` (default 500) of `.watchdog/registry/processing.log` |
 | `projects.doctor` | — | `{issues: [{kind: "missing"\|"schema"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
 
-Mutations (`new`, `register`, `rename`, `describe`, `move`, `archive`, `unarchive`, `delete`) go
-through `action.run` with the CLI's own arguments, e.g.
-`["new", "Shell Co", "--description", "…", "--dir", "/x"]`. The app re-reads `projects.list`
-afterwards.
+Mutations go through `action.run` as the `projects-new`, `projects-register`, `projects-rename`,
+`projects-describe`, `projects-move`, `projects-archive` and `projects-delete` operations (see
+[operations](#operations)), e.g. `{op: "projects-new", params: {name: "Shell Co", description: "…",
+dir: "/x"}}`; each returns `{slug, name, path}` (delete: `{slug, removed}`). The app re-reads
+`projects.list` afterwards.
 
 ## vault — reading an investigation
 
@@ -279,30 +279,71 @@ InvestigationKeys = {claude_mode, providers: [{provider, provider_label, keys: [
 KeyCost = {label|null, cost_usd, calls}   // cmd/usage.cost_by_key, most expensive first
 ```
 
-`RunOptions` → CLI flags is done by the **app** when it builds a job's `args`; the server exposes
-`jobs.flags` to do it so the mapping lives in one place.
+`RunOptions` is passed as an operation's parameters as it is: the server drops a shared run option
+the operation doesn't take (`limit` on `bark`, say) and refuses any other unknown key.
 
-## jobs — long-running `watchdog` commands
+## operations
 
-A job is `python -m watchdog <args…>` run with the vault as its working directory, stdin closed
-(any prompt the CLI would show is declined, never hung on), `NO_COLOR=1`, and
-`WATCHDOG_PROGRESS=1`, which makes the pipeline write structured progress lines (see
-`watchdog/progress.py`) that the server turns into `job.progress` events.
+Every change the app makes is one operation (`watchdog.ops`, D298), named by `op` with its
+parameters as `params`. `jobs.ops` lists them with their schema; the TypeScript mirror is
+`OpParams` in `api.ts`. Parameters are checked against the schema before anything starts: an
+unknown operation or key, a missing required one or a value of the wrong type is `bad_params`;
+`null` or `""` means "not set". "In vault" operations run in the investigation named by `vault`
+(required); the others ignore it.
+
+| Operation | In vault | Params | Result | Engine |
+|---|---|---|---|---|
+| `add` | yes | `RunOptions & {paths?, retry?, skip_warning?}` | run summary (`extracted`, `failed`, `results`, `post_ingest`…) | add |
+| `chew` | yes | `{paths?, chew_workers?, chunk_workers?}` | `{queued}` — pre-processing only; never continues into processing | add |
+| `dig` | yes | extractor options, `{limit?, force?, skip_warning?}` | run summary | add |
+| `bark` | yes | finalizer options, `{skip_briefing?}` | post-processing summary | add |
+| `requeue` | yes | — | `{requeued}` | add |
+| `watch` | yes | — | runs until stopped | add |
+| `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
+| `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
+| `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
+| `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
+| `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
+| `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
+| `rebuild-timeline` | yes | — | `{dates, events}` | |
+| `lead-sweep` | yes | — | counts per lead kind | |
+| `watchlist-check` | yes | — | `{documents, hits, file?}` | |
+| `export` | yes | `{format?: "csv"\|"cypher", output?}` | `{format, output}` | |
+| `refresh-claude-setup` | yes | — | `{updated}` | |
+| `research-fetch` | yes | `{file?}` | `{}` | |
+| `fetch-links` | yes | `{targets}` | `{}` | |
+| `download-model` | no | `{model}` | `{model}` (D273) | |
+| `projects-new` / `-register` / `-rename` / `-describe` / `-move` / `-archive` / `-delete` | no | see [projects](#projects) | `{slug, name, path}` | |
+
+Only `add`, `dig`, `bark` and `recheck-contradictions` call a model, so only they are handed the
+investigation's keys (D295). `add` and `dig` without `skip_warning` decline the public-records
+gate and send nothing: the app shows the acknowledgement first and passes `skip_warning: true`
+once it is given.
+
+## jobs — operations in a worker process
+
+A job runs `python -m watchdog.worker` with the investigation as its working folder (none for an
+operation outside one), `NO_COLOR=1`, `WATCHDOG_APP=1` and `WATCHDOG_PROGRESS=1`. Its stdin is one
+JSON line, `{"op", "params"}`, then, for an operation that calls a model, one line of keys
+(`WATCHDOG_SECRETS=stdin`, D295), then end of input, so nothing it runs can wait on a prompt. The
+worker writes plain log lines and structured progress lines (see `watchdog/progress.py`), which the
+server turns into `job.progress` events, and last of all a `result` line that becomes the job's
+`result`. It exits 0, 2 (stopped partway; running it again resumes), 1 (failed; the reason is the
+last line on stderr), 64 (a request it could not read) or 130.
 
 | Method | Params | Result |
 |---|---|---|
-| `jobs.start` | `{vault\|null, args: string[], label, kind?}` | `Job` |
-| `jobs.cancel` | `{id}` | `{ok}` — SIGINT (Ctrl+C), so the CLI's graceful stop runs; a second cancel kills |
+| `jobs.ops` | — | `{[op]: OpSpec}` — `OpSpec = {params: {[name]: {type, required, default, nullable}}, vault, engine, kind}` |
+| `jobs.start` | `{vault\|null, op, params?, label, kind?}` | `Job` |
+| `jobs.cancel` | `{id}` | `{ok}` — SIGINT (Ctrl+C), so the pipeline's graceful stop runs and finished documents are kept; a second cancel kills |
 | `jobs.list` | — | `Job[]` (running and the last 50 finished) |
 | `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
-| `jobs.flags` | `{command: "add"\|"dig"\|"bark"\|"chew", options: RunOptions}` | `{args: string[]}` |
-| `jobs.rebuildNotes` | `{vault}` | `Job` — Maintenance → "Rebuild notes": rewrites every entity and document note from stored data with no model call (`python -m watchdog.pipeline.entity_notes`, the library function, D280); waits for the full engine like `reindex` |
-| `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge" (`python -m watchdog.pipeline.merge_undo <id>`, D280). Errors: `cannot_undo` with the reason, `not_found` |
-| `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): `python -m watchdog.pipeline.recheck --entity <id>…\|--all` (D287). Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
-| `action.run` | `{vault\|null, args: string[], timeout?: seconds}` | `{code, stdout, stderr}` — a short, synchronous command (rename, archive…) |
+| `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge": the `undo-merge` operation, refused up front when the merge can't be split (D280). Errors: `cannot_undo` with the reason, `not_found` |
+| `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): the `recheck-contradictions` operation (D287), after the checks it would make. Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
+| `action.run` | `{vault\|null, op, params?, timeout?: seconds}` | `{code, result, log, error\|null}` — a quick operation run to completion (rename, requeue…); `error` is the reason it gave when `code` isn't 0 |
 
 ```
-Job = { id, label, kind, vault|null, args, state: "running"|"done"|"failed"|"cancelled",
+Job = { id, label, kind, vault|null, op, params, result|null, state: "running"|"done"|"failed"|"cancelled",
 ProgressState = { stage|null, done|null, total|null, current|null, note?: string|null, docs: {[sha]: {filename, state, detail|null}} }
 // stage "model" is a one-time model download (current = "Downloading the transcription model (486 MB)", done/total in MB);
 // note is a transient detail beside the stage ("Transcribing hearing.mp4, 12:05 of 1:02:05").
@@ -378,8 +419,8 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |
 | `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
 
-`merge-entities` (with `--force` after the app's own confirmation), `contradiction-add`, `watchlist`
-sweeps and `leads` run as jobs.
+`merge-entities` (after the app's own confirmation), `add-contradiction`, `watchlist-check` and
+`lead-sweep` are operations (see [operations](#operations)).
 
 ## settings, auth, skills
 
@@ -403,7 +444,7 @@ sweeps and `leads` run as jobs.
 | `skills.read` | `{name}` | `{name, text}` |
 | `setup.check` | — | `{deps: [{label, ok, hint\|null, required: false}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` — no dependency blocks the app |
 | `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null, transcription: bool, transcription_model, transcription_size_mb}` — what is on disk, no network |
-| `setup.downloadModel` | `{model: "transcription"}` | `Job` — downloads an on-demand model ahead of time (D273) as a job running `python -m watchdog.gui.engine_setup models --only transcription`; progress is the `model` stage |
+| `setup.downloadModel` | `{model: "transcription"}` | `Job` — downloads an on-demand model ahead of time (D273) as a job running the `download-model` operation; progress is the `model` stage |
 | `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes what `watchdog setup` writes; an existing config file is the "set up" signal |
 | `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
 
@@ -426,7 +467,7 @@ SettingKey = {key, short, help, is_set: bool, default, current (null for secrets
 |---|---|---|
 | `research.status` | `{vault}` | `{queued: [{url, title\|null, source_type\|null, relevance\|null}], wayback_configured: bool}` |
 
-Downloading runs as a job: `["research-fetch"]` for the queue, `["fetch", url…]` for links.
+Downloading runs as a job: the `research-fetch` operation for the queue, `fetch-links` (`{targets}`) for links.
 
 ## chat — Claude Code sessions inside the app
 
