@@ -609,6 +609,21 @@ def _retirement_notice() -> None:
 
 
 def main() -> None:
+    """Run the command. Under the app, a missing Python package is a setup problem, not a bug a
+    reader can act on: say so in one sentence instead of a traceback in the job log."""
+    from watchdog.appmode import under_app
+    if not under_app():
+        return _main()
+    try:
+        return _main()
+    except ModuleNotFoundError as e:
+        name = (e.name or "a required package").split(".")[0]
+        print(f"A component this step needs ({name}) is missing from this installation of "
+              f"Watchdog, so it could not run. Reinstalling the app restores it.", file=sys.stderr)
+        sys.exit(1)
+
+
+def _main() -> None:
     _retirement_notice()
     if len(sys.argv) >= 2 and sys.argv[1] in ("-v", "--version"):
         cmd_about(None)
@@ -657,8 +672,10 @@ def main() -> None:
     # the point is for people to actually move onto the new name.
     if len(sys.argv) >= 2 and sys.argv[1] in _DEPRECATED_ALIASES:
         old, new = sys.argv[1], _DEPRECATED_ALIASES[sys.argv[1]]
-        print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog {old}{_RESET}{_DIM} is deprecated — "
-              f"use {_RESET}{_CYAN}watchdog {new}{_RESET}{_DIM} instead.{_RESET}")
+        from watchdog.appmode import under_app
+        if not under_app():
+            print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog {old}{_RESET}{_DIM} is deprecated — "
+                  f"use {_RESET}{_CYAN}watchdog {new}{_RESET}{_DIM} instead.{_RESET}")
         sys.argv[1] = new
 
     if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
@@ -731,13 +748,15 @@ def main() -> None:
         return
 
     if args.command not in {"setup", "about", "configure"} and not CONFIG_FILE.exists():
-        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  Run: {_CYAN}watchdog setup{_RESET}\n")
+        from watchdog.appmode import hint
+        print(f"\n  {_BOLD}Watchdog isn't set up yet.{_RESET}  "
+              + hint(f"Run: {_CYAN}watchdog setup{_RESET}\n", "Finish setup in the app.\n"))
         sys.exit(1)
 
     # `ingest` combined extract+finalize into one shot; retired in favour of `watchdog add`, or
     # manual `watchdog dig` + `watchdog bark` (D138, D251).
     # No renamed successor to remap onto, so it keeps its own subparser and just warns here.
-    if args.command == "ingest":
+    if args.command == "ingest" and not __import__("watchdog.appmode", fromlist=["x"]).under_app():
         print(f"\n  {_YELLOW}Warning:{_RESET} {_CYAN}watchdog ingest{_RESET}{_DIM} is deprecated — "
               f"use {_RESET}{_CYAN}watchdog add{_RESET}{_DIM}, or {_RESET}"
               f"{_CYAN}watchdog dig{_RESET}{_DIM} then {_RESET}{_CYAN}watchdog bark{_RESET}"

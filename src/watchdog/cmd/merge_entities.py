@@ -12,6 +12,7 @@ from pathlib import Path
 
 from watchdog.vault_paths import is_vault
 from watchdog import interactive
+from watchdog.appmode import hint as _hint
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _YELLOW, _RESET
 from watchdog.pipeline import merge_entities as _merge_entities
 from watchdog.pipeline.json_io import _read_json
@@ -94,17 +95,20 @@ def cmd_merge_entities(args) -> None:
             f"remapped to {args.keep_id}{_RESET}"
         )
     print(f"  {_CYAN}{result['keep_note_path']}.md{_RESET}")
-    print(
+    print(_hint(
         f"  {_YELLOW}Run{_RESET} {_CYAN}watchdog reindex{_RESET} "
-        f"{_YELLOW}to drop the merged entity's stale search-index entries.{_RESET}"
-    )
+        f"{_YELLOW}to drop the merged entity's stale search-index entries.{_RESET}",
+        f"  {_YELLOW}Rebuild the search index (Activity → Maintenance) to drop the merged "
+        f"entity's stale search-index entries.{_RESET}",
+    ))
     if result.get("summary_dropped"):
-        print(
+        print(_hint(
             f"  {_YELLOW}Summary now reflects only the kept entity — run{_RESET} "
             f"{_CYAN}/watchdog-entity {args.keep_id}{_RESET} "
-            f"{_YELLOW}in a Claude Code session to re-synthesize it from all sources.{_RESET}"
-        )
+            f"{_YELLOW}in a Claude Code session to re-synthesize it from all sources.{_RESET}",
+            f"  {_YELLOW}Summary now reflects only the kept entity.{_RESET}",
+        ))
     if result["backup_dir"]:
         rel = result["backup_dir"].relative_to(vault)
-        print(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM} — copy files back to undo{_RESET}")
+        print(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM}{_hint(' — copy files back to undo', '')}{_RESET}")
     print()
