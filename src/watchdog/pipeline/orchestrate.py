@@ -1358,7 +1358,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # --force (#424): bypass both "already done" checks and pay for a fresh classify/extract
         # call even though a cached artifact (or a committed vault note) already exists — the
         # whole point of --force is to regenerate under a different model/effort/skill.
-        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting{_hint(' (--force)', '')}{_RESET}"
              f"{_DIM} — note will be replaced{_RESET}")
     elif pf.get("already_extracted"):
         _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
@@ -1523,7 +1523,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
-        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting{_hint(' (--force)', '')}{_RESET}"
              f"{_DIM} — note will be replaced{_RESET}")
     elif pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
@@ -1739,7 +1739,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             results.append(_fail(vault, sha, "", pf["error"]))
             continue
         if force and (pf.get("already_extracted") or pf.get("already_staged")):
-            _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+            _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting{_hint(' (--force)', '')}{_RESET}"
                  f"{_DIM} — note will be replaced{_RESET}")
         elif pf.get("already_extracted"):
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
@@ -2409,7 +2409,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # it doesn't update this run either — only the briefing model call
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
-        _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM} (--skip-briefing){_RESET}")
+        _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM}{_hint(' (--skip-briefing)', '')}{_RESET}")
     else:
         progress.emit("stage", stage="briefing", done=None, total=None)
         _say(f"{_DIM}→  writing briefing…{_RESET}")
