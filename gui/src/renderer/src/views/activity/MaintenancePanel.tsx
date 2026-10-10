@@ -29,7 +29,7 @@ import type { CitationReport, Effort, Estimate, RunOptions } from '@shared/api'
 import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
-import { flagsFor, runAction, startJob, unlockOutcome } from '@renderer/lib/jobs'
+import { flagsFor, forceReleaseLock, runAction, startJob, unlockOutcome } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
@@ -546,16 +546,10 @@ function UnlockCard({ locks }: { locks: { chew: boolean; ingest: boolean } | nul
       label={force ? 'Force release' : 'Release lock'}
       onRun={async () => {
         if (force) {
-          const ok = await window.watchdog.dialog.confirm({
-            title: 'Force the lock off?',
-            message: 'If a run is still working, removing its lock lets a second run start on the same files.',
-            detail: 'Only continue if you are sure nothing is running — check the Jobs tab first.',
-            confirm: 'Force release',
-            destructive: true
-          })
-          if (!ok) return
+          await forceReleaseLock()
+          return
         }
-        const out = await runAction(['unlock', ...(force ? ['--force'] : [])])
+        const out = await runAction(['unlock'])
         toast(unlockOutcome(out))
         invalidate('vault.', 'projects.', 'ingest.')
       }}

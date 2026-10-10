@@ -712,6 +712,23 @@ def _failure_reasons(vault: Path, names: list[str]) -> dict[str, str]:
     return reasons
 
 
+def _lock_info(lock: Path) -> dict | None:
+    """What the app can say about a held lock: the time on it and whether a run would take it
+    over. A lock holds `pid: cli` (not a process id), so whether its run is alive can't be known;
+    a working run re-stamps `started_at` every few minutes (`locks.heartbeat`), so the time is the
+    last sign of life. `stale` mirrors `acquire_or_take_stale`: an unreadable time is not stale."""
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS
+    from watchdog.pipeline.locks import HEARTBEAT_SECONDS, lock_age_seconds, lock_started_at
+    if not lock.exists():
+        return None
+    age = lock_age_seconds(lock)
+    return {"started_at": lock_started_at(lock),
+            "age_seconds": None if age is None else max(0, int(age)),
+            "stale": age is not None and age >= STALE_SECONDS,
+            "stale_seconds": STALE_SECONDS,
+            "heartbeat_seconds": HEARTBEAT_SECONDS}
+
+
 @method("vault.pipeline")
 def pipeline(vault: str) -> dict:
     from watchdog.pipeline import batch_extract, orchestrate, research
@@ -764,6 +781,8 @@ def pipeline(vault: str) -> dict:
         "pending_finalization": pending,
         "locks": {"chew": preprocessing_lock(v).exists(),
                   "ingest": processing_lock(v).exists()},
+        "lock_info": {"chew": _lock_info(preprocessing_lock(v)),
+                      "ingest": _lock_info(processing_lock(v))},
         "research_urls": research.pending_count(v),
         "batch_pending": batch_extract.read_state(v),
     }

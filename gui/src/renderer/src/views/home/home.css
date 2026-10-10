@@ -49,6 +49,15 @@
 }
 
 /* Finish adding */
+.home-banner-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.home-banner-wrap .home-banner {
+  margin-bottom: 0;
+}
 .home-banner {
   display: flex;
   align-items: center;

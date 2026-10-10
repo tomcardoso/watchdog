@@ -135,6 +135,8 @@ If a run was interrupted, a lock file can be left behind that blocks the next ru
 
 A running step refreshes its lock every five minutes, however long it runs, so a lock only ages once the run that held it has stopped. If the lock is recent (under 30 minutes old), Watchdog leaves it alone, because the run may still be going. Check the **Jobs** tab to make sure nothing is running. Once you are sure, switch on **Force** and choose **Force release**.
 
+You don't have to go looking for it. While a lock is held and under 30 minutes old, the Overview's **Finish adding** banner and the **Add documents** window say so, with the time the lock was last renewed. If a run started from the app is still going, they offer **Show progress** instead. If not, they offer **Release the lock…**, which asks the same question as **Force release** before removing it. Watchdog cannot tell for certain whether the run that took the lock is still alive, so only release it if nothing is running.
+
 ## A note was deleted or edited by mistake
 
 Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History](app.md#history).
