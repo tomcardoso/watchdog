@@ -104,7 +104,8 @@ def candidate_entry(*, a, b, verdict: dict, model_declined: bool = False,
     def side(p) -> dict:
         return {"id": p.id, "name": p.name, "type": p.type, "aliases": p.surfaces[1:8],
                 "documents": p.documents[:20],
-                "facts": [{**d, "id": f["id"], "sha": f["sha"]}
+                # Marks are not stored: Review labels a fact from the ledger when it reads it.
+                "facts": [{**{k: v for k, v in d.items() if k != "flags"}, "id": f["id"], "sha": f["sha"]}
                           for f, d in zip(p.facts, p.facts_digest())],
                 "roles": p.roles_digest()}
 

@@ -866,10 +866,9 @@ noted as such.
 - **I15 — A disputed fact is labelled wherever a fact is shown, and never dropped.** A fact the
   reporter marked Disputed stays in every list, note, timeline, export, search result and session
   primer that would hold it, carrying the label "disputed"; no step filters it out. The synthesis,
-  briefing and contradiction-check inputs include it, labelled (the same-name comparison of D279
-  sends facts unlabelled).
+  briefing, contradiction-check and same-name identity inputs include it, labelled (D296).
   A mark counts only while it matches the fact's words and page (D271). *History: D280, D283,
-  D285.* Guarded by `tests/test_gui_demo.py::test_a_disputed_fact_is_shown_labelled_on_every_surface`.
+  D285, D296.* Guarded by `tests/test_gui_demo.py::test_a_disputed_fact_is_shown_labelled_on_every_surface`.
 - **I16 — A model call never bills an account the investigation did not choose.** When an
   investigation names a labelled key for a provider and this computer has no key by that id or name,
   every path that would send that provider's key (processing, post-processing, the batch path, the

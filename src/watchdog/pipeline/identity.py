@@ -245,7 +245,7 @@ class Profile:
         self.type = canonical_type(etype)
         self.surfaces: list[str] = [name]
         self.relations: dict[str, dict] = {}     # target id -> {"names", "types", "rels"}
-        self.facts: list[dict] = []              # {"id", "fact", "page", "sha", "title", "date"}
+        self.facts: list[dict] = []              # {"id", "fact", "page", "sha", "title", "date", "mark"}
         self.documents: list[str] = []
         self.identifiers: dict[str, set[str]] = {}
 
@@ -288,8 +288,18 @@ class Profile:
         return out[:limit]
 
     def facts_digest(self, limit: int = FACT_CAP) -> list[dict]:
-        return [{"document": f["title"], "date": f["date"], "page": f["page"],
-                 "fact": f["fact"][:300]} for f in self.facts[:limit]]
+        """The facts a same-name comparison shows, each with the reporter's mark as `flags` (the
+        labels synthesis and the contradiction check use, so a Disputed fact reads "disputed by
+        the reporter", I15)."""
+        from watchdog.pipeline.synthesis_bundle import fact_flags
+        out = []
+        for f in self.facts[:limit]:
+            d = {"document": f["title"], "date": f["date"], "page": f["page"], "fact": f["fact"][:300]}
+            flags = fact_flags({"mark": f.get("mark")})
+            if flags:
+                d["flags"] = flags
+            out.append(d)
+        return out
 
 
 def _street_address(name: str) -> bool:
@@ -425,6 +435,15 @@ class Evidence:
         self._cache: dict[str, dict | None] = {}
         self._former: dict[str, set[str]] | None = None
         self._dismissed: frozenset[str] | None = None
+        self._marks: dict | None = None
+
+    def marks(self) -> dict:
+        """The reporter's current marks by fact id, so a Disputed fact reaches the model labelled
+        (I15)."""
+        if self._marks is None:
+            from watchdog.pipeline import verification
+            self._marks = verification.marks(self.vault) if self.vault is not None else {}
+        return self._marks
 
     def artifact(self, sha: str) -> dict | None:
         if sha in self.staged:
@@ -465,8 +484,9 @@ class Evidence:
         """The record `eid` as told by documents `shas` (and the registry `entry`, when given).
         `ids` are the tags that mean this record in those documents (default: `eid` and every id
         merged into it)."""
-        from watchdog.pipeline.verification import fact_ids
+        from watchdog.pipeline.verification import attach, fact_ids
         p = Profile(eid, name, etype)
+        marks = self.marks()
         for alias in aliases:
             p.add_surface(alias)
         ids = set(ids) if ids else self.former_ids(eid)
@@ -511,7 +531,8 @@ class Evidence:
                     own_facts.append(fact)
                     p.facts.append({"id": fid, "fact": fact.get("fact") or "", "page": fact.get("page"),
                                     "sha": sha, "title": doc.get("title") or doc.get("filename") or sha[:12],
-                                    "date": doc.get("date_of_document")})
+                                    "date": doc.get("date_of_document"),
+                                    "mark": attach(marks.get(fid), fact)})
             if hit and sha not in p.documents:
                 p.documents.append(sha)
         p.identifiers = harvest_identifiers(etype, p.surfaces, own_facts)
