@@ -1,3 +1,4 @@
+import watchdog.ops.projects as _ops_projects
 import watchdog.cmd.ingest as cmd_ing
 import argparse
 import contextlib
@@ -5071,7 +5072,7 @@ def test_read_batch_terms_missing_file_exits(tmp_path):
 def test_poll_stable_files_holds_growing_file(tmp_path):
     f = tmp_path / "big.pdf"
     f.write_bytes(b"a" * 10)
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     assert pending == {f: 10}
 
@@ -5080,10 +5081,10 @@ def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
     f = tmp_path / "big.pdf"
     f.write_bytes(b"a" * 10)
     # First poll: no prior size recorded — held.
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     # Second poll: same size as last time — copy finished.
-    ready, pending = _vault._poll_stable_files({f}, pending)
+    ready, pending = _ops_projects._poll_stable_files({f}, pending)
     assert ready == [f]
     assert pending == {}
 
@@ -5091,16 +5092,16 @@ def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
 def test_poll_stable_files_keeps_holding_a_still_growing_file(tmp_path):
     f = tmp_path / "big.pdf"
     f.write_bytes(b"a" * 10)
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     f.write_bytes(b"a" * 20)   # more bytes copied in between polls
-    ready, pending = _vault._poll_stable_files({f}, pending)
+    ready, pending = _ops_projects._poll_stable_files({f}, pending)
     assert ready == []
     assert pending == {f: 20}
 
 
 def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
     f = tmp_path / "gone.pdf"   # never created — simulates a race with deletion
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     assert pending == {}
 

@@ -303,7 +303,7 @@ def exit_code(name: str, result) -> int:
     return spec.exit_code(result) if spec.exit_code else 0
 
 
-_MODULES = ("ingest",)
+_MODULES = ("ingest", "projects")
 _loaded = False
 
 
