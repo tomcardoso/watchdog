@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 
 from watchdog import interactive
+from watchdog.appmode import under_app
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW
 from watchdog.links import note_link, obsidian_url, open_url
 from watchdog.pipeline import leads as _leads
@@ -190,7 +191,7 @@ def _show(vault: Path, item: dict, n: int, total: int) -> None:
         print(f"    {line}")
     if item["note"]:
         print(f"    {_CYAN}{note_link(vault, item['note'], item['note'])}{_RESET}")
-    if item.get("pair"):
+    if item.get("pair") and not under_app():
         a, b = item["pair"]["a"], item["pair"]["b"]
         print(f"    {_DIM}To merge them:{_RESET} {_CYAN}watchdog review merge-entities "
               f"{a['id']} {b['id']}{_RESET}")
@@ -206,8 +207,12 @@ def _print_list(vault: Path, items: list[dict]) -> None:
             print(f"    {i['title']}")
             for line in i["detail"]:
                 print(f"      {_DIM}{line}{_RESET}")
-            print(f"      {_DIM}resolve: {i['rid']}{_RESET}")
-    print(f"\n  {_DIM}Mark one handled with{_RESET} {_CYAN}watchdog review resolve <id>{_RESET}\n")
+            if not under_app():
+                print(f"      {_DIM}resolve: {i['rid']}{_RESET}")
+    if under_app():
+        print()
+    else:
+        print(f"\n  {_DIM}Mark one handled with{_RESET} {_CYAN}watchdog review resolve <id>{_RESET}\n")
 
 
 def _walk(vault: Path, items: list[dict]) -> int:

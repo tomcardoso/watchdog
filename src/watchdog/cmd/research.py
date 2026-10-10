@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from watchdog import progress
+from watchdog.appmode import hint as _hint, under_app
 from watchdog.vault_paths import is_vault
 from watchdog import interactive
 from watchdog.cmd.base import (
@@ -83,12 +84,17 @@ def _report_deposits(results: list, *, wayback, requeued_failures: bool) -> int:
     for r in deposited:
         print(f"    {_CYAN}{r.path.name}{_RESET}  {_DIM}{r.url}{_RESET}")
     if any(r.path.suffix in (".html", ".xhtml") for r in deposited) and not capture.render_available():
-        print(f"\n  {_DIM}Tip: for full page snapshots (images, styles, client-rendered pages) "
-              f"install the capture browser:{_RESET}")
-        print(f"    {_CYAN}{_extra_install_cmd('playwright')}{_RESET}")
-        print(f"    {_CYAN}{_venv_bin('playwright')} install chromium{_RESET}")
+        if under_app():
+            print(f"\n  {_DIM}These pages were saved as text. Full page snapshots (images, styles, "
+                  f"client-rendered pages) need the capture browser, which is not installed.{_RESET}")
+        else:
+            print(f"\n  {_DIM}Tip: for full page snapshots (images, styles, client-rendered pages) "
+                  f"install the capture browser:{_RESET}")
+            print(f"    {_CYAN}{_extra_install_cmd('playwright')}{_RESET}")
+            print(f"    {_CYAN}{_venv_bin('playwright')} install chromium{_RESET}")
     if failed:
-        note = (f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}"
+        note = (_hint(f" {_DIM}(left queued — retry with {_RESET}{_CYAN}watchdog research-fetch{_RESET}{_DIM}){_RESET}",
+                      f" {_DIM}(they stay queued; retry from Web research){_RESET}")
                 if requeued_failures else "")
         print(f"\n  {_YELLOW}Skipped {len(failed)}{_RESET}{note}")
         for r in failed:
@@ -255,7 +261,10 @@ def cmd_fetch(args) -> None:
                                     on_progress=_print_progress)
     count = _report_deposits(results, wayback=wayback, requeued_failures=False)
     if count:
-        print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
-              f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
+        if under_app():
+            print(f"\n  {'They are' if count != 1 else 'It is'} saved in incoming/, ready to add.\n")
+        else:
+            print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
+                  f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
     else:
         print()

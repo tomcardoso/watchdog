@@ -8,6 +8,7 @@ from pathlib import Path
 
 from watchdog.vault_paths import is_vault
 from watchdog import defaults, interactive
+from watchdog.appmode import hint as _hint
 from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
@@ -1557,7 +1558,8 @@ def cmd_unlock(args) -> None:
     else:
         vault = Path(".").resolve()
         if not is_vault(vault):
-            sys.exit("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.")
+            sys.exit(_hint("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.",
+                           "Error: this folder is not an investigation."))
 
     locks = [
         (preprocessing_lock(vault), ".preprocessing-lock", "pre-processing"),
@@ -1582,8 +1584,9 @@ def cmd_unlock(args) -> None:
             if op_name == "processing":
                 ingest_lock_held = True
             print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
-            force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"
-            print(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.")
+            force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"  # terminal only
+            print(_hint(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.",
+                        "  Turn on Force to remove it anyway, only if nothing is running."))
 
     if not found_any:
         print(f"  {_DIM}No locks found — nothing to do.{_RESET}")

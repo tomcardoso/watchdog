@@ -12,6 +12,7 @@ from pathlib import Path
 
 from watchdog.vault_paths import CONTEXT_NAME, INCOMING_NAME, incoming_dir, is_vault
 from watchdog import interactive
+from watchdog.appmode import hint as _hint, under_app
 from watchdog.cmd.base import (
     VAULT_SCHEMA_VERSION,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
@@ -248,7 +249,8 @@ def cmd_register(args) -> None:
     try:
         reg = _load_registry(vault)
     except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}\nRun 'watchdog settings doctor' to diagnose.")
+        sys.exit(f"Error: registry file is corrupt — {e}"
+                 + _hint("\nRun 'watchdog settings doctor' to diagnose.", ""))
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     # Infer name: use folder name as default, let user override
@@ -274,7 +276,8 @@ def cmd_register(args) -> None:
 
     projects = load_projects()
     if slug in projects:
-        sys.exit(f"Error: a project with slug '{slug}' is already registered. Use 'watchdog projects rename' or choose a different name.")
+        sys.exit(f"Error: a project with slug '{slug}' is already registered. "
+                 + _hint("Use 'watchdog projects rename' or choose a different name.", "Choose a different name."))
 
     created_at = reg.get("created_at", now) if reg else now
     projects[slug] = {"name": name, "path": str(vault), "created_at": created_at}
@@ -426,6 +429,13 @@ def cmd_new(args) -> None:
     print(r"  ((; \_/  (()        ")
     print(r'       "              ')
     print()
+    if under_app():
+        print(f"  {_DIM}Created {vault}{_RESET}\n")
+    else:
+        _print_new_vault_steps(vault, slug)
+
+
+def _print_new_vault_steps(vault, slug) -> None:
     print(f"  {_DIM}To navigate into your new vault, copy and paste this command:{_RESET}")
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()
@@ -540,7 +550,7 @@ def cmd_rename(args) -> None:
             cwd   = Path(".").resolve()
             match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
             if match is None:
-                sys.exit(f"Project not found: {first}\nRun 'watchdog projects list' to see all projects.")
+                sys.exit(f"Project not found: {first}" + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
             slug, info = match
             new_name = first.strip()
     elif first is not None:
@@ -626,7 +636,7 @@ def cmd_describe(args) -> None:
             cwd   = Path(".").resolve()
             match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
             if match is None:
-                sys.exit(f"Project not found: {first}\nRun 'watchdog projects list' to see all projects.")
+                sys.exit(f"Project not found: {first}" + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
             slug, info = match
             new_desc = first.strip()
     elif first is not None:
@@ -756,7 +766,8 @@ def cmd_move(args) -> None:
     elif not dst.exists():
         sys.exit(
             f"Error: {src} not found and {dst} does not exist — nothing to update.\n"
-            f"Move the vault manually first, then re-run: watchdog projects move {slug} <new-path>"
+            + _hint(f"Move the vault manually first, then re-run: watchdog projects move {slug} <new-path>",
+                    "Move the folder back, or choose its new location.")
         )
 
     projects = load_projects()
@@ -786,7 +797,7 @@ def cmd_archive(args) -> None:
     projects = load_projects()
     projects[slug]["archived"] = True
     save_projects(projects)
-    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from watchdog projects list{_RESET}\n")
+    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from the {_hint('watchdog projects list', 'project list')}{_RESET}\n")
 
 
 def cmd_unarchive(args) -> None:
@@ -861,7 +872,8 @@ def cmd_watch(args) -> None:
     import time as _time
 
     incoming = incoming_dir(vault)
-    print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}incoming/{_RESET} — press Ctrl+C to stop.\n")
+    print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}incoming/{_RESET}"
+          + _hint(" — press Ctrl+C to stop.", " — use Stop in Activity to stop.") + "\n")
 
     # Files already waiting are chewed on the first stable poll, like any new arrival — they used
     # to be ignored until some other file happened to arrive.
@@ -887,7 +899,7 @@ def cmd_watch(args) -> None:
                 if new_queued > 0:
                     _notify(
                         f"Watchdog — {info['name']}",
-                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready — run watchdog dig.",
+                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready" + _hint(" — run watchdog dig.", "."),
                     )
                 known = set()
             else:
@@ -1598,7 +1610,7 @@ def cmd_search(args) -> None:
             slug_try = slugify(project_arg)
             if slug_try in projects or any(k.startswith(slug_try) for k in projects):
                 sys.exit("Error: please provide a search query.")
-            sys.exit(f"Project not found: {project_arg}\nRun 'watchdog projects list' to see all projects.")
+            sys.exit(f"Project not found: {project_arg}" + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
         _, info = match
         args.query = project_arg
     else:

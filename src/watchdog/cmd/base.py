@@ -7,6 +7,7 @@ import sys
 from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
+from watchdog.appmode import hint as _hint
 from watchdog.vault_paths import SESSION_HOOK_COMMAND, incoming_dir, is_set_aside, is_vault
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.json_io import _read_json
@@ -493,7 +494,8 @@ def load_projects() -> dict:
         try:
             return json.load(f)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            sys.exit(f"Error: projects file is corrupt — {e}\nRun 'watchdog setup --force'.")
+            sys.exit(f"Error: projects file is corrupt — {e}"
+                     + _hint("\nRun 'watchdog setup --force'.", f"\nFix or remove {PROJECTS_FILE}."))
 
 
 def _project_completer(prefix, parsed_args, **kwargs):
@@ -516,8 +518,8 @@ def load_config() -> dict:
     try:
         data = _read_json(CONFIG_FILE)
     except (json.JSONDecodeError, UnicodeDecodeError) as e:
-        sys.exit(f"Error: config file is corrupt — {e}\nFix or remove {CONFIG_FILE}, or run "
-                 f"'watchdog setup --force'.")
+        sys.exit(f"Error: config file is corrupt — {e}\nFix or remove {CONFIG_FILE}"
+                 + _hint(", or run 'watchdog setup --force'.", "."))
     return data if isinstance(data, dict) else {}
 
 
@@ -527,7 +529,8 @@ def _projects_dir() -> Path:
         try:
             config = _read_json(CONFIG_FILE)
         except (json.JSONDecodeError, UnicodeDecodeError) as e:
-            sys.exit(f"Error: config file is corrupt — {e}\nRun 'watchdog setup --force'.")
+            sys.exit(f"Error: config file is corrupt — {e}"
+                     + _hint("\nRun 'watchdog setup --force'.", f"\nFix or remove {CONFIG_FILE}."))
         # config.json can legitimately omit "projects_dir", or carry it as "" / null (e.g. a
         # config written before that key existed, or hand-edited to set only one other knob) —
         # `or default` treats any falsy value the same as a missing one, since `config.get(...,
@@ -655,7 +658,8 @@ def _warn_pending_research(vault: Path) -> None:
     n = research.pending_count(vault)
     if n:
         print(f"  {_YELLOW}{n} research URL{'s' if n != 1 else ''}{_RESET} queued but not downloaded "
-              f"{_DIM}— run{_RESET} {_CYAN}watchdog research-fetch{_RESET}")
+              + _hint(f"{_DIM}— run{_RESET} {_CYAN}watchdog research-fetch{_RESET}",
+                      f"{_DIM}— they stay queued; download them from Web research.{_RESET}"))
 
 
 def _resolve_vault(project: str | None) -> tuple[str, dict, Path]:
@@ -684,11 +688,12 @@ def _registered_project(name: str | None, command: str) -> dict:
         return _find_project(name)[1]
     cwd = Path(".").resolve()
     if not is_vault(cwd):
-        sys.exit(f"Error: not inside a watchdog project. Run `watchdog {command} <name>` or cd "
-                 f"into a project first.")
+        sys.exit(_hint(f"Error: not inside a watchdog project. Run `watchdog {command} <name>` or cd "
+                       f"into a project first.", "Error: this folder is not an investigation."))
     info = next((v for v in load_projects().values() if Path(v["path"]).resolve() == cwd), None)
     if info is None:
-        sys.exit("Error: current directory is a vault but not registered. Run `watchdog projects register` first.")
+        sys.exit("Error: current directory is a vault but not registered."
+                 + _hint(" Run `watchdog projects register` first.", " Add it as an investigation first."))
     return info
 
 
@@ -702,7 +707,8 @@ def _find_project(name: str) -> tuple[str, dict]:
         elif len(matches) > 1:
             sys.exit(f"Ambiguous name — matches: {', '.join(sorted(matches))}")
         else:
-            sys.exit(f"Project not found: {name}\nRun 'watchdog projects list' to see all projects.")
+            sys.exit(f"Project not found: {name}"
+                     + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
     return slug, projects[slug]
 
 
@@ -739,9 +745,13 @@ def _check_vault_locks(vault: Path, slug: str) -> None:
     chew_lock   = preprocessing_lock(vault)
     ingest_lock = processing_lock(vault)
     if chew_lock.exists():
-        sys.exit(f"Error: chew is in progress. Wait for it to finish or run: watchdog unlock {slug}")
+        sys.exit(_hint(f"Error: chew is in progress. Wait for it to finish or run: watchdog unlock {slug}",
+                       "Error: pre-processing is in progress. Wait for it to finish, or use "
+                       "Activity → Maintenance → Release a stuck lock if it is stale."))
     if ingest_lock.exists():
-        sys.exit(f"Error: ingest is in progress. Wait for it to finish or run: watchdog unlock {slug}")
+        sys.exit(_hint(f"Error: ingest is in progress. Wait for it to finish or run: watchdog unlock {slug}",
+                       "Error: adding documents is in progress. Wait for it to finish, or use "
+                       "Activity → Maintenance → Release a stuck lock if it is stale."))
 
 
 def _flag_label(action) -> str:

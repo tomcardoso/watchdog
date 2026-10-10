@@ -23,6 +23,7 @@ import time
 from pathlib import Path
 
 from watchdog import defaults, model_client, progress, skills_catalog, telemetry_db
+from watchdog.appmode import hint as _hint
 from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog.pipeline import (
     abort, batch_extract, chunking, harvest, leads, merge, preflight, postflight, prompts, reconcile,
@@ -1357,7 +1358,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # --force (#424): bypass both "already done" checks and pay for a fresh classify/extract
         # call even though a cached artifact (or a committed vault note) already exists — the
         # whole point of --force is to regenerate under a different model/effort/skill.
-        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting{_hint(' (--force)', '')}{_RESET}"
              f"{_DIM} — note will be replaced{_RESET}")
     elif pf.get("already_extracted"):
         _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
@@ -1522,7 +1523,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
-        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting{_hint(' (--force)', '')}{_RESET}"
              f"{_DIM} — note will be replaced{_RESET}")
     elif pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
@@ -1664,8 +1665,9 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
         counts = st.get("request_counts", {})
         done = sum(v for k, v in counts.items() if k != "processing")
         _say(f"{_YELLOW}A batch extraction is still processing{_RESET}{_DIM} "
-             f"({done}/{len(state['shas'])} finished so far) — re-run {_RESET}"
-             f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later to check again.{_RESET}")
+             f"({done}/{len(state['shas'])} finished so far) — "
+             + _hint(f"re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later to check again.{_RESET}",
+                     "add documents again later to check.") + _RESET)
         return {"results": [], "batch_pending": True}
 
     _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
@@ -1691,17 +1693,19 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
         # the batch state in place — already-written documents are safe (preflight's
         # already_extracted check skips them on the next pass) — so a later run finishes.
         _say(f"{_YELLOW}Rate limit reached during batch collection{_RESET}{_DIM} — {e} "
-             f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
-             f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
+             f"{len(results)}/{len(state['shas'])} written; "
+             + _hint(f"re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}",
+                     "add documents again to finish once it resets.") + _RESET)
         return {"results": results, "batch_pending": True}
     except model_client.ProviderAuthError as e:
         # A repair-retry call was refused (bad key, no credit). Same as a rate limit for the
         # vault — written documents are safe, the batch state stays for a later run — but the run
         # reports it as an auth stop, which re-running won't fix until the key or balance is.
         _say(f"{_YELLOW}The provider refused this run during batch collection{_RESET}{_DIM} — "
-             f"{e} {len(results)}/{len(state['shas'])} written. Fix the key or balance (see "
-             f"{_RESET}{_CYAN}watchdog settings auth{_RESET}{_DIM}), then re-run "
-             f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM}.{_RESET}")
+             f"{e} {len(results)}/{len(state['shas'])} written. "
+             + _hint(f"Fix the key or balance (see {_RESET}{_CYAN}watchdog settings auth{_RESET}{_DIM}), "
+                     f"then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM}.{_RESET}",
+                     "Fix the key or balance in Settings, then add documents again.") + _RESET)
         return {"results": results, "batch_pending": True, "auth_error": str(e)}
 
     _log(vault, _batch_log_line(state, st, collected_at))
@@ -1735,7 +1739,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             results.append(_fail(vault, sha, "", pf["error"]))
             continue
         if force and (pf.get("already_extracted") or pf.get("already_staged")):
-            _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
+            _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting{_hint(' (--force)', '')}{_RESET}"
                  f"{_DIM} — note will be replaced{_RESET}")
         elif pf.get("already_extracted"):
             _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
@@ -1813,8 +1817,9 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
                                           effort=extract_effort, skills=skills,
                                           api_key=api_key, backend=backend)
     _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
-         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later "
-         f"to collect it.{_RESET}")
+         f"to a few hours (max 24h); "
+         + _hint(f"re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later to collect it.{_RESET}",
+                 "add documents again later to collect it.") + _RESET)
     return {"results": results, "batch_pending": True}
 
 
@@ -1851,11 +1856,13 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
     if provider == "anthropic":
         if not api_key:
             raise model_client.ModelError(
-                "claude-batch requires api-key auth mode — switch to it with `watchdog settings auth`")
+                "claude-batch requires api-key auth mode — "
+                + _hint("switch to it with `watchdog settings auth`", "switch to it in Settings"))
     else:
         if not api_key:
             raise model_client.ModelError(
-                f"the {backend} backend needs an API key — run `watchdog settings auth` to add one")
+                f"the {backend} backend needs an API key — "
+                + _hint("run `watchdog settings auth` to add one", "add one in Settings"))
 
     state = batch_extract.read_state(vault)
     if state is not None:
@@ -1875,8 +1882,10 @@ def _nudge_skill_pin(results: list) -> None:
     if len(ok_skills) > 1 and len(distinct) == 1:
         skill = next(iter(distinct))
         _say(f"{_DIM}All {len(ok_skills)} documents classified as {_RESET}{_CYAN}{skill}{_RESET}"
-             f"{_DIM} — next time run {_RESET}{_CYAN}watchdog dig --skill {skill}{_RESET}"
-             f"{_DIM} to skip classification.{_RESET}")
+             + _hint(f"{_DIM} — next time run {_RESET}{_CYAN}watchdog dig --skill {skill}{_RESET}"
+                     f"{_DIM} to skip classification.{_RESET}",
+                     f"{_DIM} — next time, choosing that record skill in Add documents skips "
+                     f"classification.{_RESET}"))
 
 
 def _lines(items: list) -> str:
@@ -2400,7 +2409,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # it doesn't update this run either — only the briefing model call
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
-        _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM} (--skip-briefing){_RESET}")
+        _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM}{_hint(' (--skip-briefing)', '')}{_RESET}")
     else:
         progress.emit("stage", stage="briefing", done=None, total=None)
         _say(f"{_DIM}→  writing briefing…{_RESET}")
@@ -3240,8 +3249,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                 _say(f"{_DIM}Stopping; finished documents are saved. "
                                      f"Waiting to resume automatically once it resets.{_RESET}")
                             else:
-                                _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                                     f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                                _say(f"{_DIM}Stopping; finished documents are saved. "
+                                     + _hint(f"Re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} once it resets to continue.",
+                                             "Add documents again once it resets to continue.")
+                                     + _RESET)
                             _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except model_client.ProviderAuthError as e:
@@ -3251,9 +3262,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                             print()
                             _say(f"{_YELLOW}The provider refused this run{_RESET}{_DIM} — {e}{_RESET}")
                             _say(f"{_DIM}Stopping; finished documents are saved and the rest stay "
-                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog settings auth"
-                                 f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}"
-                                 f"{_DIM}.{_RESET}")
+                                 f"queued. "
+                                 + _hint(f"Fix the key or balance (see {_RESET}{_CYAN}watchdog settings auth"
+                                         f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}"
+                                         f"{_DIM}.",
+                                         "Fix the key or balance in Settings, then add documents again.")
+                                 + _RESET)
                             _request_stop(auth_error=str(e))
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
