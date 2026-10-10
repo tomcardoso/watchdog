@@ -101,8 +101,10 @@ def build_options(session: "Session", can_use_tool):
 
 # A session has no shell (D299). Its file tools are confined by the hook below, its reads by the
 # vault's settings, and everything Watchdog does for it is a tool of the `watchdog` server, so a
-# shell would only be a way around those confinements.
-DISALLOWED_TOOLS = ("Bash",)
+# shell would only be a way around those confinements. Every tool Claude Code has that runs a
+# command goes: Bash, PowerShell (Windows), Monitor (a background command) and the two that manage a
+# background shell.
+DISALLOWED_TOOLS = ("Bash", "PowerShell", "Monitor", "BashOutput", "KillShell")
 
 
 # ── hooks (D299): Python callbacks in this process, no command and no PATH ──────────────────────

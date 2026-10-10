@@ -392,7 +392,7 @@ def test_a_sessions_options_carry_watchdogs_tools_the_primer_and_no_shell(env):
     opts = FakeClient.instances[0].options
     assert set(opts.mcp_servers) == {"watchdog"} and opts.mcp_servers["watchdog"]["type"] == "sdk"
     assert opts.allowed_tools == [f"mcp__watchdog__{t}" for t in session_tools.TOOLS]
-    assert "Bash" in opts.disallowed_tools and opts.sandbox is None
+    assert {"Bash", "PowerShell", "Monitor"} <= set(opts.disallowed_tools) and opts.sandbox is None
     assert opts.system_prompt["preset"] == "claude_code"
     assert opts.system_prompt["append"] == primer.session_text(vault)
     assert "PATH" not in opts.env                     # no `watchdog` command to find

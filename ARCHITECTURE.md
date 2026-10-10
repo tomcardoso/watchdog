@@ -535,7 +535,7 @@ filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` remo
 **Session boundaries (D245, D299).** A vault's Claude Code settings pre-authorize writes only to the
 session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/research/`) and
 Watchdog's session tools (`mcp__watchdog__*`), deny `~/.watchdog`, confine reads to the vault and
-carry no hooks. An app session has no shell: `Bash` is a disallowed tool, and everything it did
+carry no hooks. An app session has no shell: every tool that runs a command (`Bash`, `PowerShell`, `Monitor`) is disallowed, and everything it did
 through `watchdog …` commands is a tool of the in-process MCP server `watchdog`
 (`watchdog/session_tools.py`): `search`, `leads`, `check_citations` and `research_seen` read;
 `timeline`, `write_entity`, `watchlist_add` and `contradiction_add` write. Each tool set is bound to
