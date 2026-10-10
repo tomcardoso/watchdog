@@ -593,7 +593,7 @@ _CONFIGURE_KEYS = {
     "embed_model": {
         "short": "Local embedding model for semantic search (default: BAAI/bge-small-en-v1.5)",
         "help": (
-            "The fastembed model used to index source passages and notes for `watchdog search`.\n"
+            "The fastembed model used to index source passages and notes for search.\n"
             "  Runs entirely on your machine — no API, no cost, nothing leaves the computer.\n"
             "  bge-small-en-v1.5 is small (67 MB), fast, and a strong retriever; raise it only if\n"
             "  you want more recall on a large vault. Stronger fastembed options, biggest gain first:\n"
@@ -611,7 +611,7 @@ _CONFIGURE_KEYS = {
     "rerank_model": {
         "short": "Local cross-encoder that reranks corpus search results (default: BAAI/bge-reranker-base)",
         "help": (
-            "After `watchdog search` fuses the dense (embedding) and sparse (BM25) candidate\n"
+            "After search fuses the dense (embedding) and sparse (BM25) candidate\n"
             "  lists, a cross-encoder reranks the top of that pool for precision — the biggest\n"
             "  single retrieval-quality lever (Anthropic contextual-retrieval). Runs entirely on\n"
             "  your machine via fastembed — no API, no cost. Pre-downloaded by `watchdog setup`,\n"

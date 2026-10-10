@@ -1,6 +1,6 @@
-// `watchdog search` in full: exact matches, source passages and notes in three separate lanes,
-// plus the two cheaper modes the CLI has — every investigation at once, and a pasted list of
-// names checked one by one. See docs/commands.md § watchdog search.
+// Search in full: exact matches, source passages and notes in three separate lanes,
+// plus two cheaper modes — every investigation at once, and a pasted list of
+// names checked one by one.
 
 import { useEngineGate } from '@renderer/lib/engine'
 import {

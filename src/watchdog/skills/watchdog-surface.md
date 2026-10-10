@@ -48,7 +48,7 @@ Find every `person` entity with a `Director` or `Officer` role. Find all the org
 
 ### Deterministic leads
 
-Run `watchdog leads` and fold its output into the report — it already computes entities named but never profiled, entities recurring but unconnected, and unresolved contradictions from the entity graph. Do not re-derive these by hand; spend the analysis effort on the connection patterns above and below, which code cannot judge.
+Call the `mcp__watchdog__leads` tool and fold its result into the report — it already computes entities named but never profiled, entities recurring but unconnected, and unresolved contradictions from the entity graph. Do not re-derive these by hand; spend the analysis effort on the connection patterns above and below, which code cannot judge.
 
 ### Company clusters
 
@@ -81,9 +81,9 @@ For each entity that appears in 3 or more documents, compare the following field
 
 Flag any case where the same fact is stated differently in two documents and that discrepancy is not already captured in a `[!contradiction]` callout. Flag it whatever either claim's basis, as the pipeline's own check does; where one side is marked `inferred` or carries a figure note, say so beside it.
 
-**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are written during post-processing, when reconciliation compares every entity's claims across documents, and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
+**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are written during post-processing, when reconciliation compares every entity's claims across documents, and tracked by the resolutions layer (the journalist marks them handled in Review), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
 
-Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, run `watchdog contradiction-add` yourself with that candidate's values and report success/failure in the session output. If they do not confirm, leave it as a candidate in the report only.
+Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, call the `mcp__watchdog__contradiction_add` tool yourself with that candidate's values (the entity id, a short label, each side's value, the slug of its document and its page) and report what it returned. If they do not confirm, leave it as a candidate in the report only.
 
 ---
 
@@ -130,7 +130,7 @@ document_count: <n>
 - <Value A> — [[documents/<slug>|Document Title]], p. <n>
 - <Value B> — [[documents/<slug>|Document Title]], p. <n>
 - **Suggested follow-up:** <what would resolve this discrepancy>
-- **Promotion status (candidates only):** <left as candidate | promoted via watchdog contradiction-add>
+- **Promotion status (candidates only):** <left as candidate | promoted with the contradiction_add tool>
 
 <If no contradictions found: "No contradictions found.">
 
@@ -181,7 +181,7 @@ Print a summary: contradiction count, connection count, anomaly count, gap count
 
 ## Guidelines
 
-- **Cite everything.** Every finding must link to a specific entity note and document. Where a finding rests on a recorded fact, cite the fact's line in its document note: `[[documents/<slug>#^f-<id>|p. N]]`, with the block id copied exactly from the `^f-…` at the end of the fact line in the entity or document note. Never invent an id; a fact the journalist marked disputed may be cited, described as disputed. Run `watchdog check-citations <the report's path>` before finishing and fix anything it reports as not found.
+- **Cite everything.** Every finding must link to a specific entity note and document. Where a finding rests on a recorded fact, cite the fact's line in its document note: `[[documents/<slug>#^f-<id>|p. N]]`, with the block id copied exactly from the `^f-…` at the end of the fact line in the entity or document note. Never invent an id; a fact the journalist marked disputed may be cited, described as disputed. Check the report with the `mcp__watchdog__check_citations` tool (`pages` set to the report's path) before finishing and fix anything it reports as not found.
 - **Don't speculate.** Flag what the data shows; don't invent explanations.
 - **Distinguish levels of certainty.** "Shares an address" is a fact. "May be a shell company" is an inference — label it as such.
 - **Be brief.** The report is a prompt for investigation, not a comprehensive analysis. Each finding should be one short paragraph.

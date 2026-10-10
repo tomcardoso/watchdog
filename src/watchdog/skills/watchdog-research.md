@@ -1,6 +1,6 @@
 ---
 description: Bounded web research, seeded by the vault, that queues findings for incoming/
-allowed-tools: WebSearch, WebFetch, Bash(watchdog leads), Bash(watchdog research-seen)
+allowed-tools: WebSearch, WebFetch
 ---
 
 # /watchdog-research — Bounded web research that re-enters via incoming/
@@ -8,7 +8,7 @@ allowed-tools: WebSearch, WebFetch, Bash(watchdog leads), Bash(watchdog research
 > **Web access is scoped to this skill.** `WebSearch` and `WebFetch` — which you use to *read* the
 > web and follow leads — are pre-approved by this skill's `allowed-tools` frontmatter, granted only
 > while `/watchdog-research` is active, never vault-wide. You do **not** download sources yourself:
-> you record their URLs in a links file, and `watchdog research` downloads them deterministically
+> you record their URLs in a links file, and Watchdog downloads them deterministically
 > after this session ends. A vault of sensitive material thus carries no standing outbound-fetch
 > permission, and every archived source passes the same egress hygiene on the way in.
 
@@ -21,7 +21,7 @@ The research focus, if the journalist gave one, is: **$ARGUMENTS**
 ## What this mode is — and is not
 
 - **The product is captured sources, not a report.** Each source you keep is recorded in a links file, downloaded into `incoming/` when this session ends, and becomes vault knowledge only after the journalist adds it in the Watchdog app. A free-floating prose summary is *not* the deliverable and must never be written into the vault as fact.
-- **You curate URLs; Watchdog downloads them.** You read the web the way effective deep research does — scan search results, fetch and read *selectively* to follow the thread, never exhaustively read every page. When a source is worth keeping, **record its URL in the links file** (below). You do *not* download it — `watchdog research` fetches every queued URL deterministically after the session, server-side, applying egress hygiene, and the pipeline does the deep extraction later. So judge a source enough to decide *whether to keep it*; let processing do the heavy reading.
+- **You curate URLs; Watchdog downloads them.** You read the web the way effective deep research does — scan search results, fetch and read *selectively* to follow the thread, never exhaustively read every page. When a source is worth keeping, **record its URL in the links file** (below). You do *not* download it — Watchdog fetches every queued URL deterministically after the session, server-side, applying egress hygiene, and the pipeline does the deep extraction later. So judge a source enough to decide *whether to keep it*; let processing do the heavy reading.
 - **Findings re-enter as documents, never as direct vault writes.** This preserves dedup, provenance, and registry bookkeeping. Anything on the open web is already public — but a *scraped* source is never a *primary* source, so every queued source carries a reliability tag (below).
 
 ---
@@ -31,15 +31,9 @@ The research focus, if the journalist gave one, is: **$ARGUMENTS**
 Read the vault's open state to ground the research in real gaps — do not start from a blank slate:
 
 1. **`context.md`** (if present) — what the journalist is pursuing. Prioritise research that serves these questions.
-2. **`watchdog leads`** — entities named but never profiled, entities recurring but unconnected, unresolved contradictions. Run it:
-   ```bash
-   watchdog leads
-   ```
+2. **Leads** — entities named but never profiled, entities recurring but unconnected, unresolved contradictions. Call the `mcp__watchdog__leads` tool.
 3. **`.watchdog/registry/manifest.json`** — the entity directory (`id`, `name`, `type`, `aliases`). Use it to know who/what is already in the vault, so you research *around* the known graph and avoid re-pulling what is already documented.
-4. **`watchdog research-seen`** — the URLs the vault has already captured (downloaded or ingested) in prior cycles. Run it and hold the list:
-   ```bash
-   watchdog research-seen
-   ```
+4. **Sources already captured** — the URLs the vault has already captured (downloaded or ingested) in prior cycles. Call the `mcp__watchdog__research_seen` tool and hold the list.
    **Do not queue a URL that appears here** — it is already in the pipeline — *unless the journalist explicitly asks to re-check that source for updates.* This keeps a recurring investigation from re-fetching what it already has.
 
 From this, propose a concrete **mission**, typically one of:
@@ -64,13 +58,13 @@ Before spending anything, confirm two things with the journalist:
    | **Standard** *(default)* | dozens (~20–30) | 2–3 | one hop |
    | **Deep** | 100+ | until the budget or the journalist stops | multi-hop |
 
-   The configured ceilings (`watchdog configure research_max_rounds` / `research_max_fetches`) are the defaults for Standard; honour them unless the journalist picks another tier or overrides.
+   The configured ceilings (the research settings in the app) are the defaults for Standard; honour them unless the journalist picks another tier or overrides.
 
 ---
 
 ## 3. Open the links file
 
-Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`, with no header row. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and `watchdog`, `watchdog chew`, and `watchdog status` all warn that they're still pending. `watchdog research` downloads every row into `incoming/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
+Every source you keep goes into a tab-separated links file at **`.watchdog/research/queue.tsv`** — one row per source, columns `url ⇥ title ⇥ source_type ⇥ relevance`, with no header row. This file is the durable product of the session: it lives in `.watchdog/research/` (not scratch), so if the session crashes before the download runs, the queued URLs survive and the app shows that they're still pending. Watchdog downloads every row into `incoming/` after you finish, so nothing is lost even if the session runs out of tokens mid-research.
 
 Write it with the Write tool (rewriting the whole file as it grows — keep the running list in mind and update the file whenever you add a source). A row looks like:
 
@@ -144,7 +138,7 @@ This keeps the human in the loop and matches the fire-and-forget processing work
 ## What not to do
 
 - **Do not write entity notes, document notes, or `context.md`.** The pipeline is the single writer. Your only vault writes are the links file and the `briefings/research-<date>.md` memo.
-- **Do not download sources yourself.** Record URLs in the links file; `watchdog research` downloads them deterministically, with egress hygiene (public hosts only, size cap, script/iframe stripped). Use WebFetch only to *read* a page while researching, never to archive one.
+- **Do not download sources yourself.** Record URLs in the links file; Watchdog downloads them deterministically, with egress hygiene (public hosts only, size cap, script/iframe stripped). Use WebFetch only to *read* a page while researching, never to archive one.
 - **Do not state web findings as established fact.** A queued source is a *claim with provenance* until processing extracts and attributes it.
 - **Do not queue a source you can't faithfully download** (paywalled, login-walled) — record it as a lead instead.
 - **Do not let one session sprawl.** Respect the effort tier; check in between rounds.

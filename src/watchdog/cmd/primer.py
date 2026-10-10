@@ -243,7 +243,7 @@ def render(data: dict, per_list: int = _LIST_LEVELS[0]) -> str:
     waiting += _list("Open contradictions", [_safe(i["title"]) for i in data["contradictions"]],
                      per_list, "app: Review")
     waiting += _list("Open leads", [_safe(i["title"]) for i in data["leads"]], per_list,
-                     "`watchdog leads`")
+                     "the `mcp__watchdog__leads` tool")
     waiting += _list("Documents to request", [_safe(r.get("what") or "") for r in data["requests"]],
                      per_list, "`requests.md`")
     waiting += _list("Possible same entities, not merged", [_safe(i["title"]) for i in data["merges"]],
@@ -263,7 +263,7 @@ def render(data: dict, per_list: int = _LIST_LEVELS[0]) -> str:
 
     lines += ["## Citing", "",
               "Cite a recorded fact by linking to its line in its document note, "
-              "`[[documents/<slug>#^f-<id>|p. N]]`; `watchdog search \"<query>\" --json` lists each "
+              "`[[documents/<slug>#^f-<id>|p. N]]`; the `mcp__watchdog__search` tool lists each "
               "hit's facts with a ready `cite`. Never invent an id. A disputed fact may be cited, "
               "described as disputed."]
     return "\n".join(lines).rstrip() + "\n"

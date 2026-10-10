@@ -166,8 +166,7 @@ def render(name: str, s: dict) -> str:
         lines.extend(_row(*p) for p in progress)
 
     lines.append(f"\n  {_BOLD}Explore{_RESET}")
-    lines.append(f"    {_CYAN}watchdog ask \"…\"{_RESET}{_DIM}  ·  {_RESET}"
-                 f"{_CYAN}watchdog search \"…\"{_RESET}{_DIM}  ·  {_RESET}{_CYAN}watchdog open{_RESET}\n")
+    lines.append(f"    {_CYAN}watchdog ask \"…\"{_RESET}{_DIM}  ·  {_RESET}{_CYAN}watchdog open{_RESET}\n")
     return "\n".join(lines)
 
 

@@ -40,7 +40,7 @@ List the files in `context/` with the Glob tool (pattern `context/**/*`), ignori
 
 If the folder is empty or missing, skip to step 3 — you'll work from the interview alone.
 
-Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never run `watchdog chew` on these files: pre-processing moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
+Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never add these files as documents: pre-processing moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
 
 ---
 
@@ -163,13 +163,13 @@ Write the approved draft to `context.md` at the vault root. This overwrites any 
 
 If any watchlist candidates were approved (in full or in part), add them:
 
-```bash
-watchdog watchlist-add "<term one>" "<term two>" ...
-```
+call the `mcp__watchdog__watchlist_add` tool with `terms` set to the approved terms (for example
+`["<term one>", "<term two>"]`).
 
-This appends to `watchlist.md` deterministically — skipping any term already there
-(case-insensitive) and leaving existing terms and comments untouched. The command prints
-`{"added": [...], "skipped": N}`; use it to report what actually landed. Skip this step
+It appends to `watchlist.md` deterministically — skipping any term already there
+(case-insensitive) and leaving existing terms and comments untouched. It returns
+`{"added": [...], "skipped": N}`; use it to report what actually landed. Never edit `watchlist.md`
+yourself. Skip this step
 entirely if there were no candidates, or the reporter approved none of them.
 
 Print:
