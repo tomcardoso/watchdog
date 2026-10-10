@@ -129,11 +129,13 @@ The Overview shows **A batch is waiting to be finished** with a **Finish** butto
 
 While a run is going, Watchdog asks the computer not to sleep, because a sleep partway through a call stops whatever was in flight. This uses the system's own facilities on a Mac and on Linux systems that have systemd. On other Linux systems and on Windows, there is no equivalent to fall back to, so a run there is not protected against sleep; keep the computer awake until it finishes. If a run is cut off, add the documents again and it resumes.
 
-## A lock is stuck
+## Documents can't be added because a run is in progress
 
-If a run was interrupted, a lock file can be left behind that blocks the next run. Open **Activity → Maintenance** and choose **Release lock** under **Release a stuck lock**. The card shows whether a pre-processing or processing lock is currently held. The same lock can also be released with **Unlock…** in the strip above the **Documents** list.
+While documents are being added, Watchdog keeps a small lock file in the investigation so that a second run cannot start on the same files. There is nothing to release by hand: the lock clears itself.
 
-A running step refreshes its lock every five minutes, however long it runs, so a lock only ages once the run that held it has stopped. If the lock is recent (under 30 minutes old), Watchdog leaves it alone, because the run may still be going. Check the **Jobs** tab to make sure nothing is running. Once you are sure, switch on **Force** and choose **Force release**.
+- **Documents are being added.** A run on this computer is working. The **Jobs** tab in **Activity** shows it if the app started it. You can add more documents once it ends, or stop it there.
+- **A run stopped before it finished.** If a run ends without finishing (the app or the computer shut down, or the run crashed), the next time the app looks at the investigation it sees that the run is gone, removes its lock at once and says so in one line on the **Overview** and in the strip above the **Documents** list. Documents the run had finished are kept. Add documents again to finish the rest.
+- **Being added on another computer.** The investigation's folder is shared, for instance through a sync service, and a run on another computer holds it. Watchdog cannot see that computer's programs, so it goes by time instead: a run updates its lock every two minutes, and a lock that has not been updated for 15 minutes is treated as left behind and cleared. If the other computer was shut down mid-run, this computer can add documents about 15 minutes later. Don't run on two computers at once: a sync service can deliver one computer's changes after the other has written its own.
 
 ## A note was deleted or edited by mistake
 
