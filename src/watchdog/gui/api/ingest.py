@@ -52,7 +52,7 @@ class Plan:
 
     @property
     def backends(self) -> list:
-        from watchdog.cmd.ingest import _FINALIZER_STAGES
+        from watchdog.ops.ingest import _FINALIZER_STAGES
         return [self.classify[0], self.extract[0], self.post[0],
                 *(self.overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)]
 
@@ -61,7 +61,7 @@ def resolve_plan(args: argparse.Namespace) -> Plan:
     """Resolve stages and efforts exactly as `cmd_ingest` does (`sys.exit` on a bad value becomes
     the app's error message)."""
     from watchdog.cmd.base import load_config
-    from watchdog.cmd.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
+    from watchdog.ops.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
 
     config = load_config()
     extract = _resolve_stage(args.extractor_model, config.get("extractor_model"))
@@ -118,7 +118,7 @@ def _label(backend: str | None, model: str) -> str:
 
 
 def _model_rows(plan: Plan, auth_mode: str | None) -> list[dict]:
-    from watchdog.cmd.ingest import _FINALIZER_STAGES
+    from watchdog.ops.ingest import _FINALIZER_STAGES
 
     def effective(backend):
         # A bare Claude tier is routed by auth mode — say which backend that really is.
@@ -145,7 +145,7 @@ def _model_rows(plan: Plan, auth_mode: str | None) -> list[dict]:
 def preflight(vault: str, options: dict | None = None) -> dict:
     from watchdog.cmd import home
     from watchdog.cmd.base import _count_awaiting_bark, _count_incoming, _count_queued
-    from watchdog.cmd.ingest import _auto_approve_on, _auto_approve_verdict, _public_records_warning
+    from watchdog.ops.ingest import _auto_approve_on, _auto_approve_verdict, _public_records_warning
     from watchdog.pipeline import orchestrate
 
     v = require_vault(vault)
@@ -194,7 +194,7 @@ def _all_models_rows(rows: list[dict]) -> list[dict]:
 @method("ingest.estimate")
 def estimate(vault: str, stage: str, all_models: bool = False, options: dict | None = None) -> dict:
     from watchdog.cmd.auth import resolve_auth
-    from watchdog.cmd.ingest import (
+    from watchdog.ops.ingest import (
         _effective_extract_backend, _failed_count, _format_all_models_estimate,
         _format_cost_estimate, _format_finalize_estimate, _quarantine_notice, _resolve_stage,
     )

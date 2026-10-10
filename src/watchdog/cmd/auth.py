@@ -1087,7 +1087,7 @@ def _maybe_restore_concurrency_from_subscription() -> bool:
 
     del config["extract_concurrency"]
     _save_config(config)
-    from watchdog.cmd.ingest import _DEFAULT_EXTRACT_CONCURRENCY
+    from watchdog.ops.ingest import _DEFAULT_EXTRACT_CONCURRENCY
     print(f"\n  {_GREEN}✓{_RESET}  {_BOLD}extract_concurrency{_RESET} reset to the metered default "
           f"({_BOLD}{_DEFAULT_EXTRACT_CONCURRENCY}{_RESET}).")
     return True

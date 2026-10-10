@@ -32,6 +32,7 @@ import score_index as si  # noqa: E402
 import verifier_precision as vp  # noqa: E402
 
 import watchdog.cmd.ingest as wd_ingest  # noqa: E402
+import watchdog.ops.ingest as wd_ops_ingest  # noqa: E402
 import watchdog.interactive as wd_interactive  # noqa: E402
 
 
@@ -376,7 +377,7 @@ def test_ensure_master_vault_passes_shadow_root_to_cmd_new(monkeypatch, tmp_path
                         lambda slug: captured.setdefault("deregistered", slug))
     monkeypatch.setattr(rb, "_deregister_obsidian_vault",
                         lambda path: captured.setdefault("obsidian_deregistered", path))
-    monkeypatch.setattr(wd_ingest, "_run_preprocess", lambda *a, **k: None)
+    monkeypatch.setattr(wd_ops_ingest, "_run_preprocess", lambda *a, **k: None)
 
     shadow_root = tmp_path / "shadow"
     vault = rb.ensure_master_vault("bench-master-test", [], with_sidecars=True, root=shadow_root)

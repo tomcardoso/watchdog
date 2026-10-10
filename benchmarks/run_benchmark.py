@@ -264,7 +264,7 @@ def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, roo
     (the classifier master) drops each `.yml` sidecar so classification actually runs — a pinned
     sidecar skips it entirely (D120)."""
     from watchdog.cmd import vault as vault_cmd
-    from watchdog.cmd.ingest import _run_preprocess
+    from watchdog.ops.ingest import _run_preprocess
 
     vault = root / name
     queue_dir = vault / ".watchdog" / "queue"
@@ -439,13 +439,13 @@ class ArmResult:
 
 
 def _resolve(model_str: str | None, default: str):
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     return _resolve_stage(model_str, None, default=default)
 
 
 def _effective_backend(backend: str | None) -> str:
     from watchdog.cmd.auth import resolve_auth
-    from watchdog.cmd.ingest import _effective_extract_backend
+    from watchdog.ops.ingest import _effective_extract_backend
     auth_mode = resolve_auth()["mode"] if backend is None else None
     return _effective_extract_backend(backend, auth_mode)
 
@@ -1034,7 +1034,7 @@ def main(argv: list[str] | None = None) -> int:
             if v in removed:
                 restore()
 
-    from watchdog.cmd.ingest import _caffeinate
+    from watchdog.ops.ingest import _caffeinate
     from watchdog import fixture_capture
     # Stamped now, not at report time: a sweep runs for tens of minutes and the working
     # tree can change under it, so this records the code the run actually started against.

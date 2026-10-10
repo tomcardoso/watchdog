@@ -1,5 +1,6 @@
 """`watchdog add`, auto-approve (D263), and the bare-`watchdog` home screen (D251)."""
 
+import watchdog.cmd.ingest as cmd_ing
 import argparse
 import json
 import re
@@ -7,7 +8,7 @@ import re
 import pytest
 
 import watchdog.cmd.home as home
-import watchdog.cmd.ingest as ing
+import watchdog.ops.ingest as ing
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -75,7 +76,7 @@ def vault(tmp_path, monkeypatch):
 def _spy_add_stages(monkeypatch):
     calls = []
     monkeypatch.setattr(ing, "_run_preprocess", lambda vault, **k: calls.append("chew"))
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: calls.append(("ingest", a.command)) or {})
+    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **k: calls.append(("ingest", a.command)) or {})
     return calls
 
 
@@ -89,7 +90,7 @@ def test_add_copies_files_and_folders_then_runs_the_pipeline(vault, tmp_path, mo
     single = tmp_path / "c.txt"
     single.write_text("one")
 
-    ing.cmd_add(argparse.Namespace(paths=[str(src), str(single)], retry=False))
+    cmd_ing.cmd_add(argparse.Namespace(paths=[str(src), str(single)], retry=False))
 
     incoming = sorted(p.name for p in (vault / "incoming").iterdir())
     assert incoming == ["a.pdf", "a.pdf.yml", "b.txt", "c.txt"]
@@ -100,7 +101,7 @@ def test_add_copies_files_and_folders_then_runs_the_pipeline(vault, tmp_path, mo
 
 def test_add_with_nothing_incoming_skips_chew(vault, monkeypatch):
     calls = _spy_add_stages(monkeypatch)
-    ing.cmd_add(argparse.Namespace(paths=[], retry=False))
+    cmd_ing.cmd_add(argparse.Namespace(paths=[], retry=False))
     assert calls == [("ingest", "add")]
 
 
@@ -109,19 +110,19 @@ def test_add_retry_requeues_failed_documents_first(vault, monkeypatch):
     failed = vault / ".watchdog" / "queue" / "_failed"
     failed.mkdir()
     (failed / f"{'a' * 64}.json").write_text("{}")
-    ing.cmd_add(argparse.Namespace(paths=[], retry=True))
+    cmd_ing.cmd_add(argparse.Namespace(paths=[], retry=True))
     assert (vault / ".watchdog" / "queue" / f"{'a' * 64}.json").exists()
 
 
 def test_add_missing_path_exits(vault):
     with pytest.raises(SystemExit, match="not found"):
-        ing.cmd_add(argparse.Namespace(paths=["/no/such/file.pdf"], retry=False))
+        cmd_ing.cmd_add(argparse.Namespace(paths=["/no/such/file.pdf"], retry=False))
 
 
 def test_add_outside_a_vault_exits(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     with pytest.raises(SystemExit, match="not inside a Watchdog project"):
-        ing.cmd_add(argparse.Namespace(paths=[], retry=False))
+        cmd_ing.cmd_add(argparse.Namespace(paths=[], retry=False))
 
 
 # ── home screen ──────────────────────────────────────────────────────────────

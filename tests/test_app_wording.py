@@ -87,7 +87,7 @@ def test_jobs_mark_their_subprocesses_as_the_app(monkeypatch):
 # ── representative messages, both ways ─────────────────────────────────────────────────
 
 def _quarantine(n=2):
-    from watchdog.cmd.ingest import _quarantine_notice
+    from watchdog.ops.ingest import _quarantine_notice
     return _quarantine_notice(n)
 
 

@@ -60,8 +60,8 @@ from watchdog.cmd.vault import (
     cmd_unarchive,
     cmd_watch,
 )
+from watchdog.ops.ingest import _run_preprocess  # noqa: F401
 from watchdog.cmd.ingest import (
-    _run_preprocess,
     cmd_chew,
     cmd_context,
     cmd_extract,

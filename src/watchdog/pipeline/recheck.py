@@ -243,7 +243,7 @@ def finalizer_stage() -> tuple[str | None, str, str | None]:
     effort — resolved by the same code `watchdog bark` resolves them with."""
     from watchdog import defaults
     from watchdog.cmd.base import load_config
-    from watchdog.cmd.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
+    from watchdog.ops.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
     config = load_config()
     backend, model = _resolve_stage(None, config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
     overrides = _resolve_finalizer_overrides(argparse.Namespace(), config, backend, model)
