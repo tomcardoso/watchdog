@@ -87,7 +87,11 @@ Both run on your Claude sign-in. If Claude is not signed in, sign in under **Set
 
 ### Activity
 
-Everything the app has run, with the full output of each. **Stop** ends a run cleanly so it can be resumed. The tabs:
+Everything the app has run, with the full output of each. **Stop** ends a run cleanly so it can be resumed.
+
+While something runs, a card in the bottom-left corner of the window shows its progress, with buttons to show its output, stop it, or minimise it to a small label with its percentage. Choose the label to bring the card back, or × to hide it; a hidden run keeps going, and Activity still lists it. The incoming-folder watcher, which runs until you turn it off, only ever shows as the small **Watching incoming** label. Every screen leaves room at its end so you can scroll past these. A run disappears from the corner when it finishes.
+
+The tabs:
 
 - **Jobs.** Running and finished runs. Select one to see its output.
 - **Maintenance.** The steps that **Add documents** runs for you, plus repairs, each explained before you run it: **Pre-processing** (read files on this computer), **Processing** (extract with a model), **Post-processing** (write to the investigation and produce the briefing), **Export the graph**, **Release a stuck lock**, **Requeue failed documents**, **Lead sweep**, **Rebuild the timeline**, **Rebuild notes** (rewrites every entity and document note from Watchdog's records, with no model call), **Re-check contradictions** (the entity page's re-check for every entity with two or more facts, with the cost shown before anything is sent), **Rebuild the search index**, **Usage** and **Refresh Claude setup**. Anything that sends text to a model shows the public-records warning first.

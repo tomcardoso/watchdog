@@ -458,11 +458,79 @@
   position: absolute;
   left: 18px;
   bottom: 16px;
-  width: 340px;
+  max-width: calc(100% - 36px);
   z-index: 40;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
+}
+.job-dock .job-card {
+  width: min(340px, calc(100vw - 80px));
+}
+.job-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.job-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 32px;
+  padding: 0 3px 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+  animation: pop-in 160ms var(--ease);
+}
+.job-chip .btn {
+  border-radius: 999px;
+}
+.job-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  height: 100%;
+  padding: 0 8px 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-weight: 560;
+  cursor: pointer;
+}
+.job-chip-main:hover {
+  color: var(--accent-text);
+}
+.job-chip-main .spinner {
+  width: 12px;
+  height: 12px;
+}
+.job-chip-pct {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.job-chip-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--success);
+  animation: job-pulse 2.4s ease-in-out infinite;
+}
+@keyframes job-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-chip-dot {
+    animation: none;
+  }
 }
 .job-card {
   background: var(--surface);

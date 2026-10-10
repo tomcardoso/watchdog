@@ -325,7 +325,9 @@
 .page-inner {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 28px 36px 64px;
+  /* --dock-space: the job dock's height while it is up (JobDock sets it), so a page's end can be
+     scrolled clear of it. */
+  padding: 28px 36px max(64px, var(--dock-space, 0px));
 }
 .page-inner.wide {
   max-width: 1480px;
