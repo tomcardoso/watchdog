@@ -431,7 +431,11 @@ def cmd_new(args) -> None:
     print()
     if under_app():
         print(f"  {_DIM}Created {vault}{_RESET}\n")
-        return
+    else:
+        _print_new_vault_steps(vault, slug)
+
+
+def _print_new_vault_steps(vault, slug) -> None:
     print(f"  {_DIM}To navigate into your new vault, copy and paste this command:{_RESET}")
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()

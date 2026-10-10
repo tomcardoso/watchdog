@@ -1584,7 +1584,7 @@ def cmd_unlock(args) -> None:
             if op_name == "processing":
                 ingest_lock_held = True
             print(f"  {_YELLOW}Lock is recent{_RESET} ({age_str}) — {op_name} may still be running.")
-            force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"
+            force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"  # terminal only
             print(_hint(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.",
                         "  Turn on Force to remove it anyway, only if nothing is running."))
 

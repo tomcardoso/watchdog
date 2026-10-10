@@ -73,8 +73,10 @@ def cmd_merge_entities(args) -> None:
     except OSError as e:
         # The registry lock (D258) — on Windows `msvcrt` gives up after ~10s while another
         # watchdog command (usually `bark` committing a batch) holds it.
-        sys.exit(f"Error: couldn't write the registry ({e}). If `watchdog bark` or another "
-                 f"watchdog command is running in this vault, wait for it to finish and retry.")
+        sys.exit(f"Error: couldn't write the registry ({e}). "
+                 + _hint("If `watchdog bark` or another watchdog command is running in this vault, "
+                         "wait for it to finish and retry.",
+                         "If a run is in progress on this investigation, wait for it to finish and retry."))
     except ValueError as e:
         sys.exit(f"Error: {e}")
 

@@ -1098,9 +1098,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         # batch's results come back hours later in a different run with neither of those left.
         # Name whichever turned it on, so the fix the message implies is the one that works —
         # "--verify isn't supported" is unhelpful advice to someone who never typed it.
-        source = ("--verify" if verify_flag else f"{_CYAN}verify_extraction{_RESET}")
-        if under_app():
-            source = "Verification"
+        source = _hint("--verify" if verify_flag else f"{_CYAN}verify_extraction{_RESET}", "Verification")
         sys.exit(f"\n  {_YELLOW}Error:{_RESET} {source} isn't supported with {extract_backend} — "
                  f"the verification pass re-reads a document immediately after extracting it, and "
                  f"a batch's results come back hours later in a separate run.\n"
