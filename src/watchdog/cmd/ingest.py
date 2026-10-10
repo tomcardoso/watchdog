@@ -832,7 +832,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
     # `watchdog dig --limit N` (#696): only the next N queued documents still needing extraction.
     limit = getattr(args, "limit", None)
     if force_selectors and is_estimate:
-        print(f"\n  {_DIM}--estimate is read-only — the named document(s) are not re-queued; "
+        print(f"\n  {_DIM}{_hint('--estimate is read-only', 'An estimate is read-only')} — the named document(s) are not re-queued; "
               f"this estimate reflects the current queue only.{_RESET}")
     elif force_selectors:
         _requeue_forced_selectors(vault, force_selectors)
@@ -1040,7 +1040,7 @@ def cmd_ingest(args, *, confirm: bool = True, skip_preview: bool = False,
         result["queue_files"] = limit_queue(vault, result["queue_files"], limit, force=force)
         only_shas = [qf["sha256"] for qf in result["queue_files"]]
         held = in_queue - len(only_shas)
-        print(f"\n  {_DIM}--limit {limit}: extracting {_RESET}{_BOLD}{len(only_shas)}{_RESET}{_DIM} "
+        print(f"\n  {_DIM}{_hint(f'--limit {limit}', f'Limit of {limit}')}: extracting {_RESET}{_BOLD}{len(only_shas)}{_RESET}{_DIM} "
               f"of {in_queue} queued document{'s' if in_queue != 1 else ''}"
               + (f"; {held} stay{'s' if held == 1 else ''} queued or already extracted"
                  if held else "") + f".{_RESET}")
@@ -1593,7 +1593,7 @@ def cmd_add(args) -> dict | None:
     if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
         # Read-only, like `dig --estimate`: nothing is copied, retried or chewed.
         if getattr(args, "paths", None) or getattr(args, "retry", False):
-            print(f"\n  {_DIM}--estimate changes nothing, so the named files are not copied in "
+            print(f"\n  {_DIM}{_hint('--estimate changes nothing', 'An estimate changes nothing')}, so the named files are not copied in "
                   f"and failed documents are not retried; this estimate covers the current queue "
                   f"only.{_RESET}")
         return cmd_ingest(args)
