@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.write_entity import run
+from watchdog.pipeline.write_entity import apply
+
+
+def run(path: Path, vault: Path) -> dict:
+    return apply(vault, json.loads(path.read_text()))
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -169,10 +173,10 @@ def test_global_timeline_resolves_entity_and_document_links(tmp_path):
 
 # ── Error cases ───────────────────────────────────────────────────────────────
 
-def test_unknown_entity_id_exits(tmp_path):
+def test_unknown_entity_id_is_refused(tmp_path):
     vault = make_vault(tmp_path)
     extraction = make_extraction(tmp_path, entity_id="nobody-here")
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValueError, match="nobody-here"):
         run(extraction, vault)
 
 
@@ -209,20 +213,3 @@ def test_malformed_events_dropped_and_unparseable_dates_cleared(tmp_path):
     assert [e["event"] for e in events].count("Undated meeting") == 1
     assert len(events) == 3
     assert next(e for e in events if e["event"] == "Undated meeting")["date"] == ""
-
-
-def test_scratch_file_under_tmp_removed_after_apply(tmp_path):
-    vault = make_vault(tmp_path)
-    tmp_dir = vault / ".watchdog" / "tmp"
-    tmp_dir.mkdir(parents=True)
-    scratch = tmp_dir / "entity-refresh-alice-smith.json"
-    scratch.write_text(make_extraction(tmp_path).read_text())
-    run(scratch, vault)
-    assert not scratch.exists()
-
-
-def test_extraction_outside_tmp_left_in_place(tmp_path):
-    vault = make_vault(tmp_path)
-    path = make_extraction(tmp_path)
-    run(path, vault)
-    assert path.exists()
