@@ -43,6 +43,11 @@ test('every screen renders against the demo investigation', async () => {
     })
     const projects = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))
     const slug = Object.keys(projects)[0]
+    // A key stored in plain text by an older version: the app encrypts it at launch when this
+    // computer has secure storage, and says so either way (D295).
+    const credentials = join(home, '.watchdog', 'credentials.json')
+    const plainKey = 'sk-proj-E2E-PLAINTEXT-KEY-7777'
+    writeFileSync(credentials, JSON.stringify({ keys: { openai: plainKey } }), { mode: 0o600 })
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
@@ -80,6 +85,30 @@ test('every screen renders against the demo investigation', async () => {
       return { status: r.status, range: r.headers.get('content-range'), bytes: Array.from(new Uint8Array(await r.arrayBuffer())), wholeStatus: whole.status, wholeLength: (await whole.arrayBuffer()).byteLength, accept: whole.headers.get('accept-ranges') }
     }, clip)
     expect(ranged).toEqual({ status: 206, range: 'bytes 10-19/1000', bytes: [10, 11, 12, 13, 14, 15, 16, 17, 18, 19], wholeStatus: 200, wholeLength: 1000, accept: 'bytes' })
+
+    // Settings → Models & keys says where keys are kept; the file holds the key in plain text only
+    // when there is no secure storage, and then the card warns about it (D295).
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'settings', tab: 'auth' }))
+    const storage = page.locator('.set-keystore')
+    await expect(storage).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText('sk-proj-E2…7777')).toBeVisible()
+    const store = await storage.getAttribute('data-store')
+    console.log(`key storage: ${store}`)
+    // A key added through the window reaches the file only in the form the storage allows, and the
+    // window can't hand the backend keys of its own.
+    const added = 'sk-ds-E2E-ADDED-KEY-8888'
+    const rpc = (m: string, p: unknown) => page.evaluate(([m, p]) => (window as any).watchdog.rpc(m, p).then(() => 'ok', (e: Error) => e.message), [m, p] as const)
+    expect(await rpc('auth.addKey', { provider: 'deepseek', label: 'Work', key: added })).toBe('ok')
+    expect(await rpc('secrets.provide', { store: 'plaintext', keys: {} })).not.toBe('ok')
+    if (store === 'encrypted') {
+      const text = readFileSync(credentials, 'utf8')
+      expect(text).not.toContain(plainKey)
+      expect(text).not.toContain(added)
+      await expect(storage).toContainText('Encrypted on this computer')
+    } else {
+      expect(store).toBe('plaintext')
+      await expect(page.getByText('Your keys are not encrypted on this computer')).toBeVisible()
+    }
 
     for (const theme of ['light', 'dark']) {
       await page.evaluate((t) => (window as any).__watchdogApp.getState().setTheme(t), theme)
