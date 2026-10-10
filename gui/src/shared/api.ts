@@ -318,16 +318,6 @@ export interface Note {
 export type LinkKind = 'document' | 'entity' | 'briefing' | 'query' | 'wiki' | 'note' | 'original' | 'fulltext' | 'missing'
 export interface ResolvedLink { path: string | null; kind: LinkKind; sha: string | null; page: number | null }
 
-/** A held lock: its last stamp (a working run renews it every `heartbeat_seconds`), and whether a
- * run would take it over. Whether its run is alive can't be detected (locks hold `pid: cli`). */
-export interface LockInfo {
-  started_at: string | null
-  age_seconds: number | null
-  stale: boolean
-  stale_seconds: number
-  heartbeat_seconds: number
-}
-
 export interface PipelineState {
   incoming: { name: string; path: string; size: number; modified: string; sidecar: boolean }[]
   chew_failed: { name: string; path: string; size: number }[]
@@ -336,8 +326,6 @@ export interface PipelineState {
   failed: { sha: string; filename: string; reason: string | null }[]
   pending_finalization: { docs: number; entities: number } | null
   locks: { chew: boolean; ingest: boolean }
-  /** Null when that lock is not held. */
-  lock_info: { chew: LockInfo | null; ingest: LockInfo | null }
   research_urls: number
   batch_pending: Record<string, unknown> | null
 }

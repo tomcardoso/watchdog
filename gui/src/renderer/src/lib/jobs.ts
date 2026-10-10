@@ -78,26 +78,6 @@ export function unlockOutcome(out: string): { kind: 'success' | 'info'; title: s
   return { kind: 'info', title: 'No lock to remove' }
 }
 
-/** Release a stuck lock with force, after the same confirmation as Activity → Maintenance →
- * Release a stuck lock. Returns false when the reporter cancels. */
-export async function forceReleaseLock(vault?: string | null): Promise<boolean> {
-  const ok = await window.watchdog.dialog.confirm({
-    title: 'Force the lock off?',
-    message: 'If a run is still working, removing its lock lets a second run start on the same files.',
-    detail: 'Only continue if you are sure nothing is running — check the Jobs tab first.',
-    confirm: 'Force release',
-    destructive: true
-  })
-  if (!ok) return false
-  try {
-    toast(unlockOutcome(await runAction(['unlock', '--force'], vault)))
-  } catch (e) {
-    toast({ kind: 'error', title: 'Could not release the lock', body: e instanceof Error ? e.message : String(e) })
-  }
-  invalidate('vault.', 'projects.', 'ingest.')
-  return true
-}
-
 /** Stop a job, saying so when the stop could not be sent (the job may have ended already). */
 export function stopJob(id: string): void {
   call('jobs.cancel', { id }).catch((e) => toast({ kind: 'error', title: 'Could not stop it', body: e instanceof Error ? e.message : String(e) }))

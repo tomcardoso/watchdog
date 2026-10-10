@@ -12,7 +12,6 @@ import { flagsFor, startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
-import { LockNotice, blockingLock } from '@renderer/components/LockNotice'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import { progressText, STAGE_LABELS } from '@renderer/shell/JobDock'
@@ -113,11 +112,6 @@ export function AddDialog() {
   // Whatever is already waiting in the investigation.
   const { data: pf0, isLoading: pfLoading, error: pfError } = useRpc('ingest.preflight', visible && phase === 'choose' ? { vault, options: cleanOptions(options) } : null, { staleTime: 0 })
 
-  // A lock left by a run that is still going, or that stopped without releasing it: say so here,
-  // with the way out, rather than letting the run fail on it.
-  const { data: pipeNow } = useRpc('vault.pipeline', visible && (phase === 'choose' || phase === 'gate') ? { vault } : null, { refetchInterval: 15_000, staleTime: 0 })
-  const lock = blockingLock(pipeNow)
-
   const gatherFlags = async (cmd: 'add' | 'chew', o: RunOptions) => flagsFor(cmd, cleanOptions(o))
 
   // ── Step 2 → 3: read locally, then gate ────────────────────────────────────
@@ -217,7 +211,6 @@ export function AddDialog() {
     body = (
       <>
       <EngineWait style={{ marginBottom: 16 }} />
-      {lock && <div style={{ marginBottom: 16 }}><LockNotice vault={vault} lock={lock} /></div>}
       <ChooseStep
         paths={paths}
         setPaths={setPaths}
@@ -237,7 +230,7 @@ export function AddDialog() {
           {engine.ready ? 'Reading files stays on this computer. You confirm before anything goes to a model.' : 'Files you choose stay listed here, ready to read when setup finishes.'}
         </span>
         <Button variant="ghost" onClick={close}>Cancel</Button>
-        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !!pfError || !engine.ready || !!lock} loading={busy} onClick={() => void begin()}>
+        <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !!pfError || !engine.ready} loading={busy} onClick={() => void begin()}>
           Read documents
         </Button>
       </>
@@ -266,12 +259,7 @@ export function AddDialog() {
   } else if (effective === 'gate' && gate) {
     title = 'Before anything is sent'
     sub = undefined
-    body = (
-      <>
-        {lock && <div style={{ marginBottom: 16 }}><LockNotice vault={vault} lock={lock} /></div>}
-        <GateStep gate={gate} retry={retry} folders={folders} issues={readIssues} error={error} />
-      </>
-    )
+    body = <GateStep gate={gate} retry={retry} folders={folders} issues={readIssues} error={error} />
     const n = countFor(gate.pf, retry, folders.length)
     const finishing = n === 0 && !!(gate.pf.pending_finalization || gate.pf.staged > 0)
     const nothing = n === 0 && !finishing
@@ -281,7 +269,7 @@ export function AddDialog() {
         {nothing ? (
           <Button variant="primary" onClick={close}>Close</Button>
         ) : (
-          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing) || !!lock} onClick={() => void run(gate.pf, folders)}>
+          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing)} onClick={() => void run(gate.pf, folders)}>
             Acknowledge and add
           </Button>
         )}

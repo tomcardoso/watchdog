@@ -191,14 +191,9 @@ PipelineState = {
   failed:    [{sha, filename, reason|null}],                  // queue/_failed/
   pending_finalization: {docs, entities}|null,
   locks: {chew: bool, ingest: bool},
-  lock_info: {chew: LockInfo|null, ingest: LockInfo|null},   // null = not held
   research_urls: int,
   batch_pending: object|null                                  // batch_extract.read_state
 }
-LockInfo = {started_at|null, age_seconds|null, stale: bool, stale_seconds, heartbeat_seconds}
-// started_at is the lock's last stamp: a working run renews it every heartbeat_seconds. A lock holds
-// "pid: cli", so whether its run is alive can't be detected. stale = a run would take it over
-// (older than stale_seconds); a lock with no readable time is never stale.
 ```
 
 ## verify — the verification ledger (D271)

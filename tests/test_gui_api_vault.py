@@ -504,26 +504,6 @@ def test_pipeline_locks_and_batch(rich_vault):
     p = call("vault.pipeline", vault=V(rich_vault))
     assert p["locks"] == {"chew": True, "ingest": True}
     assert p["batch_pending"]["batch_id"] == "b1"
-    # No time on the lock: its age is unknown, and a run would not take it over.
-    assert p["lock_info"]["chew"]["started_at"] is None
-    assert p["lock_info"]["chew"]["stale"] is False
-
-
-def test_pipeline_lock_info_gives_the_time_and_staleness(rich_vault):
-    """The Home banner and Add documents say when a held lock was last renewed."""
-    from datetime import datetime, timedelta, timezone
-    lock = rich_vault / ".watchdog" / "registry" / ".processing-lock"
-
-    def stamp(minutes):
-        return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    assert call("vault.pipeline", vault=V(rich_vault))["lock_info"] == {"chew": None, "ingest": None}
-    lock.write_text(f"pid: cli\nstarted_at: {stamp(12)}\n")
-    info = call("vault.pipeline", vault=V(rich_vault))["lock_info"]["ingest"]
-    assert info["started_at"].startswith(stamp(12)[:10]) and info["started_at"].endswith("Z")
-    assert 11 * 60 <= info["age_seconds"] <= 13 * 60
-    assert info["stale"] is False and info["stale_seconds"] == 30 * 60
-    lock.write_text(f"pid: cli\nstarted_at: {stamp(45)}\n")
-    assert call("vault.pipeline", vault=V(rich_vault))["lock_info"]["ingest"]["stale"] is True
 
 
 def test_pipeline_failure_reason_uses_the_latest_log_line(rich_vault):

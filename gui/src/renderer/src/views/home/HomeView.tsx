@@ -18,8 +18,7 @@ import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
-import type { LockInfo, ReviewKind, Summary } from '@shared/api'
-import { LockNotice, blockingLock } from '@renderer/components/LockNotice'
+import type { ReviewKind, Summary } from '@shared/api'
 import { BillingCard } from './BillingCard'
 import './home.css'
 
@@ -74,7 +73,7 @@ export default function HomeView() {
           <HomeSkeleton />
         ) : (
           <>
-            {s.has_work && <WorkBanner s={s} lock={blockingLock(pipe)} vault={vault} />}
+            {s.has_work && <WorkBanner s={s} locked={!!pipe?.locks.ingest || !!pipe?.locks.chew} />}
             {empty ? (
               <DropCard />
             ) : (
@@ -250,9 +249,8 @@ function Header() {
 }
 
 // ── Finish adding ────────────────────────────────────────────────────────────
-function WorkBanner({ s, lock, vault }: { s: Summary; lock: LockInfo | null; vault: string }) {
+function WorkBanner({ s, locked }: { s: Summary; locked: boolean }) {
   const engine = useEngineGate()
-  const locked = !!lock
   const n = s.incoming + s.awaiting_dig + s.awaiting_bark
   const text =
     n > 0
@@ -263,18 +261,15 @@ function WorkBanner({ s, lock, vault }: { s: Summary; lock: LockInfo | null; vau
       ? [s.incoming && `${plural(s.incoming, 'file')} in incoming`, s.awaiting_dig && `${s.awaiting_dig} to extract`, s.awaiting_bark && `${s.awaiting_bark} to finish`].filter(Boolean).join(' · ')
       : 'The documents are extracted. The finishing step writes the entity summaries, timeline and briefing.'
   return (
-    <div className="home-banner-wrap">
-      <div className="home-banner">
-        <div className="ico"><FilePlus2 /></div>
-        <div className="grow">
-          <div className="t">{text}</div>
-          <div className="s">{locked ? 'Waiting for a run to release this investigation.' : engine.reason ?? sub}</div>
-        </div>
-        <Button variant="primary" size="lg" disabled={locked || !engine.ready} onClick={() => useApp.getState().openAdd()}>
-          {n > 0 ? `Finish adding ${plural(n, 'document')}` : 'Finish the batch'}
-        </Button>
+    <div className="home-banner">
+      <div className="ico"><FilePlus2 /></div>
+      <div className="grow">
+        <div className="t">{text}</div>
+        <div className="s">{locked ? 'A run is already in progress for this investigation.' : engine.reason ?? sub}</div>
       </div>
-      {lock && <LockNotice vault={vault} lock={lock} />}
+      <Button variant="primary" size="lg" disabled={locked || !engine.ready} onClick={() => useApp.getState().openAdd()}>
+        {n > 0 ? `Finish adding ${plural(n, 'document')}` : 'Finish the batch'}
+      </Button>
     </div>
   )
 }
