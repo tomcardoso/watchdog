@@ -520,3 +520,39 @@ def test_cmd_usage_all_shows_backend_column_per_run(tmp_path, monkeypatch, capsy
     assert "Backend" in out
     assert "sdk/sub" in out
     assert "api/key" in out
+
+
+def _session_file(vault: Path, stem: str, task: str, calls: list[dict]) -> None:
+    d = vault / ".watchdog" / "registry" / "usage" / "sessions"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{stem}.json").write_text(json.dumps({"session": {"id": "s", "mode": task, "task": task,
+                                                            "title": "t"}, "calls": calls}))
+
+
+def test_cmd_usage_all_lists_ask_claude_and_web_research_on_their_own_lines(tmp_path, monkeypatch, capsys):
+    """D296: sessions are recorded beside the runs, not inside one, and shown as their own lines."""
+    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=0.01)]})
+    sdk = dict(backend="claude-agent-sdk", filename=None, detail=None, auth_mode="subscription")
+    _session_file(vault, "usage-20260102T000000Z-aaa", "ask",
+                  [_call(task="ask", cost_usd=0.10, **sdk), _call(task="ask", cost_usd=0.05, **sdk)])
+    _session_file(vault, "usage-20260103T000000Z-bbb", "research", [_call(task="research", cost_usd=0.20, **sdk)])
+    monkeypatch.chdir(vault)
+
+    cmd_usage(_args(all_runs=True))
+    out = capsys.readouterr().out
+    assert "Ask Claude     1 session, 2 turns" in out and "$0.1500" in out
+    assert "Web research   1 session, 1 turn" in out and "$0.2000" in out
+    assert "All together   $0.3600" in out
+    assert "not amounts billed" in out          # subscription sessions: list-price, not billed
+
+    cmd_usage(_args(run="20260102T000000Z"))
+    assert "ASK CLAUDE  (2 calls)" in capsys.readouterr().out
+
+
+def test_cmd_usage_with_only_sessions_shows_them(tmp_path, monkeypatch, capsys):
+    vault = tmp_path / "vault"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    _session_file(vault, "usage-20260102T000000Z-aaa", "ask", [_call(task="ask", cost_usd=0.10)])
+    monkeypatch.chdir(vault)
+    cmd_usage(_args())
+    assert "Ask Claude     1 session, 1 turn" in capsys.readouterr().out

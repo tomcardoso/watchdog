@@ -688,7 +688,7 @@ def _main() -> None:
     # Internal pipeline commands — dispatched before argparse so they never
     # appear in tab completion
     _INTERNAL_CMDS = {"prompt-status", "research-fetch", "research-seen", "session-primer",
-                      "watchlist-add"}
+                      "watchlist-add", "page-notes"}
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
         _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
@@ -715,6 +715,13 @@ def _main() -> None:
             from pathlib import Path
             from watchdog.cmd.primer import cmd_session_primer
             cmd_session_primer(Path(".").resolve())
+        elif cmd == "page-notes":
+            # The vault's PreToolUse/PostToolUse hooks around a session's file edits (D296): keep
+            # the reporter's Notes on saved pages. Never fails the edit.
+            from watchdog.pipeline.page_notes import run_hook
+            out = run_hook(sys.argv[2] if len(sys.argv) > 2 else "", sys.stdin.read())
+            if out:
+                print(out)
         elif cmd == "watchlist-add":
             _p.add_argument("terms", nargs="+")
             cmd_watchlist_add(_p.parse_args(sys.argv[2:]))

@@ -1,4 +1,5 @@
-"""`usage.*` — per-run token, cost and latency records (`.watchdog/registry/usage/usage-<ts>.json`).
+"""`usage.*` — per-run token, cost and latency records (`.watchdog/registry/usage/usage-<ts>.json`),
+and each Ask Claude or Web research session's (`usage/sessions/`, D296), listed beside them.
 
 The grouping, totals and notes come from `cmd/usage`'s own helpers, so a run reads the same here
 as in `watchdog usage`. Records written by older versions can be missing fields; every call is
@@ -44,14 +45,26 @@ def _corpus(vault: Path) -> dict | None:
     return {"documents": found[1], "pages": found[0]} if found else None
 
 
+def _kind(path: Path) -> dict:
+    """`kind` ("run", "ask" or "research") and, for a session, its `title`."""
+    from watchdog.pipeline import session_usage
+    if path.parent.name != "sessions":
+        return {"kind": "run", "title": None}
+    info = session_usage.session_info(path)
+    task = info.get("task") if info.get("task") in session_usage.TASKS else "ask"
+    return {"kind": task, "title": info.get("title") or None}
+
+
 @method("usage.runs")
 def runs(vault: str) -> dict:
     from watchdog.cmd.usage import _STAGE, _run_backends, _run_totals, _subscription_note, cost_by_key
     from watchdog.pipeline.orchestrate import usage_files
 
+    from watchdog.pipeline import session_usage
+
     v = require_vault(vault)
     rows = []
-    for f in usage_files(v):
+    for f in usage_files(v) + session_usage.files(v):
         calls = _calls(f)
         t = _run_totals(calls)
         stages: dict[str, float] = {}
@@ -64,7 +77,7 @@ def runs(vault: str) -> dict:
             "cache_read_tokens": t["cache_read_tokens"], "cache_write_tokens": t["cache_write_tokens"],
             "cost_usd": t["cost_usd"], "latency_s": t["latency_s"],
             "backends": _run_backends(calls), "subscription": _subscription_note(calls) is not None,
-            "stages": stages, "by_key": cost_by_key(calls),
+            "stages": stages, "by_key": cost_by_key(calls), **_kind(f),
         })
     rows.sort(key=lambda r: r["ts"], reverse=True)
     return {"runs": rows, "corpus": _corpus(v)}
@@ -107,10 +120,17 @@ def run(vault: str, ts: str | None = None) -> dict:
     )
     from watchdog.pipeline.orchestrate import usage_files
 
+    from watchdog.pipeline import session_usage
+
     v = require_vault(vault)
     files = usage_files(v)
-    if not files:
+    sessions = session_usage.files(v)
+    if not files and not sessions:
         raise RpcError("No processing runs are recorded for this investigation yet.", code="no_runs")
+    if not files:
+        files = sessions                 # the latest, when no processing run exists yet
+    elif ts:
+        files = files + sessions
     if ts:
         matches = [f for f in files if ts in f.stem]
         if not matches:
@@ -148,6 +168,7 @@ def run(vault: str, ts: str | None = None) -> dict:
     pages = corpus["pages"] if corpus else 0
     return {
         "ts": _ts(chosen),
+        **_kind(chosen),
         "stages": stages,
         "totals": totals,
         "subscription_note": _subscription_note(calls),

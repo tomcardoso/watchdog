@@ -480,6 +480,8 @@ queries/ wiki/               session-written findings and threads
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
+  page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
+  page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290); absent until one is chosen
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
@@ -492,7 +494,8 @@ queries/ wiki/               session-written findings and threads
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
-    .processing-lock .write-lock .verification-lock
+    usage/sessions/usage-<started>-<id>.json  one Ask Claude or Web research session's turns, task `ask`/`research` (D296); never read by the cost estimates
+    .processing-lock .write-lock .verification-lock .notes-lock
 ```
 
 **Passages and the verification ledger (D270, D271).** Each fact in `.watchdog/extracted/<sha>.json`
@@ -525,7 +528,7 @@ helpers for every path under them. `migrate_folder_names` renames an older vault
 `_CONTEXT/` (never deleting a file) and runs at the start of each command that touches them and when the
 app opens a vault (`require_vault`).
 
-Every model call is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
+Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
 filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` removes a vault's rows
 (D247).
 
@@ -548,6 +551,13 @@ none until it fits). It never fails a session's start. The app's Briefings → C
 the D266 migration on first use (`vault_paths.retire_hot_md_hook`), which also refreshes its
 `.claude/CLAUDE.md`; `hot.md` itself is left on disk and is no longer read, indexed or
 citation-checked.
+
+**Saved-page notes (D296).** The reporter's `## Notes` on a page in `queries/` or `wiki/` is guarded
+by `pipeline/page_notes.py` under `.notes-lock`: the app's `vault.saveNotes` writes it with a
+compare-and-swap, and the vault's PreToolUse/PostToolUse hooks (matcher `Write|Edit|MultiEdit`,
+`watchdog page-notes pre|post`) snapshot the Notes before a session's file edit and put back the
+newer of that snapshot and the app's last save if the edit changed them. Added to older vaults by
+the D266 migration (`vault_paths.ensure_page_notes_hooks`) and `refresh-skills`.
 
 **Version history (D286).** `pipeline/history.py` versions every tracked file: Markdown outside
 `morgue/`, `incoming/`, `context/` and hidden folders, plus `entities`, `documents`, `merges`,
@@ -866,10 +876,9 @@ noted as such.
 - **I15 — A disputed fact is labelled wherever a fact is shown, and never dropped.** A fact the
   reporter marked Disputed stays in every list, note, timeline, export, search result and session
   primer that would hold it, carrying the label "disputed"; no step filters it out. The synthesis,
-  briefing and contradiction-check inputs include it, labelled (the same-name comparison of D279
-  sends facts unlabelled).
+  briefing, contradiction-check and same-name identity inputs include it, labelled (D296).
   A mark counts only while it matches the fact's words and page (D271). *History: D280, D283,
-  D285.* Guarded by `tests/test_gui_demo.py::test_a_disputed_fact_is_shown_labelled_on_every_surface`.
+  D285, D296.* Guarded by `tests/test_gui_demo.py::test_a_disputed_fact_is_shown_labelled_on_every_surface`.
 - **I16 — A model call never bills an account the investigation did not choose.** When an
   investigation names a labelled key for a provider and this computer has no key by that id or name,
   every path that would send that provider's key (processing, post-processing, the batch path, the

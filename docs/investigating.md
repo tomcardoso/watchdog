@@ -258,7 +258,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Check citations** | Checks that every fact cited in saved answers, threads and briefings still exists, and lists the citations of facts you marked Disputed. Changes nothing and calls no model. |
 | **Rebuild the timeline** | Regenerates the written timeline from the underlying records. |
 | **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
-| **Usage** | Opens token, cost and timing figures for each run. |
+| **Usage** | Opens token, cost and timing figures for each run, and for each Ask Claude or Web research conversation. |
 | **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. A relationship whose wordings were grouped is exported under the label the app shows, with each document's own wording beside it. |
 | **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude settings after you update Watchdog. |
 

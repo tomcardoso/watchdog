@@ -539,7 +539,7 @@ def notes_write_lock(vault: Path, rel: str):
     """Hold what a write to `rel`'s Notes section must hold. An entity or document note is
     rewritten by the commit pass, which keeps the Notes section it reads under the registry
     lock; a save waits a few seconds for that lock, then reports `busy` (the app retries) rather
-    than racing the pass. Saved pages are written only by sessions, which take no lock."""
+    than racing the pass. Saved pages are saved by `page_notes.app_save` instead (D296)."""
     if rel.split("/", 1)[0] not in _PIPELINE_NOTES:
         yield
         return
@@ -573,7 +573,20 @@ def save_notes(vault: str, path: str, text: str) -> dict:
                        code="forbidden")
     if file is None:
         raise RpcError("That note doesn't exist.", code="not_found")
-    from watchdog.pipeline import history
+    from watchdog.pipeline import history, page_notes
+    if page_notes.is_page(rel):
+        # A saved page: compare-and-swap against a session's concurrent write, under the lock
+        # the vault's edit hooks take (D296).
+        with history.recording(v, {"kind": "notes"}, [rel]):
+            try:
+                page_notes.app_save(v, rel, file,
+                                    lambda old: replace_notes_body(old, text, _NOTES_PLACEHOLDER[top]))
+            except FileNotFoundError:
+                raise RpcError("That note doesn't exist.", code="not_found") from None
+            except RuntimeError:
+                raise RpcError("Claude is changing this page. Your notes will be saved when it "
+                               "has finished.", code="busy") from None
+        return {"ok": True}
     with notes_write_lock(v, rel), history.recording(v, {"kind": "notes"}, [rel]):
         old = vaultio.read_text(file)
         new = replace_notes_body(old, text, _NOTES_PLACEHOLDER[top])

@@ -388,3 +388,33 @@ def test_app_lists_the_pair_resolves_it_as_not_the_same_and_shows_the_log(tmp_pa
     assert acme_entry["undo_available"] is (acme_entry["undo_reason"] is None)
     assert acme_entry["undone"] is None
     json.dumps(log)
+
+
+def test_a_disputed_fact_reaches_the_same_name_comparison_labelled(tmp_path, monkeypatch):
+    """I15: the same-name pair the model weighs shows a Disputed fact with the label synthesis and
+    the contradiction check use, and never drops it."""
+    from watchdog.pipeline import verification
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")],
+           facts=[("John Smith applied for a permit.", ["john-smith"]),
+                  ("John Smith lives on Harbour Road.", ["john-smith"])])
+    _commit(vault, ["sha-a"])
+    facts = verification.document_facts(vault, "sha-a")
+    ids = verification.fact_ids("sha-a", facts)
+    disputed = next(i for i, f in zip(ids, facts) if "Harbour Road" in f["fact"])
+    verification.mark(vault, disputed, "disputed")
+
+    _stage(vault, tmp_path, "sha-b", [_person("john-smith", "John Smith")],
+           facts=[("John Smith spoke against the permit.", ["john-smith"])])
+    seen = []
+    _fake_model(monkeypatch, False, seen)
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    prompt = next(p for t, p in seen if t == "reconcile")
+    pairs = json.loads(prompt[prompt.rindex("CANDIDATE PAIRS (possible"):]
+                       .split("\n\nENTITIES (each", 1)[0].split("\n", 1)[1])
+    pair = next(p for p in pairs if p.get("same_name"))
+    side = next(s for s in (pair["a"], pair["b"]) if s["id"] == "john-smith")
+    by_text = {f["fact"]: f for f in side["facts"]}
+    assert by_text["John Smith lives on Harbour Road."]["flags"] == ["disputed by the reporter"]
+    assert "flags" not in by_text["John Smith applied for a permit."]

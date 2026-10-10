@@ -198,6 +198,34 @@ def retire_hot_md_hook(settings: dict) -> bool:
     return changed
 
 
+# The vault's hooks around a session's file edits (D296): before a Write/Edit/MultiEdit, the
+# reporter's Notes on a saved page are put aside; after it, put back if the edit dropped them.
+PAGE_NOTES_MATCHER = "Write|Edit|MultiEdit"
+PAGE_NOTES_HOOKS = {"PreToolUse": "watchdog page-notes pre", "PostToolUse": "watchdog page-notes post"}
+
+
+def ensure_page_notes_hooks(settings: dict) -> bool:
+    """Add the saved-page Notes hooks to a settings dict when missing. Returns True when anything
+    changed. Other hooks are left alone."""
+    if not isinstance(settings, dict):
+        return False
+    hooks = settings.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        return False
+    changed = False
+    for event, command in PAGE_NOTES_HOOKS.items():
+        groups = hooks.setdefault(event, [])
+        if not isinstance(groups, list):
+            continue
+        present = any(isinstance(h, dict) and h.get("command") == command
+                      for g in groups if isinstance(g, dict) for h in (g.get("hooks") or []))
+        if not present:
+            groups.append({"matcher": PAGE_NOTES_MATCHER,
+                           "hooks": [{"type": "command", "command": command}]})
+            changed = True
+    return changed
+
+
 def _rewrite_settings(vault: Path) -> bool:
     import json
     path = vault / ".claude" / "settings.json"
@@ -207,6 +235,10 @@ def _rewrite_settings(vault: Path) -> bool:
         settings = json.loads(path.read_text(encoding="utf-8"))
         perms = settings.get("permissions")
         changed = retire_hot_md_hook(settings)
+        # Hooks are added only to a file whose shape Watchdog recognises (refresh-skills' rule).
+        if isinstance(perms, dict) and all(isinstance(perms.get(k, []), (list, str))
+                                           for k in ("allow", "deny", "ask")):
+            changed = ensure_page_notes_hooks(settings) or changed
         for key in ("allow", "deny", "ask"):
             rules = perms.get(key) if isinstance(perms, dict) else None
             if isinstance(rules, list):
@@ -229,7 +261,7 @@ def migrate_folder_names(vault: Path) -> list[str]:
     """Rename a pre-D266 vault's `_INCOMING/` (and its `_FAILED`/`_SKIPPED`) and `_CONTEXT/` to
     their current names, and rewrite any permission rules in `.claude/settings.json` that name
     them, and rename its working files (D276), and point a session hook that printed `hot.md` at
-    the session primer (D285). Idempotent; never deletes a document or note. When
+    the session primer (D285), and add the saved-page Notes hooks (D296). Idempotent; never deletes a document or note. When
     both an old and a new folder exist, the old one's contents are moved into the new one (a
     clashing file is renamed with a `-migrated` suffix).
     Returns a description of each change made (empty when there was nothing to do)."""

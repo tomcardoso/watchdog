@@ -1,20 +1,27 @@
-// Usage: what each processing run cost, with a per-stage breakdown. Bars are drawn with plain CSS.
+// Usage: what each processing run and each Ask Claude or Web research session cost, with a
+// per-stage breakdown. Bars are drawn with plain CSS.
 
 import { BadgeInfo, Coins, Wallet } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Badge, Callout, Empty, ErrorNote, Skeleton, Stat, cx } from '@renderer/components/ui'
 import { useRpc } from '@renderer/lib/rpc'
 import { fmtCost, fmtDateTime, fmtDuration, fmtNum, fmtTokens, plural } from '@renderer/lib/format'
-import type { KeyCost } from '@shared/api'
+import type { KeyCost, UsageKind } from '@shared/api'
 import { useApp } from '@renderer/lib/store'
 
 const STAGE_COLOR: Record<string, string> = {
   classifier: 'var(--info)',
   extractor: 'var(--accent)',
   verifier: 'var(--organization)',
-  finalizer: 'var(--public-body)'
+  finalizer: 'var(--public-body)',
+  ask: 'var(--person)',
+  research: 'var(--place)'
 }
 const stageColor = (s: string) => STAGE_COLOR[s] ?? 'var(--text-3)'
+// Stage names as a reader sees them; the pipeline's stages keep their own (capitalised) names.
+const STAGE_LABEL: Record<string, string> = { ask: 'Ask Claude', research: 'Web research' }
+const stageLabel = (s: string) => STAGE_LABEL[s] ?? s.charAt(0).toUpperCase() + s.slice(1)
+const kindLabel = (k: UsageKind | undefined) => (k === 'ask' || k === 'research' ? STAGE_LABEL[k] : 'Processing run')
 const tsLabel = (ts: string) => {
   // 20260809T152301Z or 2026-08-09T15-23-01 — try to make a Date of it, else show as written.
   const m = /^(\d{4})-?(\d{2})-?(\d{2})[T_-]?(\d{2}):?(\d{2}):?(\d{2})/.exec(ts)
@@ -65,11 +72,13 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
   const t = r.totals as Record<string, number>
   const corpus = (r as unknown as { corpus?: { pages: number } | null }).corpus
   const perPage = (r as unknown as { cost_per_page?: number | null }).cost_per_page
+  // A conversation reads no pages, so a cost per page means nothing for it.
+  const session = r.kind === 'ask' || r.kind === 'research'
   return (
     <div className="col" style={{ gap: 14 }}>
       <div className="act-stats">
-        <Stat label="Cost" value={fmtCost(t.cost_usd)} sub={r.subscription_note ? 'at published rates' : perPage ? `${fmtCost(perPage)} a page` : undefined} icon={Coins} />
-        <Stat label="Model calls" value={fmtNum(t.calls)} />
+        <Stat label="Cost" value={fmtCost(t.cost_usd)} sub={r.subscription_note ? 'at published rates' : perPage && !session ? `${fmtCost(perPage)} a page` : undefined} icon={Coins} />
+        <Stat label={session ? 'Turns' : 'Model calls'} value={fmtNum(t.calls)} />
         <Stat label="Tokens in" value={fmtTokens(t.input_tokens)} sub={t.cache_read_tokens ? `${fmtTokens(t.cache_read_tokens)} read from cache` : undefined} />
         <Stat label="Tokens out" value={fmtTokens(t.output_tokens)} />
         <Stat
@@ -91,7 +100,7 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
               <th>Stage</th>
               <th>Model</th>
               <th>Backend</th>
-              <th style={{ textAlign: 'right' }}>Calls</th>
+              <th style={{ textAlign: 'right' }}>{session ? 'Turns' : 'Calls'}</th>
               <th style={{ textAlign: 'right' }}>In</th>
               <th style={{ textAlign: 'right' }}>Out</th>
               <th style={{ textAlign: 'right' }}>Cost</th>
@@ -106,7 +115,7 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
                 <tr key={s.stage}>
                   <td>
                     <span className="act-dot" style={{ background: stageColor(s.stage) }} />
-                    <span style={{ textTransform: 'capitalize', fontWeight: 560 }}>{s.stage}</span>
+                    <span style={{ fontWeight: 560 }}>{stageLabel(s.stage)}</span>
                   </td>
                   <td className="mono">{s.model || '—'}</td>
                   <td className="muted">{s.backend || '—'}</td>
@@ -154,21 +163,21 @@ export default function UsagePanel() {
   if (!runs.length)
     return (
       <Empty icon={Coins} title="No runs recorded yet">
-        After documents are extracted, each run’s model calls, tokens and cost are listed here. Nothing is recorded for the local steps, which cost nothing.
+        After documents are processed, each run’s model calls, tokens and cost are listed here, and so is each Ask Claude or Web research session. Nothing is recorded for the local steps, which cost nothing.
       </Empty>
     )
   const present = [...new Set(runs.flatMap((r) => stageCosts(r.stages).map(([k]) => k)))]
   return (
     <div className="col" style={{ gap: 18 }}>
-      <ByKey rows={sumByKey(runs)} title="All runs, by key" />
+      <ByKey rows={sumByKey(runs)} title="All runs and sessions, by key" />
       <div className="card act-runs">
         <div className="act-runs-head">
-          <div className="card-title">Runs</div>
+          <div className="card-title">Runs and sessions</div>
           <div className="act-legend">
             {present.map((s) => (
               <span key={s}>
                 <span className="act-dot" style={{ background: stageColor(s) }} />
-                {s}
+                {stageLabel(s)}
               </span>
             ))}
           </div>
@@ -180,7 +189,9 @@ export default function UsagePanel() {
             <button key={r.ts} className={cx('act-run', sel === r.ts && 'on')} onClick={() => setSel(r.ts)}>
               <div className="act-run-when">
                 <div>{tsLabel(r.ts)}</div>
-                <div className="faint" style={{ fontSize: 'var(--fs-xs)' }}>{r.backends || '—'}</div>
+                <div className="faint" style={{ fontSize: 'var(--fs-xs)' }} title={r.title ?? undefined}>
+                  {r.kind === 'ask' || r.kind === 'research' ? `${kindLabel(r.kind)}${r.title ? ` · ${r.title}` : ''}` : r.backends || '—'}
+                </div>
               </div>
               <div className="act-bar" title={`${fmtTokens(r.input_tokens)} tokens in, ${fmtTokens(r.output_tokens)} out`}>
                 <div className="act-bar-fill" style={{ width: `${Math.max(2, (metric(r) / max) * 100)}%` }}>
@@ -191,7 +202,7 @@ export default function UsagePanel() {
               </div>
               <div className="act-run-nums tnum">
                 <span>{fmtCost(r.cost_usd)}</span>
-                <span className="faint">{fmtNum(r.calls)} calls · {fmtTokens(r.input_tokens)} in · {fmtTokens(r.output_tokens)} out</span>
+                <span className="faint">{r.kind === 'ask' || r.kind === 'research' ? plural(r.calls, 'turn') : `${fmtNum(r.calls)} calls`} · {fmtTokens(r.input_tokens)} in · {fmtTokens(r.output_tokens)} out</span>
               </div>
               {r.subscription ? <Badge tip="Costs are what this would cost at published rates — not billed">Subscription</Badge> : <span />}
             </button>
@@ -202,7 +213,7 @@ export default function UsagePanel() {
         <div className="col" style={{ gap: 10 }}>
           <div className="section-title" style={{ margin: 0 }}>
             <BadgeInfo style={{ width: 16, height: 16, color: 'var(--text-3)' }} />
-            Run of {tsLabel(sel)}
+            {kindLabel(runs.find((r) => r.ts === sel)?.kind)} of {tsLabel(sel)}
           </div>
           <RunDetail vault={project.path} ts={sel} />
         </div>

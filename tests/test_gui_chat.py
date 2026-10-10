@@ -273,3 +273,109 @@ def test_missing_cli_and_not_signed_in_are_clear_errors(env, monkeypatch):
     api.start(str(vault), "ask", prompt="y")
     err = _wait_state(events, states=("error",), count=2)[1]["data"]
     assert "not signed in" in err["detail"]
+
+
+# ── usage (D296) ─────────────────────────────────────────────────────────────────────────────
+
+def _usage_result(cost, tokens_in, tokens_out, session_id="sdk-9", model="claude-sonnet-5-5"):
+    """A result as the bundled Claude Code sends it: cost and per-model tokens are running totals
+    for the session, not this turn's."""
+    return ResultMessage(subtype="success", duration_ms=2500, duration_api_ms=2000, is_error=False,
+                         num_turns=2, session_id=session_id, total_cost_usd=cost,
+                         usage={"input_tokens": 1, "output_tokens": 1},
+                         model_usage={model: {"inputTokens": tokens_in, "outputTokens": tokens_out,
+                                              "cacheReadInputTokens": 0, "cacheCreationInputTokens": 0,
+                                              "webSearchRequests": 0, "costUSD": cost,
+                                              "contextWindow": 200000, "maxOutputTokens": 64000}})
+
+
+def _init(source):
+    from claude_agent_sdk import SystemMessage
+    return SystemMessage(subtype="init", data={"type": "system", "subtype": "init", "apiKeySource": source})
+
+
+def _session_calls(vault):
+    import json
+    files = sorted((vault / ".watchdog" / "registry" / "usage" / "sessions").glob("usage-*.json"))
+    assert len(files) == 1
+    return json.loads(files[0].read_text())
+
+
+def test_each_turn_is_recorded_once_in_the_vaults_usage_and_telemetry(env, monkeypatch):
+    import sqlite3
+    from watchdog import telemetry_db
+    from watchdog.gui.api import usage
+    vault, events = env
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: setattr(s, "key_label", "Work") or {})
+    FakeClient.scripts = [[_init("ANTHROPIC_API_KEY"), _assistant(TextBlock("one")), _usage_result(0.10, 1000, 200)],
+                          [_assistant(TextBlock("two")), _usage_result(0.25, 2500, 450)]]
+    sid = api.start(str(vault), "ask", prompt="who paid?")["session"]
+    _wait_state(events)
+    api.send(sid, "and then?")
+    final = _wait_state(events, count=2)[-1]["data"]
+    assert final["cost_usd"] == pytest.approx(0.25), "the chat's cost is the running total, not a sum of totals"
+
+    data = _session_calls(vault)
+    calls = data["calls"]
+    assert [c["task"] for c in calls] == ["ask", "ask"]
+    assert [c["cost_usd"] for c in calls] == pytest.approx([0.10, 0.15])
+    assert [c["input_tokens"] for c in calls] == [1000, 1500] and [c["output_tokens"] for c in calls] == [200, 250]
+    assert {c["session"] for c in calls} == {sid}
+    assert all(c["key_label"] == "Work" and c["auth_mode"] == "api-key" for c in calls)
+    assert all(c["model"] == "claude-sonnet-5-5" and c["backend"] == "claude-agent-sdk" for c in calls)
+    assert data["totals"]["cost_usd"] == pytest.approx(0.25)
+    assert data["session"] == {"id": sid, "mode": "ask", "task": "ask", "title": "who paid?"}
+
+    with sqlite3.connect(telemetry_db.DB_PATH) as db:
+        rows = db.execute("SELECT task, run_id, cost_usd, key_label FROM calls").fetchall()
+    assert [(r[0], r[1], r[3]) for r in rows] == [("ask", f"session-{sid}", "Work")] * 2
+    assert sum(r[2] for r in rows) == pytest.approx(0.25)
+
+    # The processing-run history is untouched: cost estimates never read a conversation.
+    from watchdog.pipeline.orchestrate import usage_files
+    assert usage_files(vault) == []
+    runs = usage.runs(str(vault))["runs"]
+    assert len(runs) == 1 and runs[0]["kind"] == "ask" and runs[0]["title"] == "who paid?"
+    assert runs[0]["stages"] == {"ask": pytest.approx(0.25)} and runs[0]["calls"] == 2
+    detail = usage.run(str(vault))
+    assert detail["kind"] == "ask" and [s["stage"] for s in detail["stages"]] == ["ask"]
+
+
+def test_a_subscription_session_records_tokens_with_the_cost_marked_not_billed(env, monkeypatch):
+    from watchdog.gui.api import usage
+    vault, events = env
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: setattr(s, "key_label", None) or {})
+    FakeClient.scripts = [[_init("none"), _assistant(TextBlock("found it")), _usage_result(0.40, 5000, 900)]]
+    api.start(str(vault), "research", prompt="shell companies")
+    _wait_state(events)
+    call = _session_calls(vault)["calls"][0]
+    assert (call["task"], call["auth_mode"], call["input_tokens"]) == ("research", "subscription", 5000)
+    assert "key_label" not in call
+    run = usage.run(str(vault))
+    assert run["subscription_note"] and run["stages"][0]["stage"] == "research"
+    assert usage.runs(str(vault))["runs"][0]["subscription"] is True
+
+
+def test_a_resumed_session_continues_from_its_saved_totals(env, monkeypatch):
+    vault, events = env
+    monkeypatch.setattr(chat, "session_auth_env", lambda s: {})
+    FakeClient.scripts = [[_usage_result(0.10, 1000, 100)]]
+    sid = api.start(str(vault), "ask", prompt="first")["session"]
+    _wait_state(events)
+    api.close(sid)
+    api.resume(sid)
+    # The resumed process restored its total: the first result carries the earlier turn too.
+    FakeClient.scripts = [[_usage_result(0.16, 1600, 160)]]
+    api.send(sid, "again")
+    _wait_state(events, count=3)
+    assert [c["cost_usd"] for c in _session_calls(vault)["calls"]] == pytest.approx([0.10, 0.06])
+
+
+def test_a_total_that_starts_again_counts_whole(env, monkeypatch):
+    """A `/clear`, or a resumed session with no saved total, restarts the SDK's running total."""
+    from watchdog.pipeline import session_usage
+    first, prev = session_usage.turn(None, _usage_result(0.30, 3000, 300))
+    again, _ = session_usage.turn(prev, _usage_result(0.05, 400, 40))
+    assert first["cost_usd"] == pytest.approx(0.30)
+    assert again["cost_usd"] == pytest.approx(0.05)
+    assert again["models"]["claude-sonnet-5-5"]["input_tokens"] == 400

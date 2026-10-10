@@ -272,13 +272,15 @@ class Session:
         self.stream_id: str | None = None
         self.cost = 0.0
         self.key_label: str | None = None    # the labelled Anthropic key the session bills (#690)
+        self.auth_mode: str | None = None    # "api-key" or "subscription", from Claude Code's init message
+        self.usage_totals: dict | None = None  # the SDK's running totals at the last result (D296)
         self.closed = False
 
     def record(self) -> dict:
         return {"session": self.id, "vault": str(self.vault), "mode": self.mode, "title": self.title,
                 "started": self.started, "updated": self.updated, "model": self.model,
                 "sdk_session_id": self.sdk_session_id, "cost_usd": self.cost, "key_label": self.key_label,
-                "messages": self.messages}
+                "usage_totals": self.usage_totals, "messages": self.messages}
 
 
 def _check_session_key(vault: Path) -> None:
@@ -387,9 +389,13 @@ class ChatManager:
                 await asyncio.to_thread(_record_session, s.vault)
 
     def _handle(self, s: Session, message) -> None:
-        from claude_agent_sdk import (AssistantMessage, ResultMessage, StreamEvent, TextBlock,
-                                      ToolResultBlock, ToolUseBlock, UserMessage)
-        if isinstance(message, StreamEvent):
+        from claude_agent_sdk import (AssistantMessage, ResultMessage, StreamEvent, SystemMessage,
+                                      TextBlock, ToolResultBlock, ToolUseBlock, UserMessage)
+        if isinstance(message, SystemMessage):
+            if message.subtype == "init" and isinstance(message.data, dict):
+                from watchdog.pipeline import session_usage
+                s.auth_mode = session_usage.auth_mode_from_source(message.data.get("apiKeySource")) or s.auth_mode
+        elif isinstance(message, StreamEvent):
             event = message.event or {}
             delta = event.get("delta") or {}
             if event.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
@@ -419,12 +425,30 @@ class ChatManager:
         elif isinstance(message, ResultMessage):
             if message.session_id:
                 s.sdk_session_id = message.session_id
-            s.cost += message.total_cost_usd or 0.0
+            self._record_usage(s, message)
             if message.is_error:
                 detail = _friendly(message.result or "; ".join(message.errors or []) or "")
                 self.status(s, "error", detail, s.cost)
             else:
                 self.status(s, "idle", None, s.cost)
+
+    def _record_usage(self, s: Session, message) -> None:
+        """Add this turn's share of the SDK's running totals to the chat's cost and record it in
+        the vault's usage files and telemetry as an `ask` or `research` call (D296). The SDK's
+        totals are cumulative across turns, so only the difference is this turn's."""
+        from watchdog.pipeline import session_usage
+        share, s.usage_totals = session_usage.turn(s.usage_totals, message)
+        s.cost += share["cost_usd"]
+        if not share["models"] and not share["cost_usd"] and not message.usage:
+            return
+        auth_mode = s.auth_mode or ("api-key" if s.key_label else "subscription")
+        try:
+            call = session_usage.call_record(share, message, task=session_usage.task_for(s.mode),
+                                             session_id=s.id, model=s.model, auth_mode=auth_mode,
+                                             key_label=s.key_label)
+            session_usage.record(s.vault, session_id=s.id, mode=s.mode, title=s.title, call=call)
+        except Exception:  # noqa: BLE001 — recording usage never breaks a conversation
+            pass
 
     # ── RPC operations ──────────────────────────────────────────────────────────────────
     def start(self, vault: Path, mode: str, model: str | None, prompt: str | None) -> dict:
@@ -508,6 +532,7 @@ class ChatManager:
         s.sdk_session_id = data.get("sdk_session_id")
         s.cost = data.get("cost_usd") or 0.0
         s.key_label = data.get("key_label")
+        s.usage_totals = data.get("usage_totals")
         if not s.sdk_session_id:
             raise RpcError("That chat never started, so it cannot be resumed.", code="bad_params")
         _check_session_key(s.vault)

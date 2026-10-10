@@ -24,8 +24,12 @@ _STAGE = {
     "reconcile": "finalizer", "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
     "timeline-precision": "finalizer", "briefing": "finalizer", "request-dedup": "finalizer",
     "relationship-labels": "finalizer",
+    # A conversation's turns (D296), recorded per session, never inside a processing run.
+    "ask": "ask", "research": "research",
 }
-_STAGE_ORDER = ("classifier", "extractor", "finalizer")
+_STAGE_ORDER = ("classifier", "extractor", "finalizer", "ask", "research")
+# How a stage is named where a person reads it.
+STAGE_LABEL = {"ask": "Ask Claude", "research": "Web research"}
 
 _ZERO_TOTALS = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
                 "cache_write_tokens": 0, "cost_usd": 0.0, "latency_s": 0.0}
@@ -409,7 +413,7 @@ def _analyze_run(usage_file: Path, vault: Path) -> None:
               [s for s in by_stage if s not in _STAGE_ORDER]
     for stage in ordered:
         stage_calls = by_stage[stage]
-        print(f"\n  {stage.upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})"
+        print(f"\n  {STAGE_LABEL.get(stage, stage).upper()}  ({len(stage_calls)} call{'s' if len(stage_calls) != 1 else ''})"
               f"  ·  model: {_stage_models(stage_calls)}"
               f"  ·  backend: {_stage_backends(stage_calls)}")
         if any(c.get("backend") == "local" for c in stage_calls):
@@ -471,61 +475,103 @@ def _analyze_all(vault: Path) -> None:
         calls = _load(f).get("calls", [])
         all_calls.extend(calls)
         rows.append((f.stem, _run_totals(calls), len(calls), _run_backends(calls)))
-    name_w = min(28, max(len(name) for name, _, _, _ in rows))
-    # Backend is the column that explains an otherwise inexplicable cost gap between two runs of
-    # the same model (#475), so it sits next to the run name rather than off the right edge.
-    backend_w = max(max(len(b) for _, _, _, b in rows), len("Backend"))
-
-    hdr = (f"  {'Run':<{name_w}}  {'Backend':<{backend_w}}  {'Calls':>5}  {'Classifier':>10}  "
-           f"{'Extractor':>10}  {'Finalizer':>10}  "
-           f"{'Input':>9}  {'C.read':>9}  {'C.write':>9}  {'Output':>8}  {'Time':>7}  {'Cost':>8}")
-    print()
-    print(hdr)
-    print(f"  {'─' * (len(hdr) - 2)}")
-
     grand = dict(_ZERO_TOTALS, classifier_cost=0.0, extractor_cost=0.0, finalizer_cost=0.0)
     n_calls_total = 0
-    for name, t, n_calls, backends in sorted(rows, key=lambda r: -r[1]["cost_usd"]):
-        trunc = (name[:name_w - 1] + "…") if len(name) > name_w else name
-        print(
-            f"  {trunc:<{name_w}}  {backends:<{backend_w}}  {n_calls:>5}  "
-            f"${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
-            f"${t['finalizer_cost']:>9.4f}  {_fmt(t['input_tokens']):>9}  {_fmt(t['cache_read_tokens']):>9}  "
-            f"{_fmt(t['cache_write_tokens']):>9}  {_fmt(t['output_tokens']):>8}  {_fmt_secs(t['latency_s']):>7}  "
-            f"${t['cost_usd']:>7.4f}"
-        )
-        for k in grand:
-            grand[k] += t[k]
-        n_calls_total += n_calls
+    if rows:
+        name_w = min(28, max(len(name) for name, _, _, _ in rows))
+        # Backend is the column that explains an otherwise inexplicable cost gap between two runs of
+        # the same model (#475), so it sits next to the run name rather than off the right edge.
+        backend_w = max(max(len(b) for _, _, _, b in rows), len("Backend"))
 
-    print(f"  {'─' * (len(hdr) - 2)}")
-    print(
-        f"  {'TOTAL':<{name_w}}  {'':<{backend_w}}  {n_calls_total:>5}  "
-        f"${grand['classifier_cost']:>9.4f}  "
-        f"${grand['extractor_cost']:>9.4f}  ${grand['finalizer_cost']:>9.4f}  "
-        f"{_fmt(grand['input_tokens']):>9}  {_fmt(grand['cache_read_tokens']):>9}  "
-        f"{_fmt(grand['cache_write_tokens']):>9}  {_fmt(grand['output_tokens']):>8}  "
-        f"{_fmt_secs(grand['latency_s']):>7}  ${grand['cost_usd']:>7.4f}"
-    )
-    _print_by_key(all_calls)
-    note = _subscription_note(all_calls)
+        hdr = (f"  {'Run':<{name_w}}  {'Backend':<{backend_w}}  {'Calls':>5}  {'Classifier':>10}  "
+               f"{'Extractor':>10}  {'Finalizer':>10}  "
+               f"{'Input':>9}  {'C.read':>9}  {'C.write':>9}  {'Output':>8}  {'Time':>7}  {'Cost':>8}")
+        print()
+        print(hdr)
+        print(f"  {'─' * (len(hdr) - 2)}")
+
+        for name, t, n_calls, backends in sorted(rows, key=lambda r: -r[1]["cost_usd"]):
+            trunc = (name[:name_w - 1] + "…") if len(name) > name_w else name
+            print(
+                f"  {trunc:<{name_w}}  {backends:<{backend_w}}  {n_calls:>5}  "
+                f"${t['classifier_cost']:>9.4f}  ${t['extractor_cost']:>9.4f}  "
+                f"${t['finalizer_cost']:>9.4f}  {_fmt(t['input_tokens']):>9}  {_fmt(t['cache_read_tokens']):>9}  "
+                f"{_fmt(t['cache_write_tokens']):>9}  {_fmt(t['output_tokens']):>8}  {_fmt_secs(t['latency_s']):>7}  "
+                f"${t['cost_usd']:>7.4f}"
+            )
+            for k in grand:
+                grand[k] += t[k]
+            n_calls_total += n_calls
+
+        print(f"  {'─' * (len(hdr) - 2)}")
+        print(
+            f"  {'TOTAL':<{name_w}}  {'':<{backend_w}}  {n_calls_total:>5}  "
+            f"${grand['classifier_cost']:>9.4f}  "
+            f"${grand['extractor_cost']:>9.4f}  ${grand['finalizer_cost']:>9.4f}  "
+            f"{_fmt(grand['input_tokens']):>9}  {_fmt(grand['cache_read_tokens']):>9}  "
+            f"{_fmt(grand['cache_write_tokens']):>9}  {_fmt(grand['output_tokens']):>8}  "
+            f"{_fmt_secs(grand['latency_s']):>7}  ${grand['cost_usd']:>7.4f}"
+        )
+    session_calls = _print_sessions(vault)
+    if session_calls and rows:
+        print(f"  {'All together':<14} ${grand['cost_usd'] + sum(c.get('cost_usd') or 0.0 for c in session_calls):.4f}")
+    _print_by_key(all_calls + session_calls)
+    note = _subscription_note(all_calls + session_calls)
     if note:
         print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{note}{_RESET}")
     _print_cost_per_page(vault, grand["cost_usd"])
 
 
+def _print_sessions(vault: Path) -> list[dict]:
+    """One line each for Ask Claude and Web research sessions (D296): sessions, turns, tokens and
+    cost, recorded per session rather than in a processing run. Returns their calls."""
+    from watchdog.pipeline import session_usage
+    by_task: dict[str, dict] = {}
+    calls_out: list[dict] = []
+    for f in session_usage.files(vault):
+        try:
+            calls = _read_json(f).get("calls") or []
+        except (OSError, json.JSONDecodeError):
+            continue
+        for c in calls:
+            if not isinstance(c, dict):
+                continue
+            row = by_task.setdefault(c.get("task") or "ask", {"sessions": set(), "turns": 0, "in": 0,
+                                                              "out": 0, "cost": 0.0})
+            row["sessions"].add(f.name)
+            row["turns"] += 1
+            row["in"] += c.get("input_tokens") or 0
+            row["out"] += c.get("output_tokens") or 0
+            row["cost"] += c.get("cost_usd") or 0.0
+            calls_out.append(c)
+    if not by_task:
+        return []
+    print()
+    for task in session_usage.TASKS:
+        row = by_task.get(task)
+        if not row:
+            continue
+        n = len(row["sessions"])
+        print(f"  {STAGE_LABEL[task]:<14} {n} session{'s' if n != 1 else ''}, "
+              f"{row['turns']} turn{'s' if row['turns'] != 1 else ''}  ·  "
+              f"{_fmt(row['in'])} in  ·  {_fmt(row['out'])} out  ·  ${row['cost']:.4f}")
+    return calls_out
+
+
 def cmd_usage(args) -> None:
+    from watchdog.pipeline import session_usage
     _, info, vault = _resolve_vault(args.project)
     files = usage_files(vault)
-    if not files:
+    sessions = session_usage.files(vault)
+    if not files and not sessions:
         sys.exit(f"Error: no ingest runs recorded yet for {info['name']} — run `watchdog dig` first.")
 
-    if args.all:
+    if args.all or not files:
         _analyze_all(vault)
         return
 
     if args.run:
-        matches = [f for f in files if args.run in f.stem]
+        matches = [f for f in files + sessions if args.run in f.stem]
         if not matches:
             sys.exit(f"Error: no run matching '{args.run}' found for {info['name']}")
         if len(matches) > 1:

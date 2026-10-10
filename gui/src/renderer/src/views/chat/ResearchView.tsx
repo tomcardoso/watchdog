@@ -6,6 +6,7 @@ import { useState } from 'react'
 import { Badge, Button, Callout } from '@renderer/components/ui'
 import { errorMessage, useRpc } from '@renderer/lib/rpc'
 import { startJob, waitForJob } from '@renderer/lib/jobs'
+import { investigationName, isElsewhere, switchTo } from '@renderer/lib/investigation'
 import { plural } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import ChatWorkspace, { WorkspaceApi } from './ChatWorkspace'
@@ -23,10 +24,23 @@ function useDownload() {
   const go = async (n: number) => {
     setBusy(true)
     try {
-      const job = await startJob(['research-fetch'], `Download ${plural(n, 'source')}`, 'research-fetch')
+      const vault = useApp.getState().project?.path ?? null
+      const job = await startJob(['research-fetch'], `Download ${plural(n, 'source')}`, 'research-fetch', vault)
       toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked, saved with a provenance note and placed in incoming.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
       void waitForJob(job.id).then((j) => {
-        if (j.state === 'done') toast({ kind: 'success', title: 'Sources are in incoming', body: 'Add them to read and extract them.', action: { label: 'Add them', run: () => useApp.getState().openAdd() } })
+        if (j.state !== 'done') return
+        // The download may finish after the reporter has opened another investigation: say
+        // which one the sources went to, and add them there.
+        const elsewhere = isElsewhere(vault) ? investigationName(vault) : null
+        toast({
+          kind: 'success',
+          title: elsewhere ? `Sources are in ${elsewhere}’s incoming folder` : 'Sources are in incoming',
+          body: elsewhere ? `Switch to ${elsewhere} to add them.` : 'Add them to read and extract them.',
+          action: {
+            label: elsewhere ? `Switch to ${elsewhere} and add them` : 'Add them',
+            run: () => void (elsewhere && vault ? switchTo(vault) : Promise.resolve(true)).then((ok) => ok && useApp.getState().openAdd())
+          }
+        })
       })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the download', body: errorMessage(e) })
