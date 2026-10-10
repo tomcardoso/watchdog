@@ -86,16 +86,16 @@ from watchdog.cmd.setup import (
 from watchdog.cmd import groups
 from watchdog.cmd.ask import cmd_ask
 from watchdog.cmd.auth import cmd_auth
-from watchdog.cmd.export import cmd_export
+from watchdog.ops.export import cmd_export
 from watchdog.cmd.gui import cmd_gui
-from watchdog.cmd.merge_entities import cmd_merge_entities
+from watchdog.ops.merge import cmd_merge_entities
 from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
 from watchdog.cmd.citations import cmd_check_citations
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
 from watchdog.cmd.verify import cmd_verify_fact
 from watchdog.cmd.review import KINDS as _REVIEW_KINDS, cmd_review
-from watchdog.cmd.reindex import cmd_reindex
+from watchdog.ops.reindex import cmd_reindex
 from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
 from watchdog.cmd.usage import cmd_usage
 from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add

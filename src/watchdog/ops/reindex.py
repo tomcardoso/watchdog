@@ -10,7 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from watchdog.appmode import hint as _hint
+from watchdog.ops import current, hint, op, say  # noqa: F401
 from watchdog.cmd.base import _BOLD, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
 from watchdog.pipeline.json_io import _read_json_or
 
@@ -104,13 +104,13 @@ def cmd_reindex(args) -> None:
     if not embed.embedder_available():
         sys.exit("Error: the search tools (fastembed) are not installed, so the search index "
                  "cannot be rebuilt. The existing index has not been changed."
-                 + _hint(" Reinstall Watchdog with its search tools to fix this.",
+                 + hint(" Reinstall Watchdog with its search tools to fix this.",
                          " Reinstalling the app restores them."))
 
-    print()
-    print(f"  {_BOLD}Reindexing{_RESET} {_DIM}— {info['name']}{_RESET}")
-    print(f"  {_DIM}embed_model: {embed._model_name()}{_RESET}")
-    print()
+    say()
+    say(f"  {_BOLD}Reindexing{_RESET} {_DIM}— {info['name']}{_RESET}")
+    say(f"  {_DIM}embed_model: {embed._model_name()}{_RESET}")
+    say()
 
     # A full rebuild replaces the index outright, so a note/passage for a document or entity
     # that no longer exists (e.g. after a future merge-entities) doesn't survive alongside it.
@@ -123,7 +123,7 @@ def cmd_reindex(args) -> None:
         morgue_path = doc.get("morgue_path")
         morgue_md = vault / Path(morgue_path).with_suffix(".md") if morgue_path else None
         if not morgue_md or not morgue_md.exists():
-            print(f"  {_YELLOW}skip{_RESET}  {filename}  {_DIM}(no morgue text on disk){_RESET}")
+            say(f"  {_YELLOW}skip{_RESET}  {filename}  {_DIM}(no morgue text on disk){_RESET}")
             n_skipped += 1
             continue
         pages = _pages_from_morgue_text(morgue_md.read_text(encoding="utf-8"))
@@ -135,7 +135,7 @@ def cmd_reindex(args) -> None:
         fulltext.add_document(vault, filename, sha, pages, morgue_path=morgue_path or "")
         n_docs += 1
         n_passages += count
-        print(f"  {_GREEN}✓{_RESET}  {filename}  {_DIM}{count} passages{_RESET}")
+        say(f"  {_GREEN}✓{_RESET}  {filename}  {_DIM}{count} passages{_RESET}")
 
     n_notes = 0
     for md_path in _note_paths(vault):
@@ -150,9 +150,19 @@ def cmd_reindex(args) -> None:
         note_path = str(md_path.relative_to(vault).with_suffix(""))
         fulltext.add_note(vault, note_path, kind, title, md_path.read_text(encoding="utf-8"))
 
-    print()
+    say()
     skipped_note = f"  {_DIM}({n_skipped} skipped — no morgue text){_RESET}" if n_skipped else ""
-    print(f"  {_GREEN}Reindexed{_RESET}  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} · "
+    say(f"  {_GREEN}Reindexed{_RESET}  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} · "
           f"{_BOLD}{n_passages}{_RESET} passage{'s' if n_passages != 1 else ''} · "
           f"{_BOLD}{n_notes}{_RESET} note{'s' if n_notes != 1 else ''}{skipped_note}")
-    print()
+    say()
+    return {"documents": n_docs, "passages": n_passages, "notes": n_notes, "skipped": n_skipped}
+
+
+@op("reindex", engine="index")
+def reindex(rep, vault: Path) -> dict:
+    """Rebuild the semantic and full-text search indexes from what is on disk. No model call."""
+    from watchdog.ops.ingest import _require_vault
+    _require_vault(vault)
+    from types import SimpleNamespace
+    return cmd_reindex(SimpleNamespace(project=None)) or {}

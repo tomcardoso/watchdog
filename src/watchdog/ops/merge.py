@@ -11,8 +11,7 @@ import sys
 from pathlib import Path
 
 from watchdog.vault_paths import is_vault
-from watchdog import interactive
-from watchdog.appmode import hint as _hint
+from watchdog.ops import current, hint, op, say  # noqa: F401
 from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _YELLOW, _RESET
 from watchdog.pipeline import merge_entities as _merge_entities
 from watchdog.pipeline.json_io import _read_json
@@ -48,24 +47,24 @@ def cmd_merge_entities(args) -> None:
 
     # Show both entities before doing anything irreversible — the surviving one first,
     # then the one about to be folded away and disappear under its own id.
-    print()
-    print(f"  {_BOLD}Keep{_RESET}")
-    print(_entity_preview(keep_id, keep_entry))
-    print(f"  {_YELLOW}Merge away{_RESET}")
-    print(_entity_preview(merge_id, merge_entry))
+    say()
+    say(f"  {_BOLD}Keep{_RESET}")
+    say(_entity_preview(keep_id, keep_entry))
+    say(f"  {_YELLOW}Merge away{_RESET}")
+    say(_entity_preview(merge_id, merge_entry))
     if keep_entry.get("type") != merge_entry.get("type"):
-        print(f"\n  {_YELLOW}Warning:{_RESET} different entity types "
+        say(f"\n  {_YELLOW}Warning:{_RESET} different entity types "
               f"({merge_entry.get('type', '?')} vs {keep_entry.get('type', '?')}) — "
               f"make sure this is really the same entity.")
 
     if not getattr(args, "force", False):
-        answer = interactive.confirm(
+        answer = current().confirm(
             f"\n  Merge {_BOLD}{merge_entry['name']}{_RESET} into "
             f"{_BOLD}{keep_entry['name']}{_RESET}? This cannot be undone.",
             default=False,
         )
         if not answer:
-            print(f"  {_DIM}Cancelled — nothing changed.{_RESET}\n")
+            say(f"  {_DIM}Cancelled — nothing changed.{_RESET}\n")
             return
 
     try:
@@ -74,37 +73,37 @@ def cmd_merge_entities(args) -> None:
         # The registry lock (D258) — on Windows `msvcrt` gives up after ~10s while another
         # watchdog command (usually `bark` committing a batch) holds it.
         sys.exit(f"Error: couldn't write the registry ({e}). "
-                 + _hint("If `watchdog bark` or another watchdog command is running in this vault, "
+                 + hint("If `watchdog bark` or another watchdog command is running in this vault, "
                          "wait for it to finish and retry.",
                          "If a run is in progress on this investigation, wait for it to finish and retry."))
     except ValueError as e:
         sys.exit(f"Error: {e}")
 
-    print()
-    print(
+    say()
+    say(
         f"  {_GREEN}Merged:{_RESET}  {_BOLD}{result['merge_name']}{_RESET}  "
         f"{_DIM}({args.merge_id}){_RESET}  →  {_BOLD}{result['keep_name']}{_RESET}  "
         f"{_DIM}({args.keep_id}){_RESET}"
     )
-    print(
+    say(
         f"  {_DIM}{result['aliases']} aliases · {result['appears_in']} documents · "
         f"{result['roles']} relationships · {result['timeline_events']} timeline events{_RESET}"
     )
     if result["remapped_roles"]:
         n = result["remapped_roles"]
-        print(
+        say(
             f"  {_DIM}{n} relationship{'s' if n != 1 else ''} elsewhere in the vault "
             f"remapped to {args.keep_id}{_RESET}"
         )
-    print(f"  {_CYAN}{result['keep_note_path']}.md{_RESET}")
-    print(_hint(
+    say(f"  {_CYAN}{result['keep_note_path']}.md{_RESET}")
+    say(hint(
         f"  {_YELLOW}Run{_RESET} {_CYAN}watchdog reindex{_RESET} "
         f"{_YELLOW}to drop the merged entity's stale search-index entries.{_RESET}",
         f"  {_YELLOW}Rebuild the search index (Activity → Maintenance) to drop the merged "
         f"entity's stale search-index entries.{_RESET}",
     ))
     if result.get("summary_dropped"):
-        print(_hint(
+        say(hint(
             f"  {_YELLOW}Summary now reflects only the kept entity — run{_RESET} "
             f"{_CYAN}/watchdog-entity {args.keep_id}{_RESET} "
             f"{_YELLOW}in a Claude Code session to re-synthesize it from all sources.{_RESET}",
@@ -112,5 +111,14 @@ def cmd_merge_entities(args) -> None:
         ))
     if result["backup_dir"]:
         rel = result["backup_dir"].relative_to(vault)
-        print(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM}{_hint(' — copy files back to undo', '')}{_RESET}")
-    print()
+        say(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM}{hint(' — copy files back to undo', '')}{_RESET}")
+    say()
+    return {k: (str(v) if isinstance(v, Path) else v) for k, v in result.items()}
+
+
+@op("merge-entities", engine="index")
+def merge_entities(rep, vault: Path, *, keep: str, merge: str) -> dict:
+    """Fold entity `merge` into `keep` (the reporter's merge, I12). The app shows both entities
+    and asks before it starts this."""
+    from types import SimpleNamespace
+    return cmd_merge_entities(SimpleNamespace(keep_id=keep, merge_id=merge, force=True)) or {}

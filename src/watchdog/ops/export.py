@@ -8,6 +8,7 @@ import re
 import sys
 from pathlib import Path
 
+from watchdog.ops import current, hint, op, say  # noqa: F401
 from watchdog.cmd.base import (
     _BOLD,
     _CYAN,
@@ -186,26 +187,39 @@ def cmd_export(args) -> None:
     out = Path(args.output) if args.output else Path(f"{slug}-export")
     out.mkdir(parents=True, exist_ok=True)
 
-    print()
+    say()
     if args.format == "cypher":
         path = _write_cypher(entities, edges, out)
-        print(f"  {_GREEN}Exported:{_RESET} {_BOLD}{len(entities)}{_RESET} nodes, "
+        say(f"  {_GREEN}Exported:{_RESET} {_BOLD}{len(entities)}{_RESET} nodes, "
               f"{_BOLD}{len(edges)}{_RESET} relationships")
-        print(f"  {_CYAN}{path}{_RESET}")
-        print(f"  {_DIM}Load with:  cat {path} | cypher-shell{_RESET}")
+        say(f"  {_CYAN}{path}{_RESET}")
+        say(f"  {_DIM}Load with:  cat {path} | cypher-shell{_RESET}")
     else:
         nodes_csv, rels_csv = _write_csv(entities, edges, out)
-        print(f"  {_GREEN}Exported:{_RESET} {_BOLD}{len(entities)}{_RESET} nodes, "
+        say(f"  {_GREEN}Exported:{_RESET} {_BOLD}{len(entities)}{_RESET} nodes, "
               f"{_BOLD}{len(edges)}{_RESET} relationships")
-        print(f"  {_CYAN}{nodes_csv}{_RESET}")
-        print(f"  {_CYAN}{rels_csv}{_RESET}")
-        print(f"  {_DIM}Import with:  neo4j-admin database import full "
+        say(f"  {_CYAN}{nodes_csv}{_RESET}")
+        say(f"  {_CYAN}{rels_csv}{_RESET}")
+        say(f"  {_DIM}Import with:  neo4j-admin database import full "
               f"--nodes={nodes_csv.name} --relationships={rels_csv.name} <db>{_RESET}")
-        print(f"  {_DIM}Or open nodes.csv / relationships.csv directly in Gephi.{_RESET}")
+        say(f"  {_DIM}Or open nodes.csv / relationships.csv directly in Gephi.{_RESET}")
         facts_csv, n_facts, n_marked = _write_facts_csv(vault, out)
-        print(f"  {_CYAN}{facts_csv}{_RESET}  {_DIM}{n_facts} facts with their source passages; "
+        say(f"  {_CYAN}{facts_csv}{_RESET}  {_DIM}{n_facts} facts with their source passages; "
               f"{n_marked} marked in the verification ledger{_RESET}")
 
     if dangling:
-        print(f"  {_DIM}Skipped {dangling} relationship(s) pointing at unprofiled entities.{_RESET}")
-    print()
+        say(f"  {_DIM}Skipped {dangling} relationship(s) pointing at unprofiled entities.{_RESET}")
+    say()
+
+
+@op("export")
+def export(rep, vault: Path, *, format: str = "csv", output: str | None = None) -> dict:
+    """Export the entity graph as CSV (with the facts) or Cypher, into `output` or a folder
+    beside the investigation's own files."""
+    from types import SimpleNamespace
+    if format not in ("csv", "cypher"):
+        sys.exit("Error: the format is csv or cypher.")
+    from watchdog.ops.ingest import _require_vault
+    _require_vault(vault)
+    cmd_export(SimpleNamespace(project=None, format=format, output=output))
+    return {"format": format, "output": output}

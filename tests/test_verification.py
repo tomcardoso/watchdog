@@ -272,11 +272,11 @@ def test_rpc_mark_errors(rich_vault, wdg_home):
 
 
 def test_export_writes_facts_with_passages_and_marks(rich_vault, wdg_home, monkeypatch, capsys):
-    from watchdog.cmd.export import cmd_export
+    from watchdog.ops.export import cmd_export
     v = str(rich_vault)
     fid = call("vault.document", vault=v, sha=SHA1)["facts"][0]["id"]
     call("verify.mark", vault=v, id=fid, status="verified", note="ok")
-    monkeypatch.setattr("watchdog.cmd.export._resolve_vault", lambda p: ("rich", {"name": "Rich"}, rich_vault))
+    monkeypatch.setattr("watchdog.ops.export._resolve_vault", lambda p: ("rich", {"name": "Rich"}, rich_vault))
     out = rich_vault / "out"
     cmd_export(argparse.Namespace(project=None, output=str(out), format="csv"))
     rows = list(csv.DictReader((out / "facts.csv").open(encoding="utf-8")))

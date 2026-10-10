@@ -190,7 +190,7 @@ def _registry(vault: Path):
 
 def test_reindex_without_search_tools_is_one_sentence_and_changes_nothing(tmp_path, monkeypatch, app):
     from argparse import Namespace
-    from watchdog.cmd import reindex
+    from watchdog.ops import reindex
     from watchdog.pipeline import embed
     vault = tmp_path / "v"
     _registry(vault)
@@ -251,7 +251,9 @@ def test_the_command_line_runs_under_the_app_without_terminal_wording(tmp_path):
 # only a few functions run under the app. Anything outside these lists is CLI-only or writes a
 # file the reader opens (see the report in D-less issue #729) and is not scanned.
 WHOLE_FILES = [
-    "cmd/ingest.py", "cmd/reindex.py", "cmd/merge_entities.py", "cmd/review.py",
+    "ops/ingest.py", "ops/reindex.py", "ops/merge.py", "ops/projects.py", "ops/research.py",
+    "ops/export.py", "ops/maintenance.py", "ops/entities.py", "ops/setup.py", "worker.py",
+    "cmd/review.py",
     "pipeline/orchestrate.py", "pipeline/preprocess_batch.py", "pipeline/ingest_setup.py",
     "pipeline/fulltext.py", "model_client.py",
 ]
@@ -260,7 +262,7 @@ FUNCTIONS = {
                     "_check_vault_locks", "load_projects", "load_config"},
     "cmd/setup.py": {"cmd_unlock"},
     "cmd/research.py": {"_report_deposits"},
-    "cmd/vault.py": {"cmd_register", "cmd_archive", "cmd_new", "cmd_move", "cmd_watch"},
+    "cmd/vault.py": {"cmd_archive"},
 }
 # Strings that legitimately name the terminal even in a scanned file: argparse help, the
 # deprecated-command banners, and wording only a terminal run can reach.
@@ -318,7 +320,8 @@ def _scan(path: Path, funcs: set | None):
             if isinstance(anc, ast.Call) and getattr(anc.func, "attr", "") in (
                     "add_argument", "add_parser", "add_subparsers", "ArgumentParser"):
                 exempt = True
-            if isinstance(anc, ast.If) and "under_app" in ast.dump(anc.test):
+            if isinstance(anc, ast.If) and ("under_app" in ast.dump(anc.test)
+                                            or "attr='app'" in ast.dump(anc.test)):
                 exempt = True
             if isinstance(anc, ast.keyword) and anc.arg in ("help", "description", "epilog"):
                 exempt = True
