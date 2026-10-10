@@ -236,7 +236,7 @@ class JobManager:
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
     def start(self, vault: Path | None, args: list[str], label: str, kind: str | None,
-              argv: list[str] | None = None) -> Job:
+              argv: list[str] | None = None, secrets: bool | None = None) -> Job:
         """`argv` replaces the `python -m watchdog <args>` process, for the one job that runs
         another module (`setup.downloadModel`); `args` still labels the job."""
         require_engine(args)
@@ -244,8 +244,9 @@ class JobManager:
         job = Job(vault, args, label, kind)
         env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "WATCHDOG_APP": "1",
                "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
-        # `argv` runs another module, which reads no keys.
-        keys = _secrets(vault) if argv is None else {}
+        # A `watchdog` command reads its keys; another module (`argv`) only when it says it calls a
+        # model (`secrets=True`, as the contradiction re-check does) and reads them itself.
+        keys = _secrets(vault) if (argv is None if secrets is None else secrets) else {}
         if keys:
             env["WATCHDOG_SECRETS"] = "stdin"
         popen_kwargs: dict = {}

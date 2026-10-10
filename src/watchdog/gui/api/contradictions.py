@@ -99,5 +99,5 @@ def start(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
         names = [(reg.get(i) or {}).get("name") or i for i in wanted]
         label = "Re-check contradictions: " + ", ".join(names[:2]) + (
             f" and {len(names) - 2} more" if len(names) > 2 else "")
-    job = jobs.MANAGER.start(v, [KIND, *(wanted or ["--all"])], label, KIND, argv=argv)
+    job = jobs.MANAGER.start(v, [KIND, *(wanted or ["--all"])], label, KIND, argv=argv, secrets=True)
     return job.to_dict()
