@@ -242,6 +242,25 @@ test('every screen renders against the demo investigation', async () => {
     await page.getByRole('button', { name: 'Search the extracted text instead' }).click()
     await expect(page.getByPlaceholder('Search the extracted text')).toHaveValue('no such words anywhere')
 
+    // Review at a small window: every queue tab and every tool is on screen, none scrolled out of
+    // sight sideways.
+    await page.setViewportSize({ width: 1000, height: 700 })
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'review' }))
+    await expect(page.getByRole('tab').first()).toBeVisible({ timeout: 10_000 })
+    const offscreen = await page.evaluate(() => {
+      const out: string[] = []
+      const main = document.querySelector('.page')!.getBoundingClientRect()
+      document.querySelectorAll('.rv [role="tab"], .rv-tools button').forEach((el) => {
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 || r.left < main.left || r.right > main.right) out.push(el.textContent ?? '')
+      })
+      return out
+    })
+    expect(offscreen, 'Review tabs out of view at 1000 px').toEqual([])
+    expect(await page.getByRole('tab').count()).toBe(6)
+    await page.locator('.rv-tools').getByRole('button', { name: 'Watch list' }).click()
+    await expect(page.getByRole('button', { name: 'Save watch list' })).toBeVisible({ timeout: 10_000 })
+
     expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {

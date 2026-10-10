@@ -96,9 +96,11 @@ export function Segmented<T extends string>({ value, onChange, options }: { valu
 }
 
 // ── Tabs ─────────────────────────────────────────────────────────────────────
-export function Tabs<T extends string>({ value, onChange, tabs, style }: { value: T; onChange: (v: T) => void; tabs: { value: T; label: ReactNode; icon?: LucideIcon; count?: number }[]; style?: CSSProperties }) {
+// `wrap` lets a long row of tabs break onto a second line instead of scrolling sideways out of
+// sight. `value` may name no tab (a view reached another way), and then none is selected.
+export function Tabs<T extends string>({ value, onChange, tabs, style, wrap }: { value: T; onChange: (v: T) => void; tabs: { value: T; label: ReactNode; icon?: LucideIcon; count?: number }[]; style?: CSSProperties; wrap?: boolean }) {
   return (
-    <div className="tabs" role="tablist" style={style}>
+    <div className={cx('tabs', wrap && 'tabs-wrap')} role="tablist" style={style}>
       {tabs.map((t) => (
         <button key={t.value} role="tab" className="tab" aria-selected={t.value === value} onClick={() => onChange(t.value)}>
           {t.icon && <t.icon />}

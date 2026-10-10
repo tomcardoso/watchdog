@@ -19,7 +19,7 @@ Watchdog does not need to be doing anything else while you work. If you would ra
 
 **Review** is where everything Watchdog flagged for a person waits. It has one tab for each kind of item, with a count on each, plus a tab for what you have already handled and one for your watch list. Open items move through the same few steps: read the item, open its note if you need more detail, then mark it handled, or keep it open and move on.
 
-Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. The **Handled** tab lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
+Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. **Handled**, at the top right of Review, lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
 
 ### Contradictions
 
@@ -82,7 +82,7 @@ When you have the document in hand, or decide not to pursue it, mark the request
 
 ### The watch list
 
-The **Watch list** tab is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
+**Watch list**, at the top right of Review, is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
 
 The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Watch-list hits** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
 
@@ -92,7 +92,7 @@ Because the automatic scan only sees new documents, a term added after documents
 
 ### Handled items and the briefing files
 
-Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** on the **Handled** tab to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
+Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** under **Handled** to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
 
 ## Checking facts
 

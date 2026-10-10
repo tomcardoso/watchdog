@@ -488,6 +488,9 @@
   border-bottom: 1px solid var(--border);
   margin-bottom: 18px;
 }
+.tabs-wrap {
+  flex-wrap: wrap;
+}
 .tab {
   position: relative;
   display: inline-flex;
@@ -501,6 +504,8 @@
   font-weight: 560;
   cursor: pointer;
   border-radius: var(--r-sm) var(--r-sm) 0 0;
+  white-space: nowrap;
+  flex: none;
 }
 .tab svg {
   width: 15px;

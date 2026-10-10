@@ -197,7 +197,7 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             <>
               {hasChecks && (
                 <div className="bf-check-note">
-                  Checkboxes here are display only. Mark items handled in <button className="srch-link" onClick={() => navigate({ view: 'review' })}>Review</button>, or tick them in the file and sync from the Handled tab.
+                  Checkboxes here are display only. Mark items handled in <button className="srch-link" onClick={() => navigate({ view: 'review' })}>Review</button>, or tick them in the file and sync them from Review → Handled.
                 </div>
               )}
               <Markdown text={body} />
