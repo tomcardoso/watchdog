@@ -80,12 +80,8 @@ def test_resolved_lists_what_was_handled_newest_first(rich_vault):
     assert {i["kind"] for i in items} == {"alerts", "leads", "requests"}
 
 
-def test_sync_imports_ticked_boxes_from_the_briefings(rich_vault):
-    briefing = rich_vault / "briefings" / "2026-03-01-10-30.md"
-    briefing.write_text(briefing.read_text().replace("- [ ] Check", "- [x] Check"))
-    assert call("review.sync", vault=V(rich_vault)) == {"resolved": [GHOST], "unresolved": []}
-    briefing.write_text(briefing.read_text().replace("- [x] Check", "- [ ] Check"))
-    assert call("review.sync", vault=V(rich_vault)) == {"resolved": [], "unresolved": [GHOST]}
+def test_the_app_has_no_checkbox_import(rich_vault):
+    assert call_error("review.sync", vault=V(rich_vault))["code"] == "unknown_method"
 
 
 def test_rid_validation(rich_vault):
@@ -107,9 +103,26 @@ def test_leads_is_the_full_sweep(rich_vault):
 
 def test_watchlist(rich_vault):
     r = call("review.watchlist", vault=V(rich_vault))
-    assert r["terms"] == ["Ghost Ltd", "/Roe,?\\s+Bob/"] and r["text"].startswith("# Watch list")
+    assert [(t["term"], t["regex"]) for t in r["terms"]] == [("Ghost Ltd", False), ("/Roe,?\\s+Bob/", True)]
+    assert r["terms"][0]["hits"] == 1 and r["terms"][1]["hits"] == 0
     (rich_vault / "watchlist.md").unlink()
-    assert call("review.watchlist", vault=V(rich_vault)) == {"terms": [], "text": ""}
+    assert call("review.watchlist", vault=V(rich_vault)) == {"terms": []}
+
+
+def test_watchlist_add_and_remove_keep_comments_and_record_history(rich_vault):
+    from watchdog.pipeline import history
+    path = rich_vault / "watchlist.md"
+    before = path.read_text()
+    assert call("review.watchlistAdd", vault=V(rich_vault), term="  Harbour Point  ") == {"added": "Harbour Point"}
+    assert path.read_text() == before.rstrip("\n") + "\nHarbour Point\n"
+    assert path.read_text().startswith("# Watch list")
+    for bad in ("", "   ", "harbour point", "ghost ltd", "# note", "/(/", "two\nlines"):
+        assert call_error("review.watchlistAdd", vault=V(rich_vault), term=bad)["code"] == "bad_params"
+    assert call("review.watchlistRemove", vault=V(rich_vault), term="HARBOUR POINT") == {"removed": "HARBOUR POINT"}
+    assert path.read_text() == before.rstrip("\n") + "\n"
+    assert call_error("review.watchlistRemove", vault=V(rich_vault), term="nobody")["code"] == "not_found"
+    assert [t["term"] for t in call("review.watchlist", vault=V(rich_vault))["terms"]] == ["Ghost Ltd", "/Roe,?\\s+Bob/"]
+    assert len(history.file_history(rich_vault, "watchlist.md")["versions"]) >= 2
 
 
 def test_merge_preview(rich_vault):

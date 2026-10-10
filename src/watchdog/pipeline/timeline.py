@@ -287,7 +287,7 @@ def apply_precision_matches(vault: Path, group: dict, matches: list[dict]) -> in
 _TIMELINE_HEADER = (
     "# Timeline\n\n"
     "*Auto-generated from `.watchdog/timeline/`. Do not edit by hand — this file is "
-    "overwritten on the next ingest or `watchdog timeline`.*\n\n"
+    "overwritten the next time documents are added.*\n\n"
 )
 
 

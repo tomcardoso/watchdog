@@ -12,7 +12,7 @@ Ledger at ``.watchdog/registry/requests.json``::
     }}}
 
 Entries are keyed on the normalized ``what`` text, so identical wording converges; paraphrases
-are folded by the finalize-time dedup call. Resolution is manual (a ticked box or
+are folded by the finalize-time dedup call. Resolution is manual (in the app's Review, or
 ``watchdog resolve``). ``write_requests`` renders open entries to ``requests.md``."""
 
 import datetime
@@ -147,13 +147,12 @@ def _format(open_: list[dict]) -> str:
     lines = [
         "# Documents to request\n",
         "*Regenerated on each ingest — lists only what is still outstanding.*\n",
-        "*Tick a box and run `watchdog review resolve --sync` (or `watchdog review resolve <id>`) once you "
-        "have the document.*\n",
+        "*Handled in Watchdog: Review → Requests. This file is a read-only summary.*\n",
     ]
     for dtype in sorted(by_type):
         lines.append(f"\n## {dtype}\n")
         for r in by_type[dtype]:
-            lines.append(f"- [ ] **{r['what']}** <!--wid:{r['rid']}-->")
+            lines.append(f"- **{r['what']}** <!--wid:{r['rid']}-->")
             if r.get("why_it_matters"):
                 lines.append(f"  - Why: {r['why_it_matters']}")
             if r.get("likely_source"):

@@ -174,7 +174,9 @@ def test_write_requests_renders_groups_and_checkbox_markers(tmp_path):
     body = (vault / "requests.md").read_text(encoding="utf-8")
     assert "## Hearing transcript" in body and "## Regulation" in body
     rid = resolutions.request_id("Hearing transcript, 14 March 2024")
-    assert f"- [ ] **Hearing transcript, 14 March 2024** <!--wid:{rid}-->" in body
+    assert f"- **Hearing transcript, 14 March 2024** <!--wid:{rid}-->" in body
+    assert "[ ]" not in body and "watchdog review" not in body
+    assert "Handled in Watchdog: Review → Requests" in body
     assert "  - Why: The order relies on testimony" in body
     assert "  - Likely source: Court registry" in body
     assert "  - Referenced in [[documents/order|order.pdf]]" in body
@@ -203,15 +205,16 @@ def test_write_requests_removes_the_file_once_everything_is_resolved(tmp_path):
 
 # ── Checkbox sync from the vault-root requests.md ───────────────────────────────
 
-def test_sync_picks_up_a_ticked_request_checkbox(tmp_path):
+def test_sync_picks_up_a_ticked_request_checkbox_in_an_older_file(tmp_path):
     vault = _vault(tmp_path)
     _record(vault, [_req()])
     requests.write_requests(vault)
     rid = resolutions.request_id(_req()["what"])
 
     # The journalist obtained the transcript and ticked the box.
+    # An older requests.md, written with boxes.
     md = vault / "requests.md"
-    md.write_text(md.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
+    md.write_text(f"- [x] **x** <!--wid:{rid}-->\n", encoding="utf-8")
     added, removed = resolutions.sync_from_briefings(vault)
 
     assert added == [rid]

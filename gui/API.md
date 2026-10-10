@@ -367,12 +367,13 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | Method | Params | Result |
 |---|---|---|
 | `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `cmd/review.open_items` |
-| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")` + `tick_in_briefings`, exactly as the terminal walk does |
+| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")` + `tick_in_briefings` (a no-op on reports without boxes), as the terminal walk does |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — what `review resolve --list` shows |
-| `review.sync` | `{vault}` | `{resolved: string[], unresolved: string[]}` — `resolutions.sync_from_briefings` |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
-| `review.watchlist` | `{vault}` | `{terms: string[], text}` |
+| `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watch-list-hit items for the term |
+| `review.watchlistAdd` | `{vault, term}` | `{added}` — refuses a blank, multi-line, `#`-leading, invalid `/regex/` or duplicate term (`bad_params`); appends to `watchlist.md` (what `watchdog watchlist-add` does), recorded as a version of the file's history |
+| `review.watchlistRemove` | `{vault, term}` | `{removed}` — drops the matching line only, keeping comments and other terms; `not_found` if absent; recorded in history |
 | `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |
 | `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
 

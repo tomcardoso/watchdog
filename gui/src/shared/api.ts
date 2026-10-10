@@ -538,7 +538,7 @@ export interface EverywhereResult {
 // ── review ───────────────────────────────────────────────────────────────────
 export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
 export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
-export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair }
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string }
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
@@ -776,9 +776,10 @@ export interface Methods {
   'review.resolve': [{ vault: string; rids: string[] }, { resolved: string[] }]
   'review.unresolve': [{ vault: string; rids: string[] }, { unresolved: string[] }]
   'review.resolved': [{ vault: string }, { items: { rid: string; label: string; resolved_at: string; kind: string }[] }]
-  'review.sync': [{ vault: string }, { resolved: string[]; unresolved: string[] }]
   'review.leads': [{ vault: string }, Record<string, unknown>]
-  'review.watchlist': [{ vault: string }, { terms: string[]; text: string }]
+  'review.watchlist': [{ vault: string }, { terms: { term: string; regex: boolean; hits: number }[] }]
+  'review.watchlistAdd': [{ vault: string; term: string }, { added: string | null }]
+  'review.watchlistRemove': [{ vault: string; term: string }, { removed: string }]
   'review.mergeLog': [{ vault: string; limit?: number }, { merges: MergeLogEntry[]; total: number; too_new: boolean; undo_available: boolean }]
   'review.mergePreview': [{ vault: string; keep: string; merge: string }, { keep: EntityRow; merge: EntityRow; both_have_summary: boolean; type_mismatch?: boolean }]
 

@@ -201,12 +201,12 @@ def test_resolved_term_drops_from_scan(tmp_path):
     assert {h["term"] for h in hits} == {"Beta"}
 
 
-def test_format_run_renders_checkbox_with_wid(tmp_path):
+def test_format_run_renders_plain_items_with_wid(tmp_path):
     import datetime
     vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
     hits = watchlist.scan(vault, _results())
     run = watchlist._format_run(hits, datetime.datetime(2025, 1, 1))
-    assert "- [ ] **" in run
+    assert "- **" in run and "[ ]" not in run
     assert "<!--wid:alert:abc123:" in run
 
 
@@ -387,3 +387,37 @@ def test_cmd_watchlist_add_all_duplicates_reports_zero_added(tmp_path, monkeypat
 
     out = json.loads(capsys.readouterr().out)
     assert out == {"added": [], "skipped": 1}
+
+
+# ── editing (the app's editor, D294) ─────────────────────────────────────────
+
+def test_remove_term_keeps_comments_blank_lines_and_other_terms(tmp_path):
+    (tmp_path / "watchlist.md").write_text("# My list\n\nAcme\n  acme corp \n/Roe\\s+Bob/\n", encoding="utf-8")
+    assert watchlist.remove_term(tmp_path, "ACME CORP") is True
+    assert (tmp_path / "watchlist.md").read_text(encoding="utf-8") == "# My list\n\nAcme\n/Roe\\s+Bob/\n"
+    assert watchlist.remove_term(tmp_path, "# My list") is False        # a comment is not a term
+    assert watchlist.remove_term(tmp_path, "nobody") is False
+
+
+def test_check_term_round_trip_with_add_terms(tmp_path):
+    (tmp_path / "watchlist.md").write_text("# header\nAcme\n", encoding="utf-8")
+    for bad in ("", "acme", "# x", "/(/"):
+        try:
+            watchlist.check_term(tmp_path, bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)
+    assert watchlist.add_terms(tmp_path, [watchlist.check_term(tmp_path, " Beta Co ")]) == ["Beta Co"]
+    assert watchlist.remove_term(tmp_path, "Beta Co")
+    assert (tmp_path / "watchlist.md").read_text(encoding="utf-8") == "# header\nAcme\n"
+
+
+def test_review_reads_alerts_written_without_checkboxes(tmp_path):
+    from watchdog.cmd.review import open_items
+    vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
+    hits = watchlist.scan(vault, _results())
+    relpath, _, _ = watchlist.write_alerts(vault, hits)
+    body = (vault / relpath).read_text(encoding="utf-8")
+    assert "[ ]" not in body and "Handled in Watchdog: Review → Watch-list hits" in body
+    items = open_items(vault, ("alerts",))
+    assert len(items) == 1 and items[0]["term"] == "Acme" and items[0]["rid"].startswith("alert:")

@@ -7,7 +7,9 @@ registry-adjacent `resolutions.json` in place, so there's no useful project-name
 ways to acknowledge, all landing in the same store:
 
   * `watchdog resolve <id> …`  — mark one or more resolution ids (printed next to each report item)
-  * `watchdog resolve --sync`  — import `- [x]` checkboxes ticked in the briefing files
+  * `watchdog resolve --sync`  — import `- [x]` checkboxes in the briefing files.
+                               Reports written since D294 carry no checkboxes (items are
+                               handled in the app's Review), so this only reads older files
   * `watchdog resolve --list`  — show what's currently acknowledged
 
 `watchdog unresolve <id> …` removes ids, bringing the items back into the active list."""
@@ -52,7 +54,7 @@ def cmd_resolve(args) -> None:
         added, removed = resolutions.sync_from_briefings(vault)
         print()
         if not added and not removed:
-            print(f"  {_DIM}No checkbox changes to sync from briefings/.{_RESET}\n")
+            print(f"  {_DIM}No checkbox changes to sync. Newer reports have no checkboxes; items are handled with `watchdog review resolve <id>` or in the app.{_RESET}\n")
             return
         if added:
             print(f"  {_GREEN}Resolved{_RESET} {_BOLD}{len(added)}{_RESET} "

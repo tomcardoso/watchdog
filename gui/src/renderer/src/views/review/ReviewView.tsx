@@ -9,17 +9,17 @@ import {
   Check,
   CheckCheck,
   CheckCircle2,
-  ClipboardList,
   FileQuestion,
   GitCompare,
   GitMerge,
   Lightbulb,
   MessageCircle,
   RefreshCw,
-  Save,
+  Plus,
   ScanSearch,
   ShieldCheck,
   Swords,
+  Trash2,
   Undo2,
   Zap
 } from 'lucide-react'
@@ -149,6 +149,7 @@ export default function ReviewView() {
   const vault = useVault()
   const route = useApp((s) => s.route)
   const routeKind = route.view === 'review' ? route.kind : undefined
+  const termFilter = route.view === 'review' && route.kind === 'alerts' ? route.filter : undefined
   const triage = useTriage(vault)
 
   const items = useRpc('review.items', vault ? { vault } : null, { staleTime: 5_000 })
@@ -225,6 +226,17 @@ export default function ReviewView() {
         ) : tab === 'watchlist' ? (
           <WatchlistTab vault={vault} />
         ) : (
+          <>
+            {tab === 'alerts' && termFilter && (
+              <div className="rv-watch-filter">
+                <span>
+                  Showing hits for <code>{termFilter}</code>
+                </span>
+                <Button size="sm" onClick={() => navigate({ view: 'review', kind: 'alerts' }, { replace: true })}>
+                  Show all hits
+                </Button>
+              </div>
+            )}
           <QueueTab
             key={tab}
             kind={tab}
@@ -244,9 +256,10 @@ export default function ReviewView() {
                     note: null,
                     request: r
                   }))
-                : (items.data?.items ?? []).filter((i) => i.kind === tab)
+                : (items.data?.items ?? []).filter((i) => i.kind === tab && (tab !== 'alerts' || !termFilter || i.term === termFilter))
             }
           />
+          </>
         )}
       </div>
     </div>
@@ -687,7 +700,6 @@ function PairDoc({ label, doc, fallback }: { label: string; doc?: DocumentRow; f
 function HandledTab({ vault }: { vault: string }) {
   const q = useRpc('review.resolved', vault ? { vault } : null)
   const [busy, setBusy] = useState<string | null>(null)
-  const [syncing, setSyncing] = useState(false)
 
   const bringBack = async (rid: string) => {
     setBusy(rid)
@@ -701,23 +713,6 @@ function HandledTab({ vault }: { vault: string }) {
       setBusy(null)
     }
   }
-  const sync = async () => {
-    setSyncing(true)
-    try {
-      const r = await call('review.sync', { vault })
-      invalidate('review.', 'vault.summary', 'vault.requests', 'vault.entity')
-      toast({
-        kind: 'success',
-        title: r.resolved.length || r.unresolved.length ? 'Briefings synced' : 'Already in step',
-        body: r.resolved.length || r.unresolved.length ? `${plural(r.resolved.length, 'item')} marked handled, ${plural(r.unresolved.length, 'item')} brought back.` : 'No ticked or cleared checkboxes differed from what is recorded.'
-      })
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not sync', body: errorMessage(e) })
-    } finally {
-      setSyncing(false)
-    }
-  }
-
   const groups = useMemo(() => {
     const g = new Map<string, NonNullable<typeof q.data>['items']>()
     q.data?.items.forEach((i) => g.set(i.kind, [...(g.get(i.kind) ?? []), i]))
@@ -729,15 +724,6 @@ function HandledTab({ vault }: { vault: string }) {
       <div className="rv-blurb">
         <CheckCheck />
         <p>Everything you have acknowledged, newest first. Bring one back and it returns to its queue and to the next briefing.</p>
-      </div>
-      <div className="rv-toolbar">
-        <span className="faint">
-          Briefings and <code>requests.md</code> contain checkboxes. Ticking one there only counts once you sync.
-        </span>
-        <span className="spacer" />
-        <Button size="sm" icon={ClipboardList} loading={syncing} onClick={() => void sync()}>
-          Sync ticked checkboxes from briefings
-        </Button>
       </div>
       {q.error ? (
         <ErrorNote error={q.error} retry={() => void q.refetch()} />
@@ -777,32 +763,44 @@ function HandledTab({ vault }: { vault: string }) {
 // ── watch list ───────────────────────────────────────────────────────────────────────────────
 function WatchlistTab({ vault }: { vault: string }) {
   const q = useRpc('review.watchlist', vault ? { vault } : null, { staleTime: 0 })
-  const [text, setText] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [problem, setProblem] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
-  const saved = q.data?.text ?? ''
-  const value = text ?? saved
-  const dirty = text !== null && text !== saved
+  const terms = q.data?.terms ?? []
 
-  const terms = useMemo(() => value.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#') && !l.startsWith('<!--')), [value])
-
-  const save = async () => {
-    setSaving(true)
+  const add = async () => {
+    const term = draft.trim()
+    if (!term) return setProblem('Type a name or term to add.')
+    if (terms.some((t) => t.term.toLowerCase() === term.toLowerCase())) return setProblem('That term is already on the list.')
+    setBusy('add')
     try {
-      await call('vault.writeFile', { vault, path: 'watchlist.md', text: value })
-      setText(null)
+      await call('review.watchlistAdd', { vault, term })
+      setDraft('')
+      setProblem(null)
       await q.refetch()
-      toast({ kind: 'success', title: 'Watch list saved', body: `${plural(terms.length, 'term')}. New documents are scanned for them automatically.` })
+      invalidate('history.')
     } catch (e) {
-      toast({ kind: 'error', title: 'Could not save', body: errorMessage(e) })
+      setProblem(errorMessage(e))
     } finally {
-      setSaving(false)
+      setBusy(null)
+    }
+  }
+  const remove = async (term: string) => {
+    setBusy(term)
+    try {
+      await call('review.watchlistRemove', { vault, term })
+      await q.refetch()
+      invalidate('history.')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not remove it', body: errorMessage(e) })
+    } finally {
+      setBusy(null)
     }
   }
   const sweep = async () => {
     setRunning(true)
     try {
-      if (dirty) await save()
       await startJob(['review', 'watchlist'], 'Check every document against the watch list')
       toast({ kind: 'info', title: 'Checking every document', body: 'Hits appear under Watch-list hits when it finishes. Follow progress in Activity.' })
     } catch (e) {
@@ -817,29 +815,63 @@ function WatchlistTab({ vault }: { vault: string }) {
       <div className="rv-blurb">
         <ScanSearch />
         <p>
-          Terms you want flagged whenever they appear in a document: a name, a company, an address, a phrase. One per line, case-insensitive and whole-word. Wrap a line in slashes, like <code>/Acme\s+(Ltd|Inc)/</code>, to use a regular expression, a pattern-matching syntax. An empty list does nothing.
+          Terms you want flagged whenever they appear in a document: a name, a company, an address, a phrase. Matching ignores capitals and respects whole words, so Ana does not match banana. Wrap a term in slashes, like <code>/Acme\s+(Ltd|Inc)/</code>, to use a regular expression, a pattern-matching syntax. Each new batch of documents is scanned automatically.
         </p>
       </div>
+      <form
+        className="rv-watch-add"
+        onSubmit={(e) => {
+          e.preventDefault()
+          void add()
+        }}
+      >
+        <input className="input" aria-label="Add a term" value={draft} placeholder="Add a term, such as a name or company" onChange={(e) => (setDraft(e.target.value), setProblem(null))} spellCheck={false} />
+        <Button type="submit" variant="primary" icon={Plus} loading={busy === 'add'}>
+          Add term
+        </Button>
+      </form>
+      {problem && (
+        <div className="rv-watch-problem" role="alert">
+          {problem}
+        </div>
+      )}
       {q.error ? (
         <ErrorNote error={q.error} retry={() => void q.refetch()} />
       ) : q.isLoading ? (
-        <Skeleton h={260} />
+        <Skeleton h={160} />
+      ) : !terms.length ? (
+        <Empty icon={ScanSearch} title="No terms yet">
+          An empty list scans for nothing. Add a name or company above.
+        </Empty>
       ) : (
-        <>
-          <textarea className="textarea rv-watch" value={value} onChange={(e) => setText(e.target.value)} spellCheck={false} placeholder={'Harbour Point Holdings\nJane Whitcombe\n/14\\s+Quay Street/'} />
-          <div className="rv-toolbar">
-            <span className="faint">{terms.length ? plural(terms.length, 'term') : 'No terms yet'}</span>
-            <span className="spacer" />
-            <HistoryButton vault={vault} path="watchlist.md" size="md" variant="ghost" />
-            <Button icon={Save} variant={dirty ? 'primary' : 'default'} disabled={!dirty} loading={saving} onClick={() => void save()}>
-              Save watch list
-            </Button>
-          </div>
-          <Callout tone="info" title="Check every document now" action={<Button icon={Zap} loading={running} disabled={!terms.length} onClick={() => void sweep()}>Check every document now</Button>}>
-            The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Hits go to Watch-list hits.
-          </Callout>
-        </>
+        <ul className="rv-watch-list" aria-label="Watch list terms">
+          {terms.map((t) => (
+            <li key={t.term} className="rv-watch-row">
+              <span className="rv-watch-term truncate">{t.term}</span>
+              {t.regex && <span className="faint rv-watch-kind">pattern</span>}
+              <span className="spacer" />
+              {t.hits > 0 ? (
+                <button type="button" className="rv-watch-hits" onClick={() => navigate({ view: 'review', kind: 'alerts', filter: t.term })}>
+                  {plural(t.hits, 'open hit')}
+                </button>
+              ) : (
+                <span className="faint">No open hits</span>
+              )}
+              <Button size="sm" variant="ghost" icon={Trash2} loading={busy === t.term} aria-label={`Remove ${t.term}`} onClick={() => void remove(t.term)}>
+                Remove
+              </Button>
+            </li>
+          ))}
+        </ul>
       )}
+      <div className="rv-toolbar">
+        <span className="faint">{terms.length ? plural(terms.length, 'term') : 'No terms yet'}</span>
+        <span className="spacer" />
+        <HistoryButton vault={vault} path="watchlist.md" size="md" variant="ghost" />
+      </div>
+      <Callout tone="info" title="Check every document now" action={<Button icon={Zap} loading={running} disabled={!terms.length} onClick={() => void sweep()}>Check every document now</Button>}>
+        The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Hits go to Watch-list hits.
+      </Callout>
     </div>
   )
 }

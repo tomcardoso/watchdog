@@ -37,7 +37,7 @@ _SAME_WORD = {"person": "person", "organization": "organization", "public-body":
 
 # The link is greedy up to the last `**` before the optional entity/count suffix, so a filename
 # containing `**` stays whole.
-_ALERT_LINE = re.compile(r"^- \[[ xX]\] \*\*(?P<link>.+)\*\*(?P<rest>(?: · known entity .*?)?"
+_ALERT_LINE = re.compile(r"^- (?:\[[ xX]\] )?\*\*(?P<link>.+)\*\*(?P<rest>(?: · known entity .*?)?"
                          r"(?: \(\d+ matches\))?) ?<!--wid:(?P<rid>alert:[^>]+?)-->")
 _ALERT_TERM = re.compile(r"^### `(?P<term>.+)`")
 _WIKILINK = re.compile(r"^\[\[(?P<target>[^|\]]+)(?:\|(?P<text>.+))?\]\]$")   # text may hold `]`
@@ -99,6 +99,7 @@ def _alerts(vault: Path, resolved: frozenset[str]) -> list[dict]:
                 name = (link.group("text") or link.group("target")) if link else m.group("link")
                 title = f"`{term}` in {name}" if term else name
                 current = seen[rid] = _item("alerts", rid, title, [], note)
+                current["term"] = term
             elif current is not None and line.startswith("  - "):
                 current["detail"].append(line[4:])
             elif not line.strip():

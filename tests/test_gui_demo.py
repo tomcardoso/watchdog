@@ -108,7 +108,8 @@ def test_timeline_briefings_and_review_queues(demo_vault):
     assert list((vault / "briefings").glob("alerts-*.md")) and list((vault / "briefings").glob("leads-*.md"))
     documents = _registry(vault, "documents.json")
     assert sum(1 for d in documents.values() if d.get("near_duplicate_of")) == 1
-    assert "[ ]" in (vault / "requests.md").read_text(encoding="utf-8")
+    requests_md = (vault / "requests.md").read_text(encoding="utf-8")
+    assert "[ ]" not in requests_md and "<!--wid:request:" in requests_md
 
 
 def test_pipeline_state_left_for_the_app(demo_vault):

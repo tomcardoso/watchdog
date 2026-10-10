@@ -82,7 +82,7 @@ When you have the document in hand, or decide not to pursue it, mark the request
 
 ### The watch list
 
-**Watch list**, at the top right of Review, is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
+**Watch list**, at the top right of Review, is where you keep terms you want flagged whenever they appear in new documents: a name, a company, an address, a phrase. Type a term under **Add a term** and choose **Add term**. Each term in the list has a **Remove** button and the number of hits still open for it; choose the number to see those hits. A blank term, or one already on the list, is refused. Matching is case-insensitive and whole-word. Wrap a term in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Changes are saved as you make them and kept in the file's **History**.
 
 The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Watch-list hits** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
 
@@ -92,7 +92,7 @@ Because the automatic scan only sees new documents, a term added after documents
 
 ### Handled items and the briefing files
 
-Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** under **Handled** to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
+Handling an item records it in the investigation, and you do that in Review. The lead sweeps, watch-list alerts and `requests.md` are read-only summaries: they list items without checkboxes, each ends with a line saying where to handle them (for example, Review → Leads), and editing them changes nothing. Ask Claude and Obsidian can still read them. A handled item drops out of the next sweep or request list; a past alert report keeps listing what it found at the time.
 
 ## Checking facts
 
