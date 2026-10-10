@@ -379,3 +379,57 @@ def test_a_total_that_starts_again_counts_whole(env, monkeypatch):
     assert first["cost_usd"] == pytest.approx(0.30)
     assert again["cost_usd"] == pytest.approx(0.05)
     assert again["models"]["claude-sonnet-5-5"]["input_tokens"] == 400
+
+
+# ── what a session is given (D299) ────────────────────────────────────────────────────────
+
+def test_a_sessions_options_carry_watchdogs_tools_the_primer_and_no_shell(env):
+    from watchdog import session_tools
+    from watchdog.cmd import primer
+    vault, events = env
+    api.start(str(vault), "ask", prompt="who?")
+    _wait_state(events)
+    opts = FakeClient.instances[0].options
+    assert set(opts.mcp_servers) == {"watchdog"} and opts.mcp_servers["watchdog"]["type"] == "sdk"
+    assert opts.allowed_tools == [f"mcp__watchdog__{t}" for t in session_tools.TOOLS]
+    assert "Bash" in opts.disallowed_tools and opts.sandbox is None
+    assert opts.system_prompt["preset"] == "claude_code"
+    assert opts.system_prompt["append"] == primer.session_text(vault)
+    assert "PATH" not in opts.env                     # no `watchdog` command to find
+    assert {m.matcher for m in opts.hooks["PreToolUse"]} == {"Write|Edit|MultiEdit|NotebookEdit",
+                                                               "Write|Edit|MultiEdit"}
+    assert [m.matcher for m in opts.hooks["PostToolUse"]] == ["Write|Edit|MultiEdit"]
+    assert len(opts.hooks["UserPromptSubmit"]) == 1
+
+
+def test_the_prompt_hook_notes_documents_still_waiting(env):
+    import asyncio
+    vault, _ = env
+    session = chat.Session(vault, "ask", None, "t")
+    hook = chat.build_options(session, None).hooks["UserPromptSubmit"][0].hooks[0]
+    assert asyncio.run(hook({"prompt": "hi"}, None, None)) == {}
+    q = vault / ".watchdog" / "queue"
+    q.mkdir(parents=True)
+    (q / "a.json").write_text("{}")
+    (q / "b.json").write_text("{}")
+    (vault / ".watchdog" / "extracted").mkdir()
+    (vault / ".watchdog" / "extracted" / "b.json").write_text("{}")
+    out = asyncio.run(hook({"prompt": "hi"}, None, None))["hookSpecificOutput"]
+    assert out["hookEventName"] == "UserPromptSubmit"
+    line = out["additionalContext"]
+    assert "1 file(s) waiting for processing" in line
+    assert "1 file(s) processed and waiting for post-processing" in line
+    assert "terminal" not in line and "watchdog dig" not in line
+
+
+def test_the_prompt_hook_never_fails_a_prompt(env, monkeypatch):
+    import asyncio
+    vault, _ = env
+    monkeypatch.setattr(chat, "prompt_status", lambda v: 1 / 0)
+    hook = chat._prompt_status(vault)
+    assert asyncio.run(hook({}, None, None)) == {}
+
+
+def test_a_session_outside_an_investigation_gets_no_primer(env, tmp_path):
+    session = chat.Session(tmp_path, "ask", None, "t")
+    assert "append" not in chat.build_options(session, None).system_prompt
