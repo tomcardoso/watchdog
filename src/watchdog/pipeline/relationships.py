@@ -293,7 +293,7 @@ class View:
     def for_entity(self, eid: str) -> list[dict]:
         """The entity's relationships, one row per counterpart and meaning, with `direction`
         (`out` when the entity is the subject) and `other` (the counterpart's id). Sorted by
-        counterpart name, outgoing first."""
+        counterpart name, outgoing first, best documented first."""
         rows = []
         for (frm, to), group in self.groups().items():
             if eid not in (frm, to):
@@ -307,7 +307,7 @@ class View:
                              "other_type": rec.get("type") or r.get("to_type") or "Unknown",
                              "profiled": other in self.entities})
         rows.sort(key=lambda r: (r["other_name"].casefold(), r["direction"] != "out",
-                                 r["label"].casefold()))
+                                 -len(r["docs"]), r["label"].casefold()))
         return rows
 
     def canonical(self, frm: str, to: str, label: str) -> str:
@@ -433,7 +433,8 @@ def rows_for_entry(entry: dict) -> list[dict]:
             rows.append({**r, "direction": "out" if out else "in", "other": other,
                          "other_name": r.get("to_name") or other,
                          "other_type": r.get("to_type") or "Unknown", "profiled": True})
-    rows.sort(key=lambda r: (r["other_name"].casefold(), r["direction"] != "out", r["label"].casefold()))
+    rows.sort(key=lambda r: (r["other_name"].casefold(), r["direction"] != "out", -len(r["docs"]),
+                             r["label"].casefold()))
     return rows
 
 

@@ -19,8 +19,10 @@ from watchdog.cmd.base import (
 from watchdog.pipeline.json_io import _read_json
 
 
-def _forward_edges(entities: dict) -> tuple[list[dict], int]:
-    """Stated-direction roles only, with both endpoints present in the node set.
+def _forward_edges(entities: dict, canonical=None) -> tuple[list[dict], int]:
+    """Stated-direction roles only, with both endpoints present in the node set. `type` is the
+    canonical label (`canonical(start, end, wording)`, from the relationship view, D291) and
+    `wording` the document's own words; without `canonical` the two are the same.
 
     The registry stores a reverse copy (`is_reverse: true`) of every relationship and may
     reference targets that were never profiled as their own entity. Emitting reverse roles
@@ -35,10 +37,12 @@ def _forward_edges(entities: dict) -> tuple[list[dict], int]:
             if not target or target not in entities:
                 dangling += 1
                 continue
+            wording = role.get("relationship", "")
             edges.append({
                 "start": eid,
                 "end": target,
-                "type": role.get("relationship", ""),
+                "type": canonical(eid, target, wording) if canonical else wording,
+                "wording": wording,
                 "page": role.get("page"),
                 "basis": role.get("basis", "stated"),
                 "date_range": role.get("date_range") or "",
@@ -65,12 +69,14 @@ def _write_csv(entities: dict, edges: list[dict], out: Path) -> tuple[Path, Path
 
     with rels_csv.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow([":START_ID", ":END_ID", ":TYPE", "source_page:int", "basis", "date_range"])
+        w.writerow([":START_ID", ":END_ID", ":TYPE", "wording", "source_page:int", "basis",
+                    "date_range"])
         for e in edges:
             w.writerow([
                 e["start"],
                 e["end"],
                 e["type"],
+                e.get("wording", e["type"]),
                 "" if e["page"] is None else e["page"],
                 e["basis"],
                 e["date_range"],
@@ -143,6 +149,9 @@ def _write_cypher(entities: dict, edges: list[dict], out: Path) -> Path:
         )
     for e in edges:
         rel = _LABEL_RE.sub("_", e["type"]).strip("_").upper() or "RELATED_TO"
+        # The document's wording is part of the MERGE key, so two wordings grouped under one
+        # canonical type stay two relationships, each with its own page.
+        wording = _esc(e.get("wording", e["type"]))
         props = [f"page: {e['page']}"] if e["page"] is not None else []
         props.append(f"basis: '{_esc(e['basis'])}'")
         if e["date_range"]:
@@ -150,7 +159,7 @@ def _write_cypher(entities: dict, edges: list[dict], out: Path) -> Path:
         lines.append(
             f"MATCH (a:`{_NODE_LABEL}` {{id: '{_esc(e['start'])}'}}), "
             f"(b:`{_NODE_LABEL}` {{id: '{_esc(e['end'])}'}}) "
-            f"MERGE (a)-[r:`{rel}`]->(b) SET r += {{{', '.join(props)}}};"
+            f"MERGE (a)-[r:`{rel}` {{wording: '{wording}'}}]->(b) SET r += {{{', '.join(props)}}};"
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
@@ -170,7 +179,9 @@ def cmd_export(args) -> None:
     if not entities:
         sys.exit(f"Error: {info['name']} has no entities to export yet.")
 
-    edges, dangling = _forward_edges(entities)
+    from watchdog.pipeline import relationships
+    view = relationships.View(vault)
+    edges, dangling = _forward_edges(entities, view.canonical)
 
     out = Path(args.output) if args.output else Path(f"{slug}-export")
     out.mkdir(parents=True, exist_ok=True)
