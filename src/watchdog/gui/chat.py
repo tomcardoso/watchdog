@@ -2,8 +2,9 @@
 
 They replace the terminal hand-off of `watchdog ask`, `ask --context` and `research`: the session
 starts in the vault with `setting_sources=["project"]`, so the vault's own `.claude/` settings,
-`CLAUDE.md` and `/watchdog-*` commands apply exactly as they do in a terminal, and the first
-prompt is built the way the CLI builds it.
+`CLAUDE.md` and `/watchdog-*` commands apply, and the first prompt is built the way `watchdog ask`
+built it. Watchdog's own tools come from an in-process MCP server (`watchdog/session_tools.py`),
+its hooks are Python callbacks here, and the session has no shell (D299).
 
 Every session runs on one asyncio event loop in a daemon thread; RPC handlers (which run on a
 thread pool) submit coroutines with `run_coroutine_threadsafe`. Tool permissions are asked of the
@@ -16,11 +17,8 @@ from __future__ import annotations
 
 import asyncio
 import datetime
-import fnmatch
 import json
 import os
-import re
-import sys
 import threading
 import uuid
 from pathlib import Path
@@ -64,14 +62,25 @@ def session_auth_env(session: "Session") -> dict:
 
 
 def build_options(session: "Session", can_use_tool):
-    from claude_agent_sdk import ClaudeAgentOptions
+    from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
+    from watchdog import session_tools
+    from watchdog.cmd.primer import session_text
     from watchdog.model_catalog import resolve_model_id
+    # The primer (D285) goes into the system prompt when the session connects (D299): the Python
+    # SDK has no SessionStart hook, and the system prompt, unlike a hook's output, survives
+    # compaction.
+    system_prompt = {"type": "preset", "preset": "claude_code"}
+    primer = session_text(session.vault)
+    if primer:
+        system_prompt["append"] = primer
     kwargs = dict(cwd=str(session.vault), setting_sources=["project"], include_partial_messages=True,
-                  system_prompt={"type": "preset", "preset": "claude_code"}, can_use_tool=can_use_tool)
-    # The session's `watchdog …` commands (the vault's slash commands call them) must resolve to
-    # the engine this server runs in, and Claude Code must be the copy bundled with the SDK.
-    kwargs["env"] = {"PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
-                     **session_auth_env(session)}
+                  system_prompt=system_prompt, can_use_tool=can_use_tool,
+                  # Watchdog's tools, in this process and bound to this investigation (D299).
+                  mcp_servers={session_tools.SERVER: session_tools.sdk_server(session.vault)},
+                  allowed_tools=[session_tools.tool_name(t) for t in session_tools.TOOLS],
+                  # No shell: everything a session needs is a file tool or a Watchdog tool.
+                  disallowed_tools=list(DISALLOWED_TOOLS))
+    kwargs["env"] = session_auth_env(session)
     from watchdog.gui.engine_setup import bundled_claude_path
     if bundled_claude_path():
         kwargs["cli_path"] = bundled_claude_path()
@@ -79,83 +88,60 @@ def build_options(session: "Session", can_use_tool):
         kwargs["model"] = resolve_model_id(session.model)
     if session.sdk_session_id:
         kwargs["resume"] = session.sdk_session_id
-    from claude_agent_sdk import HookMatcher
-    kwargs["hooks"] = {"PreToolUse": [
-        HookMatcher(matcher="|".join(_EDIT_TOOLS), hooks=[_vault_only_edits(session.vault)]),
-        HookMatcher(matcher="Bash", hooks=[_confined_shell(session.vault)]),
-    ]}
-    if sandbox_available():
-        kwargs["sandbox"] = sandbox_settings()
+    kwargs["hooks"] = {
+        "PreToolUse": [
+            HookMatcher(matcher="|".join(_EDIT_TOOLS), hooks=[_vault_only_edits(session.vault)]),
+            HookMatcher(matcher=PAGE_NOTES_MATCHER, hooks=[_page_notes("pre")]),
+        ],
+        "PostToolUse": [HookMatcher(matcher=PAGE_NOTES_MATCHER, hooks=[_page_notes("post")])],
+        "UserPromptSubmit": [HookMatcher(hooks=[_prompt_status(session.vault)])],
+    }
     return ClaudeAgentOptions(**kwargs)
 
 
-# ── shell commands (D274) ───────────────────────────────────────────────────────────────
-# Claude's file tools are confined by the hook above, but a shell command could write anywhere
-# the user's account can. On macOS every Bash command runs inside Claude Code's sandbox (Seatbelt,
-# built into the system), which lets it write only to the investigation folder, the temp folder
-# and Watchdog's settings folder, with no unsandboxed retry; Claude Code refuses to start rather
-# than run without it. Elsewhere the sandbox isn't dependable (it is unavailable on Windows and
-# needs bubblewrap and socat on Linux), so a session's shell is limited to the `watchdog` commands
-# the vault pre-approves, each run as a single plain command.
-
-def sandbox_available() -> bool:
-    return sys.platform == "darwin"
+# A session has no shell (D299). Its file tools are confined by the hook below, its reads by the
+# vault's settings, and everything Watchdog does for it is a tool of the `watchdog` server, so a
+# shell would only be a way around those confinements.
+DISALLOWED_TOOLS = ("Bash",)
 
 
-def sandbox_settings() -> dict:
-    home = Path.home() / ".watchdog"
-    return {
-        "enabled": True,
-        "failIfUnavailable": True,
-        "allowUnsandboxedCommands": False,
-        # Commands the vault doesn't pre-approve still ask the user first.
-        "autoAllowBashIfSandboxed": False,
-        "filesystem": {
-            # `watchdog` commands update the project registry and usage log here.
-            "allowWrite": [str(home)],
-            # The folder-access list and the provider keys are never a command's to change.
-            "denyWrite": [str(home / "access.json"), str(home / "credentials.json")],
-            # Nor a command's to read (D295): the provider keys, and the app's own state, which
-            # holds every investigation's saved Ask Claude conversations. The rest of the folder
-            # stays readable because the session's `watchdog` commands need it: the registry and
-            # settings, record skills, the usage database, and `access.json`, which they read to
-            # enforce folder access (an unreadable list grants nothing, so every write would fail).
-            "denyRead": [str(home / "credentials.json"), str(home / "gui")],
-        },
-    }
+# ── hooks (D299): Python callbacks in this process, no command and no PATH ──────────────────────
+
+# Around a session's Write, Edit or MultiEdit, the reporter's Notes on a saved page are put aside
+# before and put back after if the edit dropped them (D296).
+PAGE_NOTES_MATCHER = "Write|Edit|MultiEdit"
 
 
-# Anything that chains, substitutes or redirects: a pre-approved prefix must not carry a second
-# command along with it.
-_SHELL_META = re.compile(r"[;&|`$<>(){}\\\n\r]")
-
-
-def _allowed_shell_patterns() -> list[str]:
-    from watchdog.cmd.base import _VAULT_PERMISSIONS
-    return [rule[len("Bash("):-1] for rule in _VAULT_PERMISSIONS if rule.startswith("Bash(")]
-
-
-def shell_refusal(command: str) -> str | None:
-    """Why a session may not run `command` where there is no sandbox, or None."""
-    if sandbox_available():
-        return None
-    cmd = (command or "").strip()
-    if cmd and not _SHELL_META.search(cmd):
-        for pattern in _allowed_shell_patterns():
-            if fnmatch.fnmatchcase(cmd, pattern):
-                return None
-    return ("On this computer Watchdog lets a session run only its own pre-approved watchdog "
-            "commands, one at a time. Use the file and search tools instead.")
-
-
-def _confined_shell(vault: Path):
+def _page_notes(stage: str):
     async def hook(input_data, tool_use_id, context):
-        reason = shell_refusal((input_data.get("tool_input") or {}).get("command", ""))
-        if reason is None:
+        from watchdog.pipeline import page_notes
+        out = await asyncio.to_thread(page_notes.run_hook, stage, json.dumps(input_data or {}))
+        return json.loads(out) if out else {}
+    return hook
+
+
+def prompt_status(vault: Path) -> str | None:
+    """The one-line note added to each prompt while documents wait for a stage, or None."""
+    from watchdog.cmd.base import _count_awaiting_bark, _count_awaiting_dig
+    waiting, staged = _count_awaiting_dig(vault), _count_awaiting_bark(vault)
+    parts = []
+    if waiting:
+        parts.append(f"{waiting} file(s) waiting for processing")
+    if staged:
+        parts.append(f"{staged} file(s) processed and waiting for post-processing")
+    return ("WATCHDOG: " + "; ".join(parts) + " (the reporter adds documents in the app; they are "
+            "not in the vault's notes yet)") if parts else None
+
+
+def _prompt_status(vault: Path):
+    async def hook(input_data, tool_use_id, context):
+        try:
+            line = await asyncio.to_thread(prompt_status, vault)
+        except Exception:  # noqa: BLE001 — the note must never fail a prompt
+            line = None
+        if not line:
             return {}
-        return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
-                                       "permissionDecision": "deny",
-                                       "permissionDecisionReason": reason}}
+        return {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": line}}
     return hook
 
 
@@ -235,7 +221,7 @@ def _block_text(content) -> str:
 def _record_session(vault: Path, kind: str = "session") -> None:
     """Around each turn, record the vault's history (D286): before it, anything changed since the
     last version; after it, what the session changed — its own pages, and, unless a run is
-    writing the vault, anything else it changed through the vault's commands."""
+    writing the vault, anything else it changed through Watchdog's tools."""
     from watchdog.pipeline import history
     scope = ["queries/", "wiki/", "context.md"] if history.run_in_progress(vault) else None
     history.safe_snapshot(vault, {"kind": kind}, scope)
@@ -342,8 +328,7 @@ class ChatManager:
     # ── a turn ──────────────────────────────────────────────────────────────────────────
     async def _can_use_tool(self, s: Session, tool: str, tool_input: dict, ctx):
         from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
-        # "Always" for a shell command means that exact command, never every shell command.
-        key = f"Bash:{(tool_input or {}).get('command', '')}" if tool == "Bash" else tool
+        key = tool
         if key in s.always:
             return PermissionResultAllow()
         request_id = uuid.uuid4().hex

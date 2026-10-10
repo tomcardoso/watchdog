@@ -214,15 +214,6 @@ def cmd_research(args) -> None:
         print(f"\n  Left queued. Run {_CYAN}watchdog research-fetch{_RESET} to download later.\n")
 
 
-def cmd_research_seen(args) -> None:
-    """Internal: print URLs already captured (one per line), so /watchdog-research can skip
-    re-fetching them. Derived from documents.json + in-flight incoming/ sidecars (research.seen_urls)."""
-    _, _info, vault = _resolve_vault(getattr(args, "project", None))
-    _ensure_layout(vault)
-    for url in sorted(research.seen_urls(vault)):
-        print(url)
-
-
 def cmd_research_fetch(args) -> None:
     """Internal: download the queued research sources into incoming/ (manual / recovery path)."""
     _, _info, vault = _resolve_vault(getattr(args, "project", None))

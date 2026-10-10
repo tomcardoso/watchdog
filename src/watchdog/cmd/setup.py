@@ -13,9 +13,6 @@ from watchdog.cmd.base import (
     CONFIG_FILE,
     WATCHDOG_HOME,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
-    _LEGACY_PROMPT_HOOK_MARKER,
-    _PROMPT_HOOK_COMMAND,
-    _RETIRED_VAULT_PERMISSIONS,
     _VAULT_DENY,
     _VAULT_PERMISSIONS,
     _find_project,
@@ -855,12 +852,8 @@ def cmd_refresh_skills(args) -> None:
 
     settings_path = vault / ".claude" / "settings.json"
     added = []
-    removed = []
     read_scope_added = False
     deny_added = False
-    hook_updated = False
-    session_hook_updated = False
-    notes_hooks_added = False
     if settings_path.exists():
         try:
             settings = _read_json(settings_path)
@@ -868,21 +861,10 @@ def cmd_refresh_skills(args) -> None:
             allow = perms.get("allow", [])
             existing = set(allow)
 
-            # Write(path) allow rules are never matched by Claude Code's file-permission
-            # checks — only Edit(path) rules are, and they cover every file-editing tool
-            # (Write included) — so any Write(...) entry here is dead weight that also
-            # prints a startup warning every session. Strip them unconditionally.
-            removed = [p for p in allow if p.startswith("Write(") or p in _RETIRED_VAULT_PERMISSIONS]
-            if removed:
-                allow = [p for p in allow if p not in removed]
-
             missing = [p for p in _VAULT_PERMISSIONS if p not in existing]
             if missing:
-                allow.extend(missing)
+                perms["allow"] = allow + missing
                 added = missing
-
-            if removed or added:
-                perms["allow"] = allow
 
             if "blockReadsOutsideWorkingDirectories" not in perms:
                 perms["blockReadsOutsideWorkingDirectories"] = True
@@ -899,45 +881,22 @@ def cmd_refresh_skills(args) -> None:
                 perms["deny"] = deny + missing_deny
                 deny_added = True
 
-            # The old inline `python3 -c` prompt hook (see base._PROMPT_HOOK_COMMAND).
-            for group in (settings.get("hooks") or {}).get("UserPromptSubmit") or []:
-                for hook in group.get("hooks") or []:
-                    if _LEGACY_PROMPT_HOOK_MARKER in (hook.get("command") or ""):
-                        hook["command"] = _PROMPT_HOOK_COMMAND
-                        hook_updated = True
-
-            from watchdog.vault_paths import retire_hot_md_hook
-            session_hook_updated = retire_hot_md_hook(settings)
-            from watchdog.vault_paths import ensure_page_notes_hooks
-            notes_hooks_added = ensure_page_notes_hooks(settings)
-
-            if (removed or added or read_scope_added or deny_added or hook_updated or session_hook_updated
-                    or notes_hooks_added):
+            if added or read_scope_added or deny_added:
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
             # Nothing was written, so nothing above may be reported as done.
-            added, removed = [], []
-            read_scope_added = deny_added = hook_updated = session_hook_updated = notes_hooks_added = False
+            added = []
+            read_scope_added = deny_added = False
             print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
                   f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
 
     print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
     if added:
         print(f"  {_GREEN}Permissions updated{_RESET}  {_DIM}added {len(added)} missing rule{'s' if len(added) != 1 else ''}{_RESET}")
-    if removed:
-        print(f"  {_GREEN}Permissions cleaned up{_RESET}  {_DIM}removed {len(removed)} retired rule{'s' if len(removed) != 1 else ''} (dead Write(...) rules, and pre-approved edits to pipeline-owned notes){_RESET}")
     if read_scope_added:
         print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
     if deny_added:
         print(f"  {_GREEN}Watchdog's keys protected{_RESET}  {_DIM}sessions in this vault can't read or edit ~/.watchdog{_RESET}")
-    if hook_updated:
-        print(f"  {_GREEN}Prompt hook updated{_RESET}  {_DIM}no longer needs python3 on PATH{_RESET}")
-    if session_hook_updated:
-        print(f"  {_GREEN}Session hook updated{_RESET}  {_DIM}sessions now start with a primer built "
-              f"from the whole investigation, not hot.md{_RESET}")
-    if notes_hooks_added:
-        print(f"  {_GREEN}Notes hooks added{_RESET}  {_DIM}a session's edit to a saved page keeps "
-              f"the reporter's Notes section{_RESET}")
     for change in _migrate_vault_views(vault):
         print(f"  {_GREEN}Updated{_RESET}  {_DIM}{change}{_RESET}")
     claude_md = _refresh_vault_claude_md(vault)

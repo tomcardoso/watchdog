@@ -1,4 +1,4 @@
-"""The grouped command surface (D254): the ten commands a reporter uses, routed onto the parsers
+"""The grouped command surface (D254): the commands a reporter uses, routed onto the parsers
 that implement them. `new` and `setup` stay top-level because they are the first two commands
 anyone runs.
 
@@ -31,7 +31,7 @@ GROUPS: dict[str, dict[str, str]] = {
 VERBS: dict[str, dict[str, str]] = {
     "review": {
         "resolve": "resolve", "unresolve": "unresolve", "watchlist": "watchlist",
-        "merge-entities": "merge-entities", "add-contradiction": "contradiction-add",
+        "merge-entities": "merge-entities",
     },
     "research": {"fetch": "fetch"},
 }
@@ -66,7 +66,7 @@ _GROUP_HELP = {
 }
 
 # Where each original name now lives, for the pointer. Commands not listed here (the pipeline
-# stages, maintenance commands, `search`, `review`, `add`, …) are unchanged.
+# stages, maintenance commands, `review`, `add`, …) are unchanged.
 MOVED: dict[str, str] = {
     **{orig: f"projects {verb}" for verb, orig in GROUPS["projects"].items()},
     **{orig: f"settings {verb}" for verb, orig in GROUPS["settings"].items()},
@@ -82,7 +82,6 @@ MAINTENANCE = [
     ("bark", "Finish a batch: reconciliation, synthesis, briefing (step 3 of add)"),
     ("requeue", "Put failed documents back in the queue without running them"),
     ("leads", "Print the full lead sweep (`watchdog review leads` steps through it)"),
-    ("check-citations", "Check that every fact citation in a page resolves"),
     ("timeline", "Rebuild timeline.md"),
     ("reindex", "Rebuild the search index"),
     ("verify-fact", "Mark a fact verified, disputed or can't verify"),
