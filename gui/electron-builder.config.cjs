@@ -1,12 +1,11 @@
 // electron-builder configuration, adapted from Sourcerer's. A .cjs file rather than YAML so that
-// Windows signing can be switched on from the environment: CI sets the AZURE_* variables when the
-// repository has Azure Trusted Signing secrets, and every other build (local, or CI without them)
-// is unsigned. macOS signing needs no switch here: electron-builder signs when a Developer ID
+// Windows signing can be switched on from the environment: CI sets AZURE_PUBLISHER_NAME (and the
+// AZURE_TENANT_ID / AZURE_CLIENT_ID / AZURE_CLIENT_SECRET credentials) when the repository has the
+// Azure Artifact Signing secrets, and every other build (local, or CI without them) is unsigned. macOS signing needs no switch here: electron-builder signs when a Developer ID
 // certificate is in the keychain and notarizes when APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and
 // APPLE_TEAM_ID are set (see DISTRIBUTION.md).
 
-const azure = ['AZURE_PUBLISHER_NAME', 'AZURE_SIGNING_ENDPOINT', 'AZURE_SIGNING_ACCOUNT', 'AZURE_CERTIFICATE_PROFILE']
-  .every((k) => process.env[k])
+const azure = !!process.env.AZURE_PUBLISHER_NAME
 
 // Which release channel this build follows for updates (see `publish` below): set by the release
 // workflow from the tag; a local build follows the beta channel.
@@ -65,12 +64,15 @@ module.exports = {
   },
   win: {
     target: [{ target: 'nsis', arch: ['x64'] }],
+    // The Artifact Signing account and certificate profile Sourcerer also signs with: the publisher
+    // (the certificate's subject) is the same person, so one validated identity serves both apps.
+    // Names and endpoint are not secrets; the credentials are.
     azureSignOptions: azure
       ? {
           publisherName: process.env.AZURE_PUBLISHER_NAME,
-          endpoint: process.env.AZURE_SIGNING_ENDPOINT,
-          codeSigningAccountName: process.env.AZURE_SIGNING_ACCOUNT,
-          certificateProfileName: process.env.AZURE_CERTIFICATE_PROFILE
+          endpoint: 'https://eus.codesigning.azure.net',
+          codeSigningAccountName: 'sourcerer-signing',
+          certificateProfileName: 'sourcerer-public'
         }
       : null
   },
