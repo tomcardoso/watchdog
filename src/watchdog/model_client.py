@@ -60,6 +60,7 @@ from watchdog.model_catalog import (
     resolve_model_id,
 )
 from watchdog import config as user_config
+from watchdog.appmode import hint as _hint
 
 DEFAULT_TIER = "sonnet"
 
@@ -1271,7 +1272,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         except auth.KeyChoiceError as e:   # the investigation's chosen key is gone (D290)
             raise ModelError(str(e)) from None
         if resolved["mode"] == "none":
-            raise ModelError(resolved.get("reason", "no auth configured — run `watchdog setup`"))
+            raise ModelError(resolved.get("reason", "no auth configured" + _hint(" — run `watchdog setup`", " — set it up in Settings")))
         auth_mode = resolved["mode"]
         api_key = resolved.get("key")           # None in subscription mode
         if chosen is None:
@@ -1279,7 +1280,9 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if chosen == "claude-api" and not api_key:
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
-                f"'{auth_mode}' — run `watchdog settings auth` to switch to api-key mode, or use the claude-agent-sdk backend")
+                f"'{auth_mode}' — "
+                + _hint("run `watchdog settings auth` to switch to api-key mode, or use the claude-agent-sdk backend",
+                        "switch to api-key mode in Settings, or use the claude-agent-sdk backend"))
         return chosen, provider, api_key, auth_mode, None
 
     base_url = None
@@ -1287,15 +1290,17 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         base_url = auth.get_base_url(provider)
         if not base_url:
             raise ModelError(
-                f"the {chosen} backend needs a base URL — run "
-                f"`watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
+                f"the {chosen} backend needs a base URL — "
+                + _hint(f"run `watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)",
+                        "set it in Settings (e.g. http://localhost:11434/v1)"))
 
     try:
         api_key = auth.get_api_key(provider)
     except auth.KeyChoiceError as e:       # never fall back to another account (D290)
         raise ModelError(str(e)) from None
     if auth.provider_requires_key(provider) and not api_key:
-        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog settings auth` to add one")
+        raise ModelError(f"the {chosen} backend needs an API key — "
+                         + _hint("run `watchdog settings auth` to add one", "add one in Settings"))
     return chosen, provider, api_key, "api-key", base_url
 
 
