@@ -846,6 +846,14 @@ def session_primer(vault: str) -> dict:
     return {"text": text, "chars": len(text), "budget": primer.BUDGET_CHARS}
 
 
+@method("vault.currentState")
+def current_state(vault: str) -> dict:
+    """Briefings → Current state: the primer's picture of the investigation written for the
+    reporter, without the instructions meant for Claude (`gui/current_state.py`). Read-only."""
+    from watchdog.gui import current_state as cs
+    return {"text": cs.build(require_vault(vault))}
+
+
 @method("vault.writeFile")
 def write_file(vault: str, path: str, text: str) -> dict:
     v = require_vault(vault)

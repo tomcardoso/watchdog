@@ -330,7 +330,7 @@
 }
 .palette {
   width: min(640px, calc(100vw - 48px));
-  max-height: 62vh;
+  max-height: min(520px, calc(100vh - 12vh - 48px));
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -340,42 +340,73 @@
   overflow: hidden;
   animation: pop-in 160ms var(--ease);
 }
-.palette [cmdk-input] {
-  width: 100%;
-  height: 52px;
-  padding: 0 18px;
-  border: none;
+/* The input row never shrinks: in a column with a capped height, the long list would otherwise
+   squeeze it to its content height. */
+.palette-search {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 50px;
+  padding: 0 14px 0 16px;
   border-bottom: 1px solid var(--border);
+}
+.palette-search > svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  color: var(--text-3);
+}
+.palette [cmdk-input] {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
   background: transparent;
-  font-size: 16px;
+  color: var(--text);
+  font-size: var(--fs-lg);
   outline: none;
   user-select: text;
 }
+.palette [cmdk-input]::placeholder {
+  color: var(--text-3);
+}
+/* The row's bottom border is the field's edge; no focus ring inside the panel. */
+.palette [cmdk-input]:focus,
+.palette [cmdk-input]:focus-visible {
+  box-shadow: none;
+}
 .palette [cmdk-list] {
-  overflow: auto;
-  padding: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 6px 6px;
+  scroll-padding: 6px 0;
 }
 .palette [cmdk-group-heading] {
-  font-size: 10.5px;
-  font-weight: 680;
+  font-size: var(--fs-xs);
+  font-weight: 650;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.07em;
   color: var(--text-3);
-  padding: 10px 10px 5px;
+  padding: 10px 10px 4px;
 }
 .palette [cmdk-item] {
   display: flex;
   align-items: center;
   gap: 10px;
-  height: 38px;
+  min-height: 32px;
   padding: 0 10px;
   border-radius: var(--r-md);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--fs-md);
+  color: var(--text);
 }
 .palette [cmdk-item] svg {
-  width: 16px;
-  height: 16px;
+  width: 15px;
+  height: 15px;
   color: var(--text-3);
   flex: none;
 }
@@ -383,10 +414,15 @@
   background: var(--hover);
 }
 .palette [cmdk-item][data-selected='true'] svg {
-  color: var(--accent);
+  color: var(--accent-text);
+}
+.palette [cmdk-item] .truncate {
+  min-width: 0;
 }
 .palette [cmdk-item] .hint {
   margin-left: auto;
+  padding-left: 12px;
+  flex: none;
   font-size: var(--fs-sm);
   color: var(--text-3);
 }
@@ -395,17 +431,106 @@
   text-align: center;
   color: var(--text-3);
 }
+.palette-foot {
+  flex: none;
+  display: flex;
+  gap: 16px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.palette-foot span {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.palette .kbd {
+  font-size: 10.5px;
+}
+.palette-search .kbd {
+  flex: none;
+}
 
 /* ── Job dock ────────────────────────────────────────────────────────────── */
 .job-dock {
   position: absolute;
   left: 18px;
   bottom: 16px;
-  width: 340px;
+  max-width: calc(100% - 36px);
   z-index: 40;
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   gap: 8px;
+}
+.job-dock .job-card {
+  width: min(340px, calc(100vw - 80px));
+}
+.job-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.job-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  height: 32px;
+  padding: 0 3px 0 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  font-size: var(--fs-sm);
+  animation: pop-in 160ms var(--ease);
+}
+.job-chip .btn {
+  border-radius: 999px;
+}
+.job-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  height: 100%;
+  padding: 0 8px 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-weight: 560;
+  cursor: pointer;
+}
+.job-chip-main:hover {
+  color: var(--accent-text);
+}
+.job-chip-main .spinner {
+  width: 12px;
+  height: 12px;
+}
+.job-chip-pct {
+  color: var(--text-3);
+  font-weight: 500;
+}
+.job-chip-dot {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--success);
+  animation: job-pulse 2.4s ease-in-out infinite;
+}
+@keyframes job-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .job-chip-dot {
+    animation: none;
+  }
 }
 .job-card {
   background: var(--surface);

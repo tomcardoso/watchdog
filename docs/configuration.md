@@ -211,7 +211,7 @@ How your checks of individual facts are recorded.
 
 | Field | Default | What it controls |
 |---|---|---|
-| Your name | `Journalist` | The name recorded, with the time, each time you mark a fact Verified, Disputed or Can't verify. It is stored in `reporter_name`, trimmed to 120 characters, and shown in `verification.md` and on the Review → Verification tab. |
+| Your name | `Journalist` | The name recorded, with the time, each time you mark a fact Verified, Disputed or Can't verify. It is stored in `reporter_name`, trimmed to 120 characters, and shown in `verification.md` and under Review → Verification. |
 
 A change applies to marks you make afterwards; marks already made keep the name they were recorded with. See [Checking facts](investigating.md#checking-facts).
 

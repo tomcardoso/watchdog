@@ -52,7 +52,11 @@ export function CommandPalette() {
   return (
     <div className="palette-scrim" onMouseDown={(e) => e.target === e.currentTarget && close()}>
       <Command className="palette" label="Command palette" loop onKeyDown={(e) => e.key === 'Escape' && close()}>
-        <Command.Input autoFocus value={q} onValueChange={setQ} placeholder={project ? 'Search the investigation, jump to an entity or document…' : 'Jump to…'} />
+        <div className="palette-search">
+          <Search aria-hidden="true" />
+          <Command.Input autoFocus value={q} onValueChange={setQ} placeholder={project ? 'Search the investigation, jump to an entity or document…' : 'Jump to…'} />
+          <kbd className="kbd">Esc</kbd>
+        </div>
         <Command.List>
           <Command.Empty>No matches.</Command.Empty>
           {project && query && (
@@ -136,6 +140,11 @@ export function CommandPalette() {
             <Command.Item onSelect={() => { setTheme('system'); close() }}><Settings />Match system appearance</Command.Item>
           </Command.Group>
         </Command.List>
+        <div className="palette-foot" aria-hidden="true">
+          <span><kbd className="kbd">↑</kbd><kbd className="kbd">↓</kbd> to move</span>
+          <span><kbd className="kbd">↵</kbd> to open</span>
+          <span><kbd className="kbd">Esc</kbd> to close</span>
+        </div>
       </Command>
     </div>
   )

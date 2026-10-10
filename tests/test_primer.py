@@ -150,3 +150,28 @@ def test_the_app_shows_the_same_primer(demo):
     out = call("vault.sessionPrimer", vault=str(vault))
     assert out["text"] == primer.build(vault)
     assert out["chars"] == len(out["text"]) <= out["budget"] == primer.BUDGET_CHARS
+
+
+# ── Briefings → Current state: the same records, written for the reporter ────────────────────
+
+def test_current_state_for_the_reporter_drops_model_instructions(demo):
+    from watchdog.gui import current_state
+    vault, _ = demo
+    text = current_state.build(vault)
+    for absent in ("## Citing", "watchdog ", "--json", "`", "context.md", "requests.md",
+                   "merges.md", "verification.md", "Never invent", "the reporter"):
+        assert absent not in text, absent
+    # The same numbers as the primer Claude gets, under the reader's headings.
+    claude = primer.build(vault)
+    assert "14 documents (" in text and "54 entities" in text and "14 documents (" in claude
+    assert "## Your questions" in text and "- Who owns 7714882 Holdings Ltd." in text
+    assert "## Waiting on you" in text and "Review → " in text
+    assert "## Recent briefings" in text and "[[briefings/" in text
+
+
+def test_current_state_empty_vault(tmp_path):
+    from watchdog.gui import current_state
+    text = current_state.build(make_vault(tmp_path))
+    assert "No documents have been added yet." in text
+    assert "No questions yet. Add them in Investigation context" in text
+    assert "`" not in text and "watchdog " not in text

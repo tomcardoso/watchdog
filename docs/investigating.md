@@ -19,7 +19,7 @@ Watchdog does not need to be doing anything else while you work. If you would ra
 
 **Review** is where everything Watchdog flagged for a person waits. It has one tab for each kind of item, with a count on each, plus a tab for what you have already handled and one for your watch list. Open items move through the same few steps: read the item, open its note if you need more detail, then mark it handled, or keep it open and move on.
 
-Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. The **Handled** tab lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
+Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. **Handled**, at the top right of Review, lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
 
 ### Contradictions
 
@@ -82,7 +82,7 @@ When you have the document in hand, or decide not to pursue it, mark the request
 
 ### The watch list
 
-The **Watch list** tab is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
+**Watch list**, at the top right of Review, is where you keep terms you want flagged whenever they appear in new documents, one per line: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word. Wrap a line in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Choose **Save watch list** after editing.
 
 The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Watch-list hits** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
 
@@ -92,7 +92,7 @@ Because the automatic scan only sees new documents, a term added after documents
 
 ### Handled items and the briefing files
 
-Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** on the **Handled** tab to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
+Every item has a short resolution id, and handling an item records it. If you prefer to work in the written files, you can tick an item's checkbox in a briefing file (or `requests.md`) with any text editor. Then choose **Sync ticked checkboxes from briefings** under **Handled** to import your ticks. Checkboxes shown in Briefings are display only; handle items in Review.
 
 ## Checking facts
 
@@ -203,7 +203,7 @@ AI-written text can also contain sentences with no citation: a model connecting 
 
 **Ask Claude** is a conversation with Claude Code about the investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, and asks you before doing anything the investigation's settings do not already allow.
 
-Each conversation starts fresh, but Claude is first given a short account of where the whole investigation stands: the questions in your investigation context, how many documents, entities and facts there are and how many facts you have checked, the entities named most often, what is waiting on you (contradictions, leads, documents to request, possible same entities, facts you dispute) and the latest briefings. Watchdog builds it from the investigation's records each time a conversation starts, without an AI model, so it is always current and covers every document, not only the latest run. That is what lets you continue across many separate conversations without losing context. You can read the same account under **Briefings → Current state**. Past conversations are listed on the left and can be picked up again.
+Each conversation starts fresh, but Claude is first given a short account of where the whole investigation stands: the questions in your investigation context, how many documents, entities and facts there are and how many facts you have checked, the entities named most often, what is waiting on you (contradictions, leads, documents to request, possible same entities, facts you dispute) and the latest briefings. Watchdog builds it from the investigation's records each time a conversation starts, without an AI model, so it is always current and covers every document, not only the latest run. That is what lets you continue across many separate conversations without losing context. You can read the same account under **Briefings → Current state**, and the exact text Claude receives, which also tells Claude how to cite facts, under **What Claude is given** on the same page. Past conversations are listed on the left and can be picked up again.
 
 Type a question in plain language, or start from one of the shortcuts on the empty screen:
 
@@ -241,7 +241,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 
 ## Briefings
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (the account of the whole investigation that Claude is given at the start of each conversation, built when you open it), **Processing history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run (**Briefings**), **Lead sweeps**, **Watch-list alerts** and **Research memos**, plus the answers and thread pages Claude has saved. Three pinned pages sit at the top: **Current state** (where the whole investigation stands, built from its records when you open it; **What Claude is given** shows the same account as Claude receives it at the start of each conversation), **Processing history** (`log.md`) and **Investigation context** (`context.md`), which you can edit in place with **Edit**.
 
 ## Maintenance runs
 

@@ -142,10 +142,18 @@ test('every screen renders against the demo investigation', async () => {
     await page.keyboard.press('c')
     await expect(factRow).not.toHaveClass(/is-marked-/, { timeout: 10_000 })
 
-    // A wikilink written inside code is shown as written, not turned into a link (Briefings →
-    // Current state quotes the citation form in code).
+    // Briefings → Current state is written for the reporter: no instructions for Claude, no
+    // command lines. What Claude is given (the session primer) is one click away.
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'briefings', path: 'session-primer' }))
+    await expect(page.locator('.bf-article h2', { hasText: 'Waiting on you' })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.bf-article')).not.toContainText('watchdog search')
+    await expect(page.locator('.bf-article')).not.toContainText('Citing')
+    await page.getByRole('button', { name: 'What Claude is given' }).click()
+    // A wikilink written inside code is shown as written, not turned into a link (the primer
+    // quotes the citation form in code).
     await expect(page.locator('code', { hasText: '[[documents/<slug>#^f-<id>|p. N]]' }).first()).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: 'Back to current state' }).click()
+    await expect(page.locator('.bf-article h2', { hasText: 'Your questions' })).toBeVisible({ timeout: 10_000 })
 
     // A search typed on the Search screen keeps the route in step, so searching the earlier query
     // again (from the palette) runs it rather than doing nothing.
@@ -241,6 +249,50 @@ test('every screen renders against the demo investigation', async () => {
     await findBox.fill('no such words anywhere')
     await page.getByRole('button', { name: 'Search the extracted text instead' }).click()
     await expect(page.getByPlaceholder('Search the extracted text')).toHaveValue('no such words anywhere')
+
+    // The command palette: a full-height search row (it used to shrink to its text), and the panel
+    // inside the window at a small size.
+    await page.setViewportSize({ width: 1000, height: 700 })
+    await page.evaluate(() => (window as any).__watchdogApp.getState().setPalette(true))
+    await page.locator('[cmdk-input]').fill('port')
+    await expect(page.locator('[cmdk-item]').nth(5)).toBeVisible({ timeout: 10_000 })
+    {
+      const row = (await page.locator('.palette-search').boundingBox())!
+      const panel = (await page.locator('.palette').boundingBox())!
+      expect(row.height).toBeGreaterThanOrEqual(44)
+      expect(panel.y + panel.height).toBeLessThanOrEqual(700)
+    }
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.palette')).toHaveCount(0)
+
+    // The incoming-folder watcher shows as a small chip, never a card over the screen.
+    await page.evaluate(() => {
+      const st = (window as any).__watchdogApp.getState()
+      st.upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: st.project.path, args: ['watch'], state: 'running', exit_code: null, started: new Date().toISOString(), finished: null, progress: {} })
+      st.navigate({ view: 'settings', tab: 'about' })
+    })
+    await expect(page.locator('.job-chip', { hasText: 'Watching incoming' })).toBeVisible()
+    await expect(page.locator('.job-card')).toHaveCount(0)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: null, args: ['watch'], state: 'cancelled', exit_code: null, started: new Date().toISOString(), finished: new Date().toISOString(), progress: {} }))
+    await expect(page.locator('.job-dock')).toHaveCount(0)
+
+    // Review at a small window: every queue tab and every tool is on screen, none scrolled out of
+    // sight sideways.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'review' }))
+    await expect(page.getByRole('tab').first()).toBeVisible({ timeout: 10_000 })
+    const offscreen = await page.evaluate(() => {
+      const out: string[] = []
+      const main = document.querySelector('.page')!.getBoundingClientRect()
+      document.querySelectorAll('.rv [role="tab"], .rv-tools button').forEach((el) => {
+        const r = el.getBoundingClientRect()
+        if (r.width === 0 || r.left < main.left || r.right > main.right) out.push(el.textContent ?? '')
+      })
+      return out
+    })
+    expect(offscreen, 'Review tabs out of view at 1000 px').toEqual([])
+    expect(await page.getByRole('tab').count()).toBe(6)
+    await page.locator('.rv-tools').getByRole('button', { name: 'Watch list' }).click()
+    await expect(page.getByRole('button', { name: 'Save watch list' })).toBeVisible({ timeout: 10_000 })
 
     expect(errors, 'renderer errors').toEqual([])
     await app.close()

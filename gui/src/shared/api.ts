@@ -696,6 +696,7 @@ export interface Methods {
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]
   'vault.readFile': [{ vault: string; path: string }, { text: string; exists: boolean }]
   'vault.sessionPrimer': [{ vault: string }, { text: string; chars: number; budget: number }]
+  'vault.currentState': [{ vault: string }, { text: string }]
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]

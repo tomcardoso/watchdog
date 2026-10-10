@@ -624,3 +624,9 @@ def test_real_pipeline_vault(tmp_path, monkeypatch):
     assert _extract_notes_section(vault / f"{ent['note']}.md").strip().endswith("Checked the filing.")
     assert call("vault.pipeline", vault=v)["queued"] == []
     assert os.path.isdir(vault)
+
+
+def test_current_state_rpc_is_the_reader_version(rich_vault):
+    out = call("vault.currentState", vault=V(rich_vault))
+    assert "## The record" in out["text"] and "## Citing" not in out["text"]
+    assert "## Citing" in call("vault.sessionPrimer", vault=V(rich_vault))["text"]

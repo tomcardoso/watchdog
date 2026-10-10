@@ -42,6 +42,14 @@ import './review.css'
 type Tab = ReviewKind | 'handled' | 'watchlist' | 'requests' | 'verification'
 type QueueKind = ReviewKind | 'requests'
 
+// The queues are tabs; these three views about the queues sit apart, in the page header, so the
+// tab row stays short enough to read at a glance (it still wraps on a narrow window).
+const TOOLS: { value: Tab; label: string; icon: typeof Swords; tip: string }[] = [
+  { value: 'verification', label: 'Verification', icon: ShieldCheck, tip: 'Every fact, and whether you have checked it against its source' },
+  { value: 'handled', label: 'Handled', icon: CheckCheck, tip: 'Items you have already dealt with' },
+  { value: 'watchlist', label: 'Watch list', icon: ScanSearch, tip: 'Names and terms every new batch is scanned for' }
+]
+
 const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: ReactNode; empty: string }> = {
   contradictions: {
     label: 'Contradictions',
@@ -59,7 +67,7 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
     label: 'Watch-list hits',
     icon: Bell,
     blurb: 'Documents where a term from your watch list appeared. Each hit names the document, the page and the surrounding words.',
-    empty: 'No open watch-list hits. Add terms on the Watch list tab; every batch of new documents is scanned for them.'
+    empty: 'No open watch-list hits. Add terms under Watch list, at the top right; every batch of new documents is scanned for them.'
   },
   duplicates: {
     label: 'Possible duplicates',
@@ -186,22 +194,27 @@ export default function ReviewView() {
               {items.data ? (total ? `${plural(total, 'item')} waiting on you.` : 'Nothing is waiting on you.') : 'Loading what is waiting on you…'} Handled items stop appearing in briefings and on the overview.
             </div>
           </div>
+          <div className="rv-tools" role="group" aria-label="Review tools">
+            {TOOLS.map((t) => (
+              <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => go(t.value)} data-tip={t.tip} data-tip-pos="bottom">
+                <t.icon />
+                {t.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <Tabs<Tab>
           value={tab}
           onChange={go}
-          style={{ overflowX: 'auto' }}
+          wrap
           tabs={[
             { value: 'contradictions', label: 'Contradictions', icon: Swords, count: counts.contradictions },
             { value: 'leads', label: 'Leads', icon: Lightbulb, count: counts.leads },
             { value: 'alerts', label: 'Watch-list hits', icon: Bell, count: counts.alerts },
             { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
             { value: 'merges', label: 'Merges', icon: GitMerge, count: counts.merges },
-            { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests },
-            { value: 'verification', label: 'Verification', icon: ShieldCheck },
-            { value: 'handled', label: 'Handled', icon: CheckCheck },
-            { value: 'watchlist', label: 'Watch list', icon: ScanSearch }
+            { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests }
           ]}
         />
 

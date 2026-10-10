@@ -532,8 +532,10 @@ open contradictions, leads, document requests, possible same entities and disput
 citation links), the last three briefings with their status lines, and how to cite. It is read from
 the registry, the ledger, the merge log and the requests ledger with no model call, built fresh for
 every session, and budgeted (`BUDGET_CHARS`, 6,000 characters; lists shrink from five items to
-none until it fits). It never fails a session's start. The app shows the same text under Briefings →
-Current state (`vault.sessionPrimer`). An older vault's hook, which `cat`ed `hot.md`, is rewritten by
+none until it fits). It never fails a session's start. The app's Briefings → Current state renders the same
+`primer.gather` data for the reporter, without the citing instructions, command lines or budget
+(`gui/current_state.py`, `vault.currentState`); the primer itself, verbatim, is its secondary
+"What Claude is given" view (`vault.sessionPrimer`). An older vault's hook, which `cat`ed `hot.md`, is rewritten by
 the D266 migration on first use (`vault_paths.retire_hot_md_hook`), which also refreshes its
 `.claude/CLAUDE.md`; `hot.md` itself is left on disk and is no longer read, indexed or
 citation-checked.

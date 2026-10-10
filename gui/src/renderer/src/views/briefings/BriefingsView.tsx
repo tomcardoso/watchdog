@@ -1,9 +1,10 @@
 // Everything Watchdog writes for the journalist, as a reading list: briefings, lead
 // sweeps, watch-list alerts and research memos, plus three living pages pinned above them: the
-// current state (the session primer Claude starts each conversation with, built now from the
-// investigation's records, D285), the processing history and the investigation context.
+// current state (built now from the investigation's records, for the reporter; the session primer
+// Claude starts each conversation with, D285, is one click away as "What Claude is given"), the
+// processing history and the investigation context.
 
-import { Activity, Bell, FileText, History, Lightbulb, MessageCircle, MessageSquareQuote, Network, Pencil, Save, Search, Target, X } from 'lucide-react'
+import { Activity, ArrowLeft, Bell, Bot, FileText, History, Lightbulb, MessageCircle, MessageSquareQuote, Network, Pencil, Save, Search, Target, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { BriefingRow } from '@shared/api'
@@ -15,11 +16,12 @@ import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { NoteActions, stripFrontmatter } from './NoteView'
 import './briefings.css'
 
-// Not a file: the primer is built on request (`vault.sessionPrimer`), as each session builds it.
+// Not a file: built on request (`vault.currentState`, and `vault.sessionPrimer` for what Claude is
+// given), as each session builds its primer.
 const PRIMER = 'session-primer'
 
 const PINNED: { path: string; label: string; sub: string; icon: LucideIcon }[] = [
-  { path: PRIMER, label: 'Current state', sub: 'What Claude is told at the start of each conversation', icon: Activity },
+  { path: PRIMER, label: 'Current state', sub: 'Where the whole investigation stands', icon: Activity },
   { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History },
   { path: 'context.md', label: 'Investigation context', sub: 'Your questions and what you know', icon: Target }
 ]
@@ -127,16 +129,24 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
   const vault = useVault()
   const isPrimer = path === PRIMER
   const file = useRpc('vault.readFile', vault && !isPrimer ? { vault, path } : null, { staleTime: 5_000 })
-  const primer = useRpc('vault.sessionPrimer', vault && isPrimer ? { vault } : null, { staleTime: 5_000 })
+  // Current state is written for the reporter; what Claude is given (the session primer, with its
+  // instructions for the model) is a secondary view of the same records.
+  const [asClaude, setAsClaude] = useState(false)
+  const state = useRpc('vault.currentState', vault && isPrimer && !asClaude ? { vault } : null, { staleTime: 5_000 })
+  const primer = useRpc('vault.sessionPrimer', vault && isPrimer && asClaude ? { vault } : null, { staleTime: 5_000 })
+  const built = asClaude ? primer : state
   const q = isPrimer
-    ? { ...primer, data: primer.data ? { text: primer.data.text, exists: true } : undefined }
+    ? { ...built, data: built.data ? { text: built.data.text, exists: true } : undefined }
     : file
   const pinned = PINNED.find((p) => p.path === path)
   const isContext = path === 'context.md'
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
-  useEffect(() => setEditing(false), [path])
+  useEffect(() => {
+    setEditing(false)
+    setAsClaude(false)
+  }, [path])
 
   const text = q.data?.text ?? ''
   const body = stripFrontmatter(text)
@@ -161,13 +171,18 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
       <div className="bf-reader-bar">
         <div className="grow">
           <div className="eyebrow">{pinned ? 'Pinned' : KINDS.find((k) => k.kind === row?.kind)?.label ?? 'Briefing'}</div>
-          <div className="bf-reader-title truncate">{pinned?.label ?? row?.title ?? row?.name ?? path}</div>
+          <div className="bf-reader-title truncate">{isPrimer && asClaude ? 'What Claude is given' : pinned?.label ?? row?.title ?? row?.name ?? path}</div>
         </div>
         {isContext && !editing && (
           <>
             <Button size="sm" icon={MessageCircle} onClick={() => navigate({ view: 'ask' })}>Seed context with Claude</Button>
             <Button size="sm" icon={Pencil} onClick={() => { setDraft(text); setEditing(true) }}>Edit</Button>
           </>
+        )}
+        {isPrimer && (
+          <Button size="sm" variant="ghost" icon={asClaude ? ArrowLeft : Bot} aria-pressed={asClaude} onClick={() => setAsClaude(!asClaude)}>
+            {asClaude ? 'Back to current state' : 'What Claude is given'}
+          </Button>
         )}
         {!editing && !isPrimer && <NoteActions path={path} />}
       </div>
@@ -195,9 +210,14 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             </Empty>
           ) : (
             <>
+              {isPrimer && asClaude && (
+                <Callout tone="info" style={{ marginBottom: 18 }}>
+                  Every Ask Claude conversation starts with this text, word for word, built from the same records as Current state. It includes instructions written for Claude, such as how to cite a fact; you don't need to follow them. Lists are shortened so the text stays a fixed size.
+                </Callout>
+              )}
               {hasChecks && (
                 <div className="bf-check-note">
-                  Checkboxes here are display only. Mark items handled in <button className="srch-link" onClick={() => navigate({ view: 'review' })}>Review</button>, or tick them in the file and sync from the Handled tab.
+                  Checkboxes here are display only. Mark items handled in <button className="srch-link" onClick={() => navigate({ view: 'review' })}>Review</button>, or tick them in the file and sync them from Review → Handled.
                 </div>
               )}
               <Markdown text={body} />
