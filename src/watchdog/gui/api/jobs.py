@@ -1,7 +1,12 @@
-"""jobs.* and action.run: the app's route to every `watchdog` command that changes anything."""
+"""jobs.* and action.run: the app's route to every operation that changes anything (D298).
+
+Each runs one registered operation (`watchdog.ops`) in a worker process: `jobs.start` for the long
+ones, followed in the job dock, and `action.run` for the quick ones, run to completion.
+"""
 
 from __future__ import annotations
 
+from watchdog import ops
 from watchdog.gui import jobs
 from watchdog.gui.rpc import SHUTDOWN_HOOKS, RpcError, method
 from watchdog.gui.vaultio import require_vault
@@ -9,19 +14,25 @@ from watchdog.gui.vaultio import require_vault
 DEFAULT_ACTION_TIMEOUT = 60
 
 
-def _args(args) -> list[str]:
-    if not isinstance(args, list) or not all(isinstance(a, str) for a in args):
-        raise RpcError("args must be a list of strings.", code="bad_params")
-    return args
+def _op(op) -> str:
+    if not isinstance(op, str) or not op:
+        raise RpcError("op must name an operation.", code="bad_params")
+    return op
 
 
 def _vault(vault):
     return require_vault(vault) if vault is not None else None
 
 
+@method("jobs.ops")
+def list_ops() -> dict:
+    """Every operation the app can run, with its parameters (name → type, required, default)."""
+    return ops.schema()
+
+
 @method("jobs.start")
-def start(vault=None, args=None, label="", kind=None) -> dict:
-    job = jobs.MANAGER.start(_vault(vault), _args(args or []), label or " ".join(args or []), kind)
+def start(vault=None, op=None, params=None, label="", kind=None) -> dict:
+    job = jobs.MANAGER.start(_vault(vault), _op(op), params or {}, label or op, kind)
     return job.to_dict()
 
 
@@ -45,29 +56,10 @@ def get(id: str) -> dict:
     return {**job.to_dict(), "log": log}
 
 
-@method("jobs.flags")
-def flags(command: str, options: dict | None = None) -> dict:
-    if command not in jobs.COMMANDS:
-        raise RpcError(f"jobs.flags supports {', '.join(jobs.COMMANDS)}.", code="bad_params")
-    return {"args": jobs.flags_for(command, options)}
-
-
-@method("jobs.rebuildNotes")
-def rebuild_notes(vault: str) -> dict:
-    """Start the Maintenance job that rebuilds every entity and document note from stored data
-    (D280): `entity_notes.main`, the library function, run as a job like any other vault write."""
-    import sys
-    v = require_vault(vault)
-    argv = [sys.executable, "-m", "watchdog.pipeline.entity_notes"]
-    job = jobs.MANAGER.start(v, ["rebuild-notes"], "Rebuild notes", "rebuild-notes", argv=argv)
-    return job.to_dict()
-
-
 @method("jobs.undoMerge")
 def undo_merge(vault: str, id: str) -> dict:
-    """Start the job that undoes one entity merge (D280): `merge_undo.main`, the library function,
-    run as a job. Refused up front, with the reason, when the merge cannot be split correctly."""
-    import sys
+    """Start the job that undoes one entity merge (D280), refused up front, with the reason, when
+    the merge cannot be split correctly."""
     from watchdog.pipeline import merge_log, merge_undo
     v = require_vault(vault)
     if not isinstance(id, str) or not id.startswith("merge:"):
@@ -79,15 +71,14 @@ def undo_merge(vault: str, id: str) -> dict:
     reason = merge_undo.check(v, entry)
     if reason:
         raise RpcError(reason, code="cannot_undo")
-    argv = [sys.executable, "-m", "watchdog.pipeline.merge_undo", id]
     name = (entry.get("merged") or {}).get("name") or id
-    job = jobs.MANAGER.start(v, ["undo-merge", id], f"Undo merge: {name}", "undo-merge", argv=argv)
+    job = jobs.MANAGER.start(v, "undo-merge", {"id": id}, f"Undo merge: {name}", "undo-merge")
     return job.to_dict()
 
 
 @method("action.run")
-def run_action(vault=None, args=None, timeout=None) -> dict:
-    return jobs.run_action(_vault(vault), _args(args or []), float(timeout or DEFAULT_ACTION_TIMEOUT))
+def run_action(vault=None, op=None, params=None, timeout=None) -> dict:
+    return jobs.run_action(_vault(vault), _op(op), params or {}, float(timeout or DEFAULT_ACTION_TIMEOUT))
 
 
 SHUTDOWN_HOOKS.append(jobs.MANAGER.shutdown)

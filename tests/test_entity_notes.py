@@ -196,11 +196,15 @@ def test_an_older_vault_is_upgraded_once(tmp_path):
     assert text.endswith("## Notes\n\nMine.\n")
 
 
-def test_main_rebuilds_the_current_vault(tmp_path, monkeypatch):
+def test_the_rebuild_notes_operation_rebuilds_the_vault(tmp_path, monkeypatch):
+    from watchdog import ops
     vault, _ = _marked_vault(tmp_path)
     (vault / "entities" / "person" / "x.md").unlink()
-    monkeypatch.setattr("watchdog.vault_paths.is_vault", lambda p: True)
-    assert entity_notes.main(["--vault", str(vault)]) == 0
+    monkeypatch.setattr("watchdog.ops.ingest.is_vault", lambda p: True)
+    rep = ops.CollectingReporter()
+    out = ops.run("rebuild-notes", {}, rep, vault)
+    assert out["entities"] >= 1 and "No AI model was used" in rep.text
+    assert rep.events[0] == {"kind": "stage", "stage": "rebuild-notes", "done": None, "total": None}
     assert (vault / "entities" / "person" / "x.md").exists()
 
 

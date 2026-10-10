@@ -3,8 +3,8 @@ on an entity's page and in Maintenance (D287).
 
 App-only (I10, D286): no terminal command. The estimate is a read: the calls the re-check would
 send (`recheck.plan`), priced on the configured finalizer model (`ingest_setup.recheck_cost_estimate`),
-with whether auth is in place and whether a run holds the vault. Starting it runs
-`python -m watchdog.pipeline.recheck` as a job, after the same refusals the job would make.
+with whether auth is in place and whether a run holds the vault. Starting it runs the
+`recheck-contradictions` operation as a job, after the same refusals the job would make.
 """
 
 from __future__ import annotations
@@ -69,13 +69,12 @@ def estimate(vault: str, ids: list[str] | None = None, all: bool = False) -> dic
 
 @method("jobs.recheckContradictions")
 def start(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
-    import sys
     from watchdog.gui import jobs
     from watchdog.pipeline import history, recheck
 
     v = require_vault(vault)
     wanted = _ids(ids, all)
-    jobs.require_engine([KIND])
+    jobs.require_engine(KIND)
     if history.run_in_progress(v):
         raise RpcError(recheck.BUSY, code="busy")
     backend, model, _effort = recheck.finalizer_stage()
@@ -87,17 +86,15 @@ def start(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
         check_run_keys(v, [backend])
     except KeyChoiceError as e:      # the investigation's chosen key isn't here (D290)
         raise RpcError(str(e), code="key_missing") from None
-    argv = [sys.executable, "-m", "watchdog.pipeline.recheck"]
     if wanted is None:
-        argv.append("--all")
+        params = {"all": True}
         label = "Re-check contradictions: whole investigation"
     else:
         from watchdog.pipeline.json_io import _read_json_or
         reg = _read_json_or(v / ".watchdog" / "registry" / "entities.json", {})
-        for eid in wanted:
-            argv += ["--entity", eid]
+        params = {"ids": wanted}
         names = [(reg.get(i) or {}).get("name") or i for i in wanted]
         label = "Re-check contradictions: " + ", ".join(names[:2]) + (
             f" and {len(names) - 2} more" if len(names) > 2 else "")
-    job = jobs.MANAGER.start(v, [KIND, *(wanted or ["--all"])], label, KIND, argv=argv, secrets=True)
+    job = jobs.MANAGER.start(v, KIND, params, label, KIND)
     return job.to_dict()

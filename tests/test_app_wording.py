@@ -61,10 +61,10 @@ def test_jobs_mark_their_subprocesses_as_the_app(monkeypatch):
         raise OSError("stop here")
 
     monkeypatch.setattr(jobs.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(jobs, "require_engine", lambda args: None)
+    monkeypatch.setattr(jobs, "require_engine", lambda op: None)
     monkeypatch.setattr(jobs, "_require_granted_cwd", lambda vault: None)
     try:
-        jobs.MANAGER.start(None, ["reindex"], "x", "reindex")
+        jobs.MANAGER.start(None, "download-model", {"model": "transcription"}, "x")
     except Exception:
         pass
     assert seen.get("WATCHDOG_APP") == "1"
@@ -77,11 +77,11 @@ def test_jobs_mark_their_subprocesses_as_the_app(monkeypatch):
 
     monkeypatch.setattr(jobs.subprocess, "run", fake_run)
     try:
-        jobs.run_action(None, ["unlock"], 5)
+        jobs.run_action(None, "projects-describe", {"slug": "x"}, 5)
     except Exception:
         pass
     assert seen.get("WATCHDOG_APP") == "1"
-    assert "WATCHDOG_PROGRESS" not in seen
+    assert seen.get("WATCHDOG_PROGRESS") == "1"     # the worker's protocol; the app drops the lines
 
 
 # ── representative messages, both ways ─────────────────────────────────────────────────

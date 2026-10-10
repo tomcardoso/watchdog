@@ -33,7 +33,6 @@ or extractions changed since the merge so that the recorded items no longer matc
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 
 from watchdog.pipeline import entity_facts, merge_log
@@ -424,27 +423,3 @@ def undo(vault: Path, merge_id: str, by: str | None = None) -> dict:
                  "split": (entry.get("merged") or {}).get("name")}
         with history.recording(vault, cause):     # a version of the vault's history (D286)
             return _undo_unlocked(vault, merge_id, by)
-
-
-def main(argv: list[str] | None = None) -> int:
-    """`python -m watchdog.pipeline.merge_undo MERGE_ID [--vault DIR]`, the job the app's Review →
-    Merges "Undo merge" runs."""
-    import argparse
-    parser = argparse.ArgumentParser(description="Undo one entity merge.")
-    parser.add_argument("merge_id")
-    parser.add_argument("--vault", default=".")
-    args = parser.parse_args(argv)
-    try:
-        out = undo(Path(args.vault).resolve(), args.merge_id)
-    except UndoRefused as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    print(f"Split {out['split_name']} back out of {out['keep_name']}: {out['documents']} "
-          f"document{'s' if out['documents'] != 1 else ''}, {out['facts']} "
-          f"fact{'s' if out['facts'] != 1 else ''}. Contradictions recorded on the joined record, "
-          f"your notes and the summary stay on {out['keep_name']}.")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

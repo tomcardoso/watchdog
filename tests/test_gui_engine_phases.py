@@ -83,7 +83,7 @@ BLOCKED_RUN = textwrap.dedent("""
     server.load_api()
     import watchdog.cmd, watchdog.gui.api, watchdog.pipeline
     failed = []
-    for pkg in (watchdog.gui.api, watchdog.cmd, watchdog.pipeline):
+    for pkg in (watchdog.gui.api, watchdog.cmd, watchdog.pipeline, watchdog.ops):
         for m in pkgutil.iter_modules(pkg.__path__):
             try:
                 importlib.import_module(f"{pkg.__name__}.{m.name}")
@@ -95,7 +95,7 @@ BLOCKED_RUN = textwrap.dedent("""
              ("vault.summary", {"vault": vault}), ("vault.documents", {"vault": vault}),
              ("vault.entities", {"vault": vault}), ("search.status", {"vault": vault}),
              ("search.query", {"vault": vault, "query": "contract"}),
-             ("jobs.start", {"vault": vault, "args": ["add"], "label": "x"})]
+             ("jobs.start", {"vault": vault, "op": "add", "label": "x"})]
     out, pending = {}, None
     for i, (method, params) in enumerate(calls):
         resp = server.handle({"id": i, "method": method, "params": params})
@@ -136,41 +136,40 @@ def pending(monkeypatch):
 
 @pytest.fixture
 def fake_cli(monkeypatch):
-    monkeypatch.setattr(jobs, "command_argv", lambda args: [sys.executable, "-c", "pass"])
+    monkeypatch.setattr(jobs, "worker_argv", lambda: [sys.executable, "-c", "pass"])
 
 
-@pytest.mark.parametrize("args", [
-    ["add", "--skip-warning", "incoming"], ["chew"], ["dig"], ["bark"], ["ingest"], ["watch"],
-    ["add", "--watch"], ["extract"], ["finalize"], ["requeue"], ["reindex"],
-    ["review", "merge-entities", "a", "b"],
-])
-def test_pipeline_commands_refused_while_pending(pending, wdg_home, args):
-    err = call_error("jobs.start", vault=None, args=args, label="x")
+@pytest.mark.parametrize("op", ["add", "chew", "dig", "bark", "watch", "requeue", "reindex",
+                                "merge-entities", "undo-merge", "rebuild-notes",
+                                "recheck-contradictions"])
+def test_pipeline_operations_refused_while_pending(pending, wdg_home, op):
+    err = call_error("jobs.start", vault=None, op=op, label="x")
     assert err["code"] == "engine_not_ready"
     assert "still setting up" in err["message"]
 
 
 def test_add_refusal_names_adding_documents(pending, wdg_home):
-    err = call_error("jobs.start", vault=None, args=["add"], label="x")
+    err = call_error("jobs.start", vault=None, op="add", label="x")
     assert err["message"] == engine_setup.ENGINE_NOT_READY
-    assert err["data"] == {"command": "add"}
+    assert err["data"] == {"op": "add"}
 
 
 def test_action_run_refuses_requeue_while_pending(pending, wdg_home):
-    assert call_error("action.run", vault=None, args=["requeue"])["code"] == "engine_not_ready"
+    assert call_error("action.run", vault=None, op="requeue")["code"] == "engine_not_ready"
 
 
-@pytest.mark.parametrize("args", [["research", "fetch", "https://example.org"], ["research-fetch"],
-                                  ["timeline"], ["leads"], ["review", "watchlist"]])
-def test_other_commands_run_while_pending(pending, wdg_home, fake_cli, args):
-    job = call("jobs.start", vault=None, args=args, label="x")
+@pytest.mark.parametrize("op,params", [("fetch-links", {"targets": ["https://example.org"]}),
+                                       ("research-fetch", {}), ("rebuild-timeline", {}),
+                                       ("lead-sweep", {}), ("watchlist-check", {}), ("export", {})])
+def test_other_operations_run_while_pending(pending, wdg_home, rich_vault, fake_cli, op, params):
+    job = call("jobs.start", vault=str(rich_vault), op=op, params=params, label="x")
     assert job["state"] in ("running", "done")
 
 
-def test_nothing_refused_when_not_pending(monkeypatch, wdg_home, fake_cli):
+def test_nothing_refused_when_not_pending(monkeypatch, wdg_home, rich_vault, fake_cli):
     monkeypatch.delenv(engine_setup.PENDING_ENV, raising=False)
     assert call("engine.ready") == {"ready": True}
-    assert call("jobs.start", vault=None, args=["add"], label="x")["state"] in ("running", "done")
+    assert call("jobs.start", vault=str(rich_vault), op="add", label="x")["state"] in ("running", "done")
 
 
 def test_set_ready_lifts_the_gate_for_the_backend_and_its_children(pending, wdg_home):

@@ -730,7 +730,7 @@ def test_a_run_the_reporter_stopped_gets_no_note(rich_vault, _no_notes, monkeypa
         def __init__(self, pid):
             self.pid = pid
 
-    job = jobs.Job(rich_vault, ["add"], "Add documents", "add")
+    job = jobs.Job(rich_vault, "add", {}, "Add documents", "add")
     job.proc, job.cancel_requests, job.state = _Proc(pid), 2, "cancelled"
     monkeypatch.setitem(jobs.MANAGER.jobs, job.id, job)
     (rich_vault / ".watchdog" / ".preprocessing-lock").write_text(_lock_text(pid, label="chew"))
