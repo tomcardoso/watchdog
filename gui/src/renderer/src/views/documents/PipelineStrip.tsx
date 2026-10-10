@@ -1,11 +1,14 @@
 // "Not yet in the vault": everything vault.pipeline reports that hasn't become a document note —
-// files waiting, queued or staged work, failures, set-aside files, and stuck locks.
+// files waiting, queued or staged work, failures, set-aside files, a run in progress here or on another
+// computer, and a run that stopped before it finished. Locks clear themselves (D293): nothing here
+// offers to release one.
 
-import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Lock, RotateCw, Workflow } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Laptop, Loader, RotateCw, TriangleAlert, Workflow } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Badge, Button } from '@renderer/components/ui'
 import { fmtBytes, plural } from '@renderer/lib/format'
-import { runAction, unlockOutcome } from '@renderer/lib/jobs'
+import { runAction } from '@renderer/lib/jobs'
+import { runLockState } from '@renderer/lib/runlock'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { errorMessage, invalidate } from '@renderer/lib/rpc'
@@ -28,7 +31,7 @@ function FileList({ rows }: { rows: { key: string; name: string; why?: string | 
   )
 }
 
-export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState; vaultName: string }) {
+export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
   const openAdd = useApp((s) => s.openAdd)
   const engine = useEngineGate()
   const [open, setOpen] = useState<boolean | null>(null)
@@ -38,11 +41,12 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
   const waiting = p.queued.filter((q) => !q.staged)
   const staged = p.queued.filter((q) => q.staged)
   const finalizing = p.pending_finalization
-  const locked = p.locks.chew || p.locks.ingest
+  const run = runLockState(p.locks)
+  const remote = run !== null && (p.locks.chew?.where === 'elsewhere' || p.locks.ingest?.where === 'elsewhere')
   const groups =
     (p.incoming.length ? 1 : 0) + (waiting.length ? 1 : 0) + (staged.length || finalizing ? 1 : 0) +
-    (p.failed.length ? 1 : 0) + (p.chew_failed.length ? 1 : 0) + (p.skipped.length ? 1 : 0) + (locked ? 1 : 0)
-  const attention = p.failed.length > 0 || p.chew_failed.length > 0 || locked
+    (p.failed.length ? 1 : 0) + (p.chew_failed.length ? 1 : 0) + (p.skipped.length ? 1 : 0) + (run ? 1 : 0) + (p.stopped_run ? 1 : 0)
+  const attention = p.failed.length > 0 || p.chew_failed.length > 0 || !!p.stopped_run
 
   useEffect(() => {
     window.watchdog.prefs.get<boolean>('docsPipelineOpen').then((v) => setOpen(v === null || v === undefined ? attention : !!v)).catch(() => setOpen(attention))
@@ -68,31 +72,6 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
     }
   }
 
-  const unlock = async (force: boolean) => {
-    const ok = await window.watchdog.dialog.confirm({
-      title: force ? 'Force-remove the lock?' : 'Remove the lock?',
-      message: force
-        ? `Remove the lock on ${vaultName} even if it is recent?`
-        : `Remove the stale lock on ${vaultName}?`,
-      detail: force
-        ? 'A lock is only safe to remove once you are sure nothing is still running. If pre-processing or processing is still working on this investigation, removing its lock lets a second run start and the two can overwrite each other.'
-        : 'Do this only if an earlier run was interrupted. A lock under 30 minutes old is left in place unless you force it, because the run that holds it may still be working.',
-      confirm: force ? 'Force remove' : 'Remove lock',
-      destructive: force
-    })
-    if (!ok) return
-    setBusy(force ? 'force' : 'unlock')
-    try {
-      const out = await runAction(force ? ['unlock', '--force'] : ['unlock'])
-      toast(unlockOutcome(out))
-      invalidate('vault.', 'projects.', 'ingest.')
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not remove the lock', body: errorMessage(e) })
-    } finally {
-      setBusy(null)
-    }
-  }
-
   return (
     <section className="pipe" aria-label="Documents not yet in the vault">
       <button className="pipe-head" aria-expanded={expanded} onClick={toggle}>
@@ -106,7 +85,8 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
           {p.failed.length > 0 && <Badge tone="danger" icon={AlertTriangle}>{p.failed.length} failed</Badge>}
           {p.chew_failed.length > 0 && <Badge tone="warning" icon={FileWarning}>{p.chew_failed.length} unreadable</Badge>}
           {p.skipped.length > 0 && <Badge icon={Copy}>{p.skipped.length} set aside</Badge>}
-          {locked && <Badge tone="warning" icon={Lock}>locked</Badge>}
+          {run && <Badge tone="info" icon={remote ? Laptop : Loader}>{run.badge}</Badge>}
+          {p.stopped_run && <Badge tone="warning" icon={TriangleAlert}>stopped early</Badge>}
         </span>
         <span className="spacer" />
         <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{expanded ? 'Hide' : 'Show'}</span>
@@ -115,17 +95,17 @@ export function PipelineStrip({ pipeline, vaultName }: { pipeline: PipelineState
       {expanded && (
         <div className="pipe-body">
           {!engine.ready && <EngineWait style={{ gridColumn: '1 / -1' }} />}
-          {locked && (
+          {run && (
             <div className="pipe-group wide">
-              <div className="pipe-group-head"><Lock style={{ color: 'var(--warning)' }} />Lock present</div>
-              <p>
-                {p.locks.chew && p.locks.ingest ? 'A pre-processing lock and a processing lock are present.' : p.locks.chew ? 'A pre-processing lock is present.' : 'A processing lock is present.'}{' '}
-                While a lock exists, Watchdog refuses to start another run on this investigation. If a run is still going, wait for it. If one was interrupted, the lock is left behind and can be removed. A lock under 30 minutes old is kept unless you force it.
-              </p>
-              <div className="pipe-actions">
-                <Button size="sm" icon={Lock} loading={busy === 'unlock'} onClick={() => unlock(false)}>Unlock…</Button>
-                <Button size="sm" variant="danger" loading={busy === 'force'} onClick={() => unlock(true)}>Force unlock…</Button>
-              </div>
+              <div className="pipe-group-head">{remote ? <Laptop style={{ color: 'var(--info)' }} /> : <Loader style={{ color: 'var(--info)' }} />}{run.title}</div>
+              <p>{run.detail}</p>
+            </div>
+          )}
+
+          {p.stopped_run && (
+            <div className="pipe-group wide">
+              <div className="pipe-group-head"><TriangleAlert style={{ color: 'var(--warning)' }} />Stopped before finishing</div>
+              <p>{p.stopped_run}</p>
             </div>
           )}
 

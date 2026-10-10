@@ -109,7 +109,6 @@ function ListRow({ d }: { d: DocumentRow }) {
 export default function DocumentsView() {
   const vault = useVault()
   const route = useApp((s) => s.route)
-  const projectName = useApp((s) => s.project?.name ?? 'this investigation')
   const docsQ = useRpc('vault.documents', { vault })
   const pipeQ = useRpc('vault.pipeline', { vault })
 
@@ -219,7 +218,7 @@ export default function DocumentsView() {
   const onScroll = useCallback(() => setStuck((scrollRef.current?.scrollTop ?? 0) > 6), [])
 
   const pipe = pipeQ.data
-  const pipeHasWork = !!pipe && (pipe.incoming.length + pipe.queued.length + pipe.failed.length + pipe.chew_failed.length + pipe.skipped.length > 0 || pipe.locks.chew || pipe.locks.ingest || !!pipe.pending_finalization)
+  const pipeHasWork = !!pipe && (pipe.incoming.length + pipe.queued.length + pipe.failed.length + pipe.chew_failed.length + pipe.skipped.length > 0 || !!pipe.locks.chew || !!pipe.locks.ingest || !!pipe.stopped_run || !!pipe.pending_finalization)
 
   const sortHeader = (k: SortKey, label: string, num?: boolean) => (
     <button className={num ? 'num' : undefined} aria-pressed={sort === k} onClick={() => changeSort(k)}>
@@ -240,7 +239,7 @@ export default function DocumentsView() {
           )}
         </div>
 
-        {pipe && pipeHasWork && <PipelineStrip pipeline={pipe} vaultName={projectName} />}
+        {pipe && pipeHasWork && <PipelineStrip pipeline={pipe} />}
 
         {docsQ.isError ? (
           <ErrorNote error={docsQ.error} retry={() => docsQ.refetch()} />

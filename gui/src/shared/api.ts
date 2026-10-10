@@ -39,11 +39,25 @@ export interface Project {
   access: boolean // the user has allowed Watchdog to work in this folder
   stats: ProjectStats
 }
+/** Who holds a run lock (D293). A lock whose run died is cleared before status is reported, so
+ * a holder here is a run in progress: on this computer, on another one (a synced folder), or
+ * `unknown` for a lock written by an older Watchdog. */
+export interface RunLock {
+  where: 'here' | 'elsewhere' | 'unknown'
+  host: string | null
+  started_at: string | null
+}
+export interface RunLocks {
+  chew: RunLock | null
+  ingest: RunLock | null
+}
 export interface ProjectStatus {
   project: Project
   by_type: Record<string, number>
   documents_by_type: Record<string, number>
-  locks: { chew: boolean; ingest: boolean }
+  locks: RunLocks
+  /** One line when a run on this computer stopped before it finished; null otherwise. */
+  stopped_run: string | null
   pending_finalization: { docs: number; entities: number } | null
   size_bytes: number
 }
@@ -325,7 +339,8 @@ export interface PipelineState {
   queued: { sha: string; filename: string; page_count: number | null; est_tokens: number | null; staged: boolean }[]
   failed: { sha: string; filename: string; reason: string | null }[]
   pending_finalization: { docs: number; entities: number } | null
-  locks: { chew: boolean; ingest: boolean }
+  locks: RunLocks
+  stopped_run: string | null
   research_urls: number
   batch_pending: Record<string, unknown> | null
 }
