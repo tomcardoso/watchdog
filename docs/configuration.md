@@ -242,7 +242,25 @@ If Claude is missing from the engine, the tab says so; it ships with the engine,
 
 **Processing stages** is a read-only table: for each step, which model it uses, which provider that is, whether the provider is ready (a key is stored, or its environment variable is set), and how it is billed. Change the models themselves under the **Models** tab.
 
-**Provider keys** lists each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model) with the key stored for it, shown masked. **Add** or **Replace** a key, or delete a stored one. Keys are kept on your computer in a file only you can read, and are never shown in full. A key set in your environment (for example `OPENAI_API_KEY`) always takes precedence over a stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode. Each badge says whether a key is in use.
+**Provider keys** lists each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model) with the key stored for it, shown masked. **Add** or **Replace** a key, or delete a stored one. Keys are never shown in full; the card says where they are stored (see below). A key set in your environment (for example `OPENAI_API_KEY`) always takes precedence over a stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode. Each badge says whether a key is in use.
+
+#### Where keys are stored
+
+Keys are kept in a file in Watchdog's settings folder on your computer, `credentials.json`, which only your user account can read. The app encrypts each key in that file with your computer's own secure storage:
+
+- **macOS:** with a key held in your login Keychain, under the name "Watchdog Safe Storage".
+- **Windows:** with Windows' data protection for your user account.
+- **Linux:** with a key held in your desktop's keyring (GNOME Keyring or KWallet), when one is running and unlocked.
+
+The rest of the file (each key's name, which key is the default) is not secret and stays readable. The first time Watchdog starts with secure storage available, it encrypts any keys an earlier version stored in plain text, in place. It keeps no unencrypted copy, but a backup or a copy of your home folder made before then may still hold one: if that matters, replace the key with the provider (make a new one and delete the old one), then add the new key here.
+
+Some Linux computers have no keyring Watchdog can use. There, keys stay unencrypted in the private file, and **Provider keys** shows a warning: anyone who can sign in as you, or who has a copy of your home folder, could read them. Installing and unlocking a keyring, then restarting Watchdog, lets it encrypt them.
+
+A key encrypted on one computer, or under one user account, can't be decrypted on another. If you copy Watchdog's settings folder to a new computer, **Provider keys** marks those keys as unreadable; replace them there. Anything that needs such a key stops before sending anything.
+
+Only the Watchdog app can read encrypted keys. The command line can't; to use it, set the key in an environment variable instead ([Commands](commands.md#watchdog-settings-auth)).
+
+**Use a key made for Watchdog, with a spending limit.** Create a separate key for Watchdog with each provider and give its account or project a monthly limit, so a mistake or a stolen key can't run up an open-ended bill. In Anthropic's Claude Console, set a monthly **spend limit** under Settings → Billing, or put the key in its own **workspace** with its own spend limit. In OpenAI's platform, create a **project** for Watchdog with its own key and set a hard **spend limit** for it; spend alerts only send an email and don't stop anything. Other providers' controls vary; check their billing settings. These names were checked against the providers' documentation in October 2026 and may change.
 
 #### More than one key for a provider
 
