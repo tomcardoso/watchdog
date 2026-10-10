@@ -12,7 +12,7 @@ from pathlib import Path
 
 from watchdog.vault_paths import CONTEXT_NAME, INCOMING_NAME, incoming_dir, is_vault
 from watchdog import interactive
-from watchdog.appmode import hint as _hint
+from watchdog.appmode import hint as _hint, under_app
 from watchdog.cmd.base import (
     VAULT_SCHEMA_VERSION,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
@@ -429,6 +429,9 @@ def cmd_new(args) -> None:
     print(r"  ((; \_/  (()        ")
     print(r'       "              ')
     print()
+    if under_app():
+        print(f"  {_DIM}Created {vault}{_RESET}\n")
+        return
     print(f"  {_DIM}To navigate into your new vault, copy and paste this command:{_RESET}")
     print(f"  {_CYAN}cd {vault}{_RESET}")
     print()
@@ -790,7 +793,7 @@ def cmd_archive(args) -> None:
     projects = load_projects()
     projects[slug]["archived"] = True
     save_projects(projects)
-    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from watchdog projects list{_RESET}\n")
+    print(f"\n  {_GREEN}Archived:{_RESET} {_BOLD}{info['name']}{_RESET}  {_DIM}hidden from the {_hint('watchdog projects list', 'project list')}{_RESET}\n")
 
 
 def cmd_unarchive(args) -> None:
