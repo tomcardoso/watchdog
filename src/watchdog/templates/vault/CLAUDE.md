@@ -15,9 +15,9 @@ The vault is written by Watchdog's pipeline, which the journalist runs from the 
 | `entities/` | One note per real-world entity, filed by type (person, organization, public-body, place, asset, proceeding) |
 | `documents/` | One note per added document |
 | `morgue/` | Original files once processed, each beside a markdown copy of its full text |
-| `briefings/` | A briefing after each batch of documents is processed, plus leads and watch-list alert reports |
+| `briefings/` | A briefing after each batch of documents is processed, plus leads and watch-list alert reports (read-only summaries: the reporter handles their items in the app's Review, so never ask them to tick a box or run a command) |
 | `timeline.md` | Chronology across every document |
-| `requests.md` | Documents worth going to get, as cited by the vault's own documents |
+| `requests.md` | Documents worth going to get, as cited by the vault's own documents (a read-only summary; the reporter marks requests handled in Review → Requests) |
 | `wiki/` | Investigation thread pages — matured angles that deepen over time |
 | `queries/` | Saved answers to questions — substantive findings filed here so explorations compound |
 | `log.md` | Processing history |
