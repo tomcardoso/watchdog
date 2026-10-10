@@ -35,6 +35,11 @@ module.exports = {
   // app-release.yml). A generic feed rather than the GitHub provider, because this repository's
   // releases also carry the Python package's `v1.0.x` tags, which the GitHub provider would take
   // for app versions. The channel is baked into the build: a beta build only ever sees betas.
+  //
+  // detectUpdateChannel is off because the channel is the release URL: left on, a pre-release
+  // version such as 0.1.0-beta.1 makes electron-builder write beta-mac.yml instead of
+  // latest-mac.yml, and expect it, which the workflow's file list does not collect.
+  detectUpdateChannel: false,
   publish: { provider: 'generic', url: `https://github.com/tomcardoso/watchdog/releases/download/app-${channel}` },
   mac: {
     category: 'public.app-category.productivity',

@@ -1,5 +1,5 @@
 import { cpSync, existsSync, readFileSync, statSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import type { Plugin } from 'vite'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
@@ -20,7 +20,7 @@ function pdfjsAssets(): Plugin {
         const rel = decodeURIComponent((req.url ?? '').split('?')[0]).replace(/^\/+/, '')
         const [dir] = rel.split('/')
         const file = join(root, rel)
-        if (!PDFJS_ASSETS.includes(dir) || !file.startsWith(root + '/') || !existsSync(file) || !statSync(file).isFile()) return next()
+        if (!PDFJS_ASSETS.includes(dir) || !file.startsWith(root + sep) || !existsSync(file) || !statSync(file).isFile()) return next()
         const ext = file.slice(file.lastIndexOf('.'))
         res.setHeader('Content-Type', types[ext] ?? 'application/octet-stream')
         res.end(readFileSync(file))

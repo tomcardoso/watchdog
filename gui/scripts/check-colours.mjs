@@ -2,9 +2,10 @@
 // hsl()). Every colour lives in tokens.css so the palette can change in one place; reference a
 // variable there instead, adding a token if none fits.
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = new URL('../src/renderer/src', import.meta.url).pathname
+const root = fileURLToPath(new URL('../src/renderer/src', import.meta.url))
 const allowed = new Set(['styles/tokens.css'])
 const literal = /#[0-9a-fA-F]{3,8}\b(?![\w-])|\b(?:rgba?|hsla?)\(/g
 const bad = []
@@ -13,7 +14,7 @@ function walk(dir) {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
     if (statSync(p).isDirectory()) walk(p)
-    else if (/\.(css|tsx?|jsx?)$/.test(name) && !allowed.has(relative(root, p))) {
+    else if (/\.(css|tsx?|jsx?)$/.test(name) && !allowed.has(relative(root, p).split(sep).join('/'))) {
       readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
         // Strings like href="#" and '#' anchors are not colours.
         const scrubbed = line.replace(/(["'])#\1/g, '')

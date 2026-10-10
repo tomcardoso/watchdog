@@ -168,6 +168,14 @@ jobs:
           path: app/
           merge-multiple: true
 
+      - name: Check the update feed is complete
+        run: |
+          # Installed copies read these three files; a release without one leaves that platform
+          # unable to update.
+          for f in latest-mac.yml latest.yml latest-linux.yml; do
+            [ -f "app/$f" ] || { echo "::error::$f is missing from the build"; exit 1; }
+          done
+
       - name: Write the release notes
         run: |
           # Changes since the previous app release, never since a Python `v*` tag.
