@@ -7,6 +7,7 @@ Group wordings only when they say the same thing in different words:
 - "lawyer at" and "counsel with" for a person and a law firm: the same relationship (a lawyer working at the firm). Group them.
 - "owner of" and "registered owner of" for a company and a property: the same relationship. Group them.
 - "chief executive of" and "CEO of": the same relationship. Group them.
+- A rank or title within the same role, at the same body, with nothing in the wordings marking a change: "senior partner at" and "partner at", or "lead counsel for" and "counsel for", usually name the same relationship. Group them; each document's own wording stays visible under the group, so the rank is not lost.
 
 Never group wordings that describe different relationships, even when they are close:
 
@@ -14,7 +15,6 @@ Never group wordings that describe different relationships, even when they are c
 - Opposite sides or directions: "counsel for" and "counsel against"; "lender to" and "borrower from"; "buyer of" and "seller of".
 - A different scope or strength: "subsidiary of" and "affiliate of"; "shareholder of" and "owner of"; "employee of" and "contractor to".
 - A change over time that the wording marks: "former director of" and "director of"; "interim chair of" and "chair of".
-- A more specific wording that may be a different role: "senior partner at" and "partner at" may be a promotion, so keep them apart.
 
 When you are not sure two wordings name the same relationship, keep them apart. A wrongly joined pair hides a distinction the reporter needs, and the reporter can only see it by opening the documents; a missed grouping costs one extra line on the screen.
 

@@ -4,8 +4,8 @@ possible duplicates, plus marking them handled.
 The items come from `cmd/review.open_items` and the lead sweep from `pipeline/leads.scan`, so the
 app and `watchdog review` always list the same things. Resolving writes the same
 `resolutions.json` store the terminal walk writes. Generated reports carry no checkboxes (D294),
-so nothing is imported from them; older files that still have boxes are kept in step
-(`resolutions.tick_in_briefings`) so the terminal's `--sync` cannot undo the app.
+so nothing is imported from them, and the app does not edit the boxes older reports may still
+have: the registry alone records what is handled.
 """
 
 from __future__ import annotations
@@ -61,7 +61,6 @@ def resolve(vault: str, rids: list[str]) -> dict:
     ids = _rids(rids)
     with _recording(v, len(ids), True):
         added = resolutions.resolve(v, ids, label="review")
-        resolutions.tick_in_briefings(v, ids)
     return {"resolved": added}
 
 
@@ -73,7 +72,6 @@ def unresolve(vault: str, rids: list[str]) -> dict:
     ids = _rids(rids)
     with _recording(v, len(ids), False):
         removed = resolutions.unresolve(v, ids)
-        resolutions.tick_in_briefings(v, ids, ticked=False)
     return {"unresolved": removed}
 
 

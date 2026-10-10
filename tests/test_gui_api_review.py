@@ -41,12 +41,12 @@ def test_items_on_an_empty_vault(tmp_path):
     assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}}
 
 
-def test_resolve_writes_the_store_and_ticks_the_briefing(rich_vault):
+def test_resolve_writes_the_store_and_leaves_the_briefing_alone(rich_vault):
     briefing = rich_vault / "briefings" / "2026-03-01-10-30.md"
     assert "- [ ] Check Ghost Ltd" in briefing.read_text()
     assert call("review.resolve", vault=V(rich_vault), rids=[GHOST]) == {"resolved": [GHOST]}
     assert resolutions.load(rich_vault)["resolved"][GHOST]["label"] == "review"
-    assert "- [x] Check Ghost Ltd" in briefing.read_text()
+    assert "- [ ] Check Ghost Ltd" in briefing.read_text()          # the registry records it, not the file
     assert GHOST not in {i["rid"] for i in call("review.items", vault=V(rich_vault))["items"]}
     assert call("review.resolve", vault=V(rich_vault), rids=[GHOST]) == {"resolved": []}   # already handled
 
@@ -60,7 +60,7 @@ def test_resolve_several_kinds_at_once(rich_vault):
         "contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}
 
 
-def test_unresolve_reopens_and_unticks(rich_vault):
+def test_unresolve_reopens(rich_vault):
     briefing = rich_vault / "briefings" / "2026-03-01-10-30.md"
     call("review.resolve", vault=V(rich_vault), rids=[GHOST])
     assert call("review.unresolve", vault=V(rich_vault), rids=[GHOST, "lead:isolated:nobody"]) == {

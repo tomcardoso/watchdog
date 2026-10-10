@@ -394,7 +394,8 @@ REQUEST_GROUPS = [
 
 # Relationship wordings that name the same relationship (D291), as a careful model would group them:
 # the judgment calls Marisol Fernandes counsel for the citizens' group, the councillor's letter its
-# lawyer. Every other pair holding two wordings in the story (a partner and a senior partner, a
+# lawyer. The canned model keeps every other pair holding two wordings in the story apart (a
 # director and a president, a subsidiary and an affiliate, an owner and an operator, a contract
-# award and a payment) is a different relationship, and the canned model keeps it apart.
+# award and a payment); a partner and a senior partner, which the prompt now lets a model group,
+# are also left apart here so the demo shows one grouping.
 RELATIONSHIP_GROUPS = [("counsel for", "lawyer for")]

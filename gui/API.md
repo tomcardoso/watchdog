@@ -368,7 +368,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | Method | Params | Result |
 |---|---|---|
 | `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `cmd/review.open_items` |
-| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")` + `tick_in_briefings` (a no-op on reports without boxes), as the terminal walk does |
+| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — what `review resolve --list` shows |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
