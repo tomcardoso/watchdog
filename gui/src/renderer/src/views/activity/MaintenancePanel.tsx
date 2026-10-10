@@ -442,7 +442,7 @@ function ExportCard() {
         </div>
       }
     >
-      Writes the entity and relationship graph for network-analysis tools. It reads the registry only, with no model call. Only relationships stated in the documents are exported; edges to entities that were never profiled are dropped so the import stays valid.
+      Writes the entity and relationship graph for network-analysis tools. It reads Watchdog's records only, with no model call. Only relationships stated in the documents are exported; edges to entities that were never profiled are dropped so the import stays valid. Wordings grouped as one relationship share its label, with each document's own wording kept beside it.
     </MCard>
   )
 }

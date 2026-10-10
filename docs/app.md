@@ -61,7 +61,9 @@ An entity's page shows every fact about it from every document, with your check 
 
 ### Network and Timeline
 
-**Network** draws the entities as a graph: each dot is an entity, sized by how many documents name it and coloured by type, and each line is a relationship. Hover to see a dot's connections, click to see its details, double-click to open it.
+**Network** draws the entities as a graph: each dot is an entity, sized by how many documents name it and coloured by type. Two entities are joined by one line, however many relationships the documents record between them and in whichever direction; the line is thicker the more documents connect the two. Hover over a dot to see its connections, click it to see its details, double-click to open it.
+
+Hover over a line to see every relationship between the two entities, or click it to open a card that lists each one: which way it runs, the documents that state it and the page in each (click one to open the document there). When documents describe the same relationship in different words ("lawyer for" in one, "counsel for" in another), it is listed once, under one of those wordings, with each document's own words shown as "As written". Relationships that differ are never listed as one: a partner and a senior partner, or counsel for one side and counsel for the other, stay separate lines on the card. If two wordings were put together and you think they mean different things, **Show wordings separately** lists them apart, now and after every later run. See [how wordings are grouped](methodology.md#relationship-wordings).
 
 **Timeline** lays out every dated event by year and month, with links to the page each came from. An event whose fact you marked Disputed stays in place, labelled **disputed**. Filter it to one entity to follow that entity through the record.
 

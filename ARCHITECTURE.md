@@ -235,7 +235,7 @@ except the journalist's Notes is the only copy of anything.
 | `## Facts` | every `key_facts` entry in the committed documents' stored extractions whose tags resolve to the entity | deterministic render: date order (fact date, else document date), document and page link, flags, quote or matched passage, reporter's mark, `^f-<hash>` block id; past 40 facts grouped by document (5 each plus every marked fact; the 40 most recent documents in full, earlier ones one line each) |
 | `## Earlier claims` | registry `legacy_claims` | carried once from a pre-D280 note for documents with no stored extraction |
 | `## Contradictions` | registry ledger, minus handled callouts | reconciliation (§8.5) |
-| `## Relationships` | registry roles | deterministic merge |
+| `## Relationships` | registry roles + stored extractions' roles, grouped by `relationships.View` | deterministic render: one line per counterpart, direction and meaning (canonical label, every source document and page, the documents' wordings when they differ, D291) |
 | `## Notes` | the note on disk | the journalist; never touched |
 
 A fact's tag is resolved to a current entity by `FactIndex.resolve`: the tag itself when that
@@ -382,7 +382,7 @@ registry, keyed for idempotent replay (D67).
 
 **Post-ingest:**
 
-- **Contradictions** (§8.5), then **entity synthesis** (§8). Before the commit pass, a vault whose
+- **Contradictions** (§8.5), then **relationship wordings** (§12, D291), then **entity synthesis** (§8). Before the commit pass, a vault whose
   notes predate D280 is rebuilt once (§7).
 - **Timeline.** Each document stages raw `{date}_{sha7}.ndjson` files; `timeline.collisions`
   promotes uncontested dates and returns dates with events from several documents (including
@@ -480,6 +480,7 @@ queries/ wiki/               session-written findings and threads
     resolutions.json requests.json batch-pending.json
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
+    relationships.json       relationship-wording groups, split marks and compared wordings (D291)
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
@@ -575,6 +576,25 @@ each fact's `extracted_entities`. Since D280, `undo.version` 2 adds `changes`: p
 entity records, facts (with their tags then) and roles that carried the merged id just before the
 fold (`merge_log.carried_items`); a recurring decision accumulates them. A same-document section
 fold (`merge.py`, D282) is logged with rule `same-document-section` and `undo.available: false`.
+
+**Relationship wordings (D291).** `pipeline/relationships.py`. A document's roles are never
+rewritten. `View` gathers every stated relationship (registry forward roles, which cover documents
+with no stored extraction, plus every committed extraction's roles, so a relationship stated in four
+documents counts four) and groups them per ordered pair by key (`normalize`: case, spacing,
+punctuation, `&`, articles, a leading "is"/"are", a plain plural; never a different word) and by the
+active groups of `registry/relationships.json` (`schema_version` 1: `groups` with `from`, `to`,
+`keys`, `canonical` — always one of the member wordings — `decided_by`, `model`, `reason`, `run`,
+`status` active/superseded/split; `evaluated`, per ordered pair, the keys already put to the model).
+Ids follow the merge log. The graph (`vault.graph`: one edge per unordered pair listing every
+row), entity notes, the entity page and `watchdog export` (canonical type plus `wording`) read it.
+Post-processing step 0b (`orchestrate._relationship_labels`, task `relationship-labels`, finalizer
+model) asks about ordered pairs a batch document touched with two or more keys not all `evaluated`,
+batched at 120 wordings per call; `apply` checks each proposed group (two or more of that pair's
+wordings, canonical a member, nothing the reporter split), supersedes the model's earlier groups on
+that pair, records it under the registry lock and refreshes the two notes. A failed call leaves its
+pairs unevaluated for the next run that touches them. `split` (the app's **Show wordings
+separately**, `vault.relationshipSplit`) marks a group `split`, recorded as a history version; a
+later group joining two of its keys is refused.
 
 **Undo merge (D281).** `pipeline/merge_undo.py` (the app's job `jobs.undoMerge`) re-tags the
 recorded items to the split record (the merged id when free), marks the entry `undone`, rebuilds
@@ -766,7 +786,9 @@ noted as such.
   (identity, provenance, slugs, role targets, timeline fan-out) is stamped in code, and the model
   is not asked to restate as prose what it emitted structurally. Exception: `document.summary`, a
   bounded digest grounded in `key_facts` — a prompt instruction, not a checked postcondition.
-  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270.*
+  A document's own wording is never rewritten: a relationship's canonical label is a model
+  proposal that code checks and records beside it (D291).
+  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270, D291.*
 - **I2 — Local-first preprocessing.** Source documents never leave the machine during chew, and
   chew costs no API tokens. This bounds source-document egress; web research is allowed (§14).
   *History: D1, D45.*
