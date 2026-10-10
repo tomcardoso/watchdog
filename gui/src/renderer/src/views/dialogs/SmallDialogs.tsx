@@ -47,8 +47,7 @@ export function NewInvestigationDialog() {
         setError('Watchdog needs your permission to create the investigation in that folder.')
         return
       }
-      const args = ['new', name.trim(), ...(desc.trim() ? ['--description', desc.trim()] : []), ...(parent ? ['--dir', parent] : [])]
-      await runAction(args)
+      await runAction('projects-new', { name: name.trim(), description: desc.trim() || undefined, dir: parent || undefined }, null)
       const list = await call('projects.list', {})
       invalidate('projects.')
       const made = list.filter((p) => p.name === name.trim()).sort((a, b) => (b.created ?? '').localeCompare(a.created ?? ''))[0]
@@ -113,7 +112,7 @@ export function FetchLinksDialog() {
     setError('')
     try {
       const targets = file ? [file] : urls
-      await startJob(['research', 'fetch', ...targets], file ? 'Downloading links' : `Downloading ${plural(urls.length, 'link')}`, 'fetch')
+      await startJob('fetch-links', { targets }, file ? 'Downloading links' : `Downloading ${plural(urls.length, 'link')}`, 'fetch')
       setOpen(false)
       toast({ kind: 'info', title: 'Downloading links', body: 'Progress is in the corner. Downloaded files wait in incoming until you add them.' })
     } catch (e) {

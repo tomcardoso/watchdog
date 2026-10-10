@@ -590,3 +590,17 @@ def _watch(args) -> None:
                 known = current - set(pending_sizes)
     except KeyboardInterrupt:
         say(f"\n  {_DIM}Stopped watching.{_RESET}\n")
+
+
+@op("projects-archive", vault=False, kind="action")
+def archive(rep, *, slug: str, archived: bool = True) -> dict:
+    """Hide an investigation from the list (`archived`), or bring it back."""
+    found, info = _find_project(slug)
+    projects = load_projects()
+    if archived:
+        projects[found]["archived"] = True
+    else:
+        projects[found].pop("archived", None)
+    save_projects(projects)
+    rep.log(f"{'Archived' if archived else 'Restored'} {info['name']}.")
+    return {"slug": found, "archived": archived}

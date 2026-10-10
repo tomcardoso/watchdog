@@ -25,7 +25,7 @@ function useDownload() {
     setBusy(true)
     try {
       const vault = useApp.getState().project?.path ?? null
-      const job = await startJob(['research-fetch'], `Download ${plural(n, 'source')}`, 'research-fetch', vault)
+      const job = await startJob('research-fetch', {}, `Download ${plural(n, 'source')}`, 'research-fetch', vault)
       toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked, saved with a provenance note and placed in incoming.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
       void waitForJob(job.id).then((j) => {
         if (j.state !== 'done') return

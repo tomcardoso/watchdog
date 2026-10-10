@@ -426,7 +426,7 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
             onClick={async () => {
               setRebuilding(true)
               try {
-                await startJob(['reindex'], 'Rebuild search index')
+                await startJob('reindex', {}, 'Rebuild search index')
                 toast({ kind: 'info', title: 'Rebuilding the search index', body: 'Follow progress in Activity. Search again when it finishes.' })
               } catch (e) {
                 toast({ kind: 'error', title: 'Could not start the rebuild', body: errorMessage(e) })

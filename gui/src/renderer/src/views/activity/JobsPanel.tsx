@@ -2,7 +2,7 @@
 
 import { ArrowDownToLine, CheckCircle2, Clipboard, OctagonX, PauseCircle, RotateCw, Square, Terminal, XCircle } from 'lucide-react'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Job, LogLine } from '@shared/api'
+import type { Job, LogLine, OpParams } from '@shared/api'
 import { Badge, Button, Empty, Progress, Spinner, cx } from '@renderer/components/ui'
 import { call } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
@@ -10,8 +10,6 @@ import { basename, fmtDateTime, fmtDuration, fmtRelative } from '@renderer/lib/f
 import { toast, useApp } from '@renderer/lib/store'
 import { progressText } from '@renderer/shell/JobDock'
 import { usePublicRecordsGate } from './PublicRecordsGate'
-
-const SENDS_TO_MODEL = new Set(['add', 'dig', 'ingest'])
 
 function useNow(active: boolean): number {
   const [now, setNow] = useState(Date.now())
@@ -120,11 +118,14 @@ function JobDetail({ job }: { job: Job & { log: LogLine[] } }) {
   }
 
   const rerun = async () => {
-    const args = job.args.filter((a) => a !== '--skip-warning')
-    if (SENDS_TO_MODEL.has(job.args[0]) && !job.args.includes('--estimate') && !job.args.includes('--estimate-all')) {
-      await gate.request({ args, label: job.label, kind: job.kind })
+    if (job.op === 'add' || job.op === 'dig') {
+      // Sent to a model: the acknowledgement is asked again, never carried over.
+      const { skip_warning: _skip, ...params } = job.params as OpParams['add'] & OpParams['dig']
+      void _skip
+      await gate.request({ op: job.op, params, label: job.label, kind: job.kind, options: params })
     } else {
-      const j = await startJob(job.args, job.label, job.kind, job.vault)
+      // The same operation and parameters the backend checked when it first ran.
+      const j = await startJob(job.op, job.params as never, job.label, job.kind, job.vault)
       useApp.getState().navigate({ view: 'activity', job: j.id }, { replace: true })
     }
   }

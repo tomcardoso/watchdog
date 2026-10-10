@@ -525,12 +525,16 @@ export interface ProgressState {
   note?: string | null
   docs: Record<string, DocProgress>
 }
-export interface Job {
+export interface Job<O extends OpName = OpName> {
   id: string
   label: string
   kind: string
   vault: string | null
-  args: string[]
+  /** The operation the worker runs (D298), and its checked parameters. */
+  op: O
+  params: OpParams[O]
+  /** The operation's return value, once it has finished; null until then or when it failed. */
+  result: unknown
   state: JobState
   exit_code: number | null
   started: string
@@ -538,7 +542,49 @@ export interface Job {
   progress: ProgressState
 }
 export interface LogLine { t: string; stream: 'out' | 'err'; text: string }
-export interface ActionResult { code: number; stdout: string; stderr: string }
+/** A quick operation run to completion: its exit code, its return value, what it printed and,
+ * when it failed, the reason it gave. */
+export interface ActionResult<R = unknown> { code: number; result: R | null; log: string; error: string | null }
+
+// ── operations (D298) ───────────────────────────────────────────────────────
+// Every change the app makes is one of these, run in a worker process. The backend checks the
+// parameters against the operation's own schema (`jobs.ops`); a shared run option an operation
+// doesn't take is dropped, anything else unknown is refused.
+type IngestModels = Pick<RunOptions, 'extractor_model' | 'classifier_model' | 'extractor_effort' | 'classifier_effort' | 'concurrency' | 'classify_pages' | 'skill' | 'verify' | 'wait'>
+type FinalizerModels = Pick<RunOptions, 'finalizer_model' | 'finalizer_reconciliation_model' | 'finalizer_synthesis_model' | 'finalizer_timeline_model' | 'finalizer_briefing_model' | 'finalizer_effort' | 'skip_briefing'>
+type NoParams = Record<string, never>
+export interface OpParams {
+  add: RunOptions & { paths?: string[]; retry?: boolean; skip_warning?: boolean }
+  chew: { paths?: string[]; chew_workers?: number; chunk_workers?: number }
+  dig: IngestModels & { skip_warning?: boolean; limit?: number; force?: boolean }
+  bark: FinalizerModels
+  requeue: NoParams
+  watch: NoParams
+  reindex: NoParams
+  export: { format?: 'csv' | 'cypher'; output?: string | null }
+  'merge-entities': { keep: string; merge: string }
+  'undo-merge': { id: string }
+  'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
+  'recheck-contradictions': { ids?: string[]; all?: boolean }
+  'rebuild-timeline': NoParams
+  'rebuild-notes': NoParams
+  'lead-sweep': NoParams
+  'watchlist-check': NoParams
+  'refresh-claude-setup': NoParams
+  'research-fetch': { file?: string }
+  'fetch-links': { targets: string[] }
+  'download-model': { model: string }
+  'projects-new': { name: string; description?: string; dir?: string }
+  'projects-register': { path: string; name: string }
+  'projects-rename': { slug: string; name: string }
+  'projects-describe': { slug: string; description?: string }
+  'projects-move': { slug: string; path: string }
+  'projects-delete': { slug: string; purge?: boolean }
+  'projects-archive': { slug: string; archived?: boolean }
+}
+export type OpName = keyof OpParams
+export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]'; required: boolean; default: unknown; nullable: boolean }
+export interface OpSpec { params: Record<string, OpParamSpec>; vault: boolean; engine: 'add' | 'index' | null; kind: 'job' | 'action' }
 
 // ── search ───────────────────────────────────────────────────────────────────
 export interface SearchPassage { filename: string; page: number | null; text: string; score: number; sha?: string | null; note?: string | null; original?: string | null }
@@ -791,16 +837,15 @@ export interface Methods {
   'ingest.preflight': [{ vault: string; options?: RunOptions }, Preflight]
   'ingest.estimate': [{ vault: string; stage: 'dig' | 'bark'; all_models?: boolean; options?: RunOptions }, Estimate]
 
-  'jobs.start': [{ vault: string | null; args: string[]; label: string; kind?: string }, Job]
+  'jobs.ops': [Record<string, never>, Record<OpName, OpSpec>]
+  'jobs.start': [{ vault: string | null; op: OpName; params?: OpParams[OpName]; label: string; kind?: string }, Job]
   'jobs.cancel': [{ id: string }, { ok: boolean }]
   'jobs.list': [Record<string, never>, Job[]]
   'jobs.get': [{ id: string }, Job & { log: LogLine[] }]
-  'jobs.flags': [{ command: 'add' | 'dig' | 'bark' | 'chew'; options: RunOptions }, { args: string[] }]
-  'jobs.rebuildNotes': [{ vault: string }, Job]
   'jobs.undoMerge': [{ vault: string; id: string }, Job]
   'jobs.recheckContradictions': [{ vault: string; ids?: string[]; all?: boolean }, Job]
   'contradictions.estimate': [{ vault: string; ids?: string[]; all?: boolean }, RecheckEstimate]
-  'action.run': [{ vault: string | null; args: string[]; timeout?: number }, ActionResult]
+  'action.run': [{ vault: string | null; op: OpName; params?: OpParams[OpName]; timeout?: number }, ActionResult]
 
   'search.query': [{ vault: string; query: string; top?: number; threshold?: number | null; rerank?: boolean }, SearchResult]
   'search.batch': [{ vault: string | null; terms: string[]; everywhere?: boolean }, BatchResult]

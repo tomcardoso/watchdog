@@ -62,7 +62,7 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
   const requeue = async () => {
     setBusy('requeue')
     try {
-      await runAction(['requeue'])
+      await runAction('requeue', {})
       toast({ kind: 'success', title: 'Moved back into the queue', body: 'Run Add documents to extract them again.' })
       invalidate('vault.', 'projects.', 'ingest.')
     } catch (e) {

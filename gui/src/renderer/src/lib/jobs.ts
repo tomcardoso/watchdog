@@ -1,33 +1,25 @@
-// Starting and following `watchdog` subprocess jobs (see gui/API.md § jobs).
+// Starting and following operations, each run in a worker process (see gui/API.md § jobs, D298).
 
-import type { Job, RunOptions } from '@shared/api'
+import type { Job, OpName, OpParams } from '@shared/api'
 import { call, invalidate } from './rpc'
 import { toast, useApp } from './store'
 import { investigationName, isElsewhere, switchTo } from './investigation'
 
-/** Start `watchdog <args…>` in the open vault. Resolves once the job is running. */
-export async function startJob(args: string[], label: string, kind = args[0], vault?: string | null): Promise<Job> {
+/** Start operation `op` in the open investigation (or `vault`). Resolves once the job is running. */
+export async function startJob<O extends OpName>(op: O, params: OpParams[O], label: string, kind: string = op, vault?: string | null): Promise<Job> {
   const v = vault === undefined ? useApp.getState().project?.path ?? null : vault
-  const job = await call('jobs.start', { vault: v, args, label, kind })
+  const job = await call('jobs.start', { vault: v, op, params, label, kind })
   useApp.getState().upsertJob(job)
   return job
 }
 
-/** CLI flags for a pipeline command from RunOptions — the server owns the mapping. */
-export async function flagsFor(command: 'add' | 'dig' | 'bark' | 'chew', options: RunOptions): Promise<string[]> {
-  return (await call('jobs.flags', { command, options })).args
-}
-
-/** A short command that finishes quickly (rename, archive, unlock…). Throws with the CLI's own
- * error text when it fails. */
-export async function runAction(args: string[], vault?: string | null): Promise<string> {
+/** A quick operation run to completion (rename, describe, requeue…). Resolves with its result;
+ * throws with the reason it gives when it fails. */
+export async function runAction<R = unknown, O extends OpName = OpName>(op: O, params: OpParams[O], vault?: string | null): Promise<R> {
   const v = vault === undefined ? useApp.getState().project?.path ?? null : vault
-  const r = await call('action.run', { vault: v, args })
-  if (r.code !== 0) {
-    const msg = (r.stderr || r.stdout).trim().replace(/^Error:\s*/m, '')
-    throw new Error(msg || `watchdog ${args[0]} exited with code ${r.code}`)
-  }
-  return r.stdout
+  const r = await call('action.run', { vault: v, op, params })
+  if (r.code !== 0) throw new Error(r.error || r.log || 'That did not finish.')
+  return r.result as R
 }
 
 /** Wait for a job to finish; resolves with its final state. */
