@@ -250,9 +250,34 @@ test('every screen renders against the demo investigation', async () => {
     await page.getByRole('button', { name: 'Search the extracted text instead' }).click()
     await expect(page.getByPlaceholder('Search the extracted text')).toHaveValue('no such words anywhere')
 
+    // The command palette: a full-height search row (it used to shrink to its text), and the panel
+    // inside the window at a small size.
+    await page.setViewportSize({ width: 1000, height: 700 })
+    await page.evaluate(() => (window as any).__watchdogApp.getState().setPalette(true))
+    await page.locator('[cmdk-input]').fill('port')
+    await expect(page.locator('[cmdk-item]').nth(5)).toBeVisible({ timeout: 10_000 })
+    {
+      const row = (await page.locator('.palette-search').boundingBox())!
+      const panel = (await page.locator('.palette').boundingBox())!
+      expect(row.height).toBeGreaterThanOrEqual(44)
+      expect(panel.y + panel.height).toBeLessThanOrEqual(700)
+    }
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.palette')).toHaveCount(0)
+
+    // The incoming-folder watcher shows as a small chip, never a card over the screen.
+    await page.evaluate(() => {
+      const st = (window as any).__watchdogApp.getState()
+      st.upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: st.project.path, args: ['watch'], state: 'running', exit_code: null, started: new Date().toISOString(), finished: null, progress: {} })
+      st.navigate({ view: 'settings', tab: 'about' })
+    })
+    await expect(page.locator('.job-chip', { hasText: 'Watching incoming' })).toBeVisible()
+    await expect(page.locator('.job-card')).toHaveCount(0)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: null, args: ['watch'], state: 'cancelled', exit_code: null, started: new Date().toISOString(), finished: new Date().toISOString(), progress: {} }))
+    await expect(page.locator('.job-dock')).toHaveCount(0)
+
     // Review at a small window: every queue tab and every tool is on screen, none scrolled out of
     // sight sideways.
-    await page.setViewportSize({ width: 1000, height: 700 })
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'review' }))
     await expect(page.getByRole('tab').first()).toBeVisible({ timeout: 10_000 })
     const offscreen = await page.evaluate(() => {
