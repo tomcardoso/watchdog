@@ -24,14 +24,13 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 
 ## How the commands are organized
 
-`watchdog --help` lists ten commands, grouped by what you are doing:
+`watchdog --help` lists the commands, grouped by what you are doing:
 
 | Command | What it is for |
 |---|---|
 | `watchdog` | With no command inside an investigation: the home screen — see [below](#the-home-screen). |
 | `watchdog add` | Getting documents in — see [Adding documents](#adding-documents). |
 | `watchdog ask` | A back-and-forth Claude Code session about the vault — see [below](#watchdog-ask). |
-| `watchdog search` | Finding passages by meaning and exact wording — see [below](#watchdog-search). |
 | `watchdog review` | Everything flagged for a person: contradictions, leads, watch-list hits, possible duplicates, possible same entities — see [below](#watchdog-review). |
 | `watchdog open` | Opening the investigation in Obsidian; `--folder` opens the folder in Finder or your file explorer instead. Omit the name when you are inside the vault. |
 | `watchdog research` | Web research, and downloading lists of links — see [below](#watchdog-research). |
@@ -40,9 +39,11 @@ If you're running Watchdog from a script or a scheduled job, the process exit co
 | `watchdog settings` | Models, keys, health checks and skills — see [Settings](#settings). |
 | `watchdog setup` | Setting up Watchdog after installation; `--force` re-runs it. |
 
-`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `check-citations`, `timeline`, `reindex`, `verify-fact`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
+`watchdog help maintenance` lists the commands for manual control and repairs: `chew`, `dig`, `bark`, `requeue`, `leads`, `timeline`, `reindex`, `verify-fact`, `usage`, `export`, `unlock` and `gui`. They are described on this page too.
 
-Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts and the vault's slash commands use the old names and see no note.
+Commands from earlier versions keep working under their old names — `watchdog rename`, `watchdog configure`, `watchdog resolve` and so on. Typed at a terminal, an old name prints a one-line note naming its new home, then runs as before. Scripts use the old names and see no note.
+
+Ask Claude sessions do not run any of these commands. They use Watchdog's own tools inside the app (search, leads, citation checks, the timeline, entity refreshes, watch-list terms and confirmed contradictions), and have no shell. The commands that only those sessions used (`search`, `check-citations`, `write-entity`, `watchlist-add`, `contradiction-add`, `research-seen`, `session-primer`, `page-notes` and `prompt-status`) have been removed, along with `review add-contradiction`. The app's **Search** screen and **Maintenance → Check citations** do the same work for you.
 
 ### The home screen
 
@@ -268,16 +269,13 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | Command | What it does |
 |---|---|
 | `watchdog ask ["question"]` | Open a Claude Code session on the vault, optionally starting with a question — see [below](#watchdog-ask). |
-| `watchdog search <name> "<query>"` | Search ingested documents by meaning and exact terms — see [below](#watchdog-search). |
 | `watchdog review [kind]` | Step through open contradictions, leads, watch-list hits, possible duplicate documents and possible same entities one at a time — see [below](#watchdog-review). |
 | `watchdog review resolve <id…>` | Mark items handled by their resolution ids — see [below](#watchdog-review-resolve-and-unresolve). |
 | `watchdog review unresolve <id…>` | Bring handled items back into the active list. |
 | `watchdog review watchlist [name]` | Sweep every already-ingested document against the current `watchlist.md` — see [below](#watchdog-review-watchlist). |
 | `watchdog review merge-entities <keep-id> <merge-id>` | Fold a duplicate entity into another — see [below](#watchdog-review-merge-entities). |
-| `watchdog review add-contradiction <entity-id>` | Record a contradiction you have verified, so it is tracked like the ones found during ingest. |
 | `watchdog research [name]` | Open Claude Code to research the vault's open questions on the web — see [below](#watchdog-research). |
 | `watchdog leads [name]` | Maintenance. Print the full lead sweep — see [Leads](#leads). |
-| `watchdog check-citations [page…] [--json]` | Maintenance. Run from inside an investigation's folder: resolve every fact citation (`[[documents/<slug>#^f-…\|p. N]]`) in `queries/`, `wiki/` and `briefings/`, or in the pages named, and list the ones that name no stored fact and the ones on facts you marked Disputed. Read-only; pre-approved in Ask Claude sessions, whose skills run it before filing a page. |
 | `watchdog timeline [name]` | Maintenance. Rebuild `timeline.md` from the canonical event files; deterministic, no model call. |
 | `watchdog reindex [name]` | Maintenance. Rebuild the search indexes from disk — see [below](#watchdog-reindex). |
 | `watchdog verify-fact [fact-id]` | Maintenance. Mark a fact verified, disputed or can't verify, or list what has been marked — see [below](#watchdog-verify-fact). |
@@ -285,28 +283,6 @@ HTML pages get a full rendered snapshot — images, styles, client-rendered cont
 | `watchdog export [name]` | Maintenance. Export the entity and relationship graph for network-analysis tools — see [below](#watchdog-export). |
 | `watchdog unlock [name]` | Maintenance. Remove a chew or ingest lock by hand; `--force` removes one a run still holds. Locks normally clear themselves. |
 | `watchdog gui` | Maintenance. Open the Watchdog desktop app — see [below](#watchdog-gui). |
-
-### watchdog search
-
-`watchdog search` finds material by meaning as well as by exact wording, and prints results in three sections: **exact matches** (every literal occurrence of the term, from a local full-text index, with a page link back to the source), **source passages** (ranked by meaning and by exact terms, then reranked locally), and **notes** (what the investigation has concluded). In a terminal that supports links (most do, including macOS Terminal, iTerm2 and Windows Terminal), each result's title is clickable and opens that note in Obsidian; `watchdog review leads`, `watchdog timeline` and the home screen link their notes the same way. Piped or `--json` output stays plain text. With `--json`, each source passage and each exact match in a document's text also lists `facts`: the facts recorded on that page, each with its `id`, its `cite` link (`[[documents/<slug>#^f-…|p. N]]`, the form Ask Claude pastes to cite a fact) and your verification mark.
-
-Run from inside a Claude Code session, `watchdog search` only searches the investigation the session is in. It refuses `--everywhere`, another investigation's name, and a `--batch` file outside the investigation's folder. A document can contain instructions aimed at the session, and those forms would let it read files or other investigations without asking you; run them in your own terminal instead. How to use it well — steering with `+`/`-` phrases, quoted phrases for exact matching — is covered in [Investigating](investigating.md).
-
-```bash
-watchdog search my-investigation "shell company -real estate"
-```
-
-Flags:
-
-- `--top N` — results per section (default: 5).
-- `--threshold S` — hide semantic results scoring below S (0.0–1.0).
-- `--no-rerank` — skip the local reranking step; faster, lower quality.
-- `--full` — print the complete passage or note instead of a snippet.
-- `--batch FILE` — read terms from a file (one per line) and report hits per term instead of ranking a single query; useful for checking a list of names. If the exact-match index can't be read, the affected terms are reported as **not checked** — never as "no hits".
-- `--everywhere` — search every registered, non-archived investigation instead of one; only the entity-lookup and exact-match lanes run (semantic ranking doesn't scale across vaults), results are grouped by investigation, and vaults with a broken path are skipped. Combine with `--batch` to check a term list across every vault.
-- `--json` — machine-readable output.
-
-Omit the project name when running from inside the vault directory; with `--everywhere`, no project name is used at all.
 
 ### watchdog ask
 

@@ -5,7 +5,7 @@ anyone runs.
 `watchdog projects rename …`, `watchdog settings auth …` and the verbs under `review`,
 `research`, `add` and `ask` are rewritten to the original command (`rename`, `auth`, …) before
 argparse runs, so each implementation, its flags and its tests stay where they are. The original
-names keep working: they are what the vault's skills and permission allowlist call, so they are
+names keep working: they are what the app runs as jobs, so they are
 the stable interface for scripts, and a person typing one at a terminal gets a one-line pointer
 to its new home.
 """

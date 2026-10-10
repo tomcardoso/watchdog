@@ -32,7 +32,7 @@ The constants are gated on terminal detection (`cmd.base._color_enabled`, #499):
 4. If the command produces a success confirmation, use `_GREEN` for the label and `_BOLD` for the key value.
 5. Register the command's arguments only on its argparse subparser in `build_parser()`. `watchdog <cmd> --help` renders them from the parser; `_CMD_HELP` in `cmd/base.py` holds only an optional description override and notes, never flags.
 6. Inside a vault, a lone positional argument is the command's own value (a query, a new name), not a project prefix — only an exact slug names another project.
-7. Decide where it appears (D254). `watchdog --help` shows only ten commands. A new command either becomes a verb under one of them — add it to `GROUPS`, `VERBS` or `FLAGS` in `cmd/groups.py`, plus `_GROUP_HELP` for a group — or goes in `MAINTENANCE` there. It keeps its own subparser either way: the grouped form is rewritten to it before argparse runs. Printed hints name the grouped form (`watchdog projects rename`), while skills and `_VAULT_PERMISSIONS` keep the original name, which is the stable interface for scripts.
+7. Decide where it appears (D254). `watchdog --help` shows only the main commands. A new command either becomes a verb under one of them — add it to `GROUPS`, `VERBS` or `FLAGS` in `cmd/groups.py`, plus `_GROUP_HELP` for a group — or goes in `MAINTENANCE` there. It keeps its own subparser either way: the grouped form is rewritten to it before argparse runs. Printed hints name the grouped form (`watchdog projects rename`), while the app's jobs keep the original name, which is the stable interface for scripts. Ask Claude sessions never run a command; give them a tool in `watchdog/session_tools.py` instead (D299).
 
 ## Adding a new CLI alias
 
