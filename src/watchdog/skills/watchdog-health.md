@@ -88,7 +88,7 @@ Read `.watchdog/registry/registry.json`. Compare `document_count` and `entity_co
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
 
 Also check that the following files exist at the vault root. Report any that are missing:
-- `timeline.md` — `MISSING FILE: timeline.md (rebuild with: watchdog timeline)`
+- `timeline.md` — `MISSING FILE: timeline.md` (rebuild it with the `mcp__watchdog__timeline` tool, then report that you did)
 - `log.md` — `MISSING FILE: log.md (created automatically by processing; create manually if needed)`
 
 ---
@@ -113,7 +113,7 @@ During chew, MinHash flags a document that closely matches an earlier one, and e
 
 `NEAR-DUPLICATE: documents/<slug>.md ~ <near_duplicate_of> — confirm same or different`
 
-Skip any entry whose id `duplicate:<first 12 characters of its sha256>` is listed in `.watchdog/registry/resolutions.json` under `resolved` — the journalist has already reviewed it. Count the rest for the summary. A flagged pair stays flagged until the journalist acts (`watchdog review duplicates` marks it handled; removing the flagged copy also clears it), so this list is everything still awaiting that judgement. If the two documents also produced two separate entity records for what turns out to be the same real-world person or company (check the dashboard's "Single-source entities (review)" table, or look for entities with near-identical names or aliases in `entities.json` — the dashboard's "Possible duplicate documents" table lists documents, not entities), fix that with `watchdog merge-entities <keep-id> <merge-id>` — deterministic registry surgery that unions aliases, roles, and timeline events onto one id and remaps every relationship elsewhere in the vault that pointed at the losing id. The merge keeps only one entity's prose Summary, so when both entities had one, follow it with `/watchdog-entity <keep-id>` to re-synthesize the Summary and Timeline from every merged source (the command prints this nudge itself when a Summary was dropped).
+Skip any entry whose id `duplicate:<first 12 characters of its sha256>` is listed in `.watchdog/registry/resolutions.json` under `resolved` — the journalist has already reviewed it. Count the rest for the summary. A flagged pair stays flagged until the journalist acts (the journalist marks it handled in the app's Review; removing the flagged copy also clears it), so this list is everything still awaiting that judgement. If the two documents also produced two separate entity records for what turns out to be the same real-world person or company (check the dashboard's "Single-source entities (review)" table, or look for entities with near-identical names or aliases in `entities.json` — the dashboard's "Possible duplicate documents" table lists documents, not entities), say so and suggest the journalist merge them in the app (Review → Possible same, or Merge on the entity's page). You cannot merge entities from this session. The merge keeps only one entity's prose Summary, so when both entities had one, suggest `/watchdog-entity <keep-id>` afterwards to re-synthesize the Summary and Timeline from every merged source.
 
 ---
 

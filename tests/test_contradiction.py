@@ -1,5 +1,6 @@
-"""Tests for `watchdog contradiction-add` — the deterministic promote command that writes a
-verified surface-found contradiction candidate into an entity note (#312)."""
+"""Tests for `pipeline.contradiction`, the deterministic promote step behind the session's
+`contradiction_add` tool (D299): it writes a verified surface-found contradiction candidate into
+an entity note (#312)."""
 
 import json
 from pathlib import Path

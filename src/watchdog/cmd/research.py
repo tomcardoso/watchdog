@@ -28,7 +28,6 @@ from watchdog.cmd.base import (
     CONFIG_FILE,
     _extra_install_cmd,
     _find_project,
-    _resolve_vault,
     _venv_bin,
     load_projects,
 )
@@ -211,15 +210,6 @@ def cmd_research(args) -> None:
                   f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
     else:
         print(f"\n  Left queued. Run {_CYAN}watchdog research-fetch{_RESET} to download later.\n")
-
-
-def cmd_research_seen(args) -> None:
-    """Internal: print URLs already captured (one per line), so /watchdog-research can skip
-    re-fetching them. Derived from documents.json + in-flight incoming/ sidecars (research.seen_urls)."""
-    _, _info, vault = _resolve_vault(getattr(args, "project", None))
-    _ensure_layout(vault)
-    for url in sorted(research.seen_urls(vault)):
-        print(url)
 
 
 def cmd_research_fetch(args):

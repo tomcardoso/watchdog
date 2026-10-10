@@ -1,7 +1,6 @@
 """The session primer (D285): a deterministic, budgeted picture of the whole investigation that the
-vault's SessionStart hook prints into every Ask Claude session, replacing the model-written hot.md."""
+app adds to every Ask Claude session's system prompt (D299), replacing the model-written hot.md."""
 
-import json
 import os
 import subprocess
 import sys
@@ -10,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from watchdog.cmd import primer
-from watchdog.vault_paths import SESSION_HOOK_COMMAND, ensure_current_layout, migrate_folder_names
 
 from tests.test_write_vault import make_vault
 
@@ -26,13 +24,6 @@ def demo(tmp_path_factory):
                           env=_ENV, capture_output=True, text=True, timeout=120)
     assert proc.returncode == 0, proc.stderr
     return vault, home
-
-
-def _cli(cwd: Path, home: Path | None = None) -> subprocess.CompletedProcess:
-    env = {**_ENV, **({"WATCHDOG_HOME": str(home)} if home else {})}
-    return subprocess.run([sys.executable, "-c", "from watchdog.cli import main; main()",
-                           "session-primer"], cwd=cwd, env=env, capture_output=True, text=True,
-                          timeout=60)
 
 
 def test_empty_vault_primer_is_short_and_says_so(tmp_path):
@@ -99,52 +90,20 @@ def test_context_questions_reads_question_headings_or_question_bullets(tmp_path)
     assert primer._name(vault) == "Probe"
 
 
-def test_session_primer_command(demo, tmp_path):
-    vault, home = demo
-    out = _cli(vault, home)
-    assert out.returncode == 0 and out.stdout == primer.build(vault)
-    # Outside an investigation it prints nothing and never fails.
-    elsewhere = _cli(tmp_path)
-    assert elsewhere.returncode == 0 and elsewhere.stdout == ""
+def test_session_text_is_the_primer_and_empty_outside_an_investigation(demo, tmp_path):
+    vault, _ = demo
+    assert primer.session_text(vault) == primer.build(vault)
+    assert primer.session_text(tmp_path) == ""
 
 
-def test_session_primer_never_fails_a_session(tmp_path, monkeypatch, capsys):
+def test_session_text_never_fails_a_session(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     monkeypatch.setattr(primer, "gather", lambda v: 1 / 0)
-    primer.cmd_session_primer(vault)
-    assert "could not build this investigation's primer (ZeroDivisionError)" in capsys.readouterr().out
-
-
-def _legacy_settings(vault: Path) -> Path:
-    path = vault / ".claude" / "settings.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"hooks": {
-        "SessionStart": [{"matcher": "startup|resume|compact",
-                          "hooks": [{"type": "command", "command": "[ -f hot.md ] && cat hot.md || true"}]}],
-        "UserPromptSubmit": [{"matcher": "", "hooks": [{"type": "command", "command": "watchdog prompt-status"}]}],
-    }}, indent=2))
-    return path
-
-
-def test_an_older_vaults_hot_md_hook_becomes_the_primer_and_hot_md_is_kept(tmp_path):
-    vault = make_vault(tmp_path)
-    path = _legacy_settings(vault)
-    (vault / "hot.md").write_text("# Hot cache\n\nthe reporter's old file\n")
-    changes = ensure_current_layout(vault)
-    assert ".claude/settings.json updated" in changes
-    hooks = json.loads(path.read_text())["hooks"]
-    assert hooks["SessionStart"][0]["hooks"][0]["command"] == SESSION_HOOK_COMMAND
-    assert hooks["UserPromptSubmit"][0]["hooks"][0]["command"] == "watchdog prompt-status"
-    # The session instructions were refreshed with it, and no longer mention hot.md.
-    claude_md = (vault / ".claude" / "CLAUDE.md").read_text()
-    assert "hot.md" not in claude_md and "primer" in claude_md
-    # The old file is the reporter's: left exactly as it was.
-    assert (vault / "hot.md").read_text() == "# Hot cache\n\nthe reporter's old file\n"
-    assert migrate_folder_names(vault) == []                 # idempotent
+    assert "could not build this investigation's primer (ZeroDivisionError)" in primer.session_text(vault)
 
 
 def test_the_app_shows_the_same_primer(demo):
-    """Briefings → Current state reads `vault.sessionPrimer`, the function the hook prints (I10)."""
+    """Briefings → Current state reads `vault.sessionPrimer`, the function sessions start with (I10)."""
     from tests.gui_support import call
     vault, _ = demo
     out = call("vault.sessionPrimer", vault=str(vault))

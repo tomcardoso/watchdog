@@ -16,7 +16,6 @@ from watchdog.cmd.base import (
     _CYAN,
     _DIM,
     _GREEN,
-    _PIPELINE_COMMANDS,
     _RESET,
     _YELLOW,
     _check_vault_locks,
@@ -55,7 +54,6 @@ from watchdog.cmd.vault import (
     cmd_open,
     cmd_register,
     cmd_rename,
-    cmd_search,
     cmd_status,
     cmd_unarchive,
     cmd_watch,
@@ -89,16 +87,14 @@ from watchdog.cmd.auth import cmd_auth
 from watchdog.ops.export import cmd_export
 from watchdog.cmd.gui import cmd_gui
 from watchdog.ops.merge import cmd_merge_entities
-from watchdog.cmd.contradiction import cmd_contradiction_add
 from watchdog.cmd.leads import cmd_leads
-from watchdog.cmd.citations import cmd_check_citations
 from watchdog.cmd.resolve import cmd_resolve, cmd_unresolve
 from watchdog.cmd.verify import cmd_verify_fact
 from watchdog.cmd.review import KINDS as _REVIEW_KINDS, cmd_review
 from watchdog.ops.reindex import cmd_reindex
-from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch, cmd_research_seen
+from watchdog.cmd.research import cmd_fetch, cmd_research, cmd_research_fetch
 from watchdog.cmd.usage import cmd_usage
-from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
+from watchdog.cmd.watchlist import cmd_watchlist
 
 
 def _positive_int(value: str) -> int:
@@ -195,28 +191,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_about = sub.add_parser("about", help="Show version and project links")
     p_about.set_defaults(func=cmd_about)
 
-    p_search = sub.add_parser("search", help="Search ingested documents (semantic + exact-match)")
-    p_search.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
-    p_search.add_argument("query", nargs="?", help="Search query (supports +/- phrases and \"quoted phrases\")")
-    p_search.add_argument("--top", dest="top_n", type=_positive_int, default=5, metavar="N",
-                          help="Number of results to return per section (default: 5)")
-    p_search.add_argument("--threshold", type=float, default=None, metavar="S",
-                          help="Hide results scoring below S (0.0–1.0)")
-    p_search.add_argument("--no-rerank", action="store_true",
-                          help="Skip the cross-encoder rerank of corpus results (faster; lower quality)")
-    p_search.add_argument("--full", action="store_true",
-                          help="Print the complete passage/note text instead of a truncated snippet")
-    p_search.add_argument("--batch", metavar="FILE",
-                          help="Read search terms from FILE (one per line) and report hits per term, "
-                               "instead of ranking a single query")
-    p_search.add_argument("--everywhere", action="store_true",
-                          help="Search every registered, non-archived investigation instead of one project "
-                               "(manifest + exact-match lanes only, grouped by investigation; combine with "
-                               "--batch to check a list of terms across all vaults)")
-    p_search.add_argument("--json", action="store_true",
-                          help="Emit results as JSON (for skills/scripts) instead of the formatted listing")
-    p_search.set_defaults(func=cmd_search)
-
     p_export = sub.add_parser("export", help="Export the knowledge graph as Neo4j-import CSV (or Cypher)")
     p_export.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_export.add_argument("--output", metavar="DIR", help="Output directory (default: <slug>-export/)")
@@ -237,32 +211,9 @@ def build_parser() -> argparse.ArgumentParser:
                                   help="Skip the confirmation prompt")
     p_merge_entities.set_defaults(func=cmd_merge_entities)
 
-    p_contradiction = sub.add_parser("contradiction-add", help=argparse.SUPPRESS)
-    p_contradiction.add_argument("entity_id", help="Entity id the contradiction belongs to")
-    p_contradiction.add_argument("--label", required=True, metavar="TEXT",
-                                 help="Short label for the disputed fact")
-    p_contradiction.add_argument("--a", required=True, metavar="VALUE",
-                                 help="First (existing) value")
-    p_contradiction.add_argument("--a-doc", required=True, dest="a_doc", metavar="SLUG",
-                                 help="Document slug the first value comes from")
-    p_contradiction.add_argument("--a-page", dest="a_page", type=int, metavar="N",
-                                 help="Page number for the first value (optional)")
-    p_contradiction.add_argument("--b", required=True, metavar="VALUE",
-                                 help="Second (conflicting) value")
-    p_contradiction.add_argument("--b-doc", required=True, dest="b_doc", metavar="SLUG",
-                                 help="Document slug the second value comes from")
-    p_contradiction.add_argument("--b-page", dest="b_page", type=int, metavar="N",
-                                 help="Page number for the second value (optional)")
-    p_contradiction.set_defaults(func=cmd_contradiction_add)
-
     p_leads = sub.add_parser("leads", help="Surface investigative leads from the entity graph (deterministic)")
     p_leads.add_argument("project", nargs="?", help="Investigation name or slug (omit when inside the project folder)").completer = _project_completer
     p_leads.set_defaults(func=cmd_leads)
-
-    p_cites = sub.add_parser("check-citations", help="Check the fact citations in saved answers, threads and briefings (read-only)")
-    p_cites.add_argument("files", nargs="*", help="Pages to check (default: queries/, wiki/ and briefings/)")
-    p_cites.add_argument("--json", action="store_true", help="Print the report as JSON")
-    p_cites.set_defaults(func=cmd_check_citations)
 
     p_ask = sub.add_parser("ask", help="Open a Claude Code session to ask questions about the vault")
     p_ask.add_argument("question", nargs="*", help="A first question (omit to open the session ready for one)")
@@ -691,53 +642,15 @@ def _main() -> None:
                   f"use {_RESET}{_CYAN}watchdog {new}{_RESET}{_DIM} instead.{_RESET}")
         sys.argv[1] = new
 
-    if len(sys.argv) >= 2 and sys.argv[1] in _PIPELINE_COMMANDS:
-        import importlib
-        module_path, prog_name = _PIPELINE_COMMANDS[sys.argv[1]]
-        sys.argv = [prog_name] + sys.argv[2:]
-        importlib.import_module(module_path).main()
-        return
-
     # Internal pipeline commands — dispatched before argparse so they never
     # appear in tab completion
-    _INTERNAL_CMDS = {"prompt-status", "research-fetch", "research-seen", "session-primer",
-                      "watchlist-add", "page-notes"}
+    _INTERNAL_CMDS = {"research-fetch"}
     if len(sys.argv) >= 2 and sys.argv[1] in _INTERNAL_CMDS:
         cmd = sys.argv[1]
         _p = argparse.ArgumentParser(prog=f"watchdog {cmd}")
-        if cmd == "research-fetch":
-            _p.add_argument("project", nargs="?")
-            _p.add_argument("--file")
-            cmd_research_fetch(_p.parse_args(sys.argv[2:]))
-        elif cmd == "research-seen":
-            _p.add_argument("project", nargs="?")
-            cmd_research_seen(_p.parse_args(sys.argv[2:]))
-        elif cmd == "prompt-status":
-            # The vault's UserPromptSubmit hook: must stay quiet, fast, and never fail a prompt.
-            from pathlib import Path
-            from watchdog.cmd.base import _prompt_status_line
-            try:
-                line = _prompt_status_line(Path(".").resolve())
-            except Exception:
-                line = None
-            if line:
-                print(line)
-        elif cmd == "session-primer":
-            # The vault's SessionStart hook (D285): prints where the investigation stands; never
-            # fails a session's start.
-            from pathlib import Path
-            from watchdog.cmd.primer import cmd_session_primer
-            cmd_session_primer(Path(".").resolve())
-        elif cmd == "page-notes":
-            # The vault's PreToolUse/PostToolUse hooks around a session's file edits (D296): keep
-            # the reporter's Notes on saved pages. Never fails the edit.
-            from watchdog.pipeline.page_notes import run_hook
-            out = run_hook(sys.argv[2] if len(sys.argv) > 2 else "", sys.stdin.read())
-            if out:
-                print(out)
-        elif cmd == "watchlist-add":
-            _p.add_argument("terms", nargs="+")
-            cmd_watchlist_add(_p.parse_args(sys.argv[2:]))
+        _p.add_argument("project", nargs="?")
+        _p.add_argument("--file")
+        cmd_research_fetch(_p.parse_args(sys.argv[2:]))
         return
 
     parser = build_parser()

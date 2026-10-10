@@ -110,7 +110,7 @@ jobs:
           security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $KEYCHAIN_PATH
 
-      - name: Install Azure Trusted Signing module (Windows)
+      - name: Install Azure Artifact Signing module (Windows)
         if: runner.os == 'Windows' && env.HAS_AZURE_SIGNING == 'true'
         shell: pwsh
         run: Install-Module -Name TrustedSigning -Force -AllowClobber -Scope CurrentUser
@@ -122,14 +122,11 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.HAS_APPLE_CERT }}
-          # Windows: signed through Azure Trusted Signing when these are set.
+          # Windows: signed through Azure Artifact Signing when these are set.
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
-          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
-          AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
         run: npm run ${{ matrix.dist }} -- --publish never
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
@@ -156,6 +153,7 @@ jobs:
       TAG: ${{ github.ref_name }}
       VERSION: ${{ needs.version.outputs.version }}
       CHANNEL: ${{ needs.version.outputs.channel }}
+      WINDOWS_SIGNED: ${{ secrets.AZURE_PUBLISHER_NAME != '' }}
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -167,6 +165,14 @@ jobs:
           pattern: app-*
           path: app/
           merge-multiple: true
+
+      - name: Check the update feed is complete
+        run: |
+          # Installed copies read these three files; a release without one leaves that platform
+          # unable to update.
+          for f in latest-mac.yml latest.yml latest-linux.yml; do
+            [ -f "app/$f" ] || { echo "::error::$f is missing from the build"; exit 1; }
+          done
 
       - name: Write the release notes
         run: |
@@ -183,7 +189,11 @@ jobs:
             echo "Download the installer for your computer below: the .dmg for a Mac (arm64 for Apple silicon, x64 for Intel), the Setup .exe for Windows, the .AppImage for Linux. An installed copy offers later $CHANNEL releases itself, under Help → Check for Updates."
             if [ "$CHANNEL" = beta ]; then
               echo
-              echo "This is a test release. The Windows installer is not signed yet, so Windows shows a warning the first time it runs: choose More info, then Run anyway."
+              if [ "$WINDOWS_SIGNED" = true ]; then
+                echo "This is a test release."
+              else
+                echo "This is a test release. The Windows installer is not signed yet, so Windows shows a warning the first time it runs: choose More info, then Run anyway."
+              fi
             fi
             echo
             cat generated.md

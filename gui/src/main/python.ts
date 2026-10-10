@@ -122,7 +122,7 @@ function pythonPathEnv(src: string | null, engine?: Engine, managed = false): No
   if (engine) {
     const uv = engine.uvPath()
     if (uv) env.WATCHDOG_UV = uv
-    // Commands the app and Claude run by name (`watchdog search …`) resolve to the managed engine.
+    // Commands the app runs by name (`watchdog add …`) resolve to the managed engine.
     if (managed) env.PATH = [engine.venvBin(), process.env.PATH ?? ''].join(delimiter)
   }
   return env

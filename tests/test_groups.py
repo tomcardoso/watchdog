@@ -24,7 +24,6 @@ import watchdog.cmd.groups as groups
     (["settings", "skills"], ["show-skills"]),
     (["settings", "configure", "telemetry"], ["configure", "telemetry"]),
     (["review", "resolve", "lead:isolated:acme"], ["resolve", "lead:isolated:acme"]),
-    (["review", "add-contradiction", "--entity", "x"], ["contradiction-add", "--entity", "x"]),
     (["review", "leads"], ["review", "leads"]),            # a kind, not a verb
     (["review"], ["review"]),
     (["research", "fetch", "links.txt"], ["fetch", "links.txt"]),
@@ -69,7 +68,7 @@ def _run(monkeypatch, *argv):
 def test_banner_shows_the_grouped_surface(monkeypatch, capsys):
     _run(monkeypatch, "--help")
     out = capsys.readouterr().out
-    for cmd in ("add", "ask", "search", "review", "open", "research", "projects", "settings", "new", "setup",
+    for cmd in ("add", "ask", "review", "open", "research", "projects", "settings", "new", "setup",
                 "watchdog help maintenance"):
         assert cmd in out
     for old in ("merge-entities", "refresh-skills", "unarchive", "contradiction-add"):

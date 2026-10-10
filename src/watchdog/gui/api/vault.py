@@ -634,7 +634,7 @@ def fact_citations(vault: str, links: list) -> dict:
 @method("vault.checkCitations")
 def check_citations(vault: str) -> dict:
     """Every fact citation in `queries/`, `wiki/` and `briefings/`, resolved against the
-    stored facts (the maintenance check `watchdog check-citations` runs). Changes nothing."""
+    stored facts (what a session's `check_citations` tool reports). Changes nothing."""
     from watchdog.pipeline import citations
     return citations.check_vault(require_vault(vault))
 
@@ -898,7 +898,7 @@ def read_file(vault: str, path: str) -> dict:
 @method("vault.sessionPrimer")
 def session_primer(vault: str) -> dict:
     """The primer every Ask Claude session starts with (D285), built now from the vault's records
-    exactly as `watchdog session-primer` prints it. Read-only, no model."""
+    exactly as a session's system prompt carries it (D299). Read-only, no model."""
     from watchdog.cmd import primer
     text = primer.build(require_vault(vault))
     return {"text": text, "chars": len(text), "budget": primer.BUDGET_CHARS}

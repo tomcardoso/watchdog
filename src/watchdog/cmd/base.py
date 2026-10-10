@@ -8,7 +8,7 @@ from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
 from watchdog.appmode import hint as _hint
-from watchdog.vault_paths import PAGE_NOTES_HOOKS, PAGE_NOTES_MATCHER, SESSION_HOOK_COMMAND, incoming_dir, is_set_aside, is_vault
+from watchdog.vault_paths import incoming_dir, is_set_aside, is_vault
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
@@ -35,7 +35,6 @@ _ALIASES = {
     "version":    "about",
     "config":     "configure",
     "setting":    "configure",
-    "find":       "search",
     "health":     "doctor",
     "check":      "doctor",
     "telemetry":  "usage",
@@ -60,43 +59,23 @@ _DEPRECATED_ALIASES = {
     "finalize": "bark",
 }
 
-# Pipeline modules that keep a command-line entry point because a vault's Claude Code session
-# runs them (/watchdog-entity). Everything else in pipeline/ is called as functions.
-_PIPELINE_COMMANDS = {
-    "write-entity":  ("watchdog.pipeline.write_entity",   "watchdog-write-entity"),
-}
-
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "vault"
 
 _VAULT_PERMISSIONS = [
-    # watchdog commands the in-Claude-Code skills run (extraction is a terminal command —
-    # `watchdog dig` / `watchdog bark` — and needs no in-vault Bash permissions).
-    "Bash(watchdog write-entity --entity-id *)",
-    "Bash(watchdog timeline)",
-    # /watchdog-query's semantic lane and /watchdog-surface's deterministic lead sweep — both
-    # read-only, both run every session, so a prompt on each call was pure friction.
-    "Bash(watchdog search *)",
-    "Bash(watchdog leads)",
-    # The query/wiki/surface/research skills check a page's fact citations before filing it (D283);
-    # read-only, and confined to the investigation it runs in.
-    "Bash(watchdog check-citations*)",
-    # /watchdog-context proposes watchlist seed terms (#229); the deterministic append+dedup
-    # lives in this command, not the skill hand-editing watchlist.md.
-    "Bash(watchdog watchlist-add *)",
-    # /watchdog-surface promotes a journalist-confirmed contradiction candidate into the note
-    # via this internal command (#312, D82/D83) — pre-approved so the confirmed promotion runs
-    # without a second permission prompt; the journalist's explicit confirmation is the gate.
-    "Bash(watchdog contradiction-add *)",
+    # Watchdog's tools, served to an app session by the in-process `watchdog` MCP server (D299).
+    # All pre-approved: the read-only ones change nothing, the ones that write are confined to
+    # this investigation in code, and contradiction_add runs only after the reporter confirms.
+    *(f"mcp__watchdog__{name}" for name in (
+        "search", "leads", "check_citations", "research_seen",
+        "timeline", "write_entity", "watchlist_add", "contradiction_add")),
     # WebSearch / WebFetch are deliberately NOT here — they make outbound requests, so they are
     # pre-approved only by the watchdog-research skill's own `allowed-tools` frontmatter, scoped to
-    # when /watchdog-research is active. Archival downloads run as a deterministic post-flight of
-    # `watchdog research` (in the terminal, ungated), never from the skill (#186, D45).
+    # when /watchdog-research is active. Archival downloads run after the session, from the app,
+    # never from the skill (#186, D45).
     # File-permission checks only match Edit(path) rules — Edit(path) covers every file-editing
     # tool, Write included.
-    # Scratch space: the /watchdog-entity refresh JSON.
-    "Edit(.watchdog/tmp/**)",
-    # durable web-research worklist (#196) — the skill writes queued URLs here (not tmp/, which
-    # setup sweeps), so a crashed session's queue survives.
+    # durable web-research worklist (#196) — the skill writes queued URLs here, so a crashed
+    # session's queue survives.
     "Edit(.watchdog/research/**)",
     # session-authored pages (compounding queries → wiki threads, surface/research reports)
     "Edit(queries/**)",
@@ -106,42 +85,17 @@ _VAULT_PERMISSIONS = [
 ]
 
 # Watchdog's own config and keys, denied to a vault's sessions outright (D257). These rules govern
-# Claude Code's file tools; commands the vault pre-approves confine themselves in code.
+# Claude Code's file tools; Watchdog's tools confine themselves in code.
 _VAULT_DENY = [
     "Read(~/.watchdog/**)",
     "Edit(~/.watchdog/**)",
 ]
 
-# Rules older vaults were created with that `refresh-skills` now removes. Entity and document
-# notes, the morgue, the registry and the timeline are pipeline-owned (D81): no skill writes them
-# directly, and pre-approving edits there let a prompt-injected session rewrite them without a
-# prompt (I6). The ingest-era commands are no longer run from a session at all.
-_RETIRED_VAULT_PERMISSIONS = {
-    "Bash(watchdog entity-index)",
-    "Bash(watchdog queue-status)",
-    "Bash(watchdog is-duplicate *)",
-    "Bash(watchdog unlock*)",
-    "Edit(.watchdog/registry/**)",
-    "Edit(.watchdog/timeline/**)",
-    "Edit(entities/**)",
-    "Edit(documents/**)",
-    "Edit(morgue/**)",
-    "Edit(hot.md)",
-    "Edit(log.md)",
-    "Edit(.obsidian/graph.json)",
-}
-
-# The UserPromptSubmit hook each vault runs before every prompt: a one-line nudge when documents
-# are waiting for `dig` or `bark`. It calls an internal watchdog command rather than an inline
-# `python3 -c` one-liner, which assumed `python3` was on PATH (often not on Windows) and counted
-# every queue file — including ones already dug — as "ready for extraction".
-_PROMPT_HOOK_COMMAND = "watchdog prompt-status"
-_LEGACY_PROMPT_HOOK_MARKER = "ready for extraction — run watchdog dig in your terminal"
-
 
 def _vault_settings() -> dict:
     """The `.claude/settings.json` a new vault starts with (and that `refresh-skills` brings an
-    existing vault's settings up to)."""
+    existing vault's settings up to). No hooks: the app registers its own in-process (D299), and a
+    session opened outside the app gets only these rules and the vault's instructions."""
     return {
         "permissions": {
             "allow": list(_VAULT_PERMISSIONS),
@@ -157,33 +111,7 @@ def _vault_settings() -> dict:
             # read-scope setting above does or doesn't cover.
             "deny": list(_VAULT_DENY),
         },
-        "hooks": {
-            # A primer of where the investigation stands, built by code from the vault's records
-            # (D285), loaded at the start of a session and again after compaction, which drops
-            # hook-injected context. SessionStart stdout is added to Claude's context.
-            "SessionStart": [
-                {"matcher": "startup|resume|compact",
-                 "hooks": [{"type": "command", "command": SESSION_HOOK_COMMAND}]},
-            ],
-            "UserPromptSubmit": [
-                {"matcher": "", "hooks": [{"type": "command", "command": _PROMPT_HOOK_COMMAND}]},
-            ],
-            # The reporter's Notes on a saved page survive a session's rewrite (D296).
-            **{event: [{"matcher": PAGE_NOTES_MATCHER, "hooks": [{"type": "command", "command": command}]}]
-               for event, command in PAGE_NOTES_HOOKS.items()},
-        },
     }
-
-
-def _prompt_status_line(vault: Path) -> str | None:
-    """The nudge `watchdog prompt-status` prints, or None when nothing is waiting."""
-    dig, bark = _count_awaiting_dig(vault), _count_awaiting_bark(vault)
-    parts = []
-    if dig:
-        parts.append(f"{dig} file(s) ready for extraction — run watchdog dig")
-    if bark:
-        parts.append(f"{bark} file(s) extracted and awaiting watchdog bark")
-    return "WATCHDOG: " + "; ".join(parts) + " (in your terminal)" if parts else None
 
 
 _CMD_HELP: dict[str, dict] = {
@@ -257,24 +185,6 @@ _CMD_HELP: dict[str, dict] = {
     'status': {
         "desc": 'Show detailed status for an investigation',
     },
-    'search': {
-        "desc": 'Semantic search across ingested documents',
-        "notes": [
-            'Searches by meaning, not keywords: "conflict of interest" surfaces passages about',
-            'recusals or related-party dealings even when that phrase never appears. Returns the',
-            'matching source passage with its page — not a generated answer.',
-            '',
-            'Steer with +/-: lead a phrase with - to push away from it, + to pull toward another',
-            'idea. The whole phrase up to the next +/- is one term (no quotes needed); a hyphenated',
-            'word like no-bid stays intact.',
-            '    watchdog search "shell company -real estate"',
-            '    watchdog search "consulting fee +offshore -salary"',
-            '',
-            'Scores run 0–1 and are relative: a strong conceptual match sits around 0.5–0.65,',
-            "below ~0.4 is usually noise. There's no universal cutoff — tune --threshold to your",
-            'corpus. (A +/- query shifts the scale lower, so judge those by ranking, not score.)',
-        ],
-    },
     'leads': {
         "desc": 'Surface investigative leads from the entity graph (deterministic, no model)',
         "notes": [
@@ -343,22 +253,6 @@ _CMD_HELP: dict[str, dict] = {
             "This is the fix for duplicate entities that `/watchdog-health` or a review of the",
             "dashboard's single-source entities turns up. Run `watchdog reindex` afterward to drop",
             "the merged entity's stale search-index entries.",
-        ],
-    },
-    'contradiction-add': {
-        "desc": 'Promote a verified surface-found contradiction into an entity note',
-        "notes": [
-            'Must be run from inside the vault. `/watchdog-surface` reports cross-document',
-            'contradictions as labelled candidates rather than writing callouts into entity',
-            'notes, which are pipeline-owned (D81). Once you have verified a candidate against',
-            "the sources, this writes it into the entity's ## Contradictions section through the",
-            "pipeline's own note builder, in the exact format extraction emits — so the callout",
-            'is tracked by the resolutions layer and `watchdog review resolve` / `unresolve` work on it',
-            'like any pipeline-emitted one. No model calls.',
-            '',
-            'Validates that the entity id and both document slugs exist before writing; a callout',
-            'already present is a no-op. `/watchdog-surface` can run this after explicit',
-            'journalist confirmation when promoting a candidate.',
         ],
     },
     'research': {
@@ -845,7 +739,6 @@ def _print_banner() -> None:
         ]),
         ("Work the investigation", [
             ("ask",        "Ask questions about the vault in a Claude Code session"),
-            ("search",     "Search documents by meaning and exact wording"),
             ("review",     "Step through contradictions, leads, watch-list hits and duplicates"),
             ("open",       "Open the investigation in Obsidian"),
             ("research",   "Research open questions on the web"),

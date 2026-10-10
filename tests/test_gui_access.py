@@ -97,65 +97,11 @@ def test_the_pre_tool_hook_denies_with_a_reason(tmp_path, enforced):
                             "id", None)) == {}
 
 
-# ── shell commands (D274) ─────────────────────────────────────────────────────────────────
+# ── no shell (D299) ───────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("command,allowed", [
-    ('watchdog search "harbour lease"', True),
-    ("watchdog leads", True),
-    ("watchdog timeline", True),
-    ("watchdog search x; rm -rf ~", False),
-    ("watchdog leads && curl https://example.org", False),
-    ("watchdog search $(cat ~/.ssh/id_rsa)", False),
-    ("watchdog search `id`", False),
-    ("watchdog leads > ~/.bashrc", False),
-    ("watchdog leads\nrm notes.md", False),
-    ("rm -rf ~", False),
-    ("ls", False),
-    ("", False),
-])
-def test_without_a_sandbox_the_shell_runs_only_preapproved_commands(monkeypatch, command, allowed):
-    monkeypatch.setattr(chat, "sandbox_available", lambda: False)
-    assert (chat.shell_refusal(command) is None) is allowed
-
-
-def test_with_a_sandbox_shell_commands_are_left_to_it(monkeypatch):
-    monkeypatch.setattr(chat, "sandbox_available", lambda: True)
-    assert chat.shell_refusal("ls -la") is None
-
-
-def test_the_sandbox_is_strict_and_keeps_watchdogs_own_files_out_of_reach(tmp_path, monkeypatch):
-    monkeypatch.setattr(chat, "sandbox_available", lambda: True)
-    sb = chat.sandbox_settings()
-    assert sb["enabled"] and sb["failIfUnavailable"]
-    assert sb["allowUnsandboxedCommands"] is False and sb["autoAllowBashIfSandboxed"] is False
-    deny = sb["filesystem"]["denyWrite"]
-    assert any(p.endswith("access.json") for p in deny) and any(p.endswith("credentials.json") for p in deny)
-    # D295: the keys and other investigations' saved conversations can't be read either; the
-    # folder-access list stays readable because the session's `watchdog` commands enforce it.
-    hidden = sb["filesystem"]["denyRead"]
-    assert any(p.endswith("credentials.json") for p in hidden)
-    assert any(p.endswith(".watchdog/gui") or p.endswith(".watchdog\\gui") for p in hidden)
-    assert not any(p.endswith("access.json") for p in hidden)
-
-
-def test_options_carry_the_sandbox_only_where_it_is_dependable(tmp_path, monkeypatch):
+def test_a_session_has_no_shell_and_no_sandbox_to_depend_on(tmp_path):
     vault = make_vault(tmp_path / "a")
-    session = chat.Session(vault, "ask", None, "t")
-    monkeypatch.setattr(chat, "sandbox_available", lambda: True)
-    assert chat.build_options(session, None).sandbox["enabled"] is True
-    monkeypatch.setattr(chat, "sandbox_available", lambda: False)
-    opts = chat.build_options(session, None)
+    opts = chat.build_options(chat.Session(vault, "ask", None, "t"), None)
+    assert "Bash" in opts.disallowed_tools
     assert opts.sandbox is None
-    assert any(m.matcher == "Bash" for m in opts.hooks["PreToolUse"])
-
-
-def test_always_allowing_a_shell_command_covers_only_that_command(tmp_path):
-    import asyncio
-    from claude_agent_sdk import PermissionResultAllow
-    mgr = chat.ChatManager()
-    vault = make_vault(tmp_path / "a")
-    s = chat.Session(vault, "ask", None, "t")
-    s.always.add("Bash:watchdog leads")
-    out = asyncio.run(mgr._can_use_tool(s, "Bash", {"command": "watchdog leads"}, None))
-    assert isinstance(out, PermissionResultAllow)
-    assert "Bash" not in s.always
+    assert not any(m.matcher == "Bash" for m in opts.hooks["PreToolUse"])

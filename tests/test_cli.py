@@ -322,8 +322,7 @@ def test_cmd_new_vault_structure(configured):
     assert "path:entities/organization" in queries and "path:entities/company" not in queries
 
 
-def test_refresh_skills_migrates_old_dashboard_graph_and_prompt_hook(configured):
-    from watchdog.cmd.base import _PROMPT_HOOK_COMMAND
+def test_refresh_skills_migrates_old_dashboard_and_graph(configured):
     cli.cmd_new(args(name="Old Vault", dir=str(configured)))
     vault = configured / "old-vault"
     base = vault / "dashboard.base"
@@ -332,30 +331,10 @@ def test_refresh_skills_migrates_old_dashboard_graph_and_prompt_hook(configured)
                     .replace("name: Possible duplicate documents", "name: Possible duplicates"))
     graph = vault / ".obsidian" / "graph.json"
     graph.write_text(json.dumps({"colorGroups": [{"query": "path:entities/company", "color": {}}]}))
-    settings_path = vault / ".claude" / "settings.json"
-    settings = json.loads(settings_path.read_text())
-    settings["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"] = (
-        "python3 -c \"print('WATCHDOG: 1 file(s) ready for extraction — run watchdog dig in your terminal')\"")
-    settings_path.write_text(json.dumps(settings))
     cli.cmd_refresh_skills(args(name="Old Vault"))
     assert 'entities/organization' in base.read_text() and "name: Organizations" in base.read_text()
     assert "name: Possible duplicate documents" in base.read_text()
     assert json.loads(graph.read_text())["colorGroups"][0]["query"] == "path:entities/organization"
-    hook = json.loads(settings_path.read_text())["hooks"]["UserPromptSubmit"][0]["hooks"][0]
-    assert hook["command"] == _PROMPT_HOOK_COMMAND
-
-
-def test_prompt_status_line_splits_dig_and_bark(tmp_path):
-    from watchdog.cmd.base import _prompt_status_line
-    q = tmp_path / ".watchdog" / "queue"
-    q.mkdir(parents=True)
-    assert _prompt_status_line(tmp_path) is None
-    (q / "a.json").write_text("{}")
-    (q / "b.json").write_text("{}")
-    (tmp_path / ".watchdog" / "extracted").mkdir()
-    (tmp_path / ".watchdog" / "extracted" / "b.json").write_text("{}")
-    line = _prompt_status_line(tmp_path)
-    assert "1 file(s) ready for extraction" in line and "1 file(s) extracted and awaiting watchdog bark" in line
 
 
 def test_cmd_new_registry_initialized(configured):
@@ -409,20 +388,16 @@ def test_cmd_new_creates_bases_dashboard(configured):
     assert "dashboard" in index.lower()
 
 
-def test_cmd_new_session_start_hook_runs_the_session_primer(configured):
+def test_cmd_new_vault_runs_no_commands_from_its_settings(configured):
+    """The app registers a session's hooks itself (D299): a new vault's settings carry none, and
+    there is no hot.md (D285)."""
     cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
     settings = json.loads(
         (configured / "city-hall-probe" / ".claude" / "settings.json").read_text()
     )
-    hooks = settings["hooks"]["SessionStart"]
-    matcher = hooks[0]["matcher"]
-    # one hook covers fresh start, resume, and post-compaction reload
-    assert "startup" in matcher and "resume" in matcher and "compact" in matcher
-    cmd = hooks[0]["hooks"][0]["command"]
-    assert cmd == "watchdog session-primer" and "hot.md" not in cmd    # D285
+    assert "hooks" not in settings
+    assert not any(r.startswith("Bash(") for r in settings["permissions"]["allow"])
     assert not (configured / "city-hall-probe" / "hot.md").exists()
-    # the queue-reminder hook is preserved alongside it
-    assert "UserPromptSubmit" in settings["hooks"]
 
 
 def test_cmd_new_blocks_reads_outside_vault(configured):
@@ -522,24 +497,6 @@ def test_cmd_new_never_writes_dead_write_permission_rules(configured):
     # Pipeline-owned paths are not hand-editable from a session.
     assert "Edit(morgue/**)" not in allow
     assert "Edit(.watchdog/registry/**)" not in allow
-
-
-def test_refresh_skills_removes_dead_write_permission_rules(configured):
-    """A vault created before this fix carries dead Write(...) rules that Claude Code warns
-    about every session — refresh-skills must strip them, not just add new Edit(...) ones."""
-    cli.cmd_new(args(name="City Hall Probe", dir=str(configured)))
-    vault = configured / "city-hall-probe"
-    settings_path = vault / ".claude" / "settings.json"
-    settings = json.loads(settings_path.read_text())
-    settings["permissions"]["allow"].append("Write(briefings/**)")
-    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
-
-    cli.cmd_refresh_skills(args(name="city-hall-probe"))
-
-    refreshed = json.loads(settings_path.read_text())
-    allow = refreshed["permissions"]["allow"]
-    assert not any(p.startswith("Write(") for p in allow)
-    assert "Edit(briefings/**)" in allow
 
 
 def test_cmd_new_registers_project(configured, wdg_home):
@@ -1479,7 +1436,6 @@ def test_version_flags_invoke_about(capsys, monkeypatch, flag):
     ("version",  "about"),
     ("config",   "configure"),
     ("setting",  "configure"),
-    ("find",      "search"),
     ("process",   "chew"),
     ("preprocess", "chew"),
     ("prep",      "chew"),
@@ -2257,20 +2213,6 @@ def test_cmd_chew_copies_a_file_from_outside_incoming(configured, monkeypatch, t
     assert copied.with_name("doc.pdf.yml").exists()
 
 
-def test_search_single_word_inside_vault_is_the_query(configured, monkeypatch):
-    """`watchdog search shell` inside a vault once failed because "shell" prefix-matched a
-    project slug; inside a vault a lone argument is always the query."""
-    import watchdog.pipeline.embed as embed_mod
-    cli.cmd_new(args(name="Shell Company Investigation", dir=str(configured)))
-    vault = configured / "shell-company-investigation"
-    monkeypatch.chdir(vault)
-    monkeypatch.setattr(embed_mod, "index_stats", lambda v: {"total": 0})
-    a = args(project="shell", query=None, top_n=5, threshold=None, batch=None, everywhere=False,
-             json=True)
-    cli.cmd_search(a)
-    assert a.query == "shell"
-
-
 def test_home_config_directory_is_not_a_vault(tmp_path):
     """The global ~/.watchdog config directory must not make the home folder look like a vault."""
     from watchdog.vault_paths import is_vault
@@ -2281,21 +2223,6 @@ def test_home_config_directory_is_not_a_vault(tmp_path):
     vault = tmp_path / "v"
     (vault / ".watchdog" / "registry").mkdir(parents=True)
     assert is_vault(vault)
-
-
-def test_search_batch_reports_unchecked_terms_when_fulltext_fails(configured, monkeypatch, capsys, tmp_path):
-    from watchdog.pipeline import fulltext
-    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
-    vault = configured / "shell-co"
-    terms = tmp_path / "terms.txt"
-    terms.write_text("Jane Roe\n")
-    monkeypatch.setattr(fulltext, "search", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db locked")))
-    from watchdog.cmd.vault import cmd_search_batch
-    cmd_search_batch(args(top_n=5, json=False), vault, str(terms))
-    captured = capsys.readouterr()
-    assert "not checked" in _strip_ansi(captured.out)
-    assert "no hits" not in _strip_ansi(captured.out)
-    assert "NOT checked" in captured.err
 
 
 def test_requeue_accepts_a_project_name(configured, monkeypatch, tmp_path):
@@ -4810,231 +4737,7 @@ def test_cmd_fetch_passes_wayback_when_configured(configured, wdg_home, monkeypa
     assert captured["wayback"] == ("a", "s")
 
 
-# ── search snippet helpers ──────────────────────────────────────────────────
-
-def test_search_query_terms_extracts_positive_words():
-    assert _vault._search_query_terms("shell company -real estate") == ["company", "shell"]
-
-
-def test_search_query_terms_ignores_single_letter_tokens():
-    terms = _vault._search_query_terms("a shell company")
-    assert "a" not in terms
-    assert "shell" in terms and "company" in terms
-
-
-def test_search_query_terms_empty_for_negative_only_query():
-    assert _vault._search_query_terms("-real estate") == []
-
-
-def test_highlight_snippet_bolds_matches_case_insensitively():
-    out = _vault._highlight_snippet("The Shell company filed", ["shell"])
-    assert f"{_vault._BOLD}Shell{_vault._RESET}" in out
-
-
-def test_highlight_snippet_no_terms_returns_unchanged():
-    text = "plain text"
-    assert _vault._highlight_snippet(text, []) == text
-
-
-def test_highlight_snippet_respects_word_boundaries():
-    text = "shellfish market"
-    out = _vault._highlight_snippet(text, ["shell"])
-    # "shell" doesn't match as a whole word inside "shellfish", so nothing is highlighted and
-    # the text passes through unchanged (asserting on the colour constant directly is unreliable
-    # since it may be "" when stdout isn't a terminal — see cmd.base._color_enabled, #499).
-    assert out == text
-
-
-def test_windowed_snippet_returns_full_text_when_short():
-    text = "short text"
-    assert _vault._windowed_snippet(text, ["short"], 240) == text
-
-
-def test_windowed_snippet_centers_on_match():
-    text = "x" * 500 + "TARGET" + "y" * 500
-    snippet = _vault._windowed_snippet(text, ["target"], 100)
-    assert "TARGET" in snippet
-    assert snippet.startswith("…")
-    assert snippet.endswith("…")
-
-
-def test_windowed_snippet_falls_back_to_start_when_no_match():
-    text = "z" * 1000
-    assert _vault._windowed_snippet(text, ["missing"], 100) == text[:100] + "…"
-
-
-# ── cmd_search ────────────────────────────────────────────────────────────────
-
-def _register_search_project(configured):
-    vault = configured / "test-proj"
-    vault.mkdir(parents=True)
-    cli.save_projects({"test-proj": {"name": "Test Proj", "path": str(vault), "created": "2026-01-01"}})
-    return vault
-
-
-def _stub_search(passage=None, note=None):
-    def fake(vault, query, **kw):
-        if kw.get("scope") == "corpus":
-            return [passage] if passage else []
-        return [note] if note else []
-    return fake
-
-
-def test_search_highlights_matched_terms(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
-        passage={"filename": "doc.pdf", "page": 3, "text": "The shell company filed papers.", "score": 0.5}))
-
-    cli.cmd_search(args(project="test-proj", query="shell company", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=False))
-    out = capsys.readouterr().out
-    assert f"{_vault._BOLD}shell{_vault._RESET}" in out.lower()
-
-
-def test_search_full_flag_skips_truncation(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    long_text = "word " * 100
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
-        passage={"filename": "doc.pdf", "page": 1, "text": long_text, "score": 0.5}))
-
-    cli.cmd_search(args(project="test-proj", query="word", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=False))
-    assert "…" in _strip_ansi(capsys.readouterr().out)
-
-    cli.cmd_search(args(project="test-proj", query="word", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=True))
-    full_out = _strip_ansi(capsys.readouterr().out)
-    assert "…" not in full_out
-    assert long_text.strip() in full_out
-
-
-def test_search_json_output_has_no_ansi_and_full_text(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
-        passage={"filename": "doc.pdf", "page": 1, "text": "shell company filed", "score": 0.5}))
-
-    cli.cmd_search(args(project="test-proj", query="shell", top_n=5,
-                         threshold=None, no_rerank=False, json=True, full=False))
-    out = capsys.readouterr().out
-    payload = json.loads(out)
-    assert payload["passages"][0]["text"] == "shell company filed"
-    assert "\x1b[" not in out
-
-
-def test_search_json_mode_still_warns_on_stderr_when_fulltext_fails(configured, monkeypatch, capsys):
-    # #499: the exact-match-unavailable diagnostic used to be wrapped in `if not as_json`, so it
-    # vanished entirely under --json. stdout must stay pure JSON; the warning must still reach
-    # the user, on stderr, in every output mode.
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
-        passage={"filename": "doc.pdf", "page": 1, "text": "shell company filed", "score": 0.5}))
-
-    def _broken_fts(vault, query, **kw):
-        raise RuntimeError("index corrupt")
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _broken_fts)
-
-    cli.cmd_search(args(project="test-proj", query="shell", top_n=5,
-                         threshold=None, no_rerank=False, json=True, full=False))
-    captured = capsys.readouterr()
-    payload = json.loads(captured.out)
-    assert payload["passages"][0]["text"] == "shell company filed"
-    assert "exact-match search unavailable" in captured.err
-
-
-# ── cmd_search: exact-match (FTS) section (#109) ───────────────────────────────
-
-def _stub_fts(hits=None):
-    return lambda vault, query, **kw: (hits or [])
-
-
-def test_search_shows_exact_matches_section(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([
-        {"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
-         "page": 4, "text": "the shell company filed papers"},
-    ]))
-
-    cli.cmd_search(args(project="test-proj", query="shell company", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Exact matches" in out
-    assert "doc.pdf" in out
-    assert "morgue/doc.pdf#page=4" in out
-
-
-def test_search_exact_note_hit_shows_kind_label_not_path_for_corpus(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([
-        {"kind": "entity", "key": "entities/alice", "title": "Alice Smith",
-         "path": "entities/alice", "page": None, "text": "Alice Smith is a director"},
-    ]))
-
-    cli.cmd_search(args(project="test-proj", query="director", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "entities/alice" in out
-    assert "Entity note" in out
-
-
-def test_search_json_includes_exact_lane(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([
-        {"kind": "entity", "key": "entities/alice", "title": "Alice Smith",
-         "path": "entities/alice", "page": None, "text": "Alice Smith is a director"},
-    ]))
-
-    cli.cmd_search(args(project="test-proj", query="director", top_n=5,
-                         threshold=None, no_rerank=False, json=True, full=False))
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["exact"][0]["title"] == "Alice Smith"
-    assert payload["exact"][0]["kind"] == "entity"
-
-
-def test_search_no_results_across_all_three_lanes_says_no_results(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search())
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _stub_fts([]))
-
-    cli.cmd_search(args(project="test-proj", query="nothing", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "No results" in out
-
-
-def test_search_exact_lane_failure_does_not_crash_search(configured, monkeypatch, capsys):
-    _register_search_project(configured)
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
-        passage={"filename": "doc.pdf", "page": 1, "text": "shell company filed", "score": 0.5}))
-
-    def _boom(vault, query, **kw):
-        raise RuntimeError("no FTS5 support")
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", _boom)
-
-    cli.cmd_search(args(project="test-proj", query="shell", top_n=5,
-                         threshold=None, no_rerank=False, json=False, full=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Source passages" in out
-
-
-# ── cmd_search --batch (#110) ───────────────────────────────────────────────────
-
-def _write_manifest(vault, manifest):
-    reg_dir = vault / ".watchdog" / "registry"
-    reg_dir.mkdir(parents=True, exist_ok=True)
-    (reg_dir / "manifest.json").write_text(json.dumps(manifest))
-
+# ── manifest name matches (the app's batch search, #110) ───────────────────────────────────────────────────
 
 def test_manifest_matches_by_name_substring():
     manifest = {"alice-smith": {"name": "Alice Smith", "type": "Person",
@@ -5054,17 +4757,6 @@ def test_manifest_matches_case_insensitive_no_match_returns_empty():
     manifest = {"alice-smith": {"name": "Alice Smith", "type": "Person",
                                 "aliases": [], "note_path": "entities/person/alice-smith"}}
     assert _vault._manifest_matches(manifest, "Bob Jones") == []
-
-
-def test_read_batch_terms_skips_blank_lines_and_comments(tmp_path):
-    f = tmp_path / "names.txt"
-    f.write_text("Alice Smith\n\n# a comment\nBob Jones\n  \n")
-    assert _vault._read_batch_terms(f) == ["Alice Smith", "Bob Jones"]
-
-
-def test_read_batch_terms_missing_file_exits(tmp_path):
-    with pytest.raises(SystemExit):
-        _vault._read_batch_terms(tmp_path / "missing.txt")
 
 
 # ── _poll_stable_files (watchdog watch mid-copy guard, #261) ───────────────────
@@ -5104,193 +4796,6 @@ def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
     ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     assert pending == {}
-
-
-def test_search_batch_reports_hits_and_no_hits(configured, monkeypatch, tmp_path, capsys):
-    vault = _register_search_project(configured)
-    _write_manifest(vault, {"alice-smith": {"name": "Alice Smith", "type": "Person",
-                                            "aliases": [], "note_path": "entities/person/alice-smith"}})
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
-        [{"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
-          "page": 2, "text": "..."}] if query == "Bob Jones" else []
-    ))
-    batch_file = tmp_path / "names.txt"
-    batch_file.write_text("Alice Smith\nBob Jones\nNo One\n")
-
-    cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Alice Smith" in out
-    assert "entities/person/alice-smith" in out
-    assert "Bob Jones" in out
-    assert "doc.pdf" in out
-    assert "No One" in out
-    assert "no hits" in out
-
-
-def test_search_batch_json_output(configured, monkeypatch, tmp_path, capsys):
-    vault = _register_search_project(configured)
-    _write_manifest(vault, {})
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [])
-    batch_file = tmp_path / "names.txt"
-    batch_file.write_text("Ghost\n")
-
-    cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=True))
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["terms"][0]["term"] == "Ghost"
-    assert payload["terms"][0]["entities"] == []
-    assert payload["terms"][0]["hits"] == []
-
-
-def test_search_batch_rejects_query_argument(configured, tmp_path):
-    _register_search_project(configured)
-    batch_file = tmp_path / "names.txt"
-    batch_file.write_text("Alice\n")
-    with pytest.raises(SystemExit):
-        cli.cmd_search(args(project="test-proj", query="alice", batch=str(batch_file), top_n=5, json=False))
-
-
-def test_search_batch_empty_file_exits(configured, tmp_path):
-    _register_search_project(configured)
-    batch_file = tmp_path / "names.txt"
-    batch_file.write_text("\n\n")
-    with pytest.raises(SystemExit):
-        cli.cmd_search(args(project="test-proj", query=None, batch=str(batch_file), top_n=5, json=False))
-
-
-# ── cmd_search --everywhere (#272) ──────────────────────────────────────────────
-
-def _register_projects(configured, entries):
-    """entries: list of (slug, name, extra) dicts. extra may set archived=True or
-    missing_path=True (vault dir is never created). Registers all at once and
-    returns {slug: vault_path}."""
-    projects = {}
-    vaults = {}
-    for slug, name, extra in entries:
-        extra = extra or {}
-        vault = configured / slug
-        if not extra.get("missing_path"):
-            vault.mkdir(parents=True, exist_ok=True)
-        info = {"name": name, "path": str(vault), "created": "2026-01-01"}
-        if extra.get("archived"):
-            info["archived"] = True
-        projects[slug] = info
-        vaults[slug] = vault
-    cli.save_projects(projects)
-    return vaults
-
-
-def test_search_everywhere_groups_by_investigation(configured, monkeypatch, capsys):
-    vaults = _register_projects(configured, [
-        ("shell-co", "Shell Co", None),
-        ("muni-contracts", "Muni Contracts", None),
-    ])
-    _write_manifest(vaults["shell-co"], {
-        f"e{i}": {"name": f"Acme Holding {i}", "type": "Company", "aliases": [], "note_path": f"entities/e{i}"}
-        for i in range(3)
-    })
-    _write_manifest(vaults["muni-contracts"], {})
-
-    def fake_fts(vault, query, **kw):
-        if vault == vaults["shell-co"]:
-            return [{"kind": "corpus", "key": f"sha{i}", "title": "doc.pdf", "path": "morgue/doc.pdf",
-                     "page": 1, "text": "acme"} for i in range(14)]
-        return [{"kind": "corpus", "key": "sha1", "title": "contract-award-2023.pdf",
-                 "path": "morgue/contract-award-2023.pdf", "page": 12, "text": "acme"}]
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", fake_fts)
-
-    cli.cmd_search(args(project=None, query="acme", everywhere=True, top_n=5, json=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Shell Co" in out and "shell-co" in out
-    assert "3 entities · 14 exact matches" in out
-    assert "Muni Contracts" in out and "muni-contracts" in out
-    assert "1 exact match (p. 12, contract-award-2023.pdf)" in out
-
-
-def test_search_everywhere_skips_archived_projects(configured, monkeypatch, capsys):
-    vaults = _register_projects(configured, [
-        ("active-proj", "Active Proj", None),
-        ("old-proj", "Old Proj", {"archived": True}),
-    ])
-    for v in vaults.values():
-        _write_manifest(v, {})
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
-        [{"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf",
-          "page": 1, "text": "x"}] if vault == vaults["old-proj"] else []
-    ))
-
-    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Old Proj" not in out
-    assert "No matches across 1 investigation." in out
-
-
-def test_search_everywhere_skips_missing_vault_path(configured, monkeypatch, capsys):
-    vaults = _register_projects(configured, [
-        ("healthy-proj", "Healthy Proj", None),
-        ("gone-proj", "Gone Proj", {"missing_path": True}),
-    ])
-    _write_manifest(vaults["healthy-proj"], {})
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [])
-
-    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Skipped 1 investigation with a broken vault path." in out
-
-
-def test_search_everywhere_no_registered_investigations(configured, capsys):
-    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=False))
-    out = capsys.readouterr().out
-    assert "No registered investigations." in out
-
-
-def test_search_everywhere_batch_aggregates_terms_and_dedupes_entities(configured, monkeypatch, tmp_path, capsys):
-    vault = _register_projects(configured, [("shell-co", "Shell Co", None)])["shell-co"]
-    _write_manifest(vault, {"alice-smith": {"name": "Alice Smith", "type": "Person",
-                                            "aliases": ["Smith"], "note_path": "entities/alice-smith"}})
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: (
-        [{"kind": "corpus", "key": f"sha-{query}", "title": "doc.pdf", "path": "morgue/doc.pdf",
-          "page": 1, "text": query}]
-    ))
-    batch_file = tmp_path / "names.txt"
-    batch_file.write_text("Alice\nSmith\n")
-
-    cli.cmd_search(args(project=None, query=None, everywhere=True, batch=str(batch_file), top_n=5, json=False))
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "1 entity · 2 exact matches" in out
-
-
-def test_search_everywhere_json_output(configured, monkeypatch, capsys):
-    vault = _register_projects(configured, [("shell-co", "Shell Co", None)])["shell-co"]
-    _write_manifest(vault, {})
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda vault, query, **kw: [
-        {"kind": "corpus", "key": "sha1", "title": "doc.pdf", "path": "morgue/doc.pdf", "page": 1, "text": "x"},
-    ])
-
-    cli.cmd_search(args(project=None, query="x", everywhere=True, top_n=5, json=True))
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["terms"] == ["x"]
-    assert payload["investigations"][0]["slug"] == "shell-co"
-    assert payload["investigations"][0]["hits"][0]["title"] == "doc.pdf"
-
-
-def test_search_everywhere_rejects_project_and_query_together(configured):
-    _register_projects(configured, [("shell-co", "Shell Co", None)])
-    with pytest.raises(SystemExit):
-        cli.cmd_search(args(project="shell-co", query="x", everywhere=True, top_n=5, json=False))
-
-
-def test_search_everywhere_batch_rejects_project_argument(configured, tmp_path):
-    _register_projects(configured, [("shell-co", "Shell Co", None)])
-    batch_file = tmp_path / "names.txt"
-    batch_file.write_text("Alice\n")
-    with pytest.raises(SystemExit):
-        cli.cmd_search(args(project="shell-co", query=None, everywhere=True, batch=str(batch_file), top_n=5, json=False))
-
-
-def test_search_everywhere_requires_query(configured):
-    _register_projects(configured, [("shell-co", "Shell Co", None)])
-    with pytest.raises(SystemExit):
-        cli.cmd_search(args(project=None, query=None, everywhere=True, top_n=5, json=False))
 
 
 # ── the verification pass's flag/config resolution (#535) ─────────────────────
@@ -5527,30 +5032,6 @@ def test_cmd_finalize_called_directly_returns_dict_without_exiting(wdg_home, tmp
     result = cmd_ing.cmd_finalize(args())
 
     assert result is errored
-
-
-def test_search_links_passages_to_their_document_note_on_a_terminal(configured, monkeypatch, capsys):
-    from watchdog import terminal
-    vault = _register_search_project(configured)
-    reg = vault / ".watchdog" / "registry"
-    reg.mkdir(parents=True)
-    (reg / "documents.json").write_text(json.dumps({
-        "s1": {"filename": "doc.pdf", "document_note": "documents/doc"},
-        "s2": {"filename": "dup.pdf", "document_note": "documents/dup"},
-        "s3": {"filename": "dup.pdf", "document_note": "documents/dup-abc123"}}))
-    monkeypatch.setattr(terminal, "_COLOR", True)
-    monkeypatch.setattr("watchdog.pipeline.fulltext.search", lambda *a, **k: [])
-    monkeypatch.setattr("watchdog.pipeline.embed.index_stats", lambda vault: {"total": 1})
-    for name in ("doc.pdf", "dup.pdf"):
-        monkeypatch.setattr("watchdog.pipeline.embed.search", _stub_search(
-            passage={"filename": name, "page": 3, "text": "shell company", "score": 0.5}))
-        cli.cmd_search(args(project="test-proj", query="shell", top_n=5, threshold=None,
-                            no_rerank=False, json=False, full=False))
-        out = capsys.readouterr().out
-        if name == "doc.pdf":
-            assert "obsidian://open?path=" in out and "doc.md" in out
-        else:
-            assert "obsidian://" not in out      # ambiguous filename: no link rather than a wrong one
 
 
 # ── the command line's retirement notice (D267) ──────────────────────────────

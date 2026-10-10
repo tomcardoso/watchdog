@@ -703,58 +703,13 @@ def cmd_doctor(args) -> None:
         print()
 
 
-def _search_query_terms(query: str) -> list[str]:
-    """Positive-phrase word tokens from a search query, for highlighting matches in
-    printed snippets (excludes -phrase exclusions and single-letter tokens)."""
-    from watchdog.pipeline.embed import _parse_query, _TOKEN_RE
-    pos, _neg = _parse_query(query)
-    terms = {m.group(0).lower() for phrase in pos for m in _TOKEN_RE.finditer(phrase)}
-    return sorted((t for t in terms if len(t) > 1), key=len, reverse=True)
-
-
-def _highlight_snippet(text: str, terms: list[str]) -> str:
-    """Bold case-insensitive whole-word matches of `terms` within `text` (the rest keeps
-    whatever colour the caller already opened, e.g. dim)."""
-    if not terms:
-        return text
-    pattern = re.compile(r"\b(" + "|".join(re.escape(t) for t in terms) + r")\b", re.IGNORECASE)
-    return pattern.sub(lambda m: f"{_RESET}{_BOLD}{m.group(0)}{_RESET}{_DIM}", text)
-
-
-def _windowed_snippet(text: str, terms: list[str], width: int) -> str:
-    """Truncate `text` to `width` chars, centred on the first matched term instead of
-    always keeping the start — a hit late in a passage would otherwise be cut off."""
-    if len(text) <= width:
-        return text
-    idx = None
-    if terms:
-        pattern = re.compile("|".join(re.escape(t) for t in terms), re.IGNORECASE)
-        match = pattern.search(text)
-        if match:
-            idx = match.start()
-    if idx is None:
-        return text[:width] + "…"
-    start = max(0, min(idx - width // 2, len(text) - width))
-    end   = start + width
-    prefix = "…" if start > 0 else ""
-    suffix = "…" if end < len(text) else ""
-    return f"{prefix}{text[start:end]}{suffix}"
-
-
-_EXACT_KIND_LABELS = {
-    "corpus": "Source document", "entity": "Entity note", "document": "Document note",
-    "timeline": "Timeline", "briefing": "Briefing",
-    "log": "Run log", "context": "Context",
-}
-
-
 # Facts listed beside one search hit (`--json`), so a session can cite what it found (D283).
 _SEARCH_FACTS_PER_HIT = 12
 
 
 def _page_facts(vault: Path):
     """A function (sha, page) -> the facts of that page of that document, each with its citation
-    link, for `--json` search hits. Facts whose matched passage is on the page count too."""
+    link, for search hits. Facts whose matched passage is on the page count too."""
     from watchdog.pipeline import citations, entity_facts
     index = entity_facts.FactIndex(vault)
 
@@ -772,15 +727,14 @@ def _page_facts(vault: Path):
 
 def _build_search_json(query: str, passages: list[dict], notes: list[dict],
                        exact: list[dict] | None = None, vault: Path | None = None) -> dict:
-    """Shape `watchdog search` results for `--json` consumers (the watchdog-query semantic
-    lane, scripts). Each passage carries the citable span (`text`) + its page; `score` is the
+    """Shape search results as JSON for the session's `search` tool (D299) and the app's search
+    screen. Each passage carries the citable span (`text`) + its page; `score` is the
     cosine similarity (ordering already reflects fusion + rerank). ``exact`` is the full-text
     (FTS5) lane (#109) — every hit for the exact term/phrase, no relevance score.
 
-    This JSON shape is a stable contract for machine consumers (the `watchdog-query` skill,
-    src/watchdog/skills/watchdog-query.md, and any other script parsing `--json` output) — unlike
-    the human-readable text output, which may change freely, a field rename or removal here is a
-    breaking change and should not be made casually (#499).
+    This JSON shape is a contract with the `watchdog-query` skill
+    (src/watchdog/skills/watchdog-query.md), which tells Claude what each field means: a field
+    rename or removal here must change the skill with it (#499).
 
     With `vault`, each passage and each exact match in a document's text also carries `facts`:
     the facts recorded on that page, each with its D271 `id`, the `cite` link to paste into a
@@ -831,17 +785,6 @@ def _note_format() -> int:
     return NOTE_FORMAT
 
 
-def _read_batch_terms(path: Path) -> list[str]:
-    if not path.exists():
-        sys.exit(f"Error: batch file not found: {path}")
-    terms = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            terms.append(line)
-    return terms
-
-
 def _manifest_matches(manifest: dict, term: str) -> list[dict]:
     """Entities whose name or any alias contains `term` (case-insensitive substring)."""
     t = term.lower()
@@ -875,61 +818,6 @@ def batch_report(vault: Path, terms: list[str], limit: int) -> tuple[list[dict],
             failures += 1
         report.append({"term": term, "entities": entities, "hits": hits, "error": error})
     return report, failures
-
-
-def cmd_search_batch(args, vault: Path, batch_file: str) -> None:
-    """`watchdog search --batch <file>`: one report per term (#110) — every N names in a
-    leaked roster, sanctions list, or donor list against manifest entities (structured
-    name/alias matches) and the full-text index (#109, every literal occurrence in the
-    corpus and every note). Deliberately skips the semantic/embedding lane: a batch is
-    routinely hundreds of terms, and embedding + rerank per term doesn't scale the way an
-    in-process SQLite query does — manifest + FTS is the fast, exhaustive combination the
-    issue calls a "clear no-hits for misses" for.
-    """
-    terms = _read_batch_terms(Path(batch_file))
-    if not terms:
-        sys.exit(f"Error: no terms found in {batch_file}")
-
-    as_json = getattr(args, "json", False)
-    report, failures = batch_report(vault, terms, args.top_n)
-    if failures:
-        # A failed lookup must never read as "no hits" — for a sanctions or donor list that is a
-        # false negative presented as a result.
-        print(f"  {_YELLOW}Warning: exact-match search failed for {failures} of {len(terms)} "
-              f"term(s) — those terms were NOT checked against the document text "
-              f"(try `watchdog reindex`).{_RESET}", file=sys.stderr)
-
-    if as_json:
-        print(json.dumps({
-            "terms": [
-                {"term": r["term"],
-                 "entities": r["entities"],
-                 "hits": [{"kind": h["kind"], "title": h["title"], "path": h["path"], "page": h["page"]}
-                          for h in r["hits"]],
-                 **({"error": r["error"]} if r["error"] else {})}
-                for r in report
-            ]
-        }, ensure_ascii=False))
-        return
-
-    print()
-    for r in report:
-        print(f"  {_BOLD}{r['term']}{_RESET}")
-        if r["error"] and not r["entities"]:
-            print(f"    {_YELLOW}not checked — exact-match search failed: {r['error']}{_RESET}")
-            print()
-            continue
-        if not r["entities"] and not r["hits"]:
-            print(f"    {_DIM}no hits{_RESET}")
-            print()
-            continue
-        for e in r["entities"]:
-            print(f"    {_DIM}entity{_RESET}  {e['note_path']}  {_DIM}({e['type']}){_RESET}")
-        for h in r["hits"]:
-            label = _EXACT_KIND_LABELS.get(h["kind"], h["kind"]).lower()
-            loc = f"p.{h['page']}" if h.get("page") else (h.get("path") or "")
-            print(f"    {_DIM}{label}{_RESET}  {h.get('title') or h.get('path')}  {_DIM}{loc}{_RESET}")
-        print()
 
 
 def everywhere_report(all_projects: dict, terms: list[str], limit: int) -> tuple[list[dict], list[tuple[str, str]]]:
@@ -968,258 +856,3 @@ def everywhere_report(all_projects: dict, terms: list[str], limit: int) -> tuple
         results.append({"slug": slug, "name": info["name"], "path": info["path"],
                         "entities": list(entities_by_id.values()), "hits": hits, "error": error})
     return results, skipped
-
-
-def cmd_search_everywhere(args) -> None:
-    """`watchdog search --everywhere <query>` (and `--everywhere --batch <file>`, #272): the
-    cheap first slice of #67 (global entity registry) — "have I seen this name in *any* of
-    my vaults?" answered today by iterating every registered, non-archived investigation's
-    existing manifest + full-text (FTS5) indexes and grouping hits by investigation. Follows
-    D57's batch-mode precedent by skipping the semantic/rerank lane: N vaults x embedding +
-    rerank doesn't scale the way in-process SQLite queries do. Vaults with a broken/missing
-    path are skipped, same tolerance as `watchdog doctor`.
-    """
-    batch_file = getattr(args, "batch", None)
-    if batch_file:
-        if args.project or args.query:
-            sys.exit("Error: --everywhere searches every investigation; drop the project name argument.")
-        terms = _read_batch_terms(Path(batch_file))
-        if not terms:
-            sys.exit(f"Error: no terms found in {batch_file}")
-    else:
-        if args.project and args.query:
-            sys.exit("Error: --everywhere searches every investigation — quote a multi-word "
-                      "query instead of passing a project name.")
-        query = args.query or args.project
-        if not query:
-            sys.exit("Error: please provide a search query.")
-        terms = [query]
-
-    all_projects = load_projects()
-    if not all_projects:
-        print("\n  No registered investigations.\n")
-        return
-
-    as_json = getattr(args, "json", False)
-    results, skipped = everywhere_report(all_projects, terms, args.top_n)
-    n_skipped = len(skipped)
-
-    if as_json:
-        print(json.dumps({
-            "terms": terms,
-            "investigations": [
-                {"slug": r["slug"], "name": r["name"], "entities": r["entities"],
-                 "hits": [{"kind": h["kind"], "title": h["title"], "path": h["path"], "page": h["page"]}
-                          for h in r["hits"]],
-                 **({"error": r["error"]} if r["error"] else {})}
-                for r in results
-            ],
-        }, ensure_ascii=False))
-        return
-
-    print()
-    hit_results = [r for r in results if r["entities"] or r["hits"]]
-    if not hit_results:
-        noun = "investigation" if len(results) == 1 else "investigations"
-        print(f"  {_DIM}No matches across {len(results)} {noun}.{_RESET}\n")
-    else:
-        for r in hit_results:
-            n_ent, n_hit = len(r["entities"]), len(r["hits"])
-            parts = []
-            if n_ent:
-                parts.append(f"{n_ent} {'entity' if n_ent == 1 else 'entities'}")
-            if n_hit:
-                hit_part = f"{n_hit} exact match{'es' if n_hit != 1 else ''}"
-                if n_hit == 1:
-                    h = r["hits"][0]
-                    if h["kind"] == "corpus":
-                        loc = f"p. {h.get('page')}, {h.get('title') or h.get('path')}"
-                    else:
-                        loc = f"{_EXACT_KIND_LABELS.get(h['kind'], h['kind'])}: {h.get('title') or h.get('path')}"
-                    hit_part += f" ({loc})"
-                parts.append(hit_part)
-            print(f"  {_BOLD}{r['name']}{_RESET}  {_DIM}{r['slug']}{_RESET}")
-            print(f"    {_DIM}{' · '.join(parts)}{_RESET}")
-        print()
-
-    unchecked = [r for r in results if r["error"]]
-    if unchecked:
-        names = ", ".join(r["name"] for r in unchecked)
-        print(f"  {_YELLOW}Exact-match search failed in {len(unchecked)} investigation"
-              f"{'s' if len(unchecked) != 1 else ''} ({names}) — the document text there was NOT "
-              f"checked; run `watchdog reindex` in each.{_RESET}\n")
-    if n_skipped:
-        noun = "investigation" if n_skipped == 1 else "investigations"
-        print(f"  {_DIM}Skipped {n_skipped} {noun} with a broken vault path.{_RESET}\n")
-
-
-def _confine_to_session_vault(args) -> None:
-    """Inside a Claude Code session, keep `watchdog search` to the vault the session runs in (D257).
-
-    The vault's settings pre-approve `watchdog search *` so /watchdog-query can run it without a
-    prompt, and the documents a session reads are adversarial by assumption (I6). Without this,
-    a prompt-injected document could have the session run `search --batch ~/.watchdog/
-    credentials.json` (every line is echoed back as a term), search another investigation, or
-    search all of them with `--everywhere`, all with no prompt. Claude Code marks its shell with
-    `CLAUDECODE=1`; dropping the marker means running a different command line, which the allow
-    rule no longer matches, so it prompts. A person at their own terminal is unaffected.
-
-    Other investigations are never looked up here, and every refusal reads the same whatever
-    was named, so the error can't be used to learn which investigations exist."""
-    if not os.environ.get("CLAUDECODE"):
-        return
-    refuse = ("Error: from inside a Claude Code session, watchdog search only works from this "
-              "investigation's own folder, on this investigation{}. Run it in your own terminal "
-              "instead.")
-    here = Path(".").resolve()
-    own = {slug for slug, v in load_projects().items() if Path(v["path"]).resolve() == here}
-    if not own:
-        sys.exit(refuse.format(""))
-    if getattr(args, "everywhere", False):
-        sys.exit(refuse.format(" (not --everywhere)"))
-    batch = getattr(args, "batch", None)
-    if batch and here not in Path(batch).expanduser().resolve().parents:
-        sys.exit(refuse.format(", with a --batch file inside it"))
-    if args.project and (args.query or batch) and args.project not in own \
-            and slugify(args.project) not in own:
-        sys.exit(refuse.format(""))
-
-
-def cmd_search(args) -> None:
-    _confine_to_session_vault(args)
-    if getattr(args, "everywhere", False):
-        cmd_search_everywhere(args)
-        return
-
-    batch_file = getattr(args, "batch", None)
-    if batch_file:
-        project_arg = args.project
-        if args.query:
-            sys.exit("Error: --batch reads terms from a file; drop the search query argument.")
-        if project_arg:
-            _, info = _find_project(project_arg)
-        else:
-            projects = load_projects()
-            cwd = Path(".").resolve()
-            match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-            if match is None:
-                sys.exit("Error: not inside a Watchdog project — pass a project name.")
-            _, info = match
-        cmd_search_batch(args, Path(info["path"]), batch_file)
-        return
-
-    project_arg = args.project
-    query_arg   = args.query
-
-    if project_arg and query_arg:
-        _, info = _find_project(project_arg)
-        args.query = query_arg
-    elif project_arg and not query_arg:
-        # One positional: inside a vault it is the query — `watchdog search shell` once failed
-        # with "please provide a search query" because "shell" prefix-matched another project's
-        # slug. Outside a vault it can only be a project name, which still needs a query.
-        projects = load_projects()
-        cwd = Path(".").resolve()
-        match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-        if match is None:
-            slug_try = slugify(project_arg)
-            if slug_try in projects or any(k.startswith(slug_try) for k in projects):
-                sys.exit("Error: please provide a search query.")
-            sys.exit(f"Project not found: {project_arg}" + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
-        _, info = match
-        args.query = project_arg
-    else:
-        sys.exit("Error: please provide a search query.")
-
-    vault = Path(info["path"])
-
-    as_json = getattr(args, "json", False)
-
-    from watchdog.pipeline.embed import search, index_stats
-    stats = index_stats(vault)
-    if stats["total"] == 0:
-        if as_json:
-            print(json.dumps(_build_search_json(args.query, [], [])))
-        else:
-            print(f"\n  {_DIM}No embeddings found. Index is built automatically during ingest.{_RESET}\n")
-        return
-
-    # Without an explicit --threshold, don't filter (cosine ≥ -1 always holds), so a plain
-    # search always returns its top-N; --threshold opts into hiding weak matches.
-    min_score = args.threshold if args.threshold is not None else -1.0
-    rerank = not getattr(args, "no_rerank", False)
-    passages = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="corpus", rerank=rerank)
-    notes    = search(vault, args.query, top_n=args.top_n, min_score=min_score, scope="notes")
-
-    from watchdog.pipeline import fulltext
-    try:
-        exact = fulltext.search(vault, args.query, limit=args.top_n)
-    except Exception as e:
-        exact = []
-        print(f"  {_YELLOW}Warning: exact-match search unavailable: {e}{_RESET}", file=sys.stderr)
-
-    if as_json:
-        print(json.dumps(_build_search_json(args.query, passages, notes, exact, vault=vault),
-                         ensure_ascii=False))
-        return
-
-    print()
-    if not passages and not notes and not exact:
-        hint = f" above {args.threshold:.2f}" if args.threshold is not None else ""
-        print(f"  {_DIM}No results{hint}.{_RESET}\n")
-        return
-
-    full  = getattr(args, "full", False)
-    terms = _search_query_terms(args.query)
-    from watchdog.links import note_link
-    docs_reg = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
-    note_by_sha = {sha: d.get("document_note") for sha, d in docs_reg.items()}
-    # Passages carry only a filename; link one only when no other document shares the name.
-    by_name: dict[str, list[str | None]] = {}
-    for d in docs_reg.values():
-        by_name.setdefault(d.get("filename"), []).append(d.get("document_note"))
-    note_by_name = {n: notes[0] for n, notes in by_name.items() if len(notes) == 1}
-
-    if exact:
-        print(f"  {_BOLD}Exact matches{_RESET}\n")
-        for r in exact:
-            snippet = (r.get("text") or "").replace("\n", " ").strip()
-            if not full:
-                snippet = _windowed_snippet(snippet, terms, 240)
-            snippet = _highlight_snippet(snippet, terms)
-            if r["kind"] == "corpus":
-                where = f"p.{r.get('page')}"
-                if r.get("path"):
-                    where += f"  {_DIM}{r['path']}#page={r.get('page')}{_RESET}"
-                title = note_link(vault, note_by_sha.get(r.get("key")), r.get("title") or "?")
-                print(f"  {_BOLD}{title}{_RESET}  {_DIM}{where}{_RESET}")
-            else:
-                label = _EXACT_KIND_LABELS.get(r["kind"], r["kind"])
-                print(f"  {_BOLD}{note_link(vault, r.get('path'))}{_RESET}  {_DIM}{label}{_RESET}")
-            print(f"  {_DIM}{snippet}{_RESET}")
-            print()
-
-    if passages:
-        print(f"  {_BOLD}Source passages{_RESET}\n")
-        for r in passages:
-            score   = f"{r['score']:.2f}"
-            snippet = r.get("text", "").replace("\n", " ").strip()
-            if not full:
-                snippet = _windowed_snippet(snippet, terms, 240)
-            snippet = _highlight_snippet(snippet, terms)
-            title = note_link(vault, note_by_name.get(r.get("filename")), r.get("filename", "?"))
-            print(f"  {_BOLD}{title}{_RESET}  {_DIM}p.{r.get('page')}  score {score}{_RESET}")
-            print(f"  {_DIM}{snippet}{_RESET}")
-            print()
-
-    if notes:
-        print(f"  {_BOLD}Notes{_RESET}\n")
-        for r in notes:
-            score   = f"{r['score']:.2f}"
-            preview = r.get("preview", "").replace("\n", " ").strip()
-            if not full:
-                preview = _windowed_snippet(preview, terms, 200)
-            preview = _highlight_snippet(preview, terms)
-            print(f"  {_BOLD}{note_link(vault, r['note_path'])}{_RESET}  {_DIM}score {score}{_RESET}")
-            print(f"  {_DIM}{preview}{_RESET}")
-            print()

@@ -17,8 +17,8 @@ the document at the fact and shows it on hover). This module makes and checks th
 * `annotate_callouts` does the same inside contradiction callouts, where a dangling fact link
   falls back to a link to the document itself.
 * `check_text` / `check_vault` report every fact citation in a page — found, not found, disputed —
-  without changing the page. The app runs it when it shows a page; `watchdog check-citations`
-  runs it as a maintenance check.
+  without changing the page. The app runs it when it shows a page; a session's `check_citations`
+  tool runs it before filing one (D299).
 
 Uncited sentences are allowed and never flagged: model-written text may connect or frame what
 the cited facts say (the owner's call). Disputed facts are never hidden, only labelled.

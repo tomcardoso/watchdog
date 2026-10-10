@@ -9,8 +9,8 @@ app, and the session writes the page back with the old Notes. Two halves close t
   page, merges only the Notes body into it, re-reads, and writes atomically only if the page is
   unchanged; otherwise it starts again. It records the saved Notes and the time in a small ledger
   (`.watchdog/page-notes.json`).
-- **A session's file edits are bracketed by the vault's hooks** (`watchdog page-notes pre|post`,
-  installed in `.claude/settings.json` for Write, Edit and MultiEdit). Before the edit, the page's
+- **A session's file edits are bracketed by hooks** (`run_hook`, which the app registers in-process
+  for Write, Edit and MultiEdit, `gui/chat.py`, D299). Before the edit, the page's
   Notes as they stand on disk are put aside; after it, the Notes are put back to the reporter's
   latest: the app's saved Notes if saved since the snapshot, else the snapshot. A session never
   writes the Notes section (the vault's instructions say so), so putting it back only ever undoes
@@ -240,7 +240,8 @@ def after_edit(vault: Path, payload: dict) -> str | None:
 
 
 def run_hook(stage: str, stdin_text: str) -> str | None:
-    """`watchdog page-notes pre|post`: read the hook payload, act, and return what to print.
+    """The session's PreToolUse (`pre`) or PostToolUse (`post`) hook: read the hook payload (JSON),
+    act, and return the hook's JSON output, or None.
     Never raises: a hook that fails must not fail the session's edit."""
     try:
         payload = json.loads(stdin_text or "{}")
