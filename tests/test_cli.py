@@ -1940,7 +1940,7 @@ def test_unlock_recent_lock_not_removed(configured, capsys):
     lock_path = _make_vault_with_lock(configured, recent_ts)
     cli.cmd_unlock(args(project="test-proj"))
     assert lock_path.exists()
-    assert "recent" in capsys.readouterr().out
+    assert "in use" in capsys.readouterr().out
 
 
 def test_unlock_recent_lock_force_removes(configured, capsys):
@@ -2335,10 +2335,23 @@ def test_cmd_rename_updates_obsidian_registry(configured, capsys):
     assert str(vault) not in paths
 
 
-def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_cmd_rename_not_blocked_by_an_abandoned_lock(configured, capsys):
+    """D293: a lock past the age window (its run can't be checked) holds nothing."""
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
     (vault / ".watchdog" / ".preprocessing-lock").write_text("started_at: 2026-01-01T00:00:00Z\npid: 99\n")
+    cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
+    assert "oil-co" in cli.load_projects()
+
+
+def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
+    cli.cmd_new(args(name="Shell Co", dir=str(configured)))
+    vault = configured / "shell-co"
+    (vault / ".watchdog" / ".preprocessing-lock").write_text(f"started_at: {_now_iso()}\npid: 99\n")
     with pytest.raises(SystemExit):
         cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
     assert "shell-co" in cli.load_projects()
@@ -2347,7 +2360,7 @@ def test_cmd_rename_blocked_by_chew_lock(configured, capsys):
 def test_cmd_rename_blocked_by_ingest_lock(configured, capsys):
     cli.cmd_new(args(name="Shell Co", dir=str(configured)))
     vault = configured / "shell-co"
-    (vault / ".watchdog" / "registry" / ".processing-lock").write_text("started_at: 2026-01-01T00:00:00Z\n")
+    (vault / ".watchdog" / "registry" / ".processing-lock").write_text(f"started_at: {_now_iso()}\n")
     with pytest.raises(SystemExit):
         cli.cmd_rename(args(project="Shell Co", name="Oil Co"))
 

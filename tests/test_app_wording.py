@@ -124,9 +124,10 @@ def test_unlock_recent_lock_wording(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("WATCHDOG_APP", "1")
     cmd_unlock(Namespace(project=None, force=False))
     out = capsys.readouterr().out
-    assert "Lock is recent" in out
+    assert "Lock is in use" in out
     assert not APP_BAD.search(out)
-    assert "Force" in out
+    # The app has no unlock control (D293), so the app wording offers none.
+    assert "Force" not in out and "Release a stuck lock" not in out
 
 
 def test_second_run_refusals_name_the_app_remedy(tmp_path, monkeypatch):
@@ -140,7 +141,19 @@ def test_second_run_refusals_name_the_app_remedy(tmp_path, monkeypatch):
     with pytest.raises(SystemExit) as e:
         _check_vault_locks(vault, "v")
     assert not APP_BAD.search(str(e.value))
-    assert "Release a stuck lock" in str(e.value)
+    assert "Release a stuck lock" not in str(e.value)
+    assert "Try again when it has finished" in str(e.value)
+
+
+def test_no_app_text_points_to_a_manual_unlock():
+    """D293: locks clear themselves, and the app has no "Release a stuck lock" control any more.
+    No Python message the app can show, and no renderer source, may send the reader to one."""
+    gui = SRC.parent.parent / "gui" / "src"
+    stale = re.compile(r"Release a stuck lock|Force unlock|Unlock…|\['unlock'")
+    hits = [str(p) for root in (SRC, gui) for p in root.rglob("*")
+            if p.suffix in (".py", ".ts", ".tsx", ".md") and p.is_file()
+            and stale.search(p.read_text(encoding="utf-8", errors="replace"))]
+    assert not hits, hits
 
 
 def test_pending_research_warning(tmp_path, monkeypatch, capsys):

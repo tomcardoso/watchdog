@@ -21,18 +21,37 @@ from watchdog import defaults
 from watchdog.appmode import hint as _hint
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
-from watchdog.pipeline.locks import acquire_or_take_stale, lock_age_seconds, lock_started_at
+from watchdog.pipeline import locks as _locks
+from watchdog.pipeline.locks import acquire_or_take_stale
 from watchdog.vault_paths import processing_lock, processing_state
 from watchdog.pipeline.section import (
     section_token_threshold as _section_token_threshold,
     est_tokens_from_pages as _est_tokens_from_pages,
 )
 
-STALE_SECONDS = 30 * 60
+# The age past which a lock whose holder can't be checked is taken over (D293).
+STALE_SECONDS = _locks.STALE_SECONDS
 
 
 def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def busy_message(holder: dict | None, what: str = "ingest") -> str:
+    """Why a run can't start while another holds the vault. The lock clears itself when that run
+    ends or dies (D293), so the app is told nothing to do; the terminal keeps its override."""
+    when = f" (lock acquired {holder['started_at']})" if holder and holder.get("started_at") else ""
+    if holder and holder.get("where") == "elsewhere":
+        host = holder.get("host")
+        return _hint(f"{what} already running on {host or 'another computer'}{when}; the lock is "
+                     f"released {_locks.STALE_SECONDS // 60} minutes after that computer last "
+                     "updates it, or run: watchdog unlock --force if you know it has stopped",
+                     f"Documents are being added on another computer{f' ({host})' if host else ''}. "
+                     "This investigation becomes free when that run ends.")
+    return _hint(f"{what} already running{when}; the lock is released when that run ends, "
+                 "or run: watchdog unlock --force if it is stuck",
+                 "Documents are already being added to this investigation. It becomes free when "
+                 "that run ends.")
 
 
 def scan_queue(vault: Path) -> list[dict]:
@@ -406,18 +425,12 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
     total = len(queue_files)
 
     def _live_lock_error() -> dict | None:
-        """If a non-stale (or unknown-age) lock is held, return the 'already running' error;
-        None if the lock is absent or provably stale (safe to take over / ignore)."""
-        if not lock_file.exists():
+        """If a run still holds the lock, return the 'already running' error; None when the lock
+        is absent or abandoned (its holder died, or it is past the age window; D293)."""
+        holder = _locks.held(lock_file, STALE_SECONDS)
+        if holder is None:
             return None
-        age = lock_age_seconds(lock_file)   # None ⇒ unparseable ⇒ treat as live (see #257)
-        if age is None or age < STALE_SECONDS:
-            ts = lock_started_at(lock_file)
-            when = f" (lock acquired {ts})" if ts else ""
-            return {"error": f"ingest already running{when}; "
-                             + _hint("if stale, run: watchdog unlock",
-                                     "if it is stale, use Activity → Maintenance → Release a stuck lock")}
-        return None
+        return {"error": busy_message(holder)}
 
     if total == 0 and not force_lock:
         # Nothing new to ingest. Don't acquire a lock — but if a live ingest holds one, say so
@@ -425,22 +438,19 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         err = _live_lock_error()
         if err is not None:
             return err
-        lock_file.unlink(missing_ok=True)   # only reached when the lock is absent or stale
+        _locks.clear_abandoned(lock_file, STALE_SECONDS)   # only reached when absent or abandoned
         state_file.unlink(missing_ok=True)
         return {"total": 0, "lock_acquired": False, "queue_files": []}
 
     # Atomically acquire the lock *before* any mutation. O_CREAT|O_EXCL means two racing
     # `watchdog ingest` invocations can't both pass an existence check and both proceed (#257);
-    # a provably-stale lock (>30 min, from a crashed run) is taken over, an unparseable one is
-    # left for `watchdog unlock` rather than blindly deleted.
+    # a lock whose run died is taken over at once, one whose run can't be checked once it is past
+    # the age window (D293).
     started_at = _iso_now()
     batch_start = int(time.time())
-    if not acquire_or_take_stale(lock_file, f"pid: cli\nstarted_at: {started_at}\n", STALE_SECONDS):
+    if not acquire_or_take_stale(lock_file, _locks.lock_contents("cli"), STALE_SECONDS):
         err = _live_lock_error()
-        return err if err is not None else {
-            "error": "ingest already running; "
-                     + _hint("if stale, run: watchdog unlock",
-                             "if it is stale, use Activity → Maintenance → Release a stuck lock")}
+        return err if err is not None else {"error": busy_message(None)}
 
     # Fresh run — clear the post-ingest inputs (per-doc results and scratchpads) left by a
     # prior ingest so the finalizer gate + briefing see only this run's documents. Skipped when

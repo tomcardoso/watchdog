@@ -7,7 +7,6 @@ and prints a Claude Code handoff message when done.
 """
 
 import json
-import os
 import subprocess
 import sys
 import threading
@@ -484,20 +483,18 @@ def run_ingest(
     # Acquire the chew lock atomically (#257). Previously the lock was written unconditionally,
     # so two chews (e.g. `watchdog watch` plus a manual `watchdog chew`) could run concurrently
     # on one vault and race the staging renames/near-dup computes. O_CREAT|O_EXCL admits exactly
-    # one; a >30-min stale lock (from a crashed chew) is taken over, recoverable via `unlock`.
-    from watchdog.pipeline.locks import acquire_or_take_stale
-    from watchdog.pipeline.ingest_setup import STALE_SECONDS
+    # one; a lock whose chew died is taken over at once, one that can't be checked once it is
+    # past the age window (D293).
+    from watchdog.pipeline import locks as _locks
+    from watchdog.pipeline.ingest_setup import STALE_SECONDS, busy_message
     from watchdog.vault_paths import preprocessing_lock
     lock_file = preprocessing_lock(vault)
     lock_file.parent.mkdir(parents=True, exist_ok=True)
-    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    if not acquire_or_take_stale(lock_file, f"started_at: {started_at}\npid: {os.getpid()}\n",
-                                 STALE_SECONDS):
+    if not _locks.acquire_or_take_stale(lock_file, _locks.lock_contents("chew"), STALE_SECONDS):
+        holder = _locks.held(lock_file, STALE_SECONDS)
         sys.exit(_hint("\n  Error: a chew is already in progress on this vault. "
-                       "Wait for it to finish, or run: watchdog unlock\n",
-                       "\n  Error: pre-processing is already in progress on this investigation. "
-                       "Wait for it to finish, or use Activity → Maintenance → Release a stuck lock "
-                       "if it is stale.\n"))
+                       "Wait for it to finish, or run: watchdog unlock --force if it is stuck.\n",
+                       f"\n  Error: {busy_message(holder)}\n"))
 
     from watchdog.pipeline.locks import heartbeat
     try:
@@ -506,10 +503,7 @@ def run_ingest(
             _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
                               show_ingest_hint, force_shas=force_shas)
     finally:
-        try:
-            lock_file.unlink()
-        except OSError:
-            pass
+        _locks.release_lock(lock_file)
 
 
 def _run_ingest_inner(

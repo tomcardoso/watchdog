@@ -21,7 +21,8 @@ from watchdog.gui.rpc import RpcError, method
 from watchdog.pipeline import text_positions
 from watchdog.gui.vaultio import require_vault, resolve_in_vault
 from watchdog.vault_paths import SET_ASIDE_NAMES, context_dir, incoming_dir, incoming_failed_dir, incoming_skipped_dir
-from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_log
+from watchdog.gui.runlocks import run_locks
+from watchdog.vault_paths import processing_log
 
 _BRIEFING_NAME = re.compile(r"^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})(?:-\d+)?$")
 _DATE_IN_NAME = re.compile(r"(\d{4}-\d{2}-\d{2})")
@@ -762,8 +763,7 @@ def pipeline(vault: str) -> dict:
         "queued": queued,
         "failed": failed,
         "pending_finalization": pending,
-        "locks": {"chew": preprocessing_lock(v).exists(),
-                  "ingest": processing_lock(v).exists()},
+        **run_locks(v),
         "research_urls": research.pending_count(v),
         "batch_pending": batch_extract.read_state(v),
     }

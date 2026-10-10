@@ -56,8 +56,8 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 
 ## 4. Lock file check
 
-Check whether `.watchdog/registry/.processing-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
-`STALE LOCK: .watchdog/registry/.processing-lock (created <timestamp>, <N>m ago) — release it in the Watchdog app: Activity → Maintenance → Release a stuck lock`
+Check whether `.watchdog/registry/.processing-lock` exists. If it does, read its `started_at` and `host` fields. Watchdog clears a lock on its own when the run that holds it stops, so a lock is normally a run in progress. Report it only when `started_at` is more than 15 minutes old, as:
+`OLD LOCK: .watchdog/registry/.processing-lock (host <host>, last updated <timestamp>, <N>m ago) — the next run, or opening the investigation in the Watchdog app, clears it if that run has stopped`
 
 ---
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from watchdog.gui import vaultio
 from watchdog.gui.rpc import RpcError, method
-from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_log
+from watchdog.vault_paths import processing_log
 
 _HEALTH = {"folder not found": "missing", "not a watchdog vault": "not_a_vault"}
 _LOG_DEFAULT_LINES = 500
@@ -122,7 +122,8 @@ def status(slug: str) -> dict:
     vault = Path(project["path"])
     by_type: Counter = Counter()
     documents_by_type: Counter = Counter()
-    locks = {"chew": False, "ingest": False}
+    locks = {"chew": None, "ingest": None}
+    stopped_run = None
     pending = None
     size = 0
     if project["health"] in (None, "registry_corrupt"):
@@ -132,8 +133,9 @@ def status(slug: str) -> dict:
         for doc in vaultio.load_documents(vault).values():
             if isinstance(doc, dict) and doc.get("document_type"):
                 documents_by_type[doc["document_type"]] += 1
-        locks = {"chew": (preprocessing_lock(vault)).exists(),
-                 "ingest": (processing_lock(vault)).exists()}
+        from watchdog.gui.runlocks import run_locks
+        rl = run_locks(vault)
+        locks, stopped_run = rl["locks"], rl["stopped_run"]
         if orchestrate.has_pending_finalization(vault):
             pending = orchestrate.pending_finalization(vault)
         size = _vault_size(vault)
@@ -142,6 +144,7 @@ def status(slug: str) -> dict:
         "by_type": dict(by_type.most_common()),
         "documents_by_type": dict(documents_by_type.most_common()),
         "locks": locks,
+        "stopped_run": stopped_run,
         "pending_finalization": pending,
         "size_bytes": size,
     }
