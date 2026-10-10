@@ -7,7 +7,7 @@
 
 import { _electron as electron, expect, test } from '@playwright/test'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -392,6 +392,63 @@ test('the gate lifts when the background setup finishes', async () => {
     await expect(page.locator('.setup-foot')).toHaveCount(0, { timeout: 60_000 })
     const ready = await page.evaluate(() => (window as any).watchdog.rpc('engine.ready', {}))
     expect(ready).toEqual({ ready: true })
+    await app.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+// D296: Add documents keeps reading in the investigation it started in when the reporter opens
+// another, and the public-records pause that follows names that investigation in its title, says
+// it is not the open one, and offers to switch back.
+test('the pause names its investigation after a switch', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
+  const home = join(root, 'home')
+  try {
+    const build = (dir: string, h: string) =>
+      execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, dir), '--home', h], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    build('first', join(root, 'home-first'))
+    build('second', home)
+    // One home that knows both: the second demo renamed, the first added beside it.
+    const file = join(home, '.watchdog', 'projects.json')
+    const projects = JSON.parse(readFileSync(file, 'utf8'))
+    const [slug] = Object.keys(projects)
+    const second = { ...projects[slug], name: 'Harbour Second Look' }
+    const first = { ...projects[slug], path: join(root, 'first') }
+    writeFileSync(file, JSON.stringify({ 'port-calder-waterfront': first, 'harbour-second-look': second }, null, 2))
+    const doc = join(root, 'new-memo.txt')
+    writeFileSync(doc, 'Memo. The harbour authority approved the lease on 3 March 2024.\n')
+
+    const app = await electron.launch({
+      args: [resolve(__dirname, '..'), '--no-sandbox'],
+      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+    })
+    const page = await app.firstWindow()
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.waitForSelector('.app', { timeout: 90_000 })
+    const open = (s: string) => page.evaluate(async (slug) => {
+      const w = window as any
+      w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug }))
+    }, s)
+    await open('port-calder-waterfront')
+    await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), doc)
+    const read = page.locator('.modal button', { hasText: 'Read documents' })
+    await expect(read).toBeEnabled({ timeout: 90_000 })
+    await read.click()
+    await open('harbour-second-look')
+
+    await expect(page.locator('.modal')).toContainText('Before sending documents from Port Calder Waterfront to a model', { timeout: 120_000 })
+    await expect(page.locator('.modal .callout', { hasText: 'This is for Port Calder Waterfront' })).toBeVisible()
+    await page.locator('.modal button', { hasText: 'Switch to Port Calder Waterfront' }).click()
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().project?.name)).toBe('Port Calder Waterfront')
+    await expect(page.locator('.modal .callout', { hasText: 'This is for' })).toHaveCount(0)
+    await expect(page.locator('.modal')).toContainText('Before sending documents from Port Calder Waterfront to a model')
+    // The document was read into the first investigation, not the one opened meanwhile.
+    const queued = (dir: string) => (existsSync(join(root, dir, '.watchdog', 'queue')) ? readdirSync(join(root, dir, '.watchdog', 'queue')) : []).length
+    // Both demos start with the same queue; only the first gained the new document.
+    expect(queued('first')).toBe(queued('second') + 1)
+    expect(errors, 'renderer errors').toEqual([])
     await app.close()
   } finally {
     rmSync(root, { recursive: true, force: true })

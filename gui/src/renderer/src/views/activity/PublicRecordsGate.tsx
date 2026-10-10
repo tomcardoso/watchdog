@@ -1,7 +1,8 @@
 // The public-records acknowledgement for anything that sends document text to a model. It mirrors
 // the CLI: `ingest.preflight` supplies the warning text, the model plan and the auto-approve
 // verdict; when auto-approve clears the run it goes ahead with a notice, otherwise the person
-// acknowledges here. The job then runs with --skip-warning, because the pause has been done.
+// acknowledges here. The job then runs with --skip-warning, because the pause has been done. The
+// pause names the investigation it is for, and the job runs there even if another was opened.
 
 import { ShieldAlert } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -11,6 +12,8 @@ import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
 import { call, errorMessage } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp } from '@renderer/lib/store'
+import { ElsewhereNote } from '@renderer/components/ElsewhereNote'
+import { investigationName } from '@renderer/lib/investigation'
 import { fmtNum } from '@renderer/lib/format'
 import { plural } from '@renderer/lib/format'
 
@@ -25,12 +28,12 @@ const withSkip = (args: string[]) => (args.includes('--skip-warning') ? args : [
 
 /** Starts a model-sending job behind the acknowledgement. Render `modal` once in the view. */
 export function usePublicRecordsGate() {
-  const [pending, setPending] = useState<{ run: GatedRun; pf: Preflight } | null>(null)
+  const [pending, setPending] = useState<{ run: GatedRun; pf: Preflight; vault: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
-  const launch = useCallback(async (run: GatedRun) => {
+  const launch = useCallback(async (run: GatedRun, vault: string) => {
     try {
-      const job = await startJob(withSkip(run.args), run.label, run.kind)
+      const job = await startJob(withSkip(run.args), run.label, run.kind, vault)
       navigate({ view: 'activity', job: job.id })
     } catch (e) {
       toast({ kind: 'error', title: `Could not start ${run.label.toLowerCase()}`, body: errorMessage(e) })
@@ -46,13 +49,13 @@ export function usePublicRecordsGate() {
         const pf = await call('ingest.preflight', { vault, options: run.options })
         if (pf.documents_to_send === 0) {
           // Nothing will reach a model, so there is nothing to acknowledge.
-          const job = await startJob(run.args, run.label, run.kind)
+          const job = await startJob(run.args, run.label, run.kind, vault)
           navigate({ view: 'activity', job: job.id })
         } else if (pf.auto_approve.approve && !billingBlocked(pf.billing)) {
-          toast({ kind: 'info', title: `Sending ${plural(pf.documents_to_send, 'document')} to the model`, body: 'Auto-approve is on and every step uses your Claude subscription.' })
-          await launch(run)
+          toast({ kind: 'info', title: `Sending ${plural(pf.documents_to_send, 'document')} from ${investigationName(vault)} to the model`, body: 'Auto-approve is on and every step uses your Claude subscription.' })
+          await launch(run, vault)
         } else {
-          setPending({ run, pf })
+          setPending({ run, pf, vault })
         }
       } catch (e) {
         toast({ kind: 'error', title: 'Could not check the run', body: errorMessage(e) })
@@ -71,7 +74,7 @@ export function usePublicRecordsGate() {
       title={
         <span className="row" style={{ gap: 8 }}>
           <ShieldAlert style={{ width: 18, height: 18, color: 'var(--warning)' }} />
-          Public records only
+          {pending ? `Before sending documents from ${investigationName(pending.vault)} to a model` : 'Public records only'}
         </span>
       }
       footer={
@@ -83,9 +86,9 @@ export function usePublicRecordsGate() {
             variant="primary"
             disabled={!pf?.auth.ok || !!billingBlocked(pf?.billing)}
             onClick={() => {
-              const run = pending!.run
+              const { run, vault } = pending!
               setPending(null)
-              void launch(run)
+              void launch(run, vault)
             }}
           >
             Acknowledge and run
@@ -95,6 +98,7 @@ export function usePublicRecordsGate() {
     >
       {pf && (
         <div className="col" style={{ gap: 14 }}>
+          <ElsewhereNote vault={pending!.vault} what="This run" />
           <pre className="act-warning selectable">{pf.warning_text}</pre>
           {pf.models.length > 0 && (
             <div className="col" style={{ gap: 4 }}>

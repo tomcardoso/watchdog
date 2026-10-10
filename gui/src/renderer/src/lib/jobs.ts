@@ -3,6 +3,7 @@
 import type { Job, RunOptions } from '@shared/api'
 import { call, invalidate } from './rpc'
 import { toast, useApp } from './store'
+import { investigationName, isElsewhere, switchTo } from './investigation'
 
 /** Start `watchdog <args…>` in the open vault. Resolves once the job is running. */
 export async function startJob(args: string[], label: string, kind = args[0], vault?: string | null): Promise<Job> {
@@ -46,21 +47,26 @@ export function waitForJob(id: string): Promise<Job> {
 
 export const isRunning = (j: Job) => j.state === 'running'
 
-/** Called for every job.finished event: refresh what the job may have changed, and tell the user. */
+/** Called for every job.finished event: refresh what the job may have changed, and tell the user.
+ * A job that ran in an investigation other than the open one says which, with a way back to it. */
 export function onJobFinished(job: Job): void {
   invalidate('vault.', 'review.', 'projects.', 'usage.', 'research.', 'search.', 'ingest.')
   const ok = job.state === 'done'
+  const elsewhere = isElsewhere(job.vault) ? investigationName(job.vault) : null
+  const where = elsewhere ? ` in ${elsewhere}` : ''
+  const action = elsewhere && job.vault ? { label: `Switch to ${elsewhere}`, run: () => void switchTo(job.vault!) } : undefined
   if (job.state === 'cancelled') {
-    toast({ kind: 'info', title: `${job.label} stopped` })
+    toast({ kind: 'info', title: `${job.label} stopped${where}`, action })
     return
   }
   // Exit code 2 = stopped partway in a way a re-run resumes (rate limit, pending batch).
   if (job.exit_code === 2) {
-    toast({ kind: 'info', title: `${job.label} paused`, body: 'Run it again to continue from where it stopped.' })
+    toast({ kind: 'info', title: `${job.label} paused${where}`, body: 'Run it again to continue from where it stopped.', action })
   } else {
-    toast({ kind: ok ? 'success' : 'error', title: ok ? `${job.label} finished` : `${job.label} failed`, body: ok ? undefined : 'Open Activity to see the output.' })
+    toast({ kind: ok ? 'success' : 'error', title: ok ? `${job.label} finished${where}` : `${job.label} failed${where}`, body: ok ? undefined : 'Open Activity to see the output.', action })
   }
-  window.watchdog.notify(ok ? `${job.label} finished` : `${job.label} needs attention`, 'Watchdog')
+  const named = job.vault ? ` (${investigationName(job.vault)})` : ''
+  window.watchdog.notify(ok ? `${job.label} finished${named}` : `${job.label} needs attention${named}`, 'Watchdog')
 }
 
 /** Stop a job, saying so when the stop could not be sent (the job may have ended already). */

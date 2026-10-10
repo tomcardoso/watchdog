@@ -14,6 +14,8 @@ import { EngineWait } from '@renderer/components/EngineWait'
 import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
 import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
+import { ElsewhereNote } from '@renderer/components/ElsewhereNote'
+import { investigationName, isElsewhere, switchTo } from '@renderer/lib/investigation'
 import { progressText, STAGE_LABELS } from '@renderer/shell/JobDock'
 import type { Effort, Estimate, Job, Preflight, RunOptions } from '@shared/api'
 
@@ -96,10 +98,11 @@ export function AddDialog() {
     if (effective === 'done' && phase === 'running') setPhase('done')
   }, [effective, phase])
 
-  // Another investigation opened: anything not under way belonged to the previous one.
+  // Another investigation opened: anything not under way belonged to the previous one. A flow
+  // under way, or waiting at the pause, stays with its own investigation and names it.
   useEffect(() => {
     if (flowVault.current === vault) return
-    if (phaseRef.current === 'reading' || phaseRef.current === 'running') return
+    if (phaseRef.current === 'reading' || phaseRef.current === 'gate' || phaseRef.current === 'running') return
     flowVault.current = vault
     setPhase('choose')
     setPaths(useApp.getState().addOpen?.paths ?? [])
@@ -119,6 +122,10 @@ export function AddDialog() {
     setError('')
     setBusy(true)
     flowVault.current = vault
+    // Under way from here: an investigation opened from now on must not reset this flow, even
+    // before the next render updates the ref.
+    phaseRef.current = 'reading'
+    setPhase('reading')
     const needIncoming = (pf0?.incoming ?? 0) > 0
     try {
       let chewFlags: string[] = []
@@ -129,7 +136,6 @@ export function AddDialog() {
       }
       const issues: string[] = []
       const dirs: string[] = []
-      setPhase('reading')
       const work: (string | null)[] = [...paths, ...(needIncoming ? [null] : [])]
       for (let i = 0; i < work.length; i++) {
         const p = work[i]
@@ -202,6 +208,11 @@ export function AddDialog() {
 
   // ── render ──────────────────────────────────────────────────────────────────
   const step = STEP_OF[effective]
+  // The investigation this flow's steps run in: the run's own once it has started.
+  const flowPath = job?.vault ?? flowVault.current
+  const flowName = investigationName(flowPath)
+  const away = effective !== 'choose' && isElsewhere(flowPath)
+  const inFlow = away ? ` in ${flowName}` : ''
   let body: ReactNode
   let footer: ReactNode
   let title = 'Add documents'
@@ -236,11 +247,12 @@ export function AddDialog() {
       </>
     )
   } else if (effective === 'reading') {
-    title = 'Reading documents'
+    title = `Reading documents${inFlow}`
     sub = 'Extracting text and pages on this computer. Nothing is sent to a model in this step.'
     const rj = readState?.job ? jobs[readState.job] : undefined
     body = (
       <>
+        <ElsewhereNote vault={flowPath} what="Reading these documents" />
         {readState && readState.n > 1 && (
           <div className="add-readcount">
             File {Math.min(readState.i + 1, readState.n)} of {readState.n}
@@ -257,9 +269,15 @@ export function AddDialog() {
       </>
     )
   } else if (effective === 'gate' && gate) {
-    title = 'Before anything is sent'
+    // The pause always names its investigation: it can open after the reporter has opened another.
+    title = `Before sending documents from ${flowName} to a model`
     sub = undefined
-    body = <GateStep gate={gate} retry={retry} folders={folders} issues={readIssues} error={error} />
+    body = (
+      <>
+        <ElsewhereNote vault={flowPath} what="This pause" />
+        <GateStep gate={gate} retry={retry} folders={folders} issues={readIssues} error={error} />
+      </>
+    )
     const n = countFor(gate.pf, retry, folders.length)
     const finishing = n === 0 && !!(gate.pf.pending_finalization || gate.pf.staged > 0)
     const nothing = n === 0 && !finishing
@@ -276,9 +294,14 @@ export function AddDialog() {
       </>
     )
   } else if (effective === 'running' || effective === 'done') {
-    title = effective !== 'done' ? job?.label ?? 'Adding documents' : job?.state === 'done' ? 'Finished' : job?.state === 'cancelled' ? 'Stopped' : job?.exit_code === 2 ? 'Paused' : 'Did not finish'
+    title = (effective !== 'done' ? job?.label ?? 'Adding documents' : job?.state === 'done' ? 'Finished' : job?.state === 'cancelled' ? 'Stopped' : job?.exit_code === 2 ? 'Paused' : 'Did not finish') + inFlow
     sub = undefined
-    body = <RunStep job={job} done={effective === 'done'} autoNote={autoNote} startAtWrite={!!gate && countFor(gate.pf, retry, folders.length) === 0} />
+    body = (
+      <>
+        <ElsewhereNote vault={flowPath} what={effective === 'done' ? 'This run' : 'This run, still going,'} />
+        <RunStep vault={flowPath} job={job} done={effective === 'done'} autoNote={autoNote} startAtWrite={!!gate && countFor(gate.pf, retry, folders.length) === 0} />
+      </>
+    )
     footer =
       effective === 'running' ? (
         <>
@@ -287,7 +310,7 @@ export function AddDialog() {
           {job && <Button onClick={() => stopJob(job.id)}>Stop</Button>}
         </>
       ) : (
-        <DoneFooter job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths([]); setRetry(false) }} />
+        <DoneFooter vault={flowPath} job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths([]); setRetry(false) }} />
       )
   } else {
     body = <Skeleton h={120} />
@@ -685,8 +708,8 @@ function DocState({ state }: { state: string }) {
   return <span className="spinner ds" style={{ width: 14, height: 14 }} />
 }
 
-function RunStep({ job, done, autoNote, startAtWrite }: { job?: Job; done: boolean; autoNote: boolean; startAtWrite: boolean }) {
-  const vault = useVault()
+function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; job?: Job; done: boolean; autoNote: boolean; startAtWrite: boolean }) {
+  const openPath = useApp((s) => s.project?.path)
   const stage = job?.progress.stage
   const ok = job?.state === 'done'
   // A run that stopped short keeps its steps where it stopped: only a finished run is all done.
@@ -712,7 +735,7 @@ function RunStep({ job, done, autoNote, startAtWrite }: { job?: Job; done: boole
         <>
           {ok && (
             <Callout tone="success" title="Documents added">
-              {summary ? `This investigation now has ${plural(summary.totals.documents, 'document')} and ${plural(summary.totals.entities, 'entity', 'entities')}.` : 'The investigation has been updated.'}
+              {summary ? `${openPath === vault ? 'This investigation' : investigationName(vault)} now has ${plural(summary.totals.documents, 'document')} and ${plural(summary.totals.entities, 'entity', 'entities')}.` : 'The investigation has been updated.'}
             </Callout>
           )}
           {!ok && job.state === 'cancelled' && <Callout tone="info" title="Stopped">The run was stopped. Anything already extracted is kept. Run Add again to continue.</Callout>}
@@ -735,11 +758,12 @@ function RunStep({ job, done, autoNote, startAtWrite }: { job?: Job; done: boole
   )
 }
 
-function DoneFooter({ job, onAgain }: { job?: Job; onAgain: () => void }) {
-  const vault = useVault()
+function DoneFooter({ vault, job, onAgain }: { vault: string; job?: Job; onAgain: () => void }) {
   const ok = job?.state === 'done'
   const { data: summary } = useRpc('vault.summary', ok ? { vault } : null)
-  const go = (r: Parameters<typeof navigate>[0]) => {
+  // The run's own investigation, opened first when another is open now.
+  const go = async (r: Parameters<typeof navigate>[0]) => {
+    if (isElsewhere(vault) && !(await switchTo(vault))) return
     useApp.getState().closeAdd()
     navigate(r)
   }
@@ -747,14 +771,14 @@ function DoneFooter({ job, onAgain }: { job?: Job; onAgain: () => void }) {
     return (
       <>
         <Button variant="ghost" onClick={() => useApp.getState().closeAdd()}>Close</Button>
-        <Button onClick={() => go({ view: 'review' })}>Review what was found</Button>
-        {summary?.briefing ? <Button variant="primary" iconRight={ArrowRight} onClick={() => go({ view: 'note', path: summary.briefing!.path })}>Read the briefing</Button> : <Button variant="primary" onClick={() => go({ view: 'home' })}>Go to Overview</Button>}
+        <Button onClick={() => void go({ view: 'review' })}>Review what was found</Button>
+        {summary?.briefing ? <Button variant="primary" iconRight={ArrowRight} onClick={() => void go({ view: 'note', path: summary.briefing!.path })}>Read the briefing</Button> : <Button variant="primary" onClick={() => void go({ view: 'home' })}>Go to Overview</Button>}
       </>
     )
   return (
     <>
       <Button variant="ghost" onClick={() => useApp.getState().closeAdd()}>Close</Button>
-      {job && <Button onClick={() => go({ view: 'activity', job: job.id })}>Open full output</Button>}
+      {job && <Button onClick={() => void go({ view: 'activity', job: job.id })}>Open full output</Button>}
       <Button variant="primary" icon={RefreshCw} onClick={onAgain}>{job?.exit_code === 2 ? 'Add again to continue' : 'Add again'}</Button>
     </>
   )

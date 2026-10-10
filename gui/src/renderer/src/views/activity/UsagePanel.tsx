@@ -72,11 +72,13 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
   const t = r.totals as Record<string, number>
   const corpus = (r as unknown as { corpus?: { pages: number } | null }).corpus
   const perPage = (r as unknown as { cost_per_page?: number | null }).cost_per_page
+  // A conversation reads no pages, so a cost per page means nothing for it.
+  const session = r.kind === 'ask' || r.kind === 'research'
   return (
     <div className="col" style={{ gap: 14 }}>
       <div className="act-stats">
-        <Stat label="Cost" value={fmtCost(t.cost_usd)} sub={r.subscription_note ? 'at published rates' : perPage ? `${fmtCost(perPage)} a page` : undefined} icon={Coins} />
-        <Stat label={r.kind === 'ask' || r.kind === 'research' ? 'Turns' : 'Model calls'} value={fmtNum(t.calls)} />
+        <Stat label="Cost" value={fmtCost(t.cost_usd)} sub={r.subscription_note ? 'at published rates' : perPage && !session ? `${fmtCost(perPage)} a page` : undefined} icon={Coins} />
+        <Stat label={session ? 'Turns' : 'Model calls'} value={fmtNum(t.calls)} />
         <Stat label="Tokens in" value={fmtTokens(t.input_tokens)} sub={t.cache_read_tokens ? `${fmtTokens(t.cache_read_tokens)} read from cache` : undefined} />
         <Stat label="Tokens out" value={fmtTokens(t.output_tokens)} />
         <Stat
@@ -98,7 +100,7 @@ function RunDetail({ vault, ts }: { vault: string; ts: string }) {
               <th>Stage</th>
               <th>Model</th>
               <th>Backend</th>
-              <th style={{ textAlign: 'right' }}>Calls</th>
+              <th style={{ textAlign: 'right' }}>{session ? 'Turns' : 'Calls'}</th>
               <th style={{ textAlign: 'right' }}>In</th>
               <th style={{ textAlign: 'right' }}>Out</th>
               <th style={{ textAlign: 'right' }}>Cost</th>
