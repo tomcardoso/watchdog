@@ -62,6 +62,11 @@ def handle(request: dict) -> dict | None:
         traceback.print_exc(file=sys.stderr)
         return {"id": rid, "error": {"message": f"{name}: {e}", "code": "bad_params", "data": None}}
     except Exception as e:  # noqa: BLE001 — every failure must reach the app as a response
+        from watchdog.cmd.auth import KeyChoiceError
+        if isinstance(e, KeyChoiceError):
+            # A key the investigation chose isn't here, or the app couldn't decrypt it (D290,
+            # D295): a reason for the reader, not a bug. Nothing was sent.
+            return {"id": rid, "error": {"message": str(e), "code": "key_missing", "data": None}}
         traceback.print_exc(file=sys.stderr)
         return {"id": rid, "error": {"message": f"{type(e).__name__}: {e}", "code": "internal",
                                      "data": None}}
@@ -104,7 +109,9 @@ def main() -> None:
         try:
             req = json.loads(line)
         except json.JSONDecodeError:
-            print(f"gui-server: unreadable request: {line[:200]}", file=sys.stderr)
+            # Never the line itself: stderr goes to the app's log file, and a request can carry a
+            # key the reader just pasted (auth.setKey, D295).
+            print(f"gui-server: unreadable request ({len(line)} characters)", file=sys.stderr)
             continue
         if req.get("method") == "server.shutdown":
             break
