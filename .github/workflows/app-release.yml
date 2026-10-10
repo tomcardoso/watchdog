@@ -156,6 +156,7 @@ jobs:
       TAG: ${{ github.ref_name }}
       VERSION: ${{ needs.version.outputs.version }}
       CHANNEL: ${{ needs.version.outputs.channel }}
+      WINDOWS_SIGNED: ${{ secrets.AZURE_PUBLISHER_NAME != '' }}
 
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
@@ -191,7 +192,11 @@ jobs:
             echo "Download the installer for your computer below: the .dmg for a Mac (arm64 for Apple silicon, x64 for Intel), the Setup .exe for Windows, the .AppImage for Linux. An installed copy offers later $CHANNEL releases itself, under Help → Check for Updates."
             if [ "$CHANNEL" = beta ]; then
               echo
-              echo "This is a test release. The Windows installer is not signed yet, so Windows shows a warning the first time it runs: choose More info, then Run anyway."
+              if [ "$WINDOWS_SIGNED" = true ]; then
+                echo "This is a test release."
+              else
+                echo "This is a test release. The Windows installer is not signed yet, so Windows shows a warning the first time it runs: choose More info, then Run anyway."
+              fi
             fi
             echo
             cat generated.md
