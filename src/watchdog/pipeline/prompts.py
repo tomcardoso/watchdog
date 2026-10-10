@@ -367,3 +367,10 @@ def build_request_dedup_prompt(open_requests: list[dict]) -> str:
         + (f" — likely source: {r['likely_source']}" if r.get("likely_source") else "")
         for i, r in enumerate(open_requests))
     return f"{_render('request_dedup')}\n\nOpen document requests:\n{listed}"
+
+
+def build_relationship_labels_prompt(items: list[dict], entities: dict) -> str:
+    # Relationship labels (D291): each ordered pair with its numbered wordings and document counts.
+    # Ids, keys and sources stay in Python; the model answers with numbers only.
+    from watchdog.pipeline import relationships
+    return f"{_render('relationship_labels')}\n\nPairs:\n\n{relationships.prompt_items(items, entities)}"
