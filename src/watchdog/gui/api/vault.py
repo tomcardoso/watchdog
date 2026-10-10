@@ -392,6 +392,7 @@ def entity(vault: str, id: str) -> dict:
     sections = parsed["sections"] if parsed else {}
     appears = [s for s in (ent.get("appears_in") or []) if s in docs]
     doc_rows = vaultio.sorted_document_rows(v, {s: docs[s] for s in appears})
+    rels = _relationships(v, id, ent)
     return {
         **_entity_facts(v, id, ents, docs),
         **row,
@@ -402,7 +403,8 @@ def entity(vault: str, id: str) -> dict:
                                "notes")}
         | {"summary": sections.get("summary") or sections.get("summary (ai-written)") or None},
         "documents": doc_rows,
-        "relationships": _relationships(v, id, ent),
+        "relationships": rels,
+        "role_count": len(rels),
         "contradictions": _contradictions(ent, sections.get("contradictions"), resolved),
         "timeline": _entity_timeline(v, id, ent, docs, ents),
     }

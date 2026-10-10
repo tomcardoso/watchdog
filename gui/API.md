@@ -112,7 +112,7 @@ EntityRow = {
   aliases: string[], doc_count, role_count, contradiction_count,
   first_seen|null, last_updated|null, note: "entities/<type>/<id>"|null,
   has_summary: bool, summary|null    // first paragraph of ## Summary
-}
+}                                    // role_count: relationships per counterpart, direction and wording (D291); EntityDetail's counts canonical groups
 ```
 
 | Method | Params | Result |

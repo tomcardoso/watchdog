@@ -492,6 +492,11 @@ def unresolved_contradictions(ent: dict, resolved: frozenset[str]) -> list[str]:
             if isinstance(c, str) and resolutions.contradiction_id(c) not in resolved]
 
 
+def _relationship_rows(ent: dict) -> list[dict]:
+    from watchdog.pipeline import relationships
+    return relationships.rows_for_entry(ent)
+
+
 def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> dict:
     """The app's `EntityRow` for one `entities.json` record."""
     note_stem = ent.get("note_path")
@@ -509,7 +514,9 @@ def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> di
         "type": entity_type(ent.get("type")),
         "aliases": [a for a in (ent.get("aliases") or []) if isinstance(a, str)],
         "doc_count": len(ent.get("appears_in") or []),
-        "role_count": len(ent.get("roles") or []),
+        # Relationships counted as notes list them: one per counterpart, direction and wording
+        # key (D291); the entity page counts the canonical groups too.
+        "role_count": len(_relationship_rows(ent)),
         "contradiction_count": len(unresolved_contradictions(ent, resolved)),
         "first_seen": _str_or_none(ent.get("date_first_seen")),
         "last_updated": _str_or_none(ent.get("date_last_updated")),
