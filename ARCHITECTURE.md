@@ -494,6 +494,7 @@ queries/ wiki/               session-written findings and threads
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
+    usage/sessions/usage-<started>-<id>.json  one Ask Claude or Web research session's turns, task `ask`/`research` (D296); never read by the cost estimates
     .processing-lock .write-lock .verification-lock .notes-lock
 ```
 
@@ -527,7 +528,7 @@ helpers for every path under them. `migrate_folder_names` renames an older vault
 `_CONTEXT/` (never deleting a file) and runs at the start of each command that touches them and when the
 app opens a vault (`require_vault`).
 
-Every model call is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
+Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
 filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` removes a vault's rows
 (D247).
 

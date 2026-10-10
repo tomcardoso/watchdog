@@ -654,11 +654,17 @@ export interface UsageRunRow {
   cache_read_tokens?: number
   cache_write_tokens?: number
   latency_s?: number
+  /** `run` for a processing run; `ask` or `research` for an Ask Claude or Web research session (D296). */
+  kind?: UsageKind
+  title?: string | null
 }
+export type UsageKind = 'run' | 'ask' | 'research'
 /** Cost per labelled key that paid (#690); `label` null for calls no stored key paid for. */
 export interface KeyCost { label: string | null; cost_usd: number; calls: number }
 export interface UsageRun {
   ts: string
+  kind?: UsageKind
+  title?: string | null
   stages: { stage: string; model: string; backend: string; calls: Record<string, unknown>[]; totals: Record<string, number>; wall_seconds: number | null }[]
   totals: Record<string, number>
   subscription_note: string | null

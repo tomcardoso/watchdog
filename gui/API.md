@@ -414,8 +414,8 @@ SettingKey = {key, short, help, is_set: bool, default, current (null for secrets
 
 | Method | Params | Result |
 |---|---|---|
-| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, backends, subscription: bool, stages: {[stage]: cost_usd}, by_key: [KeyCost]}], corpus: {documents, pages}\|null}` newest first |
-| `usage.run` | `{vault, ts?}` | `{ts, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null, peak_concurrency, batch_note\|null}], totals, subscription_note\|null, by_key: [KeyCost], corpus, cost_per_page\|null}` — each call row carries `key_label\|null` (latest when `ts` omitted; `ts` is the timestamp in `usage-<ts>.json`, matched as a substring; error `no_runs` when none exist) |
+| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, backends, subscription: bool, stages: {[stage]: cost_usd}, by_key: [KeyCost], kind: "run"\|"ask"\|"research", title: string\|null}], corpus: {documents, pages}\|null}` newest first. Each Ask Claude or Web research session is its own row (`kind` `ask` or `research`, `title` the chat's title, stage `ask` or `research`, one call per turn; D296) |
+| `usage.run` | `{vault, ts?}` | `{ts, kind, title, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null, peak_concurrency, batch_note\|null}], totals, subscription_note\|null, by_key: [KeyCost], corpus, cost_per_page\|null}` — each call row carries `key_label\|null` (latest processing run when `ts` omitted, else the latest session; `ts` is the timestamp in `usage-<ts>.json`, matched as a substring, a session's being `<started>-<id>`; error `no_runs` when none exist) |
 
 ## research
 
