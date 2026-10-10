@@ -130,6 +130,12 @@ def test_the_sandbox_is_strict_and_keeps_watchdogs_own_files_out_of_reach(tmp_pa
     assert sb["allowUnsandboxedCommands"] is False and sb["autoAllowBashIfSandboxed"] is False
     deny = sb["filesystem"]["denyWrite"]
     assert any(p.endswith("access.json") for p in deny) and any(p.endswith("credentials.json") for p in deny)
+    # D295: the keys and other investigations' saved conversations can't be read either; the
+    # folder-access list stays readable because the session's `watchdog` commands enforce it.
+    hidden = sb["filesystem"]["denyRead"]
+    assert any(p.endswith("credentials.json") for p in hidden)
+    assert any(p.endswith(".watchdog/gui") or p.endswith(".watchdog\\gui") for p in hidden)
+    assert not any(p.endswith("access.json") for p in hidden)
 
 
 def test_options_carry_the_sandbox_only_where_it_is_dependable(tmp_path, monkeypatch):
