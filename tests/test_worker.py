@@ -282,3 +282,24 @@ def test_no_app_path_builds_a_watchdog_command_line():
         for m in cli.finditer(text):
             found.append(f"{path.relative_to(ROOT)}: {m.group(0)}")
     assert not found, "app code still builds a CLI command:\n" + "\n".join(found)
+
+
+def test_investigation_operations(wdg_home, tmp_path, monkeypatch):  # noqa: F811
+    from watchdog.cmd import base
+    (wdg_home / "config.json").write_text(json.dumps({"projects_dir": str(tmp_path / "inv")}))
+    monkeypatch.setattr("watchdog.cmd.vault._register_obsidian_vault", lambda v: None)
+    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: tmp_path / "obsidian.json")
+    rep = ops.CollectingReporter()
+    made = ops.run("projects-new", {"name": "Dock Leases", "description": "Who holds them?",
+                                    "dir": str(tmp_path / "inv")}, rep)
+    assert made["slug"] == "dock-leases" and "watchdog " not in rep.text
+    renamed = ops.run("projects-rename", {"slug": "dock-leases", "name": "Pier Leases"}, rep)
+    assert renamed["slug"] == "pier-leases" and Path(renamed["path"]).name == "pier-leases"
+    ops.run("projects-describe", {"slug": "pier-leases", "description": ""}, rep)
+    assert "description" not in base.load_projects()["pier-leases"]
+    ops.run("projects-archive", {"slug": "pier-leases"}, rep)
+    assert base.load_projects()["pier-leases"]["archived"] is True
+    ops.run("projects-archive", {"slug": "pier-leases", "archived": False}, rep)
+    assert "archived" not in base.load_projects()["pier-leases"]
+    gone = ops.run("projects-delete", {"slug": "pier-leases", "purge": True}, rep)
+    assert gone["removed"] and not Path(renamed["path"]).exists()
