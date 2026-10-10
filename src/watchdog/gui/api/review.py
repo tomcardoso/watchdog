@@ -3,8 +3,9 @@ possible duplicates, plus marking them handled.
 
 The items come from `cmd/review.open_items` and the lead sweep from `pipeline/leads.scan`, so the
 app and `watchdog review` always list the same things. Resolving writes the same
-`resolutions.json` store the terminal walk writes and ticks the matching checkboxes in the
-briefings (`resolutions.tick_in_briefings`), so the files and the store agree.
+`resolutions.json` store the terminal walk writes. Generated reports carry no checkboxes (D294),
+so nothing is imported from them; older files that still have boxes are kept in step
+(`resolutions.tick_in_briefings`) so the terminal's `--sync` cannot undo the app.
 """
 
 from __future__ import annotations
@@ -92,15 +93,6 @@ def resolved(vault: str) -> dict:
     return {"items": out}
 
 
-@method("review.sync")
-def sync(vault: str) -> dict:
-    """Import ticked and cleared checkboxes from the briefings (`watchdog review resolve --sync`)."""
-    from watchdog.pipeline import resolutions
-
-    added, removed = resolutions.sync_from_briefings(require_vault(vault))
-    return {"resolved": added, "unresolved": removed}
-
-
 @method("review.leads")
 def leads(vault: str) -> dict:
     from watchdog.pipeline import leads as _leads
@@ -109,13 +101,57 @@ def leads(vault: str) -> dict:
     return {**found, "total": _leads.total(found)}
 
 
+def _watch_recording(v, what: str):
+    from watchdog.pipeline import history
+    return history.recording(v, {"kind": "edit", "file": "watchlist.md", "what": what}, ["watchlist.md"])
+
+
 @method("review.watchlist")
 def watchlist(vault: str) -> dict:
+    """The watch list's terms, each with how many hits are still open for it (the watch-list-hit
+    items in Review) and whether it is a `/regex/`."""
+    from watchdog.cmd.review import open_items
     from watchdog.pipeline import watchlist as _watchlist
 
     v = require_vault(vault)
-    return {"terms": [t["term"] for t in _watchlist.load_terms(v)],
-            "text": vaultio.read_text(v / "watchlist.md")}
+    hits: dict[str, int] = {}
+    for item in open_items(v, ("alerts",)):
+        hits[item.get("term") or ""] = hits.get(item.get("term") or "", 0) + 1
+    return {"terms": [{"term": t["term"], "regex": t["term"].startswith("/") and t["term"].endswith("/")
+                       and len(t["term"]) >= 2, "hits": hits.get(t["term"], 0)}
+                      for t in _watchlist.load_terms(v)]}
+
+
+@method("review.watchlistAdd")
+def watchlist_add(vault: str, term: str) -> dict:
+    """Add one term to `watchlist.md` (the file `watchdog watchlist-add` appends to). Blank,
+    duplicate and malformed terms are refused with a plain message."""
+    from watchdog.pipeline import watchlist as _watchlist
+
+    v = require_vault(vault)
+    if not isinstance(term, str):
+        raise RpcError("The term must be text.", code="bad_params")
+    try:
+        clean = _watchlist.check_term(v, term)
+    except ValueError as e:
+        raise RpcError(str(e), code="bad_params") from None
+    with _watch_recording(v, "add"):
+        added = _watchlist.add_terms(v, [clean])
+    return {"added": added[0] if added else None}
+
+
+@method("review.watchlistRemove")
+def watchlist_remove(vault: str, term: str) -> dict:
+    from watchdog.pipeline import watchlist as _watchlist
+
+    v = require_vault(vault)
+    if not isinstance(term, str) or not term.strip():
+        raise RpcError("No term was given.", code="bad_params")
+    with _watch_recording(v, "remove"):
+        removed = _watchlist.remove_term(v, term)
+    if not removed:
+        raise RpcError("That term isn't on the list.", code="not_found")
+    return {"removed": term.strip()}
 
 
 @method("review.mergeLog")

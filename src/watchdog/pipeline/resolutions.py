@@ -12,8 +12,8 @@ Stored at ``.watchdog/registry/resolutions.json``::
     {"schema_version": 1, "resolved": {"<rid>": {"at": "<iso>", "label": "<human label>"}}}
 
 Resolution ids (``rid``) are stable, human-copyable tokens the reports print next to each item
-(embedded as an unobtrusive ``<!--wid:<rid>-->`` marker so a ticked ``- [x]`` checkbox can be
-synced back into the store):
+(embedded as an unobtrusive ``<!--wid:<rid>-->`` marker so the id travels with the item; older
+reports also carried a ``- [x]`` checkbox that ``--sync`` imported):
 
   * ``lead:<signal>:<entity_id>`` — ``signal`` ∈ ``unprofiled`` | ``isolated`` | ``inferred``
   * ``contradiction:<hash>``      — ``sha1[:12]`` of the normalized callout text
@@ -250,7 +250,10 @@ def sync_from_briefings(vault: Path) -> tuple[list[str], list[str]]:
     """Import ``- [x]`` / ``- [ ]`` checkbox state from the briefing files, plus the vault-root
     ``requests.md``, into the store.
 
-    Every rendered lead/alert/request line carries a ``<!--wid:<rid>-->`` marker. A ticked box
+    Reports are rendered without checkboxes since D294 (the app handles items); a line with a
+    ``<!--wid:<rid>-->`` marker and no box is skipped, never read as "unticked", so a vault of
+    box-less files syncs to a no-op and reopens nothing. Older files still carry boxes, and for
+    those: a ticked box
     adds its rid to the store; an un-ticked box for a currently-resolved rid removes it (so the
     journalist can undo a resolution by clearing the checkbox). Returns ``(added, removed)``.
     """

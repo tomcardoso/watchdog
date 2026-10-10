@@ -121,6 +121,23 @@ def test_sync_from_briefings_imports_ticked_and_reopens_cleared(tmp_path):
     assert resolutions.resolved_ids(v) == {"lead:isolated:acme"}
 
 
+def test_sync_over_files_without_boxes_reopens_nothing(tmp_path):
+    """Reports are written without checkboxes (D294). A handled item's absence from a file, or a
+    plain list item carrying its marker, must never read as an unticked box."""
+    v = _vault(tmp_path)
+    (v / "briefings").mkdir()
+    (v / "briefings" / "leads-2025-01-01.md").write_text(
+        "- **John Roe** — appears in 3 documents <!--wid:lead:isolated:john-->\n", encoding="utf-8")
+    (v / "requests.md").write_text("- **A transcript** <!--wid:request:abc123abc123-->\n", encoding="utf-8")
+    (v / "briefings" / "alerts-2025-01-01.md").write_text(
+        "### `Acme`\n- **[[documents/a|a.pdf]]** <!--wid:alert:abc1234:deadbeef-->\n", encoding="utf-8")
+    handled = ["lead:isolated:john", "request:abc123abc123", "alert:abc1234:deadbeef", "lead:isolated:gone"]
+    resolutions.resolve(v, handled)
+
+    assert resolutions.sync_from_briefings(v) == ([], [])
+    assert resolutions.resolved_ids(v) == set(handled)
+
+
 def test_sync_with_no_briefings_dir_is_noop(tmp_path):
     v = _vault(tmp_path)
     assert resolutions.sync_from_briefings(v) == ([], [])

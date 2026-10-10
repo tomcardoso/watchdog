@@ -316,10 +316,12 @@ def test_every_active_item_carries_a_rid():
     assert all("rid" in x for c in data["contradictions"] for x in c["callouts"])
 
 
-def test_format_renders_checkboxes_with_wid_markers():
+def test_format_renders_plain_items_with_wid_markers_and_no_commands():
     import datetime
     body = leads._format(leads.find_leads(_registry()), datetime.datetime(2025, 1, 1))
-    assert "- [ ] **John Roe**" in body
+    assert "- **John Roe**" in body and "[ ]" not in body
+    assert "Handled in Watchdog: Review → Leads" in body
+    assert "watchdog" not in body.lower().replace("handled in watchdog", "")
     assert "<!--wid:lead:isolated:john-->" in body
     assert "<!--wid:lead:unprofiled:shell-co-->" in body
     assert "<!--wid:contradiction:" in body
