@@ -2,26 +2,39 @@
 
 How the desktop app is built, signed, released and updated. Adapted from Sourcerer's process.
 
-## One version for everything
+## Two kinds of release
 
-The app and the `watchdog` Python package ship together from one tag. A `v1.4.0` tag runs
-`.github/workflows/publish.yml`, which:
+The app and the `watchdog` Python package are released separately, from the same repository:
 
-1. tests the Python package and builds its wheel and sdist;
-2. builds the app on macOS (Apple silicon and Intel), Windows and Linux, setting the app's version
-   from the tag (a PEP 440 pre-release such as `1.4.0b1` becomes `1.4.0-beta.1` for the app);
-3. creates the GitHub Release, with notes taken from the version-bump PR's "What's new" section and
-   the download links in `.github/release-template.md`, and attaches the installers and the files
-   the updater reads (`latest*.yml`, `*.blockmap`, the macOS `.zip`);
-4. publishes the Python package to PyPI.
+- **The app**: a tag `app-v<semver>` runs `.github/workflows/app-release.yml`. `app-v0.2.0-beta.1`
+  is a beta, `app-v0.2.0` a stable release. It tests the Python package, builds the app on macOS
+  (Apple silicon and Intel), Windows and Linux with the tag's version, and publishes two GitHub
+  releases:
+  1. the versioned one, `app-v0.2.0-beta.1`, a pre-release for a beta, which keeps that version's
+     files for good;
+  2. the channel's rolling release, `app-beta` (or `app-stable`), whose files are replaced by each
+     release on that channel. This is the page to send testers, and the feed installed copies read
+     for updates.
 
-So the release that the in-app updater finds is always the one that carries the matching engine.
+  Neither is marked as the repository's latest release, and nothing goes to PyPI. The app carries
+  the Python engine built from the same commit, whatever `pyproject.toml`'s version says.
+- **The Python package**: a tag `v<pep440>` runs `.github/workflows/publish.yml` (tests, the wheel
+  and sdist, a GitHub release with notes from the version-bump PR, and PyPI). It no longer builds
+  the app. With the command line being retired (D267, #729), this path is expected to go.
 
-## Releasing
+## Releasing the app
 
-Follow the release steps in the repository's `CLAUDE.md` (a `chore/v<version>` branch that bumps
-`pyproject.toml`, a PR with a "What's new" section, then the tag). `gui/package.json`'s version is
-set by CI from the tag; it doesn't need bumping by hand.
+1. Make sure the commit you release is pushed (on `electron`, for now).
+2. Tag it and push the tag: `git tag app-v0.2.0-beta.1 && git push origin app-v0.2.0-beta.1`.
+   Use a higher beta number each time (`-beta.2`, `-beta.3`); the updater only offers a version
+   higher than the one installed.
+3. Watch the run under Actions → App release (about 30 minutes; macOS notarization is the slow
+   step). Release notes list the merged pull requests since the previous `app-v` tag.
+4. Send testers https://github.com/tomcardoso/watchdog/releases/tag/app-beta. A copy installed from
+   there offers every later beta under Help → Check for Updates, and on its own shortly after
+   launch.
+
+`gui/package.json`'s version is set by CI from the tag; it doesn't need bumping by hand.
 
 ## Signing
 
@@ -47,14 +60,19 @@ needs a signed macOS build to install updates.
 
 ## Updates
 
-`src/main/updater.ts` uses electron-updater against this repository's GitHub Releases. It checks
-ten seconds after launch and never downloads without being asked; the top bar shows the offer, the
+`src/main/updater.ts` uses electron-updater with a generic feed: the channel's rolling release,
+`https://github.com/tomcardoso/watchdog/releases/download/app-beta/` (set in
+`electron-builder.config.cjs` from `WATCHDOG_RELEASE_CHANNEL`, `beta` unless `stable`, and baked
+into the build's `app-update.yml`). Not the GitHub provider: this repository's releases also carry
+the Python package's `v1.x` tags, which that provider would read as app versions. It checks ten
+seconds after launch and never downloads without being asked; the top bar shows the offer, the
 download and "Restart to update". Help → Check for Updates… runs the same check and reports the
 result. In development (or with `WATCHDOG_SIMULATE_UPDATES=1`) the whole flow is simulated, so the
 interface can be tried without a release.
 
 An update replaces the app and the Watchdog wheel it carries; on the next launch the engine sees
-the newer wheel and reinstalls it (see `src/main/engine.ts`).
+the newer wheel and reinstalls it (see `src/main/engine.ts`). macOS installs an update only into a
+signed app; an unsigned Windows build updates, but shows SmartScreen's warning on first install.
 
 ## Building locally
 

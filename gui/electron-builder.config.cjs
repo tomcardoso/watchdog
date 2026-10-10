@@ -8,6 +8,10 @@
 const azure = ['AZURE_PUBLISHER_NAME', 'AZURE_SIGNING_ENDPOINT', 'AZURE_SIGNING_ACCOUNT', 'AZURE_CERTIFICATE_PROFILE']
   .every((k) => process.env[k])
 
+// Which release channel this build follows for updates (see `publish` below): set by the release
+// workflow from the tag; a local build follows the beta channel.
+const channel = process.env.WATCHDOG_RELEASE_CHANNEL === 'stable' ? 'stable' : 'beta'
+
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: 'com.github.tomcardoso.watchdog',
@@ -26,9 +30,12 @@ module.exports = {
     { from: 'resources/python-wheel', to: 'python-wheel', filter: ['*.whl'] }
   ],
   asarUnpack: ['out/renderer/assets/*.mjs'],
-  // The in-app updater (src/main/updater.ts) reads this repository's GitHub Releases. CI builds
-  // with `--publish never` and the release job uploads the files, so nothing is pushed from here.
-  publish: { provider: 'github', owner: 'tomcardoso', repo: 'watchdog', releaseType: 'release' },
+  // The in-app updater (src/main/updater.ts) reads one rolling GitHub release per channel,
+  // `app-beta` (or `app-stable`), whose files each app release replaces (.github/workflows/
+  // app-release.yml). A generic feed rather than the GitHub provider, because this repository's
+  // releases also carry the Python package's `v1.0.x` tags, which the GitHub provider would take
+  // for app versions. The channel is baked into the build: a beta build only ever sees betas.
+  publish: { provider: 'generic', url: `https://github.com/tomcardoso/watchdog/releases/download/app-${channel}` },
   mac: {
     category: 'public.app-category.productivity',
     // The .zip is what the updater downloads on macOS; the .dmg is for first installs.

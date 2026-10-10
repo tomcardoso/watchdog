@@ -16,7 +16,7 @@ runs:
     # it via _ABACKENDS.
     - name: Install package and dev dependencies
       shell: bash
-      run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av
+      run: pip install --no-deps -e . && pip install pyyaml pypdf argcomplete numpy pytest pytest-timeout jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk
 
     - name: Run tests
       shell: bash

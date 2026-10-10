@@ -1,0 +1,220 @@
+name: App release
+
+# The desktop app's own releases, separate from the Python package's (publish.yml, `v*` tags,
+# PyPI). Push a tag `app-v<semver>`:
+#   app-v0.2.0-beta.1   a beta: installers on a pre-release, and the `app-beta` channel updated
+#   app-v0.2.0          a stable release: the same, on the `app-stable` channel
+# Nothing here touches PyPI. Each build's in-app updater reads its channel's rolling release
+# (`app-beta` or `app-stable`, see gui/electron-builder.config.cjs), whose files this workflow
+# replaces, so testers on a beta are offered the next beta. See gui/DISTRIBUTION.md.
+
+on:
+  push:
+    tags: ['app-v*']
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      channel: ${{ steps.v.outputs.channel }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#app-v}"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME is not app-v<major>.<minor>.<patch>[-beta.<n>]"
+            exit 1
+          fi
+          CHANNEL=stable
+          [[ "$VERSION" == *-* ]] && CHANNEL=beta
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - uses: ./.github/actions/run-tests
+
+  app:
+    # Built, and signed where the secrets exist, on each platform from the same tag.
+    needs: [version, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            dist: dist:mac
+          - os: windows-latest
+            dist: dist:win
+          - os: ubuntu-latest
+            dist: dist:linux
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      # A step's `if:` can't read secrets, so whether signing is configured is decided here.
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_AZURE_SIGNING: ${{ secrets.AZURE_PUBLISHER_NAME != '' }}
+      WATCHDOG_RELEASE_CHANNEL: ${{ needs.version.outputs.channel }}
+    defaults:
+      run:
+        working-directory: gui
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gui/package-lock.json
+
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc  # v6.4.3
+
+      - name: Set the app version from the tag
+        shell: bash
+        run: npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      - run: npm run test:unit
+
+      - name: Import signing certificate (macOS)
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
+          security create-keychain -p "" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "" $KEYCHAIN_PATH
+          # The Developer ID G2 intermediate CA, so the certificate chain is valid
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o $RUNNER_TEMP/DeveloperIDG2CA.cer
+          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k $KEYCHAIN_PATH
+          echo "$APPLE_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 -k $KEYCHAIN_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $KEYCHAIN_PATH
+
+      - name: Install Azure Trusted Signing module (Windows)
+        if: runner.os == 'Windows' && env.HAS_AZURE_SIGNING == 'true'
+        shell: pwsh
+        run: Install-Module -Name TrustedSigning -Force -AllowClobber -Scope CurrentUser
+
+      - name: Package
+        env:
+          # macOS: signed and notarized when these are set; an unsigned build otherwise.
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.HAS_APPLE_CERT }}
+          # Windows: signed through Azure Trusted Signing when these are set.
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+        run: npm run ${{ matrix.dist }} -- --publish never
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: app-${{ runner.os }}
+          # Installers, plus the latest*.yml and .blockmap files the in-app updater reads.
+          path: |
+            gui/dist/*.dmg
+            gui/dist/*.zip
+            gui/dist/*.exe
+            gui/dist/*.AppImage
+            gui/dist/*.blockmap
+            gui/dist/latest*.yml
+          retention-days: 5
+          if-no-files-found: error
+
+  release:
+    needs: [version, app]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+      VERSION: ${{ needs.version.outputs.version }}
+      CHANNEL: ${{ needs.version.outputs.channel }}
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
+        with:
+          pattern: app-*
+          path: app/
+          merge-multiple: true
+
+      - name: Write the release notes
+        run: |
+          # Changes since the previous app release, never since a Python `v*` tag.
+          PREV=$(git tag --list 'app-v*' --sort=-v:refname | grep -vx "$TAG" | head -1 || true)
+          ARGS=(-f tag_name="$TAG")
+          [ -n "$PREV" ] && ARGS+=(-f previous_tag_name="$PREV")
+          gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" --method POST "${ARGS[@]}" --jq '.body' \
+            > generated.md || : > generated.md
+          [ "$(cat generated.md)" = "null" ] && : > generated.md
+          {
+            echo "Watchdog desktop app $VERSION ($CHANNEL)."
+            echo
+            echo "Download the installer for your computer below: the .dmg for a Mac (arm64 for Apple silicon, x64 for Intel), the Setup .exe for Windows, the .AppImage for Linux. An installed copy offers later $CHANNEL releases itself, under Help → Check for Updates."
+            if [ "$CHANNEL" = beta ]; then
+              echo
+              echo "This is a test release. The Windows installer is not signed yet, so Windows shows a warning the first time it runs: choose More info, then Run anyway."
+            fi
+            echo
+            cat generated.md
+          } > notes.md
+
+      - name: Publish the versioned release
+        run: |
+          FLAGS="--latest=false"
+          [ "$CHANNEL" = beta ] && FLAGS="$FLAGS --prerelease"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --notes-file notes.md
+          else
+            gh release create "$TAG" --title "Watchdog app $VERSION" --notes-file notes.md $FLAGS
+          fi
+          find app/ -type f -print0 | xargs -0 gh release upload --clobber "$TAG"
+
+      - name: Update the channel the installed apps read
+        run: |
+          ROLLING="app-$CHANNEL"
+          if ! gh release view "$ROLLING" >/dev/null 2>&1; then
+            FLAGS="--latest=false"
+            [ "$CHANNEL" = beta ] && FLAGS="$FLAGS --prerelease"
+            gh release create "$ROLLING" --target "$GITHUB_SHA" --title "Watchdog app, latest $CHANNEL" \
+              --notes "Always the newest $CHANNEL of the Watchdog app." $FLAGS
+          fi
+          # Upload the new files first, then remove the previous version's, so an app checking
+          # during the swap finds a complete set.
+          find app/ -type f -print0 | xargs -0 gh release upload --clobber "$ROLLING"
+          NEW=$(find app/ -type f -printf '%f\n')
+          gh release view "$ROLLING" --json assets --jq '.assets[].name' | while read -r NAME; do
+            echo "$NEW" | grep -qxF "$NAME" || gh release delete-asset "$ROLLING" "$NAME" -y
+          done
+          { echo "Always the newest $CHANNEL of the Watchdog app: now $VERSION. This page's files are replaced by each $CHANNEL release, and installed copies check here for updates; [$TAG](https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG) keeps this version's files for good."; echo; tail -n +2 notes.md; } > rolling.md
+          gh release edit "$ROLLING" --notes-file rolling.md

@@ -21,7 +21,7 @@ Asking questions of your investigation always runs on Claude. The step that read
 
 ## Step 1: download the installer
 
-Go to the [latest release](https://github.com/tomcardoso/watchdog/releases/latest) on GitHub and download the file for your computer from the list of assets:
+Go to the [latest Watchdog release](https://github.com/tomcardoso/watchdog/releases/tag/app-beta) on GitHub and download the file for your computer from the list of assets. Watchdog is in testing, so this page holds the newest test (beta) version:
 
 | Computer | File |
 |----------|------|
@@ -49,7 +49,7 @@ Operating systems check who published an app, and they may stop Watchdog on its 
 - **macOS** may say it cannot verify the developer, or that Watchdog cannot be opened. Open **System Settings**, choose **Privacy & Security**, scroll to the message about Watchdog, and choose **Open Anyway**. Then open Watchdog again and confirm.
 - **Windows** may show a SmartScreen message reading "Windows protected your PC". Choose **More info**, then **Run anyway**.
 
-Download Watchdog only from the project's [GitHub Releases page](https://github.com/tomcardoso/watchdog/releases/latest).
+Download Watchdog only from the project's [GitHub release page](https://github.com/tomcardoso/watchdog/releases/tag/app-beta).
 
 ## Step 3: first-run setup
 
@@ -106,7 +106,7 @@ Watchdog checks GitHub for a newer release shortly after it opens, and never dow
 
 An update replaces the app and the engine it carries. The next time Watchdog starts after an update, it installs the matching engine automatically and shows its progress. As on the first run, Watchdog opens as soon as the first part is in place and finishes the rest in the background; the sidebar bar shows it, and adding documents waits for it, usually for less than a minute when the models are already on your computer. Your investigations, settings and downloaded models are untouched.
 
-If an update does not install, see [Troubleshooting](troubleshooting.md#updates-fail). You can always download the newest installer from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest) and install it over the old one.
+If an update does not install, see [Troubleshooting](troubleshooting.md#updates-fail). You can always download the newest installer from the [release page](https://github.com/tomcardoso/watchdog/releases/tag/app-beta) and install it over the old one.
 
 ## Uninstalling
 

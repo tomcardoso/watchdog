@@ -20,7 +20,7 @@ Choose **Try again**. Whatever was already downloaded is kept, and installation 
 
 If setup finishes with **Some optional pieces could not be downloaded**, Watchdog still works. It fetches each missing piece the first time it is needed. To try again now, open **Settings → Setup** and choose **Download missing models**.
 
-If the message says the app cannot install the engine because the installer files are missing, download the app again from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest).
+If the message says the app cannot install the engine because the installer files are missing, download the app again from the [releases page](https://github.com/tomcardoso/watchdog/releases/tag/app-beta).
 
 ## Add documents is turned off, or "Watchdog is still setting up"
 
@@ -151,7 +151,7 @@ If the **Update available** button shows **The update could not be downloaded. T
 
 **Check for Updates…** (the Watchdog menu on a Mac, the **Help** menu on Windows and Linux) says "Watchdog could not check for updates" when it cannot reach GitHub. Try again later, and check for a VPN or firewall.
 
-If updating keeps failing, download the newest installer from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest) and install it over the old one; your investigations and settings are kept. An update that has installed but whose engine did not follow shows **Updating the Watchdog engine** on the next start. If that fails, use **Try again** or **Repair the engine**, as above.
+If updating keeps failing, download the newest installer from the [releases page](https://github.com/tomcardoso/watchdog/releases/tag/app-beta) and install it over the old one; your investigations and settings are kept. An update that has installed but whose engine did not follow shows **Updating the Watchdog engine** on the next start. If that fails, use **Try again** or **Repair the engine**, as above.
 
 ## Skills look outdated after an update
 

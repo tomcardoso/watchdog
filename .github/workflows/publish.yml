@@ -48,113 +48,8 @@ jobs:
           name: dist
           path: dist/
 
-  app:
-    # The desktop app, built and signed on each platform from the same tag. Its version is the
-    # tag's, so the app and the Python package it carries always match (see gui/DISTRIBUTION.md).
-    needs: test
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            dist: dist:mac
-          - os: windows-latest
-            dist: dist:win
-          - os: ubuntu-latest
-            dist: dist:linux
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    permissions:
-      contents: read
-    env:
-      # A step's `if:` can't read secrets, so whether signing is configured is decided here.
-      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      HAS_AZURE_SIGNING: ${{ secrets.AZURE_PUBLISHER_NAME != '' }}
-    defaults:
-      run:
-        working-directory: gui
-
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: gui/package-lock.json
-
-      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc  # v6.4.3
-
-      - name: Set the app version from the tag
-        shell: bash
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          # PEP 440 pre-releases (1.2.0a1, 1.2.0b2, 1.2.0rc1) become semver (1.2.0-alpha.1 …).
-          SEMVER=$(echo "$VERSION" | sed -E 's/a([0-9]+)$/-alpha.\1/; s/b([0-9]+)$/-beta.\1/; s/rc([0-9]+)$/-rc.\1/')
-          npm version "$SEMVER" --no-git-tag-version --allow-same-version
-
-      - run: npm ci
-
-      - run: npm run typecheck
-
-      - run: npm run build
-
-      - name: Import signing certificate (macOS)
-        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain
-          security create-keychain -p "" $KEYCHAIN_PATH
-          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
-          security unlock-keychain -p "" $KEYCHAIN_PATH
-          # The Developer ID G2 intermediate CA, so the certificate chain is valid
-          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o $RUNNER_TEMP/DeveloperIDG2CA.cer
-          security import $RUNNER_TEMP/DeveloperIDG2CA.cer -k $KEYCHAIN_PATH
-          echo "$APPLE_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/cert.p12
-          security import $RUNNER_TEMP/cert.p12 -k $KEYCHAIN_PATH -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security list-keychains -d user -s $KEYCHAIN_PATH $(security list-keychains -d user | tr -d '"')
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" $KEYCHAIN_PATH
-
-      - name: Install Azure Trusted Signing module (Windows)
-        if: runner.os == 'Windows' && env.HAS_AZURE_SIGNING == 'true'
-        shell: pwsh
-        run: Install-Module -Name TrustedSigning -Force -AllowClobber -Scope CurrentUser
-
-      - name: Package
-        env:
-          # macOS: signed and notarized when these are set; an unsigned build otherwise.
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ env.HAS_APPLE_CERT }}
-          # Windows: signed through Azure Trusted Signing when these are set.
-          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
-          AZURE_PUBLISHER_NAME: ${{ secrets.AZURE_PUBLISHER_NAME }}
-          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
-          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
-          AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
-        run: npm run ${{ matrix.dist }} -- --publish never
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
-        with:
-          name: app-${{ runner.os }}
-          # Installers, plus the latest*.yml and .blockmap files the in-app updater reads.
-          path: |
-            gui/dist/*.dmg
-            gui/dist/*.zip
-            gui/dist/*.exe
-            gui/dist/*.AppImage
-            gui/dist/*.blockmap
-            gui/dist/latest*.yml
-          retention-days: 5
-          if-no-files-found: error
-
   release:
-    needs: [build, app]
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -217,19 +112,6 @@ jobs:
               --notes-file /tmp/release-notes.md \
               $PRERELEASE
           fi
-
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
-        with:
-          pattern: app-*
-          path: app/
-          merge-multiple: true
-
-      - name: Attach the desktop app installers
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # --clobber keeps a re-run of this workflow idempotent.
-          find app/ -type f -print0 | xargs -0 gh release upload --clobber "${{ github.ref_name }}"
 
   publish:
     needs: release
