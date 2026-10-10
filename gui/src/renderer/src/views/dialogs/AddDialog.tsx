@@ -98,11 +98,12 @@ export function AddDialog() {
     if (effective === 'done' && phase === 'running') setPhase('done')
   }, [effective, phase])
 
-  // Another investigation opened: anything not under way belonged to the previous one. A flow
-  // under way, or waiting at the pause, stays with its own investigation and names it.
+  // Another investigation opened: anything not under way belonged to the previous one (a pause
+  // the reporter cancelled included). A flow under way stays with its own investigation and
+  // names it.
   useEffect(() => {
     if (flowVault.current === vault) return
-    if (phaseRef.current === 'reading' || phaseRef.current === 'gate' || phaseRef.current === 'running') return
+    if (phaseRef.current === 'reading' || phaseRef.current === 'running') return
     flowVault.current = vault
     setPhase('choose')
     setPaths(useApp.getState().addOpen?.paths ?? [])

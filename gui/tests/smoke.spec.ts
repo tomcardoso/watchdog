@@ -208,7 +208,7 @@ test('every screen renders against the demo investigation', async () => {
     expect(second).toMatch(/^second-look/)
     await page.evaluate(() => (window as any).__watchdogApp.getState().openAdd())
     await page.getByRole('button', { name: 'Read documents' }).click()
-    await expect(page.getByText('Before anything is sent', { exact: true })).toBeVisible({ timeout: 60_000 })
+    await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible({ timeout: 60_000 })
     await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
     await page.evaluate(async (s) => {
       const w = window as any
@@ -216,7 +216,7 @@ test('every screen renders against the demo investigation', async () => {
       w.__watchdogApp.getState().openAdd()
     }, second)
     await expect(page.locator('.modal').getByText('Add documents', { exact: true })).toBeVisible()
-    await expect(page.getByText('Before anything is sent', { exact: true })).toHaveCount(0)
+    await expect(page.locator('.modal-title', { hasText: 'Before sending documents from' })).toHaveCount(0)
     await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
 
     // With no investigation open, the sidebar's All investigations returns to the list from any
