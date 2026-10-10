@@ -480,6 +480,8 @@ queries/ wiki/               session-written findings and threads
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
+  page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
+  page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290); absent until one is chosen
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
@@ -492,7 +494,7 @@ queries/ wiki/               session-written findings and threads
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
-    .processing-lock .write-lock .verification-lock
+    .processing-lock .write-lock .verification-lock .notes-lock
 ```
 
 **Passages and the verification ledger (D270, D271).** Each fact in `.watchdog/extracted/<sha>.json`
@@ -548,6 +550,13 @@ none until it fits). It never fails a session's start. The app's Briefings → C
 the D266 migration on first use (`vault_paths.retire_hot_md_hook`), which also refreshes its
 `.claude/CLAUDE.md`; `hot.md` itself is left on disk and is no longer read, indexed or
 citation-checked.
+
+**Saved-page notes (D296).** The reporter's `## Notes` on a page in `queries/` or `wiki/` is guarded
+by `pipeline/page_notes.py` under `.notes-lock`: the app's `vault.saveNotes` writes it with a
+compare-and-swap, and the vault's PreToolUse/PostToolUse hooks (matcher `Write|Edit|MultiEdit`,
+`watchdog page-notes pre|post`) snapshot the Notes before a session's file edit and put back the
+newer of that snapshot and the app's last save if the edit changed them. Added to older vaults by
+the D266 migration (`vault_paths.ensure_page_notes_hooks`) and `refresh-skills`.
 
 **Version history (D286).** `pipeline/history.py` versions every tracked file: Markdown outside
 `morgue/`, `incoming/`, `context/` and hidden folders, plus `entities`, `documents`, `merges`,
