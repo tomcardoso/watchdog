@@ -75,7 +75,7 @@ Contradictions, leads, watch-list hits, possible duplicates, merges and document
 
 ### Briefings
 
-Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved, each with a section for [your notes](#your-notes). Pinned at the top: **Current state**, the account of the whole investigation that Claude is given at the start of each conversation (built from the records when you open it, with no AI model; see [Ask Claude](investigating.md#ask-claude)), the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here).
+Everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the answers and thread pages Claude has saved, each with a section for [your notes](#your-notes). Pinned at the top: **Current state**, where the whole investigation stands: your questions, the size of the record and how much of it you have checked, the entities named most often, what is waiting on you and the latest briefings (built from the records when you open it, with no AI model). **What Claude is given**, at its top right, shows the same account word for word as Claude receives it at the start of each conversation, including the instructions written for Claude (see [Ask Claude](investigating.md#ask-claude)). Then come the processing history (`log.md`) and the investigation's context (`context.md`, which you can edit here).
 
 ### Ask Claude and Web research
 

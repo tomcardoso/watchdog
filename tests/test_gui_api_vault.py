@@ -513,7 +513,9 @@ def test_pipeline_lock_info_gives_the_time_and_staleness(rich_vault):
     """The Home banner and Add documents say when a held lock was last renewed."""
     from datetime import datetime, timedelta, timezone
     lock = rich_vault / ".watchdog" / "registry" / ".processing-lock"
-    stamp = lambda minutes: (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def stamp(minutes):
+        return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%dT%H:%M:%SZ")
     assert call("vault.pipeline", vault=V(rich_vault))["lock_info"] == {"chew": None, "ingest": None}
     lock.write_text(f"pid: cli\nstarted_at: {stamp(12)}\n")
     info = call("vault.pipeline", vault=V(rich_vault))["lock_info"]["ingest"]
@@ -642,3 +644,9 @@ def test_real_pipeline_vault(tmp_path, monkeypatch):
     assert _extract_notes_section(vault / f"{ent['note']}.md").strip().endswith("Checked the filing.")
     assert call("vault.pipeline", vault=v)["queued"] == []
     assert os.path.isdir(vault)
+
+
+def test_current_state_rpc_is_the_reader_version(rich_vault):
+    out = call("vault.currentState", vault=V(rich_vault))
+    assert "## The record" in out["text"] and "## Citing" not in out["text"]
+    assert "## Citing" in call("vault.sessionPrimer", vault=V(rich_vault))["text"]

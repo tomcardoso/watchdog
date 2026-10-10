@@ -142,10 +142,18 @@ test('every screen renders against the demo investigation', async () => {
     await page.keyboard.press('c')
     await expect(factRow).not.toHaveClass(/is-marked-/, { timeout: 10_000 })
 
-    // A wikilink written inside code is shown as written, not turned into a link (Briefings →
-    // Current state quotes the citation form in code).
+    // Briefings → Current state is written for the reporter: no instructions for Claude, no
+    // command lines. What Claude is given (the session primer) is one click away.
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'briefings', path: 'session-primer' }))
+    await expect(page.locator('.bf-article h2', { hasText: 'Waiting on you' })).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.bf-article')).not.toContainText('watchdog search')
+    await expect(page.locator('.bf-article')).not.toContainText('Citing')
+    await page.getByRole('button', { name: 'What Claude is given' }).click()
+    // A wikilink written inside code is shown as written, not turned into a link (the primer
+    // quotes the citation form in code).
     await expect(page.locator('code', { hasText: '[[documents/<slug>#^f-<id>|p. N]]' }).first()).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: 'Back to current state' }).click()
+    await expect(page.locator('.bf-article h2', { hasText: 'Your questions' })).toBeVisible({ timeout: 10_000 })
 
     // A search typed on the Search screen keeps the route in step, so searching the earlier query
     // again (from the palette) runs it rather than doing nothing.
