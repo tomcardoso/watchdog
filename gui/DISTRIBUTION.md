@@ -36,6 +36,10 @@ The app and the `watchdog` Python package are released separately, from the same
 
 `gui/package.json`'s version is set by CI from the tag; it doesn't need bumping by hand.
 
+To check a change builds on every platform before tagging, run the workflow by hand (Actions →
+App release → Run workflow, on a branch): it builds and signs as a release does, keeps the
+installers as the run's artifacts for five days, and publishes nothing.
+
 ## Signing
 
 Both platforms sign in CI when their secrets are set, and build unsigned otherwise. A local Mac

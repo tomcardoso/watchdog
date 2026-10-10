@@ -65,8 +65,9 @@ test('migration encrypts every key in place and keeps the structure readable', (
     assert.equal(data.keys.anthropic.masked, 'sk-ant-api…1111')
     assert.deepEqual(data.keys.openai.items.map((i: { label: string }) => i.label), ['Personal', 'Work'])
     assert.equal(data.keys.openai.default, 'k-1')
-    // 0600, atomically: no temporary file is left beside it.
-    assert.equal(statSync(file).mode & 0o777, 0o600)
+    // 0600 (a Unix permission; Windows has no equivalent mode bits), atomically: no temporary
+    // file is left beside it.
+    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600)
     assert.deepEqual(readdirSync(dir), ['credentials.json'])
     // Every key reaches the backend, decrypted, keyed by its blob.
     assert.deepEqual(Object.values(r.provision.keys).sort(), ['sk-ant-api03-ANTHROPIC-1111', 'sk-proj-PERSONAL-2222', 'sk-proj-WORK-3333'])
