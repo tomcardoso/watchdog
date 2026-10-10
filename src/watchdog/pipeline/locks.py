@@ -197,9 +197,17 @@ def process_status(pid: int) -> tuple[bool | None, str | None]:
     return None, None
 
 
-@functools.lru_cache(maxsize=1)
+_OWN_START: tuple[int, str | None] | None = None
+
+
 def _own_start() -> str | None:
-    return process_status(os.getpid())[1]
+    """This process's start time, cached per pid: a forked child must not reuse its parent's,
+    which would make its own live lock look like a reused pid."""
+    global _OWN_START
+    pid = os.getpid()
+    if _OWN_START is None or _OWN_START[0] != pid:
+        _OWN_START = (pid, process_status(pid)[1])
+    return _OWN_START[1]
 
 
 def lock_contents(label: str = "cli") -> str:

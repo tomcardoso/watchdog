@@ -406,3 +406,26 @@ def test_a_taker_that_arrives_after_a_completed_takeover_backs_off(tmp_path, mon
     monkeypatch.setattr(locks, "inspect", b_overtakes)
     assert locks.acquire_or_take_stale(lock, "label: A\n") is False
     assert lock.read_text() == "label: B\n"
+
+
+def _child_contents(_):
+    return locks.lock_contents("child")
+
+
+@needs_proc
+def test_a_forked_child_records_its_own_start_time(tmp_path):
+    """The start-time cache is per process: a child forked after the parent wrote a lock must not
+    stamp the parent's start time on its own pid, or its live lock would look dead."""
+    import multiprocessing as mp
+    import sys
+    if sys.platform != "linux":
+        pytest.skip("fork start method")
+    locks.lock_contents("parent")                    # fills the parent's cache
+    with mp.get_context("fork").Pool(1) as pool:
+        text = pool.map(_child_contents, [0])[0]
+    lock = tmp_path / ".lock"
+    lock.write_text(text)
+    # The child (a pool worker) has exited by now, so dead is right; what must not happen is a
+    # live child judged dead by a start-time mismatch, checked here directly.
+    f = locks._fields(text)
+    assert f["pid_start"] != locks._fields(locks.lock_contents("parent"))["pid_start"]
