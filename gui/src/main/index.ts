@@ -12,6 +12,7 @@ import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { loadRoots, registerIpc, resumeEngine } from './ipc'
 import { registerUpdater } from './updater'
+import { provideSecrets } from './secrets'
 
 registerSchemePrivileges()
 app.setName('Watchdog')
@@ -41,7 +42,7 @@ const engine = new Engine({
   emit: (e) => send('engine.progress', e)
 })
 
-const backend = new PythonBackend((event, data) => send(event, data), (status) => send('backend.status', status), engine)
+const backend = new PythonBackend((event, data) => send(event, data), (status) => send('backend.status', status), engine, provideSecrets)
 
 /** Path to the Claude Code program inside the engine's claude-agent-sdk, asked of the running Python. */
 const cliCache = new Map<string, string | null>()

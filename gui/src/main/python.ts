@@ -152,7 +152,10 @@ export class PythonBackend {
   constructor(
     private onEvent: (event: string, data: unknown) => void,
     private onStatus: (s: BackendStatus) => void,
-    private engine: Engine
+    private engine: Engine,
+    /** Run once a backend has started, before anything else may call it: hands it the stored keys
+     * (secrets.ts, D295). A failure is logged and the backend is used anyway. */
+    private beforeReady?: (request: (method: string, params: unknown) => Promise<unknown>) => Promise<void>
   ) {}
 
   private setStatus(patch: Partial<BackendStatus>): void {
@@ -234,7 +237,7 @@ export class PythonBackend {
       return
     }
     if (msg.event) {
-      if (msg.event === 'server.ready') this.setStatus({ state: 'ready', message: null })
+      if (msg.event === 'server.ready') void this.ready()
       this.onEvent(msg.event, msg.data)
       return
     }
@@ -245,6 +248,18 @@ export class PythonBackend {
       if (msg.error) p.reject(new RpcError(msg.error.message, msg.error.code, msg.error.data))
       else p.resolve(msg.result)
     }
+  }
+
+  private async ready(): Promise<void> {
+    const proc = this.proc
+    if (this.beforeReady && proc) {
+      try {
+        await this.beforeReady((method, params) => this.request(proc, method, params))
+      } catch (e) {
+        log.warn('backend start-up step failed:', (e as Error)?.message)
+      }
+    }
+    if (this.proc === proc) this.setStatus({ state: 'ready', message: null })
   }
 
   waitReady(timeoutMs = 60000): Promise<void> {
@@ -267,6 +282,10 @@ export class PythonBackend {
     }
     const proc = this.proc
     if (!proc) throw new RpcError('The Watchdog backend is not running.', 'backend_down', null)
+    return this.request(proc, method, params)
+  }
+
+  private request(proc: ChildProcessWithoutNullStreams, method: string, params: unknown): Promise<unknown> {
     const id = this.nextId++
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject, method })
