@@ -1,7 +1,7 @@
 """Structured progress for the desktop app, written alongside the normal terminal output.
 
-When the environment variable `WATCHDOG_PROGRESS` is `1` (the app sets it for every job it
-starts), `emit(kind, **fields)` writes one line to the real stdout:
+When the environment variable `WATCHDOG_PROGRESS` is `1` (the worker that runs the app's
+operations sets it, D298), `emit(kind, **fields)` writes one line to the real stdout:
 
     \\x1eWDP {"kind": "stage", ...}\\n
 
