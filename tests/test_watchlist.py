@@ -418,6 +418,6 @@ def test_review_reads_alerts_written_without_checkboxes(tmp_path):
     hits = watchlist.scan(vault, _results())
     relpath, _, _ = watchlist.write_alerts(vault, hits)
     body = (vault / relpath).read_text(encoding="utf-8")
-    assert "[ ]" not in body and "Handled in Watchdog: Review → Watch-list hits" in body
+    assert "[ ]" not in body and "Handled in Watchdog: Review → Alerts" in body
     items = open_items(vault, ("alerts",))
     assert len(items) == 1 and items[0]["term"] == "Acme" and items[0]["rid"].startswith("alert:")

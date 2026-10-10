@@ -64,10 +64,10 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
     empty: 'No open leads. A full sweep reads every entity note again and lists anything left unexamined.'
   },
   alerts: {
-    label: 'Watch-list hits',
+    label: 'Alerts',
     icon: Bell,
-    blurb: 'Documents where a term from your watch list appeared. Each hit names the document, the page and the surrounding words.',
-    empty: 'No open watch-list hits. Add terms under Watch list, at the top right; every batch of new documents is scanned for them.'
+    blurb: 'Alerts: documents where a term from your watch list appeared. Each hit names the document, the page and the surrounding words.',
+    empty: 'No open alerts. Add terms under Watch list, at the top right; every batch of new documents is scanned for them.'
   },
   duplicates: {
     label: 'Possible duplicates',
@@ -212,7 +212,7 @@ export default function ReviewView() {
           tabs={[
             { value: 'contradictions', label: 'Contradictions', icon: Swords, count: counts.contradictions },
             { value: 'leads', label: 'Leads', icon: Lightbulb, count: counts.leads },
-            { value: 'alerts', label: 'Watch-list hits', icon: Bell, count: counts.alerts },
+            { value: 'alerts', label: 'Alerts', icon: Bell, count: counts.alerts },
             { value: 'duplicates', label: 'Duplicates', icon: GitCompare, count: counts.duplicates },
             { value: 'merges', label: 'Merges', icon: GitMerge, count: counts.merges },
             { value: 'requests', label: 'Requests', icon: FileQuestion, count: counts.requests }
@@ -802,7 +802,7 @@ function WatchlistTab({ vault }: { vault: string }) {
     setRunning(true)
     try {
       await startJob(['review', 'watchlist'], 'Check every document against the watch list')
-      toast({ kind: 'info', title: 'Checking every document', body: 'Hits appear under Watch-list hits when it finishes. Follow progress in Activity.' })
+      toast({ kind: 'info', title: 'Checking every document', body: 'Matches appear under Alerts when it finishes. Follow progress in Activity.' })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the check', body: errorMessage(e) })
     } finally {
@@ -870,7 +870,7 @@ function WatchlistTab({ vault }: { vault: string }) {
         <HistoryButton vault={vault} path="watchlist.md" size="md" variant="ghost" />
       </div>
       <Callout tone="info" title="Check every document now" action={<Button icon={Zap} loading={running} disabled={!terms.length} onClick={() => void sweep()}>Check every document now</Button>}>
-        The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Hits go to Watch-list hits.
+        The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Matches go to Alerts.
       </Callout>
     </div>
   )

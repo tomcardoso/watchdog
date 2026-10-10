@@ -59,7 +59,7 @@ export default function HomeView() {
         { kind: 'contradictions', n: s.contradictions, one: 'contradiction', many: 'contradictions', hint: 'Facts that disagree across documents', icon: Scale },
         { kind: 'leads', n: s.leads, one: 'open lead', many: 'open leads', hint: 'Names and threads worth chasing', icon: Lightbulb },
         { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
-        { kind: 'alerts', n: s.alerts, one: 'watch-list hit', many: 'watch-list hits', hint: 'Matches for names you are watching', icon: Bell },
+        { kind: 'alerts', n: s.alerts, one: 'alert', many: 'alerts', hint: 'Matches for names you are watching', icon: Bell },
         { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge },
         { kind: 'verification', n: s.verification?.disputed ?? 0, one: 'disputed fact', many: 'disputed facts', hint: 'Facts you marked as not supported by the source', icon: ShieldAlert }
       ] as const).filter((w) => w.n > 0)

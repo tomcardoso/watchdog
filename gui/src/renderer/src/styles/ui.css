@@ -492,6 +492,16 @@
 }
 .tabs-wrap {
   flex-wrap: wrap;
+  container-type: inline-size;
+}
+/* A long row in a narrow window drops the tab icons and tightens before it wraps. */
+@container (max-width: 760px) {
+  .tabs-wrap .tab {
+    padding: 0 9px;
+  }
+  .tabs-wrap .tab svg {
+    display: none;
+  }
 }
 .tab {
   position: relative;

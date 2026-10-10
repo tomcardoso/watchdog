@@ -67,7 +67,7 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 **`documents/`** holds one note per added document: what it is, what was extracted from it, and a link to the original in the morgue. A fact you have marked Disputed ends in **✗ disputed** there; it is never removed.
 
-**`briefings/`** collects the reports Watchdog writes after each run: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. The leads, alerts and `requests.md` are read-only summaries for reading in Obsidian or asking Claude about: they have no checkboxes, and you handle their items in Review (Leads, Watch-list hits, Requests). Each item carries its id in a hidden `<!--wid:…-->` comment, which Watchdog uses to match it with the Review queue. [Investigating](investigating.md) explains how to work with each.
+**`briefings/`** collects the reports Watchdog writes after each run: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. The leads, alerts and `requests.md` are read-only summaries for reading in Obsidian or asking Claude about: they have no checkboxes, and you handle their items in Review (Leads, Alerts, Requests). Each item carries its id in a hidden `<!--wid:…-->` comment, which Watchdog uses to match it with the Review queue. [Investigating](investigating.md) explains how to work with each.
 
 **`wiki/`** holds investigation thread pages — angles that have matured beyond a single question, created in **Ask Claude** with `/watchdog-wiki`.
 

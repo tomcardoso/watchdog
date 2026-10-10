@@ -84,7 +84,7 @@ When you have the document in hand, or decide not to pursue it, mark the request
 
 **Watch list**, at the top right of Review, is where you keep terms you want flagged whenever they appear in new documents: a name, a company, an address, a phrase. Type a term under **Add a term** and choose **Add term**. Each term in the list has a **Remove** button and the number of hits still open for it; choose the number to see those hits. A blank term, or one already on the list, is refused. Matching is case-insensitive and whole-word. Wrap a term in slashes, like `/14\s+Quay Street/`, to use a regular expression (a pattern-matching syntax) instead. An empty list does nothing. Changes are saved as you make them and kept in the file's **History**.
 
-The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Watch-list hits** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
+The scan runs automatically at the end of every run, over that run's new documents. Matches appear on the **Alerts** tab with the document, the page and the surrounding words, and a link to the matching entity if there is one. The details are also written to `briefings/alerts-<date>.md`.
 
 Because the automatic scan only sees new documents, a term added after documents are already in is never checked against them. **Check every document now** sweeps everything already added against the current list. No model is called.
 

@@ -268,6 +268,6 @@ def write_alerts(vault: Path, hits: list[dict]) -> tuple[str, int, int] | None:
         path.write_text(
             f"# Watch-word alerts — {now:%Y-%m-%d}\n\n"
             f"*Deterministic scan of newly-ingested documents against `watchlist.md`.*\n"
-            f"*Handled in Watchdog: Review → Watch-list hits. This file is a read-only summary.*\n" + run,
+            f"*Handled in Watchdog: Review → Alerts. This file is a read-only summary.*\n" + run,
             encoding="utf-8")
     return relpath, len({h["term"] for h in hits}), len({h["filename"] for h in hits})

@@ -65,7 +65,7 @@ By default Watchdog uses Sonnet (Claude's mid-tier model) for extraction and Hai
 
 Three features run alongside every run; each is covered in the [investigating guide](investigating.md):
 
-- **Watch list.** If you have listed terms in the watch list (a name, company, address or phrase) Watchdog scans every newly added document for them and records matches as watch-list hits. See [the watchlist](investigating.md#the-watchlist).
+- **Watch list.** If you have listed terms in the watch list (a name, company, address or phrase) Watchdog scans every newly added document for them and records matches as watch-list alerts. See [the watchlist](investigating.md#the-watchlist).
 - **Leads.** At the end of each run, Watchdog sweeps the entity graph for things worth chasing — an entity named repeatedly but never profiled, for instance — and records them as leads. See [leads](investigating.md#leads).
 - **Resolving.** Once you have dealt with a lead or a hit, you can mark it handled so it stops reappearing, which turns those lists into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
 
@@ -75,7 +75,7 @@ For a plain-English account of what each stage does to your documents, and what 
 
 When the run finishes, the **Overview** shows the headline from the latest briefing, with a button to read the whole thing. The briefing summarizes what was found, how it connects to entities already in the investigation, and anything worth following up. Read it carefully: the connections section is often where the story is.
 
-The Overview also shows what is waiting on you (contradictions, leads, possible duplicates, possible same entities and watch-list hits) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
+The Overview also shows what is waiting on you (contradictions, leads, possible duplicates, possible same entities and watch-list alerts) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
 
 ## Explore the results
 
@@ -93,7 +93,7 @@ If you prefer to browse the files themselves, **File → Show in Folder** opens 
 
 ## Review what needs a decision
 
-Choose **Review** to work through contradictions, leads, watch-list hits, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview.
+Choose **Review** to work through contradictions, leads, watch-list alerts, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview.
 
 ## Ask Claude
 
