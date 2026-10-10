@@ -5,15 +5,11 @@ back with what it read: without the hooks, that write drops the note. Each test 
 interleaving of the app's save and a session's Write with the hook payloads Claude Code sends."""
 
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 from watchdog.pipeline import page_notes
-from watchdog.vault_paths import PAGE_NOTES_HOOKS, ensure_page_notes_hooks
 
 from tests.gui_support import call
 
@@ -129,45 +125,25 @@ def test_a_new_page_or_a_page_outside_queries_and_wiki_is_left_alone(rich_vault,
     assert "changed" in other.read_text()
 
 
-def test_the_hook_command_runs_end_to_end(rich_vault, page):
-    """`watchdog page-notes pre|post` as the vault's settings run it, payload on stdin."""
+def test_the_sessions_hooks_run_end_to_end(rich_vault, page):
+    """The app session's PreToolUse/PostToolUse callbacks (`gui/chat.py`, D299) with the payload
+    Claude Code sends: the same `run_hook` the vault's command hooks ran."""
+    import asyncio
+    from watchdog.gui import chat
     stale = page.read_text()
     _save(rich_vault, "a note")
-    payload = json.dumps(_payload(rich_vault, page, stale))
-    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")}
+    payload = _payload(rich_vault, page, stale)
+    pre, post = chat._page_notes("pre"), chat._page_notes("post")
 
-    def hook(stage):
-        return subprocess.run([sys.executable, "-m", "watchdog.cli", "page-notes", stage], input=payload,
-                              capture_output=True, text=True, cwd=rich_vault, env=env, timeout=60)
-
-    assert hook("pre").returncode == 0
+    assert asyncio.run(pre(payload, "id", None)) == {}
     page.write_text(stale, encoding="utf-8")
-    out = hook("post")
-    assert out.returncode == 0
-    assert json.loads(out.stdout)["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    out = asyncio.run(post(payload, "id", None))
+    assert out["hookSpecificOutput"]["hookEventName"] == "PostToolUse"
+    assert "Notes" in out["hookSpecificOutput"]["additionalContext"]
     assert page_notes.section(page.read_text()).strip() == "a note"
-    assert hook("post").stdout == "", "a second post with no snapshot changes nothing"
+    assert asyncio.run(post(payload, "id", None)) == {}, "a second post with no snapshot changes nothing"
 
 
 def test_a_bad_payload_never_fails_the_hook():
     assert page_notes.run_hook("post", "not json") is None
     assert page_notes.run_hook("pre", json.dumps({"cwd": "/nonexistent"})) is None
-
-
-def test_new_and_existing_vaults_get_the_hooks(tmp_path):
-    from watchdog.cmd.base import _vault_settings
-    from watchdog.vault_paths import _rewrite_settings
-    settings = _vault_settings()
-    for event, command in PAGE_NOTES_HOOKS.items():
-        assert any(h["command"] == command for g in settings["hooks"][event] for h in g["hooks"])
-    assert ensure_page_notes_hooks(settings) is False, "already present: nothing to add"
-
-    vault = tmp_path / "v"
-    (vault / ".claude").mkdir(parents=True)
-    old = {"permissions": {"allow": []}, "hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "mine"}]}]}}
-    (vault / ".claude" / "settings.json").write_text(json.dumps(old))
-    assert _rewrite_settings(vault) is True
-    hooks = json.loads((vault / ".claude" / "settings.json").read_text())["hooks"]
-    assert hooks["PreToolUse"][0]["hooks"][0]["command"] == "mine", "the vault's own hooks are kept"
-    assert hooks["PostToolUse"][0]["hooks"][0]["command"] == PAGE_NOTES_HOOKS["PostToolUse"]
-    assert _rewrite_settings(vault) is False

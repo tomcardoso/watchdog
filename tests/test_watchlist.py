@@ -1,14 +1,13 @@
 """Tests for the deterministic watch-word scan (#165), the whole-vault retro-scan command
-`watchdog watchlist` (#220), and the internal `watchdog watchlist-add` command
-`/watchdog-context` shells out to for proposed seed terms (#229)."""
+`watchdog watchlist` (#220), and the term appends `/watchdog-context` makes through the session's
+`watchlist_add` tool (#229, D299)."""
 
 import argparse
 import json
 from pathlib import Path
 
-import pytest
 
-from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
+from watchdog.cmd.watchlist import cmd_watchlist
 from watchdog.pipeline import watchlist
 
 
@@ -353,40 +352,6 @@ def test_cmd_watchlist_appends_to_existing_run_alert(tmp_path, monkeypatch):
     assert content.count("# Watch-word alerts") == 1
     run_headers = [ln for ln in content.splitlines() if ln.startswith("## ")]
     assert len(run_headers) == 2
-
-
-# ── cmd_watchlist_add (#229) ───────────────────────────────────────────────────
-
-def _add_args(*terms):
-    return argparse.Namespace(terms=list(terms))
-
-
-def test_cmd_watchlist_add_requires_running_inside_a_vault(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)   # no .watchdog/ here
-    with pytest.raises(SystemExit):
-        cmd_watchlist_add(_add_args("Some Term"))
-
-
-def test_cmd_watchlist_add_appends_and_reports_json(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, watchlist_text="Existing Term\n")
-    monkeypatch.chdir(vault)
-
-    cmd_watchlist_add(_add_args("New Person", "Existing Term", "Another Co"))
-
-    out = json.loads(capsys.readouterr().out)
-    assert out == {"added": ["New Person", "Another Co"], "skipped": 1}
-    assert [t["term"] for t in watchlist.load_terms(vault)] == [
-        "Existing Term", "New Person", "Another Co"]
-
-
-def test_cmd_watchlist_add_all_duplicates_reports_zero_added(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, watchlist_text="Acme Corp\n")
-    monkeypatch.chdir(vault)
-
-    cmd_watchlist_add(_add_args("acme corp"))
-
-    out = json.loads(capsys.readouterr().out)
-    assert out == {"added": [], "skipped": 1}
 
 
 # ── editing (the app's editor, D294) ─────────────────────────────────────────
