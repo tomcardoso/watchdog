@@ -3,6 +3,7 @@
 // React owns the controls and the side card; it talks to this class through a handful of methods.
 
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, Simulation, SimulationLinkDatum, SimulationNodeDatum } from 'd3-force'
+import type { GraphEdge } from '@shared/api'
 
 export interface GNode extends SimulationNodeDatum {
   id: string
@@ -16,18 +17,23 @@ export interface GNode extends SimulationNodeDatum {
 }
 export interface GEdge extends SimulationLinkDatum<GNode> {
   role: string
+  labels: string[]
   docs: string[]
+  directed: boolean
+  raw: RawEdge
   source: GNode
   target: GNode
   curve: number
 }
 export interface RawNode { id: string; name: string; type: string; doc_count: number }
-export interface RawEdge { source: string; target: string; role: string; docs: string[] }
+/** One edge per pair of entities, listing every distinct relationship between them (D291). */
+export type RawEdge = GraphEdge
 
 interface Cam { k: number; x: number; y: number }
 interface Callbacks {
   onHover: (id: string | null) => void
   onSelect: (id: string | null) => void
+  onSelectEdge: (edge: RawEdge | null) => void
   onOpen: (id: string) => void
 }
 interface Palette {
@@ -42,6 +48,9 @@ interface Palette {
   accent: string
   font: string
 }
+
+// Thicker for a pair more documents connect: 1x for one document, about 3x from eight on.
+const weightFor = (docs: number) => 1 + Math.min(2, Math.log2(Math.max(docs, 1)) * 0.7)
 
 const radiusFor = (docs: number) => Math.max(5, Math.min(26, 4.5 + Math.sqrt(Math.max(docs, 1)) * 3.1))
 
@@ -64,6 +73,7 @@ export class GraphEngine {
   private palette!: Palette
   private hoverId: string | null = null
   private hoverEdge: GEdge | null = null
+  private selectedEdge: RawEdge | null = null
   private selectedId: string | null = null
   private pendingFit = false
   private pendingFocus: string | null = null
@@ -153,7 +163,7 @@ export class GraphEngine {
       const s = this.byId.get(e.source)
       const t = this.byId.get(e.target)
       if (!s || !t || s === t) continue
-      const edge: GEdge = { source: s, target: t, role: e.role, docs: e.docs, curve: 0 }
+      const edge: GEdge = { source: s, target: t, role: e.role, labels: e.labels?.length ? e.labels : [e.role], docs: e.docs, directed: e.directed ?? true, raw: e, curve: 0 }
       this.edges.push(edge)
       const key = s.id < t.id ? `${s.id}|${t.id}` : `${t.id}|${s.id}`
       if (!pair.has(key)) pair.set(key, [])
@@ -270,6 +280,22 @@ export class GraphEngine {
     this.dirty = true
   }
 
+  setSelectedEdge(edge: RawEdge | null) {
+    this.selectedEdge = edge
+    this.dirty = true
+  }
+
+  /** Select the edge between two entities, as a click on its line does. */
+  selectEdgeBetween(a: string, b: string): boolean {
+    const e = this.edges.find((x) => (x.source.id === a && x.target.id === b) || (x.source.id === b && x.target.id === a))
+    if (!e) return false
+    this.selectedId = null
+    this.selectedEdge = e.raw
+    this.cb.onSelectEdge(e.raw)
+    this.dirty = true
+    return true
+  }
+
   has(id: string) {
     return this.byId.has(id)
   }
@@ -371,7 +397,7 @@ export class GraphEngine {
       }
       if (edge !== this.hoverEdge) {
         this.hoverEdge = edge
-        if (!id) c.style.cursor = edge ? 'default' : 'grab'
+        if (!id) c.style.cursor = edge ? 'pointer' : 'grab'
       }
       this.dirty = true
     }
@@ -387,8 +413,12 @@ export class GraphEngine {
       }
       if (!d.moved) {
         const id = d.node?.id ?? null
+        const p = rel(e)
+        const edge = id ? null : this.edgeAt(p.x, p.y)
         this.selectedId = id
-        this.cb.onSelect(id)
+        this.selectedEdge = edge?.raw ?? null
+        if (edge) this.cb.onSelectEdge(edge.raw)
+        else this.cb.onSelect(id)
       }
       c.style.cursor = this.hoverId ? 'pointer' : 'grab'
       this.dirty = true
@@ -504,13 +534,14 @@ export class GraphEngine {
       const s = e.source, t = e.target
       const involved = focus && (s.id === focus || t.id === focus)
       const dim = Math.min(s.a, t.a)
-      const isHover = e === this.hoverEdge
+      const isHover = e === this.hoverEdge || e.raw === this.selectedEdge
       ctx.globalAlpha = involved || isHover ? 0.85 : focus ? 0.05 + 0.1 * dim : 0.26
       ctx.strokeStyle = involved || isHover ? P.accent : P.text3
-      ctx.lineWidth = (involved || isHover ? 1.6 : 1) * baseW
+      ctx.lineWidth = (involved || isHover ? 1.6 : 1) * baseW * weightFor(e.docs.length)
       this.path(e)
       ctx.stroke()
-      if ((involved || isHover) && k > 0.5) this.arrow(e, P.accent)
+      // An arrow only when every relationship on the pair runs the same way.
+      if ((involved || isHover) && k > 0.5 && e.directed) this.arrow(e, P.accent)
     }
     ctx.globalAlpha = 1
 
@@ -585,18 +616,22 @@ export class GraphEngine {
     }
     ctx.globalAlpha = 1
 
-    // Role labels for the focused node's edges, or for the single edge under the pointer.
+    // Relationship labels: for the focused node's edges, the best-documented relationship and how
+    // many more there are; for the edge under the pointer or selected, every one, a line each.
     const incident = focus ? this.inc.get(focus) ?? [] : []
-    const roleEdges = new Set<GEdge>(incident.length && incident.length <= 7 ? incident : [])
-    if (this.hoverEdge) roleEdges.add(this.hoverEdge)
+    const roleEdges = new Map<GEdge, boolean>()
+    if (incident.length && incident.length <= 7) for (const e of incident) roleEdges.set(e, false)
+    for (const e of this.edges) if (e === this.hoverEdge || e.raw === this.selectedEdge) roleEdges.set(e, true)
     if (roleEdges.size) {
       ctx.font = `600 10.5px ${P.font}`
       ctx.textBaseline = 'middle'
-      for (const e of roleEdges) {
+      for (const [e, full] of roleEdges) {
+        const lines = full ? e.labels : [e.labels.length > 1 ? `${e.labels[0]}  +${e.labels.length - 1}` : e.labels[0]]
         const mid = this.mid(e)
         const sx = mid.x * k + x, sy = mid.y * k + y
-        const tw = ctx.measureText(e.role).width
-        const w = tw + 14, h = 18
+        const lh = 15
+        const tw = Math.max(...lines.map((l) => ctx.measureText(l).width))
+        const w = tw + 14, h = lines.length * lh + 3
         ctx.fillStyle = P.surface
         ctx.strokeStyle = P.border
         ctx.lineWidth = 1
@@ -605,7 +640,7 @@ export class GraphEngine {
         ctx.fill()
         ctx.stroke()
         ctx.fillStyle = P.text
-        ctx.fillText(e.role, sx, sy + 0.5)
+        lines.forEach((l, i) => ctx.fillText(l, sx, sy - h / 2 + 1.5 + lh * (i + 0.5) + 0.5))
       }
     }
   }

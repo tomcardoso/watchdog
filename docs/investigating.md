@@ -163,7 +163,7 @@ When it finishes, the dialog offers **Rebuild search index**, which drops the me
 
 **Timeline** lays out every dated event by year and month, each linked to the page it came from. Filter it by entity, entity type, year range or a word in the event. A bar chart at the top shows how many events fall in each year; click a bar to jump there. The **⋯** menu has **Rebuild timeline.md…**, which regenerates the written timeline file from the underlying records. Nothing is lost if the file is deleted or edited by mistake, because it is generated output.
 
-**Network** draws the entities as a graph. Each dot is an entity, sized by how many documents name it and coloured by type, and each line is a relationship. Hover over a dot to see its connections, click it to see details, and double-click to open it. A slider sets the minimum number of documents an entity must appear in to be drawn, and **Show unconnected entities** adds the ones with no relationships. Only relationships stated in the documents are drawn.
+**Network** draws the entities as a graph. Each dot is an entity, sized by how many documents name it and coloured by type, and one line joins two related entities, whatever the number of relationships between them. Hover over a dot to see its connections, click it to see details, and double-click to open it; click a line to see every relationship between the two, with its documents and pages (see [Network](app.md#network-and-timeline)). A slider sets the minimum number of documents an entity must appear in to be drawn, and **Show unconnected entities** adds the ones with no relationships. Only relationships stated in the documents are drawn.
 
 ## Search
 
@@ -259,7 +259,7 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Rebuild the timeline** | Regenerates the written timeline from the underlying records. |
 | **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
 | **Usage** | Opens token, cost and timing figures for each run. |
-| **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. |
+| **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. A relationship whose wordings were grouped is exported under the label the app shows, with each document's own wording beside it. |
 | **Release a stuck lock** | An interrupted run can leave a lock that stops the next one starting. This releases a stale one; a recent-looking lock is left alone unless you force it. |
 | **Refresh Claude setup** | Updates this investigation's shortcuts, Claude instructions and Claude settings after you update Watchdog. |
 

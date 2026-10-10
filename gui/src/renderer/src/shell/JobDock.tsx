@@ -17,6 +17,7 @@ export const STAGE_LABELS: Record<string, string> = {
   reconcile: 'Reconciling entities',
   commit: 'Writing to the vault',
   contradictions: 'Flagging contradictions',
+  relationships: 'Grouping relationship wordings',
   recheck: 'Re-checking contradictions',
   synthesis: 'Writing entity summaries',
   timeline: 'Reconciling the timeline',

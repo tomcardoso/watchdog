@@ -46,7 +46,8 @@ _ADMISSION_MAX_WAIT_S = 300.0
 
 # Every call a standalone `watchdog bark` makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
-FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing"}
+FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
+                  "relationship-labels"}
 
 
 @dataclass
@@ -2216,6 +2217,59 @@ def _apply_request_dedup(vault: Path, open_: list[dict], groups) -> int:
     return folded
 
 
+async def _relationship_labels(vault: Path, batch_shas: list[str], model: str,
+                               backend: str | None, effort: str | None) -> int:
+    """Group the wordings of each pair this batch touched (D291). Returns the number of new
+    groups. A failed call leaves its pairs unevaluated, so the next run that touches them asks
+    again; the notes and graph show every wording apart meanwhile."""
+    from watchdog.pipeline import entity_notes, relationships
+    if not batch_shas:
+        return 0
+    view = relationships.View(vault)
+    items = view.pending(batch_shas)
+    if not items:
+        return 0
+    _say(f"{_DIM}→  comparing relationship wordings for {len(items)} "
+         f"pair{'s' if len(items) != 1 else ''}…{_RESET}")
+    answers: dict[int, dict] = {}
+    model_id = None
+    for window in relationships.chunks(items):
+        try:
+            r = await _call_model(
+                task="relationship-labels", model=model, backend=backend,
+                schema=schemas.RELATIONSHIP_LABELS, effort=effort, vault=vault,
+                prompt=prompts.build_relationship_labels_prompt([items[i] for i in window],
+                                                                view.entities))
+        except model_client.CALL_FAILURES as e:
+            _log(vault, f"WARN relationship labels: {len(window)} pair(s) not compared — {e}")
+            if isinstance(e, (model_client.RateLimitError, model_client.ProviderAuthError)):
+                break
+            continue
+        model_id = r.model
+        for i in window:
+            answers[i] = {}
+        for p in r.parsed.get("pairs") or []:
+            n = p.get("pair") if isinstance(p, dict) else None
+            if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(window):
+                answers[window[n - 1]] = p
+    if not answers:
+        return 0
+    try:
+        res = relationships.apply(vault, items, answers, model=model_id, run=_run.run_id)
+    except OSError as e:
+        _log(vault, f"WARN relationship labels not saved: {e}")
+        return 0
+    if res["dropped"]:
+        _log(vault, f"WARN relationship labels: {res['dropped']} proposed group(s) failed the checks "
+                    "and were kept apart")
+    if res["entities"]:
+        entity_notes.refresh(vault, res["entities"])
+    if res["grouped"]:
+        n = len(res["grouped"])
+        _say(f"   {_DIM}grouped the wordings of {n} relationship{'s' if n != 1 else ''}{_RESET}")
+    return len(res["grouped"])
+
+
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None,
                        rec_result: dict | None = None, skip_briefing: bool = False,
@@ -2258,8 +2312,18 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                  f"{c['entity_name']}  {_CYAN}{c['note_path']}{_RESET}")
             _log(vault, f"CONTRADICTION {c['entity_id']}: {c['label']}")
 
-    # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     batch_shas = [r["sha256"] for r in results if r.get("status") == "ok"]
+
+    # 0b. Relationship labels (D291): for each pair of entities this batch stated a relationship
+    # on that now holds two or more wordings not yet compared, the model proposes which name the
+    # same relationship; code checks and records each group, and the notes show the canonical
+    # label. Most runs make one call, many make none.
+    progress.emit("stage", stage="relationships", done=None, total=None)
+    out["relationship_groups"] = await _relationship_labels(
+        vault, batch_shas, fo.get("relationship_model", post_model),
+        fo.get("relationship_backend", post_backend), post_effort)
+
+    # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault, batch_shas)
     progress.emit("stage", stage="synthesis", done=0, total=len(bundle.get("entities") or []))
     if bundle.get("entities"):

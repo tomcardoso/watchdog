@@ -416,6 +416,26 @@ class CannedModel:
         return {k: cite(v, lines) if isinstance(v, str) else [cite(x, lines) for x in v]
                 for k, v in canned.items()}
 
+    def relationship_labels(self, text: str) -> dict:
+        from watchdog.gui import demo_story
+        body = text.split("\nPairs:\n", 1)[1]
+        out = []
+        for block in re.split(r"\n(?=P\d+: )", body.strip()):
+            head = re.match(r"P(\d+): ", block)
+            if not head:
+                continue
+            labels = {m.group(2).lower(): int(m.group(1))
+                      for m in re.finditer(r'^  (\d+)\. "(.*)" \(', block, re.M)}
+            groups = []
+            for words in demo_story.RELATIONSHIP_GROUPS:
+                nums = [labels[w] for w in words if w in labels]
+                if len(nums) > 1:
+                    groups.append({"labels": nums, "canonical": nums[0],
+                                   "reason": "Both describe the same lawyer acting for the same client."})
+            if groups:
+                out.append({"pair": int(head.group(1)), "groups": groups})
+        return {"pairs": out}
+
     async def __call__(self, *, task, prompt, schema, model=None, backend=None, max_retries=1,
                        effort=None):
         from watchdog import model_client
@@ -423,7 +443,7 @@ class CannedModel:
         handlers = {"classify": self.classify, "extract": self.extract, "reconcile": self.reconcile,
                     "entity-synthesis": self.synthesis, "timeline-dedup": self.timeline_dedup,
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
-                    "briefing": self.briefing}
+                    "briefing": self.briefing, "relationship-labels": self.relationship_labels}
         handler = handlers.get(task)
         if handler is None:
             raise RuntimeError(f"demo: no canned answer for task {task!r}")

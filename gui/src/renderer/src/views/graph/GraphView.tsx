@@ -1,13 +1,13 @@
-import { ArrowLeft, ArrowRight, Maximize, Minus, Network, Plus, Search, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowRight, FileText, Maximize, Minus, Network, Plus, Search, Split, X } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityAvatar } from '@renderer/components/EntityChip'
 import { plainText } from '@renderer/components/Markdown'
 import { Button, Empty, ErrorNote, Spinner, Switch } from '@renderer/components/ui'
-import { ENTITY_TYPES } from '@shared/api'
+import { ENTITY_TYPES, GraphData, GraphRelationship } from '@shared/api'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
 import { fmtNum, plural } from '@renderer/lib/format'
-import { useRpc } from '@renderer/lib/rpc'
-import { navigate, useApp, useVault } from '@renderer/lib/store'
+import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
+import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { GraphEngine, RawEdge, RawNode } from './engine'
 import '../entities/entities.css'
 import './graph.css'
@@ -37,10 +37,12 @@ export default function GraphView() {
         </Empty>
       </div>
     )
-  return <Network_ nodes={q.data.nodes} edges={q.data.edges} focus={focus} />
+  return <Network_ nodes={q.data.nodes} edges={q.data.edges} documents={q.data.documents ?? {}} focus={focus} />
 }
 
-function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[]; focus?: string }) {
+type Docs = GraphData['documents']
+
+function Network_({ nodes, edges, documents, focus }: { nodes: RawNode[]; edges: RawEdge[]; documents: Docs; focus?: string }) {
   const vault = useVault()
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
@@ -50,6 +52,7 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
   const [minDocs, setMinDocs] = useState(1)
   const [showLoose, setShowLoose] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
+  const [selectedEdge, setSelectedEdge] = useState<RawEdge | null>(null)
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const firstData = useRef(true)
@@ -81,10 +84,13 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
     const c = canvas.current!
     const eng = new GraphEngine(c, {
       onHover: () => {},
-      onSelect: (id) => setSelected(id),
+      onSelect: (id) => { setSelected(id); setSelectedEdge(null) },
+      onSelectEdge: (e) => { setSelectedEdge(e); setSelected(null) },
       onOpen: (id) => navigate({ view: 'entity', id })
     })
     engine.current = eng
+    // Reachable from the canvas for end-to-end tests and screenshots, which cannot click a line.
+    ;(c as HTMLCanvasElement & { __graph?: GraphEngine }).__graph = eng
     const size = () => {
       if (!wrap.current) return
       const r = wrap.current.getBoundingClientRect()
@@ -119,6 +125,15 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
     engine.current?.setSelected(selected)
   }, [selected])
 
+  useEffect(() => {
+    engine.current?.setSelectedEdge(selectedEdge)
+  }, [selectedEdge])
+
+  // A refetch (after a split) brings new edge objects: keep the same pair selected.
+  useEffect(() => {
+    setSelectedEdge((cur) => (cur ? edges.find((e) => e.source === cur.source && e.target === cur.target) ?? null : null))
+  }, [edges])
+
   const pick = (id: string) => {
     // Relax filters if they hide the node being asked for.
     const n = byId.get(id)
@@ -127,6 +142,7 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
     if (n.doc_count < minDocs) setMinDocs(1)
     if (!connected.has(id)) setShowLoose(true)
     setSelected(id)
+    setSelectedEdge(null)
     setTimeout(() => engine.current?.focusNode(id), 60)
   }
 
@@ -137,7 +153,7 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
 
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelected(null)
+      if (e.key === 'Escape') { setSelected(null); setSelectedEdge(null) }
     }
     window.addEventListener('keydown', k)
     return () => window.removeEventListener('keydown', k)
@@ -150,6 +166,7 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
   }, [search, nodes])
 
   const sel = selected ? byId.get(selected) : null
+  const selEdge = selectedEdge && byId.get(selectedEdge.source) && byId.get(selectedEdge.target) ? selectedEdge : null
 
   return (
     <div className="gr-shell" ref={wrap}>
@@ -223,17 +240,18 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
       </div>
 
       <div className="gr-panel gr-stats">
-        {plural(visible.length, 'entity', 'entities')} · {plural(visibleEdges.length, 'relationship')}
+        {plural(visible.length, 'entity', 'entities')} · {plural(visibleEdges.reduce((n, e) => n + Math.max(1, e.relationships?.length ?? 1), 0), 'relationship')}
       </div>
-      {!sel && <div className="gr-panel gr-hint">Scroll to zoom · drag to pan · click a node to inspect · double-click to open</div>}
+      {!sel && !selEdge && <div className="gr-panel gr-hint">Scroll to zoom · drag to pan · click a node or a line to inspect · double-click to open</div>}
 
-      <div className="gr-panel gr-zoom" data-shifted={!!sel}>
+      <div className="gr-panel gr-zoom" data-shifted={!!sel || !!selEdge}>
         <Button variant="ghost" size="sm" icon={Plus} tip="Zoom in" onClick={() => engine.current?.zoomBy(1.5)} />
         <Button variant="ghost" size="sm" icon={Minus} tip="Zoom out" onClick={() => engine.current?.zoomBy(1 / 1.5)} />
         <Button variant="ghost" size="sm" icon={Maximize} tip="Fit to screen" onClick={() => engine.current?.fit(true)} />
       </div>
 
       {sel && <SideCard id={sel.id} edges={edges} byId={byId} summary={ents.data?.find((e) => e.id === sel.id)?.summary ?? null} aliases={ents.data?.find((e) => e.id === sel.id)?.aliases ?? []} onPick={pick} onClose={() => setSelected(null)} />}
+      {selEdge && <EdgeCard edge={selEdge} byId={byId} documents={documents} onPick={pick} onClose={() => setSelectedEdge(null)} />}
     </div>
   )
 }
@@ -241,14 +259,19 @@ function Network_({ nodes, edges, focus }: { nodes: RawNode[]; edges: RawEdge[];
 function SideCard({ id, edges, byId, summary, aliases, onPick, onClose }: { id: string; edges: RawEdge[]; byId: Map<string, RawNode>; summary: string | null; aliases: string[]; onPick: (id: string) => void; onClose: () => void }) {
   const n = byId.get(id)!
   const m = typeMeta(n.type)
+  // One row per counterpart, listing every relationship with it in either direction (D291).
   const rels = useMemo(() => {
-    const out: { other: RawNode; role: string; dir: 'out' | 'in'; key: string }[] = []
+    const out: { other: RawNode; items: { label: string; dir: 'out' | 'in' }[]; key: string }[] = []
     edges.forEach((e, i) => {
-      if (e.source === id && byId.get(e.target)) out.push({ other: byId.get(e.target)!, role: e.role, dir: 'out', key: `${i}` })
-      else if (e.target === id && byId.get(e.source)) out.push({ other: byId.get(e.source)!, role: e.role, dir: 'in', key: `${i}` })
+      const otherId = e.source === id ? e.target : e.target === id ? e.source : null
+      const other = otherId ? byId.get(otherId) : undefined
+      if (!other) return
+      const items = (e.relationships ?? []).map((r) => ({ label: r.label, dir: (r.from === id ? 'out' : 'in') as 'out' | 'in' }))
+      out.push({ other, items: items.length ? items : [{ label: e.role, dir: e.source === id ? 'out' : 'in' }], key: `${i}` })
     })
     return out.sort((a, b) => b.other.doc_count - a.other.doc_count)
   }, [edges, id, byId])
+  const nRels = rels.reduce((n, r) => n + r.items.length, 0)
   const sum = plainText(summary, 260)
   return (
     <div className="gr-panel gr-card" style={{ '--chip-color': m.color } as CSSProperties}>
@@ -258,7 +281,7 @@ function SideCard({ id, edges, byId, summary, aliases, onPick, onClose }: { id: 
           <div className="ent-type-tag" style={{ marginBottom: 3 }}>{m.label}</div>
           <h2>{n.name}</h2>
           <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>
-            {plural(n.doc_count, 'document')} · {plural(rels.length, 'relationship')}
+            {plural(n.doc_count, 'document')} · {plural(nRels, 'relationship')} with {plural(rels.length, 'entity', 'entities')}
           </div>
         </div>
         <Button variant="ghost" size="sm" icon={X} tip="Close" onClick={onClose} />
@@ -269,10 +292,16 @@ function SideCard({ id, edges, byId, summary, aliases, onPick, onClose }: { id: 
         <div className="eyebrow" style={{ margin: '4px 6px 4px' }}>Relationships</div>
         {rels.map((r) => (
           <button key={r.key} className="gr-rel" onClick={() => onPick(r.other.id)}>
-            {r.dir === 'out' ? <ArrowRight size={13} color="var(--text-3)" /> : <ArrowLeft size={13} color="var(--text-3)" />}
-            <span className="role truncate">{r.role}</span>
             <EntityAvatar type={r.other.type} size={20} />
-            <span className="nm truncate">{r.other.name}</span>
+            <span className="gr-rel-main">
+              <span className="nm truncate">{r.other.name}</span>
+              {r.items.map((it, j) => (
+                <span key={j} className="role">
+                  {it.dir === 'out' ? <ArrowRight size={11} /> : <ArrowLeft size={11} />}
+                  {it.label}
+                </span>
+              ))}
+            </span>
           </button>
         ))}
       </div>
@@ -282,6 +311,80 @@ function SideCard({ id, edges, byId, summary, aliases, onPick, onClose }: { id: 
         </Button>
         <Button onClick={() => navigate({ view: 'timeline', entity: id })}>Timeline</Button>
       </div>
+    </div>
+  )
+}
+
+function EdgeCard({ edge, byId, documents, onPick, onClose }: { edge: RawEdge; byId: Map<string, RawNode>; documents: Docs; onPick: (id: string) => void; onClose: () => void }) {
+  const a = byId.get(edge.source)!
+  const b = byId.get(edge.target)!
+  const rels = edge.relationships ?? []
+  return (
+    <div className="gr-panel gr-card">
+      <div className="gr-card-head">
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="ent-type-tag" style={{ marginBottom: 3 }}>{plural(rels.length, 'relationship')}</div>
+          <h2 className="gr-pair">
+            <button className="linklike" onClick={() => onPick(a.id)}>{a.name}</button>
+            {edge.directed ? <ArrowRight size={15} /> : <ArrowLeftRight size={15} />}
+            <button className="linklike" onClick={() => onPick(b.id)}>{b.name}</button>
+          </h2>
+          <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>Stated in {plural(edge.docs.length, 'document')}</div>
+        </div>
+        <Button variant="ghost" size="sm" icon={X} tip="Close" onClick={onClose} />
+      </div>
+      <div className="gr-card-body">
+        {rels.map((r, i) => <EdgeRelationship key={`${r.from}|${r.label}|${i}`} r={r} byId={byId} documents={documents} />)}
+      </div>
+    </div>
+  )
+}
+
+function EdgeRelationship({ r, byId, documents }: { r: GraphRelationship; byId: Map<string, RawNode>; documents: Docs }) {
+  const vault = useVault()
+  const [busy, setBusy] = useState(false)
+  const from = byId.get(r.from)?.name ?? r.from
+  const to = byId.get(r.to)?.name ?? r.to
+  const grouped = !!r.group && r.wordings.length > 1
+  const split = async () => {
+    if (!r.group) return
+    setBusy(true)
+    try {
+      await call('vault.relationshipSplit', { vault, group: r.group })
+      toast({ kind: 'success', title: 'Wordings shown apart', body: 'Later runs will not group them again.' })
+      invalidate('vault.')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not show them apart', body: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <div className="gr-erel">
+      <div className="gr-erel-head">
+        <span className="gr-erel-label">{r.label}</span>
+        {r.basis === 'inferred' && <span className="muted">inferred</span>}
+      </div>
+      <div className="gr-erel-dir">{from} <ArrowRight size={11} /> {to}{r.date_ranges.length > 0 && <> · {r.date_ranges.join('; ')}</>}</div>
+      {r.wordings.map((w, j) => (
+        <div key={j} className="gr-erel-wording">
+          {grouped && <span className="gr-erel-quote">As written: "{w.text}"</span>}
+          {w.sources.map((src, k) =>
+            src.sha ? (
+              <button key={k} className="gr-erel-src" onClick={() => navigate({ view: 'document', sha: src.sha!, page: src.page ?? undefined })}>
+                <FileText size={12} />
+                <span className="truncate">{documents[src.sha]?.title ?? src.sha.slice(0, 12)}</span>
+                {src.page != null && <span className="pg">p. {src.page}</span>}
+              </button>
+            ) : null
+          )}
+        </div>
+      ))}
+      {grouped && (
+        <Button size="sm" variant="ghost" icon={Split} disabled={busy} onClick={() => void split()} tip="These wordings were grouped as one relationship by the AI model. Show them as separate relationships instead.">
+          Show wordings separately
+        </Button>
+      )}
     </div>
   )
 }

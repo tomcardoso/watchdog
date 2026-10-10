@@ -55,9 +55,19 @@ def _slim(artifact: dict | None) -> dict | None:
             for k in passages.PASSAGE_FIELDS:
                 f.pop(k, None)
         facts.append(f)
+    # Each role as the document states it, `(entity id, relationship, target id, page, basis,
+    # date_range)`: the relationship view (D291) counts every document that states one, where the
+    # registry keeps only the first document per wording.
+    roles = [(e.get("id"), r.get("relationship"), r.get("target_id"), r.get("page"),
+              r.get("basis"), r.get("date_range"))
+             for e in artifact.get("entities") or [] if isinstance(e, dict) and e.get("id")
+             for r in e.get("roles") or []
+             if isinstance(r, dict) and isinstance(r.get("relationship"), str)
+             and r["relationship"].strip() and isinstance(r.get("target_id"), str)]
     return {"facts": facts,
             "date": doc.get("date_of_document"),
-            "entities": [e.get("id") for e in artifact.get("entities") or [] if isinstance(e, dict)]}
+            "entities": [e.get("id") for e in artifact.get("entities") or [] if isinstance(e, dict)],
+            "roles": roles}
 
 
 def _load(path: Path) -> dict | None:

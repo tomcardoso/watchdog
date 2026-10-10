@@ -147,7 +147,7 @@ _RELEASE_FACTS = [
 ]
 _RELEASE_ROLES = [
     R("robert-delacroix", "Mayor of", "city-of-port-calder", 1),
-    R("leonard-pike", "Director of Procurement and Real Property at", "city-of-port-calder", 2),
+    R("leonard-pike", "Director of Procurement & Real Property at", "city-of-port-calder", 2),
     R("city-of-port-calder", "Awarded contract to", "northgate-civil-works", 1, "2022-05-02"),
 ]
 _RELEASE_ENTS = ["city-of-port-calder", "robert-delacroix", "northgate-civil-works", "port-calder-city-council",
@@ -471,7 +471,8 @@ LETTER_LINES = [
     "Dear Commissioner Fortier,",
     "",
     "I write in response to your notice of July 20, 2022 about the complaint filed by",
-    "Calder Citizens for Open Government on July 8, 2022.",
+    "Calder Citizens for Open Government on July 8, 2022 through its lawyer, Marisol",
+    "Fernandes.",
     "",
     "I disclosed my family relationship to Marcus Teague, my brother-in-law, to the City",
     "Clerk in writing on April 11, 2022, before the Planning and Procurement Committee",
@@ -503,7 +504,7 @@ DOCS_B.append(dict(
     ents=["dana-whitcombe", "elaine-fortier", "office-of-the-integrity-commissioner",
           "integrity-commissioner-inquiry-ic-2022-07", "calder-citizens-for-open-government", "marcus-teague",
           "anita-sandhu", "planning-and-procurement-committee", "port-calder-city-council",
-          "7714882-holdings-ltd", "port-calder-city-hall"],
+          "7714882-holdings-ltd", "port-calder-city-hall", "marisol-fernandes"],
     facts=[
         F(1, "Councillor Whitcombe wrote to Integrity Commissioner Elaine Fortier on August 2, 2022 in "
              "response to complaint IC-2022-07.", ["dana-whitcombe", "elaine-fortier",
@@ -536,6 +537,7 @@ DOCS_B.append(dict(
         R("dana-whitcombe", "Respondent in", "integrity-commissioner-inquiry-ic-2022-07", 1, "2022-07 onward"),
         R("calder-citizens-for-open-government", "Complainant in", "integrity-commissioner-inquiry-ic-2022-07", 1,
           "2022-07-08"),
+        R("marisol-fernandes", "Lawyer for", "calder-citizens-for-open-government", 1),
         R("elaine-fortier", "Integrity Commissioner at", "office-of-the-integrity-commissioner", 1),
         R("elaine-fortier", "Presides over", "integrity-commissioner-inquiry-ic-2022-07", 1),
     ],

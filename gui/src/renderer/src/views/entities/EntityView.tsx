@@ -423,15 +423,19 @@ function Relationships({ rels }: { rels: Relationship[] }) {
                 {g.dir === 'in' && <span style={{ textTransform: 'none', letterSpacing: 0, fontWeight: 500 }}>(incoming)</span>}
               </div>
               <div className="ent-rel-chips">
-                {[...g.items.values()].map((r) =>
-                  r.target_name && r.target_type ? (
-                    <EntityChip key={r.target_id} id={r.target_id} name={r.target_name} type={r.target_type} />
+                {[...g.items.values()].map((r) => {
+                  // The documents' own wordings, when they differ from the label shown (D291).
+                  const words = (r.wordings ?? []).map((w) => w.text)
+                  const tip = words.length > 1 || (words[0] && words[0].toLowerCase() !== r.role.toLowerCase()) ? `As written: ${words.map((w) => `"${w}"`).join(', ')}` : undefined
+                  const chip = r.target_name && r.target_type ? (
+                    <EntityChip id={r.target_id} name={r.target_name} type={r.target_type} />
                   ) : (
-                    <span key={r.target_id} className="ent-plain-chip" title="Mentioned but not profiled as its own entity">
+                    <span className="ent-plain-chip" title="Mentioned but not profiled as its own entity">
                       {r.target_name || r.target_id}
                     </span>
                   )
-                )}
+                  return tip ? <span key={r.target_id} data-tip={tip}>{chip}</span> : <span key={r.target_id} style={{ display: 'contents' }}>{chip}</span>
+                })}
               </div>
             </div>
           ))}

@@ -76,7 +76,7 @@ def test_methods_tolerate_a_bare_vault_directory(tmp_path):
     v = V(vault)
     assert call("vault.documents", vault=v) == []
     assert call("vault.entities", vault=v) == []
-    assert call("vault.graph", vault=v) == {"nodes": [], "edges": []}
+    assert call("vault.graph", vault=v) == {"nodes": [], "edges": [], "documents": {}}
     assert call("vault.timeline", vault=v) == {"events": []}
     assert call("vault.briefings", vault=v) == []
     assert call("vault.requests", vault=v) == {"open": [], "resolved_count": 0}
@@ -215,7 +215,9 @@ def test_entity_detail(rich_vault):
     assert [d["sha"] for d in e["documents"]] == [SHA2, SHA1]
     assert e["relationships"] == [{
         "role": "director of", "target_id": "acme-corp", "target_name": "Acme Corp",
-        "target_type": "organization", "direction": "out", "docs": [SHA1]}]
+        "target_type": "organization", "direction": "out", "docs": [SHA1], "group": None,
+        "wordings": [{"text": "director of", "sources": [{"sha": SHA1, "page": 2}]}],
+        "sources": [{"sha": SHA1, "page": 2, "wording": "director of"}]}]
     c = e["contradictions"][0]
     assert c["summary"] == "Start date of Jane Doe's directorship" and c["resolved"] is False
     assert c["rid"] == resolutions.contradiction_id(CALLOUT) and c["text"] == CALLOUT
@@ -248,17 +250,58 @@ def test_unknown_entity(rich_vault):
 def test_graph_keeps_stated_edges_between_profiled_entities(rich_vault):
     g = call("vault.graph", vault=V(rich_vault))
     assert {n["id"] for n in g["nodes"]} == {"jane-doe", "acme-corp", "bob-roe"}
-    assert g["edges"] == [{"source": "jane-doe", "target": "acme-corp", "role": "director of",
-                           "docs": [SHA1]}]   # no reverse copy, nothing to unprofiled ghost-ltd
+    # no reverse copy, nothing to unprofiled ghost-ltd
+    assert [(e["source"], e["target"], e["role"], e["docs"]) for e in g["edges"]] == [
+        ("jane-doe", "acme-corp", "director of", [SHA1])]
+    edge = g["edges"][0]
+    assert edge["directed"] is True and edge["labels"] == ["director of"]
+    assert edge["relationships"] == [{
+        "from": "jane-doe", "to": "acme-corp", "label": "director of", "group": None,
+        "docs": [SHA1], "basis": "stated", "date_ranges": ["2019–2023"],
+        "wordings": [{"text": "director of", "sources": [{"sha": SHA1, "page": 2}]}]}]
+    assert g["documents"][SHA1]["note"] == "documents/report-one"
+
+
+def _add_roles(vault, eid, *roles):
+    path = vault / ".watchdog" / "registry" / "entities.json"
+    ents = json.loads(path.read_text())
+    ents[eid]["roles"].extend(roles)
+    path.write_text(json.dumps(ents))
 
 
 def test_graph_merges_repeated_edges(rich_vault):
     path = rich_vault / ".watchdog" / "registry" / "entities.json"
     ents = json.loads(path.read_text())
-    ents["jane-doe"]["roles"].append({**ents["jane-doe"]["roles"][0], "source_sha256": SHA2})
-    path.write_text(json.dumps(ents))
+    _add_roles(rich_vault, "jane-doe", {**ents["jane-doe"]["roles"][0], "source_sha256": SHA2})
     edges = call("vault.graph", vault=V(rich_vault))["edges"]
     assert len(edges) == 1 and edges[0]["docs"] == [SHA1, SHA2]
+    assert len(edges[0]["relationships"]) == 1
+
+
+def test_graph_draws_one_edge_per_pair_and_lists_every_distinct_relationship(rich_vault):
+    """D291: two wordings that normalize alike are one relationship; a different relationship and
+    one stated in the other direction stay listed on the pair's single edge, none dropped."""
+    _add_roles(rich_vault, "jane-doe",
+               {"relationship": "The Director of", "target_id": "acme-corp", "page": 5,
+                "source_sha256": SHA2, "is_reverse": False},
+               {"relationship": "shareholder of", "target_id": "acme-corp", "page": 3,
+                "source_sha256": SHA2, "is_reverse": False})
+    _add_roles(rich_vault, "acme-corp",
+               {"relationship": "employer of", "target_id": "jane-doe", "page": 1,
+                "source_sha256": SHA2, "is_reverse": False})
+    g = call("vault.graph", vault=V(rich_vault))
+    edges = [e for e in g["edges"] if {e["source"], e["target"]} == {"jane-doe", "acme-corp"}]
+    assert len(edges) == 1
+    edge = edges[0]
+    assert edge["directed"] is False and edge["docs"] == [SHA1, SHA2]
+    rels = {(r["from"], r["label"]): r for r in edge["relationships"]}
+    assert set(rels) == {("jane-doe", "director of"), ("jane-doe", "shareholder of"),
+                         ("acme-corp", "employer of")}
+    assert sorted(w["text"] for w in rels[("jane-doe", "director of")]["wordings"]) == [
+        "The Director of", "director of"]
+    assert set(edge["labels"]) == {"director of", "shareholder of", "employer of"}
+    for label in edge["labels"]:
+        assert label in edge["role"]
 
 
 def test_timeline_sorted_and_committed_only(rich_vault):
