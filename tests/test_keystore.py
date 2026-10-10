@@ -288,60 +288,63 @@ def test_read_stdin_takes_the_keys_and_clears_the_flag(monkeypatch):
     assert keystore.SECRETS_ENV not in os.environ
 
 
-def test_a_job_gets_its_keys_on_stdin_not_in_its_environment_or_arguments(home, tmp_path, monkeypatch):
-    from watchdog.gui import jobs, rpc
-    monkeypatch.setattr(rpc, "_test_sink", [])
-    monkeypatch.setattr(jobs, "require_engine", lambda args: None)
-    monkeypatch.setattr(jobs, "_require_granted_cwd", lambda v: None)
-    a, c, work, personal, anth = _two_investigations(home, tmp_path)
+def _probe_ops(monkeypatch):
+    """Two stand-in operations, one that calls a model (secrets) and one that doesn't, run by a
+    stand-in worker that reads its request line, then its keys, as the real one does."""
+    from watchdog import ops
+    from watchdog.gui import jobs
+
+    def fn(rep, vault):
+        raise AssertionError("runs in the stand-in worker")
+    monkeypatch.setitem(ops.OPS, "probe", ops.Op("probe", fn, True, None, True, "job"))
+    monkeypatch.setitem(ops.OPS, "probe-nokeys", ops.Op("probe-nokeys", fn, True, None, False, "job"))
     probe = ("import json, os, sys\n"
              "from watchdog import keystore\n"
              "env = dict(os.environ)\n"
+             "req = json.loads(sys.stdin.readline())\n"
              "keystore.read_stdin()\n"
-             "print(json.dumps({'keys': sorted(keystore._plain.values()), 'env': env, 'argv': sys.argv}))\n")
-    monkeypatch.setattr(jobs, "command_argv", lambda args: [sys.executable, "-u", "-c", probe])
-    job = jobs.MANAGER.start(c, ["probe"], "probe", None)
+             "print(json.dumps({'keys': sorted(keystore._plain.values()), 'env': env, 'argv': sys.argv, 'req': req}))\n")
+    monkeypatch.setattr(jobs, "worker_argv", lambda: [sys.executable, "-u", "-c", probe])
+
+
+def _job_out(job):
     deadline = time.time() + 20
     while job.state == "running" and time.time() < deadline:
         time.sleep(0.05)
-    out = json.loads(next(line["text"] for line in job.log if line["stream"] == "out"))
-    assert out["keys"] == sorted([work, anth])                    # not Personal: c chose Work
-    assert out["env"].get("WATCHDOG_SECRETS") == "stdin"
-    flat = json.dumps(out["env"]) + json.dumps(out["argv"]) + json.dumps(job.to_dict())
-    assert not any(k in flat for k in (work, personal, anth))
-    # A short command (run_action) is handed its keys the same way.
-    done = jobs.run_action(a, ["probe"], timeout=20)
-    assert json.loads(done["stdout"])["keys"] == sorted([personal, anth])
+    return json.loads(next(line["text"] for line in job.log if line["stream"] == "out"))
 
 
-def test_a_module_job_that_calls_a_model_gets_its_keys_and_others_do_not(home, tmp_path, monkeypatch):
-    # The contradiction re-check runs `python -m watchdog.pipeline.recheck`, not a `watchdog`
-    # command, and calls a model: it must be handed its keys too (secrets=True). A module job that
-    # calls no model (rebuild notes, undo merge, a model download) is handed none.
+def test_a_job_gets_its_keys_on_stdin_not_in_its_environment_or_arguments(home, tmp_path, monkeypatch):
     from watchdog.gui import jobs, rpc
     monkeypatch.setattr(rpc, "_test_sink", [])
-    monkeypatch.setattr(jobs, "require_engine", lambda args: None)
+    monkeypatch.setattr(jobs, "require_engine", lambda op: None)
     monkeypatch.setattr(jobs, "_require_granted_cwd", lambda v: None)
+    _probe_ops(monkeypatch)
     a, c, work, personal, anth = _two_investigations(home, tmp_path)
-    probe = ("import json, os\n"
-             "from watchdog import keystore\n"
-             "keystore.read_stdin()\n"
-             "print(json.dumps(sorted(keystore._plain.values())))\n")
-
-    def run(**kw):
-        job = jobs.MANAGER.start(c, ["probe"], "probe", None, argv=[sys.executable, "-u", "-c", probe], **kw)
-        deadline = time.time() + 20
-        while job.state == "running" and time.time() < deadline:
-            time.sleep(0.05)
-        return json.loads(next(line["text"] for line in job.log if line["stream"] == "out"))
-
-    assert run(secrets=True) == sorted([work, anth])
-    assert run() == []
+    out = _job_out(jobs.MANAGER.start(c, "probe", {}, "probe", None))
+    assert out["keys"] == sorted([work, anth])                    # not Personal: c chose Work
+    assert out["req"] == {"op": "probe", "params": {}}
+    assert out["env"].get("WATCHDOG_SECRETS") == "stdin"
+    job = jobs.MANAGER.jobs[next(reversed(jobs.MANAGER.jobs))]
+    flat = json.dumps(out["env"]) + json.dumps(out["argv"]) + json.dumps(job.to_dict())
+    assert not any(k in flat for k in (work, personal, anth))
+    # A quick operation (run_action) is handed its keys the same way.
+    done = jobs.run_action(a, "probe", {}, timeout=20)
+    assert json.loads(done["log"])["keys"] == sorted([personal, anth])
 
 
-def test_the_recheck_module_reads_the_keys_it_is_handed():
-    import inspect
-    from watchdog.gui.api import contradictions
-    from watchdog.pipeline import recheck
-    assert "read_stdin()" in inspect.getsource(recheck.main)
-    assert "secrets=True" in inspect.getsource(contradictions.start)
+def test_an_operation_that_calls_no_model_gets_no_keys(home, tmp_path, monkeypatch):
+    from watchdog.gui import jobs, rpc
+    monkeypatch.setattr(rpc, "_test_sink", [])
+    monkeypatch.setattr(jobs, "require_engine", lambda op: None)
+    monkeypatch.setattr(jobs, "_require_granted_cwd", lambda v: None)
+    _probe_ops(monkeypatch)
+    _a, c, _work, _personal, _anth = _two_investigations(home, tmp_path)
+    out = _job_out(jobs.MANAGER.start(c, "probe-nokeys", {}, "probe", None))
+    assert out["keys"] == [] and "WATCHDOG_SECRETS" not in out["env"]
+
+
+def test_operations_that_call_a_model_are_the_ones_handed_keys():
+    from watchdog import ops
+    handed = {name for name, spec in (ops._load() or ops.OPS).items() if spec.secrets}
+    assert handed == {"add", "dig", "bark", "recheck-contradictions"}

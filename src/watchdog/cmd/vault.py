@@ -4,42 +4,32 @@ import json
 import os
 import re
 import secrets
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from watchdog.vault_paths import CONTEXT_NAME, INCOMING_NAME, incoming_dir, is_vault
-from watchdog import interactive
-from watchdog.appmode import hint as _hint, under_app
+from watchdog.vault_paths import is_vault
+from watchdog.appmode import hint as _hint
 from watchdog.cmd.base import (
     VAULT_SCHEMA_VERSION,
     _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
     _check_project_health,
-    _ensure_layout,
-    _check_vault_locks,
     _count_awaiting_bark,
     _count_awaiting_dig,
     _count_incoming,
-    _count_queued,
     _warn_pending_research,
     _find_project,
     _registered_project,
     _fmt_date,
     _fmt_size,
     _load_registry,
-    _notify,
-    _projects_dir,
-    _render_template,
-    _vault_settings,
     _vault_size,
     load_projects,
     save_projects,
     slugify,
 )
 from watchdog.pipeline.json_io import _read_json, _read_json_or
-from watchdog.vault_paths import processing_log
 
 
 _WATCHLIST_TEMPLATE = """\
@@ -238,54 +228,9 @@ def _obsidian_launch_epoch():
     return min(starts) if starts else None
 
 
-def cmd_register(args) -> None:
-    vault = Path(args.path).expanduser().resolve() if args.path else Path.cwd()
-
-    if not vault.exists():
-        sys.exit(f"Error: path not found: {vault}")
-    if not is_vault(vault):
-        sys.exit(f"Error: {vault} does not look like a watchdog vault — no .watchdog folder found.")
-
-    try:
-        reg = _load_registry(vault)
-    except json.JSONDecodeError as e:
-        sys.exit(f"Error: registry file is corrupt — {e}"
-                 + _hint("\nRun 'watchdog settings doctor' to diagnose.", ""))
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-    # Infer name: use folder name as default, let user override
-    default_name = vault.name.replace("-", " ").replace("_", " ").title()
-    if reg and reg.get("name"):
-        default_name = reg["name"]
-
-    if args.name:
-        name = args.name.strip()
-    else:
-        print(f"\n  {_DIM}Vault:{_RESET} {_CYAN}{vault}{_RESET}")
-        print(f"  {_DIM}Suggested name:{_RESET} {default_name}")
-        try:
-            entered = input("\n  Investigation name (Enter to accept suggestion): ").strip()
-            name = entered if entered else default_name
-        except (EOFError, KeyboardInterrupt):
-            print()
-            sys.exit(1)
-
-    slug = slugify(name)
-    if not slug:
-        sys.exit("Error: name is invalid.")
-
-    projects = load_projects()
-    if slug in projects:
-        sys.exit(f"Error: a project with slug '{slug}' is already registered. "
-                 + _hint("Use 'watchdog projects rename' or choose a different name.", "Choose a different name."))
-
-    created_at = reg.get("created_at", now) if reg else now
-    projects[slug] = {"name": name, "path": str(vault), "created_at": created_at}
-    save_projects(projects)
-    _register_obsidian_vault(vault)
-
-    print(f"\n  {_GREEN}Registered:{_RESET} {_BOLD}{name}{_RESET}  {_DIM}[{slug}]{_RESET}")
-    print(f"  {_CYAN}{vault}{_RESET}\n")
+def cmd_register(args):
+    from watchdog.ops.projects import _register
+    return _register(args)
 
 
 def _pkg_version() -> str:
@@ -300,139 +245,9 @@ def _pkg_version() -> str:
         return "dev"
 
 
-def cmd_new(args) -> None:
-    name = args.name or getattr(args, "name_flag", None)
-    description = getattr(args, "description", None) or ""
-
-    if not name:
-        print()
-        try:
-            name = input("  Investigation name: ").strip()
-            if not description:
-                description = input("  Brief description (optional): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            sys.exit(1)
-
-    slug = slugify(name)
-
-    if not slug:
-        sys.exit("Error: project name is invalid.")
-
-    # Most filesystems (APFS, ext4, ...) cap a single path component at 255 bytes — a slug
-    # past that raises an uncaught OSError from mkdir() below. Check bytes, not characters:
-    # slugify passes through non-ASCII word characters, which can be several bytes each in UTF-8.
-    if len(slug.encode("utf-8")) > 255:
-        sys.exit("Error: project name is too long once slugified — shorten it.")
-
-    parent = Path(args.dir).expanduser().resolve() if args.dir else _projects_dir()
-    vault = parent / slug
-
-    if vault.exists():
-        sys.exit(f"Error: {vault} already exists.")
-
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    today = datetime.now().strftime("%Y-%m-%d")
-
-    for d in [
-        INCOMING_NAME,
-        CONTEXT_NAME,
-        "morgue",
-        ".watchdog/registry",
-        ".watchdog/queue",
-        ".watchdog/staging",
-        ".watchdog/timeline",
-        ".watchdog/tmp",
-        "entities",
-        "documents",
-        "briefings",
-        "wiki",
-        "queries",
-        ".obsidian/plugins",
-        ".obsidian/snippets",
-        ".claude",
-    ]:
-        (vault / d).mkdir(parents=True)
-
-    (vault / ".watchdog" / "registry" / "documents.json").write_text("{}\n")
-    (vault / ".watchdog" / "registry" / "entities.json").write_text("{}\n")
-    (vault / ".watchdog" / "registry" / "manifest.json").write_text("{}\n")
-    (vault / ".watchdog" / "registry" / "registry.json").write_text(
-        json.dumps(
-            {"schema_version": "1", "created_at": now, "last_updated": now,
-             "document_count": 0, "entity_count": 0,
-             "entity_note_format": _note_format()},
-            indent=2,
-        ) + "\n"
-    )
-    (processing_log(vault)).write_text("")
-
-    (vault / ".obsidian" / "app.json").write_text(
-        json.dumps(
-            {"userIgnoreFilters": [".watchdog"], "showInlineTitle": False},
-            indent=2,
-        ) + "\n"
-    )
-
-    # rgb values are 24-bit packed integers: (R << 16) | (G << 8) | B
-    (vault / ".obsidian" / "graph.json").write_text(
-        json.dumps(
-            {
-                # One group per canonical entity folder (D105) plus documents. Ingest adds a
-                # group for any further folder it creates (orchestrate._update_graph_colours).
-                "colorGroups": [
-                    {"query": "path:entities/person",       "color": {"a": 1, "rgb": 4886745}},   # #4A90D9 blue
-                    {"query": "path:entities/organization", "color": {"a": 1, "rgb": 5999451}},   # #5BA95B green
-                    {"query": "path:entities/place",        "color": {"a": 1, "rgb": 15238714}},  # #E8863A orange
-                    {"query": "path:entities/public-body",  "color": {"a": 1, "rgb": 9323693}},   # #8E44AD purple
-                    {"query": "path:entities/proceeding",   "color": {"a": 1, "rgb": 12597547}},  # #C0392B red
-                    {"query": "path:entities/asset",        "color": {"a": 1, "rgb": 1482885}},   # #16A085 teal
-                    {"query": "path:documents",             "color": {"a": 1, "rgb": 9145227}},   # #8B8B8B grey
-                ]
-            },
-            indent=2,
-        ) + "\n"
-    )
-
-    (vault / "index.md").write_text(_render_template("index.md", name=name, today=today))
-    (vault / "dashboard.base").write_text(_DASHBOARD_BASE)
-    # CLAUDE.md (Claude's internal instructions) lives in .claude/ to keep the vault root
-    # clean — Claude Code loads ./.claude/CLAUDE.md the same as ./CLAUDE.md. README.md is the
-    # human-facing entry point for anyone who opens the folder.
-    (vault / ".claude" / "CLAUDE.md").write_text(_render_template("CLAUDE.md", name=name))
-    (vault / "README.md").write_text(_render_template("README.md", name=name, version=_pkg_version()))
-    (vault / "watchlist.md").write_text(_WATCHLIST_TEMPLATE)
-
-    from watchdog.setup_cmd import install_skills
-    install_skills(vault / ".claude" / "commands")
-    _register_obsidian_vault(vault)
-
-    (vault / ".claude" / "settings.json").write_text(json.dumps(_vault_settings(), indent=2) + "\n")
-
-    projects = load_projects()
-    entry = {"name": name, "path": str(vault), "created_at": now}
-    if description:
-        entry["description"] = description
-    projects[slug] = entry
-    save_projects(projects)
-
-    print(f"\n  {_GREEN}Created:{_RESET} {_BOLD}{vault}{_RESET}")
-    print()
-    print(r"                  _,)")
-    print(r"          _..._.-;-'  ")
-    print(r"       .-'     `(     ")
-    print(r"      /      ;   \    ")
-    print(r"     ;.' ;`  ,;  ;   ")
-    print(r"    .'' ``. (  \ ;   ")
-    print(r"   / f_ _L \ ;  )\   ")
-    print(r"   \/|` '|\/;; <;/   ")
-    print(r"  ((; \_/  (()        ")
-    print(r'       "              ')
-    print()
-    if under_app():
-        print(f"  {_DIM}Created {vault}{_RESET}\n")
-    else:
-        _print_new_vault_steps(vault, slug)
+def cmd_new(args):
+    from watchdog.ops.projects import _new
+    return _new(args)
 
 
 def _print_new_vault_steps(vault, slug) -> None:
@@ -531,265 +346,24 @@ def _relocate_telemetry(old_resolved: Path, new: Path) -> None:
               f"store: {e}")
 
 
-def cmd_rename(args) -> None:
-    first    = args.project
-    new_name = args.name.strip() if args.name else None
-
-    if first is not None and new_name is None:
-        projects = load_projects()
-        cwd = Path(".").resolve()
-        in_vault = any(Path(v["path"]).resolve() == cwd for v in projects.values())
-        slug_try = slugify(first)
-        # Inside a vault a lone argument is the new value unless it names a project exactly;
-        # prefix-matching here turned `rename Shell` into "rename the shell-company project".
-        is_known = slug_try in projects or (
-            not in_vault and any(k.startswith(slug_try) for k in projects))
-        if is_known:
-            slug, info = _find_project(first)
-        else:
-            cwd   = Path(".").resolve()
-            match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-            if match is None:
-                sys.exit(f"Project not found: {first}" + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
-            slug, info = match
-            new_name = first.strip()
-    elif first is not None:
-        slug, info = _find_project(first)
-    else:
-        cwd      = Path(".").resolve()
-        projects = load_projects()
-        match    = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-        if match is None:
-            sys.exit("Error: not inside a vault directory. Pass the project name explicitly.")
-        slug, info = match
-
-    if new_name is None:
-        current = info.get("name", "")
-        if current:
-            print(f"\n  {_DIM}Current:{_RESET} {current}")
-        try:
-            new_name = input("\n  New name: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            sys.exit(1)
-        if not new_name:
-            sys.exit("Error: name cannot be empty.")
-
-    vault    = Path(info["path"])
-    new_slug = slugify(new_name)
-
-    if not new_slug:
-        sys.exit("Error: new name is invalid.")
-
-    _check_vault_locks(vault, slug)
-
-    projects = load_projects()
-    if new_slug in projects and new_slug != slug:
-        sys.exit(f"Error: a project named '{new_name}' already exists.")
-
-    new_vault = vault.parent / new_slug
-
-    if slug != new_slug:
-        if new_vault.exists():
-            sys.exit(f"Error: {new_vault} already exists.")
-        old_resolved = vault.resolve()
-        vault.rename(new_vault)
-        _relocate_telemetry(old_resolved, new_vault)
-
-        # Update Obsidian registry (path changed)
-        cfg = _obsidian_config_path()
-        if cfg.exists():
-            try:
-                data = json.loads(cfg.read_text())
-                for v in data.get("vaults", {}).values():
-                    if v.get("path") == info["path"]:
-                        v["path"] = str(new_vault)
-                cfg.write_text(json.dumps(data))
-            except Exception:
-                pass
-
-    projects[new_slug] = {**info, "name": new_name, "path": str(new_vault)}
-    if new_slug != slug:
-        del projects[slug]
-    save_projects(projects)
-
-    print(f"\n  {_GREEN}Renamed:{_RESET}  {_DIM}{info['name']}{_RESET} → {_BOLD}{new_name}{_RESET}  {_DIM}[{new_slug}]{_RESET}")
-    print(f"  {_CYAN}{new_vault}{_RESET}\n")
+def cmd_rename(args):
+    from watchdog.ops.projects import _rename
+    return _rename(args)
 
 
-def cmd_describe(args) -> None:
-    first    = args.project
-    new_desc = args.text.strip() if args.text is not None else None
-
-    if first is not None and new_desc is None:
-        projects = load_projects()
-        cwd = Path(".").resolve()
-        in_vault = any(Path(v["path"]).resolve() == cwd for v in projects.values())
-        slug_try = slugify(first)
-        # Inside a vault a lone argument is the new value unless it names a project exactly;
-        # prefix-matching here turned `rename Shell` into "rename the shell-company project".
-        is_known = slug_try in projects or (
-            not in_vault and any(k.startswith(slug_try) for k in projects))
-        if is_known:
-            slug, info = _find_project(first)
-        else:
-            cwd   = Path(".").resolve()
-            match = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-            if match is None:
-                sys.exit(f"Project not found: {first}" + _hint("\nRun 'watchdog projects list' to see all projects.", ""))
-            slug, info = match
-            new_desc = first.strip()
-    elif first is not None:
-        slug, info = _find_project(first)
-    else:
-        cwd      = Path(".").resolve()
-        projects = load_projects()
-        match    = next(((s, v) for s, v in projects.items() if Path(v["path"]).resolve() == cwd), None)
-        if match is None:
-            sys.exit("Error: not inside a vault directory. Pass the project name explicitly.")
-        slug, info = match
-
-    if new_desc is None:
-        current = info.get("description", "")
-        if current:
-            print(f"\n  {_DIM}Current:{_RESET} {current}")
-        try:
-            new_desc = input("\n  New description: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            sys.exit(1)
-        new_desc = new_desc or ""
-
-    projects = load_projects()
-    if new_desc:
-        projects[slug]["description"] = new_desc
-        save_projects(projects)
-        print(f"\n  {_GREEN}Updated:{_RESET}  {_BOLD}{info['name']}{_RESET}")
-        print(f"  {_DIM}{new_desc}{_RESET}\n")
-    else:
-        projects[slug].pop("description", None)
-        save_projects(projects)
-        print(f"\n  {_GREEN}Cleared:{_RESET}  {_BOLD}{info['name']}{_RESET}\n")
+def cmd_describe(args):
+    from watchdog.ops.projects import _describe
+    return _describe(args)
 
 
-def cmd_delete(args) -> None:
-    slug, info = _find_project(args.name)
-    vault = Path(info["path"])
-    _check_vault_locks(vault, slug)
-
-    print(f"\n  {_BOLD}{info['name']}{_RESET}  {_DIM}{slug}{_RESET}")
-    print(f"  {_CYAN}{vault}{_RESET}")
-    print()
-
-    if getattr(args, "yes", False):
-        answer = True
-    elif args.purge:
-        print(f"  {_YELLOW}Warning: --purge will permanently delete all vault files from disk.{_RESET}")
-        print(f"  {_YELLOW}This cannot be undone.{_RESET}")
-        print()
-        answer = interactive.confirm("  Delete all files and remove from registry?", default=False)
-    else:
-        answer = interactive.confirm("  Remove from registry?", default=False)
-
-    if not answer:
-        print(f"\n  {_DIM}Cancelled.{_RESET}\n")
-        return
-
-    projects = load_projects()
-    del projects[slug]
-    save_projects(projects)
-
-    if args.purge:
-        # Before the folder is gone, so symlinks still resolve. A folder already deleted by hand
-        # (or on an unmounted drive) still has its telemetry rows purged (D261).
-        resolved = vault.resolve()
-        # Another registered investigation at the same path owns the folder and its rows now.
-        shared = any(Path(info.get("path", "")).expanduser().resolve() == resolved
-                     for info in projects.values() if info.get("path"))
-        if shared:
-            print(f"  {_YELLOW}Kept the files:{_RESET} another investigation in the list uses "
-                  f"{vault}.")
-        elif vault.exists():
-            if not is_vault(vault):
-                sys.exit(f"Error: {vault} does not look like a watchdog vault — aborting purge.")
-            shutil.rmtree(vault)
-        try:
-            from watchdog import telemetry_db
-            if not shared:
-                telemetry_db.purge_vault(resolved)
-        except Exception as e:
-            print(f"  {_YELLOW}Warning:{_RESET} could not remove this vault's rows from the "
-                  f"telemetry store: {e}")
-
-    # Remove from Obsidian registry
-    cfg = _obsidian_config_path()
-    if cfg.exists():
-        try:
-            data = json.loads(cfg.read_text())
-            vaults = data.get("vaults", {})
-            to_remove = [k for k, v in vaults.items() if v.get("path") == str(vault)]
-            for k in to_remove:
-                del vaults[k]
-            cfg.write_text(json.dumps(data))
-        except Exception:
-            pass
-
-    label = "Deleted" if args.purge else "Removed"
-    print(f"\n  {_GREEN}{label}:{_RESET} {_BOLD}{info['name']}{_RESET}")
-    print()
+def cmd_delete(args):
+    from watchdog.ops.projects import _delete
+    return _delete(args)
 
 
-def cmd_move(args) -> None:
-    slug, info = _find_project(args.name)
-    src = Path(info["path"])
-    _check_vault_locks(src, slug)
-    dst = Path(args.path).expanduser().resolve()
-
-    if src == dst:
-        sys.exit("Error: source and destination are the same.")
-
-    if dst.is_dir() and not (dst / ".watchdog").exists():
-        dst = dst / src.name
-
-    moved = False
-    src_resolved = src.resolve()      # before the move, so a symlinked path still resolves
-    if src.exists():
-        try:
-            shutil.move(str(src), str(dst))
-        except shutil.Error as e:
-            # Raised by the copytree fallback (cross-filesystem move) when the vault contains a
-            # file it can't copy — a FIFO, socket, or device node. `e.args[0]` is a list of
-            # (src, dst, error_string) triples, one per file that blocked the move.
-            blocked = "\n".join(f"  {s}: {err}" for s, _d, err in e.args[0]) if e.args else str(e)
-            sys.exit(f"Error: could not move {src} — some files could not be copied:\n{blocked}")
-        moved = True
-    elif not dst.exists():
-        sys.exit(
-            f"Error: {src} not found and {dst} does not exist — nothing to update.\n"
-            + _hint(f"Move the vault manually first, then re-run: watchdog projects move {slug} <new-path>",
-                    "Move the folder back, or choose its new location.")
-        )
-
-    projects = load_projects()
-    projects[slug]["path"] = str(dst)
-    save_projects(projects)
-    _relocate_telemetry(src_resolved, dst)
-
-    # Update Obsidian registry
-    cfg = _obsidian_config_path()
-    if cfg.exists():
-        try:
-            data = json.loads(cfg.read_text())
-            for v in data.get("vaults", {}).values():
-                if v.get("path") == str(src):
-                    v["path"] = str(dst)
-            cfg.write_text(json.dumps(data))
-        except Exception:
-            pass
-
-    verb = "Moved" if moved else "Updated"
-    print(f"\n  {_GREEN}{verb}:{_RESET} {_BOLD}{info['name']}{_RESET}")
-    print(f"  {_CYAN}{dst}{_RESET}\n")
+def cmd_move(args):
+    from watchdog.ops.projects import _move
+    return _move(args)
 
 
 def cmd_archive(args) -> None:
@@ -842,70 +416,11 @@ def cmd_log(args) -> None:
     print()
 
 
-def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
-    """Split newly-seen files into size-stable (safe to chew) vs. still-growing.
-
-    A file mid-copy (Finder, a network share) must not be chewed until its size holds
-    steady across two polls — otherwise chew hashes/OCRs truncated bytes (#261).
-    """
-    ready, new_pending = [], {}
-    for f in candidates:
-        try:
-            size = f.stat().st_size
-        except OSError:
-            continue
-        if pending_sizes.get(f) == size:
-            ready.append(f)          # unchanged since the last poll — copy finished
-        else:
-            new_pending[f] = size    # still growing (or first sighting) — wait
-    return ready, new_pending
 
 
-def cmd_watch(args) -> None:
-    info = _registered_project(args.name, "add --watch")
-    vault = Path(info["path"])
-    if not vault.exists():
-        sys.exit(f"Error: project directory not found: {vault}")
-    _ensure_layout(vault)
-
-    from watchdog.pipeline.preprocess_batch import run_ingest, find_files
-    import time as _time
-
-    incoming = incoming_dir(vault)
-    print(f"\n  {_BOLD}{info['name']}{_RESET}  watching {_CYAN}incoming/{_RESET}"
-          + _hint(" — press Ctrl+C to stop.", " — use Stop in Activity to stop.") + "\n")
-
-    # Files already waiting are chewed on the first stable poll, like any new arrival — they used
-    # to be ignored until some other file happened to arrive.
-    known: set = set()
-    waiting = len(find_files([incoming]))
-    if waiting:
-        print(f"  {_DIM}{waiting} file{'s' if waiting != 1 else ''} already in incoming/ — chewing "
-              f"them first.{_RESET}\n")
-    pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
-
-    try:
-        while True:
-            _time.sleep(3)
-            current: set = set(find_files([incoming]))
-            ready, pending_sizes = _poll_stable_files(current - known, pending_sizes)
-            if ready:
-                n = len(ready)
-                label = f"{n} file{'s' if n != 1 else ''}"
-                print(f"  {_BOLD}{label}{_RESET} detected — chewing...\n")
-                queued_before = _count_queued(vault)
-                run_ingest(vault, files=ready)
-                new_queued = _count_queued(vault) - queued_before
-                if new_queued > 0:
-                    _notify(
-                        f"Watchdog — {info['name']}",
-                        f"Chewed {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready" + _hint(" — run watchdog dig.", "."),
-                    )
-                known = set()
-            else:
-                known = current - set(pending_sizes)
-    except KeyboardInterrupt:
-        print(f"\n  {_DIM}Stopped watching.{_RESET}\n")
+def cmd_watch(args):
+    from watchdog.ops.projects import _watch
+    return _watch(args)
 
 
 def cmd_list(args) -> None:

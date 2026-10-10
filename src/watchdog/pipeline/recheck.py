@@ -243,7 +243,7 @@ def finalizer_stage() -> tuple[str | None, str, str | None]:
     effort — resolved by the same code `watchdog bark` resolves them with."""
     from watchdog import defaults
     from watchdog.cmd.base import load_config
-    from watchdog.cmd.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
+    from watchdog.ops.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
     config = load_config()
     backend, model = _resolve_stage(None, config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
     overrides = _resolve_finalizer_overrides(argparse.Namespace(), config, backend, model)
@@ -363,38 +363,6 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
         release_lock(lock)
 
 
-def main(argv: list[str] | None = None) -> int:
-    """`python -m watchdog.pipeline.recheck (--entity ID … | --all) [--vault DIR]`, the job the
-    app's "Re-check contradictions" runs. No terminal command calls it (D287)."""
-    from watchdog.cmd.auth import KeyChoiceError
-    from watchdog.keystore import read_stdin
-    from watchdog.vault_paths import is_vault
-    read_stdin()   # the keys the app hands this job, as for a `watchdog` command (D295)
-    parser = argparse.ArgumentParser(description="Re-check stored facts for contradictions.")
-    parser.add_argument("--vault", default=".")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--entity", action="append", dest="ids")
-    group.add_argument("--all", action="store_true")
-    args = parser.parse_args(argv)
-    vault = Path(args.vault).resolve()
-    if not is_vault(vault):
-        print(f"Error: {vault} is not a Watchdog investigation.", file=sys.stderr)
-        return 1
-    try:
-        out = run(vault, None if args.all else args.ids)
-    except Busy as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except KeyChoiceError as e:      # the investigation's chosen key isn't here (D290)
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except SystemExit as e:          # a bad model setting, from the shared resolvers
-        print(str(e.code or "Error: the model settings could not be read."), file=sys.stderr)
-        return 1
-    print(summary(out))
-    return 1 if out["error"] else 0
-
-
 def summary(out: dict) -> str:
     """The plain-language result line the job's log ends with."""
     filed = len(out["filed"])
@@ -416,7 +384,3 @@ def summary(out: dict) -> str:
     if out["error"]:
         found += f" The model call failed: {out['error']}. What the finished calls found was filed."
     return head + found
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

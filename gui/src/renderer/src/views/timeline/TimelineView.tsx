@@ -265,7 +265,7 @@ export default function TimelineView() {
         footer={
           <>
             <Button onClick={() => setRebuildOpen(false)}>Cancel</Button>
-            <Button variant="primary" icon={RefreshCw} onClick={() => { setRebuildOpen(false); void startJob(['timeline'], 'Rebuilding timeline.md').catch((e) => toast({ kind: 'error', title: 'Could not start the rebuild', body: errorMessage(e) })) }}>Rebuild</Button>
+            <Button variant="primary" icon={RefreshCw} onClick={() => { setRebuildOpen(false); void startJob('rebuild-timeline', {}, 'Rebuilding timeline.md').catch((e) => toast({ kind: 'error', title: 'Could not start the rebuild', body: errorMessage(e) })) }}>Rebuild</Button>
           </>
         }
       >

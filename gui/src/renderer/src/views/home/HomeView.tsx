@@ -195,7 +195,7 @@ function Header() {
     if (next === (project.description ?? '')) return setEditing(false)
     setSaving(true)
     try {
-      await runAction(['projects', 'describe', project.slug, next])
+      await runAction('projects-describe', { slug: project.slug, description: next })
       const fresh = await call('projects.get', { slug: project.slug })
       useApp.setState({ project: fresh })
       invalidate('projects.')
@@ -371,7 +371,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
           size="sm"
           icon={Download}
           onClick={() =>
-            void startJob(['research-fetch'], 'Downloading research links').catch((e) => toast({ kind: 'error', title: 'Could not start the download', body: errorMessage(e) }))
+            void startJob('research-fetch', {}, 'Downloading research links').catch((e) => toast({ kind: 'error', title: 'Could not start the download', body: errorMessage(e) }))
           }
         >
           Download

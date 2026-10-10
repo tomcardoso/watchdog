@@ -48,10 +48,10 @@ def test_dispatch_reports_not_granted(tmp_path, enforced):
 def test_jobs_and_actions_refuse_an_ungranted_folder(tmp_path, enforced):
     vault = make_vault(tmp_path / "a")
     with pytest.raises(rpc.RpcError) as e:
-        jobs.MANAGER.start(vault, ["timeline"], "t", None)
+        jobs.MANAGER.start(vault, "rebuild-timeline", {}, "t", None)
     assert e.value.code == "not_granted"
     with pytest.raises(rpc.RpcError):
-        jobs.run_action(vault, ["timeline"], 30)
+        jobs.run_action(vault, "rebuild-timeline", {}, 30)
     assert not jobs.MANAGER.jobs or all(j.vault != vault for j in jobs.MANAGER.jobs.values())
 
 

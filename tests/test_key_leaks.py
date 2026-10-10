@@ -141,8 +141,8 @@ def test_no_key_reaches_any_file_log_or_message(world, provider_server, monkeypa
     finally:
         orchestrate._end_usage_run(vault)
 
-    # ── a job the app starts, and the same command from a terminal ────────────────
-    job = jobs.MANAGER.start(vault, ["auth"], "Keys", None)
+    # ── an operation the app starts (handed the keys), and a terminal command ──────
+    job = jobs.MANAGER.start(vault, "bark", {}, "Post-processing", None)
     deadline = time.time() + 60
     while job.state == "running" and time.time() < deadline:
         time.sleep(0.05)
@@ -150,11 +150,9 @@ def test_no_key_reaches_any_file_log_or_message(world, provider_server, monkeypa
     seen.append(job.to_dict())
     seen.append(list(job.log))
     job_out = "\n".join(line["text"] for line in job.log)
-    # It was handed the keys its investigation bills (Anthropic's, local's, OpenAI's "Work"), and
-    # not OpenAI's default, which this investigation doesn't use: that one reads as locked.
-    assert job.exit_code == 0
-    assert "sk-ant-api…ZZZZ (stored," in job_out and "sk-local-S…ZZZZ (stored," in job_out
-    assert "sk-proj-SE…ZZZZ (stored by the app, encrypted" in job_out
+    # It was handed the keys its investigation bills; nothing was staged, so it finished at once.
+    assert job.exit_code == 0, job_out
+    assert "Nothing to finish" in job_out
     terminal = subprocess.run([sys.executable, "-m", "watchdog", "auth"], cwd=vault, capture_output=True,
                               text=True, timeout=60, env={**__import__("os").environ, "NO_COLOR": "1"})
     seen.append(terminal.stdout + terminal.stderr)

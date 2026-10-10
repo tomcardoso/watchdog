@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.cmd.export import (
+from watchdog.ops.export import (
     _cypher_label,
     _forward_edges,
     _write_csv,
@@ -225,7 +225,7 @@ def test_cmd_export_reads_the_relationship_log(tmp_path, monkeypatch):
         "schema_version": 1, "evaluated": {},
         "groups": [{"id": "rel:x", "from": "ann", "to": "firm", "keys": ["counsel with", "lawyer at"],
                     "canonical": "lawyer at", "status": "active", "decided_by": "model"}]}))
-    import watchdog.cmd.export as export
+    import watchdog.ops.export as export
     monkeypatch.setattr(export, "_resolve_vault", lambda p: ("v", {"name": "V"}, vault))
     out = tmp_path / "out"
     export.cmd_export(argparse.Namespace(project=None, output=str(out), format="csv"))

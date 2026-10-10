@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.cmd.merge_entities import cmd_merge_entities
+from watchdog.ops.merge import cmd_merge_entities
 from watchdog.pipeline.merge_entities import merge, run
 
 

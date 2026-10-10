@@ -323,7 +323,7 @@ def test_vaultio_media_info_reads_known_fields_of_any_format():
 
 def test_jobs_show_model_download_and_transcription():
     from watchdog.gui import jobs
-    job = jobs.Job(None, ["chew"], "Add", "chew")
+    job = jobs.Job(None, "chew", {}, "Add", "chew")
     job.apply_progress({"kind": "model", "label": "Downloading the transcription model (486 MB)",
                         "state": "progress", "done": 120, "total": 486})
     assert job.progress["stage"] == "model" and job.progress["done"] == 120

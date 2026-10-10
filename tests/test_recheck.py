@@ -296,25 +296,27 @@ def test_the_estimate_prices_the_calls_on_the_finalizer_model(vault, monkeypatch
 def test_the_app_starts_it_as_a_job_and_keeps_the_gates(vault, monkeypatch, wdg_home):  # noqa: F811
     from watchdog.gui import jobs
     started = []
-    monkeypatch.setattr(jobs.MANAGER, "start", lambda v, args, label, kind, argv=None, secrets=None: (
-        started.append((args, label, argv)) or type("J", (), {"to_dict": lambda self: {"id": "j"}})()))
+    monkeypatch.setattr(jobs.MANAGER, "start", lambda v, op, params, label, kind=None: (
+        started.append((op, label, params)) or type("J", (), {"to_dict": lambda self: {"id": "j"}})()))
     monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "none", "reason": "No key."})
     assert call_error("jobs.recheckContradictions", vault=str(vault), ids=["pier-9"])["code"] == "auth_required"
     monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
     assert call("jobs.recheckContradictions", vault=str(vault), ids=["pier-9"]) == {"id": "j"}
-    args, label, argv = started[-1]
+    op, label, params = started[-1]
     assert label == "Re-check contradictions: Pier 9"
-    assert argv[-3:] == ["watchdog.pipeline.recheck", "--entity", "pier-9"]
+    assert (op, params) == ("recheck-contradictions", {"ids": ["pier-9"]})
     call("jobs.recheckContradictions", vault=str(vault), all=True)
-    assert started[-1][2][-1] == "--all"
+    assert started[-1][2] == {"all": True}
     monkeypatch.setenv("WATCHDOG_ENGINE_PENDING", "1")
     assert call_error("jobs.recheckContradictions", vault=str(vault), all=True)["code"] == "engine_not_ready"
     assert call_error("contradictions.estimate", vault=str(vault))["code"] == "bad_params"
 
 
-def test_main_refuses_a_folder_that_is_not_an_investigation(tmp_path, capsys):
-    assert recheck.main(["--all", "--vault", str(tmp_path)]) == 1
-    assert "not a Watchdog investigation" in capsys.readouterr().err
+def test_the_operation_refuses_a_folder_that_is_not_an_investigation(tmp_path):
+    from watchdog import ops
+    with pytest.raises(SystemExit) as e:
+        ops.run("recheck-contradictions", {"all": True}, ops.CollectingReporter(), tmp_path)
+    assert "not a Watchdog investigation" in str(e.value.code)
 
 
 def test_a_failed_first_call_says_nothing_was_checked(vault, monkeypatch):

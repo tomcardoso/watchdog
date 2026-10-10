@@ -47,8 +47,11 @@ incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watch
    commits it to the vault in one serial pass, then runs post-ingest: contradictions, entity
    synthesis, timeline dedup, the briefing.
 
-`watchdog add` runs all three in one go (D251), and bare `watchdog` inside a vault is a home screen
-that offers it; `watchdog ingest` (deprecated, D138) runs dig and bark together. A failed document is set aside in `queue/_failed/` without sinking the batch.
+The entry points are operations (`watchdog/ops/`, D298): `add` runs all three in one go (D251),
+`chew`, `dig` and `bark` one at a time, all in `ops/ingest.py`. The app runs them in a worker
+process (§14.5); the terminal's `watchdog add`, `chew`, `dig` and `bark` are thin wrappers over the
+same functions until the command line is removed (issue #729). A failed document is set aside in
+`queue/_failed/` without sinking the batch.
 
 ---
 
@@ -733,22 +736,27 @@ See D45–D48.
 ## 14.5. Desktop app
 
 **Code:** `gui/` (Electron main, preload, React renderer), `watchdog/gui/` (server, `api/*.py`,
-`jobs.py`, `chat.py`, `demo.py`), `watchdog/progress.py`. **Contract:** `gui/API.md`.
+`jobs.py`, `chat.py`, `demo.py`), `watchdog/ops/`, `watchdog/worker.py`, `watchdog/progress.py`. **Contract:** `gui/API.md`.
 
 - **One program, two front ends (D265).** The app starts `python -m watchdog.gui.server` and speaks
   line-delimited JSON-RPC over its stdio. Reads run in-process; `sys.stdout` is pointed at stderr so
   a library `print()` can't corrupt the protocol.
-- **Mutations are CLI commands.** `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
-  `merge-entities`…) and `action.run` (quick ones: `projects rename`, `projects archive`…) run
-  `python -m watchdog <args>` in the vault with stdin closed, `NO_COLOR=1` and
-  `WATCHDOG_PROGRESS=1`. `progress.emit` then writes prefixed JSON lines (chew files, per-document
-  extraction states, finalize stages) that the server turns into `job.progress` events; without the
-  variable it writes nothing. The few in-process writes go through the CLI's own library functions
-  (`resolutions`, `_coerce_value`/`_persist`, auth state, a note's `## Notes` body), plus the
-  app-only version history (D286).
+- **Mutations are operations run by a worker (D298).** Every change the app makes is a registered
+  operation (`watchdog/ops/`): a library function whose keyword parameters, with their types, are
+  its schema (`jobs.ops`), taking a `Reporter` for its log lines, warnings, progress events and
+  question-asking. `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
+  `merge-entities`…) and `action.run` (quick ones: `projects-rename`, `requeue`…) check the
+  parameters, then run `python -m watchdog.worker` in the vault with `{op, params}` on stdin
+  (and the keys, for the four operations that call a model, D295), `NO_COLOR=1`, `WATCHDOG_APP=1`
+  and `WATCHDOG_PROGRESS=1`. The worker's `AppReporter` writes app-worded log lines and
+  `progress` events (chew files, per-document extraction states, finalize stages), which the
+  server turns into `job.progress` events, then the operation's result; it declines any question
+  (the app asks before it starts). Stop is SIGINT to the worker. The few in-process writes go
+  through library functions (`resolutions`, `_coerce_value`/`_persist`, auth state, a note's
+  `## Notes` body), plus the app-only version history (D286).
 - **The public-records gate** runs in the app after chew and before the model call, from
-  `ingest.preflight` (count, models, `auto_approve` verdict, the warning text), then `add
-  --skip-warning`.
+  `ingest.preflight` (count, models, `auto_approve` verdict, the warning text), then `add` with
+  `skip_warning`; without it the operation declines the gate and sends nothing.
 - **Claude sessions** (`chat.*`) use the Claude Agent SDK with `cwd` set to the vault and project
   settings loaded, so the vault's permissions and `/watchdog-*` commands apply; transcripts are kept
   under `~/.watchdog/gui/chats/`. Each session gets the in-process MCP server `watchdog`
@@ -767,17 +775,17 @@ See D45–D48.
   phase 2 (the rest of one `uv pip compile` lock, then the models) runs in the background and
   resumes at launch. Until it finishes the sidecar runs with `WATCHDOG_ENGINE_PENDING=1` and
   `jobs.start`/`action.run` refuse document-adding commands (`engine_not_ready`);
-  `engine.setReady` lifts it without a restart. `engine.json` is versioned (`schema`, finished
+  `engine.setReady` lifts it without a restart (an operation's `engine` flag, `add` or `index`, says
+  which are refused). `engine.json` is versioned (`schema`, finished
   `phases`); an unreadable or foreign record rebuilds the environment. `WATCHDOG_PYTHON` or a user's choice overrides it; in
-  development the repository's source goes first on `PYTHONPATH`. The terminal commands remain the
-  app's mutation path but are retired from user-facing documentation. The transcription model is
-  an on-demand step (`engine_setup.ON_DEMAND`): never in the first-run download, fetched by the
-  first recording or by `setup.downloadModel`, a job running `engine_setup models --only
-  transcription` (D273).
+  development the repository's source goes first on `PYTHONPATH`. The terminal commands are
+  retired from user-facing documentation and wrap the same operations (D298). The transcription
+  model is an on-demand step (`engine_setup.ON_DEMAND`): never in the first-run download, fetched by
+  the first recording or by `setup.downloadModel`, the `download-model` operation as a job (D273).
 - **Folder access (D268).** `~/.watchdog/access.json` lists the folders the user has allowed;
   only the main process writes it (`gui/src/main/access.ts`). The backend runs with
   `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
-  allowed folders and Watchdog's own exempt locations, in the sidecar and every CLI subprocess; the
+  allowed folders and Watchdog's own exempt locations, in the sidecar and every worker; the
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
   edits outside their vault. They have no shell, so no command of theirs runs outside these checks
   (D299; D274's sandbox and shell allow-list are gone).
@@ -807,9 +815,9 @@ See D45–D48.
   its size (`stats.history_bytes`, D288). These call `pipeline/history` in-process; there is no CLI
   command.
 - **Re-check contradictions (D287).** An entity page's Re-check and Maintenance's whole-investigation
-  card call `contradictions.estimate`, then `jobs.recheckContradictions`, which runs `python -m
-  watchdog.pipeline.recheck` as a job (engine-gated, refused while a run holds the vault). No CLI
-  command.
+  card call `contradictions.estimate`, then `jobs.recheckContradictions`, which runs the
+  `recheck-contradictions` operation as a job (engine-gated, refused while a run holds the vault).
+  No CLI command.
 - **Notes (D288).** Entity notes, document notes and saved pages (`queries/`, `wiki/`) share one
   editor (`NotesEditor`, `lib/notesSaver.ts`) that writes only the `## Notes` section through
   `vault.saveNotes`; saves outlive the screen, retry while the commit pass holds the registry lock
@@ -863,16 +871,16 @@ noted as such.
   `page` citation, D177, is not covered: a citation is checkable.) *History: D167, D177.*
 - **I9 — Styling is a terminal affordance.** `--json` output, and any output off a real terminal,
   carries no escape bytes; diagnostics go to stderr in every mode. *History: D174.*
-- **I10 — The app adds no pipeline behaviour.** Every vault mutation the desktop app makes runs the
-  CLI command that makes it in the terminal, or the library function that command calls; the app
-  keeps the CLI's gates (the public-records acknowledgement, confirmations before irreversible
-  operations). An app-only feature with no CLI command (version history's restore, removal and clear, D286, D288)
-  may change the vault through a library function directly, under the same folder access (D268),
-  the operation's locks and I7's commit discipline; so does the investigation's choice of billing
-  key (`auth.choose_key`, D290), and so do an Ask Claude session's tools (D299), which call the
-  library functions directly with the same folder access, locks and version history. The command
-  line is expected to be removed eventually; new features need not gain a command.
-  *History: D265, D271, D286, D288, D299.*
+- **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
+  makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
+  writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
+  and clear, the investigation's billing key, an Ask Claude session's tools, D299), a library
+  function called in-process; either way under folder access (D268), the operation's locks (D293)
+  and I7's commit discipline. The app keeps the
+  gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
+  before it starts an operation and passing the answer as a parameter; an operation never asks. The
+  terminal commands wrap the same operations until the command line is removed, so neither front
+  end has behaviour the other lacks. *History: D265, D271, D286, D288, D298, D299.*
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes

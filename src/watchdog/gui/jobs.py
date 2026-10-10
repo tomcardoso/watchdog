@@ -1,24 +1,26 @@
-"""Long-running `watchdog` commands, run as subprocesses for the desktop app.
+"""The app's operations, each run in a worker process (D298).
 
-A job is `python -m watchdog <args…>` with the vault as its working directory, stdin closed (a
-prompt the CLI would show is declined rather than waited on), colour off, and `WATCHDOG_PROGRESS=1`
-so the pipeline writes the structured lines `watchdog.progress` defines. Two reader threads split
-the child's output: progress lines update the job's `ProgressState` and become `job.progress`
-events; every other line goes to a ring buffer (the last 5,000) and out as batched `job.log` events
-(at most ten a second).
+A job is `python -m watchdog.worker` with the investigation as its working folder (none for an
+operation outside one), colour off, `WATCHDOG_APP=1` and `WATCHDOG_PROGRESS=1`. Its stdin carries
+one JSON line, `{"op", "params"}`, then, for an operation that calls a model, the investigation's
+keys as a second line (`WATCHDOG_SECRETS=stdin`, D295): only the key per provider the
+investigation resolves to, never through the environment or argv, which other programs and crash
+reports can see. Then stdin is closed, so nothing the operation runs can wait on it.
 
-Cancelling sends Ctrl+C (SIGINT, or CTRL_BREAK_EVENT on Windows) so the CLI's own graceful stop
-runs; a second cancel kills the process.
+Two reader threads split the worker's output: progress lines update the job's `ProgressState` and
+become `job.progress` events, the final `result` line becomes the job's `result`, and every other
+line goes to a ring buffer (the last 5,000) and out as batched `job.log` events (at most ten a
+second).
 
-Keys the app stores encrypted reach a command on its stdin, one JSON line, then end of input
-(`WATCHDOG_SECRETS=stdin`, D295): only the key per provider the investigation resolves to, and
-never through the environment or argv, which other programs and crash reports can see.
+Cancelling sends Ctrl+C (SIGINT, or CTRL_BREAK_EVENT on Windows) so the pipeline's own graceful
+stop runs and finished documents are kept; a second cancel kills the process.
 """
 
 from __future__ import annotations
 
 import collections
 import datetime
+import json
 import os
 import signal
 import subprocess
@@ -28,7 +30,7 @@ import time
 import uuid
 from pathlib import Path
 
-from watchdog import progress
+from watchdog import ops, progress
 from watchdog.gui import rpc
 from watchdog.gui.vaultio import strip_ansi
 
@@ -36,55 +38,42 @@ LOG_LINES = 5000
 KEEP_FINISHED = 50
 LOG_INTERVAL = 0.1          # seconds between job.log batches: at most ten a second
 
-# RunOptions key → CLI flag. Only the flags a command's own parser accepts are emitted.
-_VALUE_FLAGS = {
-    "extractor_model": "--extractor-model", "classifier_model": "--classifier-model",
-    "finalizer_model": "--finalizer-model",
-    "finalizer_reconciliation_model": "--finalizer-reconciliation-model",
-    "finalizer_synthesis_model": "--finalizer-synthesis-model",
-    "finalizer_timeline_model": "--finalizer-timeline-model",
-    "finalizer_briefing_model": "--finalizer-briefing-model",
-    "extractor_effort": "--extractor-effort", "classifier_effort": "--classifier-effort",
-    "finalizer_effort": "--finalizer-effort", "concurrency": "--concurrency",
-    "classify_pages": "--classify-pages", "skill": "--skill", "limit": "--limit",
-    "chew_workers": "--chew-workers", "chunk_workers": "--chunk-workers",
-}
-_SWITCH_FLAGS = {"force": "--force", "wait": "--wait", "skip_briefing": "--skip-briefing"}
-COMMANDS = ("add", "dig", "bark", "chew")
-
-# Commands that need the engine's phase-2 libraries or models (D272): adding documents in any
-# form, the incoming-folder watcher, putting failed documents back in the queue, and anything that
-# rewrites the semantic search index. Refused with `engine_not_ready` until the engine is complete.
-ADD_COMMANDS = frozenset({"add", "chew", "dig", "bark", "ingest", "watch", "requeue"})
-INDEX_COMMANDS = frozenset({"reindex", "merge-entities", "rebuild-notes", "undo-merge",
-                            "recheck-contradictions"})
 ENGINE_BUSY_OTHER = ("Watchdog is still setting up. This will be available when it finishes, "
                      "in a few minutes.")
 
 
-def canonical_command(args: list[str]) -> str | None:
-    """The command `watchdog <args…>` runs, after grouped forms and aliases are resolved."""
-    from watchdog.cmd.base import _ALIASES, _DEPRECATED_ALIASES
-    from watchdog.cmd.groups import rewrite
-
-    argv = rewrite(list(args))
-    if not argv:
-        return None
-    head = argv[0]
-    return _DEPRECATED_ALIASES.get(head) or _ALIASES.get(head) or head
-
-
-def require_engine(args: list[str]) -> None:
-    """Refuse a command that needs the full engine while the app is still installing it."""
+def require_engine(op: str) -> None:
+    """Refuse an operation that needs the full engine while the app is still installing it
+    (D272): adding documents in any form, the watcher and requeue (`engine="add"`), and anything
+    that rewrites the search index (`engine="index"`)."""
     from watchdog.gui.engine_setup import ENGINE_NOT_READY, engine_ready
 
     if engine_ready():
         return
-    command = canonical_command(args)
-    if command in ADD_COMMANDS:
-        raise rpc.RpcError(ENGINE_NOT_READY, code="engine_not_ready", data={"command": command})
-    if command in INDEX_COMMANDS:
-        raise rpc.RpcError(ENGINE_BUSY_OTHER, code="engine_not_ready", data={"command": command})
+    need = ops.get(op).engine
+    if need == "add":
+        raise rpc.RpcError(ENGINE_NOT_READY, code="engine_not_ready", data={"op": op})
+    if need == "index":
+        raise rpc.RpcError(ENGINE_BUSY_OTHER, code="engine_not_ready", data={"op": op})
+
+
+def prepare(vault: Path | None, op: str, params: dict | None) -> tuple[ops.Op, dict, Path | None]:
+    """The operation, its checked parameters and the folder it runs in; refused with `bad_params`,
+    or `engine_not_ready` while the engine is still installing."""
+    try:
+        spec = ops.get(op)
+    except ops.OpError as e:
+        raise rpc.RpcError(str(e), code="bad_params") from None
+    require_engine(op)
+    try:
+        checked = ops.validate(op, params)
+    except ops.OpError as e:
+        raise rpc.RpcError(str(e), code="bad_params") from None
+    if not spec.vault:
+        return spec, checked, None
+    if vault is None:
+        raise rpc.RpcError("This needs an open investigation.", code="bad_params")
+    return spec, checked, vault
 
 
 def _now() -> str:
@@ -108,12 +97,12 @@ def _secrets(vault: Path | None) -> dict[str, str]:
         return {}
 
 
-def _hand_over(proc: subprocess.Popen, keys: dict[str, str]) -> None:
+def _hand_over(proc: subprocess.Popen, request: dict, keys: dict[str, str]) -> None:
     from watchdog.keystore import child_input
     try:
-        proc.stdin.write(child_input(keys))
+        proc.stdin.write(_request_line(request) + (child_input(keys) if keys else b""))
     except OSError:
-        pass   # the command already exited; its own error says why
+        pass   # the worker already exited; its own error says why
     finally:
         try:
             proc.stdin.close()
@@ -121,48 +110,33 @@ def _hand_over(proc: subprocess.Popen, keys: dict[str, str]) -> None:
             pass
 
 
-def command_argv(args: list[str]) -> list[str]:
+def _request_line(request: dict) -> bytes:
+    return (json.dumps(request, ensure_ascii=False) + "\n").encode("utf-8")
+
+
+def worker_argv() -> list[str]:
     """The process a job runs. A module-level function so tests can substitute a quick script."""
-    return [sys.executable, "-m", "watchdog", *args]
+    return [sys.executable, "-m", "watchdog.worker"]
 
 
-def accepted_flags(command: str) -> set[str]:
-    """Every option string `watchdog <command>` accepts, read from the real parser."""
-    from watchdog.cli import _subparsers, build_parser
-    sub = _subparsers(build_parser()).get(command)
-    if sub is None:
-        raise rpc.RpcError(f"Unknown command: {command}", code="bad_params")
-    return {opt for action in sub._actions for opt in action.option_strings}
-
-
-def flags_for(command: str, options: dict | None) -> list[str]:
-    """CLI arguments for `RunOptions` on `command`: unset values give nothing, `verify` true/false
-    gives --verify/--no-verify, and a flag the command does not take is left out."""
-    options = options or {}
-    accepted = accepted_flags(command)
-    out: list[str] = []
-    for key, flag in _VALUE_FLAGS.items():
-        value = options.get(key)
-        if value not in (None, "") and flag in accepted:
-            out += [flag, str(value)]
-    for key, flag in _SWITCH_FLAGS.items():
-        if options.get(key) is True and flag in accepted:
-            out.append(flag)
-    verify = options.get("verify")
-    if verify is True and "--verify" in accepted:
-        out.append("--verify")
-    elif verify is False and "--no-verify" in accepted:
-        out.append("--no-verify")
-    return out
+def _env(keys: bool) -> dict:
+    env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "WATCHDOG_APP": "1",
+           "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
+    env.pop("WATCHDOG_SECRETS", None)
+    if keys:
+        env["WATCHDOG_SECRETS"] = "stdin"
+    return env
 
 
 class Job:
-    def __init__(self, vault: Path | None, args: list[str], label: str, kind: str | None):
+    def __init__(self, vault: Path | None, op: str, params: dict, label: str, kind: str | None):
         self.id = uuid.uuid4().hex[:12]
         self.vault = vault
-        self.args = list(args)
+        self.op = op
+        self.params = dict(params)
         self.label = label
-        self.kind = kind or (args[0] if args else "job")
+        self.kind = kind or op
+        self.result = None
         self.state = "running"
         self.exit_code: int | None = None
         self.started = _now()
@@ -179,7 +153,8 @@ class Job:
         with self.lock:
             snapshot = {**self.progress, "docs": {k: dict(v) for k, v in self.progress["docs"].items()}}
         return {"id": self.id, "label": self.label, "kind": self.kind,
-                "vault": str(self.vault) if self.vault else None, "args": self.args,
+                "vault": str(self.vault) if self.vault else None, "op": self.op,
+                "params": self.params, "result": self.result,
                 "state": self.state, "exit_code": self.exit_code, "started": self.started,
                 "finished": self.finished, "progress": snapshot}
 
@@ -235,38 +210,28 @@ class JobManager:
         self.lock = threading.Lock()
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
-    def start(self, vault: Path | None, args: list[str], label: str, kind: str | None,
-              argv: list[str] | None = None, secrets: bool | None = None) -> Job:
-        """`argv` replaces the `python -m watchdog <args>` process, for the one job that runs
-        another module (`setup.downloadModel`); `args` still labels the job."""
-        require_engine(args)
-        _require_granted_cwd(vault)
-        job = Job(vault, args, label, kind)
-        env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "WATCHDOG_APP": "1",
-               "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
-        # A `watchdog` command reads its keys; another module (`argv`) only when it says it calls a
-        # model (`secrets=True`, as the contradiction re-check does) and reads them itself.
-        keys = _secrets(vault) if (argv is None if secrets is None else secrets) else {}
-        if keys:
-            env["WATCHDOG_SECRETS"] = "stdin"
+    def start(self, vault: Path | None, op: str, params: dict | None, label: str,
+              kind: str | None = None) -> Job:
+        spec, checked, cwd = prepare(vault, op, params)
+        _require_granted_cwd(cwd)
+        job = Job(cwd, op, checked, label or op, kind)
+        keys = _secrets(cwd) if spec.secrets else {}
         popen_kwargs: dict = {}
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
         try:
             job.proc = subprocess.Popen(
-                argv or command_argv(args), cwd=str(vault) if vault else None, env=env,
-                stdin=subprocess.PIPE if keys else subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, **popen_kwargs)
+                worker_argv(), cwd=str(cwd) if cwd else None, env=_env(bool(keys)),
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **popen_kwargs)
         except OSError as e:
-            raise rpc.RpcError(f"Could not start the command: {e}") from e
-        if keys:
-            _hand_over(job.proc, keys)
+            raise rpc.RpcError(f"Could not start: {e}") from e
+        _hand_over(job.proc, {"op": op, "params": checked}, keys)
         with self.lock:
             self.jobs[job.id] = job
             self._prune()
-        if vault is not None:
+        if cwd is not None:
             from watchdog.gui.runlocks import forget_note
-            forget_note(vault)
+            forget_note(cwd)
         rpc.emit("job.started", {"job": job.to_dict()})
         readers = [threading.Thread(target=self._read, args=(job, job.proc.stdout, "out"), daemon=True),
                    threading.Thread(target=self._read, args=(job, job.proc.stderr, "err"), daemon=True)]
@@ -284,6 +249,9 @@ class JobManager:
         for raw in iter(stream.readline, b""):
             text = raw.decode("utf-8", errors="replace").rstrip("\r\n")
             event = progress.parse(text) if name == "out" else None
+            if event is not None and event.get("kind") == "result":
+                job.result = event.get("result")
+                continue
             if event is not None:
                 job.apply_progress(event)
                 rpc.emit("job.progress", {"id": job.id, "progress": job.to_dict()["progress"],
@@ -364,26 +332,37 @@ def _require_granted_cwd(vault: Path | None) -> None:
         require_granted(Path(vault))
 
 
-def run_action(vault: Path | None, args: list[str], timeout: float) -> dict:
-    """A short command run to completion: `{code, stdout, stderr}` with colour codes removed."""
-    require_engine(args)
-    _require_granted_cwd(vault)
-    env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_APP": "1", "PYTHONIOENCODING": "utf-8",
-           "PYTHONUNBUFFERED": "1"}
-    env.pop("WATCHDOG_PROGRESS", None)
-    keys = _secrets(vault)
-    if keys:
-        env["WATCHDOG_SECRETS"] = "stdin"
+def _error_text(stderr: str) -> str:
+    """The reason a worker gives for failing: its last stderr lines, without a traceback."""
+    lines = [ln for ln in strip_ansi(stderr).split("\n") if ln.strip()]
+    if any(ln.startswith("Traceback") for ln in lines):
+        lines = lines[-1:]
+    return "\n".join(lines[-3:]).strip()
+
+
+def run_action(vault: Path | None, op: str, params: dict | None, timeout: float) -> dict:
+    """A quick operation run to completion in a worker: `{code, result, log, error}`, where `log`
+    is its output with progress lines removed and `error` the reason it gives when it fails."""
+    spec, checked, cwd = prepare(vault, op, params)
+    _require_granted_cwd(cwd)
+    keys = _secrets(cwd) if spec.secrets else {}
     from watchdog.keystore import child_input
+    payload = _request_line({"op": op, "params": checked}) + (child_input(keys) if keys else b"")
     try:
-        done = subprocess.run(command_argv(args), cwd=str(vault) if vault else None, env=env,
-                              input=child_input(keys) if keys else None,
-                              stdin=None if keys else subprocess.DEVNULL, capture_output=True, timeout=timeout)
+        done = subprocess.run(worker_argv(), cwd=str(cwd) if cwd else None, env=_env(bool(keys)),
+                              input=payload, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired as e:
-        raise rpc.RpcError(f"The command did not finish within {int(timeout)} seconds.",
-                           code="timeout") from e
+        raise rpc.RpcError(f"This did not finish within {int(timeout)} seconds.", code="timeout") from e
     except OSError as e:
-        raise rpc.RpcError(f"Could not run the command: {e}") from e
-    return {"code": done.returncode,
-            "stdout": strip_ansi(done.stdout.decode("utf-8", errors="replace")),
-            "stderr": strip_ansi(done.stderr.decode("utf-8", errors="replace"))}
+        raise rpc.RpcError(f"Could not run it: {e}") from e
+    result, log = None, []
+    # Not splitlines(): it also breaks at the record separator that starts a progress line.
+    for line in done.stdout.decode("utf-8", errors="replace").replace("\r\n", "\n").split("\n"):
+        event = progress.parse(line)
+        if event is None:
+            log.append(strip_ansi(line))
+        elif event.get("kind") == "result":
+            result = event.get("result")
+    stderr = done.stderr.decode("utf-8", errors="replace")
+    return {"code": done.returncode, "result": result, "log": "\n".join(log).strip("\n"),
+            "error": _error_text(stderr) if done.returncode else None}

@@ -9,7 +9,7 @@ import numpy as np
 import pytest
 
 from watchdog import model_client
-from watchdog.cmd.reindex import _pages_from_morgue_text, cmd_reindex
+from watchdog.ops.reindex import _pages_from_morgue_text, cmd_reindex
 from watchdog.pipeline import embed as embed_mod, fulltext as fts_mod, orchestrate
 
 from tests.test_orchestrate import _extraction, _queue_doc

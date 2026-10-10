@@ -45,9 +45,9 @@ export default function ProjectsView() {
     setProject(p)
   }
 
-  const mutate = async (args: string[], done: string, p?: Project) => {
+  const mutate = async (run: () => Promise<unknown>, done: string, p?: Project) => {
     try {
-      await runAction(args)
+      await run()
       invalidate('projects.')
       toast({ kind: 'success', title: done, body: p?.name })
     } catch (e) {
@@ -62,8 +62,8 @@ export default function ProjectsView() {
     { label: 'Edit description…', icon: TextCursorInput, onClick: () => setDialog({ kind: 'describe', project: p }) },
     { label: 'Move to another folder…', icon: FolderInput, onClick: () => setDialog({ kind: 'move', project: p }) },
     p.archived
-      ? { label: 'Unarchive', icon: ArchiveRestore, onClick: () => void mutate(['projects', 'unarchive', p.slug], 'Restored to the list', p) }
-      : { label: 'Archive', icon: Archive, onClick: () => void mutate(['projects', 'archive', p.slug], 'Archived', p) },
+      ? { label: 'Unarchive', icon: ArchiveRestore, onClick: () => void mutate(() => runAction('projects-archive', { slug: p.slug, archived: false }, null), 'Restored to the list', p) }
+      : { label: 'Archive', icon: Archive, onClick: () => void mutate(() => runAction('projects-archive', { slug: p.slug, archived: true }, null), 'Archived', p) },
     { separator: true, label: '' },
     { label: 'Show in folder', icon: FolderOpen, onClick: () => window.watchdog.shell.showItemInFolder(p.path) },
     { label: 'Open in Obsidian', icon: ExternalLink, onClick: () => void window.watchdog.shell.openInObsidian(p.path), disabled: !!p.health },
@@ -296,7 +296,7 @@ function RenameDialog({ p, onClose }: { p: Project; onClose: () => void }) {
   const [name, setName] = useState(p.name)
   const m = useMutation(onClose)
   const valid = name.trim().length > 0 && name.trim() !== p.name
-  const go = () => valid && void m.run(() => runAction(['projects', 'rename', p.slug, name.trim()]), 'Renamed')
+  const go = () => valid && void m.run(() => runAction('projects-rename', { slug: p.slug, name: name.trim() }, null), 'Renamed')
   return (
     <Modal
       open
@@ -320,7 +320,7 @@ function RenameDialog({ p, onClose }: { p: Project; onClose: () => void }) {
 function DescribeDialog({ p, onClose }: { p: Project; onClose: () => void }) {
   const [text, setText] = useState(p.description ?? '')
   const m = useMutation(onClose)
-  const go = () => void m.run(() => runAction(['projects', 'describe', p.slug, text.trim()]), text.trim() ? 'Description updated' : 'Description cleared')
+  const go = () => void m.run(() => runAction('projects-describe', { slug: p.slug, description: text.trim() }, null), text.trim() ? 'Description updated' : 'Description cleared')
   return (
     <Modal
       open
@@ -358,7 +358,7 @@ function MoveDialog({ p, onClose }: { p: Project; onClose: () => void }) {
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!dest} loading={m.busy} onClick={() => void m.run(() => runAction(['projects', 'move', p.slug, dest]), missing ? 'Folder located' : 'Moved')}>
+          <Button variant="primary" disabled={!dest} loading={m.busy} onClick={() => void m.run(() => runAction('projects-move', { slug: p.slug, path: dest }, null), missing ? 'Folder located' : 'Moved')}>
             {missing ? 'Use this folder' : 'Move'}
           </Button>
         </>
@@ -407,11 +407,9 @@ function LogDialog({ p, onClose }: { p: Project; onClose: () => void }) {
   )
 }
 
-// The CLI's `delete` asks for confirmation on the terminal, and a job's stdin is closed, so the
-// prompt is declined. `--yes` is the non-interactive confirmation the app needs (see report).
+// The confirmation (the name typed out) is this dialog's; the operation removes without asking.
 async function deleteProject(p: Project, purge: boolean): Promise<void> {
-  const args = ['projects', 'delete', p.slug, '--yes', ...(purge ? ['--purge'] : [])]
-  await runAction(args)
+  await runAction('projects-delete', { slug: p.slug, purge }, null)
   const left = await call('projects.list', { all: true })
   if (left.some((x) => x.slug === p.slug)) throw new Error('Watchdog did not remove the investigation. Nothing was deleted.')
 }
@@ -481,7 +479,7 @@ function RegisterDialog({ onClose }: { onClose: () => void }) {
             loading={m.busy}
             onClick={() =>
               void m.run(async () => {
-                await runAction(['register', path, '--name', name.trim()])
+                await runAction('projects-register', { path, name: name.trim() }, null)
                 const list = await call('projects.list', {})
                 const added = list.find((x) => x.path === path)
                 if (added) useApp.getState().setProject(added)

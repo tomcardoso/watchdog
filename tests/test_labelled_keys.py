@@ -193,7 +193,7 @@ def test_run_preflight_stops_on_a_missing_key_only_for_providers_used(home, vaul
 
 
 def test_dig_exits_before_running_when_the_chosen_key_is_missing(home, vault, monkeypatch):
-    from watchdog.cmd import ingest
+    from watchdog.ops import ingest
     work = two_openai_keys()
     auth.choose_key(vault, "openai", work)
     auth.delete_key("openai", work)

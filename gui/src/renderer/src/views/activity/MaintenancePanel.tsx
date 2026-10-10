@@ -24,11 +24,11 @@ import {
 } from 'lucide-react'
 import { LucideIcon } from 'lucide-react'
 import { ReactNode, useState } from 'react'
-import type { CitationReport, Effort, Estimate, RunOptions } from '@shared/api'
+import type { CitationReport, Effort, Estimate, OpName, OpParams, RunOptions } from '@shared/api'
 import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
-import { flagsFor, runAction, startJob } from '@renderer/lib/jobs'
+import { runAction, startJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
@@ -38,16 +38,9 @@ import RecheckModal from '../entities/RecheckModal'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
-/** The server maps RunOptions to flags; whether it includes the command name is not pinned down,
- * so accept either. */
-async function argsFor(command: 'chew' | 'dig' | 'bark', options: RunOptions): Promise<string[]> {
-  const a = await flagsFor(command, options)
-  return a[0] === command ? a : [command, ...a]
-}
-
-async function launch(args: string[], label: string, kind?: string) {
+async function launch<O extends OpName>(op: O, params: OpParams[O], label: string) {
   try {
-    const job = await startJob(args, label, kind)
+    const job = await startJob(op, params, label)
     navigate({ view: 'activity', job: job.id })
   } catch (e) {
     toast({ kind: 'error', title: `Could not start ${label.toLowerCase()}`, body: errorMessage(e) })
@@ -164,7 +157,7 @@ function WatchCard() {
   const toggle = async (on: boolean) => {
     setBusy(true)
     try {
-      if (on) await startJob(['watch'], 'Watching incoming', 'watch')
+      if (on) await startJob('watch', {}, 'Watching incoming')
       else if (running) await call('jobs.cancel', { id: running.id })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not change watching', body: errorMessage(e) })
@@ -215,7 +208,7 @@ function ChewCard({ incoming }: { incoming: number | null }) {
             const o: RunOptions = {}
             if (workers) o.chew_workers = Number(workers)
             if (chunks) o.chunk_workers = Number(chunks)
-            await launch(await argsFor('chew', o), 'Pre-processing', 'chew')
+            await launch('chew', o, 'Pre-processing')
           }}
         >
           Run pre-processing
@@ -277,7 +270,7 @@ function DigCard({ queued, models }: { queued: number | null; models: ReturnType
       footer={
         <div className="col" style={{ gap: 10, width: '100%' }}>
           <div className="row wrap" style={{ gap: 8 }}>
-            <Button icon={Play} variant="primary" size="sm" loading={gate.busy} onClick={() => void gate.request({ args: ['dig', ...(limit ? ['--limit', limit] : []), ...(force ? ['--force'] : [])], label: 'Processing', kind: 'dig', options: build() }).catch(() => undefined)}>
+            <Button icon={Play} variant="primary" size="sm" loading={gate.busy} onClick={() => void gate.request({ op: 'dig', params: build(), label: 'Processing', options: build() }).catch(() => undefined)}>
               Run processing…
             </Button>
             <Button icon={Gauge} size="sm" loading={e.busy === 'one'} onClick={() => void e.run(false)}>
@@ -349,7 +342,7 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
       footer={
         <div className="col" style={{ gap: 10, width: '100%' }}>
           <div className="row wrap" style={{ gap: 8 }}>
-            <Button icon={Play} variant="primary" size="sm" onClick={async () => void launch(await argsFor('bark', build()), 'Post-processing', 'bark')}>
+            <Button icon={Play} variant="primary" size="sm" onClick={() => void launch('bark', build(), 'Post-processing')}>
               Run post-processing
             </Button>
             <Button icon={Gauge} size="sm" loading={e.busy === 'one'} onClick={() => void e.run(false)}>
@@ -405,8 +398,7 @@ function ExportCard() {
   const [format, setFormat] = useState<'csv' | 'cypher'>('csv')
   const [dir, setDir] = useState<string | null>(null)
   const go = async (output: string | null) => {
-    const args = ['export', '--format', format, ...(output ? ['--output', output] : [])]
-    await launch(args, 'Export graph', 'export')
+    await launch('export', { format, output }, 'Export graph')
     setDir(output ?? `${project.path}/${project.slug}-export`)
   }
   return (
@@ -553,9 +545,8 @@ export default function MaintenancePanel() {
           text="Moves documents that failed extraction back into the queue without running them, so a later extraction run tries them again. A failure from a temporary cause, such as a rate limit, is worth retrying; one that fails repeatedly may need a different model."
           label="Requeue"
           onRun={async () => {
-            const out = await runAction(['requeue'])
-            const n = /Requeued\s+(\d+)/.exec(out)?.[1]
-            toast(n ? { kind: 'success', title: 'Moved back into the queue', body: `${plural(Number(n), 'document')}. Run Add documents to extract them again.` } : { kind: 'info', title: 'No failed documents to requeue' })
+            const { requeued: n } = await runAction<{ requeued: number }>('requeue', {})
+            toast(n ? { kind: 'success', title: 'Moved back into the queue', body: `${plural(n, 'document')}. Run Add documents to extract them again.` } : { kind: 'info', title: 'No failed documents to requeue' })
             invalidate('vault.', 'projects.', 'ingest.')
           }}
         />
@@ -565,14 +556,14 @@ export default function MaintenancePanel() {
           title="Lead sweep"
           text="Runs the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and facts that still need verifying. Step through them in Review."
           label="Run lead sweep"
-          onRun={() => launch(['leads'], 'Lead sweep', 'leads')}
+          onRun={() => launch('lead-sweep', {}, 'Lead sweep')}
         />
         <SimpleCard
           icon={RefreshCw}
           title="Rebuild the timeline"
           text="Regenerates timeline.md from the canonical event files. Deterministic, no model call. Useful if the note was deleted or edited by mistake: nothing is lost, because it is generated output."
           label="Rebuild timeline"
-          onRun={() => launch(['timeline'], 'Rebuild timeline', 'timeline')}
+          onRun={() => launch('rebuild-timeline', {}, 'Rebuild timeline')}
         />
         <Gated>
         <SimpleCard
@@ -581,15 +572,7 @@ export default function MaintenancePanel() {
           text="Rewrites every entity and document note from what Watchdog keeps on disk: each document's facts, the entity summaries and the record of merges and contradictions. No model call, no tokens. Use it if a note was deleted or edited by mistake. Your own Notes sections are kept as they are."
           label="Rebuild notes"
           onRun={async () => {
-            const v = useApp.getState().project?.path
-            if (!v) return
-            try {
-              const job = await call('jobs.rebuildNotes', { vault: v })
-              useApp.getState().upsertJob(job)
-              navigate({ view: 'activity', job: job.id })
-            } catch (e) {
-              toast({ kind: 'error', title: 'Could not start rebuilding notes', body: errorMessage(e) })
-            }
+            await launch('rebuild-notes', {}, 'Rebuild notes')
           }}
         />
         </Gated>
@@ -603,7 +586,7 @@ export default function MaintenancePanel() {
           title="Rebuild the search index"
           text="Rebuilds the semantic and full-text indexes from what is already on disk: no OCR, no model calls, no tokens. Run it after changing the embedding model in Settings, since vectors from two models cannot be mixed, or after merging entities."
           label="Reindex"
-          onRun={() => launch(['reindex'], 'Reindex', 'reindex')}
+          onRun={() => launch('reindex', {}, 'Reindex')}
         />
         </Gated>
         <MCard
@@ -624,8 +607,8 @@ export default function MaintenancePanel() {
           }
           label="Refresh now"
           onRun={async () => {
-            const out = await runAction(['settings', 'refresh-skills'])
-            toast({ kind: 'success', title: 'Claude setup updated', body: out.trim().split('\n').pop() || undefined })
+            await runAction('refresh-claude-setup', {})
+            toast({ kind: 'success', title: 'Claude setup updated', body: 'The shortcuts, instructions and settings match this version of Watchdog.' })
           }}
         />
       </div>

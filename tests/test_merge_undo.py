@@ -133,28 +133,27 @@ def test_every_demo_merge_is_either_undoable_or_refused_with_a_reason(vault):
     assert all(r is None or r.endswith(".") for r in reasons)
 
 
-def test_main_reports_a_refusal(vault, capsys):
-    assert merge_undo.main(["merge:nope", "--vault", str(vault)]) == 1
-    assert "not in this investigation's merge log" in capsys.readouterr().err
+def test_the_operation_reports_a_refusal(vault):
+    from watchdog import ops
+    with pytest.raises(SystemExit) as e:
+        ops.run("undo-merge", {"id": "merge:nope"}, ops.CollectingReporter(), vault)
+    assert "not in this investigation's merge log" in str(e.value.code)
 
 
 def test_the_app_starts_undo_as_a_job_and_refuses_with_the_reason(vault, monkeypatch):
     from tests.gui_support import call, call_error
     from watchdog.gui import jobs
     started = []
-    monkeypatch.setattr(jobs.MANAGER, "start", lambda v, args, label, kind, argv=None: (
-        started.append((args, argv)) or type("J", (), {"to_dict": lambda self: {"id": "j"}})()))
+    monkeypatch.setattr(jobs.MANAGER, "start", lambda v, op, params, label, kind=None: (
+        started.append((op, params)) or type("J", (), {"to_dict": lambda self: {"id": "j"}})()))
     monkeypatch.setattr("watchdog.gui.vaultio.require_granted", lambda p: None)
     log = call("review.mergeLog", vault=str(vault))
     ok = next(m for m in log["merges"] if m["undo_available"])
     refused = next(m for m in log["merges"] if not m["undo_available"])
     assert refused["undo_reason"]
     assert call("jobs.undoMerge", vault=str(vault), id=ok["id"]) == {"id": "j"}
-    assert started[0][0] == ["undo-merge", ok["id"]]
-    assert started[0][1][-2:] == ["watchdog.pipeline.merge_undo", ok["id"]]
+    assert started[0] == ("undo-merge", {"id": ok["id"]})
     assert call_error("jobs.undoMerge", vault=str(vault), id=refused["id"])["code"] == "cannot_undo"
-    call("jobs.rebuildNotes", vault=str(vault))
-    assert started[-1][0] == ["rebuild-notes"]
 
 
 def test_the_entity_page_gets_every_fact_and_the_ai_summary(vault, monkeypatch):

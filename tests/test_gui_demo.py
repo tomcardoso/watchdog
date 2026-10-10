@@ -260,7 +260,7 @@ def test_a_disputed_fact_is_shown_labelled_on_every_surface(demo_vault, tmp_path
     """D285 (the owner's call, I14): a fact the reporter marked Disputed is never hidden or
     dropped; wherever a fact is shown it carries the "disputed" label."""
     from tests.gui_support import call
-    from watchdog.cmd.export import _write_facts_csv
+    from watchdog.ops.export import _write_facts_csv
     from watchdog.cmd.vault import _page_facts
     from watchdog.pipeline import verification
     vault, _, _ = demo_vault

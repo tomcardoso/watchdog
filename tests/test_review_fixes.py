@@ -1,10 +1,11 @@
 """Fixes from the post-merge review of `add`, auto-approve and `review` (D263)."""
 
+import watchdog.cmd.ingest as cmd_ing
 import argparse
 
 import pytest
 
-import watchdog.cmd.ingest as ing
+import watchdog.ops.ingest as ing
 import watchdog.cmd.review as review
 from watchdog.pipeline import resolutions
 
@@ -42,7 +43,7 @@ def test_chew_with_auto_approve_hands_the_decision_to_cmd_ingest(vault, monkeypa
     monkeypatch.setattr(ing, "_preview_ingest", lambda *a, **k: None)
     monkeypatch.setattr(ing, "load_config", lambda: {"auto_approve": True})
     monkeypatch.setattr(ing, "_confirm_public_records", lambda *a, **k: pytest.fail("old gate used"))
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: calls.append(k))
+    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **k: calls.append(k))
     ing._offer_ingest(argparse.Namespace(command="chew"), vault)
     assert calls == [{"confirm": True, "skip_preview": True}]
 
@@ -85,11 +86,11 @@ def test_add_estimate_changes_nothing(vault, tmp_path, monkeypatch, capsys):
     calls = []
     monkeypatch.setattr(ing, "_run_preprocess", lambda *a, **k: calls.append("chew"))
     monkeypatch.setattr(ing, "_requeue_failed", lambda *a, **k: calls.append("retry"))
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: calls.append("estimate"))
+    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **k: calls.append("estimate"))
     doc = tmp_path / "a.pdf"
     doc.write_bytes(b"%PDF")
     (vault / "incoming" / "waiting.pdf").write_bytes(b"x")
-    ing.cmd_add(argparse.Namespace(paths=[str(doc)], retry=True, estimate=True))
+    cmd_ing.cmd_add(argparse.Namespace(paths=[str(doc)], retry=True, estimate=True))
     assert calls == ["estimate"]
     assert not (vault / "incoming" / "a.pdf").exists()
     assert "covers the current queue only" in capsys.readouterr().out

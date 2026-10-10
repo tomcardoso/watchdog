@@ -36,8 +36,10 @@ Deliberately NOT guarded here, and why:
   terminal" half is not guarded here: that would need a pseudo-terminal at import time. The
   `--json` output tests in `tests/test_cli.py` cover the payloads, without a terminal.
 - **I10** is guarded statically: no module of the desktop app's backend calls a pipeline entry
-  point that writes a vault. Its other half — the app keeps the CLI's gates — lives in the app's
-  own code (gui/) and its end-to-end test, not here.
+  point that writes a vault; those run only inside operations, in the worker. That the app builds
+  no command line is `tests/test_worker.py::test_no_app_path_builds_a_watchdog_command_line`. Its
+  other half — the app keeps the gates — lives in the app's own code (gui/) and its end-to-end
+  test, not here.
 
 I2's runtime guard was confirmed to run hermetically (the direct-text preprocessing path does
 not import Docling), so both the static and runtime layers described in the issue are present.
@@ -393,13 +395,14 @@ def test_I9_the_colour_constants_follow_the_gate_at_import():
     assert "\\x1b[0m" in out
 
 
-# ── I10 — the desktop app adds no pipeline behaviour ─────────────────────────
+# ── I10 — the app's mutations go through library operations ───────────────────
 
 def test_I10_the_app_backend_never_calls_a_vault_writing_entry_point():
-    """The app changes a vault only by running the CLI command (`watchdog.gui.jobs`) or through
-    the library functions the CLI itself calls. Calling the pipeline's writers directly would let
-    the app behave differently from the terminal. `demo*.py` is exempt: it builds the fictional
-    demo investigation by running the real pipeline, which is the point of it."""
+    """The app changes a vault by running an operation in the worker (`watchdog.gui.jobs`, D298)
+    or through a small library write in-process. Calling the pipeline's writers from the backend
+    itself would skip the worker's isolation and the operation's own locks and gates. `demo*.py`
+    is exempt: it builds the fictional demo investigation by running the real pipeline, which is
+    the point of it."""
     import re
     from pathlib import Path
     import watchdog.gui as gui

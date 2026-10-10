@@ -558,28 +558,3 @@ def fact_entities(vault: Path, sha: str, fact: dict) -> set[str]:
     index = entity_facts.FactIndex(vault, marks={})
     return {r for t in fact.get("entities") or [] if isinstance(t, str)
             for r in [index.resolve(sha, t)] if r}
-
-
-def main(argv: list[str] | None = None) -> int:
-    """`python -m watchdog.pipeline.entity_notes [--vault DIR]`: rebuild every entity and document
-    note of the vault (default: the current folder) from stored data, with no model call. The app
-    runs this as the Maintenance job "Rebuild notes"."""
-    import argparse
-    from watchdog.vault_paths import is_vault
-    parser = argparse.ArgumentParser(description="Rebuild every entity and document note from stored data.")
-    parser.add_argument("--vault", default=".")
-    args = parser.parse_args(argv)
-    vault = Path(args.vault).resolve()
-    if not is_vault(vault):
-        print(f"Error: {vault} is not a Watchdog investigation.", file=sys.stderr)
-        return 1
-    from watchdog import progress
-    progress.emit("stage", stage="rebuild-notes", done=None, total=None)
-    out = rebuild(vault)
-    print(f"Rebuilt {out['entities']} entity notes and {out['documents']} document notes "
-          "from the stored facts. No AI model was used.")
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -1,4 +1,4 @@
-// Add documents: `watchdog add`, the core workflow, as four steps. Choose → Read (local, no model)
+// Add documents: the `add` operation, the core workflow, as four steps. Choose → Read (local, no model)
 // → Public-records gate → Run. Nothing is sent to a model before the gate has been acknowledged
 // (or auto-approve, which the CLI itself honours, applies).
 
@@ -8,7 +8,7 @@ import {
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Badge, Button, Callout, Empty, Field, Modal, Progress, Skeleton, Spinner, Switch } from '@renderer/components/ui'
 import { basename, fmtCost, plural } from '@renderer/lib/format'
-import { flagsFor, startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
+import { startJob, stopJob, waitForJob } from '@renderer/lib/jobs'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { BillingNote, billingBlocked } from '@renderer/components/BillingNote'
@@ -116,7 +116,6 @@ export function AddDialog() {
   // Whatever is already waiting in the investigation.
   const { data: pf0, isLoading: pfLoading, error: pfError } = useRpc('ingest.preflight', visible && phase === 'choose' ? { vault, options: cleanOptions(options) } : null, { staleTime: 0 })
 
-  const gatherFlags = async (cmd: 'add' | 'chew', o: RunOptions) => flagsFor(cmd, cleanOptions(o))
 
   // ── Step 2 → 3: read locally, then gate ────────────────────────────────────
   const begin = async () => {
@@ -129,12 +128,7 @@ export function AddDialog() {
     setPhase('reading')
     const needIncoming = (pf0?.incoming ?? 0) > 0
     try {
-      let chewFlags: string[] = []
-      try {
-        chewFlags = await gatherFlags('chew', { chew_workers: options.chew_workers, chunk_workers: options.chunk_workers })
-      } catch {
-        /* defaults */
-      }
+      const chewOptions = { chew_workers: options.chew_workers, chunk_workers: options.chunk_workers }
       const issues: string[] = []
       const dirs: string[] = []
       const work: (string | null)[] = [...paths, ...(needIncoming ? [null] : [])]
@@ -142,7 +136,7 @@ export function AddDialog() {
         const p = work[i]
         const label = p ? `Reading ${basename(p)}` : 'Reading documents'
         setReadState({ i, n: work.length, job: null, label })
-        const j = await startJob(p ? ['chew', p, ...chewFlags] : ['chew', ...chewFlags], label, 'chew', vault)
+        const j = await startJob('chew', { ...chewOptions, paths: p ? [p] : undefined }, label, 'chew', vault)
         setReadState({ i, n: work.length, job: j.id, label })
         const fin = await waitForJob(j.id)
         if (fin.state === 'cancelled') {
@@ -191,10 +185,9 @@ export function AddDialog() {
       const { chew_workers: _a, chunk_workers: _b, ...addOpts } = options
       void _a
       void _b
-      const flags = await gatherFlags('add', addOpts)
       const n = countFor(pf, retry, dirs.length)
       const label = n > 0 ? `Adding ${plural(n, 'document')}` : 'Finishing the batch'
-      const j = await startJob(['add', '--skip-warning', ...flags, ...(retry ? ['--retry'] : []), ...dirs], label, 'add', flowVault.current)
+      const j = await startJob('add', { ...cleanOptions(addOpts), skip_warning: true, retry: retry || undefined, paths: dirs.length ? dirs : undefined }, label, 'add', flowVault.current)
       setAddJob(j.id)
       setPhase('running')
     } catch (e) {

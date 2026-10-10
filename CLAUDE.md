@@ -169,13 +169,13 @@ See the `authoring-record-skills` skill (`.claude/skills/authoring-record-skills
 
 ## Ingest workflow
 
-Ingest runs in Python with no Claude Code session involved. Users start it from the desktop app (Add documents), which runs the same `watchdog add` command as a subprocess (D265, I10); the command line itself is being retired from users' view (D267). The Python orchestrator (`pipeline/orchestrate.py`) drives extraction, synthesis, and the briefing via direct model calls (the orchestrator replaced the old `/watchdog-ingest` skill).
+Ingest runs in Python with no Claude Code session involved. Users start it from the desktop app (Add documents), which runs the `add` operation (`watchdog/ops/ingest.py`) in a worker process, `python -m watchdog.worker` (D298, I10); every other change the app makes is an operation run the same way. The command line is being removed (#729): its commands are thin wrappers over the same operations until then (D267). The Python orchestrator (`pipeline/orchestrate.py`) drives extraction, synthesis, and the briefing via direct model calls (the orchestrator replaced the old `/watchdog-ingest` skill).
 
 **Intended workflow:**
 
-1. `watchdog add [files…]` — chew (OCR/Docling, local, no API tokens), then extraction,
-   synthesis and the briefing, in one terminal run (D251). `watchdog chew`, `dig` and `bark` run
-   the same three steps one at a time. `watchdog ingest` still works but is deprecated
+1. The `add` operation (Add documents in the app; `watchdog add [files…]` at a terminal) — chew
+   (OCR/Docling, local, no API tokens), then extraction, synthesis and the briefing, in one run
+   (D251). The `chew`, `dig` and `bark` operations run the same three steps one at a time. `watchdog ingest` still works but is deprecated
    (#441/D138); don't recommend it in new code or docs.
 2. `watchdog ask ["question"]` (D253) opens a Claude Code session in the vault → ask investigation questions; the session starts with a primer Watchdog builds from the vault's records (`watchdog session-primer`, D285) and reads `briefings/` and the registry fresh, with no ingest-time context baggage
 

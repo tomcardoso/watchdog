@@ -387,7 +387,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
   const sweep = async () => {
     setSweeping(true)
     try {
-      await startJob(['leads'], 'Full lead sweep')
+      await startJob('lead-sweep', {}, 'Full lead sweep')
       toast({ kind: 'info', title: 'Lead sweep started', body: 'It reads every entity note again. Follow it in Activity.' })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the sweep', body: errorMessage(e) })
@@ -801,7 +801,7 @@ function WatchlistTab({ vault }: { vault: string }) {
   const sweep = async () => {
     setRunning(true)
     try {
-      await startJob(['review', 'watchlist'], 'Check every document against the watch list')
+      await startJob('watchlist-check', {}, 'Check every document against the watch list')
       toast({ kind: 'info', title: 'Checking every document', body: 'Matches appear under Alerts when it finishes. Follow progress in Activity.' })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the check', body: errorMessage(e) })

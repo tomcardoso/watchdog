@@ -14,6 +14,7 @@ The remaining tests are narrower unit tests: each of the three extraction-time s
 `ingest`'s extraction and its finalize.
 """
 
+import watchdog.cmd.ingest as cmd_ing
 import argparse
 import asyncio
 import json
@@ -282,7 +283,7 @@ def test_cmd_ingest_force_threads_to_orchestrate_run(wdg_home, tmp_path, monkeyp
     held off until the overwrite gate runs — as `skip_finalize=True` too, even though plain
     `ingest` has no `--no-finalize` flag of its own."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -301,7 +302,7 @@ def test_cmd_ingest_force_threads_to_orchestrate_run(wdg_home, tmp_path, monkeyp
     # Nothing in documents.json — no overwrite target, so the gate finalizes with no confirm.
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: {"synthesized": 0})
 
-    ing.cmd_ingest(_args(force=True), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=True), confirm=False)
 
     assert len(calls) == 1
     assert calls[0].get("force") is True
@@ -312,7 +313,7 @@ def test_cmd_extract_force_no_gate_no_finalize(wdg_home, tmp_path, monkeypatch):
     """`extract --force` re-extracts with `force=True`/`skip_finalize=True` like `ingest --force`,
     but — because `cmd_extract` sets `no_finalize` — never runs the overwrite gate or finalize."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -334,7 +335,7 @@ def test_cmd_extract_force_no_gate_no_finalize(wdg_home, tmp_path, monkeypatch):
     monkeypatch.setattr(ing, "_run_finalize",
                         lambda *a, **k: pytest.fail("extract --force must never finalize"))
 
-    ing.cmd_extract(_args(force=True))
+    cmd_ing.cmd_extract(_args(force=True))
 
     assert len(calls) == 1
     assert calls[0].get("force") is True
@@ -350,7 +351,7 @@ def test_cmd_extract_defaults_extractor_effort_to_medium_when_unconfigured(wdg_h
     that's actually load-bearing, since `cmd/setup.py`'s documented default alone never reaches
     this code path for a user who never ran `watchdog configure`."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -368,7 +369,7 @@ def test_cmd_extract_defaults_extractor_effort_to_medium_when_unconfigured(wdg_h
     monkeypatch.setattr(orch_module, "run", fake_run)
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)   # "Ingest now"
 
-    ing.cmd_extract(_args())
+    cmd_ing.cmd_extract(_args())
 
     assert len(calls) == 1
     assert calls[0].get("extract_effort") == "medium"
@@ -379,7 +380,7 @@ def test_cmd_extract_classifier_effort_is_low_on_the_default_haiku_classifier(wd
     install now that the default `haiku` is Haiku 5.5, which accepts effort (D277). Haiku 4.5
     rejected the parameter, so the effortless-model gate (#518) used to drop it here."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -397,7 +398,7 @@ def test_cmd_extract_classifier_effort_is_low_on_the_default_haiku_classifier(wd
     monkeypatch.setattr(orch_module, "run", fake_run)
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)   # "Ingest now"
 
-    ing.cmd_extract(_args())
+    cmd_ing.cmd_extract(_args())
 
     assert len(calls) == 1
     assert calls[0].get("classify_effort") == "low"
@@ -410,7 +411,7 @@ def test_cmd_extract_classifier_effort_defaults_to_low_when_classifier_routed_to
     openai:gpt-5.6-luna (see docs/benchmarks.md), which a user can switch to via
     `classifier_model` without needing to also set `classifier_effort` by hand."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -428,7 +429,7 @@ def test_cmd_extract_classifier_effort_defaults_to_low_when_classifier_routed_to
     monkeypatch.setattr(orch_module, "run", fake_run)
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)   # "Ingest now"
 
-    ing.cmd_extract(_args(classifier_model="openai:gpt-5.6-luna"))
+    cmd_ing.cmd_extract(_args(classifier_model="openai:gpt-5.6-luna"))
 
     assert len(calls) == 1
     assert calls[0].get("classify_effort") == "low"
@@ -448,7 +449,7 @@ def _committed_vault_with_forced_doc(tmp_path):
 def test_cmd_ingest_force_gate_defaults_to_cancel_and_leaves_batch_finalizable(
         wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _committed_vault_with_forced_doc(tmp_path)
@@ -472,7 +473,7 @@ def test_cmd_ingest_force_gate_defaults_to_cancel_and_leaves_batch_finalizable(
     finalize_calls = []
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: finalize_calls.append(k) or {})
 
-    ing.cmd_ingest(_args(force=True), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=True), confirm=False)
 
     assert confirm_calls == [False]           # gate defaults to Cancel
     assert finalize_calls == []                # cancel must not finalize
@@ -484,7 +485,7 @@ def test_cmd_ingest_force_gate_defaults_to_cancel_and_leaves_batch_finalizable(
 def test_cmd_ingest_force_gate_confirms_and_finalizes_with_force_shas(
         wdg_home, tmp_path, monkeypatch):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _committed_vault_with_forced_doc(tmp_path)
@@ -507,7 +508,7 @@ def test_cmd_ingest_force_gate_confirms_and_finalizes_with_force_shas(
         return {"synthesized": 1}
     monkeypatch.setattr(ing, "_run_finalize", fake_run_finalize)
 
-    ing.cmd_ingest(_args(force=True), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=True), confirm=False)
 
     assert finalize_calls == [[SHA]]
 
@@ -516,13 +517,12 @@ def test_estimate_force_prices_the_queued_document(wdg_home, tmp_path, monkeypat
     """`--estimate --force` must price a document the same as any other queued one — the queue
     scan has no notion of a cached artifact to discount (#424)."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
 
     vault = _committed_vault_with_forced_doc(tmp_path)   # SHA is already committed
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
-    ing.cmd_ingest(_args(estimate=True, force=True), confirm=False)
+    cmd_ing.cmd_ingest(_args(estimate=True, force=True), confirm=False)
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "1 document" in out   # priced, not silently excluded as already-committed
@@ -537,7 +537,7 @@ def test_estimate_force_prices_the_queued_document(wdg_home, tmp_path, monkeypat
 # `_requeue_forced_selectors` re-chews — not a staging path.
 
 def test_resolve_force_selectors_matches_sha_prefix_filename_and_note(tmp_path):
-    from watchdog.cmd.ingest import _resolve_force_selectors
+    from watchdog.ops.ingest import _resolve_force_selectors
 
     vault = make_vault(tmp_path)
     (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
@@ -555,7 +555,7 @@ def test_resolve_force_selectors_matches_sha_prefix_filename_and_note(tmp_path):
 
 
 def test_resolve_force_selectors_errors_on_no_match(tmp_path):
-    from watchdog.cmd.ingest import _resolve_force_selectors
+    from watchdog.ops.ingest import _resolve_force_selectors
 
     vault = make_vault(tmp_path)
     (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
@@ -567,7 +567,7 @@ def test_resolve_force_selectors_errors_on_no_match(tmp_path):
 
 
 def test_resolve_force_selectors_errors_on_ambiguous_prefix(tmp_path):
-    from watchdog.cmd.ingest import _resolve_force_selectors
+    from watchdog.ops.ingest import _resolve_force_selectors
 
     vault = make_vault(tmp_path)
     (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
@@ -603,7 +603,7 @@ def test_requeue_forced_selectors_rechews_morgue_original_bypassing_dedup(tmp_pa
     never recognize this file as "already ingested" in the first place, since the fixture's
     `SHA = 'a' * 64` isn't the genuine hash of its placeholder content. Patching this is what makes
     the bypass itself, not a fixture coincidence, the reason the file survives filtering."""
-    from watchdog.cmd.ingest import _requeue_forced_selectors
+    from watchdog.ops.ingest import _requeue_forced_selectors
     from watchdog.pipeline import preprocess_batch as ppb
 
     vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
@@ -633,7 +633,7 @@ def test_requeue_forced_selectors_rechews_morgue_original_bypassing_dedup(tmp_pa
 
 
 def test_requeue_forced_selectors_errors_on_missing_morgue_file(tmp_path):
-    from watchdog.cmd.ingest import _requeue_forced_selectors
+    from watchdog.ops.ingest import _requeue_forced_selectors
 
     vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
     morgue_file.unlink()   # the recorded original is gone from disk
@@ -645,7 +645,7 @@ def test_requeue_forced_selectors_errors_on_missing_morgue_file(tmp_path):
 def test_requeue_forced_selectors_skips_already_queued_sha(tmp_path, monkeypatch):
     """A sha whose queue entry already exists (an earlier `--force` run staged it and it was
     never finalized) is left alone — no second OCR pass."""
-    from watchdog.cmd.ingest import _requeue_forced_selectors
+    from watchdog.ops.ingest import _requeue_forced_selectors
     from watchdog.pipeline import preprocess_batch as ppb
 
     vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
@@ -669,7 +669,7 @@ def test_ingest_force_sha_selector_end_to_end_replaces_note(wdg_home, tmp_path, 
     mocked extraction, fires the overwrite gate, confirms, and finalizes — REPLACING the
     committed note/registry entry in place. No live model calls (extraction is mocked)."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import preprocess_batch as ppb
 
     vault = make_vault(tmp_path)
@@ -703,7 +703,7 @@ def test_ingest_force_sha_selector_end_to_end_replaces_note(wdg_home, tmp_path, 
         fact_text="Acme restated 2024 disclosing $9,000,000.",
         entity_summary="A company that restated its annual report."))
 
-    ing.cmd_ingest(_args(force=[SHA[:16]]), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=[SHA[:16]]), confirm=False)
 
     docs_after = json.loads(documents_path.read_text())
     entities_after = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
@@ -723,7 +723,7 @@ def test_ingest_force_filename_selector_requeues_before_extraction(wdg_home, tmp
     sha, proving the filename-selector path (not just sha) drives the re-queue-from-morgue flow —
     checked here by asserting the queue entry exists *before* `orchestrate.run` is even called."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module, preprocess_batch as ppb
 
     vault, _ = _committed_vault_with_morgue_original(tmp_path)
@@ -747,7 +747,7 @@ def test_ingest_force_filename_selector_requeues_before_extraction(wdg_home, tmp
     monkeypatch.setattr(orch_module, "run", fake_run)
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: {})
 
-    ing.cmd_ingest(_args(force=["alpha.pdf"]), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=["alpha.pdf"]), confirm=False)
 
     assert queue_path.exists()
 
@@ -756,7 +756,7 @@ def test_bare_ingest_force_never_requeues(wdg_home, tmp_path, monkeypatch):
     """Bare `ingest --force` (no selectors) must behave byte-identically to before this change —
     in particular, it must never touch `_requeue_forced_selectors`/chew at all."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -775,8 +775,8 @@ def test_bare_ingest_force_never_requeues(wdg_home, tmp_path, monkeypatch):
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: {})
 
     # Both the real argparse "bare --force" value ([]) and store_true's True must behave alike.
-    ing.cmd_ingest(_args(force=[]), confirm=False)
-    ing.cmd_ingest(_args(force=True), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=[]), confirm=False)
+    cmd_ing.cmd_ingest(_args(force=True), confirm=False)
 
 
 def test_ingest_force_selector_estimate_is_read_only(wdg_home, tmp_path, monkeypatch, capsys):
@@ -784,7 +784,7 @@ def test_ingest_force_selector_estimate_is_read_only(wdg_home, tmp_path, monkeyp
     <document> --estimate` must not re-queue the named document (no queue entry, no morgue
     original moved), and must say so rather than silently ignoring the selector."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import preprocess_batch as ppb
 
     vault, morgue_file = _committed_vault_with_morgue_original(tmp_path)
@@ -796,7 +796,7 @@ def test_ingest_force_selector_estimate_is_read_only(wdg_home, tmp_path, monkeyp
     monkeypatch.setattr(ing, "_requeue_forced_selectors", _boom)
     monkeypatch.setattr(ppb, "run_ingest", _boom)   # belt-and-suspenders: no chew side effect at all
 
-    ing.cmd_ingest(_args(estimate=True, force=[SHA]), confirm=False)
+    cmd_ing.cmd_ingest(_args(estimate=True, force=[SHA]), confirm=False)
 
     queue_file = vault / ".watchdog" / "queue" / f"{SHA}.json"
     assert not queue_file.exists()      # not re-queued

@@ -1,3 +1,5 @@
+import watchdog.ops.projects as _ops_projects
+import watchdog.cmd.ingest as cmd_ing
 import argparse
 import contextlib
 import json
@@ -2419,35 +2421,35 @@ def _vault_with_queue(configured):
 
 
 def test_offer_ingest_yes_runs_ingest_without_reconfirming(configured, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _vault_with_queue(configured)
     monkeypatch.setattr("builtins.input", lambda *a: "1")   # pick(): "Ingest now"
     seen = {}
-    monkeypatch.setattr(ing, "cmd_ingest",
-                        lambda a, *, confirm=True, skip_preview=False: seen.update(
+    monkeypatch.setattr(ing, "_ingest",
+                        lambda a, _v, *, confirm=True, skip_preview=False: seen.update(
                             confirm=confirm, skip_preview=skip_preview))
     ing._offer_ingest(args(), vault)
     assert seen == {"confirm": False, "skip_preview": True}   # chew's prompt is the only confirmation
 
 
 def test_offer_ingest_no_prints_hint_and_skips(configured, monkeypatch, capsys):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _vault_with_queue(configured)
     monkeypatch.setattr("builtins.input", lambda *a: "2")   # pick(): "Not now"
     def _boom(*a, **k):
         raise AssertionError("ingest must not run when declined")
-    monkeypatch.setattr(ing, "cmd_ingest", _boom)
+    monkeypatch.setattr(ing, "_ingest", _boom)
     ing._offer_ingest(args(), vault)
     assert "watchdog" in capsys.readouterr().out
 
 
 def test_offer_ingest_eof_prints_hint(configured, monkeypatch, capsys):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _vault_with_queue(configured)
     def _eof(*a):
         raise EOFError
     monkeypatch.setattr("builtins.input", _eof)
-    monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
+    monkeypatch.setattr(ing, "_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
     ing._offer_ingest(args(), vault)
     assert "watchdog" in capsys.readouterr().out
 
@@ -2456,10 +2458,10 @@ def test_offer_ingest_no_hints_dig_from_chew_context(configured, monkeypatch, ca
     """When `_offer_ingest` is reached from `watchdog chew` (manual control), the decline hint
     must point at `watchdog dig`, not the retired `watchdog ingest` or the guided bare walk
     (#441, D138)."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _vault_with_queue(configured)
     monkeypatch.setattr("builtins.input", lambda *a: "2")   # pick(): "Not now"
-    monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
+    monkeypatch.setattr(ing, "_ingest", lambda *a, **k: (_ for _ in ()).throw(AssertionError("no ingest")))
     ing._offer_ingest(args(command="chew"), vault)
     assert "watchdog dig" in capsys.readouterr().out
 
@@ -2467,10 +2469,10 @@ def test_offer_ingest_no_hints_dig_from_chew_context(configured, monkeypatch, ca
 def test_offer_ingest_shows_public_records_warning(configured, monkeypatch, capsys):
     """The guided (post-chew) offer must show the same warning as the direct path (#426) —
     it's the acknowledgement itself now, not a second confirmation stacked on top of it."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _vault_with_queue(configured)
     monkeypatch.setattr("builtins.input", lambda *a: "1")   # numbered fallback: Acknowledge
-    monkeypatch.setattr(ing, "cmd_ingest", lambda *a, **k: None)
+    monkeypatch.setattr(ing, "_ingest", lambda *a, **k: None)
     ing._offer_ingest(args(), vault)
     out = _strip_ansi(capsys.readouterr().out)
     assert "Public records only" in out
@@ -2482,14 +2484,14 @@ def test_offer_ingest_shows_public_records_warning(configured, monkeypatch, caps
 def test_confirm_public_records_zero_docs_is_noop(monkeypatch):
     """Nothing new is being sent this call (e.g. only checking a pending claude-batch
     extraction) — no warning, no prompt."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     monkeypatch.setattr(ing.interactive, "pick",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no pick when nothing is sent")))
     assert ing._confirm_public_records(0) is True
 
 
 def test_confirm_public_records_skip_warning_prints_notice_no_pick(monkeypatch, capsys):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     monkeypatch.setattr(ing.interactive, "pick",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("--skip-warning must not prompt")))
     assert ing._confirm_public_records(3, skip_warning=True) is True
@@ -2498,7 +2500,7 @@ def test_confirm_public_records_skip_warning_prints_notice_no_pick(monkeypatch, 
 
 
 def test_confirm_public_records_acknowledge_is_the_default(monkeypatch, capsys):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     monkeypatch.setattr("builtins.input", lambda *a: "1")   # numbered fallback: row 1 = Acknowledge (the default row)
     assert ing._confirm_public_records(6) is True
     out = _strip_ansi(capsys.readouterr().out)
@@ -2507,7 +2509,7 @@ def test_confirm_public_records_acknowledge_is_the_default(monkeypatch, capsys):
 
 
 def test_confirm_public_records_cancel(monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     monkeypatch.setattr("builtins.input", lambda *a: "2")   # numbered fallback: Cancel
     assert ing._confirm_public_records(1) is False
 
@@ -2516,7 +2518,7 @@ def test_confirm_public_records_no_double_blank_line_before_menu(monkeypatch, ca
     """The warning's own trailing newline plus `print()`'s and `pick()`'s own leading blank line
     used to stack into two blank lines before the menu — the same anti-pattern #395 fixed
     elsewhere in the picker (#456 follow-up)."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     monkeypatch.setattr("builtins.input", lambda *a: "1")
     ing._confirm_public_records(1)
     out = capsys.readouterr().out
@@ -2528,7 +2530,7 @@ def test_confirm_public_records_no_double_blank_line_before_menu(monkeypatch, ca
 
 def test_cmd_ingest_confirm_cancel_never_calls_model(wdg_home, tmp_path, monkeypatch):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
@@ -2540,12 +2542,12 @@ def test_cmd_ingest_confirm_cancel_never_calls_model(wdg_home, tmp_path, monkeyp
         raise AssertionError("model must not be called after Cancel")
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_ingest(args())   # confirm defaults True
+    cmd_ing.cmd_ingest(args())   # confirm defaults True
 
 
 def test_cmd_ingest_confirm_acknowledge_calls_model(wdg_home, tmp_path, monkeypatch):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
@@ -2562,13 +2564,13 @@ def test_cmd_ingest_confirm_acknowledge_calls_model(wdg_home, tmp_path, monkeypa
                 "quarantined": 0}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_ingest(args())
+    cmd_ing.cmd_ingest(args())
     assert len(calls) == 1
 
 
 def test_cmd_ingest_skip_warning_bypasses_pick_but_still_notifies(wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
@@ -2586,7 +2588,7 @@ def test_cmd_ingest_skip_warning_bypasses_pick_but_still_notifies(wdg_home, tmp_
                 "quarantined": 0}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_ingest(args(skip_warning=True))
+    cmd_ing.cmd_ingest(args(skip_warning=True))
     assert len(calls) == 1
     out = _strip_ansi(capsys.readouterr().out)
     assert "cloud AI model" in out
@@ -2637,48 +2639,48 @@ def test_classifier_model_is_a_configurable_key():
 # ── _resolve_stage: [backend:]model parsing (#125) ─────────────────────────────
 
 def test_resolve_stage_claude_tier_has_no_backend():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     assert _resolve_stage(None, None, default="sonnet") == (None, "sonnet")
     assert _resolve_stage("opus", None) == (None, "opus")
     assert _resolve_stage(None, "haiku") == (None, "haiku")        # from config
 
 
 def test_resolve_stage_explicit_claude_backend():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     assert _resolve_stage("claude-api:opus", None) == ("claude-api", "opus")
 
 
 def test_resolve_stage_claude_batch_backend():
     """claude-batch (#214) parses as a Claude-tier backend, same as claude-api/claude-agent-sdk."""
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     assert _resolve_stage("claude-batch:sonnet", None) == ("claude-batch", "sonnet")
 
 
 def test_resolve_stage_non_claude_backend_keeps_raw_model():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     assert _resolve_stage("deepseek:deepseek-flash", None) == ("deepseek", "deepseek-flash")
     assert _resolve_stage("openai:gpt-5-mini", None) == ("openai", "gpt-5-mini")
 
 
 def test_resolve_stage_flag_beats_config():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     assert _resolve_stage("openai:gpt-5-mini", "sonnet") == ("openai", "gpt-5-mini")
 
 
 def test_resolve_stage_unknown_backend_exits():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     with pytest.raises(SystemExit, match="unknown backend"):
         _resolve_stage("groq:llama", None)
 
 
 def test_resolve_stage_non_claude_requires_model():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     with pytest.raises(SystemExit, match="needs a model id"):
         _resolve_stage("deepseek:", None)
 
 
 def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     # No backend prefix → interpreted as a Claude tier → invalid (use openai:gpt-5-mini instead).
     with pytest.raises(SystemExit, match="unknown model"):
         _resolve_stage("gpt-5-mini", None)
@@ -2687,7 +2689,7 @@ def test_resolve_stage_bare_non_tier_is_treated_as_claude_and_rejected():
 # ── _effort: flag > config > model-aware default (#518, D158) ──────────────────
 
 def test_effort_flag_beats_config():
-    from watchdog.cmd.ingest import _effort
+    from watchdog.ops.ingest import _effort
     assert _effort("low", "high") == "low"
 
 
@@ -2695,18 +2697,18 @@ def test_effort_explicit_choice_passes_through_even_if_model_unknown():
     """An explicit --extractor-effort/config choice is the user's own call — it's returned as-is
     regardless of backend/model, and model_client._resolve_effort is what fails loud downstream
     if the resolved model can't actually take it (unlike the model-aware `default` below)."""
-    from watchdog.cmd.ingest import _effort
+    from watchdog.ops.ingest import _effort
     assert _effort(None, "xhigh", backend=None, model="haiku") == "xhigh"
 
 
 def test_effort_unknown_value_exits():
-    from watchdog.cmd.ingest import _effort
+    from watchdog.ops.ingest import _effort
     with pytest.raises(SystemExit, match="unknown effort"):
         _effort("ludicrous", None)
 
 
 def test_effort_default_applied_when_model_supports_it():
-    from watchdog.cmd.ingest import _effort
+    from watchdog.ops.ingest import _effort
     assert _effort(None, None, default="medium", backend=None, model="sonnet") == "medium"
 
 
@@ -2714,12 +2716,12 @@ def test_effort_default_skipped_when_model_does_not_support_it():
     """Regression guard (#518): routing `extractor_model` to Haiku must not turn the implicit
     `extractor_effort=medium` default (D26) into a hard failure for a stage nobody configured —
     only an *explicit* effort choice should ever hit model_client's loud-fail path."""
-    from watchdog.cmd.ingest import _effort
+    from watchdog.ops.ingest import _effort
     assert _effort(None, None, default="medium", backend=None, model="haiku-4.5") is None
 
 
 def test_effort_no_default_stays_unset():
-    from watchdog.cmd.ingest import _effort
+    from watchdog.ops.ingest import _effort
     assert _effort(None, None, backend=None, model="haiku") is None
 
 
@@ -2728,7 +2730,7 @@ def test_effort_no_default_stays_unset():
 def test_resolve_finalizer_overrides_falls_back_to_finalizer_model_when_unset():
     """No per-stage flags/config: every stage resolves to exactly the aggregate finalizer's
     own (backend, model), not a hardcoded default."""
-    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    from watchdog.ops.ingest import _resolve_finalizer_overrides
     overrides = _resolve_finalizer_overrides(args(), {}, "openai", "gpt-5-mini")
     assert overrides == {
         "reconciliation_backend": "openai", "reconciliation_model": "gpt-5-mini",
@@ -2741,7 +2743,7 @@ def test_resolve_finalizer_overrides_falls_back_to_finalizer_model_when_unset():
 def test_resolve_finalizer_overrides_flag_overrides_one_stage():
     """A single `--finalizer-<stage>-model` flag overrides only that stage; the others still
     fall back to the aggregate finalizer."""
-    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    from watchdog.ops.ingest import _resolve_finalizer_overrides
     overrides = _resolve_finalizer_overrides(
         args(finalizer_briefing_model="claude-api:opus"), {}, None, "haiku")
     assert overrides["briefing_backend"] == "claude-api"
@@ -2757,7 +2759,7 @@ def test_resolve_finalizer_overrides_flag_overrides_one_stage():
 def test_resolve_finalizer_overrides_config_key_and_flag_precedence():
     """A config-file `finalizer_<stage>_model` sets the stage's default; a flag for the same
     stage still wins, matching `_resolve_stage`'s own flag-beats-config rule."""
-    from watchdog.cmd.ingest import _resolve_finalizer_overrides
+    from watchdog.ops.ingest import _resolve_finalizer_overrides
     config = {"finalizer_synthesis_model": "gemini:gemini-2.5-flash"}
     overrides = _resolve_finalizer_overrides(args(), config, None, "haiku")
     assert overrides["synthesis_backend"] == "gemini"
@@ -2815,7 +2817,7 @@ def test_cmd_ingest_still_requires_claude_auth_when_a_stage_uses_claude(wdg_home
 
 def test_cmd_finalize_does_not_require_claude_auth_when_finalizer_non_claude(wdg_home, tmp_path, monkeypatch):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
@@ -2830,14 +2832,14 @@ def test_cmd_finalize_does_not_require_claude_auth_when_finalizer_non_claude(wdg
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
 
     with pytest.raises(_Stop):
-        ing.cmd_finalize(args())
+        cmd_ing.cmd_finalize(args())
 
 
 def test_cmd_finalize_threads_skip_briefing_to_run_finalize(wdg_home, tmp_path, monkeypatch):
     """`watchdog finalize --skip-briefing` (#410) reaches `_run_finalize` as `skip_briefing=True`,
     same as `ingest`'s own plumbing."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
@@ -2848,7 +2850,7 @@ def test_cmd_finalize_threads_skip_briefing_to_run_finalize(wdg_home, tmp_path, 
     monkeypatch.setattr(ing, "_run_finalize",
                         lambda *a, **k: (calls.append(k), {"synthesized": 0})[1])
 
-    ing.cmd_finalize(args(skip_briefing=True))
+    cmd_ing.cmd_finalize(args(skip_briefing=True))
 
     assert len(calls) == 1
     assert calls[0].get("skip_briefing") is True
@@ -2981,7 +2983,7 @@ def test_cmd_ingest_wait_rejects_openai_batch(wdg_home, tmp_path, monkeypatch):
 # ── cmd_ingest --wait (#271) ────────────────────────────────────────────────
 
 def test_wait_seconds_uses_resets_at_plus_buffer(monkeypatch):
-    from watchdog.cmd.ingest import _wait_seconds, _WAIT_BUFFER_SECONDS
+    from watchdog.ops.ingest import _wait_seconds, _WAIT_BUFFER_SECONDS
     now = 1_000_000
     monkeypatch.setattr("time.time", lambda: now)
     seconds, exact = _wait_seconds(now + 100)
@@ -2990,7 +2992,7 @@ def test_wait_seconds_uses_resets_at_plus_buffer(monkeypatch):
 
 
 def test_wait_seconds_falls_back_when_resets_at_missing():
-    from watchdog.cmd.ingest import _wait_seconds, _WAIT_FALLBACK_SECONDS
+    from watchdog.ops.ingest import _wait_seconds, _WAIT_FALLBACK_SECONDS
     seconds, exact = _wait_seconds(None)
     assert exact is False
     assert seconds == _WAIT_FALLBACK_SECONDS
@@ -2999,7 +3001,7 @@ def test_wait_seconds_falls_back_when_resets_at_missing():
 def test_wait_for_rate_limit_refreshes_lock_in_chunks(tmp_path, monkeypatch):
     """A wait longer than one refresh chunk sleeps in pieces, refreshing the held lock after
     each — so a wait that outlasts the 30-min staleness window never looks abandoned."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import locks
 
     lock_file = tmp_path / ".processing-lock"
@@ -3019,7 +3021,7 @@ def test_wait_for_rate_limit_refreshes_lock_in_chunks(tmp_path, monkeypatch):
 
 
 def test_merge_summary_accumulates_across_cycles():
-    from watchdog.cmd.ingest import _merge_summary
+    from watchdog.ops.ingest import _merge_summary
     first = {"results": [{"sha256": "a", "status": "cancelled"}, {"sha256": "b", "status": "ok"}],
              "extracted": 1, "skipped": 0, "failed": 0,
              "usage": {"input_tokens": 100, "output_tokens": 50, "cost_usd": 0.01}}
@@ -3039,7 +3041,7 @@ def test_merge_summary_dedupes_a_doc_retried_after_being_cancelled():
     next cycle — its stale "cancelled" stub must not survive alongside its real outcome, or
     the final summary double-counts it (e.g. reporting a fully-extracted doc as also
     "not started")."""
-    from watchdog.cmd.ingest import _merge_summary
+    from watchdog.ops.ingest import _merge_summary
     first = {"results": [{"sha256": "a", "status": "cancelled"}],
              "extracted": 0, "skipped": 0, "failed": 0}
     second = {"results": [{"sha256": "a", "status": "ok"}],
@@ -3049,7 +3051,7 @@ def test_merge_summary_dedupes_a_doc_retried_after_being_cancelled():
 
 
 def test_merge_summary_first_call_returns_new_unchanged():
-    from watchdog.cmd.ingest import _merge_summary
+    from watchdog.ops.ingest import _merge_summary
     new = {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
     assert _merge_summary(None, new) is new
 
@@ -3074,7 +3076,7 @@ def test_cmd_ingest_wait_loops_until_rate_limit_clears(wdg_home, tmp_path, monke
     (stubbed) wait completes, the lock is released at the end, and the printed summary reflects
     the total across both cycles, not just the last one."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
@@ -3101,7 +3103,7 @@ def test_cmd_ingest_wait_loops_until_rate_limit_clears(wdg_home, tmp_path, monke
     monkeypatch.setattr(ing, "_wait_for_rate_limit",
                         lambda lock_file, resets_at: waited.append(resets_at))
 
-    ing.cmd_ingest(args(wait=True), confirm=False)
+    cmd_ing.cmd_ingest(args(wait=True), confirm=False)
 
     assert len(calls) == 2
     assert all(k.get("wait") is True for k in calls)
@@ -3117,7 +3119,7 @@ def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_pa
     """Without --wait (the default), a rate-limited summary is reported once and orchestrate.run
     is not re-invoked — the opt-in flag must not change today's behavior (I4 spirit)."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3136,7 +3138,7 @@ def test_cmd_ingest_no_wait_stops_on_rate_limit_without_looping(wdg_home, tmp_pa
     monkeypatch.setattr(ing, "_wait_for_rate_limit",
                         lambda *a, **k: pytest.fail("must not wait when --wait is absent"))
 
-    ing.cmd_ingest(args(), confirm=False)
+    cmd_ing.cmd_ingest(args(), confirm=False)
 
     assert len(calls) == 1
     assert calls[0].get("wait") is False
@@ -3149,7 +3151,7 @@ def test_cmd_ingest_wait_stops_after_max_rate_limit_waits(wdg_home, tmp_path, mo
     rather than loop forever, and the returned summary must still say `rate_limited: True` so the
     caller can tell it stopped short rather than completed."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3172,7 +3174,7 @@ def test_cmd_ingest_wait_stops_after_max_rate_limit_waits(wdg_home, tmp_path, mo
     monkeypatch.setattr(ing, "_wait_for_rate_limit",
                         lambda lock_file, resets_at: waited.append(resets_at))
 
-    summary = ing.cmd_ingest(args(wait=True, max_rate_limit_waits=2), confirm=False)
+    summary = cmd_ing.cmd_ingest(args(wait=True, max_rate_limit_waits=2), confirm=False)
 
     assert len(calls) == 3           # the initial attempt plus exactly 2 resumed waits
     assert len(waited) == 2
@@ -3186,7 +3188,7 @@ def test_cmd_ingest_wait_without_max_rate_limit_waits_is_unbounded(wdg_home, tmp
     keep resuming past however many waits `test_cmd_ingest_wait_stops_after_max_rate_limit_waits`
     bounds at, exactly like `--wait` behaved before this knob existed."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3210,7 +3212,7 @@ def test_cmd_ingest_wait_without_max_rate_limit_waits_is_unbounded(wdg_home, tmp
     monkeypatch.setattr(orch_module, "run", fake_run)
     monkeypatch.setattr(ing, "_wait_for_rate_limit", lambda *a, **k: None)
 
-    summary = ing.cmd_ingest(args(wait=True), confirm=False)   # no max_rate_limit_waits attribute
+    summary = cmd_ing.cmd_ingest(args(wait=True), confirm=False)   # no max_rate_limit_waits attribute
 
     assert len(calls) == 4
     assert summary["rate_limited"] is False
@@ -3223,7 +3225,6 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
     `skip_finalize=True`, and the closing block tells the user how to finalize later instead of
     the usual "open a session" line."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3241,7 +3242,7 @@ def test_cmd_ingest_no_finalize_threads_skip_finalize_to_orchestrate_run(wdg_hom
                 "quarantined": 0, "finalize_skipped": True}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_ingest(args(no_finalize=True), confirm=False)
+    cmd_ing.cmd_ingest(args(no_finalize=True), confirm=False)
 
     assert len(calls) == 1
     assert calls[0].get("skip_finalize") is True
@@ -3255,7 +3256,7 @@ def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_p
     finalize never runs at all, so once the queue finishes extracting cleanly the loop must stop
     after a single call rather than waiting for a finalize that will never happen."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3275,7 +3276,7 @@ def test_cmd_ingest_wait_and_no_finalize_stops_once_queue_drains(wdg_home, tmp_p
     monkeypatch.setattr(ing, "_wait_for_rate_limit",
                         lambda *a, **k: pytest.fail("must not wait — nothing rate-limited"))
 
-    ing.cmd_ingest(args(wait=True, no_finalize=True), confirm=False)
+    cmd_ing.cmd_ingest(args(wait=True, no_finalize=True), confirm=False)
 
     assert len(calls) == 1
     assert calls[0].get("wait") is True
@@ -3289,7 +3290,6 @@ def test_cmd_ingest_skip_briefing_threads_to_orchestrate_run(wdg_home, tmp_path,
     timeline still run (`finalize_skipped` stays False), only the briefing model call is
     skipped, so the closing block shows the usual "open a session" line."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3309,7 +3309,7 @@ def test_cmd_ingest_skip_briefing_threads_to_orchestrate_run(wdg_home, tmp_path,
                                 "briefing_skipped": True, "merged": [], "contradictions": []}}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_ingest(args(skip_briefing=True), confirm=False)
+    cmd_ing.cmd_ingest(args(skip_briefing=True), confirm=False)
 
     assert len(calls) == 1
     assert calls[0].get("skip_briefing") is True
@@ -3335,7 +3335,7 @@ def test_cmd_extract_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path
     """`watchdog dig` is `cmd_ingest` with finalization forced off: it must reach
     `orchestrate.run` with `skip_finalize=True` and print the "run watchdog bark" hint."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3354,7 +3354,7 @@ def test_cmd_extract_threads_skip_finalize_to_orchestrate_run(wdg_home, tmp_path
                 "quarantined": 0, "finalize_skipped": True}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_extract(args())
+    cmd_ing.cmd_extract(args())
 
     assert len(calls) == 1
     assert calls[0].get("skip_finalize") is True
@@ -3366,7 +3366,7 @@ def test_dig_limit_extracts_only_the_next_n_unextracted(wdg_home, tmp_path, monk
     """`watchdog dig --limit N` (#696) hands orchestrate.run the next N queued documents that still
     need extracting — already-staged ones are skipped, not counted against the limit."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3388,7 +3388,7 @@ def test_dig_limit_extracts_only_the_next_n_unextracted(wdg_home, tmp_path, monk
                 "quarantined": 0, "finalize_skipped": True}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_extract(args(limit=2))
+    cmd_ing.cmd_extract(args(limit=2))
 
     assert calls[0]["only_shas"] == ["sha2", "sha3"]
     assert "extracting 2 of 4 queued documents" in _strip_ansi(capsys.readouterr().out)
@@ -3424,13 +3424,13 @@ def test_dig_parser_limit_must_be_positive(monkeypatch, capsys, value, ok):
 def test_cmd_extract_sets_no_finalize_on_args(wdg_home, tmp_path, monkeypatch):
     """cmd_extract mutates the passed-in args to force no_finalize, then delegates to cmd_ingest
     unchanged — verified directly against cmd_ingest's call signature."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     seen = {}
-    monkeypatch.setattr(ing, "cmd_ingest",
-                        lambda a, **kw: seen.update(no_finalize=a.no_finalize, **kw))
+    monkeypatch.setattr(ing, "_ingest",
+                        lambda a, _v, **kw: seen.update(no_finalize=a.no_finalize, **kw))
     a = args()
-    ing.cmd_extract(a)
+    cmd_ing.cmd_extract(a)
     assert seen == {"no_finalize": True, "non_interactive": False}
 
 
@@ -3519,7 +3519,7 @@ def test_configure_defaults_match_the_runtime_defaults():
     """`watchdog configure` displays each key's default from `_CONFIGURE_KEYS`; the runtime reads
     `watchdog.defaults`. They once disagreed (extract_concurrency: shown 5, used 20)."""
     from watchdog import defaults
-    from watchdog.cmd.ingest import _DEFAULT_EXTRACT_CONCURRENCY
+    from watchdog.ops.ingest import _DEFAULT_EXTRACT_CONCURRENCY
     from watchdog.cmd.setup import _CONFIGURE_KEYS
     assert _CONFIGURE_KEYS["extract_concurrency"]["default"] == _DEFAULT_EXTRACT_CONCURRENCY == 20
     assert _CONFIGURE_KEYS["classify_pages"]["default"] == defaults.CLASSIFY_PAGES
@@ -3541,7 +3541,7 @@ def test_count_flags_reject_zero_and_negatives(argv):
 
 def test_resolve_stage_keeps_colons_inside_the_model_id():
     """Ollama-style ids are `name:tag` — `local:qwen3:32b` must split at the first colon."""
-    from watchdog.cmd.ingest import _resolve_stage
+    from watchdog.ops.ingest import _resolve_stage
     assert _resolve_stage("local:qwen3:32b", None) == ("local", "qwen3:32b")
     assert _resolve_stage("openrouter:anthropic/claude-3.5-sonnet", None) == (
         "openrouter", "anthropic/claude-3.5-sonnet")
@@ -3593,7 +3593,7 @@ def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_pa
     """#270: when ingest_setup.run() reports a backup_dir (the discard choice actually threw
     something away), cmd_ingest must print a restore hint."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3614,7 +3614,7 @@ def test_cmd_ingest_prints_backup_hint_when_discard_snapshotted(wdg_home, tmp_pa
 
     monkeypatch.setattr(ing, "_resolve_pinned_skill", lambda *a, **k: (_ for _ in ()).throw(_Stop()))
     with pytest.raises(_Stop):
-        ing.cmd_ingest(args(), confirm=False)
+        cmd_ing.cmd_ingest(args(), confirm=False)
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "backup:" in out
@@ -3626,7 +3626,7 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     """An unconfigured vault must finalize on the same model whether ingest finishes the
     batch itself or a separate `watchdog finalize` completes it (#253)."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3650,7 +3650,7 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
                          lambda *a, **k: calls.append(orig_resolve(*a, **k)) or calls[-1])
     monkeypatch.setattr("watchdog.pipeline.ingest_setup.run", _boom)
     with pytest.raises(_Stop):
-        ing.cmd_ingest(args(), confirm=False)
+        cmd_ing.cmd_ingest(args(), confirm=False)
     # Call order in cmd_ingest is extractor, finalizer, classifier.
     finalizer_defaults["ingest"] = calls[1]
 
@@ -3659,7 +3659,7 @@ def test_cmd_ingest_and_cmd_finalize_agree_on_finalizer_default(wdg_home, tmp_pa
     monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
     monkeypatch.setattr(ing, "_run_finalize", _boom)
     with pytest.raises(_Stop):
-        ing.cmd_finalize(args())
+        cmd_ing.cmd_finalize(args())
     finalizer_defaults["finalize"] = calls[0]
 
     assert finalizer_defaults["ingest"] == finalizer_defaults["finalize"] == (None, "haiku")
@@ -3684,7 +3684,7 @@ def test_pending_batch_dialog_offers_finalize_together_or_now(wdg_home, tmp_path
     """With new documents queued and a batch pending, the guided walk asks whether to finalize
     everything together or the pending batch first. There is no discard: every staged extraction
     is committed by the next finalize, so discarding only ever stranded documents (D242)."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     _pending_batch_setup(tmp_path, monkeypatch)
     monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
                         lambda *a, **k: (_ for _ in ()).throw(_Stop()))
@@ -3692,7 +3692,7 @@ def test_pending_batch_dialog_offers_finalize_together_or_now(wdg_home, tmp_path
     monkeypatch.setattr(ing.interactive, "pick",
                         lambda choices, *a, **k: captured.setdefault("choices", choices) and 0)
     with pytest.raises(_Stop):
-        ing.cmd_ingest(args(), confirm=False)
+        cmd_ing.cmd_ingest(args(), confirm=False)
     choices = captured["choices"]
     assert len(choices) == 2
     assert "together" in choices[0]
@@ -3703,28 +3703,28 @@ def test_pending_batch_dialog_offers_finalize_together_or_now(wdg_home, tmp_path
 def test_dig_with_pending_batch_does_not_prompt(wdg_home, tmp_path, monkeypatch, capsys):
     """`dig` never finalizes, so a pending batch leaves nothing to decide — it is noted and left
     for the next `watchdog bark`, and extraction of the new documents goes ahead."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     _pending_batch_setup(tmp_path, monkeypatch)
     monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
                         lambda *a, **k: (_ for _ in ()).throw(_Stop()))
     monkeypatch.setattr(ing.interactive, "pick",
                         lambda *a, **k: (_ for _ in ()).throw(AssertionError("no prompt for dig")))
     with pytest.raises(_Stop):
-        ing.cmd_ingest(args(command="dig"), confirm=False)
+        cmd_ing.cmd_ingest(args(command="dig"), confirm=False)
     assert "watchdog bark" in capsys.readouterr().out
 
 
 def test_bare_walk_with_only_a_pending_batch_finalizes_it(wdg_home, tmp_path, monkeypatch):
     """Nothing new to read and a batch pending: the guided walk's only remaining work is the
     finalize, so it runs it instead of extracting nothing and reporting "Ingest complete"."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _pending_batch_setup(tmp_path, monkeypatch)
     sha = next((vault / ".watchdog" / "queue").glob("*.json")).stem
     (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
     (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text("{}")
     called = {}
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: called.setdefault("yes", {"synthesized": 0}))
-    out = ing.cmd_ingest(args(), confirm=False)
+    out = cmd_ing.cmd_ingest(args(), confirm=False)
     assert called and out == {"synthesized": 0}
 
 
@@ -3734,7 +3734,7 @@ def test_cmd_ingest_non_interactive_refuses_pending_batch_instead_of_prompting(w
     """A programmatic caller (run_benchmark.py driving cmd_extract) has no human to answer the
     merge/discard/finalize pick — non_interactive=True must fail loud instead of blocking on it."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -3748,16 +3748,16 @@ def test_cmd_ingest_non_interactive_refuses_pending_batch_instead_of_prompting(w
     monkeypatch.setattr(ing.interactive, "pick", _boom)
 
     with pytest.raises(SystemExit, match="non-interactive run"):
-        ing.cmd_ingest(args(), confirm=False, non_interactive=True)
+        cmd_ing.cmd_ingest(args(), confirm=False, non_interactive=True)
 
 
 def test_cmd_extract_threads_non_interactive_through_to_cmd_ingest(wdg_home, tmp_path, monkeypatch):
     """`cmd_extract` (the `dig` entry point run_benchmark.py actually calls) must pass its
     `non_interactive` kwarg through rather than dropping it."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     seen = {}
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **k: seen.update(k))
-    ing.cmd_extract(args(command="dig"), non_interactive=True)
+    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **k: seen.update(k))
+    cmd_ing.cmd_extract(args(command="dig"), non_interactive=True)
     assert seen == {"non_interactive": True}
 
 
@@ -3766,7 +3766,7 @@ def test_cmd_ingest_non_interactive_skips_quarantine_requeue_offer(wdg_home, tmp
     retry right there (#406) — a non-interactive caller must not block on that confirm either,
     and falls through to the same "nothing queued" outcome as declining it."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_failed_doc(tmp_path)
@@ -3780,7 +3780,7 @@ def test_cmd_ingest_non_interactive_skips_quarantine_requeue_offer(wdg_home, tmp
     monkeypatch.setattr(orch_module, "run",
                         lambda *a, **k: pytest.fail("must not run — the requeue offer was never accepted"))
 
-    ing.cmd_ingest(args(), confirm=False, non_interactive=True)
+    cmd_ing.cmd_ingest(args(), confirm=False, non_interactive=True)
 
     assert (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
 
@@ -3788,7 +3788,7 @@ def test_cmd_ingest_non_interactive_skips_quarantine_requeue_offer(wdg_home, tmp
 def test_format_models_line_shows_concurrency_only_when_explicitly_set(monkeypatch):
     """`--concurrency` was silently dropped from the pre-run summary (#456) — it should only
     appear when the user actually passed it, not for a run left at the default/config value."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     without = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
                                       extract_effort="medium", concurrency=None)
@@ -3804,7 +3804,7 @@ def test_format_models_line_omits_finalizer_for_dig(monkeypatch):
     """`watchdog dig` always stops before finalization in the same run (#456) — showing which
     model would finalize is irrelevant noise there, unlike the bare guided walk or `ingest`,
     which do finalize inline and still need the row."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     for_dig = ing._format_models_line("haiku", "haiku", None, "sonnet", None, "haiku",
                                       extract_effort="medium", is_dig=True)
@@ -3818,7 +3818,7 @@ def test_format_models_line_omits_finalizer_for_dig(monkeypatch):
 def test_format_models_line_shows_classify_effort_suffix():
     """D221: classify gained an effort knob once its default model (Luna) could actually take
     one — the classifier row must carry an "(effort: …)" suffix just like extractor/finalizer."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     out = ing._format_models_line("openai:gpt-5.6-luna", "gpt-5.6-luna", None, "sonnet",
                                    None, "haiku", classify_effort="low")
@@ -3972,12 +3972,11 @@ def _vault_with_staged_finalize_corpus(tmp_path):
 
 def test_cmd_finalize_estimate_prints_and_exits_without_lock(wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     vault = _vault_with_staged_finalize_corpus(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
-    ing.cmd_finalize(args(estimate=True))
+    cmd_ing.cmd_finalize(args(estimate=True))
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "1 document" in out
@@ -3987,13 +3986,12 @@ def test_cmd_finalize_estimate_prints_and_exits_without_lock(wdg_home, tmp_path,
 
 def test_cmd_finalize_estimate_nothing_pending(wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from tests.test_write_vault import make_vault
     vault = make_vault(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
-    ing.cmd_finalize(args(estimate=True))
+    cmd_ing.cmd_finalize(args(estimate=True))
 
     assert "Nothing to finish" in capsys.readouterr().out
 
@@ -4002,7 +4000,6 @@ def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home
     """Only true when the finalizer is actually routed to Claude — the pipeline default
     (openai:gpt-5.6-luna) is metered regardless of Claude subscription status."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     vault = _vault_with_staged_finalize_corpus(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "subscription"})
@@ -4011,7 +4008,7 @@ def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home
         "totals": {"input_tokens": 1000, "cost_usd": 5.0},
     }))
 
-    ing.cmd_finalize(args(estimate=True, finalizer_model="haiku"))
+    cmd_ing.cmd_finalize(args(estimate=True, finalizer_model="haiku"))
 
     out = capsys.readouterr().out
     assert "$" not in out
@@ -4020,7 +4017,6 @@ def test_cmd_finalize_estimate_subscription_mode_shows_no_dollar_figure(wdg_home
 
 def test_cmd_finalize_estimate_shows_dollar_range_from_standalone_history(wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     vault = _vault_with_staged_finalize_corpus(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
@@ -4029,7 +4025,7 @@ def test_cmd_finalize_estimate_shows_dollar_range_from_standalone_history(wdg_ho
         "totals": {"input_tokens": 1000, "cost_usd": 5.0},
     }))
 
-    ing.cmd_finalize(args(estimate=True))
+    cmd_ing.cmd_finalize(args(estimate=True))
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "$" in out
@@ -4040,7 +4036,6 @@ def test_cmd_finalize_estimate_ignores_mixed_ingest_usage_history(wdg_home, tmp_
     """A usage file from a full `watchdog ingest` run (extraction + finalize sharing one file)
     must not be mistaken for a standalone finalize's own $/token profile."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     vault = _vault_with_staged_finalize_corpus(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
@@ -4049,7 +4044,7 @@ def test_cmd_finalize_estimate_ignores_mixed_ingest_usage_history(wdg_home, tmp_
         "totals": {"input_tokens": 500000, "cost_usd": 5.0, "est_input_tokens": 480000},
     }))
 
-    ing.cmd_finalize(args(estimate=True))
+    cmd_ing.cmd_finalize(args(estimate=True))
 
     out = capsys.readouterr().out
     assert "$" not in out   # no standalone-finalize history to price against
@@ -4057,7 +4052,6 @@ def test_cmd_finalize_estimate_ignores_mixed_ingest_usage_history(wdg_home, tmp_
 
 def test_cmd_finalize_estimate_all_prints_per_model_table(wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.model_catalog import all_models
     vault = _vault_with_staged_finalize_corpus(tmp_path)
     monkeypatch.chdir(vault)
@@ -4067,7 +4061,7 @@ def test_cmd_finalize_estimate_all_prints_per_model_table(wdg_home, tmp_path, mo
         "totals": {"input_tokens": 1000, "output_tokens": 500, "cost_usd": 5.0},
     }))
 
-    ing.cmd_finalize(args(estimate_all=True))
+    cmd_ing.cmd_finalize(args(estimate_all=True))
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "Projected list price by model" in out
@@ -4077,12 +4071,11 @@ def test_cmd_finalize_estimate_all_prints_per_model_table(wdg_home, tmp_path, mo
 
 def test_cmd_finalize_estimate_all_no_standalone_history_shows_hint(wdg_home, tmp_path, monkeypatch, capsys):
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     vault = _vault_with_staged_finalize_corpus(tmp_path)
     monkeypatch.chdir(vault)
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
-    ing.cmd_finalize(args(estimate_all=True))
+    cmd_ing.cmd_finalize(args(estimate_all=True))
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "Not enough usage history yet" in out
@@ -4129,7 +4122,6 @@ def test_cmd_ingest_empty_queue_accepts_requeue_offer_and_continues(wdg_home, tm
     requeue right there (#406); accepting moves the document back into the active queue and lets
     the ingest proceed, instead of just pointing at `watchdog requeue` and stopping."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     from watchdog import interactive
 
@@ -4149,7 +4141,7 @@ def test_cmd_ingest_empty_queue_accepts_requeue_offer_and_continues(wdg_home, tm
                 "quarantined": 0}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_ingest(args(), confirm=False)
+    cmd_ing.cmd_ingest(args(), confirm=False)
 
     assert len(calls) == 1   # the ingest actually proceeded, not just printed a hint
     assert not (vault / ".watchdog" / "queue" / "_failed" / "shafail.json").exists()
@@ -4159,7 +4151,6 @@ def test_cmd_ingest_empty_queue_declines_requeue_offer_prints_hint(wdg_home, tmp
     """Declining the requeue offer leaves the document in _failed/ untouched and never runs an
     ingest — just the same hint `watchdog usage`/the normal summary already gives."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     from watchdog import interactive
 
@@ -4171,7 +4162,7 @@ def test_cmd_ingest_empty_queue_declines_requeue_offer_prints_hint(wdg_home, tmp
     monkeypatch.setattr(orch_module, "run",
                         lambda *a, **k: pytest.fail("must not run when the requeue offer is declined"))
 
-    ing.cmd_ingest(args(), confirm=False)
+    cmd_ing.cmd_ingest(args(), confirm=False)
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "watchdog requeue" in out
@@ -4184,7 +4175,7 @@ def test_cmd_ingest_requeue_offer_race_does_not_dead_end(wdg_home, tmp_path, mon
     must not tell the user to run `watchdog requeue` — there's nothing left there for it to move
     (PR #437 review)."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     from watchdog import interactive
 
@@ -4201,7 +4192,7 @@ def test_cmd_ingest_requeue_offer_race_does_not_dead_end(wdg_home, tmp_path, mon
         return real_requeue_failed(v)
     monkeypatch.setattr(ing, "_requeue_failed", racing_requeue_failed)
 
-    ing.cmd_ingest(args(), confirm=False)
+    cmd_ing.cmd_ingest(args(), confirm=False)
 
     out = _strip_ansi(capsys.readouterr().out)
     assert "watchdog requeue" not in out
@@ -4214,7 +4205,6 @@ def test_cmd_ingest_keyboard_interrupt_mentions_quarantined_docs(wdg_home, tmp_p
     handling only covers concurrent extraction — must still mention a document already
     quarantined earlier in the same run. Previously only the normal-completion summary did."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -4230,7 +4220,7 @@ def test_cmd_ingest_keyboard_interrupt_mentions_quarantined_docs(wdg_home, tmp_p
     monkeypatch.setattr(orch_module, "run", boom)
 
     with pytest.raises(SystemExit) as exc_info:
-        ing.cmd_ingest(args(), confirm=False)
+        cmd_ing.cmd_ingest(args(), confirm=False)
     assert exc_info.value.code == 130
 
     out = _strip_ansi(capsys.readouterr().out)
@@ -4261,7 +4251,7 @@ class _FakeProc:
 
 
 def test_caffeinate_spawns_on_darwin_when_available(monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
     monkeypatch.setattr(ing.shutil, "which",
@@ -4286,7 +4276,7 @@ def test_caffeinate_spawns_systemd_inhibit_on_linux_when_available(monkeypatch):
     """Linux has no macOS-style "watch this pid" flag, so `systemd-inhibit` wraps a placeholder
     command instead (#415) — killing the whole process group on the way out, not just the
     `systemd-inhibit` process itself, so that placeholder isn't left running as an orphan."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
     monkeypatch.setattr(ing.shutil, "which",
@@ -4318,7 +4308,7 @@ def test_caffeinate_systemd_inhibit_sigkills_the_group_on_timeout(monkeypatch):
     """If the group doesn't die from SIGTERM in time, the SIGKILL fallback must also target the
     whole process group — not just `proc.kill()` on the `systemd-inhibit` process itself, which
     would risk leaving the `sleep infinity` placeholder running as an orphan (PR #437 review)."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
     monkeypatch.setattr(ing.shutil, "which",
@@ -4350,7 +4340,7 @@ def test_caffeinate_systemd_inhibit_sigkills_the_group_on_timeout(monkeypatch):
 def test_caffeinate_noop_on_windows(monkeypatch):
     """Neither darwin's nor Linux's tool applies on Windows — there's no CLI equivalent worth
     shelling out to (#415), so this stays a pure no-op there."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "win32")
     monkeypatch.setattr(ing.subprocess, "Popen",
@@ -4361,7 +4351,7 @@ def test_caffeinate_noop_on_windows(monkeypatch):
 
 
 def test_caffeinate_noop_on_linux_without_systemd_inhibit(monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "linux")
     monkeypatch.setattr(ing.shutil, "which", lambda name: None)
@@ -4373,7 +4363,7 @@ def test_caffeinate_noop_on_linux_without_systemd_inhibit(monkeypatch):
 
 
 def test_caffeinate_noop_when_binary_missing(monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
     monkeypatch.setattr(ing.shutil, "which", lambda name: None)
@@ -4388,7 +4378,7 @@ def test_caffeinate_terminates_even_if_the_block_raises(monkeypatch):
     """The context manager's cleanup must run on an exception path too (e.g. the KeyboardInterrupt
     that stops an ingest, #415) — not just on a clean exit, and it must not swallow that
     exception (a bare `return` inside `finally` would)."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "darwin")
     monkeypatch.setattr(ing.shutil, "which", lambda name: "/usr/bin/caffeinate")
@@ -4405,7 +4395,7 @@ def test_caffeinate_terminates_even_if_the_block_raises(monkeypatch):
 def test_caffeinate_noop_does_not_swallow_exception(monkeypatch):
     """Same exception-safety property as above, but for the no-op path (`proc is None`) — this
     is the branch a bare `return` in `finally` would have silently broken."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
 
     monkeypatch.setattr("watchdog.cmd.ingest.sys.platform", "win32")
 
@@ -4418,7 +4408,7 @@ def test_run_finalize_wraps_model_call_in_caffeinate(tmp_path, monkeypatch):
     """#467: `watchdog bark` had no `_caffeinate()` wrap at all, unlike `cmd_ingest`'s extraction
     loop — a bark run stopped none of the machine sleeping mid-call, the same failure mode #415
     guarded extraction against. `_run_finalize`'s model call must run inside the same guard."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
     from tests.test_write_vault import make_vault
     vault = make_vault(tmp_path)
@@ -4510,38 +4500,38 @@ def _fake_catalog(monkeypatch, tmp_path, names=("general-records", "corporate-fi
 
 
 def test_resolve_pinned_skill_from_flag(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     pkg = _fake_catalog(monkeypatch, tmp_path)
     assert ing._resolve_pinned_skill(args(skill="corporate-filings"), {}) == str(pkg / "corporate-filings.md")
 
 
 def test_resolve_pinned_skill_strips_md_suffix(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     pkg = _fake_catalog(monkeypatch, tmp_path)
     assert ing._resolve_pinned_skill(args(skill="corporate-filings.md"), {}) == str(pkg / "corporate-filings.md")
 
 
 def test_resolve_pinned_skill_unknown_exits(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     _fake_catalog(monkeypatch, tmp_path)
     with pytest.raises(SystemExit, match="not found"):
         ing._resolve_pinned_skill(args(skill="nope"), {})
 
 
 def test_resolve_pinned_skill_from_config(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     pkg = _fake_catalog(monkeypatch, tmp_path)
     assert ing._resolve_pinned_skill(args(), {"default_skill": "general-records"}) == str(pkg / "general-records.md")
 
 
 def test_resolve_pinned_skill_none_classifies(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     _fake_catalog(monkeypatch, tmp_path)
     assert ing._resolve_pinned_skill(args(), {}) is None
 
 
 def test_resolve_pinned_skill_explicit_file_path(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     _fake_catalog(monkeypatch, tmp_path)
     custom = tmp_path / "custom-skill.md"
     custom.write_text("body")
@@ -4549,14 +4539,14 @@ def test_resolve_pinned_skill_explicit_file_path(tmp_path, monkeypatch):
 
 
 def test_resolve_pinned_skill_interactive_pick(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     pkg = _fake_catalog(monkeypatch, tmp_path, names=("alpha", "beta"))  # sorted: alpha=1, beta=2
     monkeypatch.setattr("builtins.input", lambda *a: "2")
     assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), {}) == str(pkg / "beta.md")
 
 
 def test_resolve_pinned_skill_interactive_enter_classifies(tmp_path, monkeypatch):
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     _fake_catalog(monkeypatch, tmp_path, names=("alpha", "beta"))
     monkeypatch.setattr("builtins.input", lambda *a: "")
     assert ing._resolve_pinned_skill(args(skill=ing._PICK_SKILL), {}) is None
@@ -4774,7 +4764,7 @@ def test_manifest_matches_case_insensitive_no_match_returns_empty():
 def test_poll_stable_files_holds_growing_file(tmp_path):
     f = tmp_path / "big.pdf"
     f.write_bytes(b"a" * 10)
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     assert pending == {f: 10}
 
@@ -4783,10 +4773,10 @@ def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
     f = tmp_path / "big.pdf"
     f.write_bytes(b"a" * 10)
     # First poll: no prior size recorded — held.
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     # Second poll: same size as last time — copy finished.
-    ready, pending = _vault._poll_stable_files({f}, pending)
+    ready, pending = _ops_projects._poll_stable_files({f}, pending)
     assert ready == [f]
     assert pending == {}
 
@@ -4794,16 +4784,16 @@ def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
 def test_poll_stable_files_keeps_holding_a_still_growing_file(tmp_path):
     f = tmp_path / "big.pdf"
     f.write_bytes(b"a" * 10)
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     f.write_bytes(b"a" * 20)   # more bytes copied in between polls
-    ready, pending = _vault._poll_stable_files({f}, pending)
+    ready, pending = _ops_projects._poll_stable_files({f}, pending)
     assert ready == []
     assert pending == {f: 20}
 
 
 def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
     f = tmp_path / "gone.pdf"   # never created — simulates a race with deletion
-    ready, pending = _vault._poll_stable_files({f}, {})
+    ready, pending = _ops_projects._poll_stable_files({f}, {})
     assert ready == []
     assert pending == {}
 
@@ -4813,7 +4803,7 @@ def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
 def _dig_run_kwargs(tmp_path, monkeypatch, capsys, **arg_overrides):
     """Run `watchdog dig` with the orchestrator stubbed, returning the kwargs it was called with."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -4831,7 +4821,7 @@ def _dig_run_kwargs(tmp_path, monkeypatch, capsys, **arg_overrides):
                 "quarantined": 0, "finalize_skipped": True}
     monkeypatch.setattr(orch_module, "run", fake_run)
 
-    ing.cmd_extract(args(**arg_overrides))
+    cmd_ing.cmd_extract(args(**arg_overrides))
     capsys.readouterr()
     return calls[0]
 
@@ -4883,7 +4873,7 @@ def test_verify_is_refused_with_a_claude_batch_extractor(wdg_home, tmp_path, mon
     """A batch's results come back hours later in a separate process — there is no extraction to
     verify at the time the pass would run, and no cached prefix left to read."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -4893,7 +4883,7 @@ def test_verify_is_refused_with_a_claude_batch_extractor(wdg_home, tmp_path, mon
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)
 
     with pytest.raises(SystemExit) as e:
-        ing.cmd_extract(args(verify=True, extractor_model="claude-batch:sonnet"))
+        cmd_ing.cmd_extract(args(verify=True, extractor_model="claude-batch:sonnet"))
     assert "--verify isn't supported with claude-batch" in _strip_ansi(str(e.value))
 
 
@@ -4901,7 +4891,7 @@ def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
         wdg_home, tmp_path, monkeypatch, capsys):
     """Telling someone "--verify isn't supported" is unhelpful advice if they never typed it."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     (wdg_home / "config.json").write_text(json.dumps({"verify_extraction": True}))
@@ -4912,7 +4902,7 @@ def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
     monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: 0)
 
     with pytest.raises(SystemExit) as e:
-        ing.cmd_extract(args(extractor_model="claude-batch:sonnet"))
+        cmd_ing.cmd_extract(args(extractor_model="claude-batch:sonnet"))
     message = _strip_ansi(str(e.value))
     assert "verify_extraction isn't supported with claude-batch" in message
     assert "--no-verify" in message
@@ -4940,8 +4930,7 @@ def test_the_batch_refusal_names_the_config_key_when_that_is_what_turned_it_on(
     ({"extracted": 0, "results": [], "batch_pending": True, "auth_error": "x"}, 1),
 ])
 def test_exit_code_for(result, expected):
-    from watchdog.cmd import ingest as ing
-    assert ing.exit_code_for(result) == expected
+    assert cmd_ing.exit_code_for(result) == expected
 
 
 def test_dispatch_exits_2_on_resumable_summary(configured, monkeypatch):
@@ -4967,15 +4956,15 @@ def test_offer_ingest_propagates_summary_to_caller(monkeypatch, tmp_path):
     """`_offer_ingest` returns the ingest summary rather than swallowing it, so a rate limit
     reached from the guided walk or `watchdog chew` still exits 2 (#499). Without this the most
     common invocation — bare `watchdog` — would report success on a half-finished batch."""
-    import watchdog.cmd.ingest as ing
+    import watchdog.ops.ingest as ing
     summary = {"extracted": 2, "results": [], "rate_limited": True}
     monkeypatch.setattr(ing, "_preview_ingest", lambda vault, args: None)
     monkeypatch.setattr(ing, "_count_queued", lambda vault: 3)
     monkeypatch.setattr(ing, "_confirm_public_records", lambda n, **kw: True)
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **kw: summary)
+    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **kw: summary)
     out = ing._offer_ingest(args(skip_warning=True), tmp_path)
     assert out is summary
-    assert ing.exit_code_for(out) == 2
+    assert cmd_ing.exit_code_for(out) == 2
 
 
 def test_home_screen_returns_the_add_summary(monkeypatch, tmp_path):
@@ -4983,7 +4972,6 @@ def test_home_screen_returns_the_add_summary(monkeypatch, tmp_path):
     rate limit reached from bare `watchdog` still exits 2."""
     import sys
     import watchdog.cmd.home as home
-    import watchdog.cmd.ingest as ing
     summary = {"extracted": 1, "results": [], "rate_limited": True}
     (tmp_path / ".watchdog" / "queue").mkdir(parents=True)
     (tmp_path / ".watchdog" / "queue" / f"{'a' * 64}.json").write_text("{}")
@@ -4991,10 +4979,10 @@ def test_home_screen_returns_the_add_summary(monkeypatch, tmp_path):
     monkeypatch.setattr(home, "load_projects", lambda: {})
     monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr(home.interactive, "confirm", lambda *a, **k: True)
-    monkeypatch.setattr(ing, "cmd_add", lambda a: summary)
+    monkeypatch.setattr(cmd_ing, "cmd_add", lambda a: summary)
     out = home.cmd_home(args())
     assert out is summary
-    assert ing.exit_code_for(out) == 2
+    assert cmd_ing.exit_code_for(out) == 2
 
 
 def test_dispatch_does_not_exit_when_command_returns_none(configured, monkeypatch):
@@ -5016,13 +5004,13 @@ def test_cmd_extract_called_directly_returns_dict_without_exiting(wdg_home, tmp_
     """A programmatic caller (e.g. the benchmark runner) calls `cmd_extract` directly, not
     through `main()`'s dispatch — it must keep getting the dict back, never a `SystemExit`,
     even for a resumable outcome like a rate limit."""
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     vault = _vault_with_queued_doc(tmp_path)
     monkeypatch.chdir(vault)
     resumable = {"extracted": 0, "skipped": 0, "failed": 0, "results": [], "rate_limited": True}
-    monkeypatch.setattr(ing, "cmd_ingest", lambda a, **kw: resumable)
+    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **kw: resumable)
 
-    result = ing.cmd_extract(args())
+    result = cmd_ing.cmd_extract(args())
 
     assert result is resumable
 
@@ -5031,7 +5019,7 @@ def test_cmd_finalize_called_directly_returns_dict_without_exiting(wdg_home, tmp
     """Same guarantee for `cmd_finalize`: a caller invoking it as a plain Python function must
     get the `_run_finalize` dict back, even when it carries an `error`."""
     from watchdog.cmd import auth as auth_module
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
     vault = _vault_with_queued_doc(tmp_path)
@@ -5041,7 +5029,7 @@ def test_cmd_finalize_called_directly_returns_dict_without_exiting(wdg_home, tmp
     errored = {"synthesized": 0, "error": "rate limited"}
     monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: errored)
 
-    result = ing.cmd_finalize(args())
+    result = cmd_ing.cmd_finalize(args())
 
     assert result is errored
 

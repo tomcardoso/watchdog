@@ -45,7 +45,7 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
     setError(null)
     try {
       setBothSummaries(!!preview.data?.both_have_summary)
-      const job = await startJob(['review', 'merge-entities', keep, merge, '--force'], 'Merging entities')
+      const job = await startJob('merge-entities', { keep, merge }, 'Merging entities')
       setJobId(job.id)
       setStage('running')
       const done = await waitForJob(job.id)
@@ -65,7 +65,7 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
   const reindex = async () => {
     setReindexing(true)
     try {
-      await startJob(['reindex'], 'Rebuilding search index')
+      await startJob('reindex', {}, 'Rebuilding search index')
     } finally {
       setReindexing(false)
     }

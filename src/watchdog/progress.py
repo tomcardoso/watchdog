@@ -1,7 +1,7 @@
 """Structured progress for the desktop app, written alongside the normal terminal output.
 
-When the environment variable `WATCHDOG_PROGRESS` is `1` (the app sets it for every job it
-starts), `emit(kind, **fields)` writes one line to the real stdout:
+When the environment variable `WATCHDOG_PROGRESS` is `1` (the worker that runs the app's
+operations sets it, D298), `emit(kind, **fields)` writes one line to the real stdout:
 
     \\x1eWDP {"kind": "stage", ...}\\n
 
@@ -30,6 +30,8 @@ Events (every one has `kind`):
         a recording being transcribed. Written by the pre-processing subprocess to its stderr
         (its stdout is the JSON result) and forwarded by preprocess_batch.preprocess_one.
     {"kind": "message", "text": str}
+    {"kind": "result", "op": str, "result": object}
+        the operation's return value, the worker's last line (D298).
 """
 
 from __future__ import annotations
@@ -48,6 +50,11 @@ def enabled() -> bool:
 def emit(kind: str, **fields) -> None:
     if os.environ.get("WATCHDOG_PROGRESS") != "1":
         return
+    write(kind, **fields)
+
+
+def write(kind: str, **fields) -> None:
+    """Write one event whatever the environment says (the worker's own lines, D298)."""
     try:
         out = sys.__stdout__
         out.write(PREFIX + json.dumps({"kind": kind, **fields}, ensure_ascii=False, default=str) + "\n")

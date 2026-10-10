@@ -40,12 +40,12 @@ export default function ContradictionModal({ open, onClose, entityId, entityName
     setBusy(true)
     setError('')
     try {
-      const args = ['review', 'add-contradiction', entityId, '--label', label.trim(), '--a', a.value.trim(), '--a-doc', a.doc, '--b', b.value.trim(), '--b-doc', b.doc]
-      if (a.page) args.push('--a-page', a.page)
-      if (b.page) args.push('--b-page', b.page)
-      const out = await runAction(args)
+      const { added } = await runAction<{ added: boolean }>('add-contradiction', {
+        entity: entityId, label: label.trim(), a: a.value.trim(), a_doc: a.doc, b: b.value.trim(), b_doc: b.doc,
+        a_page: a.page ? Number(a.page) : undefined, b_page: b.page ? Number(b.page) : undefined
+      })
       invalidate('vault.', 'review.')
-      toast({ kind: /already present/i.test(out) ? 'info' : 'success', title: /already present/i.test(out) ? 'Already recorded' : 'Contradiction recorded', body: `On ${entityName}.` })
+      toast({ kind: added ? 'success' : 'info', title: added ? 'Contradiction recorded' : 'Already recorded', body: `On ${entityName}.` })
       onClose()
     } catch (e) {
       setError(errorMessage(e))

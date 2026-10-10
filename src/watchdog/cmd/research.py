@@ -11,7 +11,6 @@ reading. The internal `research-fetch` command runs the same download on demand 
 import subprocess
 import sys
 from pathlib import Path
-from urllib.parse import urlsplit
 
 from watchdog import progress
 from watchdog.appmode import hint as _hint, under_app
@@ -29,7 +28,6 @@ from watchdog.cmd.base import (
     CONFIG_FILE,
     _extra_install_cmd,
     _find_project,
-    _resolve_vault,
     _venv_bin,
     load_projects,
 )
@@ -214,48 +212,11 @@ def cmd_research(args) -> None:
         print(f"\n  Left queued. Run {_CYAN}watchdog research-fetch{_RESET} to download later.\n")
 
 
-def cmd_research_fetch(args) -> None:
-    """Internal: download the queued research sources into incoming/ (manual / recovery path)."""
-    _, _info, vault = _resolve_vault(getattr(args, "project", None))
-    _ensure_layout(vault)
-    source_file = Path(args.file) if getattr(args, "file", None) else None
-    if source_file is not None:
-        if not source_file.exists() or not research.parse_worklist(source_file.read_text(encoding="utf-8")):
-            sys.exit(f"Error: no queued sources at {source_file}")
-    elif not _queue_count(vault):
-        sys.exit(f"Error: no queued sources at {_queue_path(vault)}")
-    _run_download(vault, source_file)
-    print()
+def cmd_research_fetch(args):
+    from watchdog.ops.research import _research_fetch
+    return _research_fetch(args)
 
 
-def cmd_fetch(args) -> None:
-    """`watchdog fetch <file | urls…>` — download a batch of URLs into `incoming/`, independent of
-    the agentic research flow (#197). Each URL goes through the same egress gate as research sources
-    (validate → fetch → sanitize → `.yml` sidecar), and Wayback archiving applies if configured. The
-    input is either a links/TSV file (one URL per line) or URLs given directly on the command line."""
-    _, _info, vault = _resolve_vault(getattr(args, "project", None))
-    _ensure_layout(vault)
-    targets = args.targets
-
-    # A single argument that names a file is a links file; anything else is treated as URLs.
-    if len(targets) == 1 and not urlsplit(targets[0]).scheme and Path(targets[0]).is_file():
-        entries = research.parse_worklist(Path(targets[0]).read_text(encoding="utf-8"))
-        if not entries:
-            sys.exit(f"Error: no URLs found in {targets[0]}")
-    else:
-        entries = [{"url": t.strip()} for t in targets if t.strip()]
-        if not entries:
-            sys.exit("Error: no URLs to fetch")
-
-    wayback = _wayback_creds()
-    results = research.deposit_many(vault, entries, wayback=wayback, retrieved_by="fetch",
-                                    on_progress=_print_progress)
-    count = _report_deposits(results, wayback=wayback, requeued_failures=False)
-    if count:
-        if under_app():
-            print(f"\n  {'They are' if count != 1 else 'It is'} saved in incoming/, ready to add.\n")
-        else:
-            print(f"\n  Next: {_CYAN}watchdog chew{_RESET} then {_CYAN}watchdog dig{_RESET} "
-                  f"to fold {'them' if count != 1 else 'it'} into the vault.\n")
-    else:
-        print()
+def cmd_fetch(args):
+    from watchdog.ops.research import _fetch
+    return _fetch(args)

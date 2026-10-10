@@ -20,10 +20,10 @@ User documentation is in [docs/app.md](../docs/app.md). This page is for develop
 
 - **Reads** (lists, notes, search, review items) run in-process in the Python server and come
   back as JSON — see [API.md](API.md), mirrored by `src/shared/api.ts`.
-- **Anything that changes an investigation** runs the real CLI command as a subprocess
-  (`jobs.start` for long work like `add`, `action.run` for quick ones like `projects rename`), so
-  the app can never behave differently from the terminal. Progress comes back as structured
-  events (`WATCHDOG_PROGRESS=1`, see `src/watchdog/progress.py`).
+- **Anything that changes an investigation** is an operation (`src/watchdog/ops/`) run in a
+  worker process, `python -m watchdog.worker` (`jobs.start` for long work like `add`, `action.run`
+  for quick ones like `projects-rename`; D298). Progress comes back as structured events (see
+  `src/watchdog/progress.py`).
 - **Claude sessions** (`ask`, `ask --context`, `research`) run through the Claude Agent SDK in the
   vault folder, so the vault's own `.claude/` settings and `/watchdog-*` commands apply.
 - The main process finds Python in this order. A packaged app: `WATCHDOG_PYTHON`, the interpreter

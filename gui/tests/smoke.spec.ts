@@ -230,8 +230,8 @@ test('every screen renders against the demo investigation', async () => {
     // another one.
     const second = await page.evaluate(async (dir) => {
       const w = window as any
-      const r = await w.watchdog.rpc('action.run', { vault: null, args: ['new', 'Second Look', '--dir', dir] })
-      if (r.code !== 0) return r.stderr || r.stdout
+      const r = await w.watchdog.rpc('action.run', { vault: null, op: 'projects-new', params: { name: 'Second Look', dir } })
+      if (r.code !== 0) return r.error || r.log
       return (await w.watchdog.rpc('projects.list', {})).find((p: { name: string }) => p.name === 'Second Look')?.slug ?? 'not listed'
     }, root)
     expect(second).toMatch(/^second-look/)
@@ -301,12 +301,12 @@ test('every screen renders against the demo investigation', async () => {
     // The incoming-folder watcher shows as a small chip, never a card over the screen.
     await page.evaluate(() => {
       const st = (window as any).__watchdogApp.getState()
-      st.upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: st.project.path, args: ['watch'], state: 'running', exit_code: null, started: new Date().toISOString(), finished: null, progress: {} })
+      st.upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: st.project.path, op: 'watch', params: {}, result: null, state: 'running', exit_code: null, started: new Date().toISOString(), finished: null, progress: {} })
       st.navigate({ view: 'settings', tab: 'about' })
     })
     await expect(page.locator('.job-chip', { hasText: 'Watching incoming' })).toBeVisible()
     await expect(page.locator('.job-card')).toHaveCount(0)
-    await page.evaluate(() => (window as any).__watchdogApp.getState().upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: null, args: ['watch'], state: 'cancelled', exit_code: null, started: new Date().toISOString(), finished: new Date().toISOString(), progress: {} }))
+    await page.evaluate(() => (window as any).__watchdogApp.getState().upsertJob({ id: 'e2e-watch', label: 'Watching incoming', kind: 'watch', vault: null, op: 'watch', params: {}, result: null, state: 'cancelled', exit_code: null, started: new Date().toISOString(), finished: new Date().toISOString(), progress: {} }))
     await expect(page.locator('.job-dock')).toHaveCount(0)
 
     // Review at a small window: every queue tab and every tool is on screen, none scrolled out of
@@ -380,7 +380,7 @@ test('adding documents waits for the background setup', async () => {
       const w = window as any
       const p = await w.watchdog.rpc('projects.get', { slug: s })
       try {
-        await w.watchdog.rpc('jobs.start', { vault: p.path, args: ['add', '--skip-warning'], label: 'x' })
+        await w.watchdog.rpc('jobs.start', { vault: p.path, op: 'add', params: { skip_warning: true }, label: 'x' })
         return 'started'
       } catch (e) {
         return String((e as Error).message ?? e)
