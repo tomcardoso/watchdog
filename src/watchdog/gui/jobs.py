@@ -215,8 +215,8 @@ class JobManager:
         require_engine(args)
         _require_granted_cwd(vault)
         job = Job(vault, args, label, kind)
-        env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "PYTHONUNBUFFERED": "1",
-               "PYTHONIOENCODING": "utf-8"}
+        env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "WATCHDOG_APP": "1",
+               "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
         popen_kwargs: dict = {}
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -330,7 +330,8 @@ def run_action(vault: Path | None, args: list[str], timeout: float) -> dict:
     """A short command run to completion: `{code, stdout, stderr}` with colour codes removed."""
     require_engine(args)
     _require_granted_cwd(vault)
-    env = {**os.environ, "NO_COLOR": "1", "PYTHONIOENCODING": "utf-8", "PYTHONUNBUFFERED": "1"}
+    env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_APP": "1", "PYTHONIOENCODING": "utf-8",
+           "PYTHONUNBUFFERED": "1"}
     env.pop("WATCHDOG_PROGRESS", None)
     try:
         done = subprocess.run(command_argv(args), cwd=str(vault) if vault else None, env=env,
