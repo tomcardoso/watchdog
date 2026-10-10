@@ -306,5 +306,9 @@ def sdk_server(vault: Path):
             async def handler(args):
                 return await call(tools, n, args)
             return handler
-        defs.append(tool(name, description, schema, annotations=annotations)(bind(name)))
+        try:
+            decorate = tool(name, description, schema, annotations=annotations)
+        except TypeError:                 # an SDK older than tool annotations: hints are optional
+            decorate = tool(name, description, schema)
+        defs.append(decorate(bind(name)))
     return create_sdk_mcp_server(SERVER, tools=defs)

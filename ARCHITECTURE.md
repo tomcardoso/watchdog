@@ -361,9 +361,9 @@ Code makes and checks every one; no model ever writes a link a reader sees unche
 - **Pages a session writes** (`queries/`, `wiki/`, research memos, also briefings):
   never rewritten. `check_text`/`check_vault` resolve every link and report found, not found and
   disputed; the app calls `vault.citations` for each page it renders and shows a dangling one as
-  "source not found", `watchdog check-citations` and Maintenance → Check citations list them all.
-  `watchdog search --json` gives each passage and corpus hit the facts on its page with their
-  `cite` link, so a session cites what it found.
+  "source not found", a session's `check_citations` tool and Maintenance → Check citations list
+  them all. A session's `search` tool gives each passage and corpus hit the facts on its page with
+  their `cite` link, so a session cites what it found.
 
 Uncited sentences are never flagged: AI-written text may frame and connect what the cited facts
 say (the owner's call).
@@ -416,8 +416,8 @@ registry, keyed for idempotent replay (D67).
   writes to the same store (D252). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
   paraphrases, and `requests.md` is re-rendered (D111, D159).
-- `watchdog contradiction-add` lets a journalist promote a candidate contradiction found by
-  `/watchdog-surface`, through the same deterministic writer (D82).
+- A session's `contradiction_add` tool promotes a candidate contradiction found by
+  `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
 A batch is always finalized, never discarded (D242); `bark` with nothing pending reports so.
 
@@ -532,32 +532,40 @@ Every model call, and every Ask Claude or Web research turn (run id `session-<id
 filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` removes a vault's rows
 (D247).
 
-**Session boundaries (D245).** A vault's Claude Code settings pre-authorize writes only to the
-session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/tmp/`,
-`.watchdog/research/`) and a few deterministic commands. `refresh-skills` updates commands,
-permissions, the prompt hook and dashboard views in existing vaults.
+**Session boundaries (D245, D299).** A vault's Claude Code settings pre-authorize writes only to the
+session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/research/`) and
+Watchdog's session tools (`mcp__watchdog__*`), deny `~/.watchdog`, confine reads to the vault and
+carry no hooks. An app session has no shell: `Bash` is a disallowed tool, and everything it did
+through `watchdog …` commands is a tool of the in-process MCP server `watchdog`
+(`watchdog/session_tools.py`): `search`, `leads`, `check_citations` and `research_seen` read;
+`timeline`, `write_entity`, `watchlist_add` and `contradiction_add` write. Each tool set is bound to
+the session's vault and takes no folder, project or outside file; the writers call the library
+function under the registry lock, refuse a vault without folder access and record a version
+(`{"kind": "session", "tool": …}`). The hooks are Python callbacks registered in `gui/chat.py`:
+the page-notes pair below, the vault-only edit guard, and a UserPromptSubmit note of documents
+still waiting. A Claude Code session opened on the folder outside the app gets the instructions and
+the permission rules, but no tools and no hooks. `refresh-skills` updates commands, permissions
+and dashboard views.
 
-**Session primer (D285).** The vault's SessionStart hook (matcher `startup|resume|compact`) runs
-`watchdog session-primer`, an internal command that prints `cmd/primer.build(vault)`: the questions
+**Session primer (D285).** The app appends `cmd/primer.session_text(vault)` (`build`, never
+raising) to a session's system prompt when it connects, at the start and on every resume (D299);
+the system prompt survives compaction. It holds the questions
 in `context.md`, counts and verification progress, the most-mentioned entities with note links,
 open contradictions, leads, document requests, possible same entities and disputed facts (with
 citation links), the last three briefings with their status lines, and how to cite. It is read from
 the registry, the ledger, the merge log and the requests ledger with no model call, built fresh for
 every session, and budgeted (`BUDGET_CHARS`, 6,000 characters; lists shrink from five items to
-none until it fits). It never fails a session's start. The app's Briefings → Current state renders the same
+none until it fits). It never fails a session's start, and is not rebuilt after a compaction. The app's Briefings → Current state renders the same
 `primer.gather` data for the reporter, without the citing instructions, command lines or budget
 (`gui/current_state.py`, `vault.currentState`); the primer itself, verbatim, is its secondary
-"What Claude is given" view (`vault.sessionPrimer`). An older vault's hook, which `cat`ed `hot.md`, is rewritten by
-the D266 migration on first use (`vault_paths.retire_hot_md_hook`), which also refreshes its
-`.claude/CLAUDE.md`; `hot.md` itself is left on disk and is no longer read, indexed or
-citation-checked.
+"What Claude is given" view (`vault.sessionPrimer`). `hot.md` is no longer written, read, indexed
+or citation-checked.
 
 **Saved-page notes (D296).** The reporter's `## Notes` on a page in `queries/` or `wiki/` is guarded
 by `pipeline/page_notes.py` under `.notes-lock`: the app's `vault.saveNotes` writes it with a
-compare-and-swap, and the vault's PreToolUse/PostToolUse hooks (matcher `Write|Edit|MultiEdit`,
-`watchdog page-notes pre|post`) snapshot the Notes before a session's file edit and put back the
-newer of that snapshot and the app's last save if the edit changed them. Added to older vaults by
-the D266 migration (`vault_paths.ensure_page_notes_hooks`) and `refresh-skills`.
+compare-and-swap, and the app session's PreToolUse/PostToolUse callbacks (matcher
+`Write|Edit|MultiEdit`, `page_notes.run_hook`, D299) snapshot the Notes before a session's file edit
+and put back the newer of that snapshot and the app's last save if the edit changed them.
 
 **Version history (D286).** `pipeline/history.py` versions every tracked file: Markdown outside
 `morgue/`, `incoming/`, `context/` and hidden folders, plus `entities`, `documents`, `merges`,
@@ -568,7 +576,8 @@ last-seen size and mtime, per version its cause and log offset) is rebuilt from 
 behind; `size.json` caches the objects' total for the projects list. Each write point wraps itself in
 `history.recording(vault, cause, scope)` under its own lock: finalize (one version per run, the
 documents as cause), `merge_entities.run`, `merge_undo.undo`, `entity_notes.rebuild`,
-`verification.mark`, the app's `saveNotes`/`writeFile`/Review resolutions, each Ask Claude turn,
+`verification.mark`, the app's `saveNotes`/`writeFile`/Review resolutions, each Ask Claude turn and
+each write by a session tool,
 and restores. Entering records changes made since the last version (cause `found`); recordings
 nest, so a merge inside a run is part of the run's version. While a run holds the vault, a small
 edit records only its own files. Restore writes a page back whole, an entity or document note's
@@ -667,8 +676,8 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
 - **Record skills (D21).** Global: the package's `skills/records/` plus `~/.watchdog/skills/records/`
   (user skills override by name). Read directly, never copied into a vault.
 - **Claude Code commands.** `/watchdog-context`, `-entity`, `-query`, `-surface`, `-wiki`, `-health`,
-  `-research`, copied into each vault by `new`/`refresh-skills`. `/watchdog-query` can call
-  `watchdog search --json` as a semantic lane (D44).
+  `-research`, copied into each vault by `new`/`refresh-skills`. `/watchdog-query` can call the
+  `search` tool as a semantic lane (D44, D299).
 
 **Data sent per call.** Chew makes none of these calls. A stage on the `local` backend sends the
 same content to the user's own model server; every other backend sends it to that provider.
@@ -742,7 +751,10 @@ See D45–D48.
   --skip-warning`.
 - **Claude sessions** (`chat.*`) use the Claude Agent SDK with `cwd` set to the vault and project
   settings loaded, so the vault's permissions and `/watchdog-*` commands apply; transcripts are kept
-  under `~/.watchdog/gui/chats/`.
+  under `~/.watchdog/gui/chats/`. Each session gets the in-process MCP server `watchdog`
+  (`create_sdk_mcp_server`, its tools pre-approved through `allowed_tools`), the primer in its system
+  prompt, its hooks as Python callbacks, and no `Bash` (D299). A tool runs in the backend's thread
+  pool (`asyncio.to_thread`), with the backend's folder-access hook.
 - **Files.** The renderer reads vault files only through `wdfile://`, which the main process limits
   to registered vault folders, and which answers byte-range requests (206) so a recording can
   seek. Thumbnails are cached in the app's user-data folder. A recording opens in a player above
@@ -767,8 +779,8 @@ See D45–D48.
   `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
   allowed folders and Watchdog's own exempt locations, in the sidecar and every CLI subprocess; the
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
-  edits outside their vault. Their shell commands run in Claude Code's sandbox on macOS and are
-  limited to the vault's pre-approved `watchdog` commands elsewhere (D274).
+  edits outside their vault. They have no shell, so no command of theirs runs outside these checks
+  (D299; D274's sandbox and shell allow-list are gone).
 - **API keys (D295).** `~/.watchdog/credentials.json` keeps its structure (providers, key ids,
   names, the default) in the clear and each secret as `{"enc": "safeStorage:v1", "data", "masked"}`,
   encrypted by the main process with Electron `safeStorage` (Keychain, DPAPI, a Linux keyring;
@@ -835,16 +847,16 @@ noted as such.
   *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** XML goes through
   `defusedxml`, never the stdlib parsers; metadata is allowlisted and length-capped; a failing
-  reader yields `{}`; document text in a note is defanged. A command a vault's session runs without a
-  prompt reaches only that vault: under `CLAUDECODE`, `search` and `write-entity` refuse other
-  investigations and files outside it, and the vault denies its sessions `~/.watchdog`.
-  *History: D78, D110, D154, D241, D257.*
+  reader yields `{}`; document text in a note is defanged. A tool a vault's session runs without a
+  prompt reaches only that vault: each session tool is bound to it and takes no folder, project or
+  file outside it; an app session has no shell; and the vault denies its sessions `~/.watchdog`.
+  *History: D78, D110, D154, D241, D257, D299.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction stages
   `.watchdog/extracted/<sha>.json` and touches no committed state. Every vault write happens in the
   serial, sha-sorted commit pass, after the pre-commit fold and merges — so a reconcile failure
   leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
   Investigation sessions don't hand-edit pipeline-owned files; they change pipeline state only
-  through deterministic commands that take the registry lock. *History: D126–D129, D245, D258.*
+  through deterministic session tools that take the registry lock. *History: D126–D129, D245, D258, D299.*
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
@@ -857,13 +869,15 @@ noted as such.
   operations). An app-only feature with no CLI command (version history's restore, removal and clear, D286, D288)
   may change the vault through a library function directly, under the same folder access (D268),
   the operation's locks and I7's commit discipline; so does the investigation's choice of billing
-  key (`auth.choose_key`, D290). The command line is expected to be removed
-  eventually; new features need not gain a command. *History: D265, D271, D286, D288.*
+  key (`auth.choose_key`, D290), and so do an Ask Claude session's tools (D299), which call the
+  library functions directly with the same folder access, locks and version history. The command
+  line is expected to be removed eventually; new features need not gain a command.
+  *History: D265, D271, D286, D288, D299.*
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes
   the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
-  D268, D274.*
+  D268, D274, D299.*
 - **I12 — Entity merges are tiered and recorded.** Two entity records are joined only on a
   high-confidence rule, a model judgement of a medium-confidence pair, or a reporter's merge; a
   person is never merged on a name alone, and initialled or partial names are never merged
