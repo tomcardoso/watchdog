@@ -154,7 +154,7 @@ Entity pages, a document's **Notes** tab, and the answers and thread pages Claud
 
 Notes are plain Markdown, the same text you see in Obsidian: `**bold**`, lists, and `[[links]]` to other notes. They are saved a moment after you stop typing, when you click elsewhere, and when you leave the page, and each save is recorded in the file's [history](#history). If Watchdog is writing the investigation's notes at that moment, the save waits until it has finished. If a save fails, your text is kept and Watchdog tells you, with a way back to it; closing the window while notes are still being saved asks first.
 
-Watchdog never writes to this section. Entity and document notes are rebuilt from the investigation's records every time documents are added, and this section is carried over unchanged. A Claude session that updates a saved page is told to leave it as it is.
+Watchdog never writes to this section. Entity and document notes are rebuilt from the investigation's records every time documents are added, and this section is carried over unchanged. A Claude session that updates a saved page is told to leave it as it is, and if it writes the page back without your latest notes (for example, because you saved them while it was working), Watchdog puts your notes back straight away and tells Claude it did. If you want Claude to change your notes, edit them yourself.
 
 ## Folder access
 

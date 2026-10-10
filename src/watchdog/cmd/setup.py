@@ -860,6 +860,7 @@ def cmd_refresh_skills(args) -> None:
     deny_added = False
     hook_updated = False
     session_hook_updated = False
+    notes_hooks_added = False
     if settings_path.exists():
         try:
             settings = _read_json(settings_path)
@@ -907,13 +908,16 @@ def cmd_refresh_skills(args) -> None:
 
             from watchdog.vault_paths import retire_hot_md_hook
             session_hook_updated = retire_hot_md_hook(settings)
+            from watchdog.vault_paths import ensure_page_notes_hooks
+            notes_hooks_added = ensure_page_notes_hooks(settings)
 
-            if removed or added or read_scope_added or deny_added or hook_updated or session_hook_updated:
+            if (removed or added or read_scope_added or deny_added or hook_updated or session_hook_updated
+                    or notes_hooks_added):
                 settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
             # Nothing was written, so nothing above may be reported as done.
             added, removed = [], []
-            read_scope_added = deny_added = hook_updated = session_hook_updated = False
+            read_scope_added = deny_added = hook_updated = session_hook_updated = notes_hooks_added = False
             print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
                   f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
 
@@ -931,6 +935,9 @@ def cmd_refresh_skills(args) -> None:
     if session_hook_updated:
         print(f"  {_GREEN}Session hook updated{_RESET}  {_DIM}sessions now start with a primer built "
               f"from the whole investigation, not hot.md{_RESET}")
+    if notes_hooks_added:
+        print(f"  {_GREEN}Notes hooks added{_RESET}  {_DIM}a session's edit to a saved page keeps "
+              f"the reporter's Notes section{_RESET}")
     for change in _migrate_vault_views(vault):
         print(f"  {_GREEN}Updated{_RESET}  {_DIM}{change}{_RESET}")
     claude_md = _refresh_vault_claude_md(vault)

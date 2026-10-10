@@ -8,7 +8,7 @@ from collections import Counter  # noqa: F401 — re-exported for cmd modules
 from pathlib import Path
 
 from watchdog.appmode import hint as _hint
-from watchdog.vault_paths import SESSION_HOOK_COMMAND, incoming_dir, is_set_aside, is_vault
+from watchdog.vault_paths import PAGE_NOTES_HOOKS, PAGE_NOTES_MATCHER, SESSION_HOOK_COMMAND, incoming_dir, is_set_aside, is_vault
 from watchdog.model_catalog import _MODEL_IDS, resolve_model_id  # noqa: F401 — re-exported
 from watchdog.pipeline.json_io import _read_json
 from watchdog.pipeline.write_vault import slugify  # noqa: F401 — re-exported
@@ -168,6 +168,9 @@ def _vault_settings() -> dict:
             "UserPromptSubmit": [
                 {"matcher": "", "hooks": [{"type": "command", "command": _PROMPT_HOOK_COMMAND}]},
             ],
+            # The reporter's Notes on a saved page survive a session's rewrite (D296).
+            **{event: [{"matcher": PAGE_NOTES_MATCHER, "hooks": [{"type": "command", "command": command}]}]
+               for event, command in PAGE_NOTES_HOOKS.items()},
         },
     }
 

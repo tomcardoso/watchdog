@@ -73,7 +73,7 @@ Vaults created by earlier versions of Watchdog called these folders `_INCOMING/`
 
 **`queries/`** holds saved answers that **Ask Claude** files (through `/watchdog-query`) when a question produces a substantive answer worth keeping.
 
-A page in `wiki/` or `queries/` ends in a `## Notes` section that is yours, as in entity and document notes: the app lets you write in it (see [Your notes](app.md#your-notes)), and a session that updates the page is told to leave it as it is.
+A page in `wiki/` or `queries/` ends in a `## Notes` section that is yours, as in entity and document notes: the app lets you write in it (see [Your notes](app.md#your-notes)), and a session that updates the page is told to leave it as it is. If a session's edit drops or changes it anyway, Watchdog puts your latest notes back. It does this through two hooks in the investigation's `.claude/settings.json` (`watchdog page-notes`), which also apply to a session started from a terminal.
 
 **`.fulltext/`** and **`.embeddings/`** are the indexes behind the Search screen — one for exact matches, one for meaning. They are rebuilt from disk by **Rebuild the search index** under **Activity → Maintenance**; you never touch them directly.
 
