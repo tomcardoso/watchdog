@@ -250,15 +250,14 @@ def _public_records_warning(n_docs: int) -> str:
     gate at the point of no return (#426). Wording tracks the README section so the
     two never drift.
 
-    The app shows it in the Add documents dialog before it starts a run."""
+    The app shows it in the Add documents dialog before it starts a run, in a box that wraps
+    lines itself: plain paragraphs, no terminal indentation or hard line breaks."""
     return (
-        f"\n  ⚠  Public records only\n\n"
-        "  The extracted text of every queued document will be sent to a\n"
-        "  cloud AI model. This cannot be undone. Use Watchdog only for\n"
-        "  documents that are public, or presumptively public — never for\n"
-        "  confidential source material, leaks, or anything that could\n"
-        "  identify a source.\n\n"
-        f"  {n_docs} document{'s' if n_docs != 1 else ''} will be sent to the model."
+        "Public records only\n\n"
+        "The extracted text of every queued document will be sent to a cloud AI model. This cannot "
+        "be undone. Use Watchdog only for documents that are public, or presumptively public — never "
+        "for confidential source material, leaks, or anything that could identify a source.\n\n"
+        f"{n_docs} document{'s' if n_docs != 1 else ''} will be sent to the model."
     )
 
 
