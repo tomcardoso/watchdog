@@ -4436,7 +4436,7 @@ def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatc
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "gpt-5.6-luna",
-            "skill_label": "financial-statements", "effort": None, "backend": "openai-batch"}
+            "skills": {}, "effort": None, "backend": "openai-batch"}
     batch_extract.write_state(vault, state)
 
     seen_backends = []
@@ -4458,29 +4458,6 @@ def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatc
 
     assert out["batch_pending"] is False
     assert seen_backends == [("status", "openai-batch"), ("collect", "openai-batch")]
-
-
-def test_resume_batch_defaults_missing_backend_to_claude_batch(tmp_path, monkeypatch):
-    """State persisted before #530 (no `backend` field at all) must still resume against
-    Anthropic — an in-flight batch across an upgrade shouldn't strand."""
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="sha1", filename="a.pdf")
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None}   # no "backend" key
-    batch_extract.write_state(vault, state)
-
-    seen_backends = []
-
-    async def fake_status(batch_id, api_key, backend=None):
-        seen_backends.append(backend)
-        return {"processing_status": "in_progress", "request_counts": {}}
-    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
-
-    skill_file = tmp_path / "pinned.md"
-    skill_file.write_text("SKILL")
-    asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
-
-    assert seen_backends == ["claude-batch"]
 
 
 def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
@@ -4558,7 +4535,7 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
     vault = make_vault(tmp_path)
     state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-4-6",
-            "skill_label": "s", "effort": None}
+            "skills": {}, "effort": None, "backend": "claude-batch"}
 
     async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "in_progress", "request_counts": {"processing": 1, "succeeded": 1}}
@@ -4574,7 +4551,7 @@ def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     # Pre-D144 state shape (one run-wide `skill_label`, no per-sha map) — still collectable.
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None}
+            "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key, backend=None):
@@ -4613,7 +4590,7 @@ def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None,
+            "skills": {}, "effort": None, "backend": "claude-batch",
             "submitted_at": "2026-07-29T02:54:46Z"}
     batch_extract.write_state(vault, state)
 
@@ -4793,7 +4770,7 @@ def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
     skill_file = tmp_path / "pinned.md"
     skill_file.write_text("SKILL")
     batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-4-6",
-                                      "skill_label": "s", "effort": None})
+                                      "skills": {}, "effort": None, "backend": "claude-batch"})
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
     submit_calls = []
@@ -5711,7 +5688,7 @@ def test_resume_batch_stops_cleanly_on_an_auth_failure(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
-             "skill_label": "financial-statements", "effort": None, "backend": "claude-batch"}
+             "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key, backend=None):

@@ -151,9 +151,8 @@ def _model_tokenizer_calibration(vault: Path, model: str | None, backend: str | 
     would be wrong. Scans usage records most-recent-first, pools `extract`/`extract-section`
     calls (the ratio is a property of the model and the text, not the task), and divides by
     `est_prompt_tokens` — not `est_input_tokens`, a since-fixed bug that read a true 1.09 Claude
-    ratio as 1.41 by omitting the rest of the rendered prompt from the estimate (D198). Records
-    written before that fix carry no `est_prompt_tokens` and are skipped rather than mixed in on
-    the old denominator. `claude-agent-sdk` calibrates a few percent high regardless, since
+    ratio as 1.41 by omitting the rest of the rendered prompt from the estimate (D198). A record
+    with no `est_prompt_tokens` is skipped. `claude-agent-sdk` calibrates a few percent high regardless, since
     `est_prompt_tokens` can't see the SDK's own preamble (D198) — left uncorrected on purpose,
     since the ratio is scoped by `(model, backend)` and that backend really does send those extra
     tokens. Returns None below `min_records` matching calls, so a model tried once or twice

@@ -140,6 +140,14 @@ def make_rich_vault(tmp_path: Path) -> Path:
             "date_first_seen": "2026-03-01", "date_last_updated": "2026-03-03",
         },
     }
+    # The AI-written summaries live in the registry (D280); the notes below render them.
+    for eid, (summary, analysis_md) in {
+            "jane-doe": ("Director of Acme Corp.\n\nSecond paragraph of the summary.",
+                         "*1 Mar 2026, via [[documents/report-one|Report One]]:* She chairs the board."),
+            "acme-corp": ("A company that files annual reports.", "")}.items():
+        ents[eid]["synthesis"] = {"version": 1, "summary": summary, "analysis": analysis_md,
+                                  "by": "model", "model": None, "made_at": "2026-03-03",
+                                  "facts_total": None, "facts_shown": None, "fact_refs": {}}
     (reg / "documents.json").write_text(json.dumps(docs, indent=2))
     (reg / "entities.json").write_text(json.dumps(ents, indent=2))
     (reg / "registry.json").write_text(json.dumps(

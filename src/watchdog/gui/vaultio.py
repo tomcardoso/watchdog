@@ -500,13 +500,8 @@ def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> di
     """The app's `EntityRow` for one `entities.json` record."""
     note_stem = ent.get("note_path")
     synthesis = ent.get("synthesis") if isinstance(ent.get("synthesis"), dict) else None
-    if synthesis is not None or "synthesis" in ent:
-        # The AI-written summary lives in the registry (D280); the note is a view of it.
-        summary_text = (synthesis or {}).get("summary")
-    else:   # a note written before D280
-        parsed = parse_note_file(note_file(vault, note_stem) or Path("/nonexistent"))
-        summary_text = (parsed or {}).get("sections", {}).get("summary") if parsed else None
-    summary = first_paragraph(summary_text)
+    # The AI-written summary lives in the registry (D280); the note is a view of it.
+    summary = first_paragraph((synthesis or {}).get("summary"))
     return {
         "id": eid,
         "name": ent.get("name") or eid,

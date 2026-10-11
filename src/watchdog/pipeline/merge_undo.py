@@ -75,9 +75,6 @@ def check(vault: Path, entry: dict, entities: dict | None = None) -> str | None:
         return "This merge has already been undone."
     if undo.get("available") is False:
         return undo.get("reason") or "This merge cannot be undone."
-    if (undo.get("version") or 1) < merge_log.UNDO_VERSION:
-        return ("This merge was made by an earlier version of Watchdog, which did not record which "
-                "facts moved, so it cannot be split exactly.")
     keep = (entry.get("keep") or {}).get("id")
     merged = (entry.get("merged") or {}).get("id")
     if keep not in entities:

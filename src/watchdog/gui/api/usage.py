@@ -1,9 +1,9 @@
 """`usage.*` — per-run token, cost and latency records (`.watchdog/registry/usage/usage-<ts>.json`),
 and each Ask Claude or Web research session's (`usage/sessions/`, D296), listed beside them.
 
-The grouping, totals and notes come from `cmd/usage`'s own helpers, so a run reads the same here
-as in `watchdog usage`. Records written by older versions can be missing fields; every call is
-normalised before it is summed rather than failing the screen.
+The grouping, totals and notes come from `watchdog.usage`. A call record can lack a field (a
+backend that reports no cache tokens, a call that failed before any usage came back); every call
+is normalised before it is summed rather than failing the screen.
 """
 
 from __future__ import annotations

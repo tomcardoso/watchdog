@@ -318,35 +318,6 @@ def test_multiblock_callout_fully_resolved_not_left_in_fragments(tmp_path):
     assert "Filed as 123 Main St" not in content
 
 
-def test_note_only_contradiction_backfilled_into_registry(tmp_path):
-    # #288: a callout that only ever lived in the note body (pre-#282 vault) must be folded
-    # into the registry entry the first time the entity is touched by an ingest, not left
-    # stranded where the lead sweep and unresolve can never see it.
-    vault = make_vault(tmp_path)
-    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
-    note = vault / "entities" / "person" / "alice-smith.md"
-    note.parent.mkdir(parents=True, exist_ok=True)
-    note.write_text(
-        "---\nid: alice-smith\n---\n\n"
-        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n"
-        "## Notes\n\n<!-- Journalist annotations — never overwritten by ingestion. -->\n"
-    )
-    existing_entities = {
-        "alice-smith": {
-            "id": "alice-smith", "name": "Alice Smith", "type": "Person",
-            "aliases": [], "appears_in": ["prior-sha"],
-            "note_path": "entities/person/alice-smith",
-            "roles": [], "date_first_seen": "2024-01-01", "date_last_updated": "2024-01-01",
-        }
-    }
-    (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps(existing_entities))
-
-    run(make_extraction(tmp_path), vault)
-
-    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
-
-
 def test_relationship_line_includes_source_doc_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
@@ -1619,16 +1590,6 @@ def test_registry_lock_is_noop_when_neither_locking_mechanism_available(tmp_path
         pass  # must not raise
 
     assert (vault / ".watchdog" / "registry" / ".write-lock").exists()
-
-
-def test_drop_analysis_entry_replaces_only_matching_document():
-    analysis = (
-        "*3 May 2026, via [[documents/doc-a|Doc A]]:*\n- Claim A\n\n"
-        "*3 May 2026, via [[documents/doc-b|Doc B]]:*\n- Claim B"
-    )
-    kept = wv._drop_analysis_entry(analysis, "documents/doc-a")
-    assert "Claim A" not in kept
-    assert "Claim B" in kept
 
 
 def test_replaying_a_commit_after_a_crash_reuses_its_own_original_and_note(tmp_path):

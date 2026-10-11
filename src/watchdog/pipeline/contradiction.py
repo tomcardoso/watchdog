@@ -21,7 +21,6 @@ from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import (
     _write_json_atomic,
     _defang,
-    _extract_contradictions,
     _today,
     _update_manifest,
 )
@@ -133,13 +132,9 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
     rid = resolutions.contradiction_id(callout)
 
     entry = entities_reg[entity_id]
-    note_path = vault / f"{entry['note_path']}.md"
 
-    # The registry entry is the contradiction ledger (#282); fold in any note-only callouts too
-    # (self-healing backfill, matching the ingest writer) before adding this one.
-    existing = list(entry.get("contradictions") or []) + resolutions.split_callouts(
-        _extract_contradictions(note_path)
-    )
+    # The registry entry is the contradiction ledger (#282).
+    existing = list(entry.get("contradictions") or [])
     already_present = rid in {resolutions.contradiction_id(c) for c in existing}
     all_callouts = resolutions.dedup_callouts(existing + [callout])
     entry["contradictions"] = all_callouts

@@ -354,53 +354,6 @@ def _extract_notes_section(note_path: Path) -> str:
     return "\n" + content[idx:] if idx != -1 else default
 
 
-def _extract_analysis(note_path: Path) -> str:
-    """Return the existing ## Analysis body, or empty string."""
-    if not note_path.exists():
-        return ""
-    return _extract_section(note_path.read_text(encoding="utf-8"), "Analysis")
-
-
-def _extract_summary(note_path: Path) -> str | None:
-    """Return the existing ## Summary body, or None if absent."""
-    if not note_path.exists():
-        return None
-    text = _extract_section(note_path.read_text(encoding="utf-8"), "Summary")
-    return text or None
-
-
-def _extract_contradictions(note_path: Path) -> str:
-    """Return the existing ## Contradictions body, or empty string."""
-    if not note_path.exists():
-        return ""
-    return _extract_section(note_path.read_text(encoding="utf-8"), "Contradictions")
-
-
-# Header a document contributes to an entity note's ## Analysis section, e.g.
-# ``*3 May 2026, via [[documents/acme-annual-report|Acme Annual Report]]:*``. The doc-note
-# link is stable per document (1:1 with its sha via the slug), so it keys the block for
-# replace-not-append rewrites (#259).
-_ANALYSIS_HEADER_RE = re.compile(r"^\*[^\n]*?via \[\[([^\]|]+)[|\]]", re.MULTILINE)
-
-
-def _drop_analysis_entry(analysis: str, doc_note: str) -> str:
-    """Remove any prior ## Analysis block this document contributed, so re-running write_vault
-    for the same document replaces its entry instead of appending a duplicate (#259). Blocks are
-    delimited by their ``*…via [[doc_note|…]]:*`` header; everything from one header up to the
-    next is one document's contribution."""
-    if not analysis:
-        return analysis
-    matches = list(_ANALYSIS_HEADER_RE.finditer(analysis))
-    if not matches:
-        return analysis
-    kept = analysis[: matches[0].start()]  # preamble before the first header (normally empty)
-    for i, m in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(analysis)
-        if m.group(1) != doc_note:
-            kept += analysis[m.start():end]
-    return kept.strip()
-
-
 # ── Timeline helpers ──────────────────────────────────────────────────────────
 
 def _date_sort_key(date_str: str) -> str:

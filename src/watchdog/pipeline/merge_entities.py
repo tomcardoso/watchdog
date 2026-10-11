@@ -17,7 +17,6 @@ from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.write_vault import (
     _write_json_atomic,
-    _extract_contradictions,
     _extract_notes_section,
     _extract_section,
     _now_iso,
@@ -243,8 +242,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
 
     # The merged record's note is about to become a redirect stub; its journalist notes are the
     # one thing nothing else recovers, so read them first. Everything else is data (D280).
-    keep_note_callouts = resolutions.split_callouts(_extract_contradictions(keep_note_file))
-    merge_note_callouts = resolutions.split_callouts(_extract_contradictions(merge_note_file))
     notes_section = _extract_notes_section(keep_note_file)
     merge_note_text = merge_note_file.read_text(encoding="utf-8") if merge_note_file.exists() else ""
     merge_notes_body = _extract_section(merge_note_text, "Notes") if merge_note_text else ""
@@ -279,10 +276,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
         log_entry["undo"]["backup"] = str(Path(backup_dir).relative_to(vault_path)) \
             if Path(backup_dir).is_relative_to(vault_path) else str(backup_dir)
 
-    # The registry list is the contradiction ledger (#282); fold in note-only callouts first.
-    keep["contradictions"] = resolutions.dedup_callouts(
-        keep["contradictions"] + keep_note_callouts + merge_note_callouts
-    )
     stats["contradictions"] = len(keep["contradictions"])
 
     # One AI-written summary survives: the keeper's, else the merged record's. Either was written

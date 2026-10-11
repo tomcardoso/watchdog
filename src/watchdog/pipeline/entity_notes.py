@@ -293,13 +293,12 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
                    resolved: frozenset[str] | None = None,
                    notes: dict[str, str] | None = None) -> list[tuple[str, str, str]]:
     """Render and write the notes of `ids` from the registries the caller holds, mutating each
-    entry only to fold note-only contradiction callouts into its ledger (as every writer always
-    has) and to carry an older note's prose into `synthesis`. Returns (note_path, name, content)
+    entry's stored summary. Returns (note_path, name, content)
     for the search indexes, which the caller updates once its registries are persisted. `notes`
     maps an id to a Notes section to use instead of the one on disk (a merge carrying the merged
     record's notes over)."""
     from watchdog.pipeline import resolutions
-    from watchdog.pipeline.write_vault import _assert_in_vault, _extract_section
+    from watchdog.pipeline.write_vault import _assert_in_vault
     from watchdog.pipeline import relationships as rel
     vault = Path(vault)
     index = index or entity_facts.FactIndex(vault, entities, documents)
@@ -313,10 +312,7 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
             continue
         path = _assert_in_vault(vault / f"{entry['note_path']}.md", vault, "entity note_path")
         old = path.read_text(encoding="utf-8") if path.exists() else None
-        callouts = resolutions.dedup_callouts(
-            list(entry.get("contradictions") or [])
-            + resolutions.split_callouts(_extract_section(old or "", "Contradictions")))
-        entry["contradictions"] = callouts
+        callouts = list(entry.get("contradictions") or [])
         body = "\n\n".join(resolutions.filter_callouts(callouts, resolved))
         own_notes = (notes or {}).get(eid) or notes_section(old)
         stats = citations.new_stats()

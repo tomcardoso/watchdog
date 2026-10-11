@@ -67,7 +67,7 @@ def run_locks(vault: Path) -> dict:
     """``{"locks": {"chew": holder|None, "ingest": holder|None}, "stopped_run": str|None}``.
 
     A holder is ``{"where": "here"|"elsewhere"|"unknown", "host", "started_at"}``; ``where`` is
-    ``"unknown"`` for a lock written by an older Watchdog, which names no computer."""
+    ``"unknown"`` for a damaged lock that names no computer."""
     vault = Path(vault)
     out: dict = {}
     for key, path in (("chew", preprocessing_lock(vault)), ("ingest", processing_lock(vault))):

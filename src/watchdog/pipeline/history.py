@@ -258,8 +258,8 @@ def _update_size_cache(hdir: Path, prev_log_bytes: int | None, added: int) -> No
 
 def history_bytes(vault: Path) -> int | None:
     """The history's size on disk, or None when the investigation has none. Cheap: three stats
-    and a small file read, falling back to walking the store when its size cache is behind (a
-    history written before the cache existed, or after a crash between the log and the cache)."""
+    and a small file read, falling back to walking the store when its size cache is behind (after
+    a crash between the log and the cache)."""
     hdir = history_dir(vault)
     log = hdir / "log.jsonl"
     try:

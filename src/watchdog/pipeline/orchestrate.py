@@ -313,9 +313,8 @@ def _usage_totals(records: list[dict]) -> dict:
         "output_tokens": sum(r["output_tokens"] for r in records),
         "cache_read_tokens": sum(r["cache_read_tokens"] for r in records),
         "cache_write_tokens": sum(r["cache_write_tokens"] for r in records),
-        # `reasoning_tokens` (#354) only appears on OpenAI reasoning-model records — `r.get(...)`
-        # with a 0 default, not `r[...]`, so older records and every non-reasoning backend still
-        # sum cleanly.
+        # `reasoning_tokens` (#354) only appears on OpenAI reasoning-model records, so every
+        # other backend's records sum with a 0 default.
         "reasoning_tokens": sum(r.get("reasoning_tokens", 0) for r in records),
         "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6) if records else None,
         "latency_s": round(sum(r.get("latency_s") or 0.0 for r in records), 3),
@@ -1049,7 +1048,7 @@ def _write_section_checkpoint(vault: Path, sha: str, sec: dict, parsed: dict, co
     this ORIGINAL section's `index`/dict, so there is still exactly one checkpoint per planned
     section and `_load_section_checkpoints`' identity check (and the `len(checkpoints)` indexing
     into `sections` it enables, #498) keeps working. `parsed` is always the first (or only)
-    result, kept so a checkpoint written before #540 still replays."""
+    result."""
     record = {"section": sec, "parsed": parsed, "cost_usd": cost_usd}
     if parts:
         record["parts"] = parts
@@ -1602,8 +1601,7 @@ _BATCH_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 def _fmt_span(start_iso: str | None, end_iso: str | None) -> str | None:
     """Human duration between two batch-lifecycle timestamps (`_BATCH_TS_FMT` strings), or None
-    if either is missing — `ended_at` is None until a batch finishes, and older persisted state
-    (written before this) has no `submitted_at`."""
+    if either is missing (`ended_at` is None until a batch finishes)."""
     if not start_iso or not end_iso:
         return None
     secs = int((datetime.datetime.strptime(end_iso, _BATCH_TS_FMT)
@@ -1641,10 +1639,8 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
     """Check a pending batch's status; collect and write it if `ended`, otherwise report
     progress and return without touching the vault.
 
-    `state["backend"]` names which provider's batch this is (#530) — defaults to `claude-batch`
-    for state persisted before that field existed, so a batch already in flight across an
-    upgrade still resumes correctly."""
-    backend = state.get("backend", "claude-batch")
+    `state["backend"]` names which provider's batch this is (#530)."""
+    backend = state["backend"]
     st = await batch_extract.status(state["batch_id"], api_key, backend=backend)
     if st["processing_status"] != "ended":
         counts = st.get("request_counts", {})

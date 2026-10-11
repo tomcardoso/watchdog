@@ -282,19 +282,6 @@ def test_pending_count_and_queue_path(tmp_path):
     assert research.pending_count(vault) == 2  # comments/blanks skipped
 
 
-def test_read_queue_text_falls_back_to_old_tmp_location(tmp_path):
-    vault = tmp_path / "v"
-    old = vault / research._OLD_QUEUE_REL
-    old.parent.mkdir(parents=True)
-    old.write_text("https://legacy.com\n", encoding="utf-8")
-    assert research.pending_count(vault) == 1  # read via fallback
-    # A worklist at the new path takes precedence over the old one.
-    new = research.queue_path(vault)
-    new.parent.mkdir(parents=True)
-    new.write_text("https://a.com\nhttps://b.com\n", encoding="utf-8")
-    assert research.pending_count(vault) == 2
-
-
 def test_serialize_worklist_round_trips(tmp_path):
     text = "https://a.com\tTitle A\tnews\twhy a\nhttps://b.com\n"
     entries = research.parse_worklist(text)
@@ -317,12 +304,8 @@ def test_retain_pending_empty_deletes_worklist(tmp_path):
     q = research.queue_path(vault)
     q.parent.mkdir(parents=True)
     q.write_text("https://a.com\n", encoding="utf-8")
-    old = vault / research._OLD_QUEUE_REL
-    old.parent.mkdir(parents=True)
-    old.write_text("https://a.com\n", encoding="utf-8")
     research.retain_pending(vault, [])
     assert not q.exists()
-    assert not old.exists()  # the fallback is cleared too, so it can't re-nag
 
 
 # ── seen_urls: re-fetch avoidance (#196, Part A) ───────────────────────────────

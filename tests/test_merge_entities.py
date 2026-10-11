@@ -428,22 +428,6 @@ def test_run_merge_carries_registry_contradiction_to_survivor(tmp_path):
     assert "Loser-side callout" in content
 
 
-def test_run_backfills_note_only_contradiction_into_registry(tmp_path):
-    """#288: a callout that only ever lived in a note body (pre-#282 vault) must be
-    folded into the registry entry by the merge, not silently dropped."""
-    vault = make_vault(tmp_path)
-    note = vault / "entities" / "person" / "alice-smith.md"
-    note.write_text(note.read_text().replace(
-        "## Notes",
-        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n## Notes",
-    ))
-
-    run(vault, "alice-smith", "a-smith-duplicate")
-
-    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
-
-
 def test_run_remaps_resolutions_onto_survivor(tmp_path):
     from watchdog.pipeline import resolutions
     vault = make_vault(tmp_path)
