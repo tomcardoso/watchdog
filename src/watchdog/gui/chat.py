@@ -188,11 +188,14 @@ def _vault_only_edits(vault: Path):
 
 
 def first_prompt(vault: Path, mode: str, text: str | None) -> str | None:
-    """The session's opening prompt, exactly as the CLI's command would pass it to `claude`."""
-    text = (text or "").strip()
+    """The session's opening prompt: for Ask, the query skill on the question (the bare question
+    when the vault has no `/watchdog-query`, since an unknown slash command would lose it)."""
+    text = " ".join((text or "").split())
     if mode == "ask":
-        from watchdog.cmd.ask import prompt_for
-        return prompt_for(text, (vault / ".claude" / "commands" / "watchdog-query.md").exists())
+        if not text:
+            return None
+        has_skill = (vault / ".claude" / "commands" / "watchdog-query.md").exists()
+        return f"/watchdog-query {text}" if has_skill else text
     if mode == "context":
         _seed_context(vault)
         return "/watchdog-context"
@@ -200,7 +203,7 @@ def first_prompt(vault: Path, mode: str, text: str | None) -> str | None:
 
 
 def _seed_context(vault: Path) -> None:
-    """Write `context.md` from the template when missing, as `watchdog ask --context` does."""
+    """Write `context.md` from the template when missing, for a Background session."""
     from watchdog.cmd.base import _render_template, load_projects
     path = vault / "context.md"
     if path.exists():

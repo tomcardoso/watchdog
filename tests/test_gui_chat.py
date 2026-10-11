@@ -433,3 +433,18 @@ def test_the_prompt_hook_never_fails_a_prompt(env, monkeypatch):
 def test_a_session_outside_an_investigation_gets_no_primer(env, tmp_path):
     session = chat.Session(tmp_path, "ask", None, "t")
     assert "append" not in chat.build_options(session, None).system_prompt
+
+
+@pytest.mark.parametrize("question, expected", [
+    (None, None), ("", None), ("   ", None),
+    ("who signed it?", "/watchdog-query who signed it?"),
+    ("who\nsigned  it?", "/watchdog-query who signed it?"),
+])
+def test_first_prompt_asks_through_the_query_skill(tmp_path, question, expected):
+    (tmp_path / ".claude" / "commands").mkdir(parents=True)
+    (tmp_path / ".claude" / "commands" / "watchdog-query.md").write_text("x")
+    assert chat.first_prompt(tmp_path, "ask", question) == expected
+
+
+def test_first_prompt_without_the_query_skill_sends_the_bare_question(tmp_path):
+    assert chat.first_prompt(tmp_path, "ask", "who signed?") == "who signed?"
