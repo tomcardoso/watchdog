@@ -13,7 +13,7 @@ You can also repair from inside the app: **Settings → Setup → Repair or rein
 
 ## The engine installation stops or fails
 
-Setup, or a repair, shows **The installation did not finish** with the reason. The usual cause is the connection: a VPN, a firewall or a flaky network can block the downloads. Another is running out of disk space; setup needs about 7 GB free.
+Setup, or a repair, shows **The installation did not finish** with the reason. The usual cause is the connection: a VPN, a firewall or a flaky network can block the downloads. Another is running out of disk space; setup needs about 7 GB free, and the engine's own update after an app update about 1 GB.
 
 Choose **Try again**. Whatever was already downloaded is kept, and installation resumes where it stopped. **Start over** begins from scratch. **Show details** displays the installer's log, which is worth copying into an issue if the problem persists.
 

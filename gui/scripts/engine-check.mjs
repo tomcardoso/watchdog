@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const { Engine, PHASES, RECORD_SCHEMA, parseSimulate, torchArgs } = await import('../src/main/engine.ts')
+const { Engine, PHASES, RECORD_SCHEMA, freeSpaceNeeded, parseSimulate, torchArgs } = await import('../src/main/engine.ts')
 
 const roots = []
 function engineAt({ record, simulate, resources } = {}) {
@@ -38,6 +38,11 @@ async function check(name, fn) {
   n += 1
   console.log('ok', name)
 }
+
+await check('an engine update needs far less free space than a new install', () => {
+  assert.equal(freeSpaceNeeded(false).label, '7 GB')
+  assert.ok(freeSpaceNeeded(true).bytes <= 1024 ** 3)
+})
 
 await check('no record: missing, not complete', () => {
   const { engine } = engineAt()
