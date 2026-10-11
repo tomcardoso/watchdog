@@ -164,12 +164,23 @@ def test_action_run_refuses_requeue_while_pending(pending, wdg_home):
 def test_other_operations_run_while_pending(pending, wdg_home, rich_vault, fake_cli, op, params):
     job = call("jobs.start", vault=str(rich_vault), op=op, params=params, label="x")
     assert job["state"] in ("running", "done")
+    _finish(job["id"])
 
 
 def test_nothing_refused_when_not_pending(monkeypatch, wdg_home, rich_vault, fake_cli):
     monkeypatch.delenv(engine_setup.PENDING_ENV, raising=False)
     assert call("engine.ready") == {"ready": True}
-    assert call("jobs.start", vault=str(rich_vault), op="add", label="x")["state"] in ("running", "done")
+    job = call("jobs.start", vault=str(rich_vault), op="add", label="x")
+    assert job["state"] in ("running", "done")
+    _finish(job["id"])
+
+
+def _finish(job_id, timeout=30):
+    """Let a job end before the test does, so its events never reach a later test."""
+    import time
+    deadline = time.time() + timeout
+    while call("jobs.get", id=job_id)["state"] == "running" and time.time() < deadline:
+        time.sleep(0.05)
 
 
 def test_set_ready_lifts_the_gate_for_the_backend_and_its_children(pending, wdg_home):

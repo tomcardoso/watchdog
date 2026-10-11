@@ -82,17 +82,22 @@ def test_job_streams_log_and_progress(sink, fake_cli, tmp_path):
     assert not any(progress.PREFIX.strip() in t for _, t in texts)       # progress stays out of the log
     assert got["progress"]["stage"] == "dig"
     assert got["progress"]["docs"]["s1"] == {"filename": "a.pdf", "state": "done", "detail": "3 facts"}
+    # Only this job's events: a job an earlier test started can still finish while this one runs.
+    def mine():
+        return [e for e in list(sink)
+                if (e["data"].get("job") or {}).get("id", e["data"].get("id")) == started["id"]]
     # The job's state changes a moment before its job.finished event is emitted.
     deadline = time.time() + 5
-    while sink[-1]["event"] != "job.finished" and time.time() < deadline:
+    while (not mine() or mine()[-1]["event"] != "job.finished") and time.time() < deadline:
         time.sleep(0.02)
-    names = [e["event"] for e in sink]
+    events = mine()
+    names = [e["event"] for e in events]
     assert names[0] == "job.started" and names[-1] == "job.finished"
-    assert sink[0]["data"]["job"]["op"] == "script" and "args" not in sink[0]["data"]["job"]
+    assert events[0]["data"]["job"]["op"] == "script" and "args" not in events[0]["data"]["job"]
     assert names.count("job.progress") == 3
-    logged = [ln for e in sink if e["event"] == "job.log" for ln in e["data"]["lines"]]
+    logged = [ln for e in events if e["event"] == "job.log" for ln in e["data"]["lines"]]
     assert {ln["text"] for ln in logged} >= {"hello", "between", "oops"}
-    assert sink[-1]["data"]["job"]["state"] == "done"
+    assert events[-1]["data"]["job"]["state"] == "done"
     assert any(j["id"] == started["id"] for j in api.list_jobs())
 
 
