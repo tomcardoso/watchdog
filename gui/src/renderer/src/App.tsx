@@ -11,6 +11,7 @@ import { DropOverlay } from './shell/DropOverlay'
 import { JobDock } from './shell/JobDock'
 import { Sidebar } from './shell/Sidebar'
 import { Toasts } from './shell/Toasts'
+import { ViewBoundary } from './shell/ViewBoundary'
 import { TooltipLayer } from './components/TooltipLayer'
 import { Topbar } from './shell/Topbar'
 import { GlobalDialogs } from './views/dialogs/GlobalDialogs'
@@ -165,7 +166,9 @@ function Shell() {
             {project && project.access === false && !['projects', 'settings', 'activity'].includes(view) ? (
               <AccessGate project={project} />
             ) : (
-              <View key={project?.slug ?? 'none'} />
+              <ViewBoundary resetKey={JSON.stringify(route)}>
+                <View key={project?.slug ?? 'none'} />
+              </ViewBoundary>
             )}
           </Suspense>
           <JobDock />

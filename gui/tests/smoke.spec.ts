@@ -192,6 +192,14 @@ test('every screen renders against the demo investigation', async () => {
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
     await expect(page.locator('.srch-input')).toHaveValue('contract')
 
+    // A screen that throws while drawing shows an error in its place; the sidebar stays and another
+    // route clears it (an unknown Review tab used to blank the whole window).
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'review', kind: 'no-such-kind' }))
+    await expect(page.getByText('This screen could not be shown')).toBeVisible({ timeout: 10_000 })
+    await expect(page.locator('.sidebar, aside').first()).toBeVisible()
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'home' }))
+    await expect(page.getByText('This screen could not be shown')).toHaveCount(0)
+
     // Locks clear themselves (D293): the app offers no unlock control, and a run on another
     // computer (a synced folder) is reported as such, not as something to release.
     const lockFile = join(root, 'vault', '.watchdog', 'registry', '.processing-lock')
