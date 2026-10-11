@@ -90,7 +90,8 @@ const bridge: WatchdogBridge = {
     download: () => ipcRenderer.invoke('update:download'),
     install: () => ipcRenderer.invoke('update:install')
   },
-  platform: process.platform
+  platform: process.platform,
+  appVersion: ipcRenderer.sendSync('app:version') as string
 }
 
 contextBridge.exposeInMainWorld('watchdog', bridge)
