@@ -281,6 +281,19 @@ def test_set_anthropic_mode_subscription_tunes_concurrency(wdg_home):
     assert config(wdg_home)["extract_concurrency"] == 9
 
 
+def test_set_anthropic_mode_subscription_skips_the_tune_when_extraction_is_elsewhere(wdg_home):
+    """Only extraction on Claude shares one session's rate limit (#493)."""
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "deepseek:deepseek-flash"}))
+    call("auth.setAnthropicMode", mode="subscription")
+    assert "extract_concurrency" not in config(wdg_home)
+
+
+def test_set_anthropic_mode_api_key_leaves_a_chosen_concurrency(wdg_home):
+    (wdg_home / "config.json").write_text(json.dumps({"extract_concurrency": 9}))
+    call("auth.setAnthropicMode", mode="api-key", key="sk-ant-abcdefghijklmnop")
+    assert config(wdg_home)["extract_concurrency"] == 9
+
+
 def test_set_anthropic_mode_api_key_stores_the_key_and_restores_concurrency(wdg_home):
     call("auth.setAnthropicMode", mode="subscription")
     r = call("auth.setAnthropicMode", mode="api-key", key="  sk-ant-abcdefghijklmnop ")

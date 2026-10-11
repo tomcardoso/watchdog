@@ -240,3 +240,23 @@ def test_write_private_json_creates_owner_only_file(tmp_path):
     assert json.loads(path.read_text())["keys"]["anthropic"] == "sk"
     if sys.platform != "win32":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+# ── routing every stage to one provider's model (first-run setup) ────────────────────────────
+
+def test_route_stages_applies_one_model_and_each_stages_default_effort():
+    cfg = {}
+    auth.route_stages_to_model(cfg, "gemini", "gemini:gemini-3.7-flash")
+    assert cfg["classifier_model"] == cfg["extractor_model"] == cfg["finalizer_model"] \
+        == "gemini:gemini-3.7-flash"
+    assert (cfg["classifier_effort"], cfg["extractor_effort"], cfg["finalizer_effort"]) \
+        == ("low", "medium", "high")
+
+
+def test_route_stages_to_a_model_with_no_effort_levels_leaves_effort_unset():
+    """DeepSeek's base (non-thinking) ids accept no effort level; applying one would make the
+    next call fail."""
+    cfg = {}
+    auth.route_stages_to_model(cfg, "deepseek", "deepseek:deepseek-flash")
+    assert cfg["extractor_model"] == "deepseek:deepseek-flash"
+    assert not {"classifier_effort", "extractor_effort", "finalizer_effort"} & set(cfg)
