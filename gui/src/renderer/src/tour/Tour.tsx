@@ -146,6 +146,8 @@ async function build(status: SampleStatus, then: 'tour' | 'open'): Promise<void>
       return
     }
     invalidate('projects.')
+    // A rebuilt sample's findings are read afresh when the tour next needs them.
+    useTour.setState({ targets: null })
     const slug = (done.result as { slug?: string } | null)?.slug ?? (await call('sample.status', {})).slug
     useTour.setState({ prompt: null })
     if (!slug) return
@@ -227,7 +229,7 @@ function SamplePrompt() {
         ) : (
           <>
             <p className="tour-prompt-text">
-              Watchdog builds it on this computer in under a minute: fourteen public-looking records, already read, with the contradictions, leads and briefing
+              Watchdog builds it on this computer in under a minute: fourteen invented public records, already read, with the contradictions, leads and briefing
               a real investigation produces. It uses prepared answers instead of an AI model, so it costs nothing and needs no sign-in or internet connection.
             </p>
             <p className="tour-prompt-text faint mono truncate" title={status.path}>{status.path}</p>
@@ -375,7 +377,7 @@ export function TourLayer() {
         steps[step]?.leave?.()
         entered.current = null
         stopTour()
-        toast({ kind: 'info', title: 'Tour finished', body: 'Help, then Take the tour, starts it again.' })
+        toast({ kind: 'info', title: 'Tour finished', body: 'Take the Tour, in the Help menu, starts it again.' })
         return
       }
       setSaved({ step: n })

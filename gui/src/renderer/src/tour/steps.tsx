@@ -193,7 +193,7 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
       body: () => (
         <>
           <p>That is the tour. When you are ready, create an investigation for your own reporting and add the public records you hold.</p>
-          <p>The sample stays in your list until you delete it, and Help, then Take the tour, brings this tour back.</p>
+          <p>The sample stays in your list until you delete it, and Take the Tour, in the Help menu, starts this tour again.</p>
         </>
       ),
       route: () => ({ view: 'projects' }),
