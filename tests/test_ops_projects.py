@@ -803,3 +803,46 @@ def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
     assert pending == {}
 
 
+
+
+# ── what an investigation has waiting (the Overview and the investigation cards) ───────────────
+
+def _queue_file(vault: Path, sha: str) -> None:
+    q = vault / ".watchdog" / "queue"
+    q.mkdir(parents=True, exist_ok=True)
+    (q / f"{sha}.json").write_text(json.dumps({"sha256": sha, "filename": f"{sha}.pdf", "page_count": 1}))
+
+
+def _extracted_file(vault: Path, sha: str) -> None:
+    e = vault / ".watchdog" / "extracted"
+    e.mkdir(parents=True, exist_ok=True)
+    (e / f"{sha}.json").write_text(json.dumps({"document": {"filename": f"{sha}.pdf"}}))
+
+
+def test_awaiting_processing_and_post_processing_are_counted_apart(configured):
+    """A queue file stays until post-processing commits it (#461), so a raw queue count can't
+    tell "pre-processed, not yet processed" from "processed, awaiting post-processing"."""
+    vault = _new("Test Proj", configured)["path"]
+    vault = Path(vault)
+    _queue_file(vault, "sha_not_dug")
+    _queue_file(vault, "sha_dug")
+    _extracted_file(vault, "sha_dug")
+    assert vault_mod.count_awaiting_processing(vault) == 1
+    assert vault_mod.count_awaiting_post(vault) == 1
+    from watchdog import overview
+    s = overview.summary(vault)
+    assert (s["awaiting_dig"], s["awaiting_bark"]) == (1, 1)
+
+
+def test_overview_counts_incoming_files_and_queued_research(configured):
+    vault = Path(_new("Test Proj", configured)["path"])
+    (vault / "incoming" / "pending.pdf").write_text("")
+    (vault / "incoming" / "also.pdf").write_text("")
+    from watchdog import overview
+    assert overview.summary(vault)["research_urls"] == 0
+    q = vault / ".watchdog" / "research" / "queue.tsv"
+    q.parent.mkdir(parents=True, exist_ok=True)
+    q.write_text("https://a.com\tA\nhttps://b.com\tB\n", encoding="utf-8")
+    s = overview.summary(vault)
+    assert s["incoming"] == 2 and s["research_urls"] == 2
+    assert overview.has_work(s)
