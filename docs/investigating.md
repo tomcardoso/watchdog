@@ -135,7 +135,7 @@ If a document is processed again and a fact's wording or page changes, your mark
 
 ### The written record
 
-Every change rewrites `verification.md` at the top of the investigation: a list of marked facts by status and document, with who checked them, when and your notes. See [the vault guide](vault.md#verificationmd). `facts.csv`, from the older command line's export, lists every fact with its passage and mark; see [commands](commands.md#watchdog-export).
+Every change rewrites `verification.md` at the top of the investigation: a list of marked facts by status and document, with who checked them, when and your notes. See [the vault guide](vault.md#verificationmd). Exporting the graph as CSV also writes `facts.csv`, which lists every fact with its passage and mark; see [Maintenance runs](#maintenance-runs).
 
 ## Entities
 

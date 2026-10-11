@@ -23,7 +23,7 @@ call so the prompt's "already listed, do not repeat" applies; then, in code, a f
 same two facts as a recorded one (or, where either lacks fact links, the same two document pages)
 is dropped, and `contradiction.run` drops an identical callout by its id.
 
-App-only (I10, D286): the app runs `python -m watchdog.pipeline.recheck` as a job. It holds the
+App-only (I10, D286): the app runs the `recheck-contradictions` operation as a job (D298). It holds the
 processing lock for its whole length, as post-processing (`bark`) does, so it never runs beside a run;
 records its calls in the vault's usage files like any post-processing call; and records one
 version of the vault's history.
