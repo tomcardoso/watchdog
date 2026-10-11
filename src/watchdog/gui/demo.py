@@ -34,6 +34,7 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 from watchdog.vault_paths import context_dir, incoming_dir
 
 PROJECT_NAME = "Port Calder Waterfront"
@@ -41,6 +42,13 @@ PROJECT_DESCRIPTION = (
     "How a city council bought a harbourfront lot at three times its appraised value and awarded a "
     "$48.6-million no-tender contract to a developer's subsidiary, and who was on both sides."
 )
+
+# The same investigation built inside the app as the sample new users explore (`ops/sample.py`,
+# D303): named and described so that nobody mistakes it for real research.
+SAMPLE_NAME = "Port Calder Waterfront (sample)"
+SAMPLE_DESCRIPTION = ("A sample investigation for learning Watchdog; every person and company in it "
+                      "is invented.")
+SAMPLE_MARKER = "sample.json"     # in `.watchdog/`: this folder is the app's sample, safe to rebuild
 
 # The first ingest batch (`add`); everything else arrives in the second (`dig` + `bark`).
 BATCH_ONE = {
@@ -284,9 +292,12 @@ def _ledger_ref(ledger: str, slug: str, phrase: str | None) -> str | None:
 class CannedModel:
     """Stands in for `model_client.acomplete_json`: answers each task from the story data."""
 
-    def __init__(self, docs: list[dict], vault: Path):
+    def __init__(self, docs: list[dict], vault: Path, *, free: bool = False):
         self.docs = docs
         self.vault = vault
+        # The app's sample (D303) records its calls at no cost under the backend "sample", so its
+        # Usage reads $0.00 and says what answered; the developers' demo prices them like a run.
+        self.free = free
         self.calls: dict[str, int] = defaultdict(int)
         self.unsynthesized: set[str] = set()
 
@@ -463,6 +474,9 @@ class CannedModel:
         if cost is None:
             cost = round(in_tok * 3e-6 + out_tok * 15e-6, 6)
         latency = round(0.6 + (out_tok / 160), 2)
+        if self.free:
+            return model_client.ModelResult(parsed=parsed, text="", model=model_id, backend="sample",
+                                            auth_mode=None, usage=usage, cost_usd=0.0, latency_s=0.0)
         return model_client.ModelResult(parsed=parsed, text="", model=model_id, backend="claude-api",
                                         auth_mode="api-key", usage=usage, cost_usd=cost,
                                         latency_s=latency)
@@ -589,16 +603,26 @@ def _verification(vault: Path, docs: list[dict]) -> None:
         verification.mark(vault, fid, status, note=note, by=REPORTER)
 
 
-def build(target: Path, *, verbose: bool = False) -> Path:
-    """Build the demo vault at `target` (which must not exist) and return its path."""
-    from watchdog import config, model_client, projects
+def build(target: Path, *, verbose: bool = False, sample: bool = False,
+          on_step: "Callable[[str], None] | None" = None) -> Path:
+    """Build the demo vault at `target` (which must not exist) and return its path.
+
+    With `sample` it is the app's sample investigation (D303), built in the user's own Watchdog
+    folder: named and described as a sample, marked so a rebuild can tell it apart, listed with
+    Obsidian like any investigation, its model calls recorded at no cost and kept out of the usage
+    database, and the settings and folder-access files left alone (the app owns those). Without
+    it, the developers' demo: a scratch HOME's settings are written for the screenshots.
+    `on_step` is told each phase as it starts."""
+    from watchdog import config, model_client, obsidian, projects, telemetry_db
     from watchdog.ops import projects as projects_op
     from watchdog.pipeline import orchestrate, watchlist
 
+    step = on_step or (lambda _text: None)
     target = target.resolve()
     if target.exists():
         raise SystemExit(f"Error: {target} already exists.")
 
+    step("Writing the sample documents")
     docs = all_docs()
     work = target.parent / f".{target.name}-demo-build"
     shutil.rmtree(work, ignore_errors=True)
@@ -609,51 +633,71 @@ def build(target: Path, *, verbose: bool = False) -> Path:
 
     log = sys.stdout if verbose else io.StringIO()
 
-    # The vault itself, through the real operation (minus the Obsidian registration, which would
-    # write to the real Obsidian config).
-    projects_op.obsidian.register = lambda _vault: None
+    # The vault itself, through the real operation, created in the work folder and moved into
+    # place; Obsidian is told about it only at its final path (the demo never tells it).
     parent = work / "new"
-    made = projects_op.create(PROJECT_NAME, description=PROJECT_DESCRIPTION, parent=parent)
+    real_register = obsidian.register
+    obsidian.register = lambda _vault: None
+    try:
+        made = projects_op.create(SAMPLE_NAME if sample else PROJECT_NAME,
+                                  description=SAMPLE_DESCRIPTION if sample else PROJECT_DESCRIPTION,
+                                  parent=parent)
+    finally:
+        obsidian.register = real_register
     slug = made.name
     shutil.move(str(made), str(target))
     listed = projects.load()
     listed[slug]["path"] = str(target)
+    if sample:
+        listed[slug]["sample"] = True
     projects.save(listed)
     vault = target
 
-    config.home().mkdir(parents=True, exist_ok=True)
-    (config.home() / "config.json").write_text(json.dumps(
-        {"projects_dir": str(target.parent), "chunk_workers": "auto", "chew_workers": "auto",
-         "reporter_name": REPORTER}, indent=2) + "\n")
-    # Allow the demo's folder, as the app would after the user chose it (gui/src/main/access.ts).
-    (config.home() / "access.json").write_text(json.dumps({"version": 1, "folders": [
-        {"path": str(target.parent.resolve()), "label": "demo investigations",
-         "granted": datetime.now(timezone.utc).isoformat()}]}, indent=2) + "\n")
+    if not sample:
+        config.home().mkdir(parents=True, exist_ok=True)
+        (config.home() / "config.json").write_text(json.dumps(
+            {"projects_dir": str(target.parent), "chunk_workers": "auto", "chew_workers": "auto",
+             "reporter_name": REPORTER}, indent=2) + "\n")
+        # Allow the demo's folder, as the app would after the user chose it (gui/src/main/access.ts).
+        (config.home() / "access.json").write_text(json.dumps({"version": 1, "folders": [
+            {"path": str(target.parent.resolve()), "label": "demo investigations",
+             "granted": datetime.now(timezone.utc).isoformat()}]}, indent=2) + "\n")
 
     (vault / "context.md").write_text(CONTEXT_MD, encoding="utf-8")
     watchlist.add_terms(vault, WATCH_TERMS)
 
-    by_file = {d["file"]: d for d in docs}
     batch_one = [d for d in docs if d["file"] in BATCH_ONE]
     batch_two = [d for d in docs if d["file"] not in BATCH_ONE]
-    canned = CannedModel(docs, vault)
+    canned = CannedModel(docs, vault, free=sample)
     real_call = model_client.acomplete_json
+    real_telemetry = telemetry_db.enabled
     model_client.acomplete_json = canned
+    if sample:
+        telemetry_db.enabled = lambda: False
     try:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+            step("Adding the first four documents")
             _stage_chewed(vault, batch_one)
             asyncio.run(orchestrate.run(vault, extract_model="sonnet"))
+            step("Adding the other ten documents")
             _stage_chewed(vault, batch_two)
             asyncio.run(orchestrate.run(vault, extract_model="sonnet", skip_finalize=True))
+            step("Post-processing: entities, contradictions, the timeline and the briefing")
             asyncio.run(orchestrate.finalize(vault))
     finally:
         model_client.acomplete_json = real_call
-    assert by_file   # (kept for readers: every document went through the pipeline above)
+        telemetry_db.enabled = real_telemetry
 
+    step("Recording checks and loose ends")
     _verification(vault, docs)
     _loose_ends(vault)
     shutil.rmtree(work, ignore_errors=True)
-    if canned.unsynthesized:
+    if sample:
+        (vault / ".watchdog" / SAMPLE_MARKER).write_text(json.dumps(
+            {"sample": "port-calder", "built": datetime.now(timezone.utc).isoformat()}) + "\n",
+            encoding="utf-8")
+        obsidian.register(vault)
+    if canned.unsynthesized and not sample:
         print("demo: entities with no canned synthesis: " + ", ".join(sorted(canned.unsynthesized)),
               file=sys.stderr)
     return vault
