@@ -1,6 +1,6 @@
 """Non-interactive first-run pieces for the desktop app's managed engine.
 
-`watchdog setup` asks questions at a terminal; the app installs everything itself. The app's main
+The app installs everything itself. The app's main
 process builds the Python environment with uv (see gui/src/main/engine.ts), then runs this module
 inside it:
 

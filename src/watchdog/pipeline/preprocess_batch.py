@@ -1,5 +1,5 @@
 """
-Watchdog batch preprocessor — run from the CLI, not from Claude Code.
+Watchdog batch preprocessor — run by the `chew` and `add` operations, not from Claude Code.
 
 Chews all files in incoming/, writes per-file results to
 .watchdog/queue/<sha256>.json, moves originals to .watchdog/staging/<sha256>/,

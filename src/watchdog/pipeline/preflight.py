@@ -39,7 +39,7 @@ def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
 
     # Check if already committed to the vault; collect the document types already used in this
     # vault so the extractor can reuse one rather than coining a near-duplicate (keeps the type
-    # vocabulary — and the `watchdog status` tally — consistent).
+    # vocabulary — and the the Overview tally — consistent).
     if registry is None:
         registry = registry_context(vault)
     already_extracted = sha256 in registry["shas"]

@@ -29,8 +29,8 @@ from watchdog.vault_paths import is_vault
 
 # ── small text helpers ───────────────────────────────────────────────────────────
 
-# CSI sequences (colours, cursor) and OSC sequences (the OSC 8 terminal hyperlinks `note_link`
-# emits), which the CLI's `_format_*` helpers can contain when colour is on.
+# CSI sequences (colours, cursor) and OSC sequences (hyperlinks), which third-party output can
+# carry.
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 
 

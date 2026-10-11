@@ -1,7 +1,7 @@
 """`contradictions.estimate` and `jobs.recheckContradictions` — the app's "Re-check contradictions"
 on an entity's page and in Maintenance (D287).
 
-App-only (I10, D286): no terminal command. The estimate is a read: the calls the re-check would
+App-only (I10, D286). The estimate is a read: the calls the re-check would
 send (`recheck.plan`), priced on the configured finalizer model (`ingest_setup.recheck_cost_estimate`),
 with whether auth is in place and whether a run holds the vault. Starting it runs the
 `recheck-contradictions` operation as a job, after the same refusals the job would make.
@@ -27,7 +27,7 @@ def _ids(ids, all_) -> list[str] | None:
 
 
 def _auth(backend: str | None) -> dict:
-    """Claude auth matters only when the model is a Claude one (as `watchdog bark` checks)."""
+    """Claude auth matters only when the model is a Claude one (as post-processing (`bark`) checks)."""
     from watchdog.auth import resolve_auth
     from watchdog.model_client import CLAUDE_BACKENDS
     if backend is not None and backend not in CLAUDE_BACKENDS:

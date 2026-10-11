@@ -1,5 +1,5 @@
 """`projects.*` — the registered investigations and their health, read from `projects.json` and
-each vault's own registries. Mutations (new, rename, archive, …) run the real CLI through
+each vault's own registries. Mutations (new, rename, archive, …) run operations through
 `action.run`, so nothing here writes."""
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ _LOG_MAX_LINES = 20000
 
 
 def _find(slug: str) -> tuple[str, dict]:
-    """The registry entry for `slug` — exact, else a unique prefix (as the CLI resolves names)."""
+    """The registry entry for `slug` — exact, else a unique prefix (as `projects.find` resolves names)."""
     projects = vaultio.registered_projects()
     if isinstance(slug, str) and slug:
         if slug in projects:

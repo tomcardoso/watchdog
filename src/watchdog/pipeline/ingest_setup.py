@@ -1,15 +1,10 @@
-"""
-watchdog ingest — setup step for the Python ingest orchestrator (`pipeline/orchestrate.py`).
+"""Setup step for the Python ingest orchestrator (`pipeline/orchestrate.py`).
 
-Called from `cmd/ingest.py` before extraction runs. Handles:
-  1. Stale lock detection (>30 min) and re-acquisition
+Called from `ops/ingest.py` before extraction runs. Handles:
+  1. Stale lock detection and re-acquisition
   2. Queue directory scan
   3. Writes .watchdog/processing-state.json (present for the run's duration; a stale one
-     signals an interrupted ingest to resume with `watchdog dig`)
-
-Human workflow:
-  watchdog chew    →  watchdog dig
-  (OCR/docling)       (lock + queue + extract, all in-terminal)
+     signals an interrupted run to resume with processing (`dig`))
 """
 
 import json
@@ -72,7 +67,7 @@ def scan_queue(vault: Path) -> list[dict]:
 
 def limit_queue(vault: Path, queue_files: list[dict], limit: int | None,
                 force: bool = False) -> list[dict]:
-    """The first `limit` queued documents that still need extracting (`watchdog dig --limit`, #696).
+    """The first `limit` queued documents that still need extracting (`dig`'s `limit`, #696).
 
     Queue files outlive extraction — they stay until finalize commits them — so the queue mixes
     documents still to read with documents already staged (`.watchdog/extracted/<sha>.json`) or
@@ -123,7 +118,7 @@ def _tokens_calibration(vault: Path, max_runs: int = 3) -> float | None:
     vault's own last `max_runs` extraction usage files rather than a fixed global guess (#417):
     the ratio of what `scan_queue` estimated to what extraction really consumed
     (`_real_input_tokens`, #470). Only files carrying `est_input_tokens` are extraction runs (a
-    standalone `watchdog bark` never sets it), so those are skipped without a separate filter.
+    standalone post-processing (`bark`) never sets it), so those are skipped without a separate filter.
     Not backend- or model-tokenizer-aware (#574) — the ratio absorbs whatever tokenizer produced
     the history, so it drifts if the extractor model crosses the Claude tokenizer boundary
     between that history and the upcoming run. Returns None with no history to calibrate from;
@@ -255,7 +250,7 @@ def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) ->
 
 def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
     """`finalize_cost_estimate`'s staged-corpus projection, extended across every catalog model
-    (#469) — same rationale as `cost_estimate_all_models`, scoped to standalone `watchdog bark`
+    (#469) — same rationale as `cost_estimate_all_models`, scoped to standalone post-processing (`bark`)
     history (`finalize_only=True`) for the same reason `finalize_cost_estimate` itself excludes a
     combined dig+bark run's usage file."""
     return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs, finalize_only=True))
@@ -307,7 +302,7 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
                            usage_files: list[Path] | None = None) -> dict:
-    """Pre-flight cost estimate for `watchdog bark`: the staged `result_<sha>.json`/`notes_<sha>.md`
+    """Pre-flight cost estimate for post-processing (`bark`): the staged `result_<sha>.json`/`notes_<sha>.md`
     priced with the chars/4 heuristic. The $/token ratio comes only from standalone-finalize usage
     files (every call in `orchestrate.FINALIZE_TASKS`), since a run's own finalize shares its usage
     file with extraction. No dollar figure without that history, or on subscription auth.
@@ -407,7 +402,7 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
 
     ``force_lock=True`` acquires the lock even with an empty queue (#214) — a pending
     batch extraction (claude-batch or openai-batch, #530) still needs mutual exclusion
-    (so two concurrent `watchdog ingest` invocations can't both try to collect the same
+    (so two concurrent a processing run invocations can't both try to collect the same
     batch) even when there's nothing new to chew.
     """
     lock_file = processing_lock(vault)
@@ -435,7 +430,7 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         return {"total": 0, "lock_acquired": False, "queue_files": []}
 
     # Atomically acquire the lock *before* any mutation. O_CREAT|O_EXCL means two racing
-    # `watchdog ingest` invocations can't both pass an existence check and both proceed (#257);
+    # a processing run invocations can't both pass an existence check and both proceed (#257);
     # a lock whose run died is taken over at once, one whose run can't be checked once it is past
     # the age window (D293).
     started_at = _iso_now()
@@ -468,7 +463,7 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         "finalizer_model": finalizer_model,
         # `vault` is wired through so this benefits from #606 Part B's calibrated tokenizer
         # ratio when available. `extractor_model` itself is NOT wired to backend/effort here
-        # (#606) — its only real caller (`cmd/ingest.py`'s `is_run(...)`) never passes
+        # (#606) — its only real caller (`ops/ingest.py`) never passes
         # extractor_model/backend/effort at all, so this always resolves against the "sonnet"
         # default regardless of what's actually configured, a separate pre-existing gap nothing
         # currently reads back (`state["section_token_threshold"]` has no reader) — out of scope.

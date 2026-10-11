@@ -2,7 +2,7 @@
 cross-investigation "have I seen this name anywhere?" lookup.
 
 `search.query` runs `embed.search` and `fulltext.search` as a session's `search` tool does and
-returns the same JSON shape (`cmd/vault._build_search_json`), each item enriched with the document
+returns the same JSON shape (`search.build_json`), each item enriched with the document
 sha, its note and its original so the app can link straight to them. The batch and everywhere
 lookups share the library's data functions (`batch_report`, `everywhere_report`). Without
 fastembed installed the semantic lane reports `semantic_error` and the exact lane still answers.
@@ -102,7 +102,7 @@ def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
     # background phase (D272); until then only exact matches are searched.
     semantic_pending = not engine_setup.engine_ready()
     if not index_empty and not semantic_pending:
-        # Without an explicit threshold nothing is filtered (cosine ≥ -1 always holds), as in the CLI.
+        # Without an explicit threshold nothing is filtered (cosine ≥ -1 always holds).
         min_score = threshold if threshold is not None else -1.0
         try:
             passages_raw = embed.search(v, query, top_n=n, min_score=min_score, scope="corpus",

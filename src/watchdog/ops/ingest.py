@@ -247,7 +247,7 @@ def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
 
 def _public_records_warning(n_docs: int) -> str:
     """The README's `## Public records only` warning (README.md:13-17), reworded for the
-    terminal gate at the point of no return (#426). Wording tracks the README section so the
+    gate at the point of no return (#426). Wording tracks the README section so the
     two never drift.
 
     The app shows it in the Add documents dialog before it starts a run."""

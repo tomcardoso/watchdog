@@ -24,7 +24,7 @@ same two facts as a recorded one (or, where either lacks fact links, the same tw
 is dropped, and `contradiction.run` drops an identical callout by its id.
 
 App-only (I10, D286): the app runs `python -m watchdog.pipeline.recheck` as a job. It holds the
-processing lock for its whole length, as `watchdog bark` does, so it never runs beside a run;
+processing lock for its whole length, as post-processing (`bark`) does, so it never runs beside a run;
 records its calls in the vault's usage files like any post-processing call; and records one
 version of the vault's history.
 """

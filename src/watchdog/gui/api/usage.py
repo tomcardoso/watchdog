@@ -113,7 +113,7 @@ def _totals(calls: list[dict]) -> dict:
 
 @method("usage.run")
 def run(vault: str, ts: str | None = None) -> dict:
-    """One run's breakdown by stage (latest when `ts` is omitted), as `watchdog usage` prints it."""
+    """One run's breakdown by stage (latest when `ts` is omitted), as Usage prints it."""
     from watchdog.usage import (
         STAGE, STAGE_ORDER, batch_lifecycle_note, peak_concurrency, stage_backends,
         stage_models, subscription_note, wall_span, cost_by_key,

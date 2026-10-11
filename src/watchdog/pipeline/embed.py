@@ -224,7 +224,7 @@ def _parse_query(query: str) -> tuple[list[str], list[str]]:
 class _CorpusIndex:
     """Everything one search needs, built once from the per-file index and cached on disk (#696).
 
-    Every `watchdog search` is a fresh process, and each one used to re-read every per-document
+    Every a search is a fresh process, and each one used to re-read every per-document
     and per-note file, re-tokenize every passage, and score BM25 in a Python loop — about 20–30
     seconds per query at 200,000 passages. The stacked vectors, the metadata, and a BM25 inverted
     index over the corpus passages are now written once to `.embeddings/_cache/` and reused until
@@ -468,8 +468,8 @@ def search(vault_path: Path, query: str, top_n: int = 5,
     sparse BM25 leg, then a cross-encoder rerank of the fused pool (``rerank``, on by
     default; configurable via ``rerank_model``). ``"notes"`` and ``"all"`` rank by cosine.
 
-    Each result's ``score`` is the cosine similarity (so ``min_score`` / the CLI
-    ``--threshold`` keep their dense-cutoff meaning), even when the *order* is set by
+    Each result's ``score`` is the cosine similarity (so ``min_score`` / a search's
+    ``threshold`` keep their dense-cutoff meaning), even when the *order* is set by
     fusion + rerank.
     """
     index = _load_index(vault_path)

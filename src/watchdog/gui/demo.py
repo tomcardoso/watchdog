@@ -3,7 +3,7 @@
 The vault is a made-up investigation (a municipal procurement story set in the fictional city of
 Port Calder; every person, company, body, address and court matter is invented) so the desktop app
 has something realistic to show without anyone's real research. It is built by the real pipeline:
-`watchdog new` creates the vault, real PDF and image files are written to the staging area chew
+creating an investigation creates the vault, real PDF and image files are written to the staging area chew
 would have used, and `orchestrate.run` / `orchestrate.finalize` do the extraction, commit,
 reconciliation, synthesis, timeline and briefing work - with the model's answers canned. Nothing
 calls a model or the network, and the same inputs give the same vault (apart from timestamps).
@@ -42,7 +42,7 @@ PROJECT_DESCRIPTION = (
     "$48.6-million no-tender contract to a developer's subsidiary, and who was on both sides."
 )
 
-# The first ingest batch (`watchdog add`); everything else arrives in the second (`dig` + `bark`).
+# The first ingest batch (`add`); everything else arrives in the second (`dig` + `bark`).
 BATCH_ONE = {
     "news-release-pier-9-award.pdf",
     "capital-payment-register-2022.pdf",

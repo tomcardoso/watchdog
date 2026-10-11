@@ -1,6 +1,6 @@
 """Shared low-level JSON file I/O helpers (#636).
 
-Stdlib-only by design (mirrors `pipeline/abort.py`'s pattern) so both `cmd/*.py` and any
+Stdlib-only by design (mirrors `pipeline/abort.py`'s pattern) so both the operations and any
 `pipeline/*.py` module can import it with no circular-import risk.
 """
 

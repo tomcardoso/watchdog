@@ -8,8 +8,8 @@ When the app runs Watchdog it sets `WATCHDOG_ENFORCE_ACCESS=1`, and `install()` 
 package is imported, see `watchdog/__init__.py`) adds an audit hook that refuses any write, rename,
 delete or database connection that would change a file outside the granted folders. Audit hooks see
 every file operation in the interpreter, so the rule covers the whole pipeline — every write site,
-every library it calls — and the variable carries it into child processes, including the `watchdog`
-commands a Claude session runs. Without the variable (the terminal CLI, the test suite) nothing is
+every library it calls — and the variable carries it into child processes, including the worker
+that runs each operation. Without the variable (the benchmarks, the test suite) nothing is
 enforced.
 
 Some places are always writable, because Watchdog or its libraries need them and they hold no one's

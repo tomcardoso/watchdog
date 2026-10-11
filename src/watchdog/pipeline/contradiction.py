@@ -10,7 +10,7 @@ note builder, into the entity's ``## Contradictions`` section — so the journal
 gate (they run the command) but the pipeline stays the sole writer of the note.
 
 No model calls. Run from inside the vault it mutates, the same convention
-``watchdog merge-entities`` / ``watchdog resolve`` use.
+`the `merge-entities` operation` / `marking an item handled in Review` use.
 """
 
 import json
@@ -163,7 +163,7 @@ def run(vault: Path, entity_id: str, label: str,
         b_value: str, b_doc: str, b_page,
         a_fact: str | None = None, b_fact: str | None = None) -> dict:
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
-    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    from a Claude Code session or a second terminal while post-processing (`bark`) commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
     from watchdog.pipeline.write_vault import _registry_lock
     registry_dir = Path(vault) / ".watchdog" / "registry"

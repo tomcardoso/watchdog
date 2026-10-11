@@ -806,7 +806,7 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
 
 def apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[dict]:
     """File each flagged contradiction through `contradiction.run` — the same deterministic writer
-    the manual `watchdog contradiction` command uses (D81).
+    the manual the `add-contradiction` operation command uses (D81).
 
     That writer validates both document slugs against the registry and renders the callout itself,
     so a model that cites a document that does not exist, or an entity that does not exist, gets a

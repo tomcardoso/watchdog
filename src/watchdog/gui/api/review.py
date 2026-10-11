@@ -1,11 +1,10 @@
 """`review.*` — what is waiting on the journalist: contradictions, leads, watch-list hits and
 possible duplicates, plus marking them handled.
 
-The items come from `cmd/review.open_items` and the lead sweep from `pipeline/leads.scan`, so the
-app and `watchdog review` always list the same things. Resolving writes the same
-`resolutions.json` store the terminal walk writes. Generated reports carry no checkboxes (D294),
-so nothing is imported from them, and the app does not edit the boxes older reports may still
-have: the registry alone records what is handled.
+The items come from `review.open_items` and the lead sweep from `pipeline/leads.scan`, so the
+app and Review always list the same things. Resolving writes the same
+`resolutions.json` store. Generated reports carry no checkboxes (D294): the registry alone records
+what is handled.
 """
 
 from __future__ import annotations
@@ -77,7 +76,7 @@ def unresolve(vault: str, rids: list[str]) -> dict:
 
 @method("review.resolved")
 def resolved(vault: str) -> dict:
-    """What `watchdog review resolve --list` shows, newest first."""
+    """What the handled list in Review shows, newest first."""
     from watchdog.pipeline import resolutions
 
     v = require_vault(vault)

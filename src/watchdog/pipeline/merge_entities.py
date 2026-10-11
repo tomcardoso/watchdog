@@ -5,7 +5,7 @@ Three shipped features can *detect* a duplicate entity — the dashboard's "Poss
 duplicates" view, the `/watchdog-health` near-duplicate check, and D39's Neo4j-export
 tradeoff note ("the same person under name variants appears as separate nodes, which
 the export can't fix") — but none of them could *fix* one. `merge()` is the surgery;
-`run()` is the vault-level operation `watchdog merge-entities <keep-id> <merge-id>`
+`run()` is the vault-level operation the `merge-entities` operation
 drives. Pure I1-side code: no model calls, no judgement calls beyond the two ids the
 caller supplies.
 """
@@ -206,12 +206,12 @@ def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int
 
 
 def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
-    """Perform the full `watchdog merge-entities` operation on a vault on disk:
+    """Perform the full the `merge-entities` operation operation on a vault on disk:
     registry surgery (`merge`), note concatenation/redirect, timeline NDJSON entity-tag
     remap, manifest + timeline rebuild, and a best-effort search-index refresh of the two
     touched notes.
 
-    Returns a report dict for the CLI to print. Raises `ValueError` on bad input —
+    Returns a report dict for the operation to print. Raises `ValueError` on bad input —
     the caller is expected to turn that into a clean `sys.exit`.
     """
     registry_dir = vault_path / ".watchdog" / "registry"
@@ -368,7 +368,7 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
 
 def run(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
-    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    from a Claude Code session or a second terminal while post-processing (`bark`) commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
     from watchdog.pipeline import history
     from watchdog.pipeline.write_vault import _registry_lock

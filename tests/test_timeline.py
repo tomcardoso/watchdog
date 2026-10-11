@@ -4,7 +4,6 @@ from pathlib import Path
 
 from watchdog.pipeline.timeline import (
     stage_timeline_events,
-    cmd_timeline_collisions,
     rebuild_timeline,
     collisions,
     month_precision_groups,
@@ -137,8 +136,7 @@ def test_stage_then_collisions_promotes_and_rebuild_renders(tmp_path, capsys):
         {"fact": "Appointed director", "date": "2020-03-15", "entities": ["alice"]},
     ], sha="doc1xxxxxxx"))
 
-    cmd_timeline_collisions(vault)
-    assert capsys.readouterr().out.strip() == "[]"  # no canonical existed → promotion, no collision
+    assert collisions(vault) == []  # no canonical existed → promotion, no collision
 
     td = vault / ".watchdog" / "timeline"
     assert (td / "2020-03-15.ndjson").exists()  # canonical created from the raw file
@@ -325,10 +323,9 @@ def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):
         {"fact": "New event", "date": "2020-03-15", "entities": ["bob"]},
     ], sha="newdoc12345"))
 
-    cmd_timeline_collisions(vault)
-    collisions = json.loads(capsys.readouterr().out)
-    assert len(collisions) == 1
-    assert collisions[0]["date"] == "2020-03-15"
+    found = collisions(vault)
+    assert len(found) == 1
+    assert found[0]["date"] == "2020-03-15"
 
 
 # ── cross-precision reconciliation (#239) ───────────────────────────────────

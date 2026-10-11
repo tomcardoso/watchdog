@@ -50,7 +50,7 @@ ID_SCHEME = 1
 NOTE_FORMAT = 1
 STATUSES = ("verified", "disputed", "unverifiable")
 LABELS = {"verified": "Verified", "disputed": "Disputed", "unverifiable": "Can't verify"}
-# What the CLI accepts for each status, besides its own name.
+# What `parse_status` accepts for each status, besides its own name.
 STATUS_ALIASES = {"cant-verify": "unverifiable", "can't-verify": "unverifiable",
                   "cannot-verify": "unverifiable", "clear": None, "none": None}
 NOTE_CAP = 2000

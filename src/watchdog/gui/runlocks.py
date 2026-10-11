@@ -1,7 +1,7 @@
 """The run locks as the app shows them (D293).
 
 The app never offers to release a lock. Each status call clears a lock whose run has died, with
-`locks.clear_abandoned`, the function `watchdog unlock` calls for the same case (I10), and reports
+`locks.clear_abandoned` (I10), and reports
 what is left: a run in progress on this computer, a run in progress on another computer (a synced
 folder), or nothing. The app's first status call after it starts is what clears the locks of jobs
 that died with an earlier session of the app.

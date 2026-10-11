@@ -41,7 +41,7 @@ _ADMISSION_SAFETY_MARGIN = 0.85
 _ADMISSION_POLL_INTERVAL_S = 0.25
 _ADMISSION_MAX_WAIT_S = 300.0
 
-# Every call a standalone `watchdog bark` makes has one of these task names;
+# Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
                   "relationship-labels"}
@@ -83,8 +83,7 @@ _run = _RunState()
 
 
 def _say(msg: str) -> None:
-    """Print a styled progress line to the terminal (indented per the CLI style guide).
-    Routes through the live region as a scrollback note when one is active."""
+    """Print a progress line, through the run's progress lines when they are open."""
     line = f"  {msg}"
     if _run.board is not None:
         _run.board.note(line)
@@ -93,7 +92,7 @@ def _say(msg: str) -> None:
 
 
 def _settle(sha: str, line: str) -> None:
-    """Print a document's terminal line (OK / ✗), clearing its in-flight live row if present."""
+    """Print a document's final line (OK / ✗)."""
     if _run.board is not None:
         _run.board.finish(sha, line)
     else:
@@ -370,7 +369,7 @@ def _consolidate_orphaned_usage(vault: Path) -> None:
     `run()`'s own signal handling covers) into a real `usage-<ts>.json`, keyed by the partial's
     own timestamp so it sorts where that run actually happened (#407). Called once at the start
     of every top-level `run()`/standalone `finalize()`, before that call's own partial is opened,
-    so `watchdog usage` never loses a run's spend just because it didn't finish cleanly."""
+    so Usage never loses a run's spend just because it didn't finish cleanly."""
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     if not usage_dir.exists():
         return
@@ -449,7 +448,7 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
 
 def latest_usage(vault: Path) -> dict | None:
     """The most recent ingest run's token/cost totals (F5, #222), or None if none exist yet —
-    `watchdog status` surfaces this so a subscription user can see what a dump cost before
+    the Overview surfaces this so a subscription user can see what a dump cost before
     deciding whether to kick off another one."""
     files = usage_files(vault)
     if not files:
@@ -617,7 +616,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
 def _near_duplicate_of(near_dup: dict | None) -> str | None:
     """The closest earlier document chew's MinHash matched, as a link to its note — or its
     filename when the match is in this same batch and has no note yet. Detection only: nothing is
-    discarded, and `watchdog review duplicates` is where the user decides."""
+    discarded, and Review is where the user decides."""
     from watchdog.pipeline.write_vault import _defang
     matches = (near_dup or {}).get("near_duplicates") or []
     if not matches:
@@ -744,8 +743,8 @@ def _append_repair_note(base, errors: list[str]):
 
 def _verifier_effort() -> str | None:
     """The reasoning effort the verification pass runs at (#535) — `low` unless a vault has
-    pinned `verifier_effort` in config. Read here rather than threaded from the CLI because
-    there is no flag for it: the pass is turned on and off by `--verify`, and its effort is an
+    pinned `verifier_effort` in config. Read here rather than threaded from the run's options:
+    the pass is turned on and off by `verify`, and its effort is an
     advanced knob in the same family as `empty_extraction_min_words` (D153). Low is the default
     for a cost reason, not a quality one — gap-finding against a supplied list is a comparison,
     and output tokens are where the pass's cost actually lives (D172)."""
@@ -1475,7 +1474,7 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
         _log(vault, f"WARN {filename}: {msg}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6), {},
                              est_input_tokens=section.est_tokens_from_pages(pf.get("pages", [])))
-    # Persist the compact result so `watchdog bark` can run post-ingest from disk alone.
+    # Persist the compact result so post-processing (`bark`) can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
     return result
@@ -1698,7 +1697,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     """Split the queue into sectioned (→ synchronous single-call backend, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
-    24h; a *later* `watchdog dig` invocation collects it, see `_resume_batch`).
+    24h; a *later* processing (`dig`) invocation collects it, see `_resume_batch`).
 
     Each document resolves its **own** skill through `_resolve_skill` (D144), so a batch may mix
     document types: the skill lives inside each request's own prompt blocks, which the Batches
@@ -1805,8 +1804,8 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
                      classify_backend: str | None, backend: str = "claude-batch",
                      force: bool = False, classify_effort: str | None = None) -> dict:
     """Entry point for `run` when `extract_backend` is a batch-mode backend
-    (`model_client.BATCH_BACKENDS`). Defense-in-depth guard beyond `cmd_ingest`'s own check — a
-    programmatic caller that skips CLI validation still gets a clear error rather than a
+    (`model_client.BATCH_BACKENDS`). Defense-in-depth guard beyond the operation's own check — a
+    programmatic caller that skips the operation's validation still gets a clear error rather than a
     confusing downstream failure.
 
     A pinned skill is **not** required (D144): each document resolves its own skill before the
@@ -2339,7 +2338,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     res_path, vault, meta=bundle.get("meta")).get("applied", []))
             except OSError as e:
                 # The registry lock timed out (Windows). Recording the error keeps this run's
-                # post-ingest inputs, so the next `watchdog bark` redoes the synthesis.
+                # post-ingest inputs, so the next post-processing (`bark`) redoes the synthesis.
                 out["error"] = f"couldn't write entity syntheses: {e}"
                 _say(f"synthesis not saved — {e}")
         if failed:
@@ -2492,7 +2491,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             _say(f"briefing skipped — {e}")
         except model_client.ModelError as e:
             # Everything else (per-doc facts, entity notes, timeline) is already on disk; only the
-            # briefing is lost, and the batch stays pending so `watchdog bark` retries it. A
+            # briefing is lost, and the batch stays pending so post-processing (`bark`) retries it. A
             # truncation is deterministic — the same input hits the same output cap (#296) — so it
             # gets the real remedy; `_fit_briefing_inputs` (#696) makes that the backstop, not the
             # expected outcome of a large batch.
@@ -2597,8 +2596,8 @@ def _load_results(vault: Path) -> list:
 # runs a deterministic exact-name entity fold over every staged-but-uncommitted artifact
 # (`_batch_exact_fold`, #403 phase 2), then replays the writer (write_vault.run) over each one in
 # the same sorted order, before any post-ingest model call. It runs at the top of `finalize`, so
-# it covers all three entry paths that call it: the tail of an ingest run (`watchdog ingest`,
-# or `watchdog dig` + `watchdog bark`), a standalone `watchdog bark`, and a resumed run after a
+# it covers all three entry paths that call it: the tail of an ingest run (a processing run,
+# or processing (`dig`) + post-processing (`bark`)), a standalone post-processing (`bark`), and a resumed run after a
 # rate-limit stop.
 
 def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
@@ -2779,7 +2778,7 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
         _log(vault, f"WARN {msg}")
     # Split into as many size-bounded calls as the bundle needs (#696): one call per run could
     # outgrow the context window on a large batch, and since a failure here defers the whole batch
-    # (I7), an oversized bundle used to deadlock it — every `watchdog bark` retry sent the same
+    # (I7), an oversized bundle used to deadlock it — every post-processing (`bark`) retry sent the same
     # prompt into the same limit. A bundle that fits still goes out as exactly one call.
     budget = chunking.prompt_budget_chars(reconciliation_model, reconciliation_backend, vault)
     # Nothing for the model when every pair was settled by tier and no entity can hold a
@@ -3126,8 +3125,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     # resumed pending batch even when `shas` is empty). Both branches converge on `results` /
     # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
     if extract_backend in model_client.BATCH_BACKENDS:
-        # Same defense-in-depth posture as `_run_batch`'s own auth guard: `cmd_ingest` already
-        # refuses this combination, but a programmatic caller that skips CLI validation (a
+        # Same defense-in-depth posture as `_run_batch`'s own auth guard: the operation already
+        # refuses this combination, but a programmatic caller that skips the operation's validation (a
         # benchmark arm pinning both) must not silently get an unverified run labelled as a
         # verified one — the whole point of the arm is that the label is true.
         if verify:
@@ -3300,7 +3299,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             handler_set = True
         except (NotImplementedError, RuntimeError):
             # e.g. non-main thread, or Windows' Proactor event loop, which never supports
-            # add_signal_handler. There, every Ctrl+C falls through to cmd_ingest's plain
+            # add_signal_handler. There, every Ctrl+C falls through to the worker's plain
             # `except KeyboardInterrupt` instead of this module's graceful
             # finish-current-writes path — see that handler's comment for what differs.
             pass
@@ -3343,7 +3342,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                        and has_pending_finalization(vault))
     if waiting and not cancelled_flag and skip_finalize:
         # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
-        # `watchdog bark` (possibly on a vault copy, possibly with a different
+        # post-processing (`bark`) (possibly on a vault copy, possibly with a different
         # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
         # this point (`_finish_extraction` persisted `result_*.json` per document).
         summary["finalize_skipped"] = True

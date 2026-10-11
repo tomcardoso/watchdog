@@ -220,7 +220,7 @@ def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
 
 
 # ── Wayback Machine — Save Page Now (#201) ─────────────────────────────────────
-# Optional, off by default, gated on archive.org S3 keys set via `watchdog configure`. A best-effort
+# Optional, off by default, gated on archive.org S3 keys set via Settings. A best-effort
 # provenance win: alongside the local deposit, ask the Wayback Machine to archive the source so a
 # citable public snapshot survives even if the original is later changed or taken down. The snapshot
 # URL is recorded in the `.yml` sidecar's `archived:` field. Never fails a deposit — archiving is a

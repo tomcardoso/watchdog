@@ -702,7 +702,7 @@ SETTINGS = {
 
 
 
-# Display grouping for the `watchdog configure` listing (presentation only — set/get is
+# Display grouping for the Settings listing (presentation only — set/get is
 # unaffected). Each section owns an ordered list of keys; any key missing from every
 # section is still shown, under "Other", so a newly added key never silently disappears.
 SECTIONS = [
@@ -728,7 +728,7 @@ SECTIONS = [
      ["dup_threshold", "shingle_size"]),
     ("Search", "Local semantic search over the source corpus.",
      ["embed_model", "rerank_model"]),
-    ("Research", "Web research mode — default effort budget for `watchdog research`.",
+    ("Research", "Web research mode — default effort budget for Web research.",
      ["research_max_rounds", "research_max_fetches"]),
     ("Web archiving", "Optionally save research sources to the Wayback Machine.",
      ["wayback_save", "wayback_access_key", "wayback_secret_key"]),

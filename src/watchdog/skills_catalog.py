@@ -17,7 +17,7 @@ from pathlib import Path
 WATCHDOG_HOME = Path.home() / ".watchdog"
 USER_SKILLS_DIR = WATCHDOG_HOME / "skills" / "records"
 
-# Where the canonical skills are browsable. Pinned to a ref by `watchdog show-skills`.
+# Where the canonical skills are browsable. Pinned to a ref by the skills list.
 GITHUB_REPO = "tomcardoso/watchdog"
 _GITHUB_SKILLS_PATH = "src/watchdog/skills/records"
 
@@ -98,7 +98,7 @@ def read_skill(name: str) -> str:
 
 def resolve(value: str) -> str | None:
     """Resolve a skill pin — a catalog name or an explicit file path — to a skill file path,
-    or None if neither matches. Shared by `--skill`/`default_skill` (cmd/ingest.py) and the
+    or None if neither matches. Shared by the run's `skill`/`default_skill` (ops/ingest.py) and the
     per-document sidecar pin (pipeline/orchestrate.py) so both use one resolution rule."""
     as_path = Path(value).expanduser()
     if as_path.is_file():

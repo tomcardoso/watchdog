@@ -823,7 +823,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
     """Write the Docling per-page markdown next to the original in the morgue (#140).
 
     Best-effort: the page markdown lives in the chew-time queue descriptor, which is present during
-    ingest but gone on a re-run from disk (`watchdog bark`); skip silently if unavailable.
+    ingest but gone on a re-run from disk (post-processing (`bark`)); skip silently if unavailable.
     Pages are joined with `<!-- PAGE N -->` markers so the file is both greppable and page-aligned.
     """
     queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
@@ -1318,7 +1318,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     # The global timeline is no longer rebuilt per document (#237): it is rendered
     # exclusively from the cross-document-deduped canonical NDJSON, which only exists after
     # `_post_ingest` runs the dedup pass at the end of a batch. A standalone write-vault
-    # therefore leaves timeline.md to the next ingest run or explicit `watchdog timeline`.
+    # therefore leaves timeline.md to the next ingest run or explicit the timeline rebuild.
 
     # ── 7. Move source file to morgue ─────────────────────────────────────────
 

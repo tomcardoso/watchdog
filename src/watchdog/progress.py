@@ -1,4 +1,4 @@
-"""Structured progress for the desktop app, written alongside the normal terminal output.
+"""Structured progress for the desktop app, written alongside the operation's log lines.
 
 When the environment variable `WATCHDOG_PROGRESS` is `1` (the worker that runs the app's
 operations sets it, D298), `emit(kind, **fields)` writes one line to the real stdout:
@@ -7,7 +7,7 @@ operations sets it, D298), `emit(kind, **fields)` writes one line to the real st
 
 The record-separator prefix cannot occur in ordinary output, so the app can tell these lines from
 the human-readable ones around them and keep them out of the log it shows. With the variable unset
-`emit` returns immediately and writes nothing, so the terminal experience is unchanged.
+`emit` returns immediately and writes nothing (the benchmarks and the tests).
 
 Events (every one has `kind`):
 

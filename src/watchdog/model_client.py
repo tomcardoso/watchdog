@@ -11,7 +11,7 @@ Backends:
 
   - **openai / deepseek / gemini** — OpenAI-compatible Chat Completions backends (any service
     speaking that wire format, selected by base URL). Each uses its own provider API key
-    (stored via `watchdog auth`), independent of the Claude auth mode (#125).
+    (stored via Settings → Models & keys), independent of the Claude auth mode (#125).
 
 Routing: subscription auth can only use claude-agent-sdk; api-key auth defaults to
 claude-api (cheaper) and may use either. A per-task policy or an explicit `backend=`
@@ -143,7 +143,7 @@ def _openai_is_reasoning(model_id: str) -> bool:
 
 def _effort_levels(provider: str, model_id: str) -> set[str]:
     """Which effort levels `provider`/`model_id` actually accepts. The catalog is authoritative
-    for a known id; an uncatalogued id (a raw id typed past the CLI's tier validation, or a
+    for a known id; an uncatalogued id (a raw id typed in Settings, or a
     local/OpenRouter model with no catalog entry at all, #380) falls back to a conservative,
     provider-wide default rather than guessing per-model capability we don't have."""
     if provider == "deepseek":
@@ -165,7 +165,7 @@ def _effort_levels(provider: str, model_id: str) -> set[str]:
         return {"low", "medium", "high"} if _openai_is_reasoning(model_id) else set()
     if provider == "gemini":
         return {"low", "medium", "high"}   # every current Gemini model, catalogued or not
-    return set()   # anthropic (unreachable uncatalogued via the CLI), deepseek, local, openrouter
+    return set()   # anthropic (rarely uncatalogued), deepseek, local, openrouter
 
 
 def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | None:
@@ -187,7 +187,7 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
 def effort_supported(backend: str | None, model: str | None, effort: str) -> bool:
     """Whether `effort` is a level `backend`/`model` actually accepts (#518) — for a caller that
     wants to check support *before* calling, rather than let `acomplete_json` raise. Exists for
-    exactly one case: `cmd/ingest.py` applies `medium` as `extractor_effort`'s implicit default
+    exactly one case: `ops/ingest.py` applies `medium` as `extractor_effort`'s implicit default
     (D26) only when the resolved extractor model supports it, so routing extraction to a model
     with no effort control (e.g. Haiku) doesn't turn a setting the user never touched into a hard
     failure — an *explicit* `--extractor-effort`/`finalizer_effort` request still goes straight to
@@ -208,7 +208,7 @@ _DEFAULT_CONTEXT_WINDOW = 128_000
 # A self-hosted model's id (#380) is whatever the operator named it in their runner — it carries
 # no vendor namespace to match against the catalog/fallback, and guessing from `_DEFAULT_CONTEXT_WINDOW`
 # would be optimistic for the small/quantized models local runners typically serve. `local_context_window`
-# (a `watchdog configure` key) lets an operator state their model's real window; absent that, this
+# (a Settings key) lets an operator state their model's real window; absent that, this
 # conservative default keeps sectioning aggressive rather than risking an overrun on an unknown model.
 _LOCAL_DEFAULT_CONTEXT_WINDOW = 8_000
 
@@ -939,7 +939,7 @@ def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
     Folding the gap into `completion_tokens` is what makes `_openai_cost` charge for them, and
     recording it under `completion_tokens_details.reasoning_tokens` matches OpenAI's shape — where
     reasoning is a *subset* of `completion_tokens`, not a sibling of it — so `_record_usage`, the
-    `watchdog usage` reasoning note, and `acomplete_json`'s truncation diagnostic all read it with
+    Usage reasoning note, and `acomplete_json`'s truncation diagnostic all read it with
     no provider-specific branch. Returns `usage` untouched when there's no gap or the provider
     already reported a reasoning count."""
     if not usage:
@@ -959,7 +959,7 @@ def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
 
 def _fold_in_anthropic_thinking(usage_dict: dict) -> dict:
     """Break Claude's thinking-token count out into `completion_tokens_details.reasoning_tokens`
-    — the OpenAI-shaped key `orchestrate.py`, `cmd/usage.py`, and `telemetry_db.py` already read
+    — the OpenAI-shaped key `orchestrate.py`, `usage.py`, and `telemetry_db.py` already read
     with no provider-specific branch (same target shape `_fold_in_hidden_reasoning` above
     produces for Gemini). The anthropic SDK's `Usage` reports thinking tokens under a
     *different* key, `output_tokens_details.thinking_tokens` — since #635 started sending
@@ -1206,14 +1206,14 @@ class _BackendMeta:
 
 
 # backend name → its registration metadata. `local`/`openrouter` (#380) are OpenAI-compatible too,
-# but their base URL is user-supplied (`watchdog configure local_base_url`/`openrouter_base_url`,
-# or `watchdog auth`) rather than one of the fixed URLs above — `dynamic_base_url` marks them so
+# but their base URL is user-supplied (the `local_base_url` setting/`openrouter_base_url`,
+# or Settings → Models & keys) rather than one of the fixed URLs above — `dynamic_base_url` marks them so
 # `acomplete_json` partial-applies the resolved URL per call instead of at import time.
 _BACKEND_META: dict[str, _BackendMeta] = {
     "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True,
                                       enforces_max_tokens=True),
     "claude-agent-sdk": _BackendMeta(provider="anthropic"),
-    # claude-batch/openai-batch are real, selectable backends (CLI validation, auth resolution)
+    # claude-batch/openai-batch are real, selectable backends (settings validation, auth resolution)
     # but are never dispatched through the single-call acomplete_json path — each provider's
     # Batch API is submit-many/poll/collect, handled entirely by orchestrate._run_batch +
     # pipeline.batch_extract (#214, #530). `batch_only` exists only to turn a misrouted call (e.g.
@@ -1231,7 +1231,7 @@ _BACKEND_META: dict[str, _BackendMeta] = {
     "openrouter": _BackendMeta(provider="openrouter", dynamic_base_url=True, enforces_max_tokens=True),
 }
 
-# Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
+# Selectable backend names (public — Settings validates a stage's `backend:model` against this).
 BACKENDS = tuple(_BACKEND_META)
 # Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
 CLAUDE_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.provider == "anthropic")

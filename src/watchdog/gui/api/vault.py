@@ -728,7 +728,7 @@ def _files(directory: Path) -> list[Path]:
 
 def _incoming_files(incoming: Path) -> list[Path]:
     """Everything chew would pick up: files anywhere under `incoming/` except in its `failed`
-    and `skipped` folders (the same rule `cmd.base._count_incoming` counts by)."""
+    and `skipped` folders (the same rule `vault.count_incoming` counts by)."""
     import os
     out: list[Path] = []
     if not incoming.is_dir():

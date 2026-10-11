@@ -1,9 +1,8 @@
 """Claude Code sessions inside the app, run through the Claude Agent SDK in the vault's folder.
 
-They replace the terminal hand-off of `watchdog ask`, `ask --context` and `research`: the session
+Ask Claude, setting the context and web research run here: the session
 starts in the vault with `setting_sources=["project"]`, so the vault's own `.claude/` settings,
-`CLAUDE.md` and `/watchdog-*` commands apply, and the first prompt is built the way `watchdog ask`
-built it. Watchdog's own tools come from an in-process MCP server (`watchdog/session_tools.py`),
+`CLAUDE.md` and `/watchdog-*` commands apply, and the first prompt wraps a question for the query skill. Watchdog's own tools come from an in-process MCP server (`watchdog/session_tools.py`),
 its hooks are Python callbacks here, and the session has no shell (D299).
 
 Every session runs on one asyncio event loop in a daemon thread; RPC handlers (which run on a

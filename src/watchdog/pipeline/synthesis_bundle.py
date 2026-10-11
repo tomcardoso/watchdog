@@ -207,7 +207,7 @@ def _apply_bundle_unlocked(result_path: Path, vault_path: Path, meta: dict | Non
 
 def apply_bundle(result_path: Path, vault_path: Path, meta: dict | None = None) -> dict:
     """`_apply_bundle_unlocked` under the registry lock every registry writer takes (D258). It can run
-    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    from a Claude Code session or a second terminal while post-processing (`bark`) commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
     from watchdog.pipeline.write_vault import _registry_lock
     registry_dir = Path(vault_path) / ".watchdog" / "registry"
