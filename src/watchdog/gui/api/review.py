@@ -41,7 +41,7 @@ def _recording(v, count: int, resolved: bool):
 
 @method("review.items")
 def items(vault: str, kinds: list[str] | None = None) -> dict:
-    from watchdog.cmd.review import KINDS, open_items
+    from watchdog.review import KINDS, open_items
 
     v = require_vault(vault)
     wanted = tuple(KINDS) if not kinds else tuple(kinds)
@@ -108,7 +108,7 @@ def _watch_recording(v, what: str):
 def watchlist(vault: str) -> dict:
     """The watch list's terms, each with how many hits are still open for it (the watch-list-hit
     items in Review) and whether it is a `/regex/`."""
-    from watchdog.cmd.review import open_items
+    from watchdog.review import open_items
     from watchdog.pipeline import watchlist as _watchlist
 
     v = require_vault(vault)

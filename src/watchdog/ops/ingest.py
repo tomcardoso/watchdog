@@ -1,4 +1,10 @@
-"""Document pipeline commands: chew, ingest, queue-status."""
+"""Adding documents (D251, D298): the pre-processing, processing and post-processing operations,
+the options one run can set, and how each stage's model is resolved from them and the settings.
+
+`add` runs the whole flow; `chew`, `dig` and `bark` run one stage each (the app's Maintenance
+screen). The app resolves the same `Plan` to show what a run will do before it starts one
+(`gui/api/ingest.py`), so it can never show a plan a run would not follow.
+"""
 
 import contextlib
 import json
@@ -8,28 +14,16 @@ import signal
 import subprocess
 import sys
 import time
-from types import SimpleNamespace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from watchdog.vault_paths import incoming_dir, is_vault
-from watchdog import defaults, interactive
-from watchdog.ops import current, hint as _hint, op, say
-from watchdog.cmd.base import (
-    _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
-    _count_queued,
-    _ensure_layout,
-    load_config,
-    _MODEL_IDS,
-    _notify,
-    _render_template,
-    _warn_pending_research,
-)
-from watchdog.pipeline.json_io import _read_json_or
-from watchdog.vault_paths import processing_lock, processing_state
-
-# Sentinel for `--skill` with no value: trigger the interactive record-skill picker.
-_PICK_SKILL = "\x00pick"
+from watchdog import config as config_mod
+from watchdog import defaults
+from watchdog.model_catalog import _MODEL_IDS
+from watchdog.ops import op, require_vault, say
+from watchdog.vault import count_failed, count_queued, render_template
+from watchdog.vault_paths import incoming_dir, is_vault, processing_lock, processing_state
 
 # Reasoning-effort levels for the per-stage effort knobs (D36). `high` is the model
 # default, so an unset knob behaves as before (the orchestrator sends no effort param).
@@ -38,29 +32,34 @@ _PICK_SKILL = "\x00pick"
 # unsupported one loudly — at any level, not just xhigh/max (D158).
 _EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 
+
 # Metered-provider default (#493) — clears the lowest published paid-tier RPM floor across
 # Anthropic/OpenAI/DeepSeek with margin, given how long an extraction call actually takes (D162).
-# `watchdog setup`/`watchdog auth` override this to `auth._SUBSCRIPTION_CONCURRENCY` (3) in
-# config when ingestion stays on a Claude subscription, which throttles well below this value.
+# Watchdog lowers this to `auth.SUBSCRIPTION_CONCURRENCY` (3) in config when processing stays on a
+# Claude subscription, which throttles well below this value.
 _DEFAULT_EXTRACT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
-# --wait (#271): cushion past the provider's reported reset time, since a resume attempted
+
+# Waiting out a rate limit (#271): cushion past the provider's reported reset time, since a resume attempted
 # right at the boundary can still land inside the window.
 _WAIT_BUFFER_SECONDS = 30
+
+
 # Fallback sleep when RateLimitError carried no `resets_at` — true for the claude-api and
 # OpenAI-compatible backends, which don't report a reset timestamp (only claude-agent-sdk does).
 _WAIT_FALLBACK_SECONDS = 15 * 60
+
+
 # Sleep in chunks, refreshing the lock after each. The heartbeat already stamps it from its own
 # thread throughout; this is a second beat inside the age window (`ingest_setup.STALE_SECONDS`).
 _WAIT_REFRESH_SECONDS = 5 * 60
 
 
-def _effort(flag_val, config_val, *, default=None, backend=None, model=None):
-    """Resolve a per-stage effort knob (flag > config > model-aware default > unset); validated.
+def effort(flag_val, config_val, *, default=None, backend=None, model=None):
+    """Resolve a per-stage effort knob (run option > setting > model-aware default > unset).
 
-    `flag_val`/`config_val` are explicit choices — the user typed `--extractor-effort` or ran
-    `watchdog configure`, so an unsupported level for the resolved model fails loud downstream in
-    `model_client._resolve_effort`, correctly, since it's exactly what was asked for. `default`
+    `flag_val`/`config_val` are explicit choices (the run's own option or the setting), so an unsupported
+    level for the resolved model fails loud downstream in `model_client._resolve_effort`, correctly, since it's exactly what was asked for. `default`
     (extractor_effort's `medium`, D26) is different: nothing the user touched, so it's applied
     only when `backend`/`model` actually supports it — otherwise routing a stage to a model with
     no effort control (e.g. Haiku) would turn a setting nobody set into a hard failure (#518)."""
@@ -76,31 +75,11 @@ def _effort(flag_val, config_val, *, default=None, backend=None, model=None):
 
 
 # Per-stage finalizer overrides (#433): each key pair below routes just that post-ingest stage
-# to a different model than the aggregate --finalizer-model, falling back to it when unset.
-_FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
+# to a different model than the finalizer as a whole, falling back to it when unset.
+FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
 
 
-def _resolve_finalizer_overrides(args, config: dict, post_backend: str | None, post_model: str) -> dict:
-    """Resolve the four per-stage `--finalizer-<stage>-model` overrides (#433) — reconciliation,
-    synthesis, timeline, briefing — each via the same `[backend:]model` parsing `_resolve_stage`
-    already does for the aggregate `--finalizer-model`. `default` is the already-resolved
-    finalizer stage itself, so an unset override falls back to exactly what the rest of
-    post-ingest runs on, not a hardcoded tier.
-
-    Returns a dict with `<stage>_model`/`<stage>_backend` keys for every stage — the shape
-    `orchestrate.finalize`'s `finalizer_overrides` parameter expects directly."""
-    default = f"{post_backend}:{post_model}" if post_backend else post_model
-    overrides: dict = {}
-    for stage in _FINALIZER_STAGES:
-        flag_attr = f"finalizer_{stage}_model"
-        backend, model = _resolve_stage(
-            getattr(args, flag_attr, None), config.get(flag_attr), default=default)
-        overrides[f"{stage}_backend"] = backend
-        overrides[f"{stage}_model"] = model
-    return overrides
-
-
-def _resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
+def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
     """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
 
     Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
@@ -135,7 +114,7 @@ def _format_cost_estimate(est: dict) -> str:
     """Render `ingest_setup.cost_estimate`'s result as the pre-flight estimate line (#269),
     e.g. '18 documents · ~410 pages · est. ~2.1M tokens in (~$9-12 based on your last 3 runs)'."""
     n, pages = est["documents"], est["pages"]
-    line = (f"  {_BOLD}{n}{_RESET} document{'s' if n != 1 else ''} · "
+    line = (f"  {n} document{'s' if n != 1 else ''} · "
             f"~{pages} page{'s' if pages != 1 else ''} · "
             f"est. ~{_fmt_tokens(est['est_tokens'])} tokens in")
     if est["cost_low"] is not None:
@@ -143,25 +122,25 @@ def _format_cost_estimate(est: dict) -> str:
         cost = f"${low}" if low == high else f"${low}-{high}"
         runs = est["runs_used"]
         run_label = "last run" if runs == 1 else f"last {runs} runs"
-        line += f" {_DIM}(~{cost} based on your {run_label}){_RESET}"
+        line += f" (~{cost} based on your {run_label})"
     return line
 
 
 def _format_finalize_estimate(est: dict) -> str:
-    """Render `ingest_setup.finalize_cost_estimate`'s result as `watchdog bark --estimate`'s
+    """Render `ingest_setup.finalize_cost_estimate`'s result as post-processing's
     pre-flight line (#417), e.g. '3 documents staged · est. ~45K tokens in (~$0.18-0.24 based on
     your last 2 standalone finalizes)'. Costs here run far smaller than ingest's own line (a
     handful of reconciliation/synthesis calls, not a whole document's extraction), so the dollar
     figure keeps two decimal places instead of `_format_cost_estimate`'s whole dollars."""
     n = est["docs"]
-    line = (f"  {_BOLD}{n}{_RESET} document{'s' if n != 1 else ''} staged · "
+    line = (f"  {n} document{'s' if n != 1 else ''} staged · "
             f"est. ~{_fmt_tokens(est['est_tokens'])} tokens in")
     if est["cost_low"] is not None:
         low, high = round(est["cost_low"], 2), round(est["cost_high"], 2)
         cost = f"${low}" if low == high else f"${low}-{high}"
         runs = est["runs_used"]
         run_label = "last standalone finalize" if runs == 1 else f"last {runs} standalone finalizes"
-        line += f" {_DIM}(~{cost} based on your {run_label}){_RESET}"
+        line += f" (~{cost} based on your {run_label})"
     return line
 
 
@@ -171,13 +150,12 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
     rather than a separate estimate per model per pipeline stage, which is what keeps this
     readable as the catalog grows. `rows` is already sorted by `cost` ascending."""
     if not rows:
-        return (f"  {_DIM}Not enough usage history yet to project other models"
-                + _hint(f" — run an ingest or bark first, then re-run with {_RESET}{_CYAN}--estimate-all{_RESET}{_DIM}",
-                        "; it needs a few finished runs") + f".{_RESET}")
+        return ("  Not enough usage history yet to project other models"
+                + "; it needs a few finished runs" + ".")
     name_w = max(len(r["name"]) for r in rows)
-    lines = [f"  {_DIM}Projected list price by model, cheapest first {_RESET}{_DIM}(every input "
-             f"token priced as a cache miss — a rough ceiling, not what you'd actually pay with "
-             f"caching):{_RESET}"]
+    lines = ["  Projected list price by model, cheapest first (every input "
+             "token priced as a cache miss — a rough ceiling, not what you'd actually pay with "
+             "caching):"]
     for r in rows:
         cost = r["cost"]
         cost_s = f"${cost:.4f}" if cost < 1 else f"${cost:,.2f}"
@@ -187,10 +165,10 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
         rate = r.get("price_multiplier", 1.0)
         note = ""
         if rate > 1:
-            note = f"  {_DIM}(peak rate — this model is cheaper outside peak hours){_RESET}"
+            note = "  (peak rate — this model is cheaper outside peak hours)"
         elif rate < 1:
-            note = f"  {_DIM}(off-peak rate — this model costs more during peak hours){_RESET}"
-        lines.append(f"    {r['name']:<{name_w}}  {_DIM}{r['provider']:<10}{_RESET}  {cost_s}{note}")
+            note = "  (off-peak rate — this model costs more during peak hours)"
+        lines.append(f"    {r['name']:<{name_w}}  {r['provider']:<10}  {cost_s}{note}")
     return "\n".join(lines)
 
 
@@ -208,15 +186,15 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
     """The model each stage will run on, printed before a run starts.
 
     One row per stage, padded into a column. `finalizer_overrides` adds a row for each post-ingest
-    stage that differs from the finalizer; `concurrency` adds a row only when `--concurrency` was
-    passed; `is_dig` drops the finalizer rows, since `dig` doesn't finalize."""
+    stage that differs from the finalizer; `concurrency` adds a row only when the run sets it;
+    `is_dig` drops the finalizer rows, since processing alone doesn't finalize."""
     def label(backend, model):
         return f"{backend}:{model}" if backend else model
     stages = [("classifier", classify_backend, classify_model, classify_effort),
               ("extractor", extract_backend, extract_model, extract_effort)]
     if not is_dig:
         stages.append(("finalizer", post_backend, post_model, post_effort))
-        for stage in _FINALIZER_STAGES:
+        for stage in FINALIZER_STAGES:
             b = (finalizer_overrides or {}).get(f"{stage}_backend", post_backend)
             m = (finalizer_overrides or {}).get(f"{stage}_model", post_model)
             if (b, m) != (post_backend, post_model):
@@ -226,130 +204,25 @@ def _format_models_line(classify_backend, classify_model, extract_backend, extra
         width = max(width, len("concurrency"))
     lines = []
     for name, b, m, effort in stages:
-        suffix = f" {_DIM}(effort: {effort}){_RESET}" if effort else ""
-        lines.append(f"  {_DIM}{name:<{width}}{_RESET} {_CYAN}{label(b, m)}{_RESET}{suffix}")
+        suffix = f" (effort: {effort})" if effort else ""
+        lines.append(f"  {name:<{width}} {label(b, m)}{suffix}")
     if concurrency is not None:
-        lines.append(f"  {_DIM}{'concurrency':<{width}}{_RESET} {_CYAN}{concurrency}{_RESET}")
+        lines.append(f"  {'concurrency':<{width}} {concurrency}")
     return "\n".join(lines)
 
 
 def _require_investigation_keys(vault: Path, backends) -> None:
     """Stop before any model call when the investigation chose a labelled key this computer
     doesn't have for a provider the run would use — never bill another account instead (D290)."""
-    from watchdog.cmd.auth import KeyChoiceError, check_run_keys
+    from watchdog.auth import KeyChoiceError, check_run_keys
     try:
         check_run_keys(vault, backends)
     except KeyChoiceError as e:
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {e}\n")
-
-
-def _preview_ingest(vault: Path, args) -> tuple[str, str, dict] | None:
-    """Read-only preview of what an ingest run would do — the doc/page/token cost estimate and
-    which models would run each stage — shown before any ingest confirm prompt, mirroring
-    `--estimate`'s lock-free scan (#269, #325). None when the queue is empty."""
-    from watchdog.pipeline.ingest_setup import cost_estimate, needs_extraction, scan_queue
-    from watchdog.cmd.auth import resolve_auth
-    queue_files = needs_extraction(vault, scan_queue(vault))
-    if not queue_files:
-        return None
-    config = load_config()
-    extract_backend, extract_model = _resolve_stage(
-        getattr(args, "extractor_model", None), config.get("extractor_model"))
-    post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
-    classify_backend, classify_model = _resolve_stage(
-        getattr(args, "classifier_model", None), config.get("classifier_model"), default=defaults.CLASSIFIER_MODEL)
-    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
-                             default=defaults.EXTRACTOR_EFFORT, backend=extract_backend, model=extract_model)
-    post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
-    classify_effort = _effort(getattr(args, "classifier_effort", None), config.get("classifier_effort"),
-                              default=defaults.CLASSIFIER_EFFORT, backend=classify_backend, model=classify_model)
-    finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
-
-    auth_mode = resolve_auth()["mode"] if extract_backend is None else None
-    est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
-    models_line = _format_models_line(classify_backend, classify_model,
-                                      extract_backend, extract_model, post_backend, post_model,
-                                      classify_effort, extract_effort, post_effort, finalizer_overrides,
-                                      concurrency=getattr(args, "concurrency", None),
-                                      is_dig=getattr(args, "command", None) == "dig")
-    return _format_cost_estimate(est), models_line, est
-
-
-def _pick_skill_interactive() -> str | None:
-    """Numbered picker for `watchdog dig --skill` (no value), drawn from the global
-    skill catalog. Returns the chosen skill's file path; Enter → classify per doc."""
-    from watchdog import skills_catalog
-    catalog = skills_catalog.catalog()
-    if not catalog:
-        say(f"\n  {_DIM}No record skills available — classifying each document.{_RESET}")
-        return None
-    names = list(catalog)
-    say(f"\n  {_BOLD}Pin a record skill{_RESET} {_DIM}for all documents (skips per-document classification):{_RESET}\n")
-    for i, name in enumerate(names, 1):
-        say(f"    {_CYAN}{i:>2}{_RESET}  {name}")
-    try:
-        ans = input("\n  Number, or Enter to classify each: ").strip()
-    except (EOFError, KeyboardInterrupt):
-        say()
-        return None
-    if ans.isdigit() and 1 <= int(ans) <= len(names):
-        return catalog[names[int(ans) - 1]]
-    if ans:
-        say(f"  {_DIM}Not a valid choice — classifying each document.{_RESET}")
-    return None
-
-
-def _resolve_pinned_skill(args, config: dict) -> str | None:
-    """Resolve the pinned record skill to a file path — `--skill` flag → interactive picker
-    → `default_skill` config. The value may be a **skill name** (from the global catalog) or
-    a **path to a skill file**. Exits if a named skill isn't found and isn't a file."""
-    from watchdog import skills_catalog
-    raw = getattr(args, "skill", None)
-    if raw == _PICK_SKILL:
-        return _pick_skill_interactive()                   # picker returns a path or None
-    value = raw or config.get("default_skill")
-    if not value:
-        return None
-    resolved = skills_catalog.resolve(value)
-    if resolved:
-        return resolved
-    avail = ", ".join(skills_catalog.catalog()) or "(none available)"
-    sys.exit(f"\n  {_YELLOW}Error:{_RESET} record skill {_BOLD}{value.removesuffix('.md')}{_RESET} "
-             f"not found (not a known skill or a file path).\n  Available: {_CYAN}{avail}{_RESET}\n")
-
-
-def _run_preprocess(
-    vault: Path,
-    workers: int | None = None,
-    chunk_workers: int | None = None,
-    confirm: bool = False,
-    show_ingest_hint: bool = True,
-) -> None:
-    from watchdog.pipeline.preprocess_batch import run_ingest, find_files
-    incoming = incoming_dir(vault)
-    queue    = vault / ".watchdog" / "queue"
-    if not incoming.is_dir():
-        sys.exit(f"Error: incoming/ not found in {vault}")
-    if confirm:
-        files = find_files([incoming])
-        if not files:
-            queued = len(list(queue.glob("*.json"))) if queue.exists() else 0
-            if queued:
-                run_it = _hint(f" Run {_RESET}{_CYAN}watchdog{_RESET}{_DIM}.", "")
-                say(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready.{run_it}{_RESET}\n")
-            else:
-                say(f"\n  {_DIM}incoming/ is empty — nothing to chew.{_RESET}\n")
-            return
-        n = len(files)
-        label = f"{n} file{'s' if n != 1 else ''}"
-        if not current().confirm(f"\n  Found {_BOLD}{label}{_RESET} in incoming/. Chew now?", default=True):
-            return
-    run_ingest(vault, workers=workers, chunk_workers=chunk_workers, show_ingest_hint=show_ingest_hint)
+        sys.exit(f"\n  Error: {e}\n")
 
 
 def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
-    """The path chew should process for `watchdog chew <file>`: `f` itself when it is already in
+    """The path pre-processing should read for a named file: `f` itself when it is already in
     `incoming/`, else a copy placed there. Chew *moves* what it processes into the vault, so
     chewing a file from anywhere else — `~/Downloads`, or the vault's own `context/` — would
     silently take it away from where the user keeps it."""
@@ -367,55 +240,9 @@ def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
     if sidecar.exists():
         shutil.copy2(sidecar, dest.with_name(f"{dest.name}.yml"))
     if not quiet:
-        say(f"\n  {_DIM}Copied {_RESET}{_CYAN}{f.name}{_RESET}{_DIM} into incoming/ — the original "
-              f"stays where it is.{_RESET}")
+        say(f"\n  Copied {f.name} into incoming/ — the original "
+              f"stays where it is.")
     return dest
-
-
-def _chew(args, vault: Path, offer: bool = True) -> dict | None:
-    if not is_vault(vault):
-        sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
-    _ensure_layout(vault)
-
-    _warn_pending_research(vault)
-    queued_before = _count_queued(vault)
-    # `chew` used to take one file as `file`; it now takes any number of files and folders as
-    # `paths` (the desktop app reads several dropped files at once). Accept either.
-    paths = list(getattr(args, "paths", None) or [])
-    if not paths and getattr(args, "file", None):
-        paths = [args.file]
-    chew_workers  = getattr(args, "chew_workers", None)
-    chunk_workers = getattr(args, "chunk_workers", None)
-    if paths:
-        from watchdog.pipeline.preprocess_batch import run_ingest
-        from watchdog.pipeline.preprocess_batch import find_files
-        # A path already in incoming/ is read where it is (a folder there, everything in it);
-        # anything else is expanded and copied in, exactly as `watchdog add` does.
-        incoming = incoming_dir(vault).resolve()
-        inside, outside = [], []
-        for raw in paths:
-            p = Path(raw).expanduser().resolve()
-            (inside if p == incoming or incoming in p.parents else outside).append(p)
-        files: list[Path] = []
-        for p in inside:
-            if not p.exists():
-                sys.exit(f"Error: file not found: {p}")
-            files += find_files([p]) if p.is_dir() else [p]
-        files += [_into_incoming(vault, f) for f in _expand_paths([str(p) for p in outside], vault)]
-        if not files:
-            say(f"\n  {_DIM}No supported files to read.{_RESET}\n")
-            return None
-        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=files,
-                   show_ingest_hint=False)
-    else:
-        _run_preprocess(vault, workers=chew_workers, chunk_workers=chunk_workers,
-                        show_ingest_hint=False)
-
-    new_queued = _count_queued(vault) - queued_before
-    if new_queued > 0:
-        _notify("Watchdog", f"{new_queued} file{'s' if new_queued != 1 else ''} pre-processed" + _hint(" — run watchdog dig.", "."))
-        return _offer_ingest(args, vault) if offer else None
-    return None
 
 
 def _public_records_warning(n_docs: int) -> str:
@@ -423,17 +250,15 @@ def _public_records_warning(n_docs: int) -> str:
     terminal gate at the point of no return (#426). Wording tracks the README section so the
     two never drift.
 
-    No trailing `\\n` on the returned string (#456 follow-up): the caller's `say()` already
-    appends one, and `current().pick()`'s own leading blank line supplies the separator before
-    the menu — an embedded trailing newline on top of both stacked into a double blank line."""
+    The app shows it in the Add documents dialog before it starts a run."""
     return (
-        f"\n  {_YELLOW}⚠{_RESET}  {_BOLD}Public records only{_RESET}\n\n"
+        f"\n  ⚠  Public records only\n\n"
         "  The extracted text of every queued document will be sent to a\n"
         "  cloud AI model. This cannot be undone. Use Watchdog only for\n"
         "  documents that are public, or presumptively public — never for\n"
         "  confidential source material, leaks, or anything that could\n"
         "  identify a source.\n\n"
-        f"  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} will be sent to the model."
+        f"  {n_docs} document{'s' if n_docs != 1 else ''} will be sent to the model."
     )
 
 
@@ -456,71 +281,6 @@ def _auto_approve_verdict(*, auth_mode: str | None, stages: list[str | None]) ->
                        "applies only when every step runs on your Claude subscription"}
 
 
-def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
-                            enabled: bool = False) -> bool:
-    """The point-of-no-return gate before any ingest/extract that will call the model (#426):
-    shows the README's 'Public records only' warning and requires an explicit acknowledgement,
-    defaulting to Acknowledge — the standing warning is the real safeguard; a Cancel default
-    would just train people to reflexively pick past it. This replaces the old generic
-    'Ingest now?' pick at both call sites rather than stacking a second prompt.
-
-    `n_docs == 0` means this run makes no new model call (e.g. only checking on a pending
-    batch extraction) — nothing to warn about, so it's a silent no-op.
-
-    `--skip-warning` (for repeated/scripted runs on an already-vetted corpus) suppresses the
-    interactive pause but still prints a one-line notice, so a skipped run is never silent
-    about what it sent. With `auto_approve` on (`enabled`), a run whose `gate` verdict approves
-    it does the same; one it doesn't says why before asking.
-    """
-    if n_docs == 0:
-        return True
-    if enabled and (gate or {}).get("approve"):
-        # The user settled the question when they turned auto-approve on (D263), so the run goes
-        # ahead with the same one-line notice --skip-warning prints.
-        say(f"\n  {_DIM}Auto-approved (every step on your Claude subscription) — sending "
-              f"{_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document{'s' if n_docs != 1 else ''} to a "
-              f"cloud AI model.{_RESET}")
-        return True
-    if enabled and not skip_warning:
-        blocker = (gate or {}).get("blocker") or "this run could not be checked"
-        say(f"\n  {_DIM}Asking first: {blocker}.{_RESET}")
-    if skip_warning:
-        say(f"\n  {_DIM}Sending {_RESET}{_BOLD}{n_docs}{_RESET}{_DIM} document"
-              f"{'s' if n_docs != 1 else ''} to a cloud AI model.{_RESET}")
-        return True
-    say(_public_records_warning(n_docs))
-    return current().pick(["Acknowledge and ingest", "Cancel"], 0) == 0
-
-
-def _offer_ingest(args, vault: Path) -> dict | None:
-    """After chew, offer to run ingest right away; print the command hint if declined.
-
-    Returns the ingest summary (or None when declined) so callers can propagate it to
-    `exit_code_for` — a rate limit that pauses the run reached from `watchdog` or `watchdog
-    chew` has to surface as exit 2 the same way a bare `watchdog dig` does (#499)."""
-    preview = _preview_ingest(vault, args)
-    est = None
-    if preview:
-        estimate_line, models_line, est = preview
-        say(estimate_line)
-        say(models_line)
-    from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
-    n_docs = len(needs_extraction(vault, scan_queue(vault)))
-    if _auto_approve_on(load_config()):
-        # With auto-approve on, the gate needs every stage's backend, which only `_ingest`
-        # resolves — so it decides, not this offer (D263).
-        return _ingest(args, vault, confirm=True, skip_preview=True)
-    if _confirm_public_records(n_docs, skip_warning=getattr(args, "skip_warning", False)):
-        return _ingest(args, vault, confirm=False, skip_preview=True)
-    else:
-        # No leading blank line here — pick()'s own close-out already leaves one (#411).
-        # Reached from `watchdog chew` (manual control) or the guided `watchdog` walk (bare) —
-        # point back at whichever got here, not the retired `watchdog ingest` (#441, D138).
-        next_cmd = "watchdog dig" if getattr(args, "command", None) == "chew" else "watchdog"
-        if not current().app:
-            say(f"  Run:  {_CYAN}{next_cmd}{_RESET}\n")
-
-
 def _wait_seconds(resets_at: int | None) -> tuple[int, bool]:
     """Seconds to sleep before resuming after a rate limit, and whether that's an exact reset
     time (vs. the fallback used when the error carried no `resets_at`)."""
@@ -534,10 +294,10 @@ def _wait_for_rate_limit(lock_file: Path, resets_at: int | None) -> None:
     from watchdog.pipeline.locks import refresh_lock
     sleep_s, exact = _wait_seconds(resets_at)
     wake_at = datetime.now().astimezone() + timedelta(seconds=sleep_s)
-    note = "" if exact else f"{_DIM} (estimated — the provider didn't report a reset time){_RESET}"
-    stop = _hint(f"{_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop", "Use Stop in Activity to stop")
-    say(f"\n  {_YELLOW}Rate limit{_RESET}{_DIM} — resuming at{_RESET} {_BOLD}{wake_at:%H:%M}{_RESET}"
-          f"{note}{_DIM}. {stop}; finished documents are saved.{_RESET}\n")
+    note = "" if exact else " (estimated — the provider didn't report a reset time)"
+    stop = "Use Stop in Activity to stop"
+    say(f"\n  Rate limit — resuming at {wake_at:%H:%M}"
+          f"{note}. {stop}; finished documents are saved.\n")
     remaining = sleep_s
     while remaining > 0:
         chunk = min(remaining, _WAIT_REFRESH_SECONDS)
@@ -547,7 +307,7 @@ def _wait_for_rate_limit(lock_file: Path, resets_at: int | None) -> None:
 
 
 def _merge_summary(base: dict | None, new: dict) -> dict:
-    """Fold one --wait iteration's summary into the running total.
+    """Fold one rate-limit wait's summary into the running total.
 
     `results` are deduped by sha256 (a later cycle's outcome for the same doc replaces an
     earlier cycle's "cancelled" stub); extracted/skipped/failed/usage are summed. Every other
@@ -577,154 +337,20 @@ def _merge_summary(base: dict | None, new: dict) -> dict:
     return merged
 
 
-def _forced_overwrite_targets(vault: Path, summary: dict) -> list[tuple[str, str]]:
-    """Which of this run's force-re-extracted documents (#424) already have a committed vault
-    note — the set the overwrite-warning gate must list and confirm before finalize recommits
-    them. Returns (sha256, document_note) pairs, in `summary["results"]` order."""
-    documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    committed = _read_json_or(documents_path, None)
-    if committed is None:
-        return []
-    out = []
-    for r in summary.get("results", []):
-        entry = committed.get(r.get("sha256"))
-        if r.get("status") == "ok" and entry:
-            out.append((r["sha256"], entry.get("document_note") or r["sha256"][:12]))
-    return out
-
-
-def _handle_force_gate(vault: Path, summary: dict, post_model: str,
-                       post_effort: str | None, post_backend: str | None,
-                       skip_briefing: bool = False, finalizer_overrides: dict | None = None) -> None:
-    """After a forced re-extraction (`ingest --force`, or `dig --force`) with finalize held off,
-    warn before finalize recommits any document that was already in the vault — replacing an
-    already-committed note/registry entry is genuinely destructive, unlike the routine ingest
-    confirm, so this defaults to Cancel (#424). On cancel the re-staged extraction is left
-    pending, exactly as `dig --force` would leave it, for a later `watchdog bark` to pick up;
-    nothing is rolled back.
-
-    When force touched no already-committed document (a queue of only new documents, extracted
-    with finalize held off purely because `--force` was passed), there is nothing to warn about —
-    finalize just runs.
-    """
-    targets = _forced_overwrite_targets(vault, summary)
-    if targets:
-        n = len(targets)
-        replaces = _hint("--force replaces", "Re-extracting replaces")
-        say(f"\n  {_YELLOW}{replaces} {n} note{'s' if n != 1 else ''} already in the vault:{_RESET}")
-        for _, note in targets:
-            say(f"    {_CYAN}{note}{_RESET}")
-        if not current().confirm("\n  Overwrite and finalize?", default=False):
-            later = _hint(f"run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later to complete it",
-                          "finish it later under Activity → Maintenance → Post-processing")
-            say(f"\n  {_DIM}Cancelled — nothing overwritten. The re-extracted batch is staged; "
-                  f"{later}.{_RESET}")
-            return
-    summary["finalize_skipped"] = False
-    summary["post_ingest"] = _run_finalize(vault, post_model, post_effort, post_backend,
-                                           force_shas=[sha for sha, _ in targets] or None,
-                                           skip_briefing=skip_briefing,
-                                           finalizer_overrides=finalizer_overrides)
-
-
-def _resolve_force_selectors(vault: Path, selectors: list[str]) -> list[str]:
-    """Resolve each `ingest --force <selector>` argument to a committed document's sha256, against
-    `registry/documents.json` (#424). A selector matches by full sha256, an unambiguous sha256
-    prefix, its original filename, or its document note (`documents/<slug>` or just `<slug>`).
-    Exits with a clear error on no match or an ambiguous prefix — never a silent no-op. Returns
-    shas in selector order, de-duplicated (two selectors naming the same document collapse to one)."""
-    documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    documents = _read_json_or(documents_path, {})
-
-    resolved: list[str] = []
-    for sel in selectors:
-        if sel in documents:
-            resolved.append(sel)
-            continue
-        candidates = {sha for sha in documents if sha.startswith(sel)}
-        for sha, entry in documents.items():
-            note = entry.get("document_note") or ""
-            if sel == entry.get("filename") or sel == note or sel == Path(note).name:
-                candidates.add(sha)
-        if len(candidates) == 1:
-            resolved.append(next(iter(candidates)))
-        elif len(candidates) > 1:
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} '{sel}' matches more than one committed "
-                     f"document — use the full sha256, or an exact filename.\n")
-        else:
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} '{sel}' does not match any committed document "
-                     f"(by sha256, filename, or note).\n")
-
-    seen: set[str] = set()
-    out: list[str] = []
-    for sha in resolved:
-        if sha not in seen:
-            seen.add(sha)
-            out.append(sha)
-    return out
-
-
-def _requeue_forced_selectors(vault: Path, selectors: list[str]) -> None:
-    """`ingest --force <selector…>` (#424): resolve each selector to a committed document, then
-    re-chew its original — which a commit moves out of `.watchdog/staging/<sha>/` into the morgue,
-    recorded as `documents.json[sha]["morgue_path"]` — with chew's dedup filter and near-dup
-    self-match both bypassed for that sha, so it re-enters `.watchdog/queue/` for the force
-    re-extraction that follows. Reuses the real chew/OCR pipeline (`preprocess_batch.run_ingest`)
-    rather than duplicating it. A sha whose queue entry already exists (e.g. an earlier `--force`
-    run staged it and it was never finalized) is left alone — no need to pay for OCR twice."""
-    shas = _resolve_force_selectors(vault, selectors)
-    documents_path = vault / ".watchdog" / "registry" / "documents.json"
-    documents = json.loads(documents_path.read_text(encoding="utf-8")) if documents_path.exists() else {}
-    queue_dir = vault / ".watchdog" / "queue"
-
-    to_requeue: list[tuple[str, Path]] = []
-    for sha in shas:
-        if (queue_dir / f"{sha}.json").exists():
-            continue
-        entry = documents.get(sha, {})
-        morgue_rel = entry.get("morgue_path")
-        morgue_path = (vault / morgue_rel) if morgue_rel else None
-        if not morgue_path or not morgue_path.exists():
-            name = entry.get("filename", sha[:12])
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} the original for {_CYAN}{name}{_RESET} isn't "
-                     f"on disk at its recorded morgue path — cannot re-chew it.\n")
-        to_requeue.append((sha, morgue_path))
-
-    if not to_requeue:
-        return
-    from watchdog.pipeline import preprocess_batch
-    names = ", ".join(p.name for _, p in to_requeue)
-    say(f"\n  {_DIM}Re-chewing from the morgue (dedup bypassed):{_RESET} {_CYAN}{names}{_RESET}"
-          f"{_DIM} — local and free, but re-OCR of a big document can take a moment.{_RESET}")
-    preprocess_batch.run_ingest(vault, files=[p for _, p in to_requeue], show_ingest_hint=False,
-                                force_shas={sha for sha, _ in to_requeue})
-
-
-def _failed_count(vault: Path) -> int:
-    """How many documents are parked in `.watchdog/queue/_failed/` awaiting `watchdog requeue`
-    (#406) — shared by every place that needs to know whether an empty active queue also means
-    nothing needs attention, or just that a prior run's failures are still sitting there."""
-    failed_dir = vault / ".watchdog" / "queue" / "_failed"
-    return len(list(failed_dir.glob("*.json"))) if failed_dir.exists() else 0
-
-
 def _quarantine_notice(n: int) -> str:
     """The '_failed/ needs attention' line (#406), shared by the normal-completion summary,
-    the Ctrl+C message, and the empty-queue checks — same wording everywhere a quarantined
+    the stop message, and the empty-queue checks — same wording everywhere a quarantined
     document could otherwise go unmentioned."""
-    return (f"{_YELLOW}{n} document{'s' if n != 1 else ''} need attention{_RESET}"
-            + _hint(f"{_DIM} in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — run {_RESET}"
-                    f"{_CYAN}watchdog requeue{_RESET}{_DIM} to retry {'them' if n != 1 else 'it'}.{_RESET}",
-                    f"{_DIM} — retry {'them' if n != 1 else 'it'} with Activity → Maintenance → "
-                    f"Requeue failed documents.{_RESET}"))
+    return (f"{n} document{'s' if n != 1 else ''} need attention"
+            + (f" — retry {'them' if n != 1 else 'it'} with Activity → Maintenance → "
+                    f"Requeue failed documents."))
 
 
 @contextlib.contextmanager
 def _caffeinate():
     """Keep the machine from sleeping for the life of a real ingest run (#415) — unlike a
     network blip a retry can absorb, the OS suspending mid-run kills any active model call
-    outright. Never a hard dependency, and a no-op everywhere else (including
-    `--estimate`/preview paths, which never reach this) — including when the platform's own
+    outright. Never a hard dependency, and a no-op everywhere else  — including when the platform's own
     tool isn't on PATH (Windows has no equivalent worth shelling out to at all).
 
     macOS: `caffeinate -i -w <pid>` self-terminates if this process dies, so a plain
@@ -785,8 +411,8 @@ def _caffeinate():
 
 def _requeue_failed(vault: Path) -> int:
     """Move every document from `queue/_failed/` back into the active queue. Returns how many
-    were moved (0 if none were waiting) — the mutation behind `watchdog requeue`, also reused
-    by `_ingest`'s empty-queue prompt (#406) so accepting it doesn't duplicate the move."""
+    were moved (0 if none were waiting): the requeue operation, and adding documents with
+    `retry`."""
     failed_dir = vault / ".watchdog" / "queue" / "_failed"
     files = sorted(failed_dir.glob("*.json")) if failed_dir.exists() else []
     if not files:
@@ -797,571 +423,15 @@ def _requeue_failed(vault: Path) -> int:
     return len(files)
 
 
-def _ingest(args, vault: Path, *, confirm: bool = True, skip_preview: bool = False,
-            non_interactive: bool = False) -> dict | None:
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    _ensure_layout(vault)
-
-    # This function backs `add` (the whole pipeline), `dig` (extract only, via _extract
-    # setting no_finalize), the deprecated `ingest`, and `chew`'s offer to continue
-    # (`_offer_ingest`). "Run it again" hints below name whichever command got the caller here.
-    command = getattr(args, "command", None)
-    pipeline_hint = {"dig": "watchdog dig", "add": "watchdog add"}.get(command, "watchdog")
-    is_dig = command == "dig"
-    is_add = command == "add"
-
-    raw_force = getattr(args, "force", False)
-    if isinstance(raw_force, list):
-        force = True
-        force_selectors = raw_force
-    else:
-        force = bool(raw_force)
-        force_selectors = []
-    skip_briefing = getattr(args, "skip_briefing", False)
-    # --estimate promises "no lock, no confirm, no extraction" — read-only, same for its
-    # --estimate-all sibling (#469). Re-queueing named documents is a real mutation (moves the
-    # morgue original into staging, writes a queue file), so it must not run under --estimate;
-    # bare --force --estimate is unaffected, since it has no selectors to re-queue in the first
-    # place (#424).
-    is_estimate = getattr(args, "estimate", False) or getattr(args, "estimate_all", False)
-    # `watchdog dig --limit N` (#696): only the next N queued documents still needing extraction.
-    limit = getattr(args, "limit", None)
-    if force_selectors and is_estimate:
-        say(f"\n  {_DIM}{_hint('--estimate is read-only', 'An estimate is read-only')} — the named document(s) are not re-queued; "
-              f"this estimate reflects the current queue only.{_RESET}")
-    elif force_selectors:
-        _requeue_forced_selectors(vault, force_selectors)
-
-    config = load_config()
-
-    extract_backend, extract_model = _resolve_stage(
-        getattr(args, "extractor_model", None), config.get("extractor_model"))
-
-    from watchdog.cmd.auth import resolve_auth
-    from watchdog.model_client import CLAUDE_BACKENDS
-
-    if is_estimate:
-        from watchdog.pipeline.ingest_setup import (
-            cost_estimate, cost_estimate_all_models, limit_queue, scan_queue,
-        )
-        queue_files = limit_queue(vault, scan_queue(vault), limit, force=force)
-        if not queue_files:
-            failed = _failed_count(vault)
-            if failed:
-                # --estimate is read-only (#406): say what's blocking it rather than requeueing
-                # for the user, unlike the interactive bare-ingest prompt below.
-                say(f"\n  {_quarantine_notice(failed)}{_DIM} Nothing else is queued.{_RESET}\n")
-            else:
-                say(f"\n  {_DIM}Queue is empty — nothing to estimate.{_RESET}")
-                say(_hint(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n",
-                            f"  {_DIM}Pre-process some documents first.{_RESET}\n"))
-            return
-        # Claude's auth mode only matters for the estimate when the extractor is actually
-        # routed to Claude (it picks subscription vs api-key pricing) — a stage pinned to
-        # another provider needs no Claude auth at all (#325).
-        auth_mode = resolve_auth()["mode"] if extract_backend is None else None
-        # cost_estimate sums est_tokens over every queue_files entry unconditionally — it already
-        # prices a --force run the same as any other, since it has no notion of a cached artifact
-        # to discount (#424 needs no extra handling here).
-        est = cost_estimate(vault, queue_files, _effective_extract_backend(extract_backend, auth_mode))
-        say(f"\n{_format_cost_estimate(est)}")
-        if getattr(args, "estimate_all", False):
-            rows = cost_estimate_all_models(vault, est["est_tokens"])
-            say(f"\n{_format_all_models_estimate(rows)}")
-        say()
-        return
-
-    post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
-    classify_backend, classify_model = _resolve_stage(
-        getattr(args, "classifier_model", None), config.get("classifier_model"), default=defaults.CLASSIFIER_MODEL)
-    finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
-
-    # Claude auth is only required when at least one stage is actually routed to it — a vault
-    # configured entirely on another provider (e.g. all three stages set to gemini:...) must be
-    # able to ingest without Claude being configured at all (#325). Includes the per-stage
-    # finalizer overrides (#433) — a lone overridden stage still routed to Claude must not let
-    # an all-non-Claude aggregate --finalizer-model skip the auth check.
-    needs_claude_auth = any(
-        b is None or b in CLAUDE_BACKENDS
-        for b in (extract_backend, post_backend, classify_backend,
-                  *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)))
-    if needs_claude_auth:
-        a = resolve_auth()
-        if a["mode"] == "none":
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                     + _hint(f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n",
-                             f"  {_DIM}Choose how to authenticate in Settings.{_RESET}\n"))
-    else:
-        a = {"mode": None}
-    _require_investigation_keys(vault, (extract_backend, post_backend, classify_backend,
-                                        *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)))
-
-    extract_effort = _effort(getattr(args, "extractor_effort", None), config.get("extractor_effort"),
-                             default=defaults.EXTRACTOR_EFFORT, backend=extract_backend, model=extract_model)
-    post_effort    = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
-    classify_effort = _effort(getattr(args, "classifier_effort", None), config.get("classifier_effort"),
-                              default=defaults.CLASSIFIER_EFFORT, backend=classify_backend, model=classify_model)
-    try:
-        concurrency = int(getattr(args, "concurrency", None) or config.get("extract_concurrency")
-                          or _DEFAULT_EXTRACT_CONCURRENCY)
-    except (TypeError, ValueError):
-        concurrency = _DEFAULT_EXTRACT_CONCURRENCY
-    # extract_token_budget (#563): "auto" (default) leaves admission control to auto-discover the
-    # ceiling from the provider's own rate-limit headers; a pinned number overrides that — same
-    # `key: "auto"` idiom as chew_workers (preprocess_batch.py), not the 0-means-unset pattern
-    # extract_concurrency/classify_pages use, since this key's "unset" state is a real third value
-    # ("don't gate at all"), not just "fall back to a default number".
-    raw_token_budget = config.get("extract_token_budget", "auto")
-    try:
-        token_budget = None if raw_token_budget == "auto" else int(raw_token_budget)
-    except (TypeError, ValueError):
-        token_budget = None
-    try:
-        classify_pages = int(getattr(args, "classify_pages", None) or config.get("classify_pages") or defaults.CLASSIFY_PAGES)
-    except (TypeError, ValueError):
-        classify_pages = defaults.CLASSIFY_PAGES
-    classify_pages = max(1, classify_pages)
-
-    from watchdog.pipeline import orchestrate as _orch
-    from watchdog.pipeline.ingest_setup import run as is_run
-
-    # A prior run may have left a batch un-finalized — `dig` stages without finalizing, and a rate
-    # limit or Ctrl+C can stop `bark` partway. Nothing in it is ever thrown away: every staged
-    # extraction is committed by the next finalize, whichever run that is.
-    if _orch.has_pending_finalization(vault):
-        from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
-        new_docs = scan_queue(vault) if force else needs_extraction(vault, scan_queue(vault))
-        p = _orch.pending_finalization(vault)
-        bits = []
-        if p["docs"]:
-            bits.append(f"{p['docs']} document{'s' if p['docs'] != 1 else ''}")
-        if p["entities"]:
-            bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
-        detail = f" {_DIM}({', '.join(bits)}){_RESET}" if bits else ""
-        if is_dig:
-            # `dig` never finalizes, so there's nothing to decide: the staged batch waits for the
-            # next `watchdog bark`, which finalizes it together with whatever this run extracts.
-            finisher = _hint(f"{_RESET}{_CYAN}watchdog bark{_RESET}{_DIM}", "post-processing")
-            say(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — "
-                  f"{finisher} will finish it together with "
-                  f"this run.{_RESET}")
-            if not new_docs:
-                say(f"  {_DIM}Nothing new to extract.{_RESET}\n")
-                return
-        elif not new_docs:
-            # Bare `watchdog` (or the deprecated `ingest`) with nothing new to read: the only work
-            # left is the finalize, so do it rather than extracting nothing and stopping.
-            say(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — "
-                  f"finishing it now.{_RESET}")
-            return _run_finalize(vault, post_model, post_effort, post_backend,
-                                 skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
-        elif is_add:
-            # `add` takes documents all the way through, so a pending batch is simply finalized
-            # together with the new documents — the choice the pick below defaults to.
-            say(f"\n  {_DIM}A previous batch is waiting to be finished{_RESET}{detail}{_DIM} — it "
-                  f"will be finished together with the new documents.{_RESET}")
-        else:
-            # A programmatic caller must never block on the pick below — it has no way to answer
-            # it (#494). Fail loud instead of hanging on an invisible prompt.
-            if non_interactive:
-                sys.exit(f"\n  {_YELLOW}Error:{_RESET} a previous batch is waiting to be finished in "
-                         f"this vault — refusing to prompt for a decision in a non-interactive run.\n"
-                         + _hint(f"  Run {_CYAN}watchdog bark{_RESET} to finish it, then retry.\n",
-                                 "  Finish it under Activity → Maintenance → Post-processing, then retry.\n"))
-            say(f"\n  {_YELLOW}A previous batch is waiting to be finished{_RESET}{detail}{_DIM}.{_RESET}")
-            options = [
-                f"Finalize it together with the new documents {_DIM}— extract the new docs, then "
-                f"finish everything in one pass{_RESET}",
-                f"Finalize it now, then stop {_DIM}— real model spend now (reconciliation, synthesis, "
-                f"the briefing); ingest the new docs after{_RESET}",
-            ]
-            choice = current().pick(options, 0, title="Pending batch")
-            if choice is interactive.CANCELLED:
-                return
-            if choice == 1:                    # finalize now, then stop
-                out = _run_finalize(vault, post_model, post_effort, post_backend,
-                                    skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
-                if not (out.get("error") or out.get("briefing_error")):
-                    say(_hint(f"  {_DIM}Now run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} for the queued documents.{_RESET}\n",
-                                f"  {_DIM}The queued documents have not been processed yet. Add documents again to process them.{_RESET}\n"))
-                return out
-
-    from watchdog.pipeline import batch_extract
-    from watchdog.model_client import BATCH_BACKENDS
-    # A pending batch (#214, #530) must still be checked even with nothing newly queued — mirrors
-    # the has_pending_finalization precedent above ("resolve the pending thing first"). force_lock
-    # so two concurrent runs can't both try to collect the same batch —
-    # is_run normally only acquires the lock when the queue is non-empty.
-    batch_pending = extract_backend in BATCH_BACKENDS and batch_extract.read_state(vault) is not None
-
-    result = is_run(vault, wipe_pending=False, force_lock=batch_pending)
-    if "error" in result:
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
-    if result["total"] == 0 and not batch_pending:
-        failed = _failed_count(vault)
-        # #406: an empty active queue with documents parked in _failed/ isn't really "nothing to
-        # ingest" — offer to requeue right here rather than send the user hunting for the fix.
-        if failed and not non_interactive and current().confirm(
-                f"\n  {_quarantine_notice(failed)} Nothing else is queued."
-                f"{_DIM} Requeue {'them' if failed != 1 else 'it'} and retry now?{_RESET}", default=True):
-            _requeue_failed(vault)
-            result = is_run(vault, wipe_pending=False, force_lock=batch_pending)
-            if "error" in result:
-                sys.exit(f"\n  {_YELLOW}Error:{_RESET} {result['error']}\n")
-        if result["total"] == 0:
-            # Re-check rather than trust the `failed` count captured above (#437 review) — a
-            # requeue attempt in between (or a concurrent `watchdog requeue`) can have already
-            # emptied _failed/, and "run watchdog requeue" would be a dead end at that point.
-            if _failed_count(vault):
-                say(_hint(f"\n  {_DIM}Run {_RESET}{_CYAN}watchdog requeue{_RESET}{_DIM} when ready, then "
-                            f"{_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} again.{_RESET}\n",
-                            f"\n  {_DIM}When ready, use Activity → Maintenance → Requeue failed documents, "
-                            f"then add documents again.{_RESET}\n"))
-            elif is_add:
-                say(_hint(f"\n  {_DIM}Nothing new to add. Drop files in {_RESET}{_CYAN}incoming/{_RESET}"
-                            f"{_DIM}, or pass them: {_RESET}{_CYAN}watchdog add <files or folders>{_RESET}\n",
-                            f"\n  {_DIM}Nothing new to add. Choose files or folders in Add documents.{_RESET}\n"))
-            else:
-                say(f"\n  {_DIM}Queue is empty — nothing to ingest.{_RESET}")
-                say(_hint(f"  Run {_CYAN}watchdog chew{_RESET}{_DIM} to process documents in incoming/ first.{_RESET}\n",
-                            f"  {_DIM}Pre-process some documents first.{_RESET}\n"))
-            return
-
-    only_shas = None
-    if limit is not None:
-        from watchdog.pipeline.ingest_setup import limit_queue
-        in_queue = len(result["queue_files"])
-        result["queue_files"] = limit_queue(vault, result["queue_files"], limit, force=force)
-        only_shas = [qf["sha256"] for qf in result["queue_files"]]
-        held = in_queue - len(only_shas)
-        say(f"\n  {_DIM}{_hint(f'--limit {limit}', f'Limit of {limit}')}: extracting {_RESET}{_BOLD}{len(only_shas)}{_RESET}{_DIM} "
-              f"of {in_queue} queued document{'s' if in_queue != 1 else ''}"
-              + (f"; {held} stay{'s' if held == 1 else ''} queued or already extracted"
-                 if held else "") + f".{_RESET}")
-    from watchdog.pipeline.ingest_setup import needs_extraction
-    # What this run will actually send to the model — queue files outlive extraction, so documents
-    # already staged or committed are counted out unless --force re-extracts them.
-    to_send = result["queue_files"] if force else needs_extraction(vault, result["queue_files"])
-    q = len(to_send)
-    est = None
-    if q:
-        from watchdog.pipeline.ingest_setup import cost_estimate
-        est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]))
-    if q and not skip_preview:
-        say(f"\n{_format_cost_estimate(est)}")
-        say(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
-                                  post_backend, post_model, classify_effort, extract_effort, post_effort,
-                                  finalizer_overrides, concurrency=getattr(args, "concurrency", None),
-                                  is_dig=is_dig))
-    elif batch_pending:
-        say(f"\n  {_DIM}Checking on a pending batch extraction…{_RESET}")
-
-    if result.get("backup_dir"):
-        rel = Path(result["backup_dir"]).relative_to(vault)
-        say(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM} — copy files back to undo the discard{_RESET}")
-
-    pinned_skill = _resolve_pinned_skill(args, config)
-    if pinned_skill:
-        say(f"  {_DIM}Skill pinned:{_RESET} {_CYAN}{Path(pinned_skill).stem}{_RESET}{_DIM} — classification skipped.{_RESET}")
-
-    if (classify_backend in BATCH_BACKENDS or post_backend in BATCH_BACKENDS
-            or any(finalizer_overrides.get(f"{s}_backend") in BATCH_BACKENDS for s in _FINALIZER_STAGES)):
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} a batch backend ({', '.join(BATCH_BACKENDS)}) is "
-                 f"only valid for extractor_model, not classifier_model/finalizer_model.\n")
-    if extract_backend == "claude-batch":
-        # No pinned-skill requirement (D144): each document resolves its own skill — sidecar pin,
-        # run-wide pin, else one cheap classify call — before the batch is built, so a mixed-type
-        # drop batches fine. Classification stays a per-document synchronous call; what is batched
-        # is extraction, which is where the 50% discount is worth having.
-        if a["mode"] != "api-key":
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} claude-batch requires api-key auth mode "
-                     f"(it needs a metered key) — "
-                     + _hint(f"switch to it with {_CYAN}watchdog settings auth{_RESET}.\n",
-                             "switch to it in Settings.\n"))
-    # openai-batch (#530) needs no equivalent check — OpenAI has no subscription auth mode in
-    # this codebase, so it's already covered by the ordinary api-key resolution above.
-    # The verification pass (#535): flag beats config, config beats off. Off is the default
-    # because the pass has not yet been measured for precision on the benchmark corpus — it
-    # reliably adds facts, and whether those facts are worth a reporter's attention is exactly
-    # the open question (D172).
-    verify_flag = getattr(args, "verify", None)
-    verify = bool(config.get("verify_extraction", False)) if verify_flag is None else verify_flag
-    if verify and extract_backend in BATCH_BACKENDS:
-        # Every batch backend, not just claude-batch: the pass re-reads a document immediately
-        # after extracting it, out of the prompt cache that extraction call just wrote, and a
-        # batch's results come back hours later in a different run with neither of those left.
-        # Name whichever turned it on, so the fix the message implies is the one that works —
-        # "--verify isn't supported" is unhelpful advice to someone who never typed it.
-        source = _hint("--verify" if verify_flag else f"{_CYAN}verify_extraction{_RESET}", "Verification")
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} {source} isn't supported with {extract_backend} — "
-                 f"the verification pass re-reads a document immediately after extracting it, and "
-                 f"a batch's results come back hours later in a separate run.\n"
-                 + ("" if verify_flag else
-                    _hint(f"  Pass {_CYAN}--no-verify{_RESET} for this run, or turn the setting off.\n",
-                          "  Turn the verification setting off, or choose another extraction model.\n")))
-    wait = getattr(args, "wait", False)
-    if is_add and extract_backend not in BATCH_BACKENDS:
-        # `add` sees a run through: a rate limit pauses it until the limit resets.
-        wait = True
-    if wait and extract_backend in BATCH_BACKENDS:
-        sys.exit(_hint(f"\n  {_YELLOW}Error:{_RESET} --wait isn't supported with {extract_backend} — a "
-                       f"batch already runs in the background; re-run {_CYAN}{pipeline_hint}{_RESET} "
-                       f"later to collect it.\n",
-                       f"\n  {_YELLOW}Error:{_RESET} Waiting for a rate limit isn't supported with "
-                       f"{extract_backend} — a batch already runs in the background; add documents "
-                       f"again later to collect it.\n"))
-    # `max_rate_limit_waits` is an internal knob, not a user-facing flag or `configure` key
-    # (#559) — like `no_finalize` above, it exists only for the benchmark harness, which needs
-    # `--wait`'s resume loop bounded so a rate-limited arm surfaces as a partial result instead
-    # of stalling the sweep. `None` (the only value a real `--wait` run ever has) means unbounded,
-    # preserving today's behaviour exactly.
-    max_rate_limit_waits = getattr(args, "max_rate_limit_waits", None)
-    no_finalize = getattr(args, "no_finalize", False)
-    # `force`/`force_selectors` were already resolved at the top of this function (before the
-    # re-queue-from-morgue step, which must run ahead of everything else here). `ingest --force`
-    # always extracts with finalize held off, same as `dig --force` (no_finalize) — the
-    # difference is what happens after: `_extract` leaves the batch pending for a later
-    # `watchdog bark`; plain `ingest --force` gates the overwrite of any already-committed
-    # document below, then finalizes itself once confirmed.
-    run_skip_finalize = no_finalize or force
-
-    def _release_lock() -> None:
-        from watchdog.pipeline.locks import release_lock
-        lock = processing_lock(vault)
-        release_lock(lock)
-        if not lock.exists():       # another run took it over: its state file is its own
-            (processing_state(vault)).unlink(missing_ok=True)
-
-    if confirm:
-        auto = _auto_approve_on(config)
-        gate = None
-        if auto and q:
-            gate = _auto_approve_verdict(
-                auth_mode=a["mode"],
-                stages=[classify_backend, extract_backend, post_backend,
-                        *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES)])
-        if not _confirm_public_records(q, skip_warning=getattr(args, "skip_warning", False),
-                                       gate=gate, enabled=auto):
-            _release_lock()
-            # No leading blank line — pick()'s own close-out already leaves one (#411).
-            # Declining `chew`'s offer points at `dig`, as chew's own decline path does.
-            hint = "watchdog dig" if command == "chew" else pipeline_hint
-            if not current().app:
-                say(f"  When ready, run:  {_CYAN}{hint}{_RESET}\n")
-            return
-
-    import asyncio
-    from watchdog.pipeline import orchestrate
-    log_path = vault / "log.md"
-    if not log_path.exists():
-        log_path.write_text(_render_template("log.md"))
-
-    # The block below is what a user sees right as extraction starts — reached either straight
-    # from this function's own "Ingest now?" pick() (confirm=True) or via _offer_ingest's pick()
-    # in the caller (confirm=False); either way a picker just closed and already left one blank
-    # line, so the first of these notices must not add its own leading "\n" on top of it (#411).
-    said_since_pick = False
-
-    def _say_since_pick(msg: str) -> None:
-        nonlocal said_since_pick
-        say((f"\n{msg}" if said_since_pick else msg))
-        said_since_pick = True
-
-    if force:
-        _say_since_pick(f"  {_YELLOW}{_hint('--force', 'Re-extract')}{_RESET}{_DIM}: re-extracting even where a cached "
-                        f"extraction or a committed vault note already exists.{_RESET}")
-    if no_finalize:
-        # `no_finalize` is only ever set by `_extract` (dig) — there is no user-facing
-        # `--no-finalize` flag to reference here (#456).
-        _say_since_pick(_hint(f"  {_DIM}Running {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} and stopping "
-                              f"after extraction — run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} later "
-                              f"to complete the batch.{_RESET}",
-                              f"  {_DIM}Processing only, stopping after extraction. Finish the batch later "
-                              f"under Activity → Maintenance → Post-processing.{_RESET}"))
-    if extract_backend in BATCH_BACKENDS:
-        sync_backend = "claude-api" if extract_backend == "claude-batch" else "openai"
-        _say_since_pick(f"  {_DIM}{extract_backend}: sectioned documents (if any) extract via "
-                        f"{sync_backend} now; the rest submit as one batch and finish later.{_RESET}")
-    else:
-        _say_since_pick(f"  {_DIM}Extracting (≤{concurrency} parallel) — the model is called only for "
-                        f"reasoning; the pipeline runs in Python.{_RESET}")
-        say(f"  {_YELLOW}Large documents can take several minutes each{_RESET}{_DIM} — a long pause on a "
-              f"row is normal, not a stall.{_RESET}")
-        say(_hint(f"  {_DIM}Press {_RESET}{_CYAN}Ctrl+C{_RESET}{_DIM} to stop; finished documents are kept.{_RESET}\n",
-                    f"  {_DIM}Use Stop in Activity to stop; finished documents are kept.{_RESET}\n"))
-    lock_file = processing_lock(vault)
-    from watchdog.pipeline.locks import heartbeat
-    try:
-        summary = None
-        wait_count = 0
-        # This loop's only exit condition is `iter_summary["rate_limited"]`, which reflects a
-        # rate limit hit *during extraction* — finalize (skipped entirely when no_finalize is
-        # set) never sets it, so --wait + --no-finalize already stops as soon as the queue
-        # drains, with no special-casing needed here (#384). `max_rate_limit_waits` adds a second
-        # exit condition on top, for callers that can't tolerate an unbounded stall (#559): once
-        # the count of waits taken reaches the bound, break with the last iteration's summary as
-        # merged — its `rate_limited: True` is left intact, so the caller can tell the run stopped
-        # short rather than completed. `None` never triggers this, matching plain `--wait` exactly.
-        with _caffeinate(), heartbeat(lock_file):
-            while True:
-                iter_summary = asyncio.run(orchestrate.run(
-                    vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
-                    classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
-                    extract_effort=extract_effort, post_effort=post_effort, classify_effort=classify_effort,
-                    extract_backend=extract_backend, post_backend=post_backend,
-                    classify_backend=classify_backend, wait=wait, skip_finalize=run_skip_finalize,
-                    force=force, skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides,
-                    resume_hint=pipeline_hint, verify=verify, extract_token_budget=token_budget,
-                    benchmark_arm_id=getattr(args, "benchmark_arm_id", None),
-                    only_shas=only_shas,
-                    # Not a CLI flag or a setting: only benchmark arms set it (D278).
-                    withhold_brief=bool(getattr(args, "withhold_brief", False))))
-                summary = _merge_summary(summary, iter_summary)
-                if not (wait and iter_summary.get("rate_limited")):
-                    break
-                if max_rate_limit_waits is not None and wait_count >= max_rate_limit_waits:
-                    break
-                wait_count += 1
-                _wait_for_rate_limit(lock_file, iter_summary.get("rate_limit_resets_at"))
-    except KeyboardInterrupt:
-        # Fallback only — orchestrate.run normally traps SIGINT itself and returns a
-        # cancelled summary. This catches a Ctrl+C in the brief window before/after that,
-        # or on platforms where asyncio can't install a SIGINT handler at all (e.g. Windows'
-        # Proactor event loop) — there, every interrupt takes this rougher path, and can
-        # land mid-write rather than after a document finishes cleanly. It's also the *only*
-        # path a Ctrl+C during finalize's sequential post-processing takes (#406): that phase
-        # runs after `orchestrate.run`'s own SIGINT handler is torn down, so the interrupt
-        # propagates as a real `KeyboardInterrupt` instead of the graceful cancelled-summary
-        # path extraction gets — meaning this message, not `_print_ingest_summary`, is the one
-        # place that needs to mention a document quarantined earlier in the same run.
-        _release_lock()
-        resume = _hint(f"Re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} to resume.",
-                       "Add documents again to resume.")
-        say(f"\n  {_YELLOW}Ingest cancelled.{_RESET}{_DIM} Documents that finished before the "
-              f"interrupt are saved; the one in progress may be incomplete. {resume}{_RESET}\n")
-        failed = _failed_count(vault)
-        if failed:
-            say(f"  {_quarantine_notice(failed)}\n")
-        sys.exit(130)
-    finally:
-        _release_lock()
-    # Surfaced for callers that pass a bound (the benchmark harness, #559) so it can report how
-    # many waits a partial arm actually took; always present, 0 on a run that never rate-limited.
-    summary["wait_count"] = wait_count
-    if force and not no_finalize and summary.get("finalize_skipped") and not summary.get("batch_pending"):
-        _handle_force_gate(vault, summary, post_model, post_effort, post_backend,
-                           skip_briefing=skip_briefing, finalizer_overrides=finalizer_overrides)
-    _print_ingest_summary(summary, pipeline_hint)
-    return summary
-
-
-def _print_ingest_summary(summary: dict, pipeline_hint: str = "watchdog") -> None:
-    ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
-    cancelled = summary.get("cancelled")
-    rate_limited = summary.get("rate_limited")
-    batch_pending = summary.get("batch_pending")
-    n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
-    if summary.get("auth_error"):
-        headline = f"{_YELLOW}Ingest stopped — the provider refused the credentials or account{_RESET}"
-    elif rate_limited:
-        headline = f"{_YELLOW}Ingest paused — rate limit{_RESET}"
-    elif cancelled:
-        headline = f"{_YELLOW}Ingest stopped{_RESET}"
-    elif batch_pending and not summary["results"]:
-        # Pure submit-and-exit or still-processing (#214) — nothing extracted *this run*, so
-        # "Ingest complete 0 extracted" would read as if nothing happened.
-        headline = f"{_YELLOW}Batch extraction pending{_RESET}"
-    else:
-        headline = f"{_GREEN}Ingest complete{_RESET}"
-    say(f"\n  {headline}  {_BOLD}{ext}{_RESET} extracted"
-          f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}"
-          f"{f', {n_cancelled} not started' if n_cancelled else ''}\n")
-    if rate_limited and summary.get("stop_message"):
-        say(f"  {_DIM}{summary['stop_message']}{_RESET}\n")
-    for r in summary["results"]:
-        name = r.get("filename") or r.get("sha256", "?")
-        if r["status"] == "ok":
-            say(f"  {_GREEN}✓{_RESET} {name}  {_DIM}{r.get('entity_count', 0)} entities{_RESET}")
-        elif r["status"] == "skipped":
-            say(f"  {_DIM}– {name}  already extracted{_RESET}")
-        elif r["status"] == "cancelled":
-            continue
-        else:
-            say(f"  {_YELLOW}✗ {name}  {r.get('reason', '')}{_RESET}")
-    quarantined = summary.get("quarantined", 0)
-    if quarantined:
-        say(f"\n  {_quarantine_notice(quarantined)}")
-    pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
-    if pi_error:
-        say(f"\n  {_YELLOW}Post-processing didn't finish{_RESET}{_DIM} — {pi_error}.{_RESET}")
-        if (summary.get("post_ingest") or {}).get("commit_skipped"):
-            # Reconciliation failed before the commit pass (#403 phase 3): nothing was written to
-            # the vault yet — the extracted documents are staged and a re-run picks up where it
-            # stopped, so don't imply they're already saved.
-            say(_hint(f"  {_DIM}Nothing was written to the vault yet; re-run {_RESET}"
-                        f"{_CYAN}watchdog bark{_RESET}{_DIM} once the cause above is fixed (for a rate "
-                        f"limit, once it resets) to finish the ingest.{_RESET}",
-                        f"  {_DIM}Nothing was written to the vault yet. Run post-processing again "
-                        f"(Activity → Maintenance → Post-processing) once the cause above is fixed "
-                        f"(for a rate limit, once it resets).{_RESET}"))
-        else:
-            say(_hint(f"  {_DIM}Documents are saved with their extracted claims; run {_RESET}"
-                        f"{_CYAN}watchdog bark{_RESET}{_DIM} to complete synthesis + the briefing.{_RESET}",
-                        f"  {_DIM}Documents are saved with their extracted claims. Run post-processing "
-                        f"(Activity → Maintenance → Post-processing) to complete the summaries "
-                        f"and the briefing.{_RESET}"))
-    elif (summary.get("post_ingest") or {}).get("briefing_skipped"):
-        skipped = _hint(f"({_RESET}{_CYAN}--skip-briefing{_RESET}{_DIM}) ", "")
-        say(f"\n  {_DIM}Briefing skipped {skipped}— entities synthesized and the timeline rebuilt.{_RESET}")
-    usage = summary.get("usage")
-    if usage:
-        cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""
-        say(f"  {_DIM}{ext} doc{'s' if ext != 1 else ''} · "
-              f"{usage['input_tokens']:,} in / {usage['output_tokens']:,} out tokens{cost}{_RESET}")
-    if batch_pending:
-        say(_hint(f"\n  {_DIM}A batch extraction is in flight — re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}"
-                    f"{_DIM} later to check on it and collect results.{_RESET}\n",
-                    f"\n  {_DIM}A batch extraction is in flight. Add documents again later to check on it "
-                    f"and collect results.{_RESET}\n"))
-    elif cancelled:
-        say(_hint(f"\n  {_DIM}Re-run {_RESET}{_CYAN}{pipeline_hint}{_RESET}{_DIM} to process the remaining documents.{_RESET}\n",
-                    f"\n  {_DIM}Add documents again to process the remaining ones.{_RESET}\n"))
-    elif summary.get("finalize_skipped"):
-        say(f"\n  {_DIM}Extraction staged, post-processing skipped{_RESET} "
-              f"{_DIM}({_RESET}{_BOLD}{ext}{_RESET}{_DIM} document{'s' if ext != 1 else ''} on disk).{_RESET}")
-        if current().app:
-            say(f"  {_DIM}Finish when ready under Activity → Maintenance → Post-processing.{_RESET}\n")
-        else:
-            say(f"  {_DIM}Finish when ready — run it once for the vault as-is, or copy the vault "
-                  f"folder to try more than one finalizer:{_RESET}")
-            say(f"  {_CYAN}watchdog bark{_RESET}\n")
-    elif current().app:
-        pass    # the app shows what to do next in its own screens
-    elif pipeline_hint == "watchdog add":
-        say(f"\n  {_DIM}Next:{_RESET} {_CYAN}watchdog{_RESET}{_DIM} for what's waiting on you · "
-              f"{_RESET}{_CYAN}watchdog ask{_RESET}{_DIM} to ask questions · {_RESET}"
-              f"{_CYAN}watchdog open{_RESET}{_DIM} to read the notes{_RESET}\n")
-    else:
-        say(f"\n  {_DIM}Run{_RESET} {_CYAN}watchdog ask{_RESET} {_DIM}to ask investigation questions "
-              f"in a fresh Claude Code session.{_RESET}\n")
-
-
 def exit_code_for(result) -> int:
-    """Map a `_extract`/`_finalize` return value to a process exit code (#499 follow-up).
+    """Map a run's summary to the worker's exit code (#499 follow-up).
 
     2 means incomplete but resumable: the run stopped partway, vault state is consistent, and
     re-running continues the work — a rate limit, a pending batch, documents left cancelled/
-    unstarted, or post-processing (`bark`) that didn't finish. Quarantined/failed documents
-    alone stay 0: the run completed and set them aside for `watchdog requeue`, which is a
+    unstarted, or post-processing that didn't finish. Quarantined/failed documents
+    alone stay 0: the run completed and set them aside for a requeue, which is a
     reported outcome, not an incomplete one. Anything that isn't a dict carrying one of these
-    keys — `None`, or some other return value — is 0, so this is a no-op for every command that
-    doesn't build this summary shape.
-
-    Applied only at the CLI dispatch site (`main()`), never inside `_extract`/`_finalize`
-    themselves — programmatic callers (e.g. the benchmark runner) call those directly and must
-    keep getting the dict back, not a `SystemExit`."""
+    keys — `None`, or some other return value — is 0."""
     if not isinstance(result, dict):
         return 0
     if result.get("auth_error") or (result.get("post_ingest") or {}).get("auth_error"):
@@ -1377,84 +447,10 @@ def exit_code_for(result) -> int:
     return 0
 
 
-def _extract(args, vault: Path, *, non_interactive: bool = False) -> dict | None:
-    """`watchdog dig` — classify and extract queued documents, stage the results, and stop before
-    finalize (D138). A wrapper around `_ingest` with finalization off, so it shares the estimate,
-    cost preview, skill pinning, `--wait` and lock handling.
-
-    `non_interactive` is for programmatic callers (run_benchmark.py): it skips the offer to requeue
-    quarantined documents instead of waiting on a prompt."""
-    args.no_finalize = True
-    return _ingest(args, vault, non_interactive=non_interactive)
-
-
-def _finalize(args, vault: Path) -> dict | None:
-    """`watchdog bark` (renamed from `finalize` in #441/D138) — complete post-ingest (entity
-    reconciliation + synthesis + timeline + briefing) for an already-extracted batch.
-
-    The guided `watchdog` walk finalizes automatically at the end; run this when a rate limit or
-    interrupt stopped post-processing before it finished, so the batch isn't left half-done."""
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-    _ensure_layout(vault)
-
-    from watchdog.pipeline import orchestrate
-    if not orchestrate.has_pending_finalization(vault):
-        say(_hint(f"\n  {_DIM}Nothing to finish — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} first.{_RESET}\n",
-                    f"\n  {_DIM}Nothing to finish. Process documents first.{_RESET}\n"))
-        return
-
-    config = load_config()
-    post_backend, post_model = _resolve_stage(
-        getattr(args, "finalizer_model", None), config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
-    post_effort = _effort(getattr(args, "finalizer_effort", None), config.get("finalizer_effort"))
-    finalizer_overrides = _resolve_finalizer_overrides(args, config, post_backend, post_model)
-
-    if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
-        # Read-only, like ingest/extract's own --estimate (#269, #406) — no lock, no auth
-        # requirement beyond what's needed to resolve which backend would actually run.
-        from watchdog.pipeline.ingest_setup import finalize_cost_estimate, finalize_cost_estimate_all_models
-        from watchdog.cmd.auth import resolve_auth
-        auth_mode = resolve_auth()["mode"] if post_backend is None else None
-        est = finalize_cost_estimate(vault, _effective_extract_backend(post_backend, auth_mode))
-        say(f"\n{_format_finalize_estimate(est)}")
-        if getattr(args, "estimate_all", False):
-            rows = finalize_cost_estimate_all_models(vault, est["est_tokens"])
-            say(f"\n{_format_all_models_estimate(rows)}")
-        say()
-        return
-
-    # Claude auth is only required when the finalizer is actually routed to it — a stage pinned
-    # to another provider must be able to finalize without Claude being configured at all (#325).
-    # Includes the per-stage overrides (#433): a lone overridden stage still routed to Claude
-    # must not let an all-non-Claude aggregate --finalizer-model skip the auth check.
-    from watchdog.model_client import CLAUDE_BACKENDS
-    stage_backends = (post_backend, *(finalizer_overrides.get(f"{s}_backend") for s in _FINALIZER_STAGES))
-    if any(b is None or b in CLAUDE_BACKENDS for b in stage_backends):
-        from watchdog.cmd.auth import resolve_auth
-        a = resolve_auth()
-        if a["mode"] == "none":
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} {a.get('reason', 'auth not configured')}\n"
-                     + _hint(f"  Run {_CYAN}watchdog setup{_RESET}{_DIM} to choose how to authenticate.{_RESET}\n",
-                             f"  {_DIM}Choose how to authenticate in Settings.{_RESET}\n"))
-    _require_investigation_keys(vault, stage_backends)
-
-    return _run_finalize(vault, post_model, post_effort, post_backend,
-                 skip_briefing=getattr(args, "skip_briefing", False),
-                 finalizer_overrides=finalizer_overrides,
-                 benchmark_arm_id=getattr(args, "benchmark_arm_id", None))
-
-
 def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
-                  post_backend: str | None = None, force_shas: list[str] | None = None,
-                  skip_briefing: bool = False, finalizer_overrides: dict | None = None,
+                  post_backend: str | None = None, skip_briefing: bool = False, finalizer_overrides: dict | None = None,
                   benchmark_arm_id: str | None = None) -> dict:
-    """Acquire the ingest lock, run post-ingest over the pending batch, print the outcome.
-
-    `force_shas` (#424) are already-committed shas a forced re-extraction just re-staged —
-    passed straight through to `orchestrate.finalize`, which puts them back through the commit
-    pass so their vault note and registry entry are replaced rather than silently skipped as
-    already-committed.
+    """Take the run lock, run post-processing over the pending batch, report the outcome.
 
     `skip_briefing` (#410) passes straight through to `orchestrate.finalize` — reconciliation,
     synthesis, and the timeline still run; only the briefing model call is skipped.
@@ -1467,21 +463,19 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     lock = processing_lock(vault)
     # Atomic acquisition (#257): the shared .processing-lock means a running ingest or a second
     # finalize is excluded without a check-then-write race; an abandoned lock is taken over (D293).
-    if not acquire_or_take_stale(lock, lock_contents("cli-finalize"), STALE_SECONDS):
-        sys.exit(f"\n  {_YELLOW}Error:{_RESET} "
-                 + busy_message(held(lock, STALE_SECONDS), "an ingest or bark is") + "\n")
+    if not acquire_or_take_stale(lock, lock_contents("post-processing"), STALE_SECONDS):
+        sys.exit("Error: " + busy_message(held(lock, STALE_SECONDS)))
     stages = "entity reconciliation + synthesis + timeline" if skip_briefing else \
         "entity reconciliation + synthesis + timeline + briefing"
-    say(f"\n  {_DIM}Finishing the batch — {stages} (model: {_RESET}"
-          f"{_BOLD}{post_model}{_RESET}{_DIM}).{_RESET}")
+    say(f"Finishing the batch: {stages} (model: {post_model}).")
     try:
         import asyncio
-        # #467: a bark run has no upper bound on how long reconciliation/synthesis/the briefing
+        # #467: post-processing has no upper bound on how long reconciliation/synthesis/the briefing
         # take, the same failure mode _caffeinate() was added to guard extraction against (#415)
         # — without it, the machine sleeping mid-call kills a finalize outright.
         with _caffeinate(), heartbeat(lock):
             out = asyncio.run(orchestrate.finalize(vault, post_model=post_model, post_effort=post_effort,
-                                                   post_backend=post_backend, force_shas=force_shas,
+                                                   post_backend=post_backend,
                                                    skip_briefing=skip_briefing,
                                                    finalizer_overrides=finalizer_overrides,
                                                    benchmark_arm_id=benchmark_arm_id))
@@ -1490,19 +484,17 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
 
     if out.get("error") or out.get("briefing_error"):
         reason = out.get("error") or out.get("briefing_error")
-        say(f"\n  {_YELLOW}The batch didn't finish{_RESET}{_DIM} — {reason}.{_RESET}")
-        say(_hint(f"  {_DIM}Nothing is lost — re-run {_RESET}{_CYAN}watchdog bark{_RESET}{_DIM} once the "
-                    f"cause above is fixed (for a rate limit, once it resets).{_RESET}\n",
-                    f"  {_DIM}Nothing is lost. Run post-processing again once the cause above is fixed "
-                    f"(for a rate limit, once it resets).{_RESET}\n"))
+        say(f"The batch didn't finish: {reason}.")
+        say("Nothing is lost. Run post-processing again once the cause above is fixed "
+            "(for a rate limit, once it resets).")
         return out
     n = out.get("synthesized", 0)
-    parts = [f"{_BOLD}{n}{_RESET} entit{'ies' if n != 1 else 'y'} synthesized"]
+    parts = [f"{n} entit{'ies' if n != 1 else 'y'} synthesized"]
     if out.get("briefing"):
-        parts.append(f"briefing {_CYAN}{out['briefing']}{_RESET}")
+        parts.append(f"briefing {out['briefing']}")
     elif out.get("briefing_skipped"):
         parts.append("briefing skipped")
-    say(f"\n  {_GREEN}Finished{_RESET}  " + ", ".join(parts) + "\n")
+    say("Finished: " + ", ".join(parts) + ".")
     return out
 
 
@@ -1512,7 +504,7 @@ def _is_hidden(path: Path, root: Path) -> bool:
 
 
 def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
-    """Files named on the command line, with folders expanded to the files chew reads in them.
+    """Files the reporter chose, with folders expanded to the files pre-processing reads in them.
 
     Never an investigation's own files: a path inside this vault is refused (files already in
     `incoming/` are picked up without being named), and a folder that contains this or any other
@@ -1548,11 +540,11 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
 
             inside = [f for f in found if in_a_vault(f)]
             if inside:
-                say(f"\n  {_DIM}Leaving out {len(inside)} file{'s' if len(inside) != 1 else ''} "
-                      f"that belong to a Watchdog investigation's own folder.{_RESET}")
+                say(f"\n  Leaving out {len(inside)} file{'s' if len(inside) != 1 else ''} "
+                      f"that belong to a Watchdog investigation's own folder.")
                 found = [f for f in found if not in_a_vault(f)]
             if not found:
-                say(f"\n  {_DIM}No supported files in {_RESET}{_CYAN}{raw}{_RESET}")
+                say(f"\n  No supported files in {raw}")
             out.extend(found)
         elif p.name.endswith(".yml") or p.name.startswith("."):
             continue   # a sidecar travels with its document; hidden files are never documents
@@ -1561,79 +553,523 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
     return out
 
 
-def _add(args, vault: Path) -> dict | None:
-    """`watchdog add [files or folders…]` — take documents all the way into the vault in one
-    command: copy them into `incoming/`, chew, extract and finalize (D251).
+def requeue_message(n: int) -> str:
+    if not n:
+        return "\n  No documents in queue/_failed/ — nothing to requeue.\n"
+    return (f"\n  Requeued {n} document{'s' if n != 1 else ''}"
+            + " — add documents again to retry.\n")
 
-    It stops only for the public-records acknowledgement (skipped by `auto_approve` when every step runs on the Claude subscription) and
-    for an auth or billing failure; a rate limit pauses the run until it resets. With no paths it
-    picks up whatever is waiting: files in `incoming/`, queued documents, a pending batch.
-    `--retry` first puts documents that failed extraction back in the queue."""
-    if not is_vault(vault):
-        sys.exit("Error: not inside a Watchdog project folder. cd into your investigation first.")
-    _ensure_layout(vault)
-    args.command = "add"
-    if getattr(args, "estimate", False) or getattr(args, "estimate_all", False):
-        # Read-only, like `dig --estimate`: nothing is copied, retried or chewed.
-        if getattr(args, "paths", None) or getattr(args, "retry", False):
-            say(f"\n  {_DIM}{_hint('--estimate changes nothing', 'An estimate changes nothing')}, so the named files are not copied in "
-                  f"and failed documents are not retried; this estimate covers the current queue "
-                  f"only.{_RESET}")
-        return _ingest(args, vault)
+
+def _clean(result):
+    """A run summary as JSON: paths and other objects become strings."""
+    if result is None:
+        return None
+    return json.loads(json.dumps(result, default=str))
+
+
+
+# ── a run's options and plan ─────────────────────────────────────────────────────────────
+
+@dataclass
+class RunOptions:
+    """One run's choices, each overriding its setting for this run only; None means "use the
+    setting". The app's Add documents and Maintenance forms set the first group; the benchmark
+    harness alone sets the last three."""
+    extractor_model: str | None = None
+    classifier_model: str | None = None
+    finalizer_model: str | None = None
+    finalizer_reconciliation_model: str | None = None
+    finalizer_synthesis_model: str | None = None
+    finalizer_timeline_model: str | None = None
+    finalizer_briefing_model: str | None = None
+    extractor_effort: str | None = None
+    classifier_effort: str | None = None
+    finalizer_effort: str | None = None
+    concurrency: int | None = None
+    classify_pages: int | None = None
+    skill: str | None = None
+    limit: int | None = None          # extract only the next N queued documents (#696)
+    verify: bool | None = None        # the verification pass (#535); None: the setting
+    force: bool = False               # re-extract even where a staged extraction exists
+    wait: bool = False                # wait out a rate limit and continue (#271)
+    skip_briefing: bool = False       # post-processing without the briefing call (#410)
+    skip_warning: bool = False        # the public-records acknowledgement was given (#426)
+    # Benchmark harness only (#559, D278).
+    max_rate_limit_waits: int | None = None
+    benchmark_arm_id: str | None = None
+    withhold_brief: bool = False
+
+
+@dataclass
+class Plan:
+    """Every stage's resolved `(backend, model)` and effort for one run."""
+    config: dict
+    classify: tuple
+    extract: tuple
+    post: tuple
+    classify_effort: str | None
+    extract_effort: str | None
+    post_effort: str | None
+    overrides: dict = field(default_factory=dict)
+
+    @property
+    def backends(self) -> list:
+        return [self.classify[0], self.extract[0], self.post[0],
+                *(self.overrides.get(f"{s}_backend") for s in FINALIZER_STAGES)]
+
+    @property
+    def finalizer_backends(self) -> list:
+        return [self.post[0], *(self.overrides.get(f"{s}_backend") for s in FINALIZER_STAGES)]
+
+
+def resolve_finalizer_overrides(opts: RunOptions, config: dict, post_backend: str | None,
+                                post_model: str) -> dict:
+    """The four per-stage finalizer overrides (#433), each falling back to the finalizer itself:
+    `<stage>_model`/`<stage>_backend` keys, the shape `orchestrate.finalize` takes."""
+    default = f"{post_backend}:{post_model}" if post_backend else post_model
+    overrides: dict = {}
+    for stage in FINALIZER_STAGES:
+        key = f"finalizer_{stage}_model"
+        backend, model = resolve_stage(getattr(opts, key), config.get(key), default=default)
+        overrides[f"{stage}_backend"] = backend
+        overrides[f"{stage}_model"] = model
+    return overrides
+
+
+def resolve_plan(opts: RunOptions, config: dict | None = None) -> Plan:
+    """Resolve every stage and effort from the run's options and the settings (a bad value stops
+    with a message naming it)."""
+    config = config_mod.load() if config is None else config
+    extract = resolve_stage(opts.extractor_model, config.get("extractor_model"))
+    post = resolve_stage(opts.finalizer_model, config.get("finalizer_model"),
+                         default=defaults.FINALIZER_MODEL)
+    classify = resolve_stage(opts.classifier_model, config.get("classifier_model"),
+                             default=defaults.CLASSIFIER_MODEL)
+    return Plan(
+        config=config, classify=classify, extract=extract, post=post,
+        classify_effort=effort(opts.classifier_effort, config.get("classifier_effort"),
+                               default=defaults.CLASSIFIER_EFFORT, backend=classify[0],
+                               model=classify[1]),
+        extract_effort=effort(opts.extractor_effort, config.get("extractor_effort"),
+                              default=defaults.EXTRACTOR_EFFORT, backend=extract[0],
+                              model=extract[1]),
+        post_effort=effort(opts.finalizer_effort, config.get("finalizer_effort")),
+        overrides=resolve_finalizer_overrides(opts, config, post[0], post[1]),
+    )
+
+
+def _require_auth(backends) -> dict:
+    """Claude's auth, when some stage is routed to Claude; `{"mode": None}` otherwise. A run
+    configured entirely on another provider needs no Claude auth at all (#325)."""
+    from watchdog.auth import resolve_auth
+    from watchdog.model_client import CLAUDE_BACKENDS
+    if not any(b is None or b in CLAUDE_BACKENDS for b in backends):
+        return {"mode": None}
+    a = resolve_auth()
+    if a["mode"] == "none":
+        sys.exit(f"Error: {a.get('reason', 'no model provider is set up')}")
+    return a
+
+
+def _resolve_pinned_skill(opts: RunOptions, config: dict) -> str | None:
+    """The record skill pinned for every document (the run's option, else `default_skill`), as a
+    file path. The value may be a skill's name or a path to a skill file."""
+    from watchdog import skills_catalog
+    value = opts.skill or config.get("default_skill")
+    if not value:
+        return None
+    resolved = skills_catalog.resolve(value)
+    if resolved:
+        return resolved
+    avail = ", ".join(skills_catalog.catalog()) or "(none available)"
+    sys.exit(f"Error: there is no record skill “{value.removesuffix('.md')}” (not a known skill "
+             f"or a file). Available: {avail}")
+
+
+def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
+                            enabled: bool = False) -> bool:
+    """The point of no return before a run sends documents to a model (#426). The app shows the
+    public-records warning and asks before it starts a run, then passes `skip_warning`; without
+    it, nothing is sent. With `auto_approve` on (D263), a run whose `gate` verdict approves it
+    goes ahead without the question. A run that sends nothing (`n_docs == 0`) passes silently."""
+    if n_docs == 0:
+        return True
+    plural = "s" if n_docs != 1 else ""
+    if enabled and (gate or {}).get("approve"):
+        say(f"Auto-approved (every step on your Claude subscription): sending {n_docs} "
+            f"document{plural} to a cloud AI model.")
+        return True
+    if skip_warning:
+        say(f"Sending {n_docs} document{plural} to a cloud AI model.")
+        return True
+    if enabled:
+        say(f"Not auto-approved: {(gate or {}).get('blocker') or 'this run could not be checked'}.")
+    say("Nothing was sent: the public-records acknowledgement was not given.")
+    return False
+
+
+def _warn_pending_research(vault: Path) -> None:
+    """Note web-research links still queued for download (#196), so they aren't lost."""
+    from watchdog.pipeline import research
+    n = research.pending_count(vault)
+    if n:
+        say(f"{n} research link{'s' if n != 1 else ''} queued but not downloaded; they stay "
+            f"queued. Download them from Web research.")
+
+
+# ── the runs ─────────────────────────────────────────────────────────────────────────────
+
+def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
+    """Process the queue: classify and extract each document, then, with `finalize`, run
+    post-processing over the batch (adding documents, D251). Without it the extractions are
+    staged and the batch waits for `finish` (processing only, D138). Returns the run's summary,
+    or None when there was nothing to do or nothing was sent."""
+    plan = resolve_plan(opts)
+    config = plan.config
+    extract_backend, extract_model = plan.extract
+    post_backend, post_model = plan.post
+    classify_backend, classify_model = plan.classify
+    overrides = plan.overrides
+
+    a = _require_auth(plan.backends)
+    _require_investigation_keys(vault, plan.backends)
+    try:
+        concurrency = int(opts.concurrency or config.get("extract_concurrency")
+                          or _DEFAULT_EXTRACT_CONCURRENCY)
+    except (TypeError, ValueError):
+        concurrency = _DEFAULT_EXTRACT_CONCURRENCY
+    # extract_token_budget (#563): "auto" (default) lets admission control discover the ceiling
+    # from the provider's rate-limit headers; a number pins it.
+    raw_token_budget = config.get("extract_token_budget", "auto")
+    try:
+        token_budget = None if raw_token_budget == "auto" else int(raw_token_budget)
+    except (TypeError, ValueError):
+        token_budget = None
+    try:
+        classify_pages = int(opts.classify_pages or config.get("classify_pages") or defaults.CLASSIFY_PAGES)
+    except (TypeError, ValueError):
+        classify_pages = defaults.CLASSIFY_PAGES
+    classify_pages = max(1, classify_pages)
+
+    from watchdog.pipeline import orchestrate
+    from watchdog.pipeline.ingest_setup import needs_extraction, scan_queue
+    from watchdog.pipeline.ingest_setup import run as is_run
+
+    # A prior run may have left a batch un-finalized: processing alone stages without finalizing,
+    # and a rate limit or Stop can end post-processing partway. Nothing in it is ever thrown
+    # away: the next finalize commits every staged extraction, whichever run that is.
+    if orchestrate.has_pending_finalization(vault):
+        new_docs = scan_queue(vault) if opts.force else needs_extraction(vault, scan_queue(vault))
+        p = orchestrate.pending_finalization(vault)
+        bits = []
+        if p["docs"]:
+            bits.append(f"{p['docs']} document{'s' if p['docs'] != 1 else ''}")
+        if p["entities"]:
+            bits.append(f"{p['entities']} entit{'ies' if p['entities'] != 1 else 'y'} to synthesize")
+        detail = f" ({', '.join(bits)})" if bits else ""
+        if not finalize:
+            say(f"A previous batch is waiting to be finished{detail}; post-processing will finish "
+                f"it together with this run.")
+            if not new_docs:
+                say("Nothing new to extract.")
+                return None
+        elif not new_docs:
+            say(f"A previous batch is waiting to be finished{detail}; finishing it now.")
+            return _run_finalize(vault, post_model, plan.post_effort, post_backend,
+                                 skip_briefing=opts.skip_briefing, finalizer_overrides=overrides)
+        else:
+            say(f"A previous batch is waiting to be finished{detail}; it will be finished together "
+                f"with the new documents.")
+
+    from watchdog.model_client import BATCH_BACKENDS
+    from watchdog.pipeline import batch_extract
+    # A pending batch (#214, #530) must still be checked even with nothing newly queued.
+    # force_lock so two concurrent runs can't both try to collect the same batch.
+    batch_pending = extract_backend in BATCH_BACKENDS and batch_extract.read_state(vault) is not None
+
+    result = is_run(vault, wipe_pending=False, force_lock=batch_pending)
+    if "error" in result:
+        sys.exit(f"Error: {result['error']}")
+    if result["total"] == 0 and not batch_pending:
+        if count_failed(vault):
+            say(f"{_quarantine_notice(count_failed(vault))} Nothing else is queued.")
+        elif finalize:
+            say("Nothing new to add. Choose files or folders in Add documents.")
+        else:
+            say("The queue is empty: pre-process some documents first.")
+        return None
+
+    only_shas = None
+    if opts.limit is not None:
+        from watchdog.pipeline.ingest_setup import limit_queue
+        in_queue = len(result["queue_files"])
+        result["queue_files"] = limit_queue(vault, result["queue_files"], opts.limit, force=opts.force)
+        only_shas = [qf["sha256"] for qf in result["queue_files"]]
+        held = in_queue - len(only_shas)
+        say(f"Limit of {opts.limit}: extracting {len(only_shas)} of {in_queue} queued "
+            f"document{'s' if in_queue != 1 else ''}"
+            + (f"; {held} stay{'s' if held == 1 else ''} queued or already extracted" if held else "")
+            + ".")
+    # What this run will actually send to the model: queue files outlive extraction, so documents
+    # already staged or committed are counted out unless `force` re-extracts them.
+    to_send = result["queue_files"] if opts.force else needs_extraction(vault, result["queue_files"])
+    q = len(to_send)
+    if q:
+        from watchdog.pipeline.ingest_setup import cost_estimate
+        est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]))
+        say(_format_cost_estimate(est))
+        say(_format_models_line(classify_backend, classify_model, extract_backend, extract_model,
+                                post_backend, post_model, plan.classify_effort, plan.extract_effort,
+                                plan.post_effort, overrides, concurrency=opts.concurrency,
+                                is_dig=not finalize))
+    elif batch_pending:
+        say("Checking on a pending batch extraction…")
+
+    pinned_skill = _resolve_pinned_skill(opts, config)
+    if pinned_skill:
+        say(f"Skill pinned: {Path(pinned_skill).stem}; classification skipped.")
+
+    if (classify_backend in BATCH_BACKENDS or post_backend in BATCH_BACKENDS
+            or any(overrides.get(f"{s}_backend") in BATCH_BACKENDS for s in FINALIZER_STAGES)):
+        sys.exit(f"Error: a batch model ({', '.join(BATCH_BACKENDS)}) can only extract, not "
+                 f"classify or post-process.")
+    if extract_backend == "claude-batch" and a["mode"] != "api-key":
+        # No pinned-skill requirement (D144): each document resolves its own skill before the
+        # batch is built. claude-batch needs a metered key; openai-batch (#530) has no
+        # subscription mode, so ordinary key resolution covers it.
+        sys.exit("Error: Claude's batch extraction needs a Claude API key, not a subscription. "
+                 "Switch to an API key in Settings.")
+    # The verification pass (#535): the run's option beats the setting, the setting beats off.
+    verify = bool(config.get("verify_extraction", False)) if opts.verify is None else opts.verify
+    if verify and extract_backend in BATCH_BACKENDS:
+        # The pass re-reads a document right after extracting it, out of the prompt cache that
+        # call just wrote; a batch's results come back hours later with neither left.
+        sys.exit(f"Error: verification isn't supported with {extract_backend}: it re-reads a "
+                 f"document immediately after extracting it, and a batch's results come back "
+                 f"hours later. Turn verification off, or choose another extraction model.")
+    wait = opts.wait
+    if finalize and extract_backend not in BATCH_BACKENDS:
+        wait = True          # adding documents sees a run through: a rate limit pauses it
+    if wait and extract_backend in BATCH_BACKENDS:
+        sys.exit(f"Error: waiting for a rate limit isn't supported with {extract_backend}: a batch "
+                 f"already runs in the background; add documents again later to collect it.")
+
+    def _release_lock() -> None:
+        from watchdog.pipeline.locks import release_lock
+        lock = processing_lock(vault)
+        release_lock(lock)
+        if not lock.exists():       # another run took it over: its state file is its own
+            processing_state(vault).unlink(missing_ok=True)
+
+    auto = _auto_approve_on(config)
+    gate = (_auto_approve_verdict(auth_mode=a["mode"], stages=plan.backends) if auto and q else None)
+    if not _confirm_public_records(q, skip_warning=opts.skip_warning, gate=gate, enabled=auto):
+        _release_lock()
+        return None
+
+    import asyncio
+    log_path = vault / "log.md"
+    if not log_path.exists():
+        log_path.write_text(render_template("log.md"))
+
+    if opts.force:
+        say("Re-extracting even where a saved extraction or a committed note already exists.")
+    if not finalize:
+        say("Processing only, stopping after extraction. Finish the batch later under Activity → "
+            "Maintenance → Post-processing.")
+    if extract_backend in BATCH_BACKENDS:
+        sync_backend = "claude-api" if extract_backend == "claude-batch" else "openai"
+        say(f"{extract_backend}: sectioned documents (if any) extract via {sync_backend} now; the "
+            f"rest submit as one batch and finish later.")
+    else:
+        say(f"Extracting (up to {concurrency} at a time). Large documents can take several minutes "
+            f"each; a long pause on one is normal, not a stall. Use Stop in Activity to stop; "
+            f"finished documents are kept.")
+    lock_file = processing_lock(vault)
+    from watchdog.pipeline.locks import heartbeat
+    try:
+        summary = None
+        wait_count = 0
+        # The loop's only exit condition is a rate limit hit during extraction, plus the
+        # benchmark harness's bound on waits (#559), which leaves `rate_limited: True` in place
+        # so the caller can tell the run stopped short.
+        with _caffeinate(), heartbeat(lock_file):
+            while True:
+                iter_summary = asyncio.run(orchestrate.run(
+                    vault, concurrency=concurrency, extract_model=extract_model, post_model=post_model,
+                    classify_model=classify_model, classify_pages=classify_pages, pinned_skill=pinned_skill,
+                    extract_effort=plan.extract_effort, post_effort=plan.post_effort,
+                    classify_effort=plan.classify_effort, extract_backend=extract_backend,
+                    post_backend=post_backend, classify_backend=classify_backend, wait=wait,
+                    skip_finalize=not finalize, force=opts.force, skip_briefing=opts.skip_briefing,
+                    finalizer_overrides=overrides, verify=verify, extract_token_budget=token_budget,
+                    benchmark_arm_id=opts.benchmark_arm_id, only_shas=only_shas,
+                    withhold_brief=opts.withhold_brief))
+                summary = _merge_summary(summary, iter_summary)
+                if not (wait and iter_summary.get("rate_limited")):
+                    break
+                if opts.max_rate_limit_waits is not None and wait_count >= opts.max_rate_limit_waits:
+                    break
+                wait_count += 1
+                _wait_for_rate_limit(lock_file, iter_summary.get("rate_limit_resets_at"))
+    except KeyboardInterrupt:
+        # Fallback only: orchestrate.run traps SIGINT itself and returns a cancelled summary.
+        # This catches a stop just before or after that window, on platforms where asyncio can't
+        # install a SIGINT handler (Windows' Proactor loop), and a stop during post-processing,
+        # which runs after that handler is torn down (#406).
+        _release_lock()
+        say("Stopped. Documents that finished before the stop are saved; the one in progress may "
+            "be incomplete. Add documents again to resume.")
+        if count_failed(vault):
+            say(_quarantine_notice(count_failed(vault)))
+        sys.exit(130)
+    finally:
+        _release_lock()
+    # How many waits a partial benchmark arm took (#559); 0 on a run that never rate-limited.
+    summary["wait_count"] = wait_count
+    _print_summary(summary)
+    return summary
+
+
+def _print_summary(summary: dict) -> None:
+    ext, skip, fail = summary["extracted"], summary["skipped"], summary["failed"]
+    n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
+    if summary.get("auth_error"):
+        headline = "Stopped: the provider refused the credentials or account."
+    elif summary.get("rate_limited"):
+        headline = "Paused by a rate limit."
+    elif summary.get("cancelled"):
+        headline = "Stopped."
+    elif summary.get("batch_pending") and not summary["results"]:
+        headline = "Batch extraction pending."
+    else:
+        headline = "Done."
+    say(f"{headline} {ext} extracted"
+        f"{f', {skip} skipped' if skip else ''}{f', {fail} failed' if fail else ''}"
+        f"{f', {n_cancelled} not started' if n_cancelled else ''}.")
+    if summary.get("rate_limited") and summary.get("stop_message"):
+        say(summary["stop_message"])
+    for r in summary["results"]:
+        name = r.get("filename") or r.get("sha256", "?")
+        if r["status"] == "ok":
+            say(f"  ✓ {name}  {r.get('entity_count', 0)} entities")
+        elif r["status"] == "skipped":
+            say(f"  – {name}  already extracted")
+        elif r["status"] != "cancelled":
+            say(f"  ✗ {name}  {r.get('reason', '')}")
+    if summary.get("quarantined"):
+        say(_quarantine_notice(summary["quarantined"]))
+    pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
+    if pi_error:
+        say(f"Post-processing didn't finish: {pi_error}.")
+        if (summary.get("post_ingest") or {}).get("commit_skipped"):
+            # Reconciliation failed before the commit pass (#403): nothing was written yet.
+            say("Nothing was written to the investigation yet. Run post-processing again "
+                "(Activity → Maintenance → Post-processing) once the cause above is fixed "
+                "(for a rate limit, once it resets).")
+        else:
+            say("Documents are saved with their extracted claims. Run post-processing "
+                "(Activity → Maintenance → Post-processing) to complete the summaries and the "
+                "briefing.")
+    elif (summary.get("post_ingest") or {}).get("briefing_skipped"):
+        say("Briefing skipped; entities summarized and the timeline rebuilt.")
+    usage = summary.get("usage")
+    if usage:
+        cost = f" · ~${usage['cost_usd']:.4f}" if usage.get("cost_usd") else ""
+        say(f"{ext} doc{'s' if ext != 1 else ''} · {usage['input_tokens']:,} in / "
+            f"{usage['output_tokens']:,} out tokens{cost}")
+    if summary.get("batch_pending"):
+        say("A batch extraction is in flight. Add documents again later to check on it and "
+            "collect the results.")
+    elif summary.get("cancelled"):
+        say("Add documents again to process the remaining ones.")
+    elif summary.get("finalize_skipped"):
+        say(f"Extraction staged ({ext} document{'s' if ext != 1 else ''}); finish it under "
+            f"Activity → Maintenance → Post-processing.")
+
+
+def finish(vault: Path, opts: RunOptions) -> dict | None:
+    """Post-processing for an already-extracted batch: entity reconciliation, summaries, the
+    timeline and the briefing. For a batch a rate limit or a stop left half-done, or one
+    processing staged on its own."""
+    from watchdog.pipeline import orchestrate
+    if not orchestrate.has_pending_finalization(vault):
+        say("Nothing to finish: process documents first.")
+        return None
+    plan = resolve_plan(opts)
+    _require_auth(plan.finalizer_backends)
+    _require_investigation_keys(vault, plan.finalizer_backends)
+    return _run_finalize(vault, plan.post[1], plan.post_effort, plan.post[0],
+                         skip_briefing=opts.skip_briefing, finalizer_overrides=plan.overrides,
+                         benchmark_arm_id=opts.benchmark_arm_id)
+
+
+def preprocess(vault: Path, paths: list[str] = (), *, chew_workers: int | None = None,
+               chunk_workers: int | None = None) -> None:
+    """Pre-processing: read the named files and folders (copying any from outside into
+    `incoming/`), or everything in `incoming/`, on this computer. Never calls a model."""
+    from watchdog.pipeline.preprocess_batch import find_files, run_ingest
+    incoming = incoming_dir(vault)
+    if paths:
+        # A path already in incoming/ is read where it is; anything else is copied in.
+        inc = incoming.resolve()
+        inside, outside = [], []
+        for raw in paths:
+            p = Path(raw).expanduser().resolve()
+            (inside if p == inc or inc in p.parents else outside).append(p)
+        files: list[Path] = []
+        for p in inside:
+            if not p.exists():
+                sys.exit(f"Error: {p} was not found.")
+            files += find_files([p]) if p.is_dir() else [p]
+        files += [_into_incoming(vault, f) for f in _expand_paths([str(p) for p in outside], vault)]
+        if not files:
+            say("No supported files to read.")
+            return
+        run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers, files=files)
+        return
+    if not incoming.is_dir():
+        sys.exit("Error: this investigation has no incoming folder.")
+    run_ingest(vault, workers=chew_workers, chunk_workers=chunk_workers)
+
+
+def add_documents(vault: Path, paths: list[str] = (), opts: RunOptions | None = None, *,
+                  retry: bool = False, chew_workers: int | None = None,
+                  chunk_workers: int | None = None) -> dict | None:
+    """Adding documents (D251): copy the named files in, pre-process, process and post-process
+    in one run. With no paths it picks up whatever is waiting: files in `incoming/`, queued
+    documents, a pending batch. `retry` first puts documents that failed processing back in the
+    queue. It stops only for the public-records acknowledgement and for an auth or billing
+    failure; a rate limit pauses the run until it resets."""
+    opts = opts or RunOptions()
     _warn_pending_research(vault)
-
-    if getattr(args, "retry", False):
+    if retry:
         n = _requeue_failed(vault)
         if n:
-            say(f"\n  {_DIM}Retrying {_RESET}{_BOLD}{n}{_RESET}{_DIM} document"
-                  f"{'s' if n != 1 else ''} that failed before.{_RESET}")
-
-    files = _expand_paths(getattr(args, "paths", None) or [], vault)
+            say(f"Retrying {n} document{'s' if n != 1 else ''} that failed before.")
+    files = _expand_paths(list(paths), vault)
     copied = sum(1 for f in files if _into_incoming(vault, f, quiet=True) != f)
     if copied:
-        say(f"\n  {_DIM}Copied {_RESET}{_BOLD}{copied}{_RESET}{_DIM} file{'s' if copied != 1 else ''} "
-              f"into incoming/ — the originals stay where they are.{_RESET}")
-
+        say(f"Copied {copied} file{'s' if copied != 1 else ''} into incoming/; the originals stay "
+            f"where they are.")
     from watchdog.pipeline.preprocess_batch import find_files
     incoming = incoming_dir(vault)
     if incoming.is_dir() and find_files([incoming]):
-        _run_preprocess(vault, workers=getattr(args, "chew_workers", None),
-                        chunk_workers=getattr(args, "chunk_workers", None),
-                        show_ingest_hint=False)
-    return _ingest(args, vault)
-
-
-def requeue_message(n: int) -> str:
-    if not n:
-        return f"\n  {_DIM}No documents in {_RESET}{_CYAN}queue/_failed/{_RESET}{_DIM} — nothing to requeue.{_RESET}\n"
-    return (f"\n  {_GREEN}Requeued {_BOLD}{n}{_RESET}{_GREEN} document{'s' if n != 1 else ''}{_RESET}"
-            + _hint(f"{_DIM} — run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM} to retry.{_RESET}\n",
-                    f"{_DIM} — add documents again to retry.{_RESET}\n"))
+        preprocess(vault, chew_workers=chew_workers, chunk_workers=chunk_workers)
+    return process(vault, opts, finalize=True)
 
 
 # ── operations (D298) ────────────────────────────────────────────────────────────────────
 
-def _params(command: str, **values) -> SimpleNamespace:
-    """The run's settings in the shape the pipeline above reads (attribute access)."""
-    return SimpleNamespace(command=command, **values)
-
-
-def _require_vault(vault: Path) -> None:
-    if not is_vault(vault):
-        sys.exit("Error: this folder is not a Watchdog investigation.")
-    _ensure_layout(vault)
-
-
 @op("chew", engine="add")
 def chew(rep, vault: Path, *, paths: list[str] = (), chew_workers: int | None = None,
          chunk_workers: int | None = None) -> dict:
-    """Pre-processing: read files (named, or everything in `incoming/`) on this computer. Never
-    calls a model, and never continues into processing on its own."""
-    _require_vault(vault)
-    before = _count_queued(vault)
-    _chew(_params("chew", paths=list(paths), chew_workers=chew_workers, chunk_workers=chunk_workers),
-          vault, offer=False)
-    return {"queued": _count_queued(vault) - before}
+    """Pre-processing on its own. Never calls a model and never continues into processing."""
+    require_vault(vault)
+    _warn_pending_research(vault)
+    before = count_queued(vault)
+    preprocess(vault, list(paths), chew_workers=chew_workers, chunk_workers=chunk_workers)
+    return {"queued": count_queued(vault) - before}
 
 
 @op("add", engine="add", secrets=True, exit_code=lambda r: exit_code_for(r))
@@ -1646,13 +1082,20 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
         concurrency: int | None = None, classify_pages: int | None = None, skill: str | None = None,
         verify: bool | None = None, wait: bool = False, skip_briefing: bool = False,
         chew_workers: int | None = None, chunk_workers: int | None = None) -> dict | None:
-    """Adding documents: copy named files in, pre-process, process and post-process in one run
-    (D251). The app shows the public-records acknowledgement before it starts this, and passes
-    `skip_warning` once it has; without it the run declines at the gate."""
-    _require_vault(vault)
-    args = _params("add", **{k: v for k, v in locals().items() if k not in ("rep", "vault")})
-    args.paths = list(paths)
-    return _clean(_add(args, vault))
+    """Adding documents. The app shows the public-records acknowledgement before it starts this
+    and passes `skip_warning` once it has; without it nothing is sent."""
+    require_vault(vault)
+    opts = RunOptions(
+        extractor_model=extractor_model, classifier_model=classifier_model,
+        finalizer_model=finalizer_model, finalizer_reconciliation_model=finalizer_reconciliation_model,
+        finalizer_synthesis_model=finalizer_synthesis_model,
+        finalizer_timeline_model=finalizer_timeline_model,
+        finalizer_briefing_model=finalizer_briefing_model, extractor_effort=extractor_effort,
+        classifier_effort=classifier_effort, finalizer_effort=finalizer_effort,
+        concurrency=concurrency, classify_pages=classify_pages, skill=skill, verify=verify,
+        wait=wait, skip_briefing=skip_briefing, skip_warning=skip_warning)
+    return _clean(add_documents(vault, list(paths), opts, retry=retry, chew_workers=chew_workers,
+                                chunk_workers=chunk_workers))
 
 
 @op("dig", engine="add", secrets=True, exit_code=lambda r: exit_code_for(r))
@@ -1663,9 +1106,13 @@ def dig(rep, vault: Path, *, skip_warning: bool = False, limit: int | None = Non
         verify: bool | None = None, wait: bool = False) -> dict | None:
     """Processing only: extract the queue and stage the results; post-processing is left for
     `bark`."""
-    _require_vault(vault)
-    args = _params("dig", **{k: v for k, v in locals().items() if k not in ("rep", "vault")})
-    return _clean(_extract(args, vault, non_interactive=True))
+    require_vault(vault)
+    opts = RunOptions(
+        extractor_model=extractor_model, classifier_model=classifier_model,
+        extractor_effort=extractor_effort, classifier_effort=classifier_effort,
+        concurrency=concurrency, classify_pages=classify_pages, skill=skill, verify=verify,
+        wait=wait, limit=limit, force=force, skip_warning=skip_warning)
+    return _clean(process(vault, opts, finalize=False))
 
 
 @op("bark", engine="add", secrets=True, exit_code=lambda r: exit_code_for(r))
@@ -1674,22 +1121,20 @@ def bark(rep, vault: Path, *, finalizer_model: str | None = None,
          finalizer_timeline_model: str | None = None, finalizer_briefing_model: str | None = None,
          finalizer_effort: str | None = None, skip_briefing: bool = False) -> dict | None:
     """Post-processing: finish the staged batch."""
-    _require_vault(vault)
-    args = _params("bark", **{k: v for k, v in locals().items() if k not in ("rep", "vault")})
-    return _clean(_finalize(args, vault))
+    require_vault(vault)
+    opts = RunOptions(
+        finalizer_model=finalizer_model, finalizer_reconciliation_model=finalizer_reconciliation_model,
+        finalizer_synthesis_model=finalizer_synthesis_model,
+        finalizer_timeline_model=finalizer_timeline_model,
+        finalizer_briefing_model=finalizer_briefing_model, finalizer_effort=finalizer_effort,
+        skip_briefing=skip_briefing)
+    return _clean(finish(vault, opts))
 
 
 @op("requeue", engine="add", kind="action")
 def requeue(rep, vault: Path) -> dict:
     """Put documents that failed processing back in the queue."""
-    _require_vault(vault)
+    require_vault(vault)
     n = _requeue_failed(vault)
     rep.log(requeue_message(n))
     return {"requeued": n}
-
-
-def _clean(result):
-    """A run summary as JSON: paths and other objects become strings."""
-    if result is None:
-        return None
-    return json.loads(json.dumps(result, default=str))

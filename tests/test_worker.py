@@ -130,8 +130,8 @@ def test_add_round_trip_with_a_canned_model(wdg_home, tmp_path, monkeypatch, cap
     batch = [d for d in docs if d["file"] in demo.BATCH_ONE]
     demo._stage_chewed(vault, batch)
     monkeypatch.setattr(model_client, "acomplete_json", demo.CannedModel(docs, vault))
-    monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
-    monkeypatch.setattr("watchdog.cmd.auth.check_run_keys", lambda *a, **k: None)
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
+    monkeypatch.setattr("watchdog.auth.check_run_keys", lambda *a, **k: None)
 
     code, lines, events, result, err = _in_process(
         monkeypatch, capfd, {"op": "add", "params": {"skip_warning": True}}, vault)
@@ -161,8 +161,8 @@ def test_add_without_the_acknowledgement_sends_nothing(wdg_home, tmp_path, monke
     async def never(**kw):
         raise AssertionError("no model call without the acknowledgement")
     monkeypatch.setattr(model_client, "acomplete_json", never)
-    monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
-    monkeypatch.setattr("watchdog.cmd.auth.check_run_keys", lambda *a, **k: None)
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
+    monkeypatch.setattr("watchdog.auth.check_run_keys", lambda *a, **k: None)
     code, lines, events, result, err = _in_process(monkeypatch, capfd, {"op": "dig", "params": {}}, vault)
     assert code == 0 and result is None
     assert "Public records only" in "\n".join(lines)
@@ -173,7 +173,7 @@ def test_add_without_the_acknowledgement_sends_nothing(wdg_home, tmp_path, monke
 def test_recheck_round_trip(demo_copy, monkeypatch, capfd):
     vault, _home = demo_copy
     monkeypatch.setattr("watchdog.pipeline.entity_notes.index_notes", lambda *a, **k: None)
-    monkeypatch.setattr("watchdog.cmd.auth.check_run_keys", lambda *a, **k: None)
+    monkeypatch.setattr("watchdog.auth.check_run_keys", lambda *a, **k: None)
     calls = []
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):

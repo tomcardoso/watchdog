@@ -38,7 +38,7 @@ from watchdog.pipeline.write_vault import (
     _update_manifest,
     _write_json_atomic,
 )
-from watchdog.pipeline.timeline import cmd_rebuild_timeline
+from watchdog.pipeline.timeline import rebuild_timeline
 
 
 def _clean_events(events: list) -> list[dict]:
@@ -102,7 +102,7 @@ def apply(vault_path: Path, extraction: dict) -> dict:
         written = entity_notes.write_entities(vault_path, [entity_id], entities_reg, documents_reg)
         _write_json_atomic(entities_path, entities_reg)
         _update_manifest(vault_path, entities_reg)
-        cmd_rebuild_timeline(vault_path, quiet=True)
+        rebuild_timeline(vault_path, quiet=True)
 
     entity_notes.index_notes(vault_path, written)
     return {"entity_id": entity_id, "name": entry.get("name"), "timeline_events": len(new_events)}

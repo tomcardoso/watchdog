@@ -72,3 +72,23 @@ def parse(line: str) -> dict | None:
     except ValueError:
         return None
     return event if isinstance(event, dict) else None
+
+
+class Lines:
+    """Per-item progress lines for a stage's log (the job log in the app), one line per change.
+    `update` is a document's or file's current state, `finish` its outcome, `note` anything
+    else."""
+
+    def update(self, key: str, line: str, plain_line: str | None = None, *, pin: bool = False) -> None:
+        self._print(plain_line if plain_line is not None else line)
+
+    def finish(self, key: str, line: str) -> None:
+        self._print(line)
+
+    def note(self, line: str) -> None:
+        self._print(line)
+
+    @staticmethod
+    def _print(line: str) -> None:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()

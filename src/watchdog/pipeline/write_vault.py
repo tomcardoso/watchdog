@@ -60,7 +60,7 @@ import yaml
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json_or
-from watchdog.vault_paths import incoming_dir, modernize_path
+from watchdog.vault_paths import incoming_dir
 
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
@@ -447,7 +447,7 @@ def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha25
 def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
     """Render an entity note's ``## Timeline`` section from its dated tagged facts, year-grouped
     and attributed to each event's source document. The *global* timeline is rendered separately
-    from the cross-document-deduped NDJSON (`timeline.cmd_rebuild_timeline`, #237)."""
+    from the cross-document-deduped NDJSON (`timeline.rebuild_timeline`, #237)."""
     if not events:
         return ""
 
@@ -1377,7 +1377,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     )
     morgue_dir.mkdir(parents=True, exist_ok=True)
 
-    source = vault_path / modernize_path(doc.get("original_path", f"incoming/{doc['filename']}"))
+    source = vault_path / doc.get("original_path", f"incoming/{doc['filename']}")
     if source.exists():
         morgue_name = Path(morgue_relative).name
         shutil.move(str(source), str(morgue_dir / morgue_name))

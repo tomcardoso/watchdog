@@ -16,26 +16,26 @@ def ping() -> dict:
 
 @method("app.info")
 def info() -> dict:
-    from watchdog.cmd.base import CONFIG_FILE, WATCHDOG_HOME, load_config
-    from watchdog.cmd.setup import _pkg_version
+    from watchdog import config, obsidian
+    from watchdog.vault import pkg_version
     try:
-        from watchdog.cmd.auth import claude_code_logged_in
+        from watchdog.auth import claude_code_logged_in
         logged_in = claude_code_logged_in()
     except Exception:  # noqa: BLE001
         logged_in = False
-    config = load_config()
+    cfg = config.load()
     return {
-        "version": _pkg_version(),
+        "version": pkg_version(),
         "python": sys.executable,
         "python_version": platform.python_version(),
         "platform": sys.platform,
-        "watchdog_home": WATCHDOG_HOME,
-        "config_file": CONFIG_FILE,
-        # `watchdog setup` treats an existing config file as "already set up" (setup_cmd.run).
-        "setup_complete": CONFIG_FILE.exists(),
-        "projects_dir": config.get("projects_dir"),
+        "watchdog_home": config.home(),
+        "config_file": config.path(),
+        # First-run setup writes the settings file, so its presence means setup is done.
+        "setup_complete": config.path().exists(),
+        "projects_dir": cfg.get("projects_dir"),
         "claude_code": {"installed": shutil.which("claude") is not None, "logged_in": logged_in},
-        "obsidian_installed": _obsidian_installed(),
+        "obsidian_installed": obsidian.installed(),
         "engine_ready": engine_ready()["ready"],
     }
 
@@ -62,11 +62,3 @@ def engine_set_ready() -> dict:
     os.environ.pop(engine_setup.PENDING_ENV, None)
     importlib.invalidate_caches()
     return {"ready": engine_setup.engine_ready()}
-
-
-def _obsidian_installed() -> bool:
-    try:
-        from watchdog.cmd.vault import _obsidian_config_path
-        return _obsidian_config_path().parent.exists()
-    except Exception:  # noqa: BLE001
-        return False

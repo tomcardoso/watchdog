@@ -304,7 +304,7 @@ async def probe(docs: dict[str, dict], models: list[dict]) -> dict[str, dict]:
     """Measure every billed model against the strided sample. Spends real money — see
     `_probe_one`. Reports the sample's est tokens beside the ratio so the reader can see what the
     number was derived from rather than taking a bare scalar on trust."""
-    from watchdog.cmd import auth
+    from watchdog import auth
     sample_est, sample_text = build_sample(docs)
     out: dict[str, dict] = {}
     for entry in models:
@@ -332,7 +332,7 @@ async def count(docs: dict[str, dict], models: list[dict]) -> dict[str, dict]:
 
     One call per document, not per page: #617 settled that per-page variance is not what this
     measurement is for, and per-document already spans the corpus's born-digital/OCR split."""
-    from watchdog.cmd import auth
+    from watchdog import auth
     names = sorted(docs)
     ests = [docs[n]["est"] for n in names]
     # The probe's sample is counted here too (free), so its ratio can be checked against the same

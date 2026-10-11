@@ -14,29 +14,17 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
 from watchdog import progress
-from watchdog.appmode import hint as _hint, under_app
 from watchdog.pipeline import sidecar, text_positions, transcribe
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
-from watchdog.vault_paths import INCOMING_NAME, LEGACY_INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir, incoming_skipped_dir
+from watchdog.vault_paths import INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir, incoming_skipped_dir
 
 DEFAULT_FILE_TIMEOUT = 600
 
-# Key for the persistent progress/ETA row, pinned (LiveRegion `pin=True`) so it always
-# renders last, below the in-flight file rows (#158, #333 follow-up — previously just the
-# first key inserted, so it visually jumped between finished/in-flight rows as files completed).
-_PROGRESS_KEY = "__progress__"
-
 # One recording transcribes at a time (see _chew in _run_ingest_inner).
 _MEDIA_SLOT = threading.Semaphore(1)
-
-# A blank pinned row rendered just above the progress bar so the bar always keeps one line of
-# clearance from the finished/in-flight rows above it instead of butting directly against them.
-_SPACER_KEY = "__progress_spacer__"
-
 
 class NearDupIndex:
     """Every MinHash signature a new document should be compared against, held as one matrix.
@@ -94,7 +82,7 @@ class NearDupIndex:
         self._meta.append({"sha256": sha, "filename": filename, "document_note": document_note})
         self._n += 1
 
-    def matches(self, sig: list[int], threshold: float, exclude_sha: str | None = None) -> list[dict]:
+    def matches(self, sig: list[int], threshold: float) -> list[dict]:
         if not sig or self._n == 0 or len(sig) != self._sigs.shape[1]:
             return []
         np = self._np
@@ -102,8 +90,6 @@ class NearDupIndex:
         out = []
         for i in np.nonzero(sims >= threshold)[0]:
             meta = self._meta[i]
-            if meta["sha256"] == exclude_sha:
-                continue
             out.append({**meta, "similarity": round(float(sims[i]), 4)})
         # Same key order as before: sha256, filename, similarity, document_note.
         return [{"sha256": m["sha256"], "filename": m["filename"], "similarity": m["similarity"],
@@ -114,18 +100,12 @@ def _dup_threshold() -> float:
     return user_config.get("dup_threshold", 0.85)
 
 
-def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None,
-                      index: NearDupIndex | None = None) -> dict:
+def _compute_near_dup(result: dict, vault: Path, index: NearDupIndex | None = None) -> dict:
     """Compute near-duplicate check for a freshly chewed document. Never raises.
 
     `index` (#696) is the chew-wide `NearDupIndex`; without one, a fresh index is built from the
     vault — committed and queued documents — for this one call. The document is added to the
-    index afterwards, so later documents in the same chew are compared against it.
-
-    `exclude_sha` (#424) leaves one sha out of the comparison — needed when re-chewing a
-    document's own committed original for `--force`: its own registry entry is still there
-    (this isn't a fresh document), and comparing its content against itself would always match
-    at ~1.0 similarity, which would misreport the re-queued document as its own near-duplicate."""
+    index afterwards, so later documents in the same chew are compared against it."""
     try:
         from watchdog.pipeline.near_dup import shingles_from_text, minhash
         text = " ".join(p.get("markdown", "") for p in result.get("pages", []))
@@ -134,11 +114,11 @@ def _compute_near_dup(result: dict, vault: Path, exclude_sha: str | None = None,
         if index is None:
             index = NearDupIndex.from_vault(vault)
         candidate_mh = minhash(shingles_from_text(text))
-        matches = index.matches(candidate_mh, _dup_threshold(), exclude_sha=exclude_sha)
+        matches = index.matches(candidate_mh, _dup_threshold())
         matches.sort(key=lambda x: x["similarity"], reverse=True)
         top = matches[0]["similarity"] if matches else 0.0
         sha = result.get("sha256", "")
-        if sha and sha != exclude_sha:
+        if sha:
             index.add(sha, result.get("filename", ""), candidate_mh)
         return {"near_duplicates": matches, "top_similarity": top, "candidate_minhash": candidate_mh}
     except Exception:
@@ -149,11 +129,7 @@ _cancel_event = threading.Event()
 SKIP_NAMES    = {".ds_store", ".ingest-lock", ".processing-lock", ".chew-lock",
                  ".preprocessing-lock", "thumbs.db", "desktop.ini"}
 SKIP_SUFFIXES = {".yml"}
-# Folders directly under incoming/ that chew never reads (incoming/failed, incoming/skipped, and
-# their pre-D266 spellings); see vault_paths.is_set_aside.
 _OS_JUNK      = {".ds_store", "thumbs.db", "desktop.ini"}
-
-_BAR_WIDTH = 28
 
 _PAGE_UNIT = {
     ".pdf": "page", ".docx": "page", ".doc": "page", ".pptx": "page", ".ppt": "page",
@@ -233,9 +209,9 @@ def _resolve_workers(
     # A worker count below 1 reaches ThreadPoolExecutor's own `max_workers must be greater than
     # 0` ValueError (#636) — catch it here with a clear message instead.
     if explicit_pre is not None and explicit_pre < 1:
-        sys.exit(f"Error: {_hint('--chew-workers', 'The pre-processing worker count')} must be at least 1 (got {explicit_pre}).")
+        sys.exit(f"Error: {'The pre-processing worker count'} must be at least 1 (got {explicit_pre}).")
     if explicit_chunk is not None and explicit_chunk < 1:
-        sys.exit(f"Error: {_hint('--chunk-workers', 'The chunk worker count')} must be at least 1 (got {explicit_chunk}).")
+        sys.exit(f"Error: {'The chunk worker count'} must be at least 1 (got {explicit_chunk}).")
 
     cfg = user_config.read()
 
@@ -264,20 +240,6 @@ def _resolve_workers(
     return pre, chunk, needs_adaptive, page_counts
 
 
-def _bar(done: int, total: int) -> str:
-    filled = round(_BAR_WIDTH * done / total) if total else 0
-    return f"[{'█' * filled}{'░' * (_BAR_WIDTH - filled)}]"
-
-
-def _fmt_eta(seconds: int) -> str:
-    if seconds < 60:
-        return f"~{seconds}s"
-    elif seconds < 300:
-        return f"~{seconds // 60}m {seconds % 60}s"
-    else:
-        return f"~{seconds // 60}m"
-
-
 def _prune_empty_dirs(root: Path) -> None:
     for d in sorted(root.rglob("*"), reverse=True):
         if d.is_dir() and d != root:
@@ -299,7 +261,7 @@ def _in_set_aside_folder(root: Path, f: Path) -> bool:
     parts = f.relative_to(root).parts
     for i, part in enumerate(parts[:-1]):
         parent = root.joinpath(*parts[:i]).name
-        if part in SET_ASIDE_NAMES and parent in (INCOMING_NAME, LEGACY_INCOMING_NAME):
+        if part in SET_ASIDE_NAMES and parent == INCOMING_NAME:
             return True
     return False
 
@@ -405,14 +367,13 @@ def _prefetch_transcription_model(files: list[Path]) -> None:
         transcribe.os_environ_quiet()
         name = transcribe.configured_model()
         if not transcribe.model_cached(name):
-            print(f"\n  {_DIM}{transcribe.download_label(name)}, one time only…{_RESET}")
+            print(f"\n  {transcribe.download_label(name)}, one time only…")
             transcribe.ensure_model(name, progress.emit)
     except Exception as e:  # noqa: BLE001
-        print(f"  {_YELLOW}⚠{_RESET}  {_DIM}{e}{_RESET}")
+        print(f"  ⚠  {e}")
 
 
-def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
-                         force_shas: set | None = None) -> list:
+def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path) -> list:
     """Drop files whose exact content is already known, before paying for OCR (#146).
 
     Each file's sha256 is checked against the document registry (already ingested) and the pending
@@ -421,25 +382,16 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
     rather than re-OCR'd and re-queued — the journalist keeps the file, it just isn't processed
     again. (Exact bytes only; a near-duplicate has a different sha and is handled by the MinHash
     check at ingest.)
-
-    `force_shas` (#424) bypasses the "already ingested"/"already queued" checks for exactly those
-    shas — used when re-chewing a committed document's morgue original for `--force <selector>`,
-    where being already-ingested is the whole point, not a reason to skip it.
     """
     docs_path = vault / ".watchdog" / "registry" / "documents.json"
     ingested = set(_read_json_or(docs_path, []))
     queued = {p.stem for p in queue.glob("*.json")}
-    force_shas = force_shas or set()
 
     keep, seen = [], set()
     for f in files:
         try:
             sha = sha256_file(f)
         except OSError:
-            keep.append(f)
-            continue
-        if sha in force_shas:
-            seen.add(sha)
             keep.append(f)
             continue
         reason = ("already ingested" if sha in ingested
@@ -456,8 +408,8 @@ def _filter_already_seen(files: list, vault: Path, incoming: Path, queue: Path,
             f.rename(skipped_dir / f.name)
         except OSError:
             pass
-        print(f"  {_YELLOW}⚠ duplicate{_RESET}  {f.name}  "
-              f"{_DIM}{reason} → incoming/skipped/{_RESET}")
+        print(f"  ⚠ duplicate  {f.name}  "
+              f"{reason} → incoming/skipped/")
         progress.emit("chew", state="file", name=f.name, outcome="duplicate", pages=None)
     return keep
 
@@ -467,13 +419,9 @@ def run_ingest(
     workers: int | None = None,
     chunk_workers: int | None = None,
     files: list | None = None,
-    show_ingest_hint: bool = True,
-    force_shas: set | None = None,
 ) -> None:
-    """`force_shas` (#424): re-chew these specific shas even though their content is already
-    known — bypasses `_filter_already_seen`'s dedup for exactly them, and excludes each from its
-    own near-duplicate comparison. Used by `ingest --force <selector>` to regenerate a queue entry
-    from a committed document's morgue original; every other caller leaves this unset."""
+    """Pre-process `files` (default: everything in `incoming/`) into the queue, under the
+    pre-processing lock."""
     incoming = incoming_dir(vault)
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
@@ -481,7 +429,7 @@ def run_ingest(
     staging.mkdir(parents=True, exist_ok=True)
 
     # Acquire the chew lock atomically (#257). Previously the lock was written unconditionally,
-    # so two chews (e.g. `watchdog watch` plus a manual `watchdog chew`) could run concurrently
+    # so two pre-processing runs (the folder watcher and a manual one) could run concurrently
     # on one vault and race the staging renames/near-dup computes. O_CREAT|O_EXCL admits exactly
     # one; a lock whose chew died is taken over at once, one that can't be checked once it is
     # past the age window (D293).
@@ -492,16 +440,13 @@ def run_ingest(
     lock_file.parent.mkdir(parents=True, exist_ok=True)
     if not _locks.acquire_or_take_stale(lock_file, _locks.lock_contents("chew"), STALE_SECONDS):
         holder = _locks.held(lock_file, STALE_SECONDS)
-        sys.exit(_hint("\n  Error: a chew is already in progress on this vault. "
-                       "Wait for it to finish, or run: watchdog unlock --force if it is stuck.\n",
-                       f"\n  Error: {busy_message(holder)}\n"))
+        sys.exit(f"Error: {busy_message(holder)}")
 
     from watchdog.pipeline.locks import heartbeat
     try:
         # OCR over thousands of pages routinely outlasts the 30-minute staleness window (#696).
         with heartbeat(lock_file):
-            _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files,
-                              show_ingest_hint, force_shas=force_shas)
+            _run_ingest_inner(vault, incoming, queue, staging, workers, chunk_workers, files)
     finally:
         _locks.release_lock(lock_file)
 
@@ -514,19 +459,17 @@ def _run_ingest_inner(
     workers: int | None,
     chunk_workers: int | None,
     files: list | None,
-    show_ingest_hint: bool = True,
-    force_shas: set | None = None,
 ) -> None:
     if files is None:
         files = find_files([incoming])
-    files = _filter_already_seen(files, vault, incoming, queue, force_shas=force_shas)
+    files = _filter_already_seen(files, vault, incoming, queue)
     if not files:
         queued = len(list(queue.glob("*.json")))
         if queued:
-            run_it = _hint(f" Run {_RESET}{_CYAN}watchdog dig{_RESET}{_DIM}.", "")
-            print(f"\n  {_DIM}incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready.{run_it}{_RESET}\n")
+            run_it = ""
+            print(f"\n  incoming/ is empty — {queued} file{'s' if queued != 1 else ''} ready.{run_it}\n")
         else:
-            print(f"\n  {_DIM}incoming/ is empty — nothing to chew.{_RESET}\n")
+            print("\n  incoming/ is empty — nothing to chew.\n")
         return
 
     total = len(files)
@@ -539,14 +482,12 @@ def _run_ingest_inner(
 
     adaptive_tag = ", adaptive" if adaptive else ""
     print(
-        f"\n  {_BOLD}Chewing {total} file{'s' if total != 1 else ''}{_RESET}"
-        f"  {_DIM}({pre_workers} file · {chunk_workers} chunk workers{adaptive_tag}){_RESET}\n"
+        f"\n  Chewing {total} file{'s' if total != 1 else ''}"
+        f"  ({pre_workers} file · {chunk_workers} chunk workers{adaptive_tag})\n"
     )
 
-    # Live status region (#158): one in-place row per in-flight file, finished/failed lines and
-    # notes scrolling above, plus a persistent progress/ETA row on top. Off a TTY it disables and
-    # only the finished lines + summary print (append-only), matching the previous logged output.
-    live = LiveRegion()
+    # One line per finished file, then the summary (#158).
+    live = progress.Lines()
 
     def _rel(path: Path) -> str:
         try:
@@ -554,26 +495,7 @@ def _run_ingest_inner(
         except ValueError:
             return path.name
 
-    def _refresh_progress(done: int) -> None:
-        if not live.enabled:
-            return
-        elapsed_wall = time.time() - batch_start
-        bar = _bar(done, total)
-        if done < total and done and elapsed_wall > 0:
-            tail = f"  {_DIM}{_fmt_eta(round((elapsed_wall / done) * (total - done)))}{_RESET}"
-        elif done == total:
-            tail = f"  {_DIM}{round(elapsed_wall)}s total{_RESET}"
-        else:
-            tail = ""
-        live.update(_PROGRESS_KEY, f"  {bar} {_BOLD}{done}/{total}{_RESET}{tail}", pin=True)
-
     def _chew(path: Path) -> dict:
-        # Runs in a worker thread: mark the file in-flight the moment a worker picks it up, so the
-        # row appears while OCR spins up. Gated to TTYs to keep non-TTY output to finished lines only.
-        if live.enabled:
-            # Pad the arrow marker to the same width as the settled status codes ("OK "/"ERR"/
-            # "SKP") so filenames start at the same column whether a row is in-flight or done.
-            live.update(str(path), f"  {_DIM}→  {_RESET}  {_DIM}{_rel(path)}  chewing…{_RESET}")
         if transcribe.is_media(path):
             # Transcription already uses every core, so recordings go one at a time (D273).
             with _MEDIA_SLOT:
@@ -584,9 +506,6 @@ def _run_ingest_inner(
     results: dict[str, dict] = {}
     _cancel_event.clear()
 
-    if live.enabled:
-        live.update(_SPACER_KEY, "", pin=True)   # blank clearance line above the progress bar
-    _refresh_progress(0)            # seed the pinned progress row; it renders last regardless
     # Built once for the whole chew, before any document is staged (#696).
     neardup_index = None
     try:
@@ -610,23 +529,23 @@ def _run_ingest_inner(
             is_empty   = not is_err and result.get("char_count", 0) == 0
             is_garbled = not is_err and not is_empty and result.get("metadata", {}).get("garbled_detected", False)
             if is_err:
-                status = f"{_YELLOW}ERR{_RESET}"
+                status = "ERR"
             elif is_empty:
-                status = f"{_DIM}SKP{_RESET}"
+                status = "SKP"
             else:
-                status = f"{_GREEN}OK {_RESET}"
+                status = "OK "
 
             progress.emit("chew", state="file", name=_rel(path),
                           outcome="failed" if is_err else "skipped" if is_empty else "ok",
                           pages=None if is_err else result.get("page_count"), done=done, total=total)
             rel       = _rel(path)
             label     = _media_label(result) or _page_label(path, result.get("page_count", 0))
-            label_str = f"  {_DIM}{label}{_RESET}" if label else ""
+            label_str = f"  {label}" if label else ""
             ocr_note  = _ocr_note(result, is_garbled)
-            garb_str  = f"  {_DIM}·  {ocr_note}{_RESET}" if ocr_note else ""
+            garb_str  = f"  ·  {ocr_note}" if ocr_note else ""
 
             # Settle this file's row: print its result above the live region, clearing the in-flight row.
-            live.finish(str(path), f"  {status}  {_BOLD}{rel}{_RESET}{label_str}{garb_str}")
+            live.finish(str(path), f"  {status}  {rel}{label_str}{garb_str}")
 
             # A sidecar sits beside `path` under the original filename, whatever `path`'s own
             # outcome — read here, while it still does, before `path` (and possibly the sidecar)
@@ -645,7 +564,7 @@ def _run_ingest_inner(
                         sidecar_path.rename(failed_dir / sidecar_path.name)
                     except OSError:
                         pass
-                live.note(f"       {_YELLOW}→ incoming/failed/{_RESET}  {_DIM}{result['error'][:80]}{_RESET}")
+                live.note(f"       → incoming/failed/  {result['error'][:80]}")
             elif is_empty:
                 skipped += 1
                 skipped_dir = incoming_skipped_dir(vault)
@@ -659,7 +578,7 @@ def _run_ingest_inner(
                         sidecar_path.rename(skipped_dir / sidecar_path.name)
                     except OSError:
                         pass
-                live.note(f"       {_DIM}→ incoming/skipped/  no text content extracted{_RESET}")
+                live.note("       → incoming/skipped/  no text content extracted")
             else:
                 sha256 = result.get("sha256", "")
                 if sha256:
@@ -671,9 +590,7 @@ def _run_ingest_inner(
                         result["source_path"] = str(dest)
                     except OSError:
                         pass
-                    force_self = sha256 if force_shas and sha256 in force_shas else None
-                    result["near_dup"] = _compute_near_dup(result, vault, exclude_sha=force_self,
-                                                           index=neardup_index)
+                    result["near_dup"] = _compute_near_dup(result, vault, index=neardup_index)
                     result["document_type"] = None
                     # Filter to the allowlisted fields, embed the clean copy in the queue JSON,
                     # and drop the original — nothing reads a sidecar off disk past this point
@@ -684,8 +601,8 @@ def _run_ingest_inner(
                     )
                     result["sidecar"] = clean_sidecar
                     if dropped:
-                        live.note(f"       {_YELLOW}⚠{_RESET}  {_DIM}sidecar field(s) not recognized, dropped: "
-                                  f"{', '.join(dropped)}{_RESET}")
+                        live.note(f"       ⚠  sidecar field(s) not recognized, dropped: "
+                                  f"{', '.join(dropped)}")
                     sidecar_path.unlink(missing_ok=True)
                     # OCR'd lines' positions go to their own file, kept past the commit, never
                     # into the queue descriptor the model's input is read from (D289).
@@ -694,7 +611,6 @@ def _run_ingest_inner(
                         json.dumps(result, ensure_ascii=False)
                     )
 
-            _refresh_progress(done)
 
     except KeyboardInterrupt:
         _cancel_event.set()
@@ -702,14 +618,11 @@ def _run_ingest_inner(
             fut.cancel()
         pool.shutdown(wait=True, cancel_futures=True)
         _prune_empty_dirs(incoming)
-        live.stop()
-        print(f"\n  {_DIM}Cancelled — {done} of {total} files processed. Unfinished files remain in incoming/.{_RESET}\n")
+        print(f"\n  Cancelled — {done} of {total} files processed. Unfinished files remain in incoming/.\n")
         return
     else:
         pool.shutdown(wait=False)
 
-    # Extraction phase done — leave the final region on screen and print the summary plainly.
-    live.stop()
 
     _prune_empty_dirs(incoming)
 
@@ -718,18 +631,14 @@ def _run_ingest_inner(
     elapsed_total = round(time.time() - batch_start, 1)
     progress.emit("chew", state="end", ok=ok, skipped=skipped, failed=errs)
 
-    parts = [f"{_GREEN}{ok} file{'s' if ok != 1 else ''} ready{_RESET}"]
+    parts = [f"{ok} file{'s' if ok != 1 else ''} ready"]
     if skipped:
-        parts.append(f"{_DIM}{skipped} skipped{_RESET}")
+        parts.append(f"{skipped} skipped")
     if errs:
-        parts.append(f"{_YELLOW}{errs} failed{_RESET}")
-    parts.append(f"{_DIM}{elapsed_total}s{_RESET}")
+        parts.append(f"{errs} failed")
+    parts.append(f"{elapsed_total}s")
 
     print()
     print(f"  {'  ·  '.join(parts)}")
-
-    if ok and show_ingest_hint and not under_app():
-        print()
-        print(f"  Run:  {_CYAN}watchdog dig{_RESET}")
 
     print()

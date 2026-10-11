@@ -39,7 +39,7 @@ def run_id(now: datetime | None = None, *, existing: set[str] | None = None) -> 
 
 
 def _usage_totals(usage: dict | None) -> dict:
-    from watchdog.cmd.usage import _wall_span
+    from watchdog.usage import wall_span
     calls = (usage or {}).get("calls", [])
     return {
         "cost_usd": sum(c.get("cost_usd") or 0.0 for c in calls),
@@ -51,7 +51,7 @@ def _usage_totals(usage: dict | None) -> dict:
         # max(end) - min(start) across all calls — the real wall-clock the arm took, immune to
         # concurrency inflating the number above. `None` when no call carries an `end_ts` (a run
         # from before that field existed); callers needing a number fall back to `latency_s`.
-        "wall_clock_s": _wall_span(calls),
+        "wall_clock_s": wall_span(calls),
         "retries": sum(1 for c in calls if (c.get("attempts") or 1) > 1),
         "sectioned_calls": sum(1 for c in calls if c.get("task") == "extract-section"),
     }

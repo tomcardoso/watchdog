@@ -32,7 +32,7 @@ import pytest
 
 from watchdog import keystore
 from watchdog import model_client as mc
-from watchdog.cmd import auth, base
+from watchdog import auth, base
 
 TOKEN = secrets.token_hex(8).upper()
 KEYS = {
@@ -98,7 +98,7 @@ def world(tmp_path, monkeypatch):
     monkeypatch.setattr(base, "PROJECTS_FILE", wd / "projects.json")
     import watchdog.config
     monkeypatch.setattr(watchdog.config, "CONFIG_FILE", wd / "config.json")
-    for p in auth._PROVIDERS.values():
+    for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     monkeypatch.delenv("WATCHDOG_APP", raising=False)
     return tmp_path, home, vault

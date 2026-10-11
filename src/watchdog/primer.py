@@ -1,9 +1,6 @@
 """The session primer (D285): where the whole investigation stands, built by code at the start of
 every Ask Claude session.
 
-It replaces `hot.md`, which the briefing model rewrote after every run from that run's documents
-only, so a session after a one-document batch started out knowing about one document. The primer
-is read from the vault's records instead, with no model call: the questions in `context.md`, the
 counts and the reporter's verification progress, the most-mentioned entities, what is waiting on
 the reporter (contradictions, leads, document requests, possible same entities, disputed facts),
 and the last few briefings. The app adds it to every session's system prompt when the session
@@ -101,7 +98,7 @@ def context_questions(vault: Path) -> tuple[str | None, list[str]]:
 
 def _briefings(vault: Path) -> list[tuple[str, str | None]]:
     """(stem, status) of the newest run briefings, newest first."""
-    from watchdog.cmd.home import briefing_status, run_briefings
+    from watchdog.overview import briefing_status, run_briefings
     return [(p.stem, briefing_status(vault, p)) for p in run_briefings(vault)[:_BRIEFINGS_MAX]]
 
 
@@ -116,7 +113,7 @@ def _briefing_label(stem: str) -> str:
 
 def gather(vault: Path) -> dict:
     """Everything the primer shows, read from local files only."""
-    from watchdog.cmd.review import open_items
+    from watchdog.review import open_items
     from watchdog.pipeline import citations, entity_facts, requests, verification
 
     reg = vault / ".watchdog" / "registry"

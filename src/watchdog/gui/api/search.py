@@ -78,7 +78,7 @@ def _exact_hit(index: _DocIndex, h: dict) -> dict:
 @method("search.query")
 def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
           rerank: bool = True) -> dict:
-    from watchdog.cmd.vault import _build_search_json
+    from watchdog.search import build_json as _build_search_json
     from watchdog.pipeline import embed, fulltext
 
     v = require_vault(vault)
@@ -155,7 +155,7 @@ def batch(terms: list[str], vault: str | None = None, everywhere: bool = False,
     """Every term checked against manifest names/aliases and the full-text index — the lane that
     scales to a leaked roster or sanctions list. A term whose exact-match lookup failed comes back
     `checked: false`, never as an empty result."""
-    from watchdog.cmd.vault import batch_report, everywhere_report
+    from watchdog.search import batch_report, everywhere_report
 
     if not isinstance(terms, list):
         raise RpcError("terms must be a list of strings", code="bad_params")
@@ -187,7 +187,7 @@ def batch(terms: list[str], vault: str | None = None, everywhere: bool = False,
 
 @method("search.everywhere")
 def everywhere(query: str, top: int = 5) -> dict:
-    from watchdog.cmd.vault import everywhere_report
+    from watchdog.search import everywhere_report
 
     if not isinstance(query, str) or not query.strip():
         raise RpcError("Type something to search for.", code="bad_params")

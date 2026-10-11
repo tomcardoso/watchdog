@@ -820,7 +820,6 @@ export interface Methods {
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
-  'vault.migrate': [{ vault: string }, { changes: string[] }]
 
   'history.file': [{ vault: string; path: string }, FileHistory]
   'history.read': [{ vault: string; path: string; version: number }, { path: string; version: number; exists: boolean; text: string }]

@@ -2,7 +2,7 @@
 
 import json
 
-from watchdog.cmd.review import open_items
+from watchdog.review import open_items
 from watchdog.pipeline import resolutions
 
 from tests.gui_support import CALLOUT, call, call_error

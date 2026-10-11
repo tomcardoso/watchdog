@@ -282,7 +282,7 @@ def test_cmd_ingest_force_threads_to_orchestrate_run(wdg_home, tmp_path, monkeyp
     """`ingest --force` reaches `orchestrate.run` as `force=True`, and — because finalize must be
     held off until the overwrite gate runs — as `skip_finalize=True` too, even though plain
     `ingest` has no `--no-finalize` flag of its own."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -312,7 +312,7 @@ def test_cmd_ingest_force_threads_to_orchestrate_run(wdg_home, tmp_path, monkeyp
 def test_cmd_extract_force_no_gate_no_finalize(wdg_home, tmp_path, monkeypatch):
     """`extract --force` re-extracts with `force=True`/`skip_finalize=True` like `ingest --force`,
     but — because `cmd_extract` sets `no_finalize` — never runs the overwrite gate or finalize."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -350,7 +350,7 @@ def test_cmd_extract_defaults_extractor_effort_to_medium_when_unconfigured(wdg_h
     the same as the old `high` default (omit the parameter) — this pins the read-site fallback
     that's actually load-bearing, since `cmd/setup.py`'s documented default alone never reaches
     this code path for a user who never ran `watchdog configure`."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -379,7 +379,7 @@ def test_cmd_extract_classifier_effort_is_low_on_the_default_haiku_classifier(wd
     """D221's `classify_effort="low"` default reaches `orchestrate.run` on an unconfigured
     install now that the default `haiku` is Haiku 5.5, which accepts effort (D277). Haiku 4.5
     rejected the parameter, so the effortless-model gate (#518) used to drop it here."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -410,7 +410,7 @@ def test_cmd_extract_classifier_effort_defaults_to_low_when_classifier_routed_to
     to a model that accepts the parameter — e.g. the benchmark-recommended
     openai:gpt-5.6-luna (see docs/benchmarks.md), which a user can switch to via
     `classifier_model` without needing to also set `classifier_effort` by hand."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -448,7 +448,7 @@ def _committed_vault_with_forced_doc(tmp_path):
 
 def test_cmd_ingest_force_gate_defaults_to_cancel_and_leaves_batch_finalizable(
         wdg_home, tmp_path, monkeypatch, capsys):
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -484,7 +484,7 @@ def test_cmd_ingest_force_gate_defaults_to_cancel_and_leaves_batch_finalizable(
 
 def test_cmd_ingest_force_gate_confirms_and_finalizes_with_force_shas(
         wdg_home, tmp_path, monkeypatch):
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -516,7 +516,7 @@ def test_cmd_ingest_force_gate_confirms_and_finalizes_with_force_shas(
 def test_estimate_force_prices_the_queued_document(wdg_home, tmp_path, monkeypatch, capsys):
     """`--estimate --force` must price a document the same as any other queued one — the queue
     scan has no notion of a cached artifact to discount (#424)."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
 
     vault = _committed_vault_with_forced_doc(tmp_path)   # SHA is already committed
     monkeypatch.chdir(vault)
@@ -668,7 +668,7 @@ def test_ingest_force_sha_selector_end_to_end_replaces_note(wdg_home, tmp_path, 
     morgue original (bypassing dedup and near-dup self-match), re-extracts under a different
     mocked extraction, fires the overwrite gate, confirms, and finalizes — REPLACING the
     committed note/registry entry in place. No live model calls (extraction is mocked)."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import preprocess_batch as ppb
 
@@ -722,7 +722,7 @@ def test_ingest_force_filename_selector_requeues_before_extraction(wdg_home, tmp
     """A `--force <filename>` selector resolves against `registry/documents.json` the same as a
     sha, proving the filename-selector path (not just sha) drives the re-queue-from-morgue flow —
     checked here by asserting the queue entry exists *before* `orchestrate.run` is even called."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module, preprocess_batch as ppb
 
@@ -755,7 +755,7 @@ def test_ingest_force_filename_selector_requeues_before_extraction(wdg_home, tmp
 def test_bare_ingest_force_never_requeues(wdg_home, tmp_path, monkeypatch):
     """Bare `ingest --force` (no selectors) must behave byte-identically to before this change —
     in particular, it must never touch `_requeue_forced_selectors`/chew at all."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import orchestrate as orch_module
 
@@ -783,7 +783,7 @@ def test_ingest_force_selector_estimate_is_read_only(wdg_home, tmp_path, monkeyp
     """`--estimate` promises "no lock, no confirm, no extraction" — read-only. `ingest --force
     <document> --estimate` must not re-queue the named document (no queue entry, no morgue
     original moved), and must say so rather than silently ignoring the selector."""
-    from watchdog.cmd import auth as auth_module
+    from watchdog import auth as auth_module
     from watchdog.ops import ingest as ing
     from watchdog.pipeline import preprocess_batch as ppb
 

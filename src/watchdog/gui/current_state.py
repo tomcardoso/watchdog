@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from watchdog.cmd import primer
+from watchdog import primer
 
 _LIST_MAX = 6
 _QUESTIONS_MAX = 12

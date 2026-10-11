@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from watchdog import model_client, telemetry_db
-from watchdog.cmd import auth as auth_module
+from watchdog import auth as auth_module
 from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
 from tests.test_write_vault import make_extraction, make_vault

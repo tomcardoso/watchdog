@@ -15,8 +15,6 @@ import json
 import sys
 from pathlib import Path
 
-from watchdog.appmode import hint as _hint
-from watchdog.vault_paths import is_vault
 from watchdog.pipeline.json_io import _read_json_or
 
 
@@ -354,7 +352,7 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict, index=None) -> 
     return f"- **{rendered_date}**{entity_part} — {_defang(ev.get('event', ''))}{source_part}{basis_note}"
 
 
-def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
+def rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     """Read all canonical {date}.ndjson files, plus committed documents' raw files a failed dedup
     left behind, and render timeline.md.
 
@@ -440,15 +438,6 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"
     _write_timeline_md(vault, content)
     if not quiet:
-        from watchdog.links import note_link
-        print(f"{note_link(vault, 'timeline.md')} rebuilt — {len(canonical_files)} date(s), "
+        print(f"timeline.md rebuilt — {len(canonical_files)} date(s), "
               f"{len(events)} event(s)")
     return (len(canonical_files), len(events))
-
-
-def main_rebuild() -> None:
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit(_hint("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.",
-                       "Error: this folder is not an investigation."))
-    cmd_rebuild_timeline(vault)

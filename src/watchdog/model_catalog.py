@@ -1,8 +1,7 @@
 """Single source of truth for every model Watchdog knows about — ids, pricing, context
 windows, and OpenAI reasoning capability — loaded from model_catalog.yaml. No
 watchdog-internal imports: both model_client.py and cmd/base.py depend on this without
-risking an import cycle (model_client.py already imports watchdog.cmd.auth, which
-imports watchdog.cmd.base).
+risking an import cycle.
 """
 
 import importlib.resources

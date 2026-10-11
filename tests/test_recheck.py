@@ -280,7 +280,7 @@ def test_a_stop_files_what_the_finished_calls_found(vault, monkeypatch):
 # ── the app ──────────────────────────────────────────────────────────────────────────
 
 def test_the_estimate_prices_the_calls_on_the_finalizer_model(vault, monkeypatch, wdg_home):  # noqa: F811
-    monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
     est = call("contradictions.estimate", vault=str(vault), ids=["northgate-civil-works"])
     assert est["calls"] == 1 and est["facts"] == 36 and est["busy"] is False
     assert est["model"]["backend"] == "claude-api" and est["model"]["name"]
@@ -288,7 +288,7 @@ def test_the_estimate_prices_the_calls_on_the_finalizer_model(vault, monkeypatch
     assert est["auth"]["ok"] is True
     whole = call("contradictions.estimate", vault=str(vault), all=True)
     assert whole["scope"] == "all" and whole["cost_high"] > est["cost_high"]
-    monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "subscription"})
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "subscription"})
     sub = call("contradictions.estimate", vault=str(vault), ids=["pier-9"])
     assert sub["subscription"] is True and sub["cost_low"] is None and sub["real_tokens"] > 0
 
@@ -298,9 +298,9 @@ def test_the_app_starts_it_as_a_job_and_keeps_the_gates(vault, monkeypatch, wdg_
     started = []
     monkeypatch.setattr(jobs.MANAGER, "start", lambda v, op, params, label, kind=None: (
         started.append((op, label, params)) or type("J", (), {"to_dict": lambda self: {"id": "j"}})()))
-    monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "none", "reason": "No key."})
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "none", "reason": "No key."})
     assert call_error("jobs.recheckContradictions", vault=str(vault), ids=["pier-9"])["code"] == "auth_required"
-    monkeypatch.setattr("watchdog.cmd.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
     assert call("jobs.recheckContradictions", vault=str(vault), ids=["pier-9"]) == {"id": "j"}
     op, label, params = started[-1]
     assert label == "Re-check contradictions: Pier 9"

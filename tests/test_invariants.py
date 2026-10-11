@@ -485,15 +485,15 @@ def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
     import asyncio
     import pytest
     from watchdog import model_client as mc
-    from watchdog.cmd import auth, base
+    from watchdog import auth, base
     from watchdog.gui import chat
     from watchdog.gui.rpc import RpcError
     monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home")
-    for p in auth._PROVIDERS.values():
+    for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     vault = tmp_path / "case"
     (vault / ".watchdog").mkdir(parents=True)
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-default-1234567890",
+    auth.save_state({"mode": "api-key", "keys": {"openai": "sk-default-1234567890",
                                                   "anthropic": "sk-ant-default-1234567890"}})
     for provider in ("openai", "anthropic"):
         kid = auth.add_key(provider, "Globe", f"sk-{provider}-globe-1234567890")

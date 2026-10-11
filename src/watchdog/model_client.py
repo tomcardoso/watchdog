@@ -38,9 +38,8 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 from watchdog import fixture_capture
-from watchdog.cmd import auth
+from watchdog import auth
 from watchdog.model_catalog import (
-    _MODEL_IDS,  # noqa: F401 — re-exported for cmd/setup.py's interactive picker
     _OPENAI_PRICING,
     _PRICING,
     catalog_cache_breakpoints,
@@ -60,7 +59,6 @@ from watchdog.model_catalog import (
     resolve_model_id,
 )
 from watchdog import config as user_config
-from watchdog.appmode import hint as _hint
 
 DEFAULT_TIER = "sonnet"
 
@@ -356,8 +354,8 @@ def _scrub(text: str, api_key: str | None) -> str:
     with it (D295)."""
     if not api_key or not text or api_key not in text:
         return text
-    from watchdog.cmd.auth import _mask
-    return text.replace(api_key, _mask(api_key))
+    from watchdog.auth import mask
+    return text.replace(api_key, mask(api_key))
 
 
 def _scrubbed(e: Exception, api_key: str | None) -> Exception:
@@ -1290,7 +1288,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         except auth.KeyChoiceError as e:   # the investigation's chosen key is gone (D290)
             raise ModelError(str(e)) from None
         if resolved["mode"] == "none":
-            raise ModelError(resolved.get("reason", "no auth configured" + _hint(" — run `watchdog setup`", " — set it up in Settings")))
+            raise ModelError(resolved.get("reason", "no auth configured" + " — set it up in Settings"))
         auth_mode = resolved["mode"]
         api_key = resolved.get("key")           # None in subscription mode
         if chosen is None:
@@ -1299,8 +1297,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
                 f"'{auth_mode}' — "
-                + _hint("run `watchdog settings auth` to switch to api-key mode, or use the claude-agent-sdk backend",
-                        "switch to api-key mode in Settings, or use the claude-agent-sdk backend"))
+                + "switch to api-key mode in Settings, or use the claude-agent-sdk backend")
         return chosen, provider, api_key, auth_mode, None
 
     base_url = None
@@ -1309,8 +1306,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if not base_url:
             raise ModelError(
                 f"the {chosen} backend needs a base URL — "
-                + _hint(f"run `watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)",
-                        "set it in Settings (e.g. http://localhost:11434/v1)"))
+                + "set it in Settings (e.g. http://localhost:11434/v1)")
 
     try:
         api_key = auth.get_api_key(provider)
@@ -1318,7 +1314,7 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         raise ModelError(str(e)) from None
     if auth.provider_requires_key(provider) and not api_key:
         raise ModelError(f"the {chosen} backend needs an API key — "
-                         + _hint("run `watchdog settings auth` to add one", "add one in Settings"))
+                         + "add one in Settings")
     return chosen, provider, api_key, "api-key", base_url
 
 

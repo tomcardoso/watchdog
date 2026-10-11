@@ -14,7 +14,7 @@ import sys
 import pytest
 
 from watchdog import model_client as mc
-from watchdog.cmd import auth, base
+from watchdog import auth, base
 
 
 @pytest.fixture
@@ -22,7 +22,7 @@ def home(tmp_path, monkeypatch):
     monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home")
     monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "home" / "config.json")
     monkeypatch.setattr(base, "PROJECTS_FILE", tmp_path / "home" / "projects.json")
-    for p in auth._PROVIDERS.values():
+    for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     return tmp_path / "home"
 
@@ -40,7 +40,7 @@ def creds(home):
 
 def two_openai_keys():
     """A personal default key and a second, work-billed one."""
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-personal-1111111111"}})
+    auth.save_state({"mode": "api-key", "keys": {"openai": "sk-personal-1111111111"}})
     work = auth.add_key("openai", "Work", "sk-work-2222222222")
     return work
 
@@ -48,7 +48,7 @@ def two_openai_keys():
 # ── storage ──────────────────────────────────────────────────────────────────────
 
 def test_old_single_string_reads_as_one_key_named_default(home):
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-old-123456789012"}})
+    auth.save_state({"mode": "api-key", "keys": {"openai": "sk-old-123456789012"}})
     keys = auth.list_keys("openai")
     assert [(k["id"], k["label"], k["default"]) for k in keys] == [("default", "Default", True)]
     assert "123456789012" not in keys[0]["masked"]
@@ -57,7 +57,7 @@ def test_old_single_string_reads_as_one_key_named_default(home):
 
 
 def test_one_default_key_is_written_back_in_the_old_form(home):
-    auth._save_state({"mode": "api-key", "keys": {}})
+    auth.save_state({"mode": "api-key", "keys": {}})
     auth.add_key("openai", "Default", "sk-only-1234567890")
     assert creds(home)["keys"]["openai"] == "sk-only-1234567890"     # older versions can still read it
 
@@ -106,9 +106,9 @@ def test_rename_and_replace_keep_the_id(home):
 
 def test_store_default_key_replaces_the_default_secret_only(home):
     two_openai_keys()
-    state = auth._load_state()
+    state = auth.load_state()
     auth.store_default_key(state, "openai", "sk-new-personal-999")
-    auth._save_state(state)
+    auth.save_state(state)
     labels = {k["label"]: k for k in auth.list_keys("openai")}
     assert set(labels) == {"Default", "Work"}
     assert auth.get_api_key("openai") == "sk-new-personal-999"
@@ -203,11 +203,11 @@ def test_dig_exits_before_running_when_the_chosen_key_is_missing(home, vault, mo
 
 
 def test_anthropic_choice_is_not_needed_on_a_subscription(home, vault):
-    auth._save_state({"mode": "subscription", "keys": {}})
+    auth.save_state({"mode": "subscription", "keys": {}})
     (vault / ".watchdog" / "settings.json").write_text(json.dumps(
         {"keys": {"anthropic": {"id": "k-gone", "label": "Globe"}}}))
     auth.check_run_keys(vault, [None])                             # no key is sent on a subscription
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-default-123"}})
+    auth.save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-default-123"}})
     with pytest.raises(auth.KeyChoiceError):
         auth.check_run_keys(vault, [None])
 
@@ -236,7 +236,7 @@ def test_key_users_names_registered_investigations(home, vault):
 
 def test_model_result_and_usage_record_carry_the_label(home, vault, monkeypatch):
     from watchdog import telemetry_db
-    from watchdog.cmd.usage import cost_by_key
+    from watchdog.usage import cost_by_key
     from watchdog.pipeline import orchestrate
     work = two_openai_keys()
     auth.choose_key(vault, "openai", work)
@@ -281,7 +281,7 @@ def test_telemetry_store_gains_the_column_on_an_old_database(tmp_path, monkeypat
 
 def test_agent_sdk_session_gets_the_investigations_anthropic_key(home, vault):
     from watchdog.gui import chat
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-personal-111"}})
+    auth.save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-personal-111"}})
     globe = auth.add_key("anthropic", "Globe", "sk-ant-globe-222")
     session = chat.Session(vault, "ask", None, "Ask")
     assert chat.session_auth_env(session) == {"ANTHROPIC_API_KEY": "sk-ant-personal-111"}
@@ -292,14 +292,14 @@ def test_agent_sdk_session_gets_the_investigations_anthropic_key(home, vault):
 
 def test_agent_sdk_session_on_a_subscription_gets_no_key(home, vault):
     from watchdog.gui import chat
-    auth._save_state({"mode": "subscription", "keys": {"anthropic": "sk-ant-personal-111"}})
+    auth.save_state({"mode": "subscription", "keys": {"anthropic": "sk-ant-personal-111"}})
     assert chat.session_auth_env(chat.Session(vault, "ask", None, "Ask")) == {}
 
 
 def test_session_refuses_to_start_when_the_chosen_anthropic_key_is_missing(home, vault):
     from watchdog.gui import chat
     from watchdog.gui.rpc import RpcError
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-personal-111"}})
+    auth.save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-personal-111"}})
     globe = auth.add_key("anthropic", "Globe", "sk-ant-globe-222")
     auth.choose_key(vault, "anthropic", globe)
     auth.delete_key("anthropic", globe)

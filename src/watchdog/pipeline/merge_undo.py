@@ -317,7 +317,7 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
     from watchdog.pipeline import entity_notes, resolutions
     from watchdog.pipeline.backup import snapshot
     from watchdog.pipeline.identity import pair_id
-    from watchdog.pipeline.timeline import cmd_rebuild_timeline
+    from watchdog.pipeline.timeline import rebuild_timeline
     from watchdog.pipeline.verification import reporter_name
     from watchdog.pipeline.write_vault import _now_iso, _today, _type_dir, _update_manifest, _write_json_atomic
 
@@ -401,7 +401,7 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
                                           index=entity_facts.FactIndex(vault, entities, documents))
     _write_json_atomic(reg / "entities.json", entities)
     merge_log.render(vault)
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     entity_notes.index_notes(vault, written)
     return {"keep_id": keep, "keep_name": entities[keep]["name"], "split_id": new,
             "split_name": entities[new]["name"],

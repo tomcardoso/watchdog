@@ -31,7 +31,6 @@ version of the vault's history.
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import re
 import sys
@@ -240,15 +239,11 @@ def _self_contradiction(key: tuple) -> bool:
 def finalizer_stage() -> tuple[str | None, str, str | None]:
     """(backend, model, effort) the re-check runs on: the configured reconciliation model, which
     is the finalizer model unless Settings routes reconciliation elsewhere, at the finalizer
-    effort — resolved by the same code `watchdog bark` resolves them with."""
-    from watchdog import defaults
-    from watchdog.cmd.base import load_config
-    from watchdog.ops.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
-    config = load_config()
-    backend, model = _resolve_stage(None, config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
-    overrides = _resolve_finalizer_overrides(argparse.Namespace(), config, backend, model)
-    return (overrides["reconciliation_backend"], overrides["reconciliation_model"],
-            _effort(None, config.get("finalizer_effort")))
+    effort, resolved by the same code post-processing uses."""
+    from watchdog.ops.ingest import RunOptions, resolve_plan
+    plan = resolve_plan(RunOptions())
+    return (plan.overrides["reconciliation_backend"], plan.overrides["reconciliation_model"],
+            plan.post_effort)
 
 
 def cause(names: list[str], whole: bool) -> dict:
@@ -309,7 +304,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
     if model is None:
         backend, model, effort = finalizer_stage()
     # The investigation's chosen key must be on this computer before any call (D290).
-    from watchdog.cmd.auth import check_run_keys
+    from watchdog.auth import check_run_keys
     check_run_keys(vault, [backend])
     lock = processing_lock(vault)
     if not acquire_or_take_stale(lock, lock_contents("recheck-contradictions"),

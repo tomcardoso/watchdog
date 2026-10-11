@@ -1,36 +1,30 @@
-"""Setup and configuration commands: about, setup, refresh-skills, configure, unlock."""
+"""Every setting in `~/.watchdog/config.json`: its type, default and help (as Settings shows it),
+how Settings groups them, and the validation a new value goes through.
 
-import json
-import os
-import subprocess
+`SETTINGS[key]` holds `short` (one line), `help` (hard-wrapped prose, continuation lines indented
+two spaces), `type` (`path`, `enum`, `int`, `int_or_auto`, `float`, `bool`, `lang_list` or a free
+string), a `default` or a `default_fn` computed when shown, and for some keys `choices`, `min`,
+`max` or `secret`.
+"""
+
 import sys
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
-from watchdog import defaults, interactive
-from watchdog.appmode import hint as _hint
-from watchdog.cmd.base import (
-    CONFIG_FILE,
-    WATCHDOG_HOME,
-    _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW,
-    _VAULT_DENY,
-    _VAULT_PERMISSIONS,
-    _find_project,
-    _render_template,
-    load_projects,
-)
-from watchdog.pipeline.json_io import _read_json, write_private_json
+from watchdog import defaults
 from watchdog.pipeline import transcribe as _transcribe
-from watchdog.vault_paths import preprocessing_lock, processing_lock, processing_state
 
 
-_CONFIGURE_KEYS = {
+class SettingError(Exception):
+    """A value that fails validation; the message says why."""
+
+
+SETTINGS = {
     # ── Project ───────────────────────────────────────────────────────────────
     "projects_dir": {
         "short": "Path where new investigation vaults are created",
         "help": (
-            "The directory where `watchdog new` creates investigation vaults.\n"
-            "  Set during setup; change here to move future vaults to a different location.\n"
+            "The folder where Watchdog creates new investigations.\n"
+            "  Set during setup; change it to create future investigations somewhere else.\n"
             "  Existing vaults are not moved."
         ),
         "type": "path",
@@ -97,8 +91,8 @@ _CONFIGURE_KEYS = {
         "help": (
             "How many documents processing extracts simultaneously. Each runs a model\n"
             "  call, so this is bounded by your model rate limits — lower it if you hit throttling,\n"
-            "  raise it for throughput. Override for one run with `watchdog dig --concurrency N`.\n"
-            "  Default: 20, minimum: 1 (sequential). `watchdog setup`/`watchdog settings auth` set this to 3\n"
+            "  raise it for throughput.\n"
+            "  Default: 20, minimum: 1 (sequential). Watchdog sets this to 3\n"
             "  automatically on Claude subscription auth that keeps processing — concurrent extractions\n"
             "  there share one Claude Code session's rate limit, and the higher metered-path default\n"
             "  reliably throttles it — and restore it to 20 automatically on switching back to an\n"
@@ -143,7 +137,7 @@ _CONFIGURE_KEYS = {
             "How many leading pages of each document the classifier reads to pick a record skill.\n"
             "  Uses min(page_count, this). More pages classify ambiguous documents better (e.g. a\n"
             "  cover letter before the real filing) at a small extra cost on the cheap classifier model.\n"
-            "  Override for one run with `watchdog dig --classify-pages N`. Default: 5. Minimum: 1."
+            "  Default: 5. Minimum: 1."
         ),
         "type": "int",
         "default": defaults.CLASSIFY_PAGES,
@@ -153,10 +147,9 @@ _CONFIGURE_KEYS = {
         "short": "Pin a record skill for every added document, skipping classification (default: unset)",
         "help": (
             "When every document in a vault is the same type, set this to a record-skill name\n"
-            "  (see `watchdog settings skills`) or a path to your own skill file, to skip per-document\n"
+            "  (see Settings → Record skills) or a path to your own skill file, to skip per-document\n"
             "  classification and use that one skill for all of them. Leave unset to classify\n"
-            "  each document.\n"
-            "  Override for one run with: watchdog dig --skill NAME (or --skill to pick one)."
+            "  each document."
         ),
         "type": "string",
         "default": None,
@@ -325,8 +318,7 @@ _CONFIGURE_KEYS = {
             "  true-but-minor detail to your fact lists. Off by default until that noise has been\n"
             "  measured. Not available with a batch extractor model (claude-batch,\n"
             "  openai-batch) — those return their results hours later, in a separate run.\n"
-            "  Default: false.\n"
-            "  Override for a single run with: watchdog dig --verify / --no-verify"
+            "  Default: false."
         ),
         "type": "bool",
         "default": False,
@@ -360,8 +352,7 @@ _CONFIGURE_KEYS = {
             "  Default: haiku. Recommended alternative: openai:gpt-5.6-luna (with classifier_effort\n"
             "  low), the strongest classifier in benchmark testing against real filings — see\n"
             "  docs/benchmarks.md. Not the shipped default because it needs its own OpenAI key\n"
-            "  even on a plain Claude subscription.\n"
-            "  Override for a single run with: watchdog dig --classifier-model M"
+            "  even on a plain Claude subscription."
         ),
         "type": "string",
         "default": defaults.CLASSIFIER_MODEL,
@@ -379,7 +370,7 @@ _CONFIGURE_KEYS = {
             "  filings — see docs/benchmarks.md. Not the shipped default because it needs its own\n"
             "  OpenAI key even on a plain Claude subscription.\n"
             "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-flash-thinking)\n"
-            "  to enable it. Override for a single run with: watchdog dig --extractor-model M"
+            "  to enable it."
         ),
         "type": "string",
         "default": defaults.EXTRACTOR_MODEL,
@@ -397,8 +388,7 @@ _CONFIGURE_KEYS = {
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: haiku. openai:gpt-5.6-luna is a reasonable alternative alongside\n"
             "  extractor_model's — this stage has no dedicated benchmark of its own yet, so\n"
-            "  treat it as an extrapolation, not a measured recommendation.\n"
-            "  Override for a single run with: watchdog bark --finalizer-model M"
+            "  treat it as an extrapolation, not a measured recommendation."
         ),
         "type": "string",
         "default": defaults.FINALIZER_MODEL,
@@ -411,8 +401,7 @@ _CONFIGURE_KEYS = {
             "  finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: unset.\n"
-            "  Override for a single run with: watchdog bark --finalizer-reconciliation-model M"
+            "  Default: unset."
         ),
         "type": "string",
         "default": None,
@@ -425,8 +414,7 @@ _CONFIGURE_KEYS = {
             "  every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: unset.\n"
-            "  Override for a single run with: watchdog bark --finalizer-synthesis-model M"
+            "  Default: unset."
         ),
         "type": "string",
         "default": None,
@@ -439,8 +427,7 @@ _CONFIGURE_KEYS = {
             "  unset to use finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: unset.\n"
-            "  Override for a single run with: watchdog bark --finalizer-timeline-model M"
+            "  Default: unset."
         ),
         "type": "string",
         "default": None,
@@ -452,8 +439,7 @@ _CONFIGURE_KEYS = {
             "  finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
             "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: unset.\n"
-            "  Override for a single run with: watchdog bark --finalizer-briefing-model M"
+            "  Default: unset."
         ),
         "type": "string",
         "default": None,
@@ -474,8 +460,7 @@ _CONFIGURE_KEYS = {
             "  model that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6)\n"
             "  support both; Claude support varies by model (Sonnet 4.6 takes 'max' but not\n"
             "  'xhigh'; Opus 4.8 takes both).\n"
-            "  Valid values: low, medium, high, xhigh, max. Default: medium.\n"
-            "  Override for a single run with: watchdog dig --extractor-effort E"
+            "  Valid values: low, medium, high, xhigh, max. Default: medium."
         ),
         "type": "enum",
         "default": defaults.EXTRACTOR_EFFORT,
@@ -492,8 +477,7 @@ _CONFIGURE_KEYS = {
             "  that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6) support\n"
             "  both; Claude support varies by model (Sonnet 4.6 takes 'max' but not 'xhigh'; Opus\n"
             "  4.8 takes both).\n"
-            "  Valid values: low, medium, high, xhigh, max. Default: high.\n"
-            "  Override for a single run with: watchdog bark --finalizer-effort E"
+            "  Valid values: low, medium, high, xhigh, max. Default: high."
         ),
         "type": "enum",
         "default": "high",
@@ -509,8 +493,7 @@ _CONFIGURE_KEYS = {
             "  pipeline never fails on a model with no effort control at all (e.g. Haiku).\n"
             "  Setting it explicitly on a model that doesn't support that exact level errors\n"
             "  rather than silently doing something else.\n"
-            "  Valid values: low, medium, high, xhigh, max. Default: low.\n"
-            "  Override for a single run with: watchdog dig --classifier-effort E"
+            "  Valid values: low, medium, high, xhigh, max. Default: low."
         ),
         "type": "enum",
         "default": defaults.CLASSIFIER_EFFORT,
@@ -601,7 +584,7 @@ _CONFIGURE_KEYS = {
             "    BAAI/bge-base-en-v1.5  (768-dim, 210 MB — same family, easy step up)\n"
             "    snowflake/snowflake-arctic-embed-s  (384-dim, 130 MB — same size class)\n"
             "  Must be a model fastembed can load (see `TextEmbedding.list_supported_models()`).\n"
-            "  After changing this, run `watchdog reindex` — vectors from two models aren't\n"
+            "  After changing this, rebuild the search index under Activity → Maintenance; vectors from two models aren't\n"
             "  comparable, so the index is rebuilt from disk (no need to add documents again).\n"
             "  Default: BAAI/bge-small-en-v1.5."
         ),
@@ -614,7 +597,7 @@ _CONFIGURE_KEYS = {
             "After search fuses the dense (embedding) and sparse (BM25) candidate\n"
             "  lists, a cross-encoder reranks the top of that pool for precision — the biggest\n"
             "  single retrieval-quality lever (Anthropic contextual-retrieval). Runs entirely on\n"
-            "  your machine via fastembed — no API, no cost. Pre-downloaded by `watchdog setup`,\n"
+            "  your machine via fastembed — no API, no cost. Downloaded during setup,\n"
             "  otherwise on first search (~300 MB).\n"
             "  Set to `none` (or empty) to turn reranking off and rank by fusion alone.\n"
             "  Other fastembed cross-encoders: Xenova/ms-marco-MiniLM-L-6-v2 (English, ~90 MB),\n"
@@ -626,7 +609,7 @@ _CONFIGURE_KEYS = {
     },
     # ── Research ──────────────────────────────────────────────────────────────
     "research_max_rounds": {
-        "short": "Default search rounds for `watchdog research` standard effort (default: 3)",
+        "short": "Default search rounds for a standard web research session (default: 3)",
         "help": (
             "How many search rounds the /watchdog-research skill runs by default before it must\n"
             "  check in and stop. An advisory budget the interactive skill self-limits to — a wider\n"
@@ -638,7 +621,7 @@ _CONFIGURE_KEYS = {
         "min": 1,
     },
     "research_max_fetches": {
-        "short": "Default sources captured per `watchdog research` standard run (default: 25)",
+        "short": "Default sources captured per standard web research session (default: 25)",
         "help": (
             "About how many web sources the /watchdog-research skill captures into incoming/ in a\n"
             "  default (standard-effort) run. An advisory budget the interactive skill self-limits to;\n"
@@ -654,7 +637,7 @@ _CONFIGURE_KEYS = {
     "wayback_save": {
         "short": "Also save each research source to the Wayback Machine (default: false)",
         "help": (
-            "When enabled, `watchdog research` submits every source it downloads to the Internet\n"
+            "When enabled, web research submits every source it downloads to the Internet\n"
             "  Archive's Wayback Machine (Save Page Now), and records the resulting snapshot URL in\n"
             "  each source's provenance sidecar — a permanent, citable copy that survives if the\n"
             "  original page later changes or is taken down. Off by default, and a no-op until both\n"
@@ -708,8 +691,8 @@ _CONFIGURE_KEYS = {
             "  text; it exists so cost and speed can be compared across runs and models.\n"
             "  Because it lists the documents in every investigation, treat the file as sensitive.\n"
             "  Set to false to stop recording; existing rows stay until you delete the file.\n"
-            "  `watchdog projects delete --purge` removes a vault's rows along with the vault.\n"
-            "  Each vault's own usage files, which `watchdog usage` reads, are unaffected.\n"
+            "  Deleting an investigation's files also removes its rows.\n"
+            "  Each investigation's own usage files, which Activity → Usage reads, are unaffected.\n"
             "  Default: true."
         ),
         "type": "bool",
@@ -717,15 +700,12 @@ _CONFIGURE_KEYS = {
     },
 }
 
-# Column width for the `watchdog configure` key listing (both the plain listing and the wizard
-# menu) — derived from the longest key name so a future key can't silently break alignment the
-# way a hardcoded width did (section_token_threshold, finalizer_reconciliation_model, ...).
-_KEY_COL_WIDTH = max(len(k) for k in _CONFIGURE_KEYS)
+
 
 # Display grouping for the `watchdog configure` listing (presentation only — set/get is
 # unaffected). Each section owns an ordered list of keys; any key missing from every
 # section is still shown, under "Other", so a newly added key never silently disappears.
-_CONFIGURE_SECTIONS = [
+SECTIONS = [
     ("Vaults", "Where investigations are created.",
      ["projects_dir"]),
     ("OCR", "Text recognition for scanned documents.",
@@ -758,477 +738,107 @@ _CONFIGURE_SECTIONS = [
      ["telemetry"]),
 ]
 
-_OCR_ENGINE_PACKAGES = {
-    # engine → (import_name, pip_package) or None if bundled with docling
-    "apple_vision": ("ocrmac",               "ocrmac"),
-    "tesseract":    ("tesserocr",            "tesserocr"),
-    "rapidocr":     ("rapidocr",             "rapidocr"),   # docling >= 2.5x depends on it already
-    "easyocr":      None,
-    "auto":         None,
-}
 
-_TESSERACT_HEADERS_HINT = (
-    "Tesseract system headers are required to build tesserocr:\n"
-    "  Ubuntu/Debian:  sudo apt install tesseract-ocr libtesseract-dev\n"
-    "  Fedora:         sudo dnf install tesseract tesseract-devel\n"
-    "  macOS:          brew install tesseract\n"
-    "Then re-run: watchdog settings ocr_engine tesseract"
-)
-
-
-def _ensure_ocr_engine(engine: str) -> None:
-    if engine == "apple_vision" and sys.platform != "darwin":
-        sys.exit("Error: apple_vision OCR is only available on macOS.")
-
-    spec = _OCR_ENGINE_PACKAGES.get(engine)
-    if spec is None:
-        return
-
-    import_name, pip_name = spec
-    try:
-        __import__(import_name)
-        return
-    except ImportError:
-        pass
-
-    print(f"\n  {_DIM}Installing {pip_name}...{_RESET}")
-    result = subprocess.run(
-        [sys.executable, "-m", "pip", "install", pip_name],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        stderr = result.stderr.strip()
-        msg = f"\n  {_YELLOW}Warning:{_RESET} could not install {pip_name}.\n"
-        if "tesserocr" in pip_name and ("gcc" in stderr or "compile" in stderr.lower() or "build" in stderr.lower()):
-            msg += f"\n  {_DIM}{_TESSERACT_HEADERS_HINT}{_RESET}\n"
-        else:
-            msg += f"\n  {_DIM}{stderr[:300]}{_RESET}\n"
-        print(msg)
-    else:
-        print(f"  {_GREEN}Installed:{_RESET} {_BOLD}{pip_name}{_RESET}\n")
-
-
-def cmd_about(_args) -> None:
-    from watchdog import __version__
-    print()
-    print(r'      ___                    ')
-    print(r'   __/_  `.  .-"""-.         ')
-    print(r"   \_,` | \-'  /   )`-')    ")
-    print(r'    "") `"`    \  ((`"`      ')
-    print(r"   ___Y  ,    .'7 /|         ")
-    print(r"  (_,___/...-` (_/_/         ")
-    print()
-    print(f"  {_BOLD}Watchdog{_RESET}  {_DIM}v{__version__}{_RESET}")
-    print(f"  {_DIM}Investigative journalism document intelligence{_RESET}")
-    print()
-    print(f"  {_DIM}GitHub   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog{_RESET}")
-    print(f"  {_DIM}Issues   {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/issues{_RESET}")
-    print(f"  {_DIM}Install  {_RESET}{_CYAN}https://github.com/tomcardoso/watchdog/blob/main/docs/install.md{_RESET}")
-    print()
-    print(f"  {_DIM}ASCII art: dog in 'watchdog new' by Felix Lee; dog in 'watchdog about' by Sarah Kearsley{_RESET}")
-    print()
-
-
-def cmd_setup(args) -> None:
-    from watchdog.setup_cmd import run as run_setup
-    run_setup(force=getattr(args, "force", False))
-
-
-def cmd_refresh_skills(args) -> None:
-    if args.name:
-        _, info = _find_project(args.name)
-        vault = Path(info["path"])
-    else:
-        vault = Path(".").resolve()
-        if not is_vault(vault):
-            sys.exit("Error: not inside a watchdog project. cd into a vault or pass a project name.")
-    from watchdog.setup_cmd import install_skills
-    from watchdog.vault_paths import migrate_folder_names
-    for change in migrate_folder_names(vault):       # before the permissions pass below (D266)
-        print(f"  {_GREEN}Renamed{_RESET}  {_DIM}{change}{_RESET}")
-    commands_dir = vault / ".claude" / "commands"
-    install_skills(commands_dir)
-
-    settings_path = vault / ".claude" / "settings.json"
-    added = []
-    read_scope_added = False
-    deny_added = False
-    if settings_path.exists():
-        try:
-            settings = _read_json(settings_path)
-            perms = settings.setdefault("permissions", {})
-            allow = perms.get("allow", [])
-            existing = set(allow)
-
-            missing = [p for p in _VAULT_PERMISSIONS if p not in existing]
-            if missing:
-                perms["allow"] = allow + missing
-                added = missing
-
-            if "blockReadsOutsideWorkingDirectories" not in perms:
-                perms["blockReadsOutsideWorkingDirectories"] = True
-                read_scope_added = True
-            deny = perms.get("deny")
-            if isinstance(deny, str):
-                deny = [deny]                     # a single rule written as a bare string
-            elif deny is None:
-                deny = []
-            elif not isinstance(deny, list):
-                raise TypeError("permissions.deny is not a list")   # left alone, with a warning
-            missing_deny = [p for p in _VAULT_DENY if p not in deny]
-            if missing_deny:
-                perms["deny"] = deny + missing_deny
-                deny_added = True
-
-            if added or read_scope_added or deny_added:
-                settings_path.write_text(json.dumps(settings, indent=2) + "\n")
-        except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
-            # Nothing was written, so nothing above may be reported as done.
-            added = []
-            read_scope_added = deny_added = False
-            print(f"  {_YELLOW}Left .claude/settings.json unchanged{_RESET}  {_DIM}its shape isn't "
-                  f"one Watchdog recognises; compare it with a new vault's.{_RESET}")
-
-    print(f"\n  {_GREEN}Skills refreshed{_RESET}  {_DIM}{commands_dir}{_RESET}")
-    if added:
-        print(f"  {_GREEN}Permissions updated{_RESET}  {_DIM}added {len(added)} missing rule{'s' if len(added) != 1 else ''}{_RESET}")
-    if read_scope_added:
-        print(f"  {_GREEN}Read access confined{_RESET}  {_DIM}sessions in this vault can no longer read outside it{_RESET}")
-    if deny_added:
-        print(f"  {_GREEN}Watchdog's keys protected{_RESET}  {_DIM}sessions in this vault can't read or edit ~/.watchdog{_RESET}")
-    for change in _migrate_vault_views(vault):
-        print(f"  {_GREEN}Updated{_RESET}  {_DIM}{change}{_RESET}")
-    claude_md = _refresh_vault_claude_md(vault)
-    if claude_md:
-        print(f"  {_GREEN}Session instructions updated{_RESET}  {_DIM}{claude_md}{_RESET}")
-    print()
-
-
-_CLAUDE_MD_BEGIN = "<!-- watchdog:begin"
-_CLAUDE_MD_END = "<!-- watchdog:end -->"
-
-
-def _vault_display_name(vault: Path, current: str) -> str:
-    """The name the vault's CLAUDE.md heading uses: the one already in its heading, else the
-    investigation's registered name, else the folder name."""
-    import re
-    m = re.search(r"^# (.+) — Watchdog$", current, flags=re.M)
-    if m:
-        return m.group(1)
-    try:
-        resolved = vault.resolve()
-        for info in load_projects().values():
-            if info.get("path") and Path(info["path"]).expanduser().resolve() == resolved:
-                return info.get("name") or vault.name
-    except (OSError, SystemExit):
-        pass
-    return vault.name
-
-
-def _refresh_vault_claude_md(vault: Path) -> str | None:
-    """Bring the vault's session instructions (`.claude/CLAUDE.md`) up to date (D264). The part
-    Watchdog writes sits between two marker comments and is replaced; anything outside them is
-    the user's and is kept. A file from before the markers existed is entirely Watchdog's as far
-    as anyone can tell, so it is saved beside itself before being replaced. Returns a description
-    of what changed, or None when nothing did."""
-    path = vault / ".claude" / "CLAUDE.md"
-    raw = path.read_bytes() if path.exists() else b""
-    try:
-        current = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        current = ""            # unreadable: treated as a file without markers, backed up byte for byte
-    block = _render_template("CLAUDE.md", name=_vault_display_name(vault, current)).rstrip("\n")
-    begin, end = current.find(_CLAUDE_MD_BEGIN), current.find(_CLAUDE_MD_END)
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(block + "\n", encoding="utf-8")
-        return ".claude/CLAUDE.md was missing and has been written"
-    if 0 <= begin < end:
-        new = current[:begin] + block + current[end + len(_CLAUDE_MD_END):]
-        if new == current:
-            return None
-        path.write_text(new, encoding="utf-8")
-        return ".claude/CLAUDE.md — Watchdog's section replaced; your own notes kept"
-    backup = path.with_name("CLAUDE.md.before-refresh")
-    n = 1
-    while backup.exists():
-        n += 1
-        backup = path.with_name(f"CLAUDE.md.before-refresh-{n}")
-    backup.write_bytes(raw)
-    path.write_text(block + "\n", encoding="utf-8")
-    return (f".claude/CLAUDE.md replaced; the old copy is at .claude/{backup.name}. Copy any "
-            f"notes of your own from it to below the end marker.")
-
-
-def _migrate_vault_views(vault: Path) -> list[str]:
-    """Point an older vault's dashboard and graph colours at the canonical entity folders (D105) —
-    they were scaffolded for `entities/company` and `entities/address`, which ingest never writes,
-    so the dashboard's Companies view was always empty. Edits only those exact strings, leaving
-    any other customization alone. Returns a description of each change made."""
-    changes = []
-    base = vault / "dashboard.base"
-    if base.exists():
-        text = base.read_text(encoding="utf-8")
-        new = (text.replace('file.inFolder("entities/company")', 'file.inFolder("entities/organization")')
-                   .replace("    name: Companies\n", "    name: Organizations\n"))
-        if new != text:
-            changes.append("dashboard.base — Companies view now reads entities/organization")
-        renamed = new.replace("    name: Possible duplicates\n", "    name: Possible duplicate documents\n")
-        if renamed != new:
-            changes.append('dashboard.base — "Possible duplicates" renamed "Possible duplicate documents"')
-            new = renamed
-        if new != text:
-            base.write_text(new, encoding="utf-8")
-    graph = vault / ".obsidian" / "graph.json"
-    if graph.exists():
-        try:
-            data = _read_json(graph)
-        except (OSError, json.JSONDecodeError):
-            data = None
-        if isinstance(data, dict):
-            renamed = {"path:entities/company": "path:entities/organization",
-                       "path:entities/address": "path:entities/place"}
-            touched = False
-            groups = data.get("colorGroups") or []
-            present = {g.get("query") for g in groups}
-            for g in groups:
-                target = renamed.get(g.get("query"))
-                if target and target not in present:
-                    g["query"] = target
-                    present.add(target)
-                    touched = True
-            if touched:
-                graph.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-                changes.append("graph colours — company/address groups now match organization/place")
-    return changes
-
-
-def cmd_show_skills(args) -> None:
-    """List the global record skills, or print one. With no name, also opens the skills
-    folder on GitHub so the full text is easy to read."""
-    import webbrowser
-    from watchdog import skills_catalog
-
-    catalog = skills_catalog.catalog()
-    name = getattr(args, "name", None)
-
-    if name:
-        canon = name.removesuffix(".md")
-        if canon not in catalog:
-            sys.exit(f"\n  {_YELLOW}Error:{_RESET} no record skill {_BOLD}{canon}{_RESET}.\n"
-                     f"  Run {_CYAN}watchdog settings skills{_RESET}{_DIM} to list them.{_RESET}\n")
-        print()
-        print(Path(catalog[canon]).read_text(encoding="utf-8"))
-        return
-
-    print()
-    print(f"  {_BOLD}Record skills{_RESET}  {_DIM}{len(catalog)} available{_RESET}")
-    print()
-    for n, path in catalog.items():
-        desc = skills_catalog._skill_descriptor(Path(path).read_text(encoding="utf-8"))
-        if len(desc) > 96:
-            desc = desc[:95].rstrip() + "…"
-        print(f"  {_CYAN}{n}{_RESET}")
-        print(f"  {_DIM}{desc}{_RESET}\n")
-
-    try:
-        ver = _pkg_version()
-    except Exception:
-        ver = None
-    url = skills_catalog.github_skills_url("main")
-    print(f"  {_DIM}Read the full text:{_RESET} {_CYAN}{url}{_RESET}")
-    print(f"  {_DIM}Print one:{_RESET} {_CYAN}watchdog settings skills <name>{_RESET}")
-    print(f"  {_DIM}Add your own:{_RESET} {_CYAN}{skills_catalog.USER_SKILLS_DIR}{_RESET}")
-    if ver:
-        print(f"  {_DIM}(installed watchdog-intel {ver}){_RESET}")
-    print()
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
-
-
-def _pkg_version() -> str:
-    from importlib.metadata import version
-    return version("watchdog-intel")
-
-
-def _pick_skill_arrow(catalog: dict, current) -> tuple[str, str | None]:
-    """Arrow-key picker for a record skill. Returns ``(action, value)`` where action is
-    ``"set"`` (value = chosen skill name or a typed name/path), ``"unset"``, or ``"cancel"``.
-
-    Built on the shared `interactive.pick()` (raw-mode with a numbered fallback)."""
-    names = list(catalog)
-    items = names + ["(unset — classify each document)", "Type my own…"]
-    idx   = names.index(current) if current in names else 0
-
-    def _ask_custom() -> tuple[str, str | None]:
-        try:
-            ans = input("\n  Skill name or file path (Enter to cancel): ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print()
-            return ("cancel", None)
-        return ("set", ans) if ans else ("cancel", None)
-
-    result = interactive.pick(items, idx, title="Pin a record skill")
-    if result is interactive.CANCELLED:
-        return ("cancel", None)
-    if result == len(names):        # "(unset — classify each document)" row
-        return ("unset", None)
-    if result == len(names) + 1:    # "Type my own…" row
-        return _ask_custom()
-    return ("set", names[result])
-
-
-def _configure_default_skill_interactive(key: str, config: dict) -> str | None:
-    """Interactive ``configure default_skill``: show the skills catalog's GitHub link, run the
-    arrow-key picker, and handle unset/cancel directly. Returns the chosen skill name or path
-    for the caller to persist (the ``"set"`` case), or ``None`` when there's nothing left to do
-    (unset, cancel, or no skills available)."""
-    from watchdog import skills_catalog
-    catalog = skills_catalog.catalog()
-    url = skills_catalog.github_skills_url("main")
-    print(f"  {_DIM}Read the full text:{_RESET} {_CYAN}{url}{_RESET}")
-    if not catalog:
-        print(f"\n  {_DIM}No record skills available — classification stays on.{_RESET}\n")
-        return None
-
-    action, picked = _pick_skill_arrow(catalog, config.get(key))
-    if action == "cancel":
-        print(f"  {_DIM}No change.{_RESET}\n")
-        return None
-    if action == "unset":
-        config.pop(key, None)
-        _persist(config)
-        print(f"  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = "
-              f"{_DIM}(not set — classify each document){_RESET}\n")
-        return None
-    if picked not in catalog and not Path(picked).expanduser().is_file():
-        print(f"  {_YELLOW}Note:{_RESET} {_BOLD}{picked}{_RESET} isn't a known skill or an "
-              f"existing file; {_DIM}ingest will re-check it.{_RESET}")
-    return picked
-
-
-class _ConfigError(Exception):
-    """Raised by `_coerce_value` when a value fails validation. Callers decide whether to
-    exit (command-line set) or print and continue (interactive edit / wizard)."""
-
-
-def _persist(config: dict) -> None:
-    WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    # config.json holds the archive.org S3 wayback_secret_key in plaintext, so it is written
-    # owner-only on every persist, which also corrects an existing loose-permission file (#304).
-    write_private_json(CONFIG_FILE, config)
-
-
-def _auto_resolved_hint(key: str, config: dict) -> str:
-    """Render an 'auto' section setting with the value it currently resolves to, e.g.
-    'auto (129032 — sonnet)' or 'auto (150000 — openai:gpt-5-mini)'; the number depends on the
-    backend as well as the model (D190). Uses the catalogue tokenizer ratio, since `configure` has
-    no vault history to calibrate from."""
-    from watchdog import model_client
-    from watchdog.pipeline import section
-    raw = config.get("extractor_model") or _CONFIGURE_KEYS["extractor_model"]["default"]
-    backend, model = defaults.split_backend_model(raw)
-    model = model or None
-    threshold, budget = section.model_defaults(model, backend=backend)
-    resolved = threshold if key == "section_token_threshold" else budget
-    if backend and backend not in model_client.CLAUDE_BACKENDS:
-        suffix = f"{backend}:{model}"
-    else:
-        suffix = model or "sonnet"
-    return f"{_CYAN}auto{_RESET} {_DIM}({resolved} — {suffix}){_RESET}"
-
-
-def _call_default_fn(ref: str):
-    """A default computed at read time (`"module:function"`), such as the OS account's name for
-    `reporter_name`. None if it can't be computed."""
+def default_value(key: str):
+    """A setting's default, computing a `default_fn` (`"module:function"`, such as the OS account's
+    name for `reporter_name`) when it has one. None if there is none or it can't be computed."""
+    meta = SETTINGS.get(key, {})
+    if meta.get("default") is not None or not meta.get("default_fn"):
+        return meta.get("default")
     import importlib
-    module, _, name = ref.partition(":")
+    module, _, name = meta["default_fn"].partition(":")
     try:
         return getattr(importlib.import_module(module), name)()
     except Exception:  # noqa: BLE001 — a display default must never break settings
         return None
 
 
-def _display_value(k, v, config=None):
-    meta = _CONFIGURE_KEYS.get(k, {})
-    # Model-aware section budgets: 'auto' (or an unset key) resolves to a value derived from the
-    # extraction model's context window — show that resolved value when we have the config.
-    if k in ("section_token_threshold", "section_token_budget") and (v is None or v == "auto"):
-        return _auto_resolved_hint(k, config) if config is not None else f"{_CYAN}auto{_RESET}"
-    if v is None:
-        if k == "ocr_languages":
-            return f"{_DIM}auto-detect (default){_RESET}"
-        d = meta.get("default")
-        if d is None and meta.get("default_fn"):
-            d = _call_default_fn(meta["default_fn"])
-            if d is not None:
-                return f"{_CYAN}{d}{_RESET} {_DIM}(default){_RESET}"
-        if d is not None:
-            v = d
-        else:
-            return f"{_DIM}(not set){_RESET}"
-    if k == "ocr_languages":
-        return f"{_CYAN}{', '.join(v)}{_RESET}" if v else f"{_DIM}auto-detect (default){_RESET}"
-    if isinstance(v, bool):
-        return f"{_CYAN}{'true' if v else 'false'}{_RESET}"
-    if meta.get("secret") and v:
-        return f"{_CYAN}••••••••{_RESET} {_DIM}(set){_RESET}"  # never print a stored secret back
-    return f"{_CYAN}{v}{_RESET}"
+def _auto_resolved(key: str, cfg: dict) -> str:
+    """An 'auto' section setting with the value it currently resolves to, e.g. 'auto (129032 —
+    sonnet)'; the number depends on the backend as well as the model (D190)."""
+    from watchdog import model_client
+    from watchdog.pipeline import section
+    raw = cfg.get("extractor_model") or SETTINGS["extractor_model"]["default"]
+    backend, model = defaults.split_backend_model(raw)
+    model = model or None
+    threshold, budget = section.model_defaults(model, backend=backend)
+    resolved = threshold if key == "section_token_threshold" else budget
+    suffix = f"{backend}:{model}" if backend and backend not in model_client.CLAUDE_BACKENDS else (model or "sonnet")
+    return f"auto ({resolved} — {suffix})"
 
 
-def _coerce_value(config: dict, key: str, value: str) -> str:
-    """Validate and coerce raw string `value` for `key`, mutating `config` in place and
-    returning the display string. Raises `_ConfigError` on invalid input. Side effects:
-    `projects_dir` creates the directory; `ocr_engine` ensures the engine package."""
-    meta = _CONFIGURE_KEYS[key]
+def display_value(key: str, value, cfg: dict | None = None) -> str:
+    """How Settings shows a setting's value (never a stored secret)."""
+    meta = SETTINGS.get(key, {})
+    if key in ("section_token_threshold", "section_token_budget") and (value is None or value == "auto"):
+        return _auto_resolved(key, cfg) if cfg is not None else "auto"
+    if value is None:
+        if key == "ocr_languages":
+            return "auto-detect (default)"
+        d = default_value(key)
+        if d is None:
+            return "(not set)"
+        if meta.get("default") is None:
+            return f"{d} (default)"
+        value = d
+    if key == "ocr_languages":
+        return ", ".join(value) if value else "auto-detect (default)"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if meta.get("secret") and value:
+        return "•••••••• (set)"
+    return str(value)
+
+
+def coerce(cfg: dict, key: str, value: str) -> str:
+    """Validate and coerce raw string `value` for `key`, setting it in `cfg` and returning the
+    display string. Raises `SettingError` on invalid input. `projects_dir` creates the folder."""
+    meta = SETTINGS[key]
     if key == "ocr_languages":
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
-        config[key] = langs
+        cfg[key] = langs
         return ", ".join(langs) if langs else "auto-detect"
     if key == "projects_dir":
         path = Path(value).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)
-        config[key] = str(path)
+        cfg[key] = str(path)
         return str(path)
     if meta["type"] == "float":
         try:
             v = float(value)
         except ValueError:
-            raise _ConfigError(f"'{key}' must be a number (e.g. 0.85)")
+            raise SettingError(f"'{key}' must be a number (e.g. 0.85)")
         if v != v or v in (float("inf"), float("-inf")):      # nan, inf
-            raise _ConfigError(f"'{key}' must be a finite number (e.g. 0.85)")
+            raise SettingError(f"'{key}' must be a finite number (e.g. 0.85)")
         lo, hi = meta.get("min"), meta.get("max")
         if lo is not None and v < lo:
-            raise _ConfigError(f"'{key}' must be >= {lo}")
+            raise SettingError(f"'{key}' must be >= {lo}")
         if hi is not None and v > hi:
-            raise _ConfigError(f"'{key}' must be <= {hi}")
-        config[key] = v
+            raise SettingError(f"'{key}' must be <= {hi}")
+        cfg[key] = v
         return str(v)
     if meta["type"] == "int_or_auto":
         if value.lower() == "auto":
-            config[key] = "auto"
+            cfg[key] = "auto"
             return "auto"
         try:
             v = int(value)
         except ValueError:
-            raise _ConfigError(f"'{key}' must be 'auto' or a whole number")
+            raise SettingError(f"'{key}' must be 'auto' or a whole number")
         lo = meta.get("min")
         if lo is not None and v < lo:
-            raise _ConfigError(f"'{key}' must be >= {lo}")
-        config[key] = v
+            raise SettingError(f"'{key}' must be >= {lo}")
+        cfg[key] = v
         return str(v)
     if meta["type"] == "int":
         try:
             v = int(value)
         except ValueError:
-            raise _ConfigError(f"'{key}' must be a whole number")
+            raise SettingError(f"'{key}' must be a whole number")
         lo = meta.get("min")
         if lo is not None and v < lo:
-            raise _ConfigError(f"'{key}' must be >= {lo}")
-        config[key] = v
+            raise SettingError(f"'{key}' must be >= {lo}")
+        cfg[key] = v
         return str(v)
     if meta["type"] == "bool":
         if value.lower() in ("true", "yes", "1", "on"):
@@ -1236,350 +846,19 @@ def _coerce_value(config: dict, key: str, value: str) -> str:
         elif value.lower() in ("false", "no", "0", "off"):
             v = False
         else:
-            raise _ConfigError(f"'{key}' must be true or false")
-        config[key] = v
+            raise SettingError(f"'{key}' must be true or false")
+        cfg[key] = v
         return "true" if v else "false"
     if meta["type"] == "enum":
         choices = meta.get("choices", [])
         if value not in choices:
-            raise _ConfigError(f"'{key}' must be one of: {', '.join(choices)}")
-        config[key] = value
-        if key == "ocr_engine":
-            _ensure_ocr_engine(value)
+            raise SettingError(f"'{key}' must be one of: {', '.join(choices)}")
+        cfg[key] = value
+        if key == "ocr_engine" and value == "apple_vision" and sys.platform != "darwin":
+            raise SettingError("Apple Vision OCR is only available on macOS.")
         return value
     if key == "reporter_name":
         value = " ".join(value.split())[:120]
-    config[key] = value
+    cfg[key] = value
     return value
 
-
-# Provider name -> the `_OPENAI_PRICING` model-id prefix used to group its models in the picker.
-_PROVIDER_MODEL_PREFIXES = {"openai": "gpt-", "deepseek": "deepseek-", "gemini": "gemini-"}
-
-
-def _pick_model_interactive(current: str | None = None, *, only_provider: str | None = None) -> str | None:
-    """Arrow-key picker for a `[backend:]model` config value (classifier_model/extractor_model/
-    finalizer_model). Offers Claude tiers plus every OpenAI/DeepSeek/Gemini model
-    `model_client.py` has pricing for, grouped under section headers, with a free-text escape
-    hatch. Pass `only_provider` to show just that provider's models (e.g. from the metered-
-    ingestion setup wizard, which already knows the provider). Returns the chosen value, or
-    ``None`` if cancelled or left blank."""
-    from watchdog.model_catalog import display_name, resolve_model_id
-    from watchdog.model_client import _MODEL_IDS, _OPENAI_PRICING
-
-    if only_provider:
-        # local/openrouter (#380) have no fixed pricing-table catalogue — arbitrary self-hosted
-        # or OpenRouter-routed model ids — so they fall straight through to "Type my own…" below.
-        prefix = _PROVIDER_MODEL_PREFIXES.get(only_provider)
-        models = [m for m in _OPENAI_PRICING if prefix and m.startswith(prefix)]
-        groups = [(None, only_provider, models)]
-    else:
-        # A model with several aliases (Sonnet 5.5's `sonnet`/`sonnet-5.5`) must list once: keep
-        # the first alias per model id, which is the bare tier name.
-        claude_tiers, seen_ids = [], set()
-        for tier, model_id in _MODEL_IDS.items():
-            if model_id not in seen_ids:
-                seen_ids.add(model_id)
-                claude_tiers.append(tier)
-        groups = [
-            ("Claude", None, claude_tiers),
-            ("OpenAI", "openai", [m for m in _OPENAI_PRICING if m.startswith("gpt-")]),
-            ("DeepSeek", "deepseek", [m for m in _OPENAI_PRICING if m.startswith("deepseek-")]),
-            ("Gemini", "gemini", [m for m in _OPENAI_PRICING if m.startswith("gemini-")]),
-        ]
-
-    items: list = []
-    item_values: list[str | None] = []   # parallel to items; None for Header rows
-    for title, backend, models in groups:
-        if not models:
-            continue
-        if title:
-            items.append(interactive.Header(title))
-            item_values.append(None)
-        for m in models:
-            # `m` is a bare Claude tier name (opus/sonnet/haiku) in the Claude group, a raw
-            # provider id everywhere else — resolve_model_id is a no-op passthrough for the latter.
-            items.append(f"  {display_name(resolve_model_id(m))}")
-            item_values.append(m if backend is None else f"{backend}:{m}")
-    items.append("  Type my own…")
-    item_values.append("__custom__")
-
-    initial = item_values.index(current) if current in item_values else 0
-    result = interactive.pick(items, initial, title="Choose a model")
-    if result is interactive.CANCELLED:
-        return None
-    chosen = item_values[result]
-    if chosen == "__custom__":
-        value = input("  Model (e.g. openai:gpt-5-mini): ").strip()
-        return value or None
-    return chosen
-
-
-def _edit_key_interactive(config: dict, key: str) -> None:
-    """Show a key's help and current value, prompt for a new value, then coerce, persist, and
-    report. Used by `watchdog configure <key>` and the wizard. Prints an error and returns
-    (without exiting) on invalid input so the wizard can carry on."""
-    meta = _CONFIGURE_KEYS[key]
-    print(f"\n  {_BOLD}{key}{_RESET}\n")
-    for line in meta["help"].split("\n"):
-        print(f"  {_DIM}{line.strip()}{_RESET}")
-    print()
-    print(f"  Current value:  {_display_value(key, config.get(key), config)}")
-    if key in ("chunk_workers", "chew_workers"):
-        print(f"  Machine cores:  {os.cpu_count() or 1}")
-
-    if key == "default_skill":
-        value = _configure_default_skill_interactive(key, config)
-        if value is None:   # unset / cancel handled inside, or no skills
-            return
-    elif meta["type"] == "bool":
-        # A two-state value doesn't need a free-text box — toggle it. The capitalised letter in the
-        # bracket is what Enter does, so Enter always keeps the current value.
-        current = config.get(key)
-        current = bool(meta.get("default", False) if current is None else current)
-        print()
-        answer = interactive.read_answer(
-            f"  Enable? [{'Y/n' if current else 'y/N'}]  (Enter to keep current) ")
-        if answer == "":
-            print(f"\n  {_DIM}No change.{_RESET}\n")
-            return
-        if answer in ("y", "yes", "true", "on", "1"):
-            value = "true"
-        elif answer in ("n", "no", "false", "off", "0"):
-            value = "false"
-        else:
-            print(f"\n  {_YELLOW}Error:{_RESET} enter y or n\n")
-            return
-    elif key in ("classifier_model", "extractor_model", "finalizer_model"):
-        current = config.get(key, meta.get("default"))
-        print()
-        value = _pick_model_interactive(current)
-        if value is None:
-            print(f"\n  {_DIM}No change.{_RESET}\n")
-            return
-        # Routing a stage to a provider we have no key for would leave it broken until the next
-        # ingest failed — ask now, while the user is thinking about that provider.
-        from watchdog.cmd.auth import ensure_provider_key
-        ensure_provider_key(value)
-    elif meta["type"] == "enum":
-        choices = meta.get("choices", [])
-        current = config.get(key, meta.get("default"))
-        idx = choices.index(current) if current in choices else 0
-        print()
-        result = interactive.pick(choices, idx, title="Choose a value")
-        if result is interactive.CANCELLED:
-            print(f"\n  {_DIM}No change.{_RESET}\n")
-            return
-        value = choices[result]
-    else:
-        print()
-        if not interactive.confirm("  Change this value?", default=False):
-            print()
-            return
-        print()
-        value = input("  New value: ").strip()
-        if not value:
-            print(f"\n  {_DIM}No change.{_RESET}\n")
-            return
-
-    try:
-        display = _coerce_value(config, key, value)
-    except _ConfigError as e:
-        print(f"\n  {_YELLOW}Error:{_RESET} {e}\n")
-        return
-    _persist(config)
-    print(f"\n  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = {_CYAN}{display}{_RESET}\n")
-
-
-def _wizard_menu(config: dict, initial_sel: int = 0):
-    """Flat arrow-key menu over every configure key, grouped under dim section headers and
-    showing each key's current value. Returns ``(key, sel)`` — the chosen key and the menu
-    position so the caller can restore it on the next pass — or ``(None, sel)`` to quit.
-
-    Built on the shared `interactive.pick()` (raw-mode with a numbered fallback)."""
-    def _label(k):
-        return f"{k:<{_KEY_COL_WIDTH}} {_display_value(k, config.get(k), config)}"
-
-    items: list = []   # str (selectable key label) or interactive.Header
-    keys: list = []    # keys, parallel to the selectable items in `items`
-    shown = set()
-
-    for title, _blurb, section_keys in _CONFIGURE_SECTIONS:
-        present = [k for k in section_keys if k in _CONFIGURE_KEYS]
-        if not present:
-            continue
-        items.append(interactive.Header(title))
-        for k in present:
-            items.append(_label(k))
-            keys.append(k)
-            shown.add(k)
-    leftovers = [k for k in _CONFIGURE_KEYS if k not in shown]
-    if leftovers:
-        items.append(interactive.Header("Other"))
-        for k in leftovers:
-            items.append(_label(k))
-            keys.append(k)
-
-    if not keys:
-        return (None, 0)
-    sel = max(0, min(initial_sel, len(keys) - 1))
-
-    result = interactive.pick(items, sel, title="Configure",
-                               hint="↑/↓ move · Enter edit · q quit")
-    if result is interactive.CANCELLED:
-        return (None, sel)
-
-    selectable_positions = [i for i, it in enumerate(items) if not isinstance(it, interactive.Header)]
-    new_sel = selectable_positions.index(result)
-    return (keys[new_sel], new_sel)
-
-
-def _run_configure_wizard(config: dict) -> None:
-    """Interactive loop: pick a setting from the flat arrow menu, edit it, repeat until quit."""
-    sel = 0
-    while True:
-        key, sel = _wizard_menu(config, sel)
-        if key is None:
-            print()
-            return
-        _edit_key_interactive(config, key)
-
-
-def cmd_configure(args) -> None:
-    config = {}
-    if CONFIG_FILE.exists():
-        try:
-            config = _read_json(CONFIG_FILE)
-        except json.JSONDecodeError:
-            sys.exit("Error: config file is corrupt. Try running 'watchdog setup --force'.")
-
-    key   = getattr(args, "key",   None)
-    value = getattr(args, "value", None)
-
-    if key is None:
-        print()
-        print(f"  {_BOLD}Configuration{_RESET}  {_DIM}{CONFIG_FILE}{_RESET}")
-        print(f"  {_DIM}Model authentication (Claude subscription/API key, other provider keys) is"
-              f" managed separately — see{_RESET} {_CYAN}watchdog settings auth{_RESET}{_DIM}.{_RESET}")
-
-        def _print_key(k):
-            meta = _CONFIGURE_KEYS[k]
-            print(f"  {_DIM}{k:<{_KEY_COL_WIDTH}}{_RESET} {_display_value(k, config.get(k), config)}")
-            print(f"  {' ' * _KEY_COL_WIDTH} {_DIM}{meta['short']}{_RESET}")
-            print()
-
-        shown = set()
-        for title, blurb, keys in _CONFIGURE_SECTIONS:
-            print()
-            print(f"  {_BOLD}{title}{_RESET}  {_DIM}{blurb}{_RESET}")
-            print()
-            for k in keys:
-                if k in _CONFIGURE_KEYS:
-                    _print_key(k)
-                    shown.add(k)
-        leftovers = [k for k in _CONFIGURE_KEYS if k not in shown]
-        if leftovers:
-            print()
-            print(f"  {_BOLD}Other{_RESET}")
-            print()
-            for k in leftovers:
-                _print_key(k)
-
-        if sys.stdin.isatty():
-            print()
-            try:
-                answer = input("  Configure a setting? [y/N] ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                print()
-                return
-            if answer in ("y", "yes"):
-                _run_configure_wizard(config)
-        return
-
-    if key not in _CONFIGURE_KEYS:
-        sys.exit(f"Error: unknown key '{key}'. Known keys: {', '.join(_CONFIGURE_KEYS)}")
-
-    if value is None:
-        if sys.stdin.isatty():
-            _edit_key_interactive(config, key)
-        else:
-            print(f"\n  {_BOLD}{key}{_RESET} = {_display_value(key, config.get(key), config)}\n")
-        return
-
-    try:
-        display = _coerce_value(config, key, value)
-    except _ConfigError as e:
-        sys.exit(f"Error: {e}")
-    _persist(config)
-    print(f"\n  {_GREEN}Set:{_RESET} {_BOLD}{key}{_RESET} = {_CYAN}{display}{_RESET}\n")
-
-
-def cmd_unlock(args) -> None:
-    """Remove a lock by hand, for terminal users. Runs and the app already take over a lock whose
-    run died, or one past the age window when its run can't be checked (D293); what is left for
-    this command is a lock a run still holds, which only `--force` removes."""
-    from watchdog.pipeline import locks as _locks
-    inferred = not args.project
-    if args.project:
-        _, info = _find_project(args.project)
-        vault = Path(info["path"])
-    else:
-        vault = Path(".").resolve()
-        if not is_vault(vault):
-            sys.exit(_hint("Error: not inside a Watchdog vault. Run from a vault directory or pass a project name.",
-                           "Error: this folder is not an investigation."))
-
-    lock_files = [
-        (preprocessing_lock(vault), ".preprocessing-lock", "pre-processing"),
-        (processing_lock(vault),    ".processing-lock",    "processing"),
-    ]
-
-    print()
-    found_any = False
-    ingest_lock_held = False
-    for lock_path, lock_name, op_name in lock_files:
-        holder = _locks.inspect(lock_path)
-        if holder is None:
-            continue
-        found_any = True
-        age_str = f"updated {int(holder['age'] // 60)}m ago"
-        if holder["state"] == _locks.DEAD:
-            age_str = "its run had stopped"
-        if holder["state"] in _locks.TAKEABLE or args.force:
-            # The same removal the app's status calls make for an abandoned lock (I10).
-            if not _locks.clear_abandoned(lock_path):
-                lock_path.unlink(missing_ok=True)
-            print(f"  {_GREEN}Removed:{_RESET} {_BOLD}{lock_name}{_RESET}  {_DIM}({age_str}){_RESET}")
-            continue
-        if op_name == "processing":
-            ingest_lock_held = True
-        if holder["where"] == "elsewhere":
-            who = f"a run on {holder.get('host') or 'another computer'}"
-        elif holder["where"] == "here" and holder["age"] >= _locks.STALE_SECONDS:
-            who = "a process that is still running on this computer"
-        else:
-            who = "a run that may still be working"
-        print(f"  {_YELLOW}Lock is in use{_RESET} ({age_str}) — {op_name} is held by {who}.")
-        force_cmd = "watchdog unlock --force" if inferred else f"watchdog unlock {args.project} --force"  # terminal only
-        print(_hint(f"  Use {_CYAN}{force_cmd}{_RESET} to remove it anyway.", ""))
-
-    if not found_any:
-        print(f"  {_DIM}No locks found — nothing to do.{_RESET}")
-
-    # The run state and temp files belong to the ingest that holds the lock — leave them alone
-    # while a live one still does.
-    if not ingest_lock_held:
-        state_file = processing_state(vault)
-        if state_file.exists():
-            state_file.unlink(missing_ok=True)
-            print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}processing-state.json{_RESET}")
-
-        tmp_dir = vault / ".watchdog" / "tmp"
-        if tmp_dir.exists():
-            leftover = list(tmp_dir.glob("wdg_*"))
-            for f in leftover:
-                f.unlink(missing_ok=True)
-            if leftover:
-                print(f"  {_GREEN}Cleaned:{_RESET}  {_DIM}{len(leftover)} leftover temp file{'s' if len(leftover) != 1 else ''} from .watchdog/tmp/{_RESET}")
-
-    print()

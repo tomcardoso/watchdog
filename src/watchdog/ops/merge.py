@@ -1,124 +1,48 @@
-"""`watchdog merge-entities <keep-id> <merge-id>` — deterministic registry surgery
-that folds a duplicate entity into another (#219).
+"""Merge a duplicate entity into another (#219): deterministic registry surgery, no model call.
 
-The same real-world entity can end up under two ids when reconciliation misses a pair;
-`/watchdog-health` and the dashboard's single-source table help spot them, and this command
-folds one into the other. No model calls. It runs from inside the vault it mutates, since
-there's no useful project-name lookup for a command that edits the registry in place."""
+The same real-world entity can end up under two ids when reconciliation misses a pair. The app
+shows both entities and asks before it starts this; the merge itself is the reporter's (I12) and
+can be undone (D281)."""
 
 import json
 import sys
 from pathlib import Path
 
-from watchdog.vault_paths import is_vault
-from watchdog.ops import current, hint, op, say  # noqa: F401
-from watchdog.cmd.base import _BOLD, _CYAN, _DIM, _GREEN, _YELLOW, _RESET
+from watchdog.ops import op, require_vault
 from watchdog.pipeline import merge_entities as _merge_entities
 from watchdog.pipeline.json_io import _read_json
 
 
-def _entity_preview(eid: str, entry: dict) -> str:
-    n_docs = len(entry.get("appears_in", []))
-    n_roles = len(entry.get("roles", []))
-    return (
-        f"  {_BOLD}{entry['name']}{_RESET}  {_DIM}({entry.get('type', '?')}, {eid}){_RESET}\n"
-        f"    {_DIM}{n_docs} document{'s' if n_docs != 1 else ''} · "
-        f"{n_roles} relationship{'s' if n_roles != 1 else ''}{_RESET}"
-    )
-
-
-def cmd_merge_entities(args) -> None:
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit("Error: must be run from inside a Watchdog vault directory")
-
-    entities_path = vault / ".watchdog" / "registry" / "entities.json"
+@op("merge-entities", engine="index")
+def merge_entities(rep, vault: Path, *, keep: str, merge: str) -> dict:
+    """Fold entity `merge` into `keep`."""
+    require_vault(vault)
     try:
-        entities_reg = _read_json(entities_path)
+        entities = _read_json(vault / ".watchdog" / "registry" / "entities.json")
     except (OSError, json.JSONDecodeError):
-        sys.exit("Error: entities.json not found or unreadable — is this a Watchdog vault?")
-
-    keep_id, merge_id = args.keep_id, args.merge_id
-    if keep_id not in entities_reg:
-        sys.exit(f"Error: entity '{keep_id}' not found in entities.json")
-    if merge_id not in entities_reg:
-        sys.exit(f"Error: entity '{merge_id}' not found in entities.json")
-    keep_entry, merge_entry = entities_reg[keep_id], entities_reg[merge_id]
-
-    # Show both entities before doing anything irreversible — the surviving one first,
-    # then the one about to be folded away and disappear under its own id.
-    say()
-    say(f"  {_BOLD}Keep{_RESET}")
-    say(_entity_preview(keep_id, keep_entry))
-    say(f"  {_YELLOW}Merge away{_RESET}")
-    say(_entity_preview(merge_id, merge_entry))
-    if keep_entry.get("type") != merge_entry.get("type"):
-        say(f"\n  {_YELLOW}Warning:{_RESET} different entity types "
-              f"({merge_entry.get('type', '?')} vs {keep_entry.get('type', '?')}) — "
-              f"make sure this is really the same entity.")
-
-    if not getattr(args, "force", False):
-        answer = current().confirm(
-            f"\n  Merge {_BOLD}{merge_entry['name']}{_RESET} into "
-            f"{_BOLD}{keep_entry['name']}{_RESET}? This cannot be undone.",
-            default=False,
-        )
-        if not answer:
-            say(f"  {_DIM}Cancelled — nothing changed.{_RESET}\n")
-            return
-
+        sys.exit("Error: the entity registry is missing or unreadable.")
+    for eid in (keep, merge):
+        if eid not in entities:
+            sys.exit(f"Error: there is no entity “{eid}” in this investigation.")
     try:
-        result = _merge_entities.run(vault, keep_id, merge_id)
+        result = _merge_entities.run(vault, keep, merge)
     except OSError as e:
-        # The registry lock (D258) — on Windows `msvcrt` gives up after ~10s while another
-        # watchdog command (usually `bark` committing a batch) holds it.
-        sys.exit(f"Error: couldn't write the registry ({e}). "
-                 + hint("If `watchdog bark` or another watchdog command is running in this vault, "
-                         "wait for it to finish and retry.",
-                         "If a run is in progress on this investigation, wait for it to finish and retry."))
+        # The registry lock (D258): on Windows `msvcrt` gives up after ~10s while another run
+        # (usually post-processing committing a batch) holds it.
+        sys.exit(f"Error: the registry could not be written ({e}). If documents are being added "
+                 "to this investigation, wait for that to finish and try again.")
     except ValueError as e:
         sys.exit(f"Error: {e}")
 
-    say()
-    say(
-        f"  {_GREEN}Merged:{_RESET}  {_BOLD}{result['merge_name']}{_RESET}  "
-        f"{_DIM}({args.merge_id}){_RESET}  →  {_BOLD}{result['keep_name']}{_RESET}  "
-        f"{_DIM}({args.keep_id}){_RESET}"
-    )
-    say(
-        f"  {_DIM}{result['aliases']} aliases · {result['appears_in']} documents · "
-        f"{result['roles']} relationships · {result['timeline_events']} timeline events{_RESET}"
-    )
+    rep.log(f"Merged {result['merge_name']} into {result['keep_name']}: {result['aliases']} "
+            f"aliases, {result['appears_in']} documents, {result['roles']} relationships, "
+            f"{result['timeline_events']} timeline events.")
     if result["remapped_roles"]:
         n = result["remapped_roles"]
-        say(
-            f"  {_DIM}{n} relationship{'s' if n != 1 else ''} elsewhere in the vault "
-            f"remapped to {args.keep_id}{_RESET}"
-        )
-    say(f"  {_CYAN}{result['keep_note_path']}.md{_RESET}")
-    say(hint(
-        f"  {_YELLOW}Run{_RESET} {_CYAN}watchdog reindex{_RESET} "
-        f"{_YELLOW}to drop the merged entity's stale search-index entries.{_RESET}",
-        f"  {_YELLOW}Rebuild the search index (Activity → Maintenance) to drop the merged "
-        f"entity's stale search-index entries.{_RESET}",
-    ))
+        rep.log(f"{n} relationship{'s' if n != 1 else ''} elsewhere in the investigation now "
+                f"point at {result['keep_name']}.")
+    rep.log("Rebuild the search index (Activity → Maintenance) to drop the merged entity's old "
+            "search entries.")
     if result.get("summary_dropped"):
-        say(hint(
-            f"  {_YELLOW}Summary now reflects only the kept entity — run{_RESET} "
-            f"{_CYAN}/watchdog-entity {args.keep_id}{_RESET} "
-            f"{_YELLOW}in a Claude Code session to re-synthesize it from all sources.{_RESET}",
-            f"  {_YELLOW}Summary now reflects only the kept entity.{_RESET}",
-        ))
-    if result["backup_dir"]:
-        rel = result["backup_dir"].relative_to(vault)
-        say(f"  {_DIM}backup: {_CYAN}{rel}{_RESET}{_DIM}{hint(' — copy files back to undo', '')}{_RESET}")
-    say()
+        rep.log("The summary now reflects only the kept entity.")
     return {k: (str(v) if isinstance(v, Path) else v) for k, v in result.items()}
-
-
-@op("merge-entities", engine="index")
-def merge_entities(rep, vault: Path, *, keep: str, merge: str) -> dict:
-    """Fold entity `merge` into `keep` (the reporter's merge, I12). The app shows both entities
-    and asks before it starts this."""
-    from types import SimpleNamespace
-    return cmd_merge_entities(SimpleNamespace(keep_id=keep, merge_id=merge, force=True)) or {}

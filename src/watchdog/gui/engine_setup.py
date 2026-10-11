@@ -220,8 +220,15 @@ def _download_docling() -> str | None:
 
 
 def _download_gliner() -> str | None:
-    from watchdog.setup_cmd import _download_gliner_model
-    _download_gliner_model()
+    # Verify TLS via the OS trust store rather than certifi's bundled list (D122), for this one
+    # load only: `inject_into_ssl` patches the global `ssl` module.
+    import truststore
+    truststore.inject_into_ssl()
+    try:
+        from gliner import GLiNER
+        GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+    finally:
+        truststore.extract_from_ssl()
     return None
 
 
@@ -266,18 +273,18 @@ def apply_preferred_ocr() -> str | None:
     does not name one, as `setup.complete` does. First-run setup usually finishes before the
     engine's background phase has installed the OCR engine, so this step repeats the choice once
     the engine is there. Returns the engine stored, or None."""
-    from watchdog.cmd import setup as setup_cmd
+    from watchdog import config
     from watchdog.gui.api.settings import _read_config
 
-    if not setup_cmd.CONFIG_FILE.exists():
+    if not config.path().exists():
         return None
-    config = _read_config()
-    if "ocr_engine" in config:
+    cfg = _read_config()
+    if "ocr_engine" in cfg:
         return None
     engine = preferred_ocr_engine()
     if engine:
-        config["ocr_engine"] = engine
-        setup_cmd._persist(config)
+        cfg["ocr_engine"] = engine
+        config.save(cfg)
     return engine
 
 

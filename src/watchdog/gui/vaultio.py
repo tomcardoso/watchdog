@@ -25,7 +25,7 @@ import yaml
 
 from watchdog.gui.rpc import RpcError
 from watchdog.pipeline.json_io import _read_json_or
-from watchdog.vault_paths import ensure_current_layout_once, is_vault
+from watchdog.vault_paths import is_vault
 
 # ── small text helpers ───────────────────────────────────────────────────────────
 
@@ -193,7 +193,6 @@ def require_vault(path: Any) -> Path:
     if not p.is_dir() or not is_vault(p):
         raise RpcError(f"{p} is not a Watchdog investigation folder.", code="not_a_vault")
     require_granted(p)
-    ensure_current_layout_once(p)       # an older vault's folders are renamed on first open (D266)
     return p
 
 
@@ -256,7 +255,7 @@ def read_json(path: Path, default: Any) -> Any:
 
 def registered_projects() -> dict:
     """`projects.json` as a dict; a corrupt or unreadable file reads as empty."""
-    from watchdog.cmd.base import load_projects
+    from watchdog.projects import load as load_projects
     try:
         data = load_projects()
     except SystemExit:
@@ -557,7 +556,7 @@ def _ndjson(path: Path) -> list[dict]:
 
 def raw_timeline_events(vault: Path, docs: dict) -> list[dict]:
     """Canonical events plus the raw per-document events of committed documents that a failed
-    dedup left behind — the set `timeline.cmd_rebuild_timeline` renders into `timeline.md`."""
+    dedup left behind — the set `timeline.rebuild_timeline` renders into `timeline.md`."""
     td = vault / ".watchdog" / "timeline"
     if not td.is_dir():
         return []

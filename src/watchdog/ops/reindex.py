@@ -1,8 +1,8 @@
-"""`watchdog reindex` — rebuild `.embeddings/` and `.fulltext/` from the vault on disk, with no
+"""Rebuild `.embeddings/` and `.fulltext/` from the vault on disk, with no
 model calls (D53).
 
 Titles, types and entities come from `documents.json`/`entities.json`; page text comes from the
-morgue `<stem>.md` files (D26). The way to change `embed_model` after ingest."""
+morgue `<stem>.md` files (D26). The way to change `embed_model` after documents were added."""
 
 import json
 import re
@@ -10,8 +10,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from watchdog.ops import current, hint, op, say  # noqa: F401
-from watchdog.cmd.base import _BOLD, _DIM, _GREEN, _RESET, _YELLOW, _resolve_vault
+from watchdog.ops import op, require_vault
 from watchdog.pipeline.json_io import _read_json_or
 
 _PAGE_MARKER = re.compile(r"<!-- PAGE (\d+) -->\n\n")
@@ -82,8 +81,10 @@ def _fixed_note_specs(vault: Path) -> list[tuple[Path, str, str]]:
     return specs
 
 
-def cmd_reindex(args) -> None:
-    _, info, vault = _resolve_vault(getattr(args, "project", None))
+@op("reindex", engine="index")
+def reindex(rep, vault: Path) -> dict:
+    """Rebuild the semantic and full-text search indexes from what is on disk. No model call."""
+    require_vault(vault)
     from watchdog.pipeline import embed, fulltext
 
     reg_dir = vault / ".watchdog" / "registry"
@@ -92,7 +93,7 @@ def cmd_reindex(args) -> None:
     if documents_path.exists():
         documents_reg = _read_json_or(documents_path, {}, catch=(json.JSONDecodeError,))
     if not documents_reg:
-        sys.exit("Error: no documents ingested yet — nothing to reindex.")
+        sys.exit("Error: no documents have been added yet, so there is nothing to index.")
 
     entities_reg = {}
     entities_path = reg_dir / "entities.json"
@@ -104,13 +105,9 @@ def cmd_reindex(args) -> None:
     if not embed.embedder_available():
         sys.exit("Error: the search tools (fastembed) are not installed, so the search index "
                  "cannot be rebuilt. The existing index has not been changed."
-                 + hint(" Reinstall Watchdog with its search tools to fix this.",
-                         " Reinstalling the app restores them."))
+                 + " Reinstalling the app restores them.")
 
-    say()
-    say(f"  {_BOLD}Reindexing{_RESET} {_DIM}— {info['name']}{_RESET}")
-    say(f"  {_DIM}embed_model: {embed._model_name()}{_RESET}")
-    say()
+    rep.log(f"Rebuilding the search index with {embed._model_name()}.")
 
     # A full rebuild replaces the index outright, so a note/passage for a document or entity
     # that no longer exists (e.g. after a future merge-entities) doesn't survive alongside it.
@@ -123,7 +120,7 @@ def cmd_reindex(args) -> None:
         morgue_path = doc.get("morgue_path")
         morgue_md = vault / Path(morgue_path).with_suffix(".md") if morgue_path else None
         if not morgue_md or not morgue_md.exists():
-            say(f"  {_YELLOW}skip{_RESET}  {filename}  {_DIM}(no morgue text on disk){_RESET}")
+            rep.log(f"Skipped {filename}: its converted text is not on disk.")
             n_skipped += 1
             continue
         pages = _pages_from_morgue_text(morgue_md.read_text(encoding="utf-8"))
@@ -135,7 +132,7 @@ def cmd_reindex(args) -> None:
         fulltext.add_document(vault, filename, sha, pages, morgue_path=morgue_path or "")
         n_docs += 1
         n_passages += count
-        say(f"  {_GREEN}✓{_RESET}  {filename}  {_DIM}{count} passages{_RESET}")
+        rep.log(f"{filename}: {count} passages")
 
     n_notes = 0
     for md_path in _note_paths(vault):
@@ -150,19 +147,8 @@ def cmd_reindex(args) -> None:
         note_path = str(md_path.relative_to(vault).with_suffix(""))
         fulltext.add_note(vault, note_path, kind, title, md_path.read_text(encoding="utf-8"))
 
-    say()
-    skipped_note = f"  {_DIM}({n_skipped} skipped — no morgue text){_RESET}" if n_skipped else ""
-    say(f"  {_GREEN}Reindexed{_RESET}  {_BOLD}{n_docs}{_RESET} document{'s' if n_docs != 1 else ''} · "
-          f"{_BOLD}{n_passages}{_RESET} passage{'s' if n_passages != 1 else ''} · "
-          f"{_BOLD}{n_notes}{_RESET} note{'s' if n_notes != 1 else ''}{skipped_note}")
-    say()
+    skipped_note = f" ({n_skipped} skipped: no converted text)" if n_skipped else ""
+    rep.log(f"Indexed {n_docs} document{'s' if n_docs != 1 else ''}, "
+            f"{n_passages} passage{'s' if n_passages != 1 else ''} and "
+            f"{n_notes} note{'s' if n_notes != 1 else ''}{skipped_note}.")
     return {"documents": n_docs, "passages": n_passages, "notes": n_notes, "skipped": n_skipped}
-
-
-@op("reindex", engine="index")
-def reindex(rep, vault: Path) -> dict:
-    """Rebuild the semantic and full-text search indexes from what is on disk. No model call."""
-    from watchdog.ops.ingest import _require_vault
-    _require_vault(vault)
-    from types import SimpleNamespace
-    return cmd_reindex(SimpleNamespace(project=None)) or {}

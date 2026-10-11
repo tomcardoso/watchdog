@@ -18,7 +18,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog import defaults
-from watchdog.appmode import hint as _hint
 from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline import locks as _locks
@@ -37,21 +36,15 @@ def _iso_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def busy_message(holder: dict | None, what: str = "ingest") -> str:
+def busy_message(holder: dict | None) -> str:
     """Why a run can't start while another holds the vault. The lock clears itself when that run
-    ends or dies (D293), so the app is told nothing to do; the terminal keeps its override."""
-    when = f" (lock acquired {holder['started_at']})" if holder and holder.get("started_at") else ""
+    ends or dies (D293), so there is nothing to do but wait."""
     if holder and holder.get("where") == "elsewhere":
         host = holder.get("host")
-        return _hint(f"{what} already running on {host or 'another computer'}{when}; the lock is "
-                     f"released {_locks.STALE_SECONDS // 60} minutes after that computer last "
-                     "updates it, or run: watchdog unlock --force if you know it has stopped",
-                     f"Documents are being added on another computer{f' ({host})' if host else ''}. "
-                     "This investigation becomes free when that run ends.")
-    return _hint(f"{what} already running{when}; the lock is released when that run ends, "
-                 "or run: watchdog unlock --force if it is stuck",
-                 "Documents are already being added to this investigation. It becomes free when "
-                 "that run ends.")
+        return (f"Documents are being added on another computer{f' ({host})' if host else ''}. "
+                "This investigation becomes free when that run ends.")
+    return ("Documents are already being added to this investigation. It becomes free when "
+            "that run ends.")
 
 
 def scan_queue(vault: Path) -> list[dict]:
@@ -448,7 +441,7 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
     # the age window (D293).
     started_at = _iso_now()
     batch_start = int(time.time())
-    if not acquire_or_take_stale(lock_file, _locks.lock_contents("cli"), STALE_SECONDS):
+    if not acquire_or_take_stale(lock_file, _locks.lock_contents("processing"), STALE_SECONDS):
         err = _live_lock_error()
         return err if err is not None else {"error": busy_message(None)}
 

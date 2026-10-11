@@ -52,7 +52,7 @@ def _run_setup(tmp_path, monkeypatch, existing: dict, answer=None):
     monkeypatch.setattr(sc, "_ask_projects_dir", lambda: tmp_path)
     monkeypatch.setattr(sc, "_detect_shell", lambda: (None, None))
     monkeypatch.setattr(sc, "_check_playwright", lambda: None)
-    monkeypatch.setattr("watchdog.cmd.auth.setup_auth_interactive", lambda: None)
+    monkeypatch.setattr("watchdog.auth.setup_auth_interactive", lambda: None)
     seen = []
     if answer is None:
         monkeypatch.setattr(sc.sys.stdin, "isatty", lambda: False)

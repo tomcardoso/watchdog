@@ -1622,7 +1622,7 @@ def _matrix_config(tmp_path):
 def test_arm_backend_resolves_bare_tier_by_auth_mode(monkeypatch):
     """A bare `sonnet` has no backend of its own — auth mode picks it. That is the variable that
     made two runs of one arm incomparable, so the preview has to resolve and show it."""
-    import watchdog.cmd.auth as wd_auth
+    import watchdog.auth as wd_auth
     monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "subscription"})
     assert rb.arm_backend("sonnet", default="sonnet") == "claude-agent-sdk"
     monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "api-key", "key": "k"})
@@ -1630,7 +1630,7 @@ def test_arm_backend_resolves_bare_tier_by_auth_mode(monkeypatch):
 
 
 def test_arm_backend_honours_an_explicit_pin_regardless_of_auth_mode(monkeypatch):
-    import watchdog.cmd.auth as wd_auth
+    import watchdog.auth as wd_auth
     monkeypatch.setattr(wd_auth, "resolve_auth", lambda *a, **k: {"mode": "subscription"})
     assert rb.arm_backend("claude-api:sonnet", default="sonnet") == "claude-api"
     assert rb.arm_backend("deepseek:deepseek-flash", default="sonnet") == "deepseek"

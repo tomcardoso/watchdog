@@ -333,7 +333,7 @@ def _mark(vault: Path, fid: str, status: str | None, note: str | None = None,
         if (current.get("date") or "").strip() and (vault / "timeline.md").exists():
             from watchdog.pipeline import timeline
             try:
-                timeline.cmd_rebuild_timeline(vault, quiet=True)
+                timeline.rebuild_timeline(vault, quiet=True)
             except OSError as e:
                 print(f"  Warning: timeline not refreshed after the mark: {e}", file=sys.stderr)
     return {"id": fid, **entry}

@@ -7,8 +7,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from watchdog.ops import op
-from watchdog.ops.ingest import _require_vault
+from watchdog.ops import op, require_vault
 
 
 @op("undo-merge", engine="index")
@@ -16,7 +15,7 @@ def undo_merge(rep, vault: Path, *, id: str) -> dict:
     """Split one merged entity back out (D281). Refused, with the reason, when the merge can no
     longer be split correctly."""
     from watchdog.pipeline import merge_undo
-    _require_vault(vault)
+    require_vault(vault)
     try:
         out = merge_undo.undo(vault, id)
     except merge_undo.UndoRefused as e:
@@ -34,7 +33,7 @@ def add_contradiction(rep, vault: Path, *, entity: str, label: str, a: str, a_do
     """Record a contradiction the reporter verified, as a callout on the entity, in the format
     processing writes, so Review handles it like any other."""
     from watchdog.pipeline import contradiction
-    _require_vault(vault)
+    require_vault(vault)
     try:
         result = contradiction.run(vault, entity, label, a, a_doc, a_page, b, b_doc, b_page)
     except OSError as e:
@@ -54,7 +53,7 @@ def recheck_contradictions(rep, vault: Path, *, ids: list[str] = (), all: bool =
     """Compare the stored facts of `ids` (or of every recurring entity, with `all`) for
     contradictions with the finalizer model, and file what it finds for Review (D287)."""
     from watchdog.pipeline import recheck
-    _require_vault(vault)
+    require_vault(vault)
     if not all and not ids:
         sys.exit("Error: name the entities to re-check, or ask for the whole investigation.")
     try:

@@ -444,7 +444,7 @@ def _resolve(model_str: str | None, default: str):
 
 
 def _effective_backend(backend: str | None) -> str:
-    from watchdog.cmd.auth import resolve_auth
+    from watchdog.auth import resolve_auth
     from watchdog.ops.ingest import _effective_extract_backend
     auth_mode = resolve_auth()["mode"] if backend is None else None
     return _effective_extract_backend(backend, auth_mode)
@@ -460,7 +460,7 @@ def arm_backend(model_str: str, *, default: str) -> str:
 
 
 def _auth_mode() -> str:
-    from watchdog.cmd.auth import resolve_auth
+    from watchdog.auth import resolve_auth
     return resolve_auth().get("mode", "none")
 
 

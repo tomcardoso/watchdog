@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-import watchdog.cmd.review as review
+import watchdog.review as review
 from watchdog.pipeline import orchestrate, resolutions
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")

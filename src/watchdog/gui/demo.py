@@ -591,9 +591,8 @@ def _verification(vault: Path, docs: list[dict]) -> None:
 
 def build(target: Path, *, verbose: bool = False) -> Path:
     """Build the demo vault at `target` (which must not exist) and return its path."""
-    import types
-    from watchdog import model_client
-    from watchdog.cmd import base, vault as vault_cmd
+    from watchdog import config, model_client, projects
+    from watchdog.ops import projects as projects_op
     from watchdog.pipeline import orchestrate, watchlist
 
     target = target.resolve()
@@ -610,26 +609,24 @@ def build(target: Path, *, verbose: bool = False) -> Path:
 
     log = sys.stdout if verbose else io.StringIO()
 
-    # The vault itself, through the real `watchdog new` (minus the Obsidian registration, which would
+    # The vault itself, through the real operation (minus the Obsidian registration, which would
     # write to the real Obsidian config).
-    vault_cmd._register_obsidian_vault = lambda _vault: None
+    projects_op.obsidian.register = lambda _vault: None
     parent = work / "new"
-    with contextlib.redirect_stdout(io.StringIO()):
-        vault_cmd.cmd_new(types.SimpleNamespace(name=PROJECT_NAME, name_flag=None,
-                                                description=PROJECT_DESCRIPTION, dir=str(parent)))
-    slug = base.slugify(PROJECT_NAME)
-    shutil.move(str(parent / slug), str(target))
-    projects = base.load_projects()
-    projects[slug]["path"] = str(target)
-    base.save_projects(projects)
+    made = projects_op.create(PROJECT_NAME, description=PROJECT_DESCRIPTION, parent=parent)
+    slug = made.name
+    shutil.move(str(made), str(target))
+    listed = projects.load()
+    listed[slug]["path"] = str(target)
+    projects.save(listed)
     vault = target
 
-    base.WATCHDOG_HOME.mkdir(parents=True, exist_ok=True)
-    (base.WATCHDOG_HOME / "config.json").write_text(json.dumps(
+    config.home().mkdir(parents=True, exist_ok=True)
+    (config.home() / "config.json").write_text(json.dumps(
         {"projects_dir": str(target.parent), "chunk_workers": "auto", "chew_workers": "auto",
          "reporter_name": REPORTER}, indent=2) + "\n")
     # Allow the demo's folder, as the app would after the user chose it (gui/src/main/access.ts).
-    (base.WATCHDOG_HOME / "access.json").write_text(json.dumps({"version": 1, "folders": [
+    (config.home() / "access.json").write_text(json.dumps({"version": 1, "folders": [
         {"path": str(target.parent.resolve()), "label": "demo investigations",
          "granted": datetime.now(timezone.utc).isoformat()}]}, indent=2) + "\n")
 
@@ -645,7 +642,7 @@ def build(target: Path, *, verbose: bool = False) -> Path:
     try:
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             _stage_chewed(vault, batch_one)
-            asyncio.run(orchestrate.run(vault, extract_model="sonnet", resume_hint="watchdog add"))
+            asyncio.run(orchestrate.run(vault, extract_model="sonnet"))
             _stage_chewed(vault, batch_two)
             asyncio.run(orchestrate.run(vault, extract_model="sonnet", skip_finalize=True))
             asyncio.run(orchestrate.finalize(vault))
@@ -688,9 +685,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.home:
         home = Path(args.home).resolve()
         home.mkdir(parents=True, exist_ok=True)
-        # Before any watchdog module is imported: WATCHDOG_HOME is computed from this at import time.
+        # Before any watchdog module is imported: some paths under ~/.watchdog are fixed at import.
         os.environ["HOME"] = os.environ["USERPROFILE"] = str(home)
-    os.environ.setdefault("NO_COLOR", "1")
     vault = build(Path(args.dir), verbose=args.verbose)
     info = summarize(vault)
     print(f"Demo vault: {vault}")

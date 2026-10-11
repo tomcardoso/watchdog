@@ -13,9 +13,6 @@ from pathlib import Path
 
 import pytest
 
-import watchdog.cmd.base as _base
-import watchdog.cmd.research as _research_cmd
-import watchdog.cmd.setup as _setup
 import watchdog.skills_catalog as _skills_catalog
 from watchdog.gui import server
 from watchdog.pipeline import requests as _requests
@@ -32,24 +29,16 @@ SHA1, SHA2, SHA3 = "1" * 64, "2" * 64, "3" * 64
 
 @pytest.fixture
 def wdg_home(tmp_path, monkeypatch):
-    """Every watchdog home path redirected into tmp_path (the `tests/test_cli.py` pattern, plus
-    the other modules that bound `CONFIG_FILE`/`WATCHDOG_HOME` at import)."""
+    """Watchdog's own folder (`watchdog.config.HOME`) redirected into tmp_path."""
     home = tmp_path / "wdg-home"
     home.mkdir()
-    for mod, names in ((_base, ("WATCHDOG_HOME", "PROJECTS_FILE", "CONFIG_FILE")),
-                       (_setup, ("WATCHDOG_HOME", "CONFIG_FILE")),
-                       (_research_cmd, ("CONFIG_FILE",))):
-        for name in names:
-            value = {"WATCHDOG_HOME": home, "PROJECTS_FILE": home / "projects.json",
-                     "CONFIG_FILE": home / "config.json"}[name]
-            monkeypatch.setattr(mod, name, value)
-    monkeypatch.setattr("watchdog.config.CONFIG_FILE", home / "config.json")
-    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: tmp_path / "obsidian.json")
+    monkeypatch.setattr("watchdog.config.HOME", home)
+    monkeypatch.setattr("watchdog.obsidian.config_path", lambda: tmp_path / "obsidian.json")
     monkeypatch.setattr(_skills_catalog, "USER_SKILLS_DIR", home / "skills" / "records")
     for var in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "DEEPSEEK_API_KEY", "GEMINI_API_KEY",
                 "LOCAL_API_KEY", "OPENROUTER_API_KEY", "LOCAL_BASE_URL", "OPENROUTER_BASE_URL"):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setattr("watchdog.cmd.auth.claude_code_logged_in", lambda: True)
+    monkeypatch.setattr("watchdog.auth.claude_code_logged_in", lambda: True)
     return home
 
 

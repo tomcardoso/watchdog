@@ -34,19 +34,16 @@ def _find(slug: str) -> tuple[str, dict]:
 
 def project_dict(slug: str, info: dict) -> dict:
     """The app's `Project`: registry fields, a health verdict and cheap counts."""
-    from watchdog.cmd.base import (
-        _check_project_health, _count_awaiting_bark, _count_awaiting_dig, _count_incoming,
-        _load_registry,
-    )
-    from watchdog.cmd.home import _failed
+    from watchdog.projects import check_health, load_registry
+    from watchdog.vault import count_awaiting_post, count_awaiting_processing, count_failed, count_incoming
 
     vault = Path(info.get("path") or "")
-    health = _check_project_health({"path": str(vault)})
+    health = check_health({"path": str(vault)})
     health = _HEALTH.get(health, health) if health else None
     reg = None
     if health is None:
         try:
-            reg = _load_registry(vault)
+            reg = load_registry(vault)
         except (json.JSONDecodeError, OSError):
             health = "registry_corrupt"
     live = health in (None, "registry_corrupt")
@@ -66,9 +63,9 @@ def project_dict(slug: str, info: dict) -> dict:
             "documents": int(reg.get("document_count") or 0),
             "entities": int(reg.get("entity_count") or 0),
             "last_ingest": reg.get("last_updated") or None,
-            "incoming": _count_incoming(vault) if live else 0,
-            "awaiting": (_count_awaiting_dig(vault) + _count_awaiting_bark(vault)) if live else 0,
-            "failed": _failed(vault) if live else 0,
+            "incoming": count_incoming(vault) if live else 0,
+            "awaiting": (count_awaiting_processing(vault) + count_awaiting_post(vault)) if live else 0,
+            "failed": count_failed(vault) if live else 0,
             # The version history's size on disk (D288), from a small cache the store keeps.
             "history_bytes": _history_bytes(vault) if live else None,
         },
@@ -114,7 +111,7 @@ def for_path(path: str) -> dict | None:
 
 @method("projects.status")
 def status(slug: str) -> dict:
-    from watchdog.cmd.base import _vault_size
+    from watchdog.projects import vault_size as _vault_size
     from watchdog.pipeline import orchestrate
 
     slug, info = _find(slug)
@@ -162,24 +159,17 @@ def log(slug: str, lines: int | None = None) -> dict:
 
 @method("projects.doctor")
 def doctor() -> dict:
-    """The findings `watchdog projects doctor` prints, as data."""
-    from watchdog.cmd.base import VAULT_SCHEMA_VERSION
-    from watchdog.cmd.vault import doctor_findings
+    """Listed investigations whose folder is gone or whose registry summary is damaged."""
+    from watchdog.projects import doctor_findings
 
-    struct_issues, schema_issues, corrupt = doctor_findings(vaultio.registered_projects())
+    missing, corrupt = doctor_findings(vaultio.registered_projects())
     issues = []
-    for slug, info, problem in struct_issues:
+    for slug, info, problem in missing:
         issues.append({
             "kind": "missing", "slug": slug, "name": info["name"], "path": info["path"],
             "problem": f"{problem.capitalize()}: {info['path']}",
-            "suggestion": (f"watchdog projects move {slug} <new-path> to relink, or "
-                           f"watchdog projects delete {slug} to remove it from the registry"),
-        })
-    for slug, info, found in schema_issues:
-        issues.append({
-            "kind": "schema", "slug": slug, "name": info["name"], "path": info["path"],
-            "problem": f"Schema v{found} — current is v{VAULT_SCHEMA_VERSION}",
-            "suggestion": "This vault may need migration before it is fully compatible.",
+            "suggestion": ("Use Move to point Watchdog at the folder's new location, or Remove "
+                           "to take it off the list."),
         })
     for slug, info in corrupt:
         reg_path = Path(info["path"]) / ".watchdog" / "registry" / "registry.json"

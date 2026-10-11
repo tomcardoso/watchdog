@@ -385,7 +385,7 @@ def test_a_total_that_starts_again_counts_whole(env, monkeypatch):
 
 def test_a_sessions_options_carry_watchdogs_tools_the_primer_and_no_shell(env):
     from watchdog import session_tools
-    from watchdog.cmd import primer
+    from watchdog import primer
     vault, events = env
     api.start(str(vault), "ask", prompt="who?")
     _wait_state(events)

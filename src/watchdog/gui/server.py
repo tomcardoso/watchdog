@@ -54,7 +54,7 @@ def handle(request: dict) -> dict | None:
     except rpc.RpcError as e:
         return {"id": rid, "error": {"message": str(e), "code": e.code, "data": rpc.jsonable(e.data)}}
     except SystemExit as e:
-        # Library code reused from the CLI reports user errors with sys.exit("Error: …").
+        # Library code reports user errors with sys.exit("Error: …").
         msg = e.code if isinstance(e.code, str) else f"exited with status {e.code}"
         return {"id": rid, "error": {"message": _clean_exit_message(msg), "code": "exit", "data": None}}
     except TypeError as e:
@@ -62,7 +62,7 @@ def handle(request: dict) -> dict | None:
         traceback.print_exc(file=sys.stderr)
         return {"id": rid, "error": {"message": f"{name}: {e}", "code": "bad_params", "data": None}}
     except Exception as e:  # noqa: BLE001 — every failure must reach the app as a response
-        from watchdog.cmd.auth import KeyChoiceError
+        from watchdog.auth import KeyChoiceError
         if isinstance(e, KeyChoiceError):
             # A key the investigation chose isn't here, or the app couldn't decrypt it (D290,
             # D295): a reason for the reader, not a bug. Nothing was sent.
@@ -80,7 +80,6 @@ def _clean_exit_message(msg: str) -> str:
 def main() -> None:
     proto_out = os.fdopen(os.dup(sys.stdout.fileno()), "w", encoding="utf-8", buffering=1)
     sys.stdout = sys.stderr
-    os.environ.setdefault("NO_COLOR", "1")
 
     write_lock = threading.Lock()
 

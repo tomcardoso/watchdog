@@ -27,7 +27,7 @@ from watchdog.pipeline.write_vault import (
     _frontmatter,
 )
 from watchdog.pipeline import resolutions
-from watchdog.pipeline.timeline import cmd_rebuild_timeline
+from watchdog.pipeline.timeline import rebuild_timeline
 
 _DEFAULT_NOTES_MARKER = "<!-- Journalist annotations — never overwritten by ingestion. -->"
 
@@ -340,7 +340,7 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault_path, entities_reg)
     stats["timeline_records_remapped"] = _remap_timeline_ndjson(vault_path, keep_id, merge_id)
-    cmd_rebuild_timeline(vault_path, quiet=True)
+    rebuild_timeline(vault_path, quiet=True)
 
     existing_registry = (
         _read_json_or(registry_path, {}, catch=(json.JSONDecodeError,))

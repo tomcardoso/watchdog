@@ -19,7 +19,7 @@ import pytest
 
 from watchdog import keystore
 from watchdog import model_client as mc
-from watchdog.cmd import auth, base
+from watchdog import auth, base
 
 
 @pytest.fixture
@@ -30,7 +30,7 @@ def home(tmp_path, monkeypatch):
     import watchdog.config
     monkeypatch.setattr(watchdog.config, "CONFIG_FILE", tmp_path / "home" / "config.json")
     monkeypatch.delenv("WATCHDOG_APP", raising=False)
-    for p in auth._PROVIDERS.values():
+    for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     return tmp_path / "home"
 
@@ -113,8 +113,8 @@ def test_migrated_file_reads_back_through_the_keys_the_app_provides(home):
     secret replaced by a blob, structure untouched."""
     personal, work = "sk-proj-personal-1111", "sk-proj-work-2222"
     anth = "sk-ant-api03-anthropic-3333"
-    blobs = {k: {**seal(k), "masked": auth._mask(k)} for k in (personal, work, anth)}
-    auth._save_state({"mode": "api-key", "keys": {
+    blobs = {k: {**seal(k), "masked": auth.mask(k)} for k in (personal, work, anth)}
+    auth.save_state({"mode": "api-key", "keys": {
         "anthropic": blobs[anth],
         "openai": {"default": "k-1", "items": [{"id": "k-1", "label": "Personal", "key": blobs[personal]},
                                                {"id": "k-2", "label": "Work", "key": blobs[work]}]}}})
@@ -144,7 +144,7 @@ def test_secrets_provide_is_an_rpc_that_takes_the_keys_and_the_store(home):
     from watchdog.gui.api import keystore as api
     from watchdog.gui.rpc import RpcError
     blob = seal("sk-proj-provided-1234")
-    auth._save_state({"mode": None, "keys": {"openai": {**blob, "masked": "x"}}})
+    auth.save_state({"mode": None, "keys": {"openai": {**blob, "masked": "x"}}})
     assert api.provide("encrypted", {blob["data"]: "sk-proj-provided-1234"}, backend="dpapi") == {"ok": True, "keys": 1}
     assert auth.get_api_key("openai") == "sk-proj-provided-1234"
     with pytest.raises(RpcError):
@@ -167,7 +167,7 @@ def test_without_secure_storage_keys_stay_plaintext_in_a_private_file(home):
 def test_fallback_counts_keys_it_cannot_read(home):
     """Keys encrypted earlier, on a session whose keyring is now unavailable: listed, locked."""
     from watchdog.gui.api import settings as api
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": {**seal("sk-ant-x-0000"), "masked": "sk-ant-x…0000"}}})
+    auth.save_state({"mode": "api-key", "keys": {"anthropic": {**seal("sk-ant-x-0000"), "masked": "sk-ant-x…0000"}}})
     keystore.provide({}, store="plaintext", backend="basic_text", unreadable=1)
     s = api.auth_status()
     assert s["storage"]["locked"] == 1
@@ -177,7 +177,7 @@ def test_fallback_counts_keys_it_cannot_read(home):
 # ── the command line ─────────────────────────────────────────────────────────────
 
 def _blob_file(home, key="sk-ant-api03-locked-5678", provider="anthropic"):
-    auth._save_state({"mode": "api-key", "keys": {provider: {**seal(key), "masked": auth._mask(key)}}})
+    auth.save_state({"mode": "api-key", "keys": {provider: {**seal(key), "masked": auth.mask(key)}}})
 
 
 def test_the_command_line_cannot_read_an_encrypted_key_and_says_what_to_do(home):
@@ -210,7 +210,7 @@ def test_the_command_line_status_lists_locked_keys_masked(home, capsys):
 def test_the_command_line_does_not_write_plaintext_beside_the_apps_keys(home, monkeypatch, capsys):
     _blob_file(home)
     monkeypatch.setattr(auth, "getpass", lambda prompt: "sk-proj-typed-0000")
-    assert auth.prompt_and_store_key("openai", auth._load_state()) is False
+    assert auth.prompt_and_store_key("openai", auth.load_state()) is False
     assert "sk-proj-typed-0000" not in raw(home)
     assert "Settings → Models & keys" in capsys.readouterr().out
     with pytest.raises(ValueError):
@@ -228,7 +228,7 @@ def test_the_environment_variable_still_overrides_an_encrypted_key(home, vault, 
 def test_a_locked_key_stops_before_any_model_call(home, vault, monkeypatch):
     """I16 unchanged: no key this process can use means no call, and never another key."""
     personal = "sk-proj-plain-default-0000"
-    auth._save_state({"mode": None, "keys": {"openai": {"default": "k-2", "items": [
+    auth.save_state({"mode": None, "keys": {"openai": {"default": "k-2", "items": [
         {"id": "k-1", "label": "Personal", "key": personal},
         {"id": "k-2", "label": "Work", "key": {**seal("sk-proj-work-9999"), "masked": "m"}}]}}})
     sent = []
@@ -258,8 +258,8 @@ def test_under_the_app_a_locked_key_says_to_restart_not_to_set_a_variable(home, 
 def _two_investigations(home, tmp_path):
     work, personal = "sk-proj-work-AAAA", "sk-proj-personal-BBBB"
     anth = "sk-ant-api03-only-CCCC"
-    b = {k: {**seal(k), "masked": auth._mask(k)} for k in (work, personal, anth)}
-    auth._save_state({"mode": "api-key", "keys": {
+    b = {k: {**seal(k), "masked": auth.mask(k)} for k in (work, personal, anth)}
+    auth.save_state({"mode": "api-key", "keys": {
         "anthropic": b[anth],
         "openai": {"default": "k-p", "items": [{"id": "k-p", "label": "Personal", "key": b[personal]},
                                                {"id": "k-w", "label": "Work", "key": b[work]}]}}})

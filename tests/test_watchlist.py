@@ -378,7 +378,7 @@ def test_check_term_round_trip_with_add_terms(tmp_path):
 
 
 def test_review_reads_alerts_written_without_checkboxes(tmp_path):
-    from watchdog.cmd.review import open_items
+    from watchdog.review import open_items
     vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
     hits = watchlist.scan(vault, _results())
     relpath, _, _ = watchlist.write_alerts(vault, hits)

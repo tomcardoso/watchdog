@@ -1,7 +1,7 @@
 """The app's operations, each run in a worker process (D298).
 
 A job is `python -m watchdog.worker` with the investigation as its working folder (none for an
-operation outside one), colour off, `WATCHDOG_APP=1` and `WATCHDOG_PROGRESS=1`. Its stdin carries
+operation outside one), colour off and `WATCHDOG_PROGRESS=1`. Its stdin carries
 one JSON line, `{"op", "params"}`, then, for an operation that calls a model, the investigation's
 keys as a second line (`WATCHDOG_SECRETS=stdin`, D295): only the key per provider the
 investigation resolves to, never through the environment or argv, which other programs and crash
@@ -91,7 +91,7 @@ def _secrets(vault: Path | None) -> dict[str, str]:
     """The encrypted keys a command in `vault` may use (`auth.secrets_for_run`). A failure here
     must not stop the command: it then finds the key locked and stops with that reason itself."""
     try:
-        from watchdog.cmd.auth import secrets_for_run
+        from watchdog.auth import secrets_for_run
         return secrets_for_run(vault)
     except Exception:  # noqa: BLE001
         return {}
@@ -120,7 +120,7 @@ def worker_argv() -> list[str]:
 
 
 def _env(keys: bool) -> dict:
-    env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1", "WATCHDOG_APP": "1",
+    env = {**os.environ, "NO_COLOR": "1", "WATCHDOG_PROGRESS": "1",
            "PYTHONUNBUFFERED": "1", "PYTHONIOENCODING": "utf-8"}
     env.pop("WATCHDOG_SECRETS", None)
     if keys:

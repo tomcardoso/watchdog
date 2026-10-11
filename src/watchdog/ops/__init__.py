@@ -9,10 +9,8 @@ or a hung model call can't take the backend down and Stop is a signal to that pr
 
 Output goes through the reporter, not `print`: `log` lines, `warn` lines, `progress` events (the
 shapes `watchdog.progress` defines, so the app's stage labels and job dock read them unchanged),
-and the return value, a JSON-serializable dict, is the result. `hint(terminal, app)` picks the
-wording for where the output is read; under the worker it is always the app's. A question an
-operation would ask at a terminal (`confirm`, `pick`) is declined under the worker: the app asks
-its questions before it starts an operation and passes the answers as parameters.
+and the return value, a JSON-serializable dict, is the result. An operation never asks a question:
+the app asks before it starts one and passes the answers as parameters.
 
 Helpers deep inside an operation reach the active reporter with `current()`.
 """
@@ -43,43 +41,8 @@ def strip_ansi(text: str) -> str:
 
 
 class Reporter:
-    """Where an operation's output goes. The base class prints, as a terminal command does."""
-
-    @property
-    def app(self) -> bool:
-        from watchdog.appmode import under_app
-        return under_app()
-
-    def log(self, text: str = "") -> None:
-        print(text)
-
-    def warn(self, text: str) -> None:
-        print(text, file=sys.stderr)
-
-    def progress(self, kind: str, **fields) -> None:
-        _progress.emit(kind, **fields)
-
-    def hint(self, terminal: str, app: str | None = "") -> str:
-        from watchdog.appmode import hint
-        return hint(terminal, app)
-
-    def confirm(self, prompt: str, default: bool = False) -> bool:
-        from watchdog import interactive
-        return interactive.confirm(prompt, default=default)
-
-    def pick(self, items, current: int = 0, *, title: str | None = None):
-        from watchdog import interactive
-        return interactive.pick(items, current, title=title)
-
-
-TerminalReporter = Reporter
-
-
-class AppReporter(Reporter):
-    """The worker's reporter: plain app-worded lines on stdout, warnings on stderr, progress as
-    `watchdog.progress` lines, and no questions."""
-
-    app = True
+    """Where an operation's output goes: lines on stdout, warnings on stderr, progress as
+    `watchdog.progress` lines. The worker's reporter."""
 
     def log(self, text: str = "") -> None:
         sys.stdout.write(strip_ansi(text) + "\n")
@@ -92,21 +55,9 @@ class AppReporter(Reporter):
     def progress(self, kind: str, **fields) -> None:
         _progress.write(kind, **fields)
 
-    def hint(self, terminal: str, app: str | None = "") -> str:
-        return app or ""
-
-    def confirm(self, prompt: str, default: bool = False) -> bool:
-        return False
-
-    def pick(self, items, current: int = 0, *, title: str | None = None):
-        from watchdog import interactive
-        return interactive.CANCELLED
-
 
 class CollectingReporter(Reporter):
     """Keeps everything it is given: for tests and in-process callers."""
-
-    app = True
 
     def __init__(self):
         self.lines: list[str] = []
@@ -122,16 +73,6 @@ class CollectingReporter(Reporter):
     def progress(self, kind: str, **fields) -> None:
         self.events.append({"kind": kind, **fields})
 
-    def hint(self, terminal: str, app: str | None = "") -> str:
-        return app or ""
-
-    def confirm(self, prompt: str, default: bool = False) -> bool:
-        return False
-
-    def pick(self, items, current: int = 0, *, title: str | None = None):
-        from watchdog import interactive
-        return interactive.CANCELLED
-
     @property
     def text(self) -> str:
         return "\n".join(self.lines)
@@ -142,7 +83,7 @@ _DEFAULT = Reporter()
 
 
 def current() -> Reporter:
-    """The reporter of the operation running now; a terminal one outside any."""
+    """The reporter of the operation running now."""
     return _current.get() or _DEFAULT
 
 
@@ -159,8 +100,10 @@ def say(text: str = "") -> None:
     current().log(text)
 
 
-def hint(terminal: str, app: str | None = "") -> str:
-    return current().hint(terminal, app)
+def require_vault(vault: Path) -> None:
+    from watchdog.vault_paths import is_vault
+    if not is_vault(vault):
+        sys.exit("Error: this folder is not a Watchdog investigation.")
 
 
 # ── the registry ──────────────────────────────────────────────────────────────────────────

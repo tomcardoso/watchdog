@@ -83,7 +83,7 @@ class SessionTools:
         """The search JSON the query skill reads: `passages` (source text by meaning and exact
         terms, each with the facts recorded on its page), `notes` and `exact` (every literal
         occurrence)."""
-        from watchdog.cmd.vault import _build_search_json
+        from watchdog.search import build_json as _build_search_json
         from watchdog.pipeline import fulltext
         from watchdog.pipeline.embed import index_stats, search
         vault = self._require_vault()
@@ -152,11 +152,11 @@ class SessionTools:
     # ── writes ─────────────────────────────────────────────────────────────────────────────
     def timeline(self) -> str:
         """Rebuild `timeline.md` from the stored, deduplicated events."""
-        from watchdog.pipeline.timeline import cmd_rebuild_timeline
+        from watchdog.pipeline.timeline import rebuild_timeline
         from watchdog.pipeline.write_vault import _registry_lock
         vault = self._require_writable()
         with _registry_lock(vault / ".watchdog" / "registry"), self._recording("timeline", ["timeline.md"]):
-            dates, events = cmd_rebuild_timeline(vault, quiet=True)
+            dates, events = rebuild_timeline(vault, quiet=True)
         return f"timeline.md rebuilt: {events} events on {dates} dates."
 
     def write_entity(self, entity_id: str, summary: str, timeline_events: list) -> str:

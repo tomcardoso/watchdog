@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.cmd.usage import cmd_usage
+from watchdog.usage import cmd_usage
 
 
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",

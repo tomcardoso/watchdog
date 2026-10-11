@@ -17,7 +17,7 @@ import sys
 import uuid
 
 from watchdog import model_client as mc
-from watchdog.cmd import auth
+from watchdog import auth
 from watchdog.pipeline import prompts, schemas
 
 MODEL = "gpt-5.6-luna"

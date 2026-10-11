@@ -1030,7 +1030,7 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
 
 # The global timeline is no longer a write_vault product (#237) — write_vault.run() does not
 # touch timeline.md; it is rendered from the cross-document-deduped NDJSON by
-# timeline.cmd_rebuild_timeline. See test_timeline.py for the global timeline's attribution,
+# timeline.rebuild_timeline. See test_timeline.py for the global timeline's attribution,
 # entity-link, and page-link coverage. write_vault still owns the per-entity `## Timeline`
 # section (tested by test_entity_note_has_timeline_section / test_entity_timeline_has_page_link).
 

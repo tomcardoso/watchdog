@@ -6,7 +6,7 @@ import argparse
 import pytest
 
 import watchdog.ops.ingest as ing
-import watchdog.cmd.review as review
+import watchdog.review as review
 from watchdog.pipeline import resolutions
 
 

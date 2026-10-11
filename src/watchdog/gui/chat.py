@@ -37,8 +37,8 @@ def _now() -> str:
 
 
 def chats_dir() -> Path:
-    from watchdog.cmd import base
-    return base.WATCHDOG_HOME / "gui" / "chats"
+    from watchdog import config
+    return config.home() / "gui" / "chats"
 
 
 def make_client(options):
@@ -52,7 +52,7 @@ def session_auth_env(session: "Session") -> dict:
     the default (D290), passed as ANTHROPIC_API_KEY. On a subscription nothing is added and
     Claude Code uses its own login. Raises `auth.KeyChoiceError` when the chosen key isn't on
     this computer, before the session starts, rather than billing another account."""
-    from watchdog.cmd import auth
+    from watchdog import auth
     a = auth.resolve_auth("anthropic", session.vault)
     if a.get("mode") != "api-key" or not a.get("key"):
         session.key_label = None
@@ -64,7 +64,7 @@ def session_auth_env(session: "Session") -> dict:
 def build_options(session: "Session", can_use_tool):
     from claude_agent_sdk import ClaudeAgentOptions, HookMatcher
     from watchdog import session_tools
-    from watchdog.cmd.primer import session_text
+    from watchdog.primer import session_text
     from watchdog.model_catalog import resolve_model_id
     # The primer (D285) goes into the system prompt when the session connects (D299): the Python
     # SDK has no SessionStart hook, and the system prompt, unlike a hook's output, survives
@@ -124,8 +124,8 @@ def _page_notes(stage: str):
 
 def prompt_status(vault: Path) -> str | None:
     """The one-line note added to each prompt while documents wait for a stage, or None."""
-    from watchdog.cmd.base import _count_awaiting_bark, _count_awaiting_dig
-    waiting, staged = _count_awaiting_dig(vault), _count_awaiting_bark(vault)
+    from watchdog.vault import count_awaiting_post, count_awaiting_processing
+    waiting, staged = count_awaiting_processing(vault), count_awaiting_post(vault)
     parts = []
     if waiting:
         parts.append(f"{waiting} file(s) waiting for processing")
@@ -204,7 +204,8 @@ def first_prompt(vault: Path, mode: str, text: str | None) -> str | None:
 
 def _seed_context(vault: Path) -> None:
     """Write `context.md` from the template when missing, for a Background session."""
-    from watchdog.cmd.base import _render_template, load_projects
+    from watchdog.projects import load as load_projects
+    from watchdog.vault import render_template as _render_template
     path = vault / "context.md"
     if path.exists():
         return
@@ -282,7 +283,7 @@ class Session:
 
 def _check_session_key(vault: Path) -> None:
     """Refuse to open a session whose investigation chose an Anthropic key this computer lacks."""
-    from watchdog.cmd import auth
+    from watchdog import auth
     try:
         auth.resolve_auth("anthropic", vault)
     except auth.KeyChoiceError as e:
