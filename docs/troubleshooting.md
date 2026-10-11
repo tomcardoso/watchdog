@@ -36,7 +36,7 @@ On the first launch, your computer may say it cannot verify the developer of Wat
 
 ## "Allow Watchdog to work in this investigation"
 
-Watchdog only changes files in folders you have allowed. When you open an investigation in a folder that is not on the list, the app shows **Allow Watchdog to work in this investigation** instead of the investigation's screens. This happens the first time you open an investigation created before this safeguard existed, and after you move an investigation to a different folder.
+Watchdog only changes files in folders you have allowed. When you open an investigation in a folder that is not on the list, the app shows **Allow Watchdog to work in this investigation** instead of the investigation's screens. This happens after you move an investigation to a different folder outside the app, or remove access to the folder that holds it.
 
 Choose **Allow access…** and confirm. If you would rather not, choose **All investigations**; nothing is changed.
 
@@ -164,7 +164,7 @@ If updating keeps failing, download the newest installer from the [releases page
 
 ## Skills look outdated after an update
 
-The record skills — the document-type knowledge — update with the app. But each investigation also has its own copy of Claude's setup (the commands and instructions Claude uses in that investigation), and that copy keeps its old version. Open **Activity → Maintenance** and choose **Refresh Claude setup** for the investigation. It also brings the investigation's dashboard and Claude settings up to date. If the instructions predate the current format, the old copy is saved as `.claude/CLAUDE.md.before-refresh`.
+The record skills — the document-type knowledge — update with the app. But each investigation also has its own copy of Claude's setup (the commands and instructions Claude uses in that investigation), and that copy keeps its old version. Open **Activity → Maintenance** and choose **Refresh Claude setup** for the investigation. It rewrites the shortcut commands, Watchdog's part of Claude's instructions and Claude's settings for that investigation. Anything you added to the instructions after Watchdog's part is kept; changes made to Claude's settings file are replaced.
 
 ## An investigation moved or is missing
 

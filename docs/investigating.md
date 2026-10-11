@@ -68,7 +68,7 @@ Below the queue is **Recent merges**: every merge, newest first, whoever made it
 
 If a merge is wrong, open its row and choose **Undo merge**. Watchdog gives the facts, documents and relationships that came with the merged record back to a record of its own, rewrites both entities' notes, and marks the pair **Not the same** so it is never merged automatically again. It calls no AI model. Three things stay with the surviving entity, and the confirmation says so: contradictions recorded while the two were joined, your own **Notes** (including any written after the merge; move what belongs to the other record by hand), and its summary, which the next run that names it rewrites. A merge decided again for several documents is undone for all of them at once.
 
-Some merges cannot be split exactly, and for those the button stays unavailable with the reason beside it: a merge made by a version of Watchdog older than this one, which did not record which facts moved; two names joined inside one long document that was read in sections; a surviving entity that was itself merged into another later (undo that one first); and a document that has been processed again since the merge. The same record is kept in `merges.md` in the investigation's folder (see [the vault layout](vault.md)), which also notes each merge that was undone.
+Some merges cannot be split exactly, and for those the button stays unavailable with the reason beside it: two names joined inside one long document that was read in sections; a surviving entity that was itself merged into another later (undo that one first); and a document that has been processed again since the merge. The same record is kept in `merges.md` in the investigation's folder (see [the vault layout](vault.md)), which also notes each merge that was undone.
 
 ### Document requests
 
@@ -106,7 +106,7 @@ Open a document and look at its **Facts** tab. Under each fact is the text from 
 - **A matched passage** is labelled "Matched passage" with its page. The model did not quote it. Watchdog found it by comparing the fact's names, figures and dates with the sentences on the cited page, with ordinary code and no AI model (see [how a passage is found](methodology.md#how-a-passage-is-found)). It is the sentence most likely to be the source, not proof that it supports the claim. If it is from a different page than the fact cites, the label says so.
 - **"No matching passage found"** means nothing on the cited page shares enough of the fact's names, figures and dates. The fact may combine several passages, rest on reasoning, or cite the wrong page. Read the page yourself.
 
-**find on page** beside a quotation or matched passage scrolls the original to it. Documents added before this feature existed show no passage; they get one when they are next processed.
+**find on page** beside a quotation or matched passage scrolls the original to it.
 
 ### Marking facts
 
@@ -258,7 +258,9 @@ For clipping pages as you browse, the [Obsidian Web Clipper](https://obsidian.md
 | **Requeue failed documents** | Moves documents that failed extraction back into the queue so a later processing run tries them again. |
 | **Lead sweep** | Runs the full lead sweep, with no model call. |
 | **Check citations** | Checks that every fact cited in saved answers, threads and briefings still exists, and lists the citations of facts you marked Disputed. Changes nothing and calls no model. |
+| **Re-check contradictions** | Runs the entity page's [re-check](#re-checking-contradictions) for every entity with two or more facts, after showing what it should cost. |
 | **Rebuild the timeline** | Regenerates the written timeline from the underlying records. |
+| **Rebuild notes** | Rewrites every entity and document note from Watchdog's records, with no model call. Your **Notes** sections are kept. |
 | **Rebuild the search index** | Rebuilds the search indexes from what is already on disk. Run it after changing the embedding model in Settings, or after merging entities. |
 | **Usage** | Opens token, cost and timing figures for each run, and for each Ask Claude or Web research conversation. |
 | **Export the graph** | Writes the entities and relationships for network-analysis tools such as Neo4j or Gephi, as CSV files or a Cypher script. A relationship whose wordings were grouped is exported under the label the app shows, with each document's own wording beside it. |

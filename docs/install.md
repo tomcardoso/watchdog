@@ -30,7 +30,7 @@ Go to the [latest Watchdog release](https://github.com/tomcardoso/watchdog/relea
 | Windows (64-bit) | `Watchdog-Setup-<version>.exe` |
 | Linux | `Watchdog-<version>.AppImage` |
 
-`<version>` is the release number, such as `1.0.3`. If you are not sure which Mac you have, open the Apple menu and choose **About This Mac**: it lists either an Apple chip (M1, M2 and so on) or an Intel processor.
+`<version>` is the release number, such as `0.2.0-beta.1`. If you are not sure which Mac you have, open the Apple menu and choose **About This Mac**: it lists either an Apple chip (M1, M2 and so on) or an Intel processor.
 
 The release page also lists other files, such as ones ending in `.blockmap`, `.zip` and `latest*.yml`. The app's updater uses those; you do not need them.
 
@@ -40,7 +40,7 @@ The release page also lists other files, such as ones ending in `.blockmap`, `.z
 
 **Windows.** Run `Watchdog-Setup-<version>.exe` and follow the installer.
 
-**Linux.** An AppImage is a single file that runs without installing. Make it executable, then open it. In most file managers you right-click the file, open its properties, and tick the box that allows it to run as a program. If you prefer a terminal, `chmod +x Watchdog-<version>.AppImage` does the same, and you then run the file.
+**Linux.** An AppImage is a single file that runs without installing. Make it executable, then open it. In most file managers you right-click the file, open its properties, and tick the box that allows it to run as a program.
 
 ### If your computer says it cannot verify the app
 

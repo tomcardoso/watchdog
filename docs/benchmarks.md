@@ -13,8 +13,8 @@ public record — is processed once under each model/effort combination being co
 is scored against an answer key drafted from the source documents themselves. The comparison is
 *relative*: it tells you whether a cheaper model holds onto most of a more expensive one's
 recall, not an absolute accuracy number you could quote on its own. The tooling behind this
-(`benchmarks/run_benchmark.py`) is maintainer-only — it isn't part of the `watchdog` command a
-working investigator runs day to day.
+(`benchmarks/run_benchmark.py`) is maintainer-only — it isn't part of the app a working
+investigator uses day to day.
 
 ## What to expect
 
@@ -131,7 +131,7 @@ A few things this benchmark doesn't cover yet:
   skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
   those two right, not enough to rank classifier models against each other. That needs a
   type-diverse set (a corporate filing, a real-estate document, a government report, a news
-  clipping, and so on); see `benchmarks/classify-corpus/README.md` for what's needed to build it.
+  clipping, and so on); see `benchmarks/corpora/classify/README.md` for what's needed to build it.
 - **Judging the other effort levels.** [The wider sweep](#the-wider-sweep) above already has
   numeric-check figures for most models' lower, cheaper tiers — what's still missing is a judge
   pass confirming those figures rank the same way the top table's do.
