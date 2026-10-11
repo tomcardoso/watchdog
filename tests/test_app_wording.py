@@ -30,7 +30,8 @@ APP_BAD = re.compile(rf"\bwatchdog ({_COMMANDS})\b|Ctrl[-+]|(?<![\w-])--({_FLAGS
 # ── the command line is gone ────────────────────────────────────────────────────────────
 
 def test_no_command_line_modules_remain():
-    assert not (SRC / "cli.py").exists() and not (SRC / "cmd").exists()
+    # Source files, not the folder: a stale __pycache__ can outlive a deleted package.
+    assert not (SRC / "cli.py").exists() and not list((SRC / "cmd").glob("*.py"))
     assert not (SRC / "__main__.py").exists()
     for gone in ("terminal.py", "interactive.py", "appmode.py", "setup_cmd.py", "links.py"):
         assert not (SRC / gone).exists(), gone
