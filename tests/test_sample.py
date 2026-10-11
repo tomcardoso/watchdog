@@ -84,7 +84,7 @@ def test_sample_costs_nothing_and_stays_out_of_the_usage_database(built):
     usage = sorted((built["vault"] / ".watchdog" / "registry" / "usage").glob("usage-*.json"))
     assert usage
     calls = [c for f in usage for c in json.loads(f.read_text())["calls"]]
-    assert calls and all(c["cost_usd"] == 0 and c["backend"] == "sample" for c in calls)
+    assert calls and all(c["cost_usd"] == 0 and c["backend"] == c["model"] == "sample" for c in calls)
     db = built["root"] / "telemetry.db"
     if db.exists():
         import sqlite3

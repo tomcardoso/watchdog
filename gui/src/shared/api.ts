@@ -34,6 +34,8 @@ export interface Project {
   description: string | null
   path: string
   archived: boolean
+  /** The sample investigation built for learning Watchdog (D303). */
+  sample: boolean
   created: string | null
   health: string | null
   access: boolean // the user has allowed Watchdog to work in this folder
@@ -580,10 +582,28 @@ export interface OpParams {
   'projects-move': { slug: string; path: string }
   'projects-delete': { slug: string; purge?: boolean }
   'projects-archive': { slug: string; archived?: boolean }
+  'sample-create': { dir?: string; rebuild?: boolean }
 }
 export type OpName = keyof OpParams
 export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]'; required: boolean; default: unknown; nullable: boolean }
 export interface OpSpec { params: Record<string, OpParamSpec>; vault: boolean; engine: 'add' | 'index' | null; kind: 'job' | 'action' }
+
+// ── the sample investigation and its tour (D303) ─────────────────────────────
+/** Where the sample is, or would be built: `slug` is set when it is listed. */
+export interface SampleStatus { slug: string | null; path: string; listed: boolean; exists: boolean; archived: boolean }
+/** What each tour step opens in the sample (`sample.tour`). */
+export interface TourTargets {
+  sample: true
+  briefings: number
+  scanned: { sha: string; filename: string; title: string | null; page: number; find: string }
+  entity: { id: string; name: string; fact: string }
+  contradiction: { rid: string; title: string }
+  duplicate: { rid: string; title: string }
+  lead: { rid: string; title: string }
+  search: string
+  incoming: string[]
+  runs: number
+}
 
 // ── search ───────────────────────────────────────────────────────────────────
 export interface SearchPassage { filename: string; page: number | null; text: string; score: number; sha?: string | null; note?: string | null; original?: string | null }
@@ -795,6 +815,8 @@ export interface Methods {
   'projects.status': [{ slug: string }, ProjectStatus]
   'projects.log': [{ slug: string; lines?: number }, { lines: string[] }]
   'projects.doctor': [Record<string, never>, { issues: DoctorIssue[] }]
+  'sample.status': [{ dir?: string }, SampleStatus]
+  'sample.tour': [{ vault: string }, TourTargets]
 
   'vault.summary': [{ vault: string }, Summary]
   'vault.documents': [{ vault: string }, DocumentRow[]]

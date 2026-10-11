@@ -475,7 +475,7 @@ class CannedModel:
             cost = round(in_tok * 3e-6 + out_tok * 15e-6, 6)
         latency = round(0.6 + (out_tok / 160), 2)
         if self.free:
-            return model_client.ModelResult(parsed=parsed, text="", model=model_id, backend="sample",
+            return model_client.ModelResult(parsed=parsed, text="", model="sample", backend="sample",
                                             auth_mode=None, usage=usage, cost_usd=0.0, latency_s=0.0)
         return model_client.ModelResult(parsed=parsed, text="", model=model_id, backend="claude-api",
                                         auth_mode="api-key", usage=usage, cost_usd=cost,

@@ -56,13 +56,14 @@ export function BackendGate({ children }: { children: ReactNode }) {
     mode = 'first-run'
   }
 
-  const done = async (openNew?: boolean) => {
+  const done = async (next?: 'new' | 'sample') => {
     await window.watchdog.prefs.set('onboarding', null)
     setPending(false)
     setDismissed(true)
     setSetupDone(true)
     await refresh()
-    if (openNew) setTimeout(() => window.dispatchEvent(new CustomEvent('wd:command', { detail: 'new-investigation' })), 150)
+    const command = next === 'new' ? 'new-investigation' : next === 'sample' ? 'take-tour' : null
+    if (command) setTimeout(() => window.dispatchEvent(new CustomEvent('wd:command', { detail: command })), 150)
   }
 
   // Remember that first-run setup has begun, so closing the app part-way resumes it.
@@ -79,7 +80,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
         mode={mode}
         backend={status}
         forceStep={engine.forceOnboarding && engine.forceOnboarding !== '1' ? engine.forceOnboarding : null}
-        onDone={(openNew) => void done(openNew)}
+        onDone={(next) => void done(next)}
         onBackendAction={act}
       />
     )
