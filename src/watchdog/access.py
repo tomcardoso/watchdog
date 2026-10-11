@@ -41,7 +41,10 @@ _local = threading.local()
 
 def access_file() -> Path:
     override = os.environ.get(ACCESS_FILE_ENV)
-    return Path(override) if override else Path.home() / ".watchdog" / "access.json"
+    if override:
+        return Path(override)
+    from watchdog import config
+    return config.home() / "access.json"
 
 
 def enforced() -> bool:
@@ -92,12 +95,17 @@ def _protected_roots() -> list[Path]:
     return [_resolve(r) for r in roots]
 
 
+def _watchdog_home() -> Path:
+    from watchdog import config
+    return config.home()
+
+
 def _exempt_roots() -> list[Path]:
     """Always writable: Watchdog's settings folder, temporary files, the Python environment and
     model caches."""
     home = Path.home()
     candidates = [
-        home / ".watchdog",
+        _watchdog_home(),
         tempfile.gettempdir(),
         sys.prefix, sys.base_prefix, sys.exec_prefix,
         os.environ.get("XDG_CACHE_HOME") or home / ".cache",
