@@ -823,7 +823,7 @@ See D45–D48.
   `vault.saveNotes`; saves outlive the screen, retry while the commit pass holds the registry lock
   and keep a draft on failure, and quitting closes the window first so an outstanding save reaches
   the backend.
-- **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
+- **Release and updates (D269).** `electron-builder.config.cjs` and `app-release.yml`
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
 

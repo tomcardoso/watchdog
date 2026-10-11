@@ -2,9 +2,7 @@
 
 How the desktop app is built, signed, released and updated. Adapted from Sourcerer's process.
 
-## Two kinds of release
-
-The app and the `watchdog` Python package are released separately, from the same repository:
+## Releases
 
 - **The app**: a tag `app-v<semver>` runs `.github/workflows/app-release.yml`. `app-v0.2.0-beta.1`
   is a beta, `app-v0.2.0` a stable release. It tests the Python package, builds the app on macOS
@@ -16,11 +14,9 @@ The app and the `watchdog` Python package are released separately, from the same
      release on that channel. This is the page to send testers, and the feed installed copies read
      for updates.
 
-  Neither is marked as the repository's latest release, and nothing goes to PyPI. The app carries
-  the Python engine built from the same commit, whatever `pyproject.toml`'s version says.
-- **The Python package**: a tag `v<pep440>` runs `.github/workflows/publish.yml` (tests, the wheel
-  and sdist, a GitHub release with notes from the version-bump PR, and PyPI). It no longer builds
-  the app. With the command line being retired (D267, #729), this path is expected to go.
+  Neither is marked as the repository's latest release. The app carries the Python engine built
+  from the same commit, whatever `pyproject.toml`'s version says. The Python package is not
+  published on its own: it is the engine the app bundles (#729).
 
 ## Releasing the app
 
