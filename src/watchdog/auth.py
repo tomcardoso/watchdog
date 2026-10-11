@@ -763,7 +763,7 @@ def restore_concurrency_from_subscription() -> bool:
 
 def route_stages_to_model(config: dict, provider: str, value: str) -> None:
     """Point classifier/extractor/finalizer_model at `value` (a `provider:model` id) and apply
-    each stage's generic schema-default effort wherever the model supports it. Mutates `config`;
+    each stage's default effort (post-processing: 'high') wherever the model supports it. Mutates `config`;
     the caller persists it."""
     from watchdog.settings import SETTINGS
     from watchdog.model_client import effort_supported
@@ -773,8 +773,12 @@ def route_stages_to_model(config: dict, provider: str, value: str) -> None:
     config["finalizer_model"] = value
 
     model_id = value.removeprefix(f"{provider}:")
-    for key in ("classifier_effort", "extractor_effort", "finalizer_effort"):
-        default_effort = SETTINGS[key]["default"]
+    # Post-processing has no schema default (nothing is sent unless it is set); a model chosen
+    # here for every stage gets 'high' for it, since reasoning helps the prose steps.
+    stage_effort = {"classifier_effort": SETTINGS["classifier_effort"]["default"],
+                    "extractor_effort": SETTINGS["extractor_effort"]["default"],
+                    "finalizer_effort": "high"}
+    for key, default_effort in stage_effort.items():
         if effort_supported(provider, model_id, default_effort):
             config[key] = default_effort
 
