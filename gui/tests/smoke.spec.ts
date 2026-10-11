@@ -197,7 +197,8 @@ test('every screen renders against the demo investigation', async () => {
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'review', kind: 'no-such-kind' }))
     await expect(page.getByText('This screen could not be shown')).toBeVisible({ timeout: 10_000 })
     await expect(page.locator('.sidebar, aside').first()).toBeVisible()
-    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'home' }))
+    // (Back to Search, not Overview: Overview would cache the pipeline state the lock check below reads.)
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'search', query: 'contract' }))
     await expect(page.getByText('This screen could not be shown')).toHaveCount(0)
 
     // Locks clear themselves (D293): the app offers no unlock control, and a run on another
