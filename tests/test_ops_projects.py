@@ -846,3 +846,53 @@ def test_overview_counts_incoming_files_and_queued_research(configured):
     s = overview.summary(vault)
     assert s["incoming"] == 2 and s["research_urls"] == 2
     assert overview.has_work(s)
+
+
+# ── Refresh Claude setup (`refresh-claude-setup`) ─────────────────────────────────────────
+
+def _vault_claude_md(configured):
+    vault = Path(_new("City Hall Probe", configured)["path"])
+    return vault, vault / ".claude" / "CLAUDE.md"
+
+
+def test_refresh_restores_the_read_scope_setting(configured):
+    from watchdog.ops.maintenance import refresh_claude_setup
+    vault, _ = _vault_claude_md(configured)
+    settings_path = vault / ".claude" / "settings.json"
+    settings = json.loads(settings_path.read_text())
+    del settings["permissions"]["blockReadsOutsideWorkingDirectories"]
+    settings_path.write_text(json.dumps(settings, indent=2) + "\n")
+    refresh_claude_setup(REP, vault)
+    assert json.loads(settings_path.read_text())["permissions"]["blockReadsOutsideWorkingDirectories"] is True
+
+
+def test_refresh_replaces_watchdogs_section_and_keeps_the_reporters_notes(configured):
+    """D264: stale session instructions that contradicted tightened permissions are replaced;
+    whatever the reporter wrote after the end marker stays."""
+    from watchdog.ops.maintenance import refresh_claude_setup
+    vault, path = _vault_claude_md(configured)
+    fresh = path.read_text()
+    assert fresh.startswith("<!-- watchdog:begin") and fresh.rstrip().endswith("<!-- watchdog:end -->")
+    assert "# City Hall Probe — Watchdog" in fresh
+    stale = fresh.replace("Read `context.md`", "Read `stale.md`") + "\nMy own note: check the minutes.\n"
+    path.write_text(stale)
+    refresh_claude_setup(REP, vault)
+    text = path.read_text()
+    assert "Read `context.md`" in text and "stale.md" not in text
+    assert text.endswith("\nMy own note: check the minutes.\n")
+
+
+def test_refresh_leaves_an_up_to_date_claude_md_alone(configured):
+    from watchdog.ops.maintenance import refresh_claude_setup
+    vault, path = _vault_claude_md(configured)
+    before = path.read_text()
+    refresh_claude_setup(REP, vault)
+    assert path.read_text() == before
+
+
+def test_refresh_writes_a_missing_claude_md(configured):
+    from watchdog.ops.maintenance import refresh_claude_setup
+    vault, path = _vault_claude_md(configured)
+    path.unlink()
+    refresh_claude_setup(REP, vault)
+    assert "# City Hall Probe — Watchdog" in path.read_text()
