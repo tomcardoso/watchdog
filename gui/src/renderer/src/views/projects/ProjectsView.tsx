@@ -250,7 +250,7 @@ function ProjectCard({ p, menu, onOpen, onFix, onRemove }: { p: Project; menu: M
             {p.sample && <Badge tone="accent" icon={Compass} tip="Built for learning Watchdog; everyone in it is invented">Sample</Badge>}
             {p.archived && <Badge icon={Archive}>Archived</Badge>}
             {s.failed > 0 && <Badge tone="danger" tip="Documents that failed extraction">{s.failed} failed</Badge>}
-            {inProgress > 0 && <Badge tone="warning" tip="Documents waiting to be added or finished">{inProgress} in progress</Badge>}
+            {inProgress > 0 && <Badge tone="warning" tip="Documents waiting to be added or finished">{inProgress} waiting</Badge>}
             {!p.archived && !s.failed && !inProgress && s.documents > 0 && <Badge tone="success" icon={CircleCheck}>Up to date</Badge>}
           </div>
         </>
