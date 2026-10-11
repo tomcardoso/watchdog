@@ -1,5 +1,4 @@
-// Ask: a Claude Code session inside the investigation — replaces `watchdog ask` and
-// `watchdog ask --context`.
+// Ask: a Claude Code session inside the investigation, for questions or for setting its context.
 
 import { FileText, Globe, Sprout } from 'lucide-react'
 import { Button } from '@renderer/components/ui'

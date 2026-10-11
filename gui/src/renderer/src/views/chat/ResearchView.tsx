@@ -1,5 +1,5 @@
 // Web research: a Claude Code session that queues sources, then a deterministic download into
-// incoming/ — replaces `watchdog research`.
+// incoming/.
 
 import { Download, ExternalLink, Globe, Inbox } from 'lucide-react'
 import { useState } from 'react'

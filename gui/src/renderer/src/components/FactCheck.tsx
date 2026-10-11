@@ -1,6 +1,6 @@
 // The reporter's own check of a fact (D271): Verified, Disputed or Can't verify, with an optional
 // note. Used on each fact row in a document and in Review → Verification. Marks are written
-// through `verify.mark`, the library function `watchdog verify-fact` calls.
+// through `verify.mark`.
 
 import { Check, CircleHelp, MessageSquareText, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'

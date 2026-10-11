@@ -935,7 +935,7 @@ export interface UpdateState {
 export interface BackendStatus {
   state: 'starting' | 'ready' | 'error' | 'stopped'
   python: string | null
-  source: string | null // where the python was found: env | settings | pipx | path | dev
+  source: string | null // where the python was found: env | settings | managed | path
   message: string | null
   stderrTail: string[]
   /** No Python that can run Watchdog was found, and the app can build its own (the engine). */

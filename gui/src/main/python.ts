@@ -4,7 +4,7 @@
 import { app } from 'electron'
 import log from 'electron-log/main'
 import { ChildProcessWithoutNullStreams, spawn, spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -39,19 +39,6 @@ export function bundledSource(): string | null {
   return null
 }
 
-function shebangPython(script: string): string | null {
-  try {
-    const first = readFileSync(script, 'utf8').split('\n', 1)[0]
-    if (first.startsWith('#!')) {
-      const interp = first.slice(2).trim().split(/\s+/)[0]
-      if (interp && existsSync(interp) && !interp.endsWith('/env')) return interp
-    }
-  } catch {
-    /* not readable */
-  }
-  return null
-}
-
 function which(cmd: string): string | null {
   const exts = process.platform === 'win32' ? ['.exe', '.cmd', '.bat', ''] : ['']
   for (const dir of (process.env.PATH ?? '').split(delimiter)) {
@@ -72,26 +59,10 @@ async function candidates(engine: Engine): Promise<Candidate[]> {
   // and uses the managed engine only as the last resort.
   const managed = engine.managedPython()
   if (managed && !engine.isDev && engine.engineState() === 'ready') out.push({ python: managed, source: 'managed' })
-  // pipx installs Watchdog into its own venv; the `watchdog` launcher's shebang names that python.
-  const home = homedir()
-  const pipxVenvs = [
-    process.env.PIPX_HOME && join(process.env.PIPX_HOME, 'venvs', 'watchdog-intel'),
-    join(home, '.local', 'pipx', 'venvs', 'watchdog-intel'),
-    join(home, '.local', 'share', 'pipx', 'venvs', 'watchdog-intel'),
-    join(home, 'pipx', 'venvs', 'watchdog-intel')
-  ].filter(Boolean) as string[]
-  for (const venv of pipxVenvs) {
-    const py = process.platform === 'win32' ? join(venv, 'Scripts', 'python.exe') : join(venv, 'bin', 'python')
-    if (existsSync(py)) out.push({ python: py, source: 'pipx', external: true })
-  }
-  // GUI apps on macOS start with a minimal PATH, so also look in the usual install places.
-  const extraDirs = [join(home, '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']
+  // A Python on the PATH that can import Watchdog: a development checkout's interpreter. GUI apps
+  // on macOS start with a minimal PATH, so also look in the usual install places.
+  const extraDirs = [join(homedir(), '.local', 'bin'), '/opt/homebrew/bin', '/usr/local/bin']
   process.env.PATH = [process.env.PATH ?? '', ...extraDirs].join(delimiter)
-  const launcher = which('watchdog')
-  if (launcher) {
-    const py = shebangPython(launcher)
-    if (py) out.push({ python: py, source: 'path', external: true })
-  }
   for (const name of process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python']) {
     const p = which(name)
     if (p) out.push({ python: p, source: 'path', external: true })
@@ -122,7 +93,7 @@ function pythonPathEnv(src: string | null, engine?: Engine, managed = false): No
   if (engine) {
     const uv = engine.uvPath()
     if (uv) env.WATCHDOG_UV = uv
-    // Commands the app runs by name (`watchdog add …`) resolve to the managed engine.
+    // Programs the backend starts by name resolve to the managed engine's own.
     if (managed) env.PATH = [engine.venvBin(), process.env.PATH ?? ''].join(delimiter)
   }
   return env
@@ -130,7 +101,7 @@ function pythonPathEnv(src: string | null, engine?: Engine, managed = false): No
 
 /** Whether `python` can import Watchdog (and its GUI server) with `src` first on the path. */
 function probe(python: string, src: string | null): { ok: boolean; message: string; version: string } {
-  const r = spawnSync(python, ['-c', 'import watchdog.gui.server, watchdog.cli, watchdog; print("ok", watchdog.__version__)'], {
+  const r = spawnSync(python, ['-c', 'import watchdog.gui.server, watchdog.worker, watchdog; print("ok", watchdog.__version__)'], {
     env: pythonPathEnv(src),
     encoding: 'utf8',
     timeout: 30000

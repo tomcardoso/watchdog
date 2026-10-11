@@ -1,4 +1,4 @@
-// Settings: every `watchdog settings` key as a form, plus sign-in and keys, skills, appearance,
+// Settings: every setting as a form, plus sign-in and keys, skills, appearance,
 // the vault check, setup and about. Works with no investigation open.
 
 import { BookOpen, FileClock, FolderLock, HeartPulse, Info, KeyRound, Palette, Wrench } from 'lucide-react'

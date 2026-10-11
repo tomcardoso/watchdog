@@ -1,4 +1,4 @@
-// Record a verified contradiction on an entity: `watchdog review add-contradiction <id> …`.
+// Record a verified contradiction on an entity (the `add-contradiction` operation).
 
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Callout, Field, Modal } from '@renderer/components/ui'

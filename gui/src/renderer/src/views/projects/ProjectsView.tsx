@@ -1,5 +1,5 @@
-// "All investigations": the front door. A grid of investigation cards, each with a menu covering
-// every `watchdog projects` subcommand, plus register, new, and the vault health check.
+// "All investigations": the front door. A grid of investigation cards, each with a menu to rename,
+// describe, move, archive or delete it, plus register, new, and the vault health check.
 
 import {
   Archive, ArchiveRestore, BookOpenText, FolderInput, FolderOpen, FolderPlus, History, Pencil, Plus,

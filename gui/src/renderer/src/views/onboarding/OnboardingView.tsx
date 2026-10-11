@@ -1,5 +1,4 @@
-// First-run setup. A calm, full-window sequence that replaces `pipx install watchdog-intel` and
-// `watchdog setup`: install the engine, choose where investigations live, connect a model provider,
+// First-run setup. A calm, full-window sequence: install the engine, choose where investigations live, connect a model provider,
 // answer the auto-approve question, then start. Progress is remembered (preferences 'onboarding'),
 // so closing the app part-way and reopening returns to the right step.
 

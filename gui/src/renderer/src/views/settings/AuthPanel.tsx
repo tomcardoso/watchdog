@@ -1,4 +1,4 @@
-// Models & keys: how Watchdog signs in to Claude and to each model provider (`watchdog settings auth`).
+// Models & keys: how Watchdog signs in to Claude and to each model provider.
 
 import { CheckCircle2, KeyRound, MoreHorizontal, Pencil, Plus, Star, Trash2, XCircle } from 'lucide-react'
 import { useState } from 'react'
