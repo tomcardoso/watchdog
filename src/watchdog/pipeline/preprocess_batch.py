@@ -209,9 +209,9 @@ def _resolve_workers(
     # A worker count below 1 reaches ThreadPoolExecutor's own `max_workers must be greater than
     # 0` ValueError (#636) — catch it here with a clear message instead.
     if explicit_pre is not None and explicit_pre < 1:
-        sys.exit(f"Error: {'The pre-processing worker count'} must be at least 1 (got {explicit_pre}).")
+        sys.exit(f"Error: The pre-processing worker count must be at least 1 (got {explicit_pre}).")
     if explicit_chunk is not None and explicit_chunk < 1:
-        sys.exit(f"Error: {'The chunk worker count'} must be at least 1 (got {explicit_chunk}).")
+        sys.exit(f"Error: The chunk worker count must be at least 1 (got {explicit_chunk}).")
 
     cfg = user_config.read()
 

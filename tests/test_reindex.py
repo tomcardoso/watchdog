@@ -1,7 +1,6 @@
-"""Tests for `watchdog reindex` (#218): rebuilding `.embeddings/` from on-disk vault state
+"""Tests for the reindex operation (#218): rebuilding `.embeddings/` from on-disk vault state
 alone, with zero model calls. Fastembed is monkeypatched out (matches test_embed.py)."""
 
-import argparse
 import asyncio
 import hashlib
 
@@ -9,7 +8,8 @@ import numpy as np
 import pytest
 
 from watchdog import model_client
-from watchdog.ops.reindex import _pages_from_morgue_text, cmd_reindex
+from watchdog.ops import CollectingReporter
+from watchdog.ops.reindex import _pages_from_morgue_text, reindex
 from watchdog.pipeline import embed as embed_mod, fulltext as fts_mod, orchestrate
 
 from tests.test_orchestrate import _extraction, _queue_doc
@@ -38,8 +38,10 @@ def no_rerank(monkeypatch):
     monkeypatch.setattr(embed_mod, "_rerank_enabled", lambda: False)
 
 
-def _args(project=None):
-    return argparse.Namespace(project=project)
+def _reindex(vault):
+    rep = CollectingReporter()
+    reindex(rep, vault)
+    return rep
 
 
 def _ingest_one_doc(vault, monkeypatch):
@@ -78,7 +80,7 @@ def test_pages_from_morgue_text_empty_string():
     assert _pages_from_morgue_text("") == []
 
 
-# ── cmd_reindex ───────────────────────────────────────────────────────────────
+# ── reindex ───────────────────────────────────────────────────────────────
 
 def test_reindex_rebuilds_corpus_and_notes_matching_the_original_ingest(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
@@ -88,8 +90,7 @@ def test_reindex_rebuilds_corpus_and_notes_matching_the_original_ingest(tmp_path
     assert before["passages"] > 0
     assert before["notes"] > 0
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
+    _reindex(vault)
 
     after = embed_mod.index_stats(vault)
     assert after == before
@@ -103,8 +104,7 @@ def test_reindex_makes_no_model_calls(tmp_path, monkeypatch):
         raise AssertionError("reindex must not call the model")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", _boom)
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())   # would raise via the mocked acomplete_json if it ever called out
+    _reindex(vault)   # would raise via the mocked acomplete_json if it ever called out
 
 
 def test_reindex_rebuilds_with_a_new_embed_model_dimension(tmp_path, monkeypatch):
@@ -120,8 +120,7 @@ def test_reindex_rebuilds_with_a_new_embed_model_dimension(tmp_path, monkeypatch
                 yield np.ones(self.DIM, dtype=np.float32)
     monkeypatch.setattr(embed_mod, "_embedder", _BiggerEmbedder())
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
+    _reindex(vault)
 
     vecs, _ = embed_mod._load_all(vault)
     assert vecs.shape[1] == 16
@@ -133,11 +132,8 @@ def test_reindex_skips_documents_with_no_morgue_text_but_still_rebuilds_notes(tm
     for md in (vault / "morgue").rglob("*.md"):
         md.unlink()
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
-
-    out = capsys.readouterr().out
-    assert "skip" in out.lower()
+    out = _reindex(vault).text
+    assert "skipped" in out.lower()
     stats = embed_mod.index_stats(vault)
     assert stats["passages"] == 0
     assert stats["notes"] > 0
@@ -145,12 +141,11 @@ def test_reindex_skips_documents_with_no_morgue_text_but_still_rebuilds_notes(tm
 
 def test_reindex_errors_when_nothing_ingested(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
-    monkeypatch.chdir(vault)
-    with pytest.raises(SystemExit, match="nothing to reindex"):
-        cmd_reindex(_args())
+    with pytest.raises(SystemExit, match="nothing to index"):
+        _reindex(vault)
 
 
-# ── cmd_reindex: full-text (FTS) index (#109) ──────────────────────────────────
+# ── reindex: full-text (FTS) index (#109) ──────────────────────────────────
 
 def test_reindex_rebuilds_fulltext_index_matching_the_original_ingest(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
@@ -160,8 +155,7 @@ def test_reindex_rebuilds_fulltext_index_matching_the_original_ingest(tmp_path, 
     assert before["corpus"] > 0
     assert before["notes"] > 0
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
+    _reindex(vault)
 
     after = fts_mod.index_stats(vault)
     assert after == before
@@ -171,8 +165,7 @@ def test_reindex_fulltext_search_finds_corpus_terms_after_rebuild(tmp_path, monk
     vault = make_vault(tmp_path)
     _ingest_one_doc(vault, monkeypatch)
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
+    _reindex(vault)
 
     hits = fts_mod.search(vault, "Acme Corp")
     assert any(h["kind"] == "corpus" for h in hits)
@@ -185,8 +178,7 @@ def test_reindex_fulltext_skips_documents_with_no_morgue_text_but_still_rebuilds
     for md in (vault / "morgue").rglob("*.md"):
         md.unlink()
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
+    _reindex(vault)
 
     stats = fts_mod.index_stats(vault)
     assert stats["corpus"] == 0
@@ -199,8 +191,7 @@ def test_reindex_fulltext_includes_timeline_and_briefings(tmp_path, monkeypatch)
     assert (vault / "timeline.md").exists()
     assert list((vault / "briefings").glob("*.md"))
 
-    monkeypatch.chdir(vault)
-    cmd_reindex(_args())
+    _reindex(vault)
 
     # timeline.md and at least one briefing must have been indexed under their own kinds
     with_kinds = {"timeline", "briefing", "hot", "log", "entity", "document", "corpus"}

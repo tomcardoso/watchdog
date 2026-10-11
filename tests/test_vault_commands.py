@@ -1,9 +1,9 @@
-"""Tests for per-vault command-skill installation (setup_cmd.py).
+"""The Claude commands installed into each investigation (`vault.install_commands`).
 
 Record (domain) skills are global now — see tests/test_skills_catalog.py.
 """
 
-from watchdog.setup_cmd import install_skills
+from watchdog.vault import install_commands as install_skills
 
 
 def test_install_skills_installs_command_skills(tmp_path):

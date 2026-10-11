@@ -7,7 +7,6 @@ from claude_agent_sdk import (AssistantMessage, PermissionResultAllow, Permissio
                               ResultMessage, StreamEvent, TextBlock, ToolPermissionContext,
                               ToolResultBlock, ToolUseBlock, UserMessage)
 
-from watchdog.cmd import base
 from watchdog.gui import chat, rpc
 from watchdog.gui.api import chat as api
 

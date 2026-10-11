@@ -7,9 +7,10 @@ import stat
 import pytest
 
 from watchdog import skills_catalog
-from watchdog.cmd import setup as setup_cmd
+from watchdog import settings as settings_mod
 
 from tests.gui_support import call, call_error
+from tests.keys_support import item, stored
 
 pytest_plugins = ["tests.gui_support"]   # the rich_vault / wdg_home fixtures
 
@@ -25,7 +26,7 @@ def creds(home):
 
 
 def write_creds(home, mode, keys=None):
-    (home / "credentials.json").write_text(json.dumps({"mode": mode, "keys": keys or {}}))
+    (home / "credentials.json").write_text(json.dumps({"mode": mode, "keys": stored(**(keys or {}))}))
 
 
 def mode_bits(path):
@@ -36,16 +37,16 @@ def mode_bits(path):
 
 def test_schema_covers_every_key_once_in_section_order(wdg_home):
     s = call("settings.schema")
-    assert [sec["title"] for sec in s["sections"]] == [t for t, _, _ in setup_cmd._CONFIGURE_SECTIONS]
+    assert [sec["title"] for sec in s["sections"]] == [t for t, _, _ in settings_mod.SECTIONS]
     keys = [k["key"] for sec in s["sections"] for k in sec["keys"]]
-    assert sorted(keys) == sorted(setup_cmd._CONFIGURE_KEYS) and len(keys) == len(set(keys))
+    assert sorted(keys) == sorted(settings_mod.SETTINGS) and len(keys) == len(set(keys))
     assert s["sections"][0]["keys"][0]["key"] == "projects_dir"
     assert s["sections"][0]["blurb"] == "Where investigations are created."
     json.dumps(s)
 
 
 def test_schema_unlisted_keys_land_in_other(wdg_home, monkeypatch):
-    monkeypatch.setitem(setup_cmd._CONFIGURE_KEYS, "brand_new", {"short": "New", "help": "x", "type": "int", "default": 1})
+    monkeypatch.setitem(settings_mod.SETTINGS, "brand_new", {"short": "New", "help": "x", "type": "int", "default": 1})
     s = call("settings.schema")
     assert s["sections"][-1]["title"] == "Other"
     assert [k["key"] for k in s["sections"][-1]["keys"]] == ["brand_new"]
@@ -123,23 +124,13 @@ def test_schema_with_a_corrupt_config(wdg_home):
     ("extractor_model", "openai:gpt-5-mini", "openai:gpt-5-mini", "openai:gpt-5-mini"),
     ("ocr_languages", "en-US, fr-FR", ["en-US", "fr-FR"], "en-US, fr-FR"),
 ])
-def test_set_stores_what_the_cli_would(wdg_home, key, value, stored, display):
+def test_set_stores_the_coerced_value(wdg_home, key, value, stored, display):
     r = call("settings.set", key=key, value=value)
     if key == "extractor_effort":
         stored, display = "high", "high"
     assert r == {"key": key, "value": stored, "display": display}
     assert config(wdg_home)[key] == stored
     assert mode_bits(wdg_home / "config.json") == 0o600
-
-
-def test_set_matches_cmd_configure(wdg_home):
-    import argparse
-    from watchdog.cmd.setup import cmd_configure
-    call("settings.set", key="dup_threshold", value="0.9")
-    via_gui = config(wdg_home)
-    (wdg_home / "config.json").unlink()
-    cmd_configure(argparse.Namespace(key="dup_threshold", value="0.9"))
-    assert config(wdg_home) == via_gui
 
 
 @pytest.mark.parametrize("key, value, message", [
@@ -294,7 +285,7 @@ def test_set_anthropic_mode_api_key_stores_the_key_and_restores_concurrency(wdg_
     call("auth.setAnthropicMode", mode="subscription")
     r = call("auth.setAnthropicMode", mode="api-key", key="  sk-ant-abcdefghijklmnop ")
     assert r["claude"]["mode"] == "api-key" and r["claude"]["key_masked"] == "sk-ant-abc…mnop"
-    assert creds(wdg_home) == {"mode": "api-key", "keys": {"anthropic": "sk-ant-abcdefghijklmnop"}}
+    assert creds(wdg_home) == {"mode": "api-key", "keys": stored(anthropic="sk-ant-abcdefghijklmnop")}
     assert "extract_concurrency" not in config(wdg_home)
     assert "abcdefghijklmnop" not in json.dumps(r)
 
@@ -307,7 +298,7 @@ def test_set_anthropic_mode_without_a_key_reports_it(wdg_home):
 
 def test_set_anthropic_mode_warns_on_an_odd_key_but_stores_it(wdg_home):
     r = call("auth.setAnthropicMode", mode="api-key", key="not-an-anthropic-key")
-    assert "sk-ant-" in r["warning"] and creds(wdg_home)["keys"]["anthropic"] == "not-an-anthropic-key"
+    assert "sk-ant-" in r["warning"] and creds(wdg_home)["keys"]["anthropic"]["items"][0]["key"] == "not-an-anthropic-key"
 
 
 def test_set_anthropic_mode_validation(wdg_home):
@@ -318,7 +309,7 @@ def test_set_anthropic_mode_validation(wdg_home):
 def test_set_key_and_delete_key(wdg_home):
     r = call("auth.setKey", provider="openai", key=" sk-openai-abcdef123456 ")
     assert {k["provider"]: k["masked"] for k in r["keys"]} == {"openai": "sk-openai-…3456"}
-    assert creds(wdg_home)["keys"] == {"openai": "sk-openai-abcdef123456"}
+    assert creds(wdg_home)["keys"] == stored(openai="sk-openai-abcdef123456")
     assert mode_bits(wdg_home / "credentials.json") == 0o600
     assert r["warning"] is None
     assert "sk-" in call("auth.setKey", provider="openai", key="odd")["warning"]
@@ -400,18 +391,18 @@ def test_skills_read(wdg_home):
 # ── setup.check ──────────────────────────────────────────────────────────────────
 
 def test_setup_check(wdg_home, monkeypatch, tmp_path):
-    from watchdog import setup_cmd
+    from watchdog.gui.api import settings as api
     from watchdog.pipeline import capture
     present = {"qpdf"}
     monkeypatch.setattr("shutil.which", lambda b: f"/usr/bin/{b}" if b in present else None)
     monkeypatch.setattr(capture, "render_available", lambda: True)
     monkeypatch.setenv("HF_HOME", str(tmp_path / "hf"))
     r = call("setup.check")
-    assert [d["label"] for d in r["deps"]] == [d[1] for d in setup_cmd._DEPS]
+    assert [d["label"] for d in r["deps"]] == [label for _b, label in api._HELPERS]
     qpdf = r["deps"][0]
     assert qpdf == {"label": "qpdf", "ok": True, "hint": None, "required": False}
     gs = r["deps"][1]
-    assert gs["ok"] is False and "ghostscript" in gs["hint"]
+    assert gs["ok"] is False and gs["hint"] is None      # Settings explains each helper itself
     assert r["playwright"] is True and r["gliner_model"] is False
     assert r["config_exists"] is False and r["projects_dir"] is None
 

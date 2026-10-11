@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 
 from watchdog.model_catalog import display_name
-from watchdog.pipeline.json_io import _read_json, _read_json_or
+from watchdog.pipeline.json_io import _read_json
 
 # task name -> stage bucket.
 STAGE = {
@@ -35,10 +35,6 @@ _ZERO_TOTALS = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
                 "cache_write_tokens": 0, "cost_usd": 0.0, "latency_s": 0.0}
 
 
-def _fmt(n: int) -> str:
-    return f"{n:,}"
-
-
 def _fmt_secs(s: float) -> str:
     return f"{s:.1f}s" if s < 60 else f"{s / 60:.1f}m"
 
@@ -48,8 +44,7 @@ _BATCH_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 def _batch_span(start: str | None, end: str | None) -> str | None:
     """Human duration between two batch-lifecycle timestamps (orchestrate.py's `_BATCH_TS_FMT`
-    strings), or None if either is missing — `ended_at` predates this feature for any batch
-    collected before it shipped, and `collected_at` is absent from a non-batch call entirely."""
+    strings), or None if either is missing."""
     if not start or not end:
         return None
     import datetime
@@ -77,8 +72,7 @@ def wall_span(calls: list[dict]) -> float | None:
     """Wall-clock elapsed across `calls` — max(end) − min(start), where each call's start is
     `end_ts − latency_s`. This is the real time the calls took together, which for a stage that
     ran concurrently is shorter than the summed per-call latency. Returns None when no call
-    carries an `end_ts` (usage files written before #317's follow-up), so callers fall back to
-    the summed call time alone."""
+    carries an `end_ts`, so callers fall back to the summed call time alone."""
     ends = [c["end_ts"] for c in calls if c.get("end_ts")]
     if not ends:
         return None
@@ -93,8 +87,8 @@ def peak_concurrency(calls: list[dict]) -> int:
     calls that ran two at a time (`--concurrency 2`) both extend the wall-clock span past the
     fastest call's latency (so the "ran concurrently" line fires) and total 4, even though only
     2 were ever in flight together. A standard sweep over start/end events tracks the real peak
-    instead. Calls with no `end_ts` (usage files written before #317's follow-up) are excluded,
-    same as `wall_span`; returns 1 if none carry one (nothing to sweep, no overlap knowable)."""
+    instead. Calls with no `end_ts` are excluded, same as `wall_span`; returns 1 if none carry
+    one (nothing to sweep, no overlap knowable)."""
     events = []
     for c in calls:
         end = c.get("end_ts")
@@ -208,8 +202,7 @@ def subscription_note(calls: list[dict]) -> str | None:
 
 def cost_by_key(calls: list[dict]) -> list[dict]:
     """Cost per labelled key that paid (#690, D290): `[{"label", "cost_usd", "calls"}]`, most
-    expensive first. A call with no `key_label` (a subscription call, a local model, or a record
-    from before labels) is grouped under None."""
+    expensive first. A call with no `key_label` (a subscription call or a local model) is grouped under None."""
     out: dict = {}
     for c in calls:
         row = out.setdefault(c.get("key_label"), {"label": c.get("key_label"), "cost_usd": 0.0, "calls": 0})
@@ -236,16 +229,10 @@ def pages_in_detail(detail: str | None) -> int | None:
 
 
 def corpus_pages(vault: Path) -> tuple[int, int] | None:
-    """(total_pages, document_count) covering every ingested document, not just the run being
-    displayed — the right denominator for cost/page.
-
-    Reads `.watchdog/extracted/*.json` (#457), the artifacts processing stages before any
-    `bark` call — present for a dig-only vault too, unlike the committed document registry this
-    used to require exclusively, which stays empty until `bark` runs (never, for a vault that's
-    dig-only by design, e.g. an extractor-only benchmark arm). `_commit_extracted` never deletes
-    an extracted artifact once staged, so this also covers every already-barked document. Falls
-    back to the registry only for a vault ingested before the dig/bark split (#403) shipped,
-    which has committed documents but no `extracted/` directory at all."""
+    """(total_pages, document_count) covering every processed document, not just the run being
+    displayed — the right denominator for cost/page. Reads `.watchdog/extracted/*.json` (#457),
+    the artifacts processing stages before post-processing, which are never deleted once staged.
+    None when nothing has been processed."""
     extracted = vault / ".watchdog" / "extracted"
     pages, n = 0, 0
     if extracted.exists():
@@ -256,17 +243,7 @@ def corpus_pages(vault: Path) -> tuple[int, int] | None:
                 continue
             pages += doc.get("page_count") or 0
             n += 1
-    if n:
-        return (pages, n)
-
-    reg = vault / ".watchdog" / "registry" / "documents.json"
-    docs = _read_json_or(reg, None)
-    if docs is None:
-        return None
-    if not docs:
-        return None
-    pages = sum((v.get("page_count") or 0) for v in docs.values() if isinstance(v, dict))
-    return (pages, len(docs))
+    return (pages, n) if n else None
 
 
 def run_totals(calls: list[dict]) -> dict:
