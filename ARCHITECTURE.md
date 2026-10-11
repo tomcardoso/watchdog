@@ -386,15 +386,14 @@ registry, keyed for idempotent replay (D67).
 
 **Post-ingest:**
 
-- **Contradictions** (§8.5), then **relationship wordings** (§12, D291), then **entity synthesis** (§8). Before the commit pass, a vault whose
-  notes predate D280 is rebuilt once (§7).
+- **Contradictions** (§8.5), then **relationship wordings** (§12, D291), then **entity synthesis** (§8).
 - **Timeline.** Each document stages raw `{date}_{sha7}.ndjson` files; `timeline.collisions`
   promotes uncontested dates and returns dates with events from several documents (including
   several from one batch, D240). Each colliding date gets one dedup call (five dates at a time, at
   most 200 events per call, D248); `_select_kept` keeps the originals and unions entity ids onto
   each survivor (D59). A failed call leaves the date untouched for the next run (D65). Months
   mixing month- and day-precision events get a precision pass that can only fold a coarse event
-  into a day (D63). `cmd_rebuild_timeline` is the single renderer of `timeline.md`.
+  into a day (D63). `timeline.rebuild_timeline` is the single renderer of `timeline.md`.
 - **Briefing.** One call over compact per-document results (key facts, entity names, near-dup
   alerts, contradiction flags) and the scratchpads, condensed in steps when the batch is large
   (D238). The key facts are read from the stored extractions as citable lines
@@ -635,7 +634,7 @@ recorded items to the split record (the merged id when free), marks the entry `u
 both registry entries' documents, aliases, roles and timeline events from the extractions,
 re-points and restores third records' roles, retags timeline NDJSON from the facts, marks the pair
 "Not the same", and renders the notes. Contradictions, the journalist's Notes and the AI summary
-stay with the survivor. `merge_undo.check` refuses, with a reason, pre-D280 entries, section folds,
+stay with the survivor. `merge_undo.check` refuses, with a reason, section folds,
 undone entries, a survivor merged away later, a merged id now taken, or a reprocessed document.
 
 ---
@@ -644,8 +643,9 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
 
 - **Stages.** `classifier_model` (haiku), `extractor_model` (sonnet), `finalizer_model` (haiku) —
   the finalizer split into reconciliation, synthesis, timeline and briefing overrides (D137).
-  Efforts: `classifier_effort` (low), `extractor_effort` (medium, D140), `finalizer_effort` (high),
-  `verifier_effort` (low). Defaults are in `watchdog/defaults.py`; per-run flags override. GPT-5.6
+  Efforts: `classifier_effort` (low), `extractor_effort` (medium, D140), `finalizer_effort` (unset:
+  no effort is sent), `verifier_effort` (low); the classifier and extractor defaults apply only where
+  the model supports them. Defaults are in `watchdog/defaults.py`; per-run options override. GPT-5.6
   Luna is the documented recommendation for extraction (D221, D222).
 - **Effort and thinking (D36, D161, D206).** A requested effort is checked against the catalogue's
   per-model `effort_levels` and mapped to each provider's control; an unsupported level fails
@@ -668,8 +668,8 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
 - **Setup (D95, D235).** How Claude Code signs in and which provider handles ingestion are asked
   separately.
 - **Keys (D290).** `~/.watchdog/credentials.json` (0600, written atomically) holds per provider
-  either one key (the pre-D290 string, read as one key named "Default") or `{default, items: [{id,
-  label, key}]}`. `auth.resolve_key(provider, vault)` is the one resolver: the environment variable,
+  `{default, items: [{id, label, key}]}`, each `key` an encrypted blob from the app's main process
+  where the computer has secure storage (D295, D301). `auth.resolve_key(provider, vault)` is the one resolver: the environment variable,
   else the investigation's choice (by id, then by name, so a shared folder finds the same-named key
   on another computer), else the default. A choice that resolves to nothing raises `KeyChoiceError`
   (I16). A run process scopes every lookup to its vault (`auth.use_investigation`, set by
@@ -681,7 +681,8 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
 - **Record skills (D21).** Global: the package's `skills/records/` plus `~/.watchdog/skills/records/`
   (user skills override by name). Read directly, never copied into a vault.
 - **Claude Code commands.** `/watchdog-context`, `-entity`, `-query`, `-surface`, `-wiki`, `-health`,
-  `-research`, copied into each vault by `new`/`refresh-skills`. `/watchdog-query` can call the
+  `-research`, copied into each vault by `projects-new` and `refresh-claude-setup`
+  (`vault.install_commands`). `/watchdog-query` can call the
   `search` tool as a semantic lane (D44, D299).
 
 **Data sent per call.** Chew makes none of these calls. A stage on the `local` backend sends the
@@ -776,7 +777,7 @@ See D45–D48.
   the light libraries from `engine_setup core-requirements`) is what first-run setup waits for;
   phase 2 (the rest of one `uv pip compile` lock, then the models) runs in the background and
   resumes at launch. Until it finishes the sidecar runs with `WATCHDOG_ENGINE_PENDING=1` and
-  `jobs.start`/`action.run` refuse document-adding commands (`engine_not_ready`);
+  `jobs.start`/`action.run` refuse document-adding operations (`engine_not_ready`);
   `engine.setReady` lifts it without a restart (an operation's `engine` flag, `add` or `index`, says
   which are refused). `engine.json` is versioned (`schema`, finished
   `phases`); an unreadable or foreign record rebuilds the environment. `WATCHDOG_PYTHON` or a user's choice overrides it; in
@@ -835,9 +836,10 @@ See D45–D48.
   a folder with that marker. `sample.tour` reads the sample's registries for what each tour step
   opens. The tour itself is renderer-only (`gui/src/renderer/src/tour/`): steps are a route plus a
   CSS selector to ring, kept in local storage per viewer; it adds no pipeline behaviour.
-- **Release and updates (D269).** `electron-builder.config.cjs` and `app-release.yml`
-  build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
-  updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
+- **Release and updates (D269, D297).** `electron-builder.config.cjs` and `app-release.yml`
+  build signed (when configured) installers from an `app-v*` tag; `gui/src/main/updater.ts` offers
+  updates from the channel's rolling GitHub release (`app-beta` or `app-stable`) as a generic feed
+  (D297). See `gui/DISTRIBUTION.md`.
 
 ---
 
