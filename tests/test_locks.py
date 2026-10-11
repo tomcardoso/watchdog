@@ -52,30 +52,30 @@ def test_acquire_or_take_stale_refuses_unparseable(tmp_path):
 
 
 def test_refresh_lock_resets_age(tmp_path):
-    """refresh_lock (#271, for `watchdog ingest --wait`) rewrites started_at to now, so a lock
-    held through a long sleep never crosses the staleness threshold."""
+    """refresh_lock (#271, for a run waiting out a rate limit) rewrites started_at to now, so a
+    lock held through a long sleep never crosses the staleness threshold."""
+    import os
     lock = tmp_path / ".lock"
-    old = _iso(datetime.now(timezone.utc) - timedelta(seconds=3600))
-    lock.write_text(f"pid: cli\nstarted_at: {old}\n")
+    lock.write_text(_lock_of(os.getpid(), age=3600))
     locks.refresh_lock(lock)
     age = locks.lock_age_seconds(lock)
     assert age is not None and age < 5
-    assert "pid: cli" in lock.read_text()
+    assert f"pid: {os.getpid()}" in lock.read_text()
 
 
 def test_heartbeat_keeps_a_long_run_lock_fresh(tmp_path):
     """#696: a long active run re-stamps its lock, so a second invocation never sees it as stale
     while the first is still working. The holder's other lines (its pid label) survive."""
+    import os
     import time
     lock = tmp_path / ".lock"
-    old = _iso(datetime.now(timezone.utc) - timedelta(seconds=3600))
-    lock.write_text(f"pid: 4242\nstarted_at: {old}\n")
+    lock.write_text(_lock_of(os.getpid(), age=3600))
     with locks.heartbeat(lock, interval=0.02):
         deadline = time.monotonic() + 5
         while locks.lock_age_seconds(lock) > 5 and time.monotonic() < deadline:
             time.sleep(0.01)
     assert locks.lock_age_seconds(lock) < 5
-    assert "pid: 4242" in lock.read_text()
+    assert f"pid: {os.getpid()}" in lock.read_text()
     assert locks.acquire_or_take_stale(lock, "started_at: x\n", 1800) is False
 
 
@@ -153,7 +153,7 @@ def _dead_pid() -> int:
 
 
 def _lock_of(pid: int, *, start: str | None = None, machine: str | None = "",
-             host: str | None = None, age: float = 0, label: str = "cli") -> str:
+             host: str | None = None, age: float = 0, label: str = "processing") -> str:
     lines = [f"pid: {pid}"]
     if start:
         lines.append(f"pid_start: {start}")
@@ -269,8 +269,8 @@ def test_unknown_process_status_falls_back_to_age(tmp_path, monkeypatch):
     assert locks.acquire_or_take_stale(lock, "started_at: new\n") is False
 
 
-def test_old_format_lock_follows_the_age_rule(tmp_path):
-    """A `pid: cli` lock from an older Watchdog names no process or computer."""
+def test_damaged_lock_follows_the_age_rule(tmp_path):
+    """A damaged lock that names no process or computer can't be checked: its age decides."""
     lock = tmp_path / ".lock"
     lock.write_text(f"pid: cli\nstarted_at: {_iso(datetime.now(timezone.utc))}\n")
     info = locks.inspect(lock)

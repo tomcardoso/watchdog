@@ -373,9 +373,7 @@ def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
                                                         by_id, resolver, stats)
                                     if (synth.get("analysis") or "").strip() else None)
         synthesis["citations"] = stats
-    legacy = (ents.get(eid) or {}).get("legacy_claims")
-    return {"facts": rows, "synthesis": synthesis,
-            "legacy_claims": legacy if isinstance(legacy, str) and legacy.strip() else None}
+    return {"facts": rows, "synthesis": synthesis}
 
 
 @method("vault.entity")

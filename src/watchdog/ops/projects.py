@@ -74,13 +74,12 @@ def create(name: str, *, description: str = "", parent: Path | None = None) -> P
     ]:
         (vault / d).mkdir(parents=True)
 
-    from watchdog.pipeline.entity_notes import NOTE_FORMAT
     registry = vault / ".watchdog" / "registry"
     for f in ("documents.json", "entities.json", "manifest.json"):
         (registry / f).write_text("{}\n")
     (registry / "registry.json").write_text(json.dumps(
         {"schema_version": projects.VAULT_SCHEMA_VERSION, "created_at": now, "last_updated": now,
-         "document_count": 0, "entity_count": 0, "entity_note_format": NOTE_FORMAT},
+         "document_count": 0, "entity_count": 0},
         indent=2) + "\n")
     processing_log(vault).write_text("")
     (vault / ".obsidian" / "app.json").write_text(json.dumps(

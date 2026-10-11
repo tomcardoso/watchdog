@@ -364,8 +364,6 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
     }
     if snap.get("synthesis"):
         entities[new]["synthesis"] = {**snap["synthesis"], "stale": "undo"}
-    if snap.get("legacy_claims"):
-        entities[new]["legacy_claims"] = snap["legacy_claims"]
     candidates = list(dict.fromkeys([*(entities[keep].get("appears_in") or []),
                                      *(snap.get("appears_in") or []), *arts]))
     entities[new]["appears_in"] = [s for s in candidates if s in set(snap.get("appears_in") or []) | set(arts)]

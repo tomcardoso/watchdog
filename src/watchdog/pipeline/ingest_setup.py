@@ -384,7 +384,7 @@ def recheck_cost_estimate(vault: Path, est_tokens: int, model: str, backend: str
     if result["subscription"]:
         return result
     entry = next((m for m in model_catalog.all_models()
-                  if m["id"].lower() == model_catalog.canonical_id(model_id).lower()), None)
+                  if m["id"].lower() == model_id.lower()), None)
     if entry is None:
         return result
     low_ratio, high_ratio = _RECHECK_OUTPUT_RATIO

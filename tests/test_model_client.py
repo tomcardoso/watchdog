@@ -374,30 +374,10 @@ def test_price_multiplier_peak_is_monday_to_friday_only():
         assert price_multiplier(model, datetime(2026, 10, 11, 7, 0, tzinfo=timezone.utc)) == 1.0  # Sunday
 
 
-def test_legacy_deepseek_id_resolves_to_the_current_flash_entry():
-    """DeepSeek retired `deepseek-v4-flash` and serves it as V4.1 Flash at the Flash price, so a
-    config still naming it must keep pricing, windows and capabilities — not read as uncatalogued."""
-    from datetime import datetime, timezone
-
-    from watchdog import model_catalog
-    legacy, current = "deepseek-v4-flash", "deepseek-flash"
-    assert model_catalog.canonical_id(legacy) == current
-    assert model_catalog.canonical_id(current) == current
-    assert model_catalog.canonical_id("deepseek-v4-pro") == "deepseek-v4-pro"     # untouched
-    assert model_catalog.display_name(legacy) == "DeepSeek V4.1 Flash"
-    assert model_catalog.catalog_effort_levels(legacy) == model_catalog.catalog_effort_levels(current)
-    assert model_catalog.catalog_tokenizer_ratio(legacy) == 0.81
-    peak = datetime(2026, 10, 5, 2, 0, tzinfo=timezone.utc)
-    assert model_catalog.price_multiplier(legacy, peak) == 2.0
-    usage = {"prompt_tokens": 1000, "completion_tokens": 1000}
-    assert mc._openai_cost(legacy, usage) == mc._openai_cost(current, usage) is not None
-
-
 def test_deepseek_flash_matches_the_vendor_price_page():
     """Off-peak rates from api-docs.deepseek.com/quick_start/pricing (fetched 2026-10-04)."""
     assert mc._OPENAI_PRICING["deepseek-flash"] == (0.15e-6, 0.60e-6, 0.003e-6, 0.0)
     assert mc._OPENAI_PRICING["deepseek-v4-pro"] == (0.66e-6, 1.98e-6, 0.022e-6, 0.0)
-    assert "deepseek-v4-flash" not in mc._OPENAI_PRICING     # the retired id is an alias, not a row
 
 
 def test_gpt_6_luna_matches_the_vendor_price_page():

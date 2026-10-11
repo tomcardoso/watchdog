@@ -129,17 +129,6 @@ def test_session_summary_is_stored_with_who_wrote_it(tmp_path):
 
 # ── Preserved sections ────────────────────────────────────────────────────────
 
-def test_analysis_preserved(tmp_path):
-    vault = make_vault(tmp_path)
-    run(make_extraction(tmp_path), vault)
-
-    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Prior analysis." in content
-
-
-
-# ── Global timeline rebuild ───────────────────────────────────────────────────
-
 def _seed_canonical(vault: Path, date: str, rec: dict) -> None:
     td = vault / ".watchdog" / "timeline"
     td.mkdir(parents=True, exist_ok=True)

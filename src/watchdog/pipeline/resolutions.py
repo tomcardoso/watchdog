@@ -1,6 +1,6 @@
 """Resolution / acknowledgment store (#266).
 
-The vault had no memory of what the journalist had already dealt with: `watchdog watchlist`
+The vault had no memory of what the journalist had already dealt with: the watch list
 re-reported every historical hit, the lead sweep re-listed the same items on every ingest, and
 contradiction callouts piled up append-only with no way to mark one handled short of editing the
 note by hand. This is the one deterministic mechanism serving all three — a small acknowledgment
@@ -12,8 +12,7 @@ Stored at ``.watchdog/registry/resolutions.json``::
     {"schema_version": 1, "resolved": {"<rid>": {"at": "<iso>", "label": "<human label>"}}}
 
 Resolution ids (``rid``) are stable, human-copyable tokens the reports print next to each item
-(embedded as an unobtrusive ``<!--wid:<rid>-->`` marker so the id travels with the item; older
-reports also carried a ``- [x]`` checkbox that ``--sync`` imported):
+(embedded as an unobtrusive ``<!--wid:<rid>-->`` marker so the id travels with the item):
 
   * ``lead:<signal>:<entity_id>`` — ``signal`` ∈ ``unprofiled`` | ``isolated`` | ``inferred``
   * ``contradiction:<hash>``      — ``sha1[:12]`` of the normalized callout text
@@ -22,9 +21,7 @@ reports also carried a ``- [x]`` checkbox that ``--sync`` imported):
     vault-wide (not per source document, #416) so the same artifact cited by several documents
     is one request carrying every citing document, not one per citation
 
-Three ways to acknowledge, all landing in the same JSON: ``watchdog resolve <id> …``,
-``watchdog resolve --sync`` (import ``- [x]`` checkboxes from the briefing files), and
-``watchdog unresolve <id> …`` to undo.
+The app's Review screen marks an item handled (``resolve``) or reopens it (``unresolve``).
 """
 
 import datetime
@@ -37,8 +34,6 @@ from pathlib import Path
 from watchdog.pipeline.json_io import _read_json
 
 _SCHEMA_VERSION = 1
-_WID_RE = re.compile(r"<!--\s*wid:(\S+?)\s*-->")
-_CHECKBOX_RE = re.compile(r"^\s*[-*]\s*\[(?P<mark>[ xX])\]")
 
 
 def _path(vault: Path) -> Path:
@@ -207,70 +202,3 @@ def remap_rid(vault: Path, old_rid: str, new_rid: str) -> bool:
     resolved[new_rid] = resolved.pop(old_rid)
     save(vault, data)
     return True
-
-
-# ── Checkbox sync ────────────────────────────────────────────────────────────────
-
-def tick_in_briefings(vault: Path, rids, ticked: bool = True) -> int:
-    """Set the checkbox of every briefing line (and `requests.md` line) carrying one of `rids`,
-    so the files agree with the store after `watchdog review` or `watchdog resolve <id>` marks an
-    item handled (`ticked=True`) or `watchdog unresolve` reopens it (`ticked=False`). Without it,
-    the next `watchdog resolve --sync` reads the stale box as the journalist's own change and
-    undoes the command (D263). Returns lines changed."""
-    wanted = set(rids)
-    if not wanted:
-        return 0
-    changed = 0
-    for md in sorted((vault / "briefings").glob("*.md")) + [vault / "requests.md"]:
-        if not md.exists():
-            continue
-        # newline="" keeps CRLF files CRLF; surrogateescape round-trips bytes that aren't UTF-8.
-        with md.open(encoding="utf-8", errors="surrogateescape", newline="") as fh:
-            text = fh.read()
-        lines = text.split("\n")
-        hit = False
-        for i, line in enumerate(lines):
-            box = _CHECKBOX_RE.match(line)
-            stale = box and (box.group("mark") == " ") == ticked
-            wid = _WID_RE.search(line) if stale else None
-            if wid and wid.group(1) in wanted:
-                start = box.start("mark")
-                lines[i] = line[:start] + ("x" if ticked else " ") + line[start + 1:]
-                changed += 1
-                hit = True
-        if hit:
-            tmp = md.with_name(md.name + ".tmp")
-            with tmp.open("w", encoding="utf-8", errors="surrogateescape", newline="") as fh:
-                fh.write("\n".join(lines))
-            tmp.replace(md)
-    return changed
-
-
-def sync_from_briefings(vault: Path) -> tuple[list[str], list[str]]:
-    """Import ``- [x]`` / ``- [ ]`` checkbox state from the briefing files, plus the vault-root
-    ``requests.md``, into the store.
-
-    Reports are rendered without checkboxes since D294 (the app handles items); a line with a
-    ``<!--wid:<rid>-->`` marker and no box is skipped, never read as "unticked", so a vault of
-    box-less files syncs to a no-op and reopens nothing. Older files still carry boxes, and for
-    those: a ticked box
-    adds its rid to the store; an un-ticked box for a currently-resolved rid removes it (so the
-    journalist can undo a resolution by clearing the checkbox). Returns ``(added, removed)``.
-    """
-    briefings = vault / "briefings"
-    checked: set[str] = set()
-    unchecked: set[str] = set()
-    for md in sorted(briefings.glob("*.md")) + [vault / "requests.md"]:
-        if not md.exists():
-            continue
-        for line in md.read_text(encoding="utf-8", errors="replace").splitlines():
-            box = _CHECKBOX_RE.match(line)
-            if not box:
-                continue
-            wid = _WID_RE.search(line)
-            if not wid:
-                continue
-            (checked if box.group("mark") in "xX" else unchecked).add(wid.group(1))
-    added = resolve(vault, sorted(checked), label="checkbox")
-    removed = unresolve(vault, sorted(unchecked - checked))
-    return added, removed

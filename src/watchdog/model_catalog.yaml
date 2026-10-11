@@ -373,15 +373,12 @@ models:
   #
   # FLASH RENAMED AND REPRICED 2026-10-04 (D250): DeepSeek retired V4 Flash and now serves
   # DeepSeek-V4.1-Flash as `deepseek-flash` (api-docs.deepseek.com/quick_start/pricing, fetched
-  # 2026-10-04). The legacy `deepseek-v4-flash` name is still accepted by the API, answered by
-  # V4.1 Flash and billed at the Flash price — `legacy_ids` keeps a config naming it resolving to
-  # this entry, so it still prices, windows and sections correctly. Off-peak Flash is $0.15 miss /
+  # 2026-10-04). Off-peak Flash is $0.15 miss /
   # $0.003 cache hit / $0.60 output, below the V4 Flash rates this entry carried ($0.22 / $0.007 /
   # $0.66). The V4.1 checkpoint's tokenizer has not been measured; the V4 value is copied.
   - id: deepseek-flash
     name: DeepSeek V4.1 Flash
     provider: deepseek
-    legacy_ids: [deepseek-v4-flash]
     input: 0.15e-6
     output: 0.60e-6
     cached_input: 0.003e-6

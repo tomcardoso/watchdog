@@ -343,9 +343,6 @@ class _FactLedger:
         new = [f for f in facts if all_new or f["sha"] in self.batch]
         stored = [f for f in facts if not (all_new or f["sha"] in self.batch)]
         stored_text = self._render(entity_facts.chronological(stored), refs)
-        legacy = (self.working.get(eid) or {}).get("legacy_claims")
-        if legacy:
-            stored_text = (legacy.strip() + "\n\n" + stored_text).strip()
         return self._render(entity_facts.chronological(new), refs), stored_text
 
 

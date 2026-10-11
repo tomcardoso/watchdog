@@ -275,7 +275,7 @@ export interface EntityFact extends Fact {
 export interface EntitySynthesis {
   summary: string
   analysis: string | null
-  by: 'model' | 'session' | 'carried' | string | null
+  by: 'model' | 'session' | string | null
   model: string | null
   made_at: string | null
   facts_total: number | null
@@ -348,7 +348,6 @@ export interface EntityDetail extends EntityRow {
   timeline: TimelineEvent[]
   facts: EntityFact[]                  // every fact tagged to the entity, in date order (D280)
   synthesis: EntitySynthesis | null
-  legacy_claims: string | null         // claims an older version recorded with no stored extraction
 }
 
 export interface GraphData {

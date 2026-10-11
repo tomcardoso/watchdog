@@ -309,19 +309,6 @@ def test_run_updates_registry_entity_count(tmp_path):
     assert registry["entity_count"] == 3
 
 
-def test_run_keeps_both_records_claims(tmp_path):
-    """Both notes predate stored extractions here, so their claim blocks exist only in the notes:
-    the merge carries both into the survivor's registry entry and renders them (D280)."""
-    vault = make_vault(tmp_path)
-    run(vault, "alice-smith", "a-smith-duplicate")
-
-    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Alice Smith is listed as director" in content
-    assert "Signed as officer of Acme Corp" in content
-    assert "## Earlier claims" in content
-    assert "a-smith-duplicate" in content
-
-
 def test_run_carries_over_journalist_notes(tmp_path):
     vault = make_vault(tmp_path)
     run(vault, "alice-smith", "a-smith-duplicate")
@@ -502,13 +489,15 @@ def test_op_merges_and_reports(tmp_path):
 # ── #313: nudge a /watchdog-entity refresh when the merge drops a prose Summary ──
 
 def _give_loser_a_summary(vault: Path) -> None:
-    """The default fixture's losing note has no Summary; add one so the merge has a
-    second prose account to drop."""
-    note = vault / "entities" / "person" / "a-smith-duplicate.md"
-    note.write_text(note.read_text().replace(
-        "# A. Smith\n\n",
-        "# A. Smith\n\n## Summary\n\nA. Smith signed as an officer of Acme Corp.\n\n",
-    ))
+    """Give both records a stored summary, so the merge has a second prose account to drop."""
+    path = vault / ".watchdog" / "registry" / "entities.json"
+    reg = json.loads(path.read_text())
+    for eid, text in (("alice-smith", "Alice is a director of Acme Corp."),
+                      ("a-smith-duplicate", "A. Smith signed as an officer of Acme Corp.")):
+        reg[eid]["synthesis"] = {"version": 1, "summary": text, "analysis": "", "by": "model",
+                                 "model": None, "made_at": None, "facts_total": None,
+                                 "facts_shown": None, "fact_refs": {}}
+    path.write_text(json.dumps(reg))
 
 
 def test_run_flags_summary_dropped_when_both_entities_had_one(tmp_path):

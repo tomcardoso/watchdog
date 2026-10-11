@@ -92,10 +92,7 @@ def entity_calls(ledger: reconcile._FactLedger, eid: str, entry: dict, budget: i
     facts = entity_facts.chronological(ledger.index.facts_for(eid))
     refs = entity_facts.short_refs(facts)
     base = _base(eid, entry)
-    legacy = (entry.get("legacy_claims") or "").strip()
     whole = ledger._render(facts, refs)
-    if legacy:
-        whole = (legacy + "\n\n" + whole).strip()
     single = {**base, "new_facts": whole}
     if json_size(single) <= budget:
         return [single], len(facts)
@@ -104,11 +101,6 @@ def entity_calls(ledger: reconcile._FactLedger, eid: str, entry: dict, budget: i
     # shared by consecutive facts) is never more than the sum.
     items: list = list(facts)
     sizes = [json_size(ledger._render([f], refs)) for f in facts]
-    if legacy:
-        if json_size(legacy) > half:
-            legacy = legacy[: half - 80].rsplit(" ", 1)[0] + "… [earlier claims shortened]"
-        items.insert(0, legacy)
-        sizes.insert(0, json_size(legacy))
     blocks = ["\n\n".join(([b[0]] if isinstance(b[0], str) else [])
                           + [ledger._render([f for f in b if isinstance(f, dict)], refs)]).strip()
               for b in _blocks(items, sizes, half)]
@@ -145,7 +137,7 @@ def plan(vault: Path, ids: list[str] | None, model: str, backend: str | None) ->
         # of its facts can disagree within that document (owner's call, D287).
         docs = len(entry.get("appears_in") or [])
         mine, n_facts = entity_calls(ledger, eid, entry, budget)
-        if n_facts + (1 if entry.get("legacy_claims") else 0) < 2:
+        if n_facts < 2:
             if ids is not None:
                 skipped.append({"id": eid, "name": name, "reason": "too_few_facts"})
             continue

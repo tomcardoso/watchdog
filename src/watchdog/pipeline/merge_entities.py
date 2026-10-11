@@ -169,7 +169,6 @@ def undo_snapshot(entry: dict) -> dict:
         "date_first_seen": entry.get("date_first_seen"),
         "contradictions": list(entry.get("contradictions") or []),
         "synthesis": entry.get("synthesis"),
-        "legacy_claims": entry.get("legacy_claims"),
     }
 
 
@@ -251,15 +250,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     merge_notes_body = _extract_section(merge_note_text, "Notes") if merge_note_text else ""
     from watchdog.pipeline import entity_notes, merge_log
     keep_synth, merge_synth = entities_reg[keep_id].get("synthesis"), entities_reg[merge_id].get("synthesis")
-    def _has_facts(sha: str) -> bool:
-        return (vault_path / ".watchdog" / "extracted" / f"{sha}.json").exists()
-    entity_notes.carry_old_prose(entities_reg[keep_id], keep_note_file.read_text(encoding="utf-8")
-                                 if keep_note_file.exists() else None, documents_reg, _has_facts)
-    entity_notes.carry_old_prose(entities_reg[merge_id], merge_note_text or None, documents_reg,
-                                 _has_facts)
-    keep_synth = entities_reg[keep_id].get("synthesis")
-    merge_synth = entities_reg[merge_id].get("synthesis")
-    merge_legacy = entities_reg[merge_id].get("legacy_claims")
 
     # The merge log (D279): a reporter's merge is logged here; a merge the pipeline decided arrives
     # with its entry already built (`log_entry`). Either way it gets the losing record's snapshot.
@@ -301,8 +291,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     chosen = keep_synth or merge_synth
     if chosen:
         keep["synthesis"] = {**chosen, "stale": "merge"}
-    if merge_legacy:
-        keep["legacy_claims"] = "\n\n".join(x for x in (keep.get("legacy_claims"), merge_legacy) if x)
 
     # Carry over the losing note's journalist annotations too, if the writer left any
     # beyond the boilerplate placeholder — those are the one thing nothing else recovers.

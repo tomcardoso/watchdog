@@ -342,7 +342,7 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 | `claude-api:opus` / `claude-agent-sdk:sonnet` | Claude, forcing a specific backend. |
 | `openai:gpt-5-mini` | OpenAI. |
 | `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's current high-volume model, cheaper than GPT-5.6 Luna ($0.10 against $0.20 per million input tokens, $0.50 against $1.20 for output). The benchmark figures below were measured on GPT-5.6 Luna, not this model. |
-| `deepseek:deepseek-flash` | DeepSeek V4.1 Flash, non-thinking (append `-thinking` to enable thinking mode). Rates double during DeepSeek's peak hours; see [Controlling cost](#controlling-cost). DeepSeek has retired the older `deepseek-v4-flash` name and answers it with this model at the same price, so a setup that still names it keeps working and is priced correctly. |
+| `deepseek:deepseek-flash` | DeepSeek V4.1 Flash, non-thinking (append `-thinking` to enable thinking mode). Rates double during DeepSeek's peak hours; see [Controlling cost](#controlling-cost). |
 | `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro, non-thinking (append `-thinking` to enable thinking mode). Same peak-hour pricing as Flash. |
 | `gemini:gemini-3.7-flash` | Gemini 3.7 Flash, stable, 1-million-token context window. |
 | `gemini:gemini-3.5-flash-lite` | Gemini 3.5 Flash-Lite, stable, the cheapest Gemini tier. |

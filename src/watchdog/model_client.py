@@ -53,7 +53,6 @@ from watchdog.model_catalog import (
     fallback_context_window,
     fallback_is_reasoning,
     _split_deepseek_thinking,
-    canonical_id,
     fallback_max_output_tokens,
     price_multiplier,
     resolve_model_id,
@@ -998,7 +997,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     prices flat, and 2.0 for a DeepSeek call landing in one of its peak windows. It multiplies the
     finished cost rather than each rate because the multiplier applies to every column equally,
     which is how DeepSeek states it and the only shape `price_periods` allows."""
-    rates = _OPENAI_PRICING.get(canonical_id(model_id))
+    rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
     inp, outp, cached_rate, write_rate = rates
