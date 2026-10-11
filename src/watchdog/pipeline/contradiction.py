@@ -102,6 +102,12 @@ def _run_unlocked(vault: Path, entity_id: str, label: str,
     result dict with ``added`` (False if the callout was already present), the callout's
     resolution ``rid``, the entity name, and the note path. Raises ValueError on bad input.
     """
+    from watchdog.pipeline.inline_text import require_single_line
+    for value, what in ((label, "The label"), (a_value, "The first value"), (b_value, "The second value"),
+                        (a_doc, "The first document"), (b_doc, "The second document"),
+                        (a_fact, "The first fact"), (b_fact, "The second fact")):
+        require_single_line(value, what)     # each lands inside one line of the callout (D304)
+
     registry_dir = vault / ".watchdog" / "registry"
     entities_path = registry_dir / "entities.json"
     documents_path = registry_dir / "documents.json"

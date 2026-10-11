@@ -287,8 +287,19 @@ async def call(tools: SessionTools, name: str, args: dict) -> dict:
     try:
         text = await asyncio.to_thread(method, **(args or {}))
     except (ToolError, ValueError, OSError) as e:
-        return {"content": [{"type": "text", "text": str(e)}], "is_error": True}
+        return _error(str(e))
+    except SystemExit as e:
+        # Library code stops a command with `sys.exit("Error: …")`. Here that would escape into
+        # the chat loop, which every open session shares, so it becomes the tool's error (D304).
+        text = e.code if isinstance(e.code, str) else "The tool stopped without finishing."
+        return _error(text.strip().removeprefix("Error:").strip())
+    except Exception as e:  # noqa: BLE001 — a tool's failure is reported to Claude, never raised
+        return _error(f"The tool failed: {type(e).__name__}: {e}")
     return {"content": [{"type": "text", "text": text}]}
+
+
+def _error(text: str) -> dict:
+    return {"content": [{"type": "text", "text": text}], "is_error": True}
 
 
 def sdk_server(vault: Path):

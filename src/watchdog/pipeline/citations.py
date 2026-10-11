@@ -254,11 +254,16 @@ CHECKED_DIRS = ("queries", "wiki", "briefings")
 
 
 def pages(vault: Path) -> list[Path]:
+    """The pages under `CHECKED_DIRS`: regular Markdown files that are inside the vault. A
+    symlink, or anything that resolves outside the vault, is skipped, so a check never reads a
+    file elsewhere on the computer (D304)."""
     vault = Path(vault)
+    root = vault.resolve()
     out: list[Path] = []
     for d in CHECKED_DIRS:
         if (vault / d).is_dir():
-            out += sorted(p for p in (vault / d).rglob("*.md") if p.is_file())
+            out += sorted(p for p in (vault / d).rglob("*.md")
+                          if not p.is_symlink() and p.is_file() and root in p.resolve().parents)
     return out
 
 
