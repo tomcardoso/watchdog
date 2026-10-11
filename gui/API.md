@@ -56,6 +56,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 ```
 Project = {
   slug, name, description|null, path, archived: bool, created|null,
+  sample: bool,   // the sample investigation built for learning Watchdog (D303)
   health: null | "missing" | "not_a_vault" | "registry_corrupt",   // _check_project_health
   stats: { documents, entities, last_ingest|null, incoming, awaiting, failed,
            history_bytes|null },   // the version history's size on disk, from a cache (D288); null with none
@@ -77,6 +78,15 @@ Mutations go through `action.run` as the `projects-new`, `projects-register`, `p
 [operations](#operations)), e.g. `{op: "projects-new", params: {name: "Shell Co", description: "…",
 dir: "/x"}}`; each returns `{slug, name, path}` (delete: `{slug, removed}`). The app re-reads
 `projects.list` afterwards.
+
+### The sample investigation and its tour (D303)
+
+| Method | Params | Result |
+|---|---|---|
+| `sample.status` | `{dir?}` | `{slug\|null, path, listed, exists, archived}` — where the sample is (the listed investigation marked `sample`), or where `sample-create` would build it (`dir`, else the investigations folder); `exists` is true when a folder carrying the sample's marker (`.watchdog/sample.json`) is at `path` |
+| `sample.tour` | `{vault}` | `TourTargets`: what each tour step opens, read from the sample's registries — `{sample, briefings, scanned: {sha, filename, title, page, find}, entity: {id, name, fact}, contradiction: {rid, title}, duplicate: {rid, title}, lead: {rid, title}, search, incoming: string[], runs}`; `not_found` naming whatever is missing |
+
+The sample is built by the `sample-create` job (see [operations](#operations)).
 
 ## vault — reading an investigation
 
@@ -312,6 +322,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `research-fetch` | yes | `{file?}` | `{}` | |
 | `fetch-links` | yes | `{targets}` | `{}` | |
 | `download-model` | no | `{model}` | `{model}` (D273) | |
+| `sample-create` | no | `{dir?, rebuild?}` | `{slug, name, path}` — builds the sample investigation with prepared model answers (no model call, no key, no network), refused when it exists unless `rebuild`, which deletes only the sample first (D303) | |
 | `projects-new` / `-register` / `-rename` / `-describe` / `-move` / `-archive` / `-delete` | no | see [projects](#projects) | `{slug, name, path}` | |
 
 Only `add`, `dig`, `bark` and `recheck-contradictions` call a model, so only they are handed the

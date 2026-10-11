@@ -809,6 +809,15 @@ See D45–D48.
   `vault.saveNotes`; saves outlive the screen, retry while the commit pass holds the registry lock
   and keep a draft on failure, and quitting closes the window first so an outstanding save reaches
   the backend.
+- **Sample investigation and tour (D303).** The `sample-create` operation (`ops/sample.py`) builds
+  the fictional Port Calder investigation (`gui/demo.py`, the same story the tests and screenshots
+  use) into the investigations folder with the real pipeline and a canned model: no model call,
+  key or network. In sample mode the canned model records each call as model and backend `sample`
+  at $0, telemetry is off for the build, the settings and access files are left alone, and the
+  list entry carries `sample: true` and the folder `.watchdog/sample.json`; a rebuild deletes only
+  a folder with that marker. `sample.tour` reads the sample's registries for what each tour step
+  opens. The tour itself is renderer-only (`gui/src/renderer/src/tour/`): steps are a route plus a
+  CSS selector to ring, kept in local storage per viewer; it adds no pipeline behaviour.
 - **Release and updates (D269).** `electron-builder.config.cjs` and `app-release.yml`
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.

@@ -16,11 +16,15 @@ The sidebar lists the screens for the open investigation. The investigation's na
 
 You can drop files onto the window at any time to add them to the open investigation.
 
+**Help → Take the Tour** opens the sample investigation, building it first if it is not there, and walks through the app one screen at a time. A small panel says what each highlighted thing is, with **Back**, **Next** and **Skip tour**; it does not stop you using the app while it is open, and its **Next** button takes the keyboard focus at each step, so Enter moves on. The tour is also in the command palette. See [Try the sample investigation](getting-started.md#try-the-sample-investigation).
+
 Below the screens, the sidebar shows the app's version. Right after Watchdog is installed or updated, a small **Finishing setup…** bar sits above it while the rest of the engine downloads in the background; choose it to see each stage in [Setup](#setup). It disappears when setup has finished. If the download stops, the bar turns into a **Setup did not finish** note with a **Retry** button.
 
 ### Investigations
 
 The list of your investigations, with each one's document and entity counts, how much space its [version history](#history) takes, when documents were last added, and anything that needs attention. The **⋯** menu on each offers **Open**, **Rename…**, **Edit description…**, **Move to another folder…**, **Archive** (and **Unarchive**), **Show in folder**, **Open in Obsidian**, **Processing history**, **Remove from Watchdog…** and **Remove and delete files…**. Removing from Watchdog leaves the folder where it is. **Remove and delete files…** permanently deletes the folder and its usage records, and asks you to type the investigation's name first. An existing investigation folder can be added with **Add existing folder…**, and **Settings → Check vaults** checks that every investigation's folder and registry are readable.
+
+**Sample investigation** opens the made-up Port Calder case, or builds it if it is not there; when it already exists, you can open it, take the tour or rebuild it fresh. Its card carries a **Sample** label, and its **⋯** menu adds **Take the tour** and **Rebuild the sample…**, which deletes the sample and builds it again without touching any other investigation. See [Try the sample investigation](getting-started.md#try-the-sample-investigation).
 
 ### Overview
 
@@ -71,7 +75,7 @@ Hover over a line to see every relationship between the two entities, or click i
 
 ### Search
 
-Three kinds of result, kept separate: exact matches (every place the words appear), source passages (ranked by meaning) and notes (what the investigation has concluded). You can set how many results each section shows, a score threshold, and whether results are re-ranked. **Every investigation** searches all of them at once, and **Check a list of names** reports hits for each name in a list. A name that could not be checked is shown as "not checked", never as "no hits". Until setup has finished, only exact matches are searched; a note under the results says so.
+Three kinds of result, kept separate: exact matches (every place the words appear), source passages (ranked by meaning) and notes (what the investigation has concluded). You can set how many results each section shows, a score threshold, and whether results are re-ranked. **Every investigation** searches all of them at once, and **Check a list of names** reports hits for each name in a list. A name that could not be checked is shown as "not checked", never as "no hits". Until setup has finished, only exact matches are searched; a note under the results says so. The same happens in an investigation that has no search index for meaning yet (the sample, for instance): its exact matches are shown, and the note points to **Rebuild the search index** under **Activity → Maintenance**, which builds one on your computer without any model calls.
 
 ### Review
 
