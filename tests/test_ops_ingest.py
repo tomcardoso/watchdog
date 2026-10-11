@@ -1155,3 +1155,34 @@ def test_exit_code_for(result, expected):
     assert ing.exit_code_for(result) == expected
 
 
+
+
+def test_adding_with_nothing_new_finishes_a_pending_batch(wdg_home, tmp_path, monkeypatch):
+    """A batch staged earlier is never thrown away (D242): adding documents with nothing new to
+    extract finishes it now."""
+    from watchdog import auth as auth_module
+    from watchdog.pipeline import orchestrate as orch_module
+    from watchdog.pipeline import ingest_setup
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+    monkeypatch.setattr(ingest_setup, "needs_extraction", lambda v, q: [])
+    calls = []
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: calls.append(k) or {"synthesized": 0})
+    monkeypatch.setattr(orch_module, "run", lambda *a, **k: pytest.fail("nothing to extract"))
+    ing.process(vault, RunOptions(skip_warning=True, skip_briefing=True), finalize=True)
+    assert len(calls) == 1 and calls[0]["skip_briefing"] is True
+
+
+def test_processing_only_with_nothing_new_leaves_a_pending_batch_for_later(wdg_home, tmp_path, monkeypatch):
+    from watchdog import auth as auth_module
+    from watchdog.pipeline import orchestrate as orch_module
+    from watchdog.pipeline import ingest_setup
+    vault = _vault_with_queued_doc(tmp_path)
+    monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
+    monkeypatch.setattr(orch_module, "has_pending_finalization", lambda v: True)
+    monkeypatch.setattr(orch_module, "pending_finalization", lambda v: {"docs": 1, "entities": 0})
+    monkeypatch.setattr(ingest_setup, "needs_extraction", lambda v, q: [])
+    monkeypatch.setattr(ing, "_run_finalize", lambda *a, **k: pytest.fail("processing only never finalizes"))
+    assert ing.process(vault, RunOptions(skip_warning=True), finalize=False) is None
