@@ -111,7 +111,7 @@ Choose **Ask Claude** and type a question, such as "Who are the directors of She
 
 Start a new conversation for a new line of inquiry rather than reusing one that has run long. At the start of each conversation, Claude is given a short account of where the whole investigation stands, which Watchdog builds from its records, so it knows the state of things without re-reading everything, and a fresh conversation has the most working room for your questions.
 
-If Claude needs to do something your settings do not already allow, Watchdog asks you first.
+Before Claude changes the investigation's records, Watchdog shows what it is about to do and asks you first; see [Ask Claude](app.md#ask-claude-and-web-research).
 
 ## Where next
 

@@ -933,7 +933,7 @@ export interface Events {
   'job.finished': { job: Job }
   'chat.delta': { session: string; message_id: string; text: string }
   'chat.message': { session: string; message: ChatMessage }
-  'chat.permission': { session: string; request_id: string; tool: string; input: unknown; description: string | null }
+  'chat.permission': { session: string; request_id: string; tool: string; input: unknown; description: string | null; title?: string | null; scope?: string | null }
   'chat.status': { session: string; state: 'thinking' | 'idle' | 'closed' | 'error'; detail: string | null; cost_usd: number | null }
   'menu.command': { command: string }
   'files.dropped': { paths: string[] }

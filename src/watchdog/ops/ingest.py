@@ -1080,9 +1080,12 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
         classifier_effort: str | None = None, finalizer_effort: str | None = None,
         concurrency: int | None = None, classify_pages: int | None = None, skill: str | None = None,
         verify: bool | None = None, wait: bool = False, skip_briefing: bool = False,
-        chew_workers: int | None = None, chunk_workers: int | None = None) -> dict | None:
+        chew_workers: int | None = None, chunk_workers: int | None = None,
+        limit: int | None = None) -> dict | None:
     """Adding documents. The app shows the public-records acknowledgement before it starts this
-    and passes `skip_warning` once it has; without it nothing is sent."""
+    and passes `skip_warning` once it has; without it nothing is sent. `limit` sends at most that
+    many queued documents to the model, as the app's preflight counts and prices them; the rest
+    stay queued for the next run."""
     require_vault(vault)
     opts = RunOptions(
         extractor_model=extractor_model, classifier_model=classifier_model,
@@ -1092,7 +1095,7 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
         finalizer_briefing_model=finalizer_briefing_model, extractor_effort=extractor_effort,
         classifier_effort=classifier_effort, finalizer_effort=finalizer_effort,
         concurrency=concurrency, classify_pages=classify_pages, skill=skill, verify=verify,
-        wait=wait, skip_briefing=skip_briefing, skip_warning=skip_warning)
+        wait=wait, skip_briefing=skip_briefing, skip_warning=skip_warning, limit=limit)
     return _clean(add_documents(vault, list(paths), opts, retry=retry, chew_workers=chew_workers,
                                 chunk_workers=chunk_workers))
 

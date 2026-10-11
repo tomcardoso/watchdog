@@ -14,8 +14,14 @@ overrides a package skill of the same name.
 import importlib.resources
 from pathlib import Path
 
-WATCHDOG_HOME = Path.home() / ".watchdog"
-USER_SKILLS_DIR = WATCHDOG_HOME / "skills" / "records"
+# Set to a folder to use instead of `<config.home()>/skills/records` (tests). None: under
+# Watchdog's own folder, decided at call time by `config.home()`.
+USER_SKILLS_DIR: Path | None = None
+
+
+def user_skills_dir() -> Path:
+    from watchdog import config
+    return USER_SKILLS_DIR if USER_SKILLS_DIR is not None else config.home() / "skills" / "records"
 
 # Where the canonical skills are browsable. Pinned to a ref by the skills list.
 GITHUB_REPO = "tomcardoso/watchdog"
@@ -83,8 +89,9 @@ def catalog() -> dict[str, str]:
                 out[f.name[:-3]] = str(f)
     except (FileNotFoundError, NotADirectoryError, ModuleNotFoundError, OSError):
         pass
-    if USER_SKILLS_DIR.is_dir():
-        for f in sorted(USER_SKILLS_DIR.glob("*.md")):
+    user_dir = user_skills_dir()
+    if user_dir.is_dir():
+        for f in sorted(user_dir.glob("*.md")):
             if not f.name.startswith("_"):
                 out[f.stem] = str(f)
     return dict(sorted(out.items()))

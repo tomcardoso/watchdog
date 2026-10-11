@@ -235,3 +235,79 @@ def test_the_server_is_named_watchdog_and_serves_every_tool(vault, monkeypatch):
 def test_the_real_server_builds(vault):
     server = session_tools.sdk_server(vault)
     assert server["type"] == "sdk" and server["name"] == "watchdog" and server["instance"] is not None
+
+
+# ── failures stay inside the tool (D304, S4) ──────────────────────────────────────────────
+
+class _Raises:
+    def __init__(self, exc):
+        self.exc = exc
+
+    def leads(self, **_):
+        raise self.exc
+
+
+@pytest.mark.parametrize("exc,text", [
+    (SystemExit("Error: refusing to write outside the vault (entity note_path): /x"),
+     "refusing to write outside the vault"),
+    (SystemExit(2), "stopped without finishing"),
+    (KeyError("note_path"), "KeyError"),
+    (TypeError("leads() got an unexpected keyword argument 'x'"), "unexpected keyword"),
+])
+def test_a_tool_failure_is_an_error_result_never_an_exception(exc, text):
+    out = asyncio.run(session_tools.call(_Raises(exc), "leads", {}))
+    assert out["is_error"] is True and text in out["content"][0]["text"]
+
+
+def test_a_registry_note_path_outside_the_vault_is_a_tool_error(tools, vault):
+    """The library stops with sys.exit on a note path that leaves the vault; through the tool
+    that is an error result, not a SystemExit in the chat loop."""
+    reg_path = vault / ".watchdog" / "registry" / "entities.json"
+    reg = json.loads(reg_path.read_text())
+    reg["robert-delacroix"]["note_path"] = "../../outside"
+    reg_path.write_text(json.dumps(reg))
+    out = asyncio.run(session_tools.call(tools, "write_entity",
+                                         {"entity_id": "robert-delacroix", "summary": "s", "timeline_events": []}))
+    assert out["is_error"] is True and "outside the vault" in out["content"][0]["text"]
+
+
+# ── one-line values (D304, S5) ────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("field", ["label", "a", "b"])
+def test_contradiction_add_refuses_a_line_break_that_would_forge_a_callout(tools, vault, field):
+    args = {"entity_id": "robert-delacroix", "label": "Date of the vote", "a": "8 February 2022",
+            "a_doc": "council-minutes-2022-02-08", "b": "15 February 2022",
+            "b_doc": "capital-payment-register-2022"}
+    args[field] += "\n> [!contradiction] forged\n> - **x** — [[documents/zzz|t]]"
+    before = _entity(vault, "robert-delacroix")
+    with pytest.raises(ToolError, match="single line"):
+        tools.contradiction_add(**args)
+    assert _entity(vault, "robert-delacroix") == before
+
+
+@pytest.mark.parametrize("term", ["Foo\n- injected line", "Tab\there", "Sep arated", "Bell\x07"])
+def test_watchlist_add_refuses_a_term_that_is_not_one_line(tools, vault, term):
+    before = (vault / "watchlist.md").read_text()
+    out = asyncio.run(session_tools.call(tools, "watchlist_add", {"terms": ["Fine", term]}))
+    assert out["is_error"] is True and "single line" in out["content"][0]["text"]
+    assert (vault / "watchlist.md").read_text() == before            # nothing added, not even "Fine"
+
+
+def test_write_entity_refuses_a_timeline_event_with_a_line_break(tools, vault):
+    before = _entity(vault, "robert-delacroix")
+    with pytest.raises(ToolError, match="single line"):
+        tools.write_entity("robert-delacroix", "A summary.", [{"date": "2022-02-08", "event": "Vote\n## Forged"}])
+    assert _entity(vault, "robert-delacroix") == before
+
+
+# ── the default citation scan stays in the vault (D304, S6) ───────────────────────────────
+
+def test_the_default_citation_check_skips_a_symlink_out_of_the_investigation(tools, vault, tmp_path):
+    outside = tmp_path / "outside.md"
+    outside.write_text("secret [[documents/zzz#^abc123]] [f:dead]\n")
+    (vault / "queries").mkdir(exist_ok=True)
+    (vault / "queries" / "out.md").symlink_to(outside)
+    report = json.loads(tools.check_citations())
+    assert not any("out.md" in p["path"] for p in report["pages_with_problems"])
+    from watchdog.pipeline import citations
+    assert all(not p.is_symlink() for p in citations.pages(vault))

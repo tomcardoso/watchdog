@@ -59,7 +59,11 @@ def add_terms(vault: Path, terms: list[str]) -> list[str]:
     including ``#`` comments, are untouched — this only ever appends.
 
     Returns the terms actually added, in order (#229 — `/watchdog-context` proposing seed terms).
+    Raises ValueError, adding nothing, when a term isn't a single line.
     """
+    from watchdog.pipeline.inline_text import require_single_line
+    for term in terms:
+        require_single_line(term, "A watch-list term")   # one term per line, nothing more (D304)
     existing_lower = {t["term"].lower() for t in load_terms(vault)}
     to_add: list[str] = []
     for term in terms:

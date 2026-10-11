@@ -72,6 +72,18 @@ def test_access_list_reads_but_never_writes(tmp_path, enforced):
     ("NotebookEdit", {"notebook_path": "../nb.ipynb"}, False),
     ("Write", {}, False),
     ("Read", {"file_path": "/etc/hosts"}, True),        # reading isn't an edit; settings govern it
+    # Inside the vault but not the session's to write (D304): Claude Code's own setup, which could
+    # otherwise run commands at the next session's start, and everything the pipeline owns.
+    ("Write", {"file_path": ".claude/settings.json"}, False),
+    ("Edit", {"file_path": "{vault}/.claude/settings.local.json"}, False),
+    ("Write", {"file_path": ".claude/commands/evil.md"}, False),
+    ("Write", {"file_path": ".mcp.json"}, False),
+    ("Write", {"file_path": ".watchdog/registry/entities.json"}, False),
+    ("Write", {"file_path": ".watchdog/settings.json"}, False),
+    ("Edit", {"file_path": "entities/person/someone.md"}, False),
+    ("Write", {"file_path": "watchlist.md"}, False),
+    ("Write", {"file_path": ".watchdog/research/queue.tsv"}, True),
+    ("Write", {"file_path": "context.md"}, True),
 ])
 def test_claude_sessions_edit_only_inside_their_vault(tmp_path, enforced, tool, inp, allowed):
     vault = make_vault(tmp_path / "a")
@@ -105,3 +117,12 @@ def test_a_session_has_no_shell_and_no_sandbox_to_depend_on(tmp_path):
     assert "Bash" in opts.disallowed_tools
     assert opts.sandbox is None
     assert not any(m.matcher == "Bash" for m in opts.hooks["PreToolUse"])
+
+
+def test_a_symlinked_session_folder_cannot_reach_pipeline_files(tmp_path, enforced):
+    """`queries/` pointing at the registry is judged by where it leads, not by its name."""
+    vault = make_vault(tmp_path / "a")
+    enforced(vault)
+    (vault / "queries").symlink_to(vault / ".watchdog" / "registry", target_is_directory=True)
+    reason = chat.edit_outside_vault(vault, "Write", {"file_path": "queries/entities.json"})
+    assert reason and "belongs to Watchdog" in reason

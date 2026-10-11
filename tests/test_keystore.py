@@ -312,3 +312,31 @@ def test_operations_that_call_a_model_are_the_ones_handed_keys():
     from watchdog import ops
     handed = {name for name, spec in (ops._load() or ops.OPS).items() if spec.secrets}
     assert handed == {"add", "dig", "bark", "recheck-contradictions"}
+
+
+def test_a_job_is_handed_only_the_providers_its_models_use(home, tmp_path, monkeypatch):
+    """Narrowed from every provider the investigation has keys for to the ones its models send to:
+    a run entirely on OpenAI never holds the Anthropic key, and the re-check holds only its
+    reconciliation model's."""
+    from watchdog.gui import jobs
+    _a, c, work, _personal, anth = _two_investigations(home, tmp_path)
+    assert sorted(auth.secrets_for_run(c, ["openai"]).values()) == [work]
+    assert auth.secrets_for_run(c, []) == {}
+    on_openai = {k: "openai:gpt-6-luna" for k in jobs._MODEL_PARAMS}
+    assert jobs.run_providers_for("add", on_openai) == ["openai"]
+    assert sorted(jobs._secrets(c, "add", on_openai).values()) == [work]
+    assert sorted(jobs._secrets(c, "dig", {}).values()) == [anth]          # api-key mode, Claude stages
+    monkeypatch.setattr("watchdog.pipeline.recheck.finalizer_stage", lambda: ("openai", "gpt-6-luna", None))
+    assert sorted(jobs._secrets(c, "recheck-contradictions", {}).values()) == [work]
+
+
+def test_a_plan_that_cannot_be_resolved_hands_over_every_provider(home, tmp_path, monkeypatch):
+    """A bad setting is the run's to report; the keys don't hide it behind a locked-key error."""
+    from watchdog.gui import jobs
+    _a, c, work, _personal, anth = _two_investigations(home, tmp_path)
+
+    def broken(*a, **k):
+        raise SystemExit("Error: the settings file is damaged")
+    monkeypatch.setattr("watchdog.ops.ingest.resolve_plan", broken)
+    assert jobs.run_providers_for("add", {}) is None
+    assert sorted(jobs._secrets(c, "add", {}).values()) == sorted([work, anth])

@@ -468,17 +468,20 @@ def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
     return {"key": None, "id": None, "label": None, "source": "none"}
 
 
-def secrets_for_run(vault: Path | None) -> dict[str, str]:
-    """The encrypted keys a `watchdog` job in `vault` may use, as `{blob data: key}` for
+def secrets_for_run(vault: Path | None, providers=None) -> dict[str, str]:
+    """The encrypted keys a job in `vault` may use, as `{blob data: key}` for
     `keystore.read_stdin` (D295): per provider, only the key the investigation resolves to (its
     choice, else the default), and nothing where the environment variable overrides it or the key
-    is stored in plain text (the job reads that from the file, as before). A job outside an
-    investigation gets nothing."""
+    is stored in plain text (the job reads that from the file, as before). With `providers`, only
+    those providers' keys: the ones the job's models use (`gui/jobs.run_providers_for`). A job
+    outside an investigation gets nothing."""
     if vault is None:
         return {}
     state = load_state()
     out: dict[str, str] = {}
     for p, meta in PROVIDERS.items():
+        if providers is not None and p not in providers:
+            continue
         if os.environ.get(meta["env"]):
             continue
         items, default = key_items(state, p)

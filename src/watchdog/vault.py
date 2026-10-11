@@ -15,22 +15,34 @@ from watchdog.vault_paths import incoming_dir, is_set_aside
 
 TEMPLATES_DIR = Path(__file__).parent / "templates" / "vault"
 
-# Watchdog's tools, served to an app session by the in-process `watchdog` MCP server (D299), and
-# the folders a session may write. All tools are pre-approved: the read-only ones change nothing,
-# the ones that write are confined to this investigation in code, and contradiction_add runs only
-# after the reporter confirms. WebSearch / WebFetch are deliberately NOT here: they make outbound
-# requests, so the watchdog-research skill's own `allowed-tools` pre-approves them only while it
-# is active (#186, D45). File-permission checks only match Edit(path) rules, which cover every
-# file-editing tool, Write included.
+# What a session may write with Claude Code's file tools: its own pages and the web-research
+# worklist (#196), and nothing else in the vault. Everything else there belongs to the pipeline or to
+# Claude Code's own setup (`.claude/`, `.mcp.json`), which a session that could write it could use to
+# run commands at the next session's start (D304). The app's edit hook (`gui/chat.py`) enforces this
+# list in code; the `Edit(...)` rules below only spare the reporter a prompt for these paths.
+# A folder ends in "/"; anything else is one file.
+SESSION_WRITABLE = ("queries/", "wiki/", "briefings/", "context.md", ".watchdog/research/")
+
+
+def session_may_write(rel: str) -> bool:
+    """Whether a session may change the vault-relative path `rel` (forward slashes)."""
+    rel = rel.strip("/")
+    return any(rel.startswith(w) if w.endswith("/") else rel == w for w in SESSION_WRITABLE)
+
+
+def _edit_rule(entry: str) -> str:
+    return f"Edit({entry}**)" if entry.endswith("/") else f"Edit({entry})"
+
+
+# What a session runs without a prompt: Watchdog's read-only tools and edits to the paths above.
+# The tools that write (timeline, write_entity, watchlist_add, contradiction_add) ask the reporter
+# every time (D304). WebSearch / WebFetch are deliberately NOT here: they make outbound requests, so
+# the watchdog-research skill's own `allowed-tools` pre-approves them only while it is active
+# (#186, D45). File-permission checks only match Edit(path) rules, which cover every file-editing
+# tool, Write included.
 SESSION_PERMISSIONS = [
-    *(f"mcp__watchdog__{name}" for name in (
-        "search", "leads", "check_citations", "research_seen",
-        "timeline", "write_entity", "watchlist_add", "contradiction_add")),
-    "Edit(.watchdog/research/**)",      # the durable web-research worklist (#196)
-    "Edit(queries/**)",
-    "Edit(wiki/**)",
-    "Edit(briefings/**)",
-    "Edit(context.md)",
+    *(f"mcp__watchdog__{name}" for name in ("search", "leads", "check_citations", "research_seen")),
+    *(_edit_rule(w) for w in SESSION_WRITABLE),
 ]
 
 # Watchdog's own settings and keys, denied to a vault's sessions outright (D257). These rules
@@ -47,8 +59,9 @@ CLAUDE_MD_END = "<!-- watchdog:end -->"
 
 
 def claude_settings() -> dict:
-    """The investigation's `.claude/settings.json`. No hooks: the app registers its own
-    in-process (D299)."""
+    """The investigation's `.claude/settings.json`, for Claude Code opened on the folder outside
+    the app. No hooks. An app session doesn't depend on this file: it is handed the same rules,
+    with hooks switched off, by `session_settings` (D304)."""
     return {
         "permissions": {
             "allow": list(SESSION_PERMISSIONS),
@@ -60,6 +73,21 @@ def claude_settings() -> dict:
             "deny": list(SESSION_DENY),
         },
     }
+
+
+def session_settings() -> dict:
+    """The settings the app passes to every Ask Claude session on the command line (D304).
+
+    Claude Code ranks settings passed this way above the vault's own `.claude/settings.json`, so a
+    vault's file (which a shared folder, a document-steered session or the reporter may have
+    changed) can neither add hooks nor loosen these rules. `disableAllHooks` switches off every
+    command hook a settings file declares; the app's own hooks are SDK callbacks and still run.
+    Claude Code also ignores a vault's `permissions.allow` entries outright in an untrusted
+    workspace, which an app session always is, so the allow rules have to come from here."""
+    settings = claude_settings()
+    settings["disableAllHooks"] = True
+    settings["enableAllProjectMcpServers"] = False
+    return settings
 
 
 def render_template(filename: str, **values: str) -> str:

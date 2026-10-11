@@ -43,12 +43,17 @@ from watchdog.pipeline.timeline import rebuild_timeline
 
 def _clean_events(events: list) -> list[dict]:
     """Keep well-formed events, with dates normalized the way post-flight does — an unparseable
-    date is dropped (the event stays, undated) rather than reaching the note's year grouping."""
+    date is dropped (the event stays, undated) rather than reaching the note's year grouping. An
+    event whose text, date or source isn't one line raises ValueError."""
+    from watchdog.pipeline.inline_text import require_single_line
     from watchdog.pipeline.postflight import _DATE_RE, _parse_precise_date
     out = []
     for ev in events or []:
         if not isinstance(ev, dict) or not (ev.get("event") or "").strip():
             continue
+        # Each event is one bullet of the note's Timeline (D304).
+        for key in ("event", "date", "source_sha256"):
+            require_single_line(ev.get(key), f"A timeline event's {key}")
         date = (ev.get("date") or "").strip()
         if date and not _DATE_RE.match(date):
             date = _parse_precise_date(date) or ""

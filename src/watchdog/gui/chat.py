@@ -72,12 +72,30 @@ def build_options(session: "Session", can_use_tool):
     primer = session_text(session.vault)
     if primer:
         system_prompt["append"] = primer
-    kwargs = dict(cwd=str(session.vault), setting_sources=["project"], include_partial_messages=True,
+    from watchdog.vault import session_settings
+    kwargs = dict(cwd=str(session.vault),
+                  # The vault's CLAUDE.md and `/watchdog-*` commands load only with the project
+                  # source. Its settings file loads too, but the settings below outrank it.
+                  setting_sources=["project"],
+                  # The session's rules, passed by the app rather than read from the vault, so a
+                  # vault's settings file can't add hooks or loosen them (D304).
+                  settings=json.dumps(session_settings()),
+                  # Only Watchdog's own server: never a vault's `.mcp.json` (D304).
+                  strict_mcp_config=True,
+                  include_partial_messages=True,
+                  # Every call not pre-approved goes to `can_use_tool`, the reporter's card. Named
+                  # because Claude Code's own default can be its "auto" mode, where a model of its
+                  # own decides instead (D304).
+                  permission_mode="default",
                   system_prompt=system_prompt, can_use_tool=can_use_tool,
                   # Watchdog's tools, in this process and bound to this investigation (D299).
                   mcp_servers={session_tools.SERVER: session_tools.sdk_server(session.vault)},
-                  allowed_tools=[session_tools.tool_name(t) for t in session_tools.TOOLS],
-                  # No shell: everything a session needs is a file tool or a Watchdog tool.
+                  # The built-in tools a session has at all (D304): an allowlist, so a tool a later
+                  # Claude Code adds stays off until it is reviewed here.
+                  tools=list(SESSION_TOOLS),
+                  # Only the read-only Watchdog tools run without asking; the four that write go
+                  # through `can_use_tool`, the app's permission card (D304).
+                  allowed_tools=[session_tools.tool_name(t) for t in session_tools.READ_TOOLS],
                   disallowed_tools=list(DISALLOWED_TOOLS))
     kwargs["env"] = session_auth_env(session)
     from watchdog.gui.engine_setup import bundled_claude_path
@@ -98,12 +116,21 @@ def build_options(session: "Session", can_use_tool):
     return ClaudeAgentOptions(**kwargs)
 
 
-# A session has no shell (D299). Its file tools are confined by the hook below, its reads by the
-# vault's settings, and everything Watchdog does for it is a tool of the `watchdog` server, so a
-# shell would only be a way around those confinements. Every tool Claude Code has that runs a
-# command goes: Bash, PowerShell (Windows), Monitor (a background command) and the two that manage a
-# background shell.
-DISALLOWED_TOOLS = ("Bash", "PowerShell", "Monitor", "BashOutput", "KillShell")
+# The built-in Claude Code tools a session has (D304). Reading and searching the vault, editing its
+# session pages (the edit hook below refuses anything else), the web for research (each fetch asks
+# unless the research command pre-approves it), a to-do list, and Skill, which a command uses to
+# hand over to another (`/watchdog-query` suggests `/watchdog-wiki`).
+SESSION_TOOLS = ("Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch",
+                 "TodoWrite", "Skill")
+
+# Belt and braces behind the allowlist: a session has no shell (D299) and nothing that starts other
+# agents, schedules prompts, runs workflow scripts or moves the session to another folder (D304),
+# whatever a later Claude Code adds by default. Every tool that runs a command goes: Bash,
+# PowerShell (Windows), Monitor (a background command) and the two that manage a background shell.
+DISALLOWED_TOOLS = ("Bash", "PowerShell", "Monitor", "BashOutput", "KillShell",
+                    "Agent", "Task", "Workflow", "CronCreate", "CronDelete", "CronList",
+                    "ScheduleWakeup", "EnterWorktree", "ExitWorktree", "SendMessage",
+                    "PushNotification", "DesignSync", "ListAgents", "RemoteTrigger")
 
 
 # ── hooks (D299): Python callbacks in this process, no command and no PATH ──────────────────────
@@ -151,24 +178,44 @@ _EDIT_TOOLS = {"Write": "file_path", "Edit": "file_path", "MultiEdit": "file_pat
                "NotebookEdit": "notebook_path"}
 
 
+def _vault_relative(vault: Path, raw: str) -> str | None:
+    """`raw` (absolute, or relative to the vault) as a vault-relative path with forward slashes,
+    symlinks resolved; None when it is outside the vault. "" is the vault folder itself."""
+    target = Path(raw) if Path(raw).is_absolute() else Path(vault) / raw
+    real_target = Path(os.path.realpath(target))
+    root = Path(os.path.realpath(vault))
+    if real_target == root:
+        return ""
+    if root not in real_target.parents:
+        return None
+    return real_target.relative_to(root).as_posix()
+
+
 def edit_outside_vault(vault: Path, tool: str, tool_input: dict) -> str | None:
-    """Why `tool` may not run, or None. A session edits files only inside its own investigation
-    folder, and only when the user has allowed Watchdog there (watchdog/access.py) — whatever the
-    vault's settings or an "always allow" answer would otherwise permit. A document that tries to
-    steer the session into writing elsewhere is refused here."""
+    """Why `tool` may not run, or None. A session edits only its own pages in its own
+    investigation folder (`vault.SESSION_WRITABLE`), and only when the user has allowed Watchdog
+    there (watchdog/access.py) — whatever the vault's settings or an "always allow" answer would
+    otherwise permit. Everything else in the folder belongs to the pipeline (the registry, the
+    notes, the queue, the history) or to Claude Code's own setup (`.claude/`, `.mcp.json`), which
+    a session that could write it could use to run commands in the next one (D304). A document
+    that tries to steer the session into writing elsewhere is refused here."""
     from watchdog import access
+    from watchdog.vault import SESSION_WRITABLE, session_may_write
     key = _EDIT_TOOLS.get(tool)
     raw = (tool_input or {}).get(key) if key else None
     if not key:
         return None
     if not isinstance(raw, str) or not raw:
         return f"{tool} needs a file path inside the investigation folder."
-    target = Path(raw) if Path(raw).is_absolute() else Path(vault) / raw
-    real_target = Path(os.path.realpath(target))
-    root = Path(os.path.realpath(vault))
-    if real_target != root and root not in real_target.parents:
+    rel = _vault_relative(vault, raw)
+    if rel is None:
         return (f"Watchdog only lets a session change files inside this investigation's folder; "
                 f"{raw} is outside it.")
+    if not session_may_write(rel):
+        return (f"A session may only change its own pages ({', '.join(SESSION_WRITABLE)}); "
+                f"{rel or raw} belongs to Watchdog or to Claude Code's setup. Use Watchdog's tools "
+                "to change the investigation's records.")
+    root = Path(os.path.realpath(vault))
     if access.enforced() and not access.is_granted(root):
         return "Watchdog hasn't been allowed to work in this investigation's folder."
     return None
@@ -280,6 +327,79 @@ class Session:
                 "usage_totals": self.usage_totals, "messages": self.messages}
 
 
+# The Watchdog tools that write, in plain words for the permission card (D304).
+_WATCHDOG_TOOL_TITLES = {
+    "timeline": "Rebuild the timeline",
+    "write_entity": "Rewrite an entity's summary and timeline",
+    "watchlist_add": "Add to the watch list",
+    "contradiction_add": "Record a contradiction",
+    "search": "Search the documents",
+    "leads": "List leads",
+    "check_citations": "Check citations",
+    "research_seen": "List sources already captured",
+}
+
+
+def _entity_name(vault: Path, entity_id) -> str:
+    from watchdog.pipeline.json_io import _read_json_or
+    entry = _read_json_or(Path(vault) / ".watchdog" / "registry" / "entities.json", {}).get(entity_id)
+    name = entry.get("name") if isinstance(entry, dict) else None
+    return name or str(entity_id)
+
+
+def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
+    """What the permission card says about a tool call, and what an "Always allow" answer covers
+    (D304): never the whole tool, but the tool within one scope — a folder of the vault for a file
+    tool, a web site for a fetch, an entity for the Watchdog tools that change one, one command
+    for Skill. Returns `{title, description, scope, scope_key}`; `scope` is the plain-words label
+    the card shows beside "Always allow"."""
+    from urllib.parse import urlsplit
+    inp = tool_input if isinstance(tool_input, dict) else {}
+    title, description, scope, part = tool, None, None, None
+    prefix = "mcp__watchdog__"
+    if tool.startswith(prefix):
+        name = tool[len(prefix):]
+        title = _WATCHDOG_TOOL_TITLES.get(name, name.replace("_", " "))
+        if name in ("write_entity", "contradiction_add"):
+            entity = _entity_name(vault, inp.get("entity_id"))
+            part = f"entity:{inp.get('entity_id')}"
+            scope = entity
+            if name == "write_entity":
+                n = len(inp.get("timeline_events") or [])
+                description = (f"Replace the summary of {entity} and its {n} timeline "
+                               f"event{'s' if n != 1 else ''} with the text below.")
+            else:
+                description = (f"Add a contradiction to {entity}: “{inp.get('label', '')}”, "
+                               f"{inp.get('a', '')} ({inp.get('a_doc', '')}) against "
+                               f"{inp.get('b', '')} ({inp.get('b_doc', '')}).")
+        elif name == "watchlist_add":
+            terms = [str(t) for t in inp.get("terms") or []]
+            description = "Add to watchlist.md: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
+            scope = "the watch list"
+        elif name == "timeline":
+            description = "Write timeline.md again from the stored events."
+            scope = "timeline.md"
+    elif tool in _EDIT_TOOLS:
+        raw = inp.get(_EDIT_TOOLS[tool])
+        rel = _vault_relative(vault, raw) if isinstance(raw, str) and raw else None
+        folder = (rel.split("/")[0] + "/") if rel and "/" in rel else (rel or "?")
+        part = f"path:{folder}"
+        scope = f"files in {folder}" if folder.endswith("/") else folder
+        description = f"Change {rel or raw}."
+    elif tool == "WebFetch":
+        host = urlsplit(str(inp.get("url") or "")).hostname or "?"
+        part, scope = f"host:{host}", f"pages on {host}"
+        description = f"Fetch {inp.get('url')}"
+    elif tool == "Skill":
+        name = str(inp.get("skill") or inp.get("command") or "?")
+        part, scope = f"skill:{name}", f"/{name.lstrip('/')}"
+        description = f"Run the /{name.lstrip('/')} command."
+    elif tool == "WebSearch":
+        description = f"Search the web for “{inp.get('query', '')}”."
+    return {"title": title, "description": description, "scope": scope,
+            "scope_key": f"{tool}|{part}" if part else tool}
+
+
 def _check_session_key(vault: Path) -> None:
     """Refuse to open a session whose investigation chose an Anthropic key this computer lacks."""
     from watchdog import auth
@@ -287,6 +407,21 @@ def _check_session_key(vault: Path) -> None:
         auth.resolve_auth("anthropic", vault)
     except auth.KeyChoiceError as e:
         raise RpcError(str(e), code="key_missing") from None
+
+
+def _run_loop(loop: asyncio.AbstractEventLoop) -> None:
+    """The chat thread's body. Every open session lives on this one loop, so nothing a session does
+    may end it (D304): a `SystemExit` or `KeyboardInterrupt` that escapes a task (asyncio lets those
+    two through `run_forever`) is reported and the loop goes on, keeping the other sessions alive.
+    It returns only when the loop is stopped."""
+    import sys
+    import traceback
+    while True:
+        try:
+            loop.run_forever()
+            return
+        except BaseException:  # noqa: BLE001 — the loop must outlive any one session's failure
+            sys.stderr.write("A chat session raised an error the loop caught:\n" + traceback.format_exc())
 
 
 class ChatManager:
@@ -300,7 +435,7 @@ class ChatManager:
         with self._lock:
             if self._loop is None:
                 loop = asyncio.new_event_loop()
-                threading.Thread(target=loop.run_forever, name="chat-loop", daemon=True).start()
+                threading.Thread(target=_run_loop, args=(loop,), name="chat-loop", daemon=True).start()
                 self._loop = loop
             return self._loop
 
@@ -333,15 +468,17 @@ class ChatManager:
     # ── a turn ──────────────────────────────────────────────────────────────────────────
     async def _can_use_tool(self, s: Session, tool: str, tool_input: dict, ctx):
         from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
-        key = tool
+        ask = permission_request(s.vault, tool, tool_input)
+        key = ask["scope_key"]
         if key in s.always:
             return PermissionResultAllow()
         request_id = uuid.uuid4().hex
         fut = asyncio.get_running_loop().create_future()
         s.permissions[request_id] = fut
-        description = getattr(ctx, "title", None) or f"Claude wants to use {tool}."
+        description = ask["description"] or getattr(ctx, "title", None) or f"Claude wants to use {tool}."
         rpc.emit("chat.permission", {"session": s.id, "request_id": request_id, "tool": tool,
-                                     "input": tool_input, "description": description})
+                                     "input": tool_input, "description": description,
+                                     "title": ask["title"], "scope": ask["scope"]})
         try:
             allow, always = await fut
         finally:
@@ -378,7 +515,7 @@ class ChatManager:
                     self._handle(s, message)
             except asyncio.CancelledError:
                 raise
-            except Exception as e:  # noqa: BLE001 — every failure must reach the app as a status
+            except (Exception, SystemExit) as e:  # noqa: BLE001 — every failure reaches the app as a status
                 self.status(s, "error", _friendly(e))
             finally:
                 self.save(s)
@@ -522,7 +659,11 @@ class ChatManager:
         if sid in self.sessions:
             return {"session": sid}
         data = self.load(sid)
-        s = Session(Path(data["vault"]), data["mode"], data.get("model"), data.get("title") or "Chat", sid)
+        # The same folder checks as `start`: the saved folder may have moved, stopped being an
+        # investigation or lost its folder access since the chat was saved.
+        from watchdog.gui.vaultio import require_vault
+        vault = require_vault(data.get("vault"))
+        s = Session(vault, data["mode"], data.get("model"), data.get("title") or "Chat", sid)
         s.started, s.updated = data.get("started", s.started), data.get("updated", s.updated)
         s.messages = data.get("messages") or []
         s.sdk_session_id = data.get("sdk_session_id")

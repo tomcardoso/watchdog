@@ -67,9 +67,9 @@ Project = {
 | Method | Params | Result |
 |---|---|---|
 | `projects.list` | `{all?: bool}` | `Project[]` (archived only when `all`) |
-| `projects.get` | `{slug}` | `Project` — exact slug or unique prefix; errors `not_found` / `ambiguous` |
+| `projects.get` | `{slug}` | `Project` — the exact slug only, never a prefix (a stale slug must not reach another investigation); error `not_found` |
 | `projects.forPath` | `{path}` | `Project \| null` — the registered project at that folder |
-| `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: RunLock\|null, ingest: RunLock\|null}, stopped_run: string\|null, pending_finalization: {...}\|null, size_bytes}` — `RunLock` is `{where: "here"\|"elsewhere"\|"unknown", host, started_at}`. Reading it clears a lock whose run has died (`locks.clear_abandoned`, the function `watchdog unlock` calls, I10), so a lock reported here is a run in progress (D293) |
+| `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: RunLock\|null, ingest: RunLock\|null}, stopped_run: string\|null, pending_finalization: {...}\|null, size_bytes}` — `RunLock` is `{where: "here"\|"elsewhere"\|"unknown", host, started_at}`. Reading it clears a lock whose run has died (`locks.clear_abandoned`, I10), so a lock reported here is a run in progress (D293) |
 | `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — the last `lines` (default 500) of `.watchdog/registry/processing.log` |
 | `projects.doctor` | — | `{issues: [{kind: "missing"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
 
@@ -185,7 +185,6 @@ EntityDetail = EntityRow & {
               stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)
               summary_md, analysis_md|null,     // with citations rendered as fact links (D283); show these
               citations: {cited, linked, unknown, missing, disputed}} | null,   // the entity summary, from the registry; who wrote it is metadata, not shown (D284); unknown fields ignored
-  legacy_claims: string|null      // claims an older version recorded for documents with no stored extraction (markdown)
 }
 
 TimelineEvent = {
@@ -217,7 +216,7 @@ VerificationSummary = {facts, verified, disputed, unverifiable, unmarked, unloca
 
 | Method | Params | Result |
 |---|---|---|
-| `verify.mark` | `{vault, id, status: "verified"\|"disputed"\|"unverifiable"\|null, note?}` | `FactMark & {id}` — sets the mark on one current fact, or clears it when `status` is null or empty (the history is kept). `by` is the `reporter_name` setting, else the computer account's name. `note` is trimmed and capped at 2,000 characters. Calls `pipeline/verification.mark`, the function `watchdog verify-fact` calls (I10); it takes the ledger's own lock and regenerates `verification.md`. Errors: `bad_params` (not a fact id), `not_found` (no current fact has that id, for example after the document was processed again), `bad_value` (unknown status), `ledger_too_new` (the ledger was written by a newer Watchdog and is read-only) |
+| `verify.mark` | `{vault, id, status: "verified"\|"disputed"\|"unverifiable"\|null, note?}` | `FactMark & {id}` — sets the mark on one current fact, or clears it when `status` is null or empty (the history is kept). `by` is the `reporter_name` setting, else the computer account's name. `note` is trimmed and capped at 2,000 characters. Calls `pipeline/verification.mark` (I10); it takes the ledger's own lock and regenerates `verification.md`. Errors: `bad_params` (not a fact id), `not_found` (no current fact has that id, for example after the document was processed again), `bad_value` (unknown status), `ledger_too_new` (the ledger was written by a newer Watchdog and is read-only) |
 | `verify.facts` | `{vault}` | `{summary: VerificationSummary, facts: LedgerFact[], orphaned: OrphanMark[], reporter}` — every current fact, sorted by document title then reading order, with `{id, fact, page\|null, basis, sha, filename, title, passage_method\|null, passage_page\|null, mark: FactMark\|null}`; `orphaned` lists current marks whose fact's words or page have since changed, each `FactMark & {id, fact, page, sha256, filename}` with the fact as it read when marked; `reporter` is the name `verify.mark` would record |
 
 A fact's `id` is `fact:<scheme>:<12 characters of the document's SHA-256>:<10-character hash>`, with `:2`, `:3` on exact duplicates within one document. It stays the same while the fact's words and page do; see D271.
@@ -487,14 +486,14 @@ Claude Agent SDK in the vault's folder, so the vault's own `.claude/` settings, 
 
 | Method | Params | Result |
 |---|---|---|
-| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built by `chat.first_prompt` (the query skill for a question, `/watchdog-context`, `/watchdog-research <q>`). The session gets Watchdog's tools from the in-process MCP server `watchdog` (`mcp__watchdog__*`, pre-approved), the primer in its system prompt, and no shell (D299); a `chat.permission` request is never for `Bash`. In API-key mode the session runs on the investigation's chosen Anthropic key, passed as `ANTHROPIC_API_KEY` (D290); `key_missing` when that key is not on this computer (also from `chat.resume`) |
+| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built by `chat.first_prompt` (the query skill for a question, `/watchdog-context`, `/watchdog-research <q>`). The session gets Watchdog's tools from the in-process MCP server `watchdog` (`mcp__watchdog__*`; the four read-only ones pre-approved, the four that write asked through `chat.permission`), the primer in its system prompt, an allowlist of Claude Code's built-in tools with no shell, the app's own settings with hooks off, and no MCP server but Watchdog's (D299, D304); a `chat.permission` request is never for `Bash`. In API-key mode the session runs on the investigation's chosen Anthropic key, passed as `ANTHROPIC_API_KEY` (D290); `key_missing` when that key is not on this computer (also from `chat.resume`) |
 | `chat.send` | `{session, text}` | `{ok}` |
 | `chat.interrupt` | `{session}` | `{ok}` |
 | `chat.close` | `{session}` | `{ok, research_queued: int}` |
-| `chat.permission` | `{session, request_id, allow: bool, always?: bool}` | `{ok}` |
+| `chat.permission` | `{session, request_id, allow: bool, always?: bool}` | `{ok}` — `always` covers the tool within the request's `scope` only (a folder, a site, an entity, one command), for the rest of the session (D304) |
 | `chat.list` | `{vault}` | `[{session, mode, title, started, updated, model}]` saved transcripts, newest first |
 | `chat.get` | `{session}` | `{session, mode, title, messages: ChatMessage[]}` |
-| `chat.resume` | `{session}` | `{session}` — reopen a saved session (SDK `resume`) |
+| `chat.resume` | `{session}` | `{session}` — reopen a saved session (SDK `resume`), after the same folder checks as `chat.start` (`not_a_vault`, `not_granted`) |
 | `chat.delete` | `{session}` | `{ok}` |
 
 ```
@@ -503,5 +502,6 @@ ChatMessage = {id, role: "user"|"assistant"|"tool"|"system", text, tool?: {name,
 
 Events: `chat.delta {session, message_id, text}` (streamed assistant text), `chat.message
 {session, message: ChatMessage}`, `chat.permission {session, request_id, tool, input,
-description}`, `chat.status {session, state: "thinking"|"idle"|"closed"|"error", detail|null,
+description, title, scope}` (`description` says what the call will do in plain words; `title` names a
+Watchdog tool in plain words; `scope` is what "Always allow" would cover, or null for the whole tool), `chat.status {session, state: "thinking"|"idle"|"closed"|"error", detail|null,
 cost_usd|null}`.

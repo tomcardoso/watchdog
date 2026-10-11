@@ -390,7 +390,8 @@ def test_a_sessions_options_carry_watchdogs_tools_the_primer_and_no_shell(env):
     _wait_state(events)
     opts = FakeClient.instances[0].options
     assert set(opts.mcp_servers) == {"watchdog"} and opts.mcp_servers["watchdog"]["type"] == "sdk"
-    assert opts.allowed_tools == [f"mcp__watchdog__{t}" for t in session_tools.TOOLS]
+    # Only the read-only tools run without asking; the four that write go through the card (D304).
+    assert opts.allowed_tools == [f"mcp__watchdog__{t}" for t in session_tools.READ_TOOLS]
     assert {"Bash", "PowerShell", "Monitor"} <= set(opts.disallowed_tools) and opts.sandbox is None
     assert opts.system_prompt["preset"] == "claude_code"
     assert opts.system_prompt["append"] == primer.session_text(vault)
@@ -447,3 +448,136 @@ def test_first_prompt_asks_through_the_query_skill(tmp_path, question, expected)
 
 def test_first_prompt_without_the_query_skill_sends_the_bare_question(tmp_path):
     assert chat.first_prompt(tmp_path, "ask", "who signed?") == "who signed?"
+
+
+# ── session hardening (D304) ──────────────────────────────────────────────────────────────
+
+def test_a_session_runs_on_the_apps_settings_its_own_server_and_an_allowlist_of_tools(env):
+    """The vault's settings file can't add hooks, loosen the rules or start an MCP server, and a
+    built-in tool Claude Code adds later stays off (D304)."""
+    import json
+    from watchdog.vault import session_settings
+    vault, events = env
+    api.start(str(vault), "ask", prompt="who?")
+    _wait_state(events)
+    opts = FakeClient.instances[0].options
+    assert json.loads(opts.settings) == session_settings()
+    assert opts.strict_mcp_config is True
+    assert opts.permission_mode == "default"            # never Claude Code's own "auto" judge
+    assert opts.setting_sources == ["project"]          # the vault's CLAUDE.md and /watchdog-* commands
+    assert opts.tools == list(chat.SESSION_TOOLS)
+    assert not set(chat.SESSION_TOOLS) & set(opts.disallowed_tools)
+    for tool in ("Bash", "PowerShell", "Agent", "Task", "Workflow", "CronCreate", "EnterWorktree"):
+        assert tool in opts.disallowed_tools and tool not in opts.tools
+
+
+def _ask_permission(tool, tool_input):
+    async def ask(client):
+        return await client.options.can_use_tool(tool, tool_input, ToolPermissionContext())
+    return ask
+
+
+def _wait_permissions(events, n, timeout=10):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        reqs = [e["data"] for e in events if e["event"] == "chat.permission"]
+        if len(reqs) >= n:
+            return reqs
+        time.sleep(0.02)
+    raise AssertionError(f"expected {n} permission requests")
+
+
+def test_always_allow_covers_the_tool_within_its_scope_only(env):
+    """"Always allow" for a fetch on one site doesn't cover another site; for a page folder it
+    doesn't cover another folder (D304)."""
+    vault, events = env
+    FakeClient.scripts = [[
+        _ask_permission("WebFetch", {"url": "https://example.org/a"}),
+        _ask_permission("WebFetch", {"url": "https://example.org/b"}),     # same site: covered
+        _ask_permission("WebFetch", {"url": "https://elsewhere.example/c"}),  # another site: asks
+        _result()]]
+    sid = api.start(str(vault), "ask", prompt="x")["session"]
+    first = _wait_permissions(events, 1)[0]
+    assert first["scope"] == "pages on example.org"
+    api.permission(sid, first["request_id"], True, always=True)
+    second = _wait_permissions(events, 2)[1]
+    assert second["input"] == {"url": "https://elsewhere.example/c"}
+    api.permission(sid, second["request_id"], True)
+    _wait_state(events)
+    assert all(isinstance(r, PermissionResultAllow) for r in FakeClient.instances[0].permission_results)
+    assert len([e for e in events if e["event"] == "chat.permission"]) == 2
+
+
+def test_a_watchdog_write_tool_asks_with_a_card_that_says_what_it_will_do(env):
+    import json
+    vault, events = env
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps(
+        {"acme": {"name": "Acme Holdings", "note_path": "entities/organization/acme"}}))
+    FakeClient.scripts = [[
+        _ask_permission("mcp__watchdog__write_entity",
+                        {"entity_id": "acme", "summary": "S.", "timeline_events": [{"event": "e"}]}),
+        _ask_permission("mcp__watchdog__write_entity",
+                        {"entity_id": "other", "summary": "S.", "timeline_events": []}),
+        _result()]]
+    sid = api.start(str(vault), "ask", prompt="x")["session"]
+    req = _wait_permissions(events, 1)[0]
+    assert req["title"] == "Rewrite an entity's summary and timeline"
+    assert "Acme Holdings" in req["description"] and "1 timeline event " in req["description"]
+    assert req["scope"] == "Acme Holdings"
+    api.permission(sid, req["request_id"], True, always=True)
+    other = _wait_permissions(events, 2)[1]                      # another entity asks again
+    assert other["scope"] == "other"
+    api.permission(sid, other["request_id"], False)
+    _wait_state(events)
+
+
+def test_permission_request_wording_for_each_kind_of_tool(tmp_path):
+    vault = tmp_path / "v"
+    (vault / "queries").mkdir(parents=True)
+    w = chat.permission_request(vault, "Write", {"file_path": str(vault / "queries" / "a.md")})
+    assert w["scope"] == "files in queries/" and w["description"] == "Change queries/a.md."
+    assert chat.permission_request(vault, "Write", {"file_path": "wiki/b.md"})["scope_key"] != w["scope_key"]
+    c = chat.permission_request(vault, "mcp__watchdog__contradiction_add",
+                                {"entity_id": "x", "label": "Price", "a": "1", "a_doc": "d1", "b": "2", "b_doc": "d2"})
+    assert c["title"] == "Record a contradiction" and "“Price”" in c["description"]
+    t = chat.permission_request(vault, "mcp__watchdog__watchlist_add", {"terms": ["A", "B"]})
+    assert t["description"] == "Add to watchlist.md: A, B"
+    assert chat.permission_request(vault, "WebSearch", {"query": "q"})["scope_key"] == "WebSearch"
+
+
+def test_the_chat_loop_survives_a_session_that_raises_systemexit(env):
+    """Every open session shares one loop; a SystemExit escaping a task must not end it (D304)."""
+    import asyncio
+    vault, events = env
+
+    async def boom():
+        raise SystemExit("Error: from a library call")
+
+    chat.MANAGER.submit(boom())
+    time.sleep(0.3)
+
+    async def alive():
+        return "still here"
+    assert chat.MANAGER.submit(alive()).result(timeout=5) == "still here"
+    assert isinstance(chat.MANAGER.loop(), asyncio.AbstractEventLoop)
+
+
+def test_resume_checks_the_folder_as_start_does(env, tmp_path):
+    """A saved chat whose folder is gone, or no longer an investigation, is refused (C6)."""
+    import json
+    import shutil
+    vault, events = env
+    FakeClient.scripts = [[_result(session_id="sdk-9")]]
+    sid = api.start(str(vault), "ask", prompt="x")["session"]
+    _wait_state(events)
+    api.close(sid)
+    shutil.rmtree(vault / ".watchdog")
+    with pytest.raises(rpc.RpcError) as e:
+        api.resume(sid)
+    assert e.value.code == "not_a_vault"
+    saved = chat.chats_dir() / f"{sid}.json"
+    data = json.loads(saved.read_text())
+    data["vault"] = "relative/path"
+    saved.write_text(json.dumps(data))
+    with pytest.raises(rpc.RpcError):
+        api.resume(sid)

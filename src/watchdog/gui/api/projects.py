@@ -19,16 +19,11 @@ _LOG_MAX_LINES = 20000
 
 
 def _find(slug: str) -> tuple[str, dict]:
-    """The registry entry for `slug` — exact, else a unique prefix (as `projects.find` resolves names)."""
+    """The registry entry listed under exactly `slug` (as `projects.find` resolves it): never a
+    prefix, so a stale slug can't reach another investigation."""
     projects = vaultio.registered_projects()
-    if isinstance(slug, str) and slug:
-        if slug in projects:
-            return slug, projects[slug]
-        matches = [k for k in projects if k.startswith(slug)]
-        if len(matches) == 1:
-            return matches[0], projects[matches[0]]
-        if len(matches) > 1:
-            raise RpcError(f"“{slug}” matches more than one investigation.", code="ambiguous")
+    if isinstance(slug, str) and slug in projects:
+        return slug, projects[slug]
     raise RpcError("That investigation isn't registered.", code="not_found")
 
 

@@ -88,6 +88,10 @@ export interface PermissionRequest {
   tool: string
   input: unknown
   description: string | null
+  /** The tool in plain words (Watchdog's own tools), else its name. */
+  title?: string | null
+  /** What "Always allow" covers, in plain words: a folder, a site, an entity. Null: the whole tool. */
+  scope?: string | null
 }
 export function PermissionCard({ req, onAnswer }: { req: PermissionRequest; onAnswer: (allow: boolean, always?: boolean) => void }) {
   const [busy, setBusy] = useState(false)
@@ -100,14 +104,16 @@ export function PermissionCard({ req, onAnswer }: { req: PermissionRequest; onAn
       <div className="chat-perm-head">
         <ShieldQuestion />
         <div>
-          <div style={{ fontWeight: 620 }}>Claude wants to use {toolName(req.tool)}</div>
+          <div style={{ fontWeight: 620 }}>{req.tool.startsWith('mcp__watchdog__') && req.title ? `Claude wants to: ${req.title.charAt(0).toLowerCase()}${req.title.slice(1)}` : `Claude wants to use ${toolName(req.tool)}`}</div>
           {req.description && <div className="muted" style={{ fontSize: 'var(--fs-sm)' }}>{req.description}</div>}
         </div>
       </div>
       <pre className="chat-perm-input selectable">{cut(typeof req.input === 'string' ? req.input : JSON.stringify(req.input, null, 2), 1200)}</pre>
       <div className="row" style={{ gap: 8 }}>
         <Button size="sm" variant="primary" disabled={busy} onClick={() => answer(true)}>Allow once</Button>
-        <Button size="sm" disabled={busy} onClick={() => answer(true, true)} tip="Stops asking about this tool for the rest of the session">Always allow</Button>
+        <Button size="sm" disabled={busy} onClick={() => answer(true, true)} tip={req.scope ? `Stops asking about this for ${req.scope} for the rest of the session` : 'Stops asking about this tool for the rest of the session'}>
+          {req.scope ? `Always allow for ${cut(req.scope, 40)}` : 'Always allow'}
+        </Button>
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => answer(false)}>Deny</Button>
       </div>
     </div>

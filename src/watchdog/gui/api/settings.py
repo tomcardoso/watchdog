@@ -456,7 +456,7 @@ def set_base_url(provider: str, url: str) -> dict:
 def skills_list() -> dict:
     from watchdog import skills_catalog
 
-    user_dir = Path(skills_catalog.USER_SKILLS_DIR)
+    user_dir = skills_catalog.user_skills_dir()
     out = []
     for name, path in skills_catalog.catalog().items():
         p = Path(path)
