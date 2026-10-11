@@ -4,10 +4,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ENC_TAG, mask, migrate, prepare, revealAll, sealParams, storeStatus, type Crypto } from './keystore.ts'
+import { ENC_TAG, mask, prepare, revealAll, seal, sealParams, storeStatus, type Crypto } from './keystore.ts'
 
 function fakeCrypto(opts: { available?: boolean; backend?: string; broken?: boolean } = {}): Crypto {
   return {
@@ -29,13 +29,22 @@ function tempFile(content: unknown): { file: string; dir: string } {
   return { file, dir }
 }
 
-const plainFile = () => ({
-  mode: 'api-key',
-  keys: {
-    anthropic: 'sk-ant-api03-ANTHROPIC-1111',
-    openai: { default: 'k-1', items: [{ id: 'k-1', label: 'Personal', key: 'sk-proj-PERSONAL-2222' }, { id: 'k-2', label: 'Work', key: 'sk-proj-WORK-3333' }] }
+const KEYS = { 'k-1': 'sk-ant-api03-ANTHROPIC-1111', 'k-2': 'sk-proj-PERSONAL-2222', 'k-3': 'sk-proj-WORK-3333' }
+
+/** A credentials file as the app writes it: labelled items, each key sealed or (with no secure
+ * storage) in plain text. */
+function credentials(sealed: Crypto | null) {
+  const item = (id: keyof typeof KEYS, label: string) => ({
+    id, label, key: sealed ? { ...seal(sealed, KEYS[id]), masked: mask(KEYS[id]) } : KEYS[id]
+  })
+  return {
+    mode: 'api-key',
+    keys: {
+      anthropic: { default: 'k-1', items: [item('k-1', 'Main')] },
+      openai: { default: 'k-2', items: [item('k-2', 'Personal'), item('k-3', 'Work')] }
+    }
   }
-})
+}
 
 test('the mask matches the one Python shows', () => {
   assert.equal(mask('sk-ant-api03-ANTHROPIC-1111'), 'sk-ant-api…1111')
@@ -52,39 +61,26 @@ test('storage is encrypted on macOS and Windows, and on Linux only with a real k
   assert.deepEqual(storeStatus(fakeCrypto({ available: false }), 'darwin'), { store: 'plaintext', backend: 'keychain', reason: 'unavailable' })
 })
 
-test('migration encrypts every key in place and keeps the structure readable', () => {
-  const { file, dir } = tempFile(plainFile())
+test('every sealed key reaches the backend, decrypted, keyed by its blob, and the file is untouched', () => {
+  const { file, dir } = tempFile(credentials(fakeCrypto()))
   try {
+    const before = readFileSync(file, 'utf8')
+    for (const k of Object.values(KEYS)) assert.ok(!before.includes(k), `${k} stored in plain text`)
     const r = prepare(fakeCrypto(), 'darwin', file)
-    assert.equal(r.migrated, 3)
-    const text = readFileSync(file, 'utf8')
-    for (const k of ['ANTHROPIC-1111', 'PERSONAL-2222', 'WORK-3333']) assert.ok(!text.includes(k), `${k} left in plain text`)
-    const data = JSON.parse(text)
-    assert.equal(data.mode, 'api-key')
-    assert.equal(data.keys.anthropic.enc, ENC_TAG)
-    assert.equal(data.keys.anthropic.masked, 'sk-ant-api…1111')
-    assert.deepEqual(data.keys.openai.items.map((i: { label: string }) => i.label), ['Personal', 'Work'])
-    assert.equal(data.keys.openai.default, 'k-1')
-    // 0600 (a Unix permission; Windows has no equivalent mode bits), atomically: no temporary
-    // file is left beside it.
-    if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o600)
-    assert.deepEqual(readdirSync(dir), ['credentials.json'])
-    // Every key reaches the backend, decrypted, keyed by its blob.
-    assert.deepEqual(Object.values(r.provision.keys).sort(), ['sk-ant-api03-ANTHROPIC-1111', 'sk-proj-PERSONAL-2222', 'sk-proj-WORK-3333'])
+    assert.equal(readFileSync(file, 'utf8'), before)
+    assert.deepEqual(Object.values(r.provision.keys).sort(), Object.values(KEYS).sort())
     assert.equal(r.provision.store, 'encrypted')
-    // A second start finds nothing left to migrate.
-    assert.equal(prepare(fakeCrypto(), 'darwin', file).migrated, 0)
+    assert.equal(r.provision.unreadable, 0)
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
 })
 
 test('without secure storage the file is left as it is and keys still reach the backend', () => {
-  const { file, dir } = tempFile(plainFile())
+  const { file, dir } = tempFile(credentials(null))
   try {
     const before = readFileSync(file, 'utf8')
     const r = prepare(fakeCrypto({ backend: 'basic_text' }), 'linux', file)
-    assert.equal(r.migrated, 0)
     assert.equal(readFileSync(file, 'utf8'), before)
     assert.equal(r.provision.store, 'plaintext')
     assert.equal(r.provision.reason, 'basic_text')
@@ -96,15 +92,13 @@ test('without secure storage the file is left as it is and keys still reach the 
 })
 
 test('a key that cannot be decrypted is counted, not passed on', () => {
-  const state = plainFile() as Record<string, unknown>
-  migrate(state, fakeCrypto())
+  const state = credentials(fakeCrypto()) as Record<string, unknown>
   assert.deepEqual(revealAll(state, fakeCrypto({ broken: true })), { keys: {}, unreadable: 3 })
   assert.equal(revealAll(state, null).unreadable, 3)
 })
 
-test('no file: nothing to migrate or hand over', () => {
+test('no file: nothing to hand over', () => {
   const r = prepare(fakeCrypto(), 'darwin', join(tmpdir(), 'wd-keys-missing', 'credentials.json'))
-  assert.equal(r.migrated, 0)
   assert.deepEqual(r.provision.keys, {})
 })
 

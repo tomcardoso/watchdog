@@ -1,14 +1,14 @@
 // API keys encrypted with Electron's safeStorage (D295). The main process is the only place a key
-// is encrypted or decrypted: it encrypts each key in ~/.watchdog/credentials.json in place, and
-// hands the Python backend the keys it decrypted over the backend's stdin. Python never decrypts.
+// is encrypted or decrypted: it seals each key the reader pastes before the backend stores it in
+// ~/.watchdog/credentials.json, and hands the Python backend the keys it decrypted over the
+// backend's stdin. Python never decrypts.
 //
 // This module has no Electron import: the crypto is passed in, so `npm run test:unit` tests it
 // with a stand-in. `secrets.ts` binds it to Electron's safeStorage.
 
-import { randomBytes } from 'node:crypto'
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 export const ENC_TAG = 'safeStorage:v1'
 
@@ -101,39 +101,20 @@ function unseal(c: Crypto, b: SealedKey): string | null {
   }
 }
 
-type Slot = { get: () => unknown; set: (v: unknown) => void }
-
-/** Every place a secret lives in a credentials file: a provider's single key (`keys[p]`, a string
- * or a blob) or each labelled item's `key` (D290). Labels, ids and the default are left alone. */
-function slots(state: Record<string, unknown>): Slot[] {
+/** Every secret in a credentials file: each labelled item's `key` (D290), under
+ * `keys[provider].items`. Labels, ids and the default are left alone. */
+function secrets(state: Record<string, unknown>): unknown[] {
   const keys = state?.keys
   if (!keys || typeof keys !== 'object') return []
-  const out: Slot[] = []
-  const k = keys as Record<string, unknown>
-  for (const provider of Object.keys(k)) {
-    const v = k[provider]
-    if (typeof v === 'string' || isSealed(v)) {
-      out.push({ get: () => k[provider], set: (x) => (k[provider] = x) })
-    } else if (v && typeof v === 'object' && Array.isArray((v as { items?: unknown }).items)) {
-      for (const item of (v as { items: Record<string, unknown>[] }).items) {
-        if (item && typeof item === 'object' && 'key' in item) out.push({ get: () => item.key, set: (x) => (item.key = x) })
-      }
+  const out: unknown[] = []
+  for (const v of Object.values(keys as Record<string, unknown>)) {
+    const items = (v as { items?: unknown } | null)?.items
+    if (!Array.isArray(items)) continue
+    for (const item of items as Record<string, unknown>[]) {
+      if (item && typeof item === 'object' && 'key' in item) out.push(item.key)
     }
   }
   return out
-}
-
-/** Replace every plaintext key with its encrypted blob, in place. Returns how many changed. */
-export function migrate(state: Record<string, unknown>, c: Crypto): number {
-  let n = 0
-  for (const s of slots(state)) {
-    const v = s.get()
-    if (typeof v === 'string' && v) {
-      s.set({ ...seal(c, v), masked: mask(v) })
-      n++
-    }
-  }
-  return n
 }
 
 /** Decrypt every blob: `{blob data: key}`, and how many could not be decrypted (a keyring that
@@ -141,8 +122,7 @@ export function migrate(state: Record<string, unknown>, c: Crypto): number {
 export function revealAll(state: Record<string, unknown>, c: Crypto | null): { keys: Record<string, string>; unreadable: number } {
   const keys: Record<string, string> = {}
   let unreadable = 0
-  for (const s of slots(state)) {
-    const v = s.get()
+  for (const v of secrets(state)) {
     if (!isSealed(v)) continue
     const key = c ? unseal(c, v) : null
     if (key) keys[v.data] = key
@@ -161,33 +141,11 @@ export function readState(file: string): Record<string, unknown> | null {
   }
 }
 
-/** Write the file the way Python's `write_private_json` does: a 0600 temporary file beside it,
- * then a rename, so a crash leaves the old file whole and no copy is ever readable by others. */
-export function writeStateAtomic(file: string, state: Record<string, unknown>): void {
-  const tmp = join(dirname(file), `.${basename(file)}.${randomBytes(4).toString('hex')}.tmp`)
-  try {
-    writeFileSync(tmp, JSON.stringify(state, null, 2) + '\n', { mode: 0o600, flag: 'wx' })
-    renameSync(tmp, file)
-  } catch (e) {
-    try {
-      unlinkSync(tmp)
-    } catch {
-      /* never created */
-    }
-    throw e
-  }
-}
-
-/** At each backend start: encrypt any plaintext keys in place (when this computer can), then
- * decrypt every key for the backend. */
-export function prepare(c: Crypto, platform: string, file: string): { status: StoreStatus; provision: Provision; migrated: number } {
+/** At each backend start: decrypt every stored key for the backend. A key stored in plain text
+ * (on a computer with no usable secure storage) is read by the backend itself. */
+export function prepare(c: Crypto, platform: string, file: string): { status: StoreStatus; provision: Provision } {
   const status = storeStatus(c, platform)
   const state = readState(file)
-  let migrated = 0
-  if (state && status.store === 'encrypted') {
-    migrated = migrate(state, c)
-    if (migrated) writeStateAtomic(file, state)
-  }
   let available = false
   try {
     available = c.isEncryptionAvailable()
@@ -195,7 +153,7 @@ export function prepare(c: Crypto, platform: string, file: string): { status: St
     available = false
   }
   const { keys, unreadable } = state ? revealAll(state, available ? c : null) : { keys: {}, unreadable: 0 }
-  return { status, provision: { ...status, keys, unreadable }, migrated }
+  return { status, provision: { ...status, keys, unreadable } }
 }
 
 /** The params a key-carrying method is sent to the backend with: the key as the reader typed it

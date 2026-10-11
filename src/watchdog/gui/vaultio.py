@@ -2,7 +2,7 @@
 
 Everything here is a pure function of vault files — no model calls, no writes except
 `write_text_atomic`, which only the narrow, spec-listed mutations use (`vault.saveNotes`,
-`vault.writeFile`). The helpers are deliberately forgiving: a new empty vault, an old vault
+`vault.writeFile`). The helpers are deliberately forgiving: a new empty vault, a document
 without `morgue_path`, a missing extracted JSON or a half-written note all yield empty values
 rather than exceptions, because the app calls these on every navigation.
 
