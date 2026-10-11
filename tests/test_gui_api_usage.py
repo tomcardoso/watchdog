@@ -148,3 +148,19 @@ def test_research_status_wayback(rich_vault, wdg_home):
 
 def test_research_status_with_nothing_queued(tmp_path, wdg_home):
     assert call("research.status", vault=V(make_vault(tmp_path)))["queued"] == []
+
+
+def test_a_call_row_carries_its_cost_per_page_and_harness_timing(rich_vault):
+    """#457: cost per page comes from the call's own page range, not the whole corpus; a call
+    with no page range has none. #402: a claude-agent-sdk call's harness time and turns are
+    passed through, and a raw-API call has neither."""
+    write_usage(rich_vault, "20260303T100000Z", [
+        call_rec("extract", filename="a.pdf", detail="pages 1–36", cost=0.36,
+                 api_ms=726_000, num_turns=5),
+        call_rec("extract", filename="b.pdf", detail="digest", cost=0.10),
+    ])
+    rows = {c["filename"]: c for s in call("usage.run", vault=V(rich_vault))["stages"] for c in s["calls"]}
+    assert rows["a.pdf"]["cost_per_page"] == pytest.approx(0.01)
+    assert rows["b.pdf"]["cost_per_page"] is None
+    assert (rows["a.pdf"]["api_ms"], rows["a.pdf"]["num_turns"]) == (726_000, 5)
+    assert rows["b.pdf"]["api_ms"] is None
