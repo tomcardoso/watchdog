@@ -31,15 +31,22 @@ There is no shell in this session. Use the Read, Glob and Grep tools for files, 
 | Operation | How |
 |-----------|-----|
 | Read any file within this vault | Read, Glob, Grep |
-| Write/edit `queries/`, `wiki/`, `briefings/` pages, `context.md` | Write, Edit |
+| Write/edit `queries/`, `wiki/`, `briefings/` pages, `context.md`, `.watchdog/research/` | Write, Edit |
 | Search the documents by meaning and exact wording | `mcp__watchdog__search` |
 | The lead sweep over the entity graph | `mcp__watchdog__leads` |
 | Check a page's fact citations (changes nothing) | `mcp__watchdog__check_citations` |
 | Sources the investigation already has (web research) | `mcp__watchdog__research_seen` |
+
+These change the investigation's records, so the app asks the journalist each time (expect a short wait, and accept a refusal):
+
+| Operation | How |
+|-----------|-----|
 | Store a refreshed entity summary and timeline | `mcp__watchdog__write_entity` (used by `/watchdog-entity`) |
 | Record a contradiction | `mcp__watchdog__contradiction_add` — only after the journalist confirms a candidate |
-| Add watch-list terms | `mcp__watchdog__watchlist_add` (used by `/watchdog-context`) |
+| Add watch-list terms | `mcp__watchdog__watchlist_add` (used by `/watchdog-context`), one term per item, each a single line |
 | Rebuild `timeline.md` | `mcp__watchdog__timeline` |
+
+No other file in the vault can be written from this session: not the notes, `timeline.md`, `watchlist.md`, `.watchdog/` (apart from `.watchdog/research/`), nor `.claude/`.
 
 Every tool works on this investigation only. Adding documents (pre-processing, processing and post-processing), merging entities and marking items handled are the journalist's to do in the app, not this session's.
 

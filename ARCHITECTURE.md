@@ -524,20 +524,34 @@ Every model call, and every Ask Claude or Web research turn (run id `session-<id
 filename, model, tokens, cost. Off with the `telemetry` setting; deleting an investigation with its folder removes its rows
 (D247).
 
-**Session boundaries (D245, D299).** A vault's Claude Code settings pre-authorize writes only to the
-session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/research/`) and
-Watchdog's session tools (`mcp__watchdog__*`), deny `~/.watchdog`, confine reads to the vault and
-carry no hooks. An app session has no shell: every tool that runs a command (`Bash`, `PowerShell`, `Monitor`) is disallowed, and what it needs from
-Watchdog is a tool of the in-process MCP server `watchdog`
-(`watchdog/session_tools.py`): `search`, `leads`, `check_citations` and `research_seen` read;
-`timeline`, `write_entity`, `watchlist_add` and `contradiction_add` write. Each tool set is bound to
-the session's vault and takes no folder, project or outside file; the writers call the library
-function under the registry lock, refuse a vault without folder access and record a version
-(`{"kind": "session", "tool": …}`). The hooks are Python callbacks registered in `gui/chat.py`:
-the page-notes pair below, the vault-only edit guard, and a UserPromptSubmit note of documents
-still waiting. A Claude Code session opened on the folder outside the app gets the instructions and
-the permission rules, but no tools and no hooks. The `refresh-claude-setup` operation updates commands,
-permissions and dashboard views.
+**Session boundaries (D245, D299, D304).** An app session takes its rules from the app, not from
+the vault: `build_options` passes `vault.session_settings()` on the command line (Claude Code ranks
+it above the vault's `.claude/settings.json`), with every command hook off (`disableAllHooks`), no
+project MCP server (`strict_mcp_config`, `enableAllProjectMcpServers: false`), edits pre-approved
+only for the session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`,
+`.watchdog/research/`; `vault.SESSION_WRITABLE`), `~/.watchdog` denied and reads confined to the
+vault. `setting_sources=["project"]` stays only so the vault's `CLAUDE.md` and `/watchdog-*`
+commands load. The built-in tools are an allowlist (`chat.SESSION_TOOLS`: Read, Glob, Grep, Write,
+Edit, NotebookEdit, WebFetch, WebSearch, TodoWrite, Skill) behind a denylist of everything that
+runs a command, starts agents, schedules prompts, runs workflows or changes folder
+(`DISALLOWED_TOOLS`); `permission_mode` is `default`, so a call not pre-approved reaches the app's
+permission card, never Claude Code's own judge. What it needs from Watchdog is a tool of the
+in-process MCP server `watchdog` (`watchdog/session_tools.py`): `search`, `leads`, `check_citations`
+and `research_seen` read and are pre-approved; `timeline`, `write_entity`, `watchlist_add` and
+`contradiction_add` write and ask the reporter every time. Each tool set is bound to the session's
+vault and takes no folder, project or outside file; the writers call the library function under
+the registry lock, refuse a vault without folder access, refuse a line break in any value written
+into a line of Markdown (`pipeline/inline_text`), and record a version (`{"kind": "session", "tool":
+…}`); a tool's failure, `SystemExit` included, is an error result, and the chat loop outlives any
+task's exception. The hooks are Python callbacks registered in `gui/chat.py`: the page-notes pair
+below, the edit guard (a file tool may change only `SESSION_WRITABLE`, symlinks resolved, and only
+with folder access), and a UserPromptSubmit note of documents still waiting. "Always allow" covers a
+tool within one scope (a folder, a web site, an entity, one command), never the whole tool. The
+vault's own `.claude/settings.json` carries the same rules without hooks, for Claude Code opened on
+the folder outside the app, which gets the instructions and rules but no tools and no hooks; the
+`refresh-claude-setup` operation rewrites it with the commands and `CLAUDE.md`. The limit of all
+this: the Anthropic key still reaches the Claude Code process as `ANTHROPIC_API_KEY` in API-key mode,
+and nothing the session can start runs a command, so nothing else sees it.
 
 **Session primer (D285).** The app appends `primer.session_text(vault)` (`build`, never
 raising) to a session's system prompt when it connects, at the start and on every resume (D299);
@@ -744,12 +758,13 @@ See D45–D48.
 - **The public-records gate** runs in the app after chew and before the model call, from
   `ingest.preflight` (count, models, `auto_approve` verdict, the warning text), then `add` with
   `skip_warning`; without it the operation declines the gate and sends nothing.
-- **Claude sessions** (`chat.*`) use the Claude Agent SDK with `cwd` set to the vault and project
-  settings loaded, so the vault's permissions and `/watchdog-*` commands apply; transcripts are kept
-  under `~/.watchdog/gui/chats/`. Each session gets the in-process MCP server `watchdog`
-  (`create_sdk_mcp_server`, its tools pre-approved through `allowed_tools`), the primer in its system
-  prompt, its hooks as Python callbacks, and no `Bash` (D299). A tool runs in the backend's thread
-  pool (`asyncio.to_thread`), with the backend's folder-access hook.
+- **Claude sessions** (`chat.*`) use the Claude Agent SDK with `cwd` set to the vault, the project
+  source loaded for the vault's `CLAUDE.md` and `/watchdog-*` commands, and the app's own settings
+  above it (Session boundaries, D304); transcripts are kept under `~/.watchdog/gui/chats/`. Each
+  session gets the in-process MCP server `watchdog` (`create_sdk_mcp_server`, its read-only tools
+  pre-approved through `allowed_tools`, the writers asked), the primer in its system prompt, its
+  hooks as Python callbacks, an allowlist of built-in tools and no shell (D299, D304). A tool runs
+  in the backend's thread pool (`asyncio.to_thread`), with the backend's folder-access hook.
 - **Files.** The renderer reads vault files only through `wdfile://`, which the main process limits
   to registered vault folders, and which answers byte-range requests (206) so a recording can
   seek. Thumbnails are cached in the app's user-data folder. A recording opens in a player above
@@ -776,16 +791,18 @@ See D45–D48.
   `WATCHDOG_ENFORCE_ACCESS=1`, under which `watchdog/access.py`'s audit hook refuses writes outside
   allowed folders and Watchdog's own exempt locations, in the sidecar and every worker; the
   sidecar answers `not_granted` for a vault outside the list, and app-run Claude sessions are denied
-  edits outside their vault. They have no shell, so no command of theirs runs outside these checks
-  (D299; D274's sandbox and shell allow-list are gone).
+  edits outside their own pages. They have no shell and run no hook or MCP server from the vault,
+  so no command of theirs runs outside these checks (D299, D304; D274's sandbox and shell
+  allow-list are gone).
 - **API keys (D295).** `~/.watchdog/credentials.json` keeps its structure (providers, key ids,
   names, the default) in the clear and each secret as `{"enc": "safeStorage:v1", "data", "masked"}`,
   encrypted by the main process with Electron `safeStorage` (Keychain, DPAPI, a Linux keyring;
   Linux `basic_text` counts as none, and keys then stay plaintext in the 0600 file, with a warning in
   Settings). Python never decrypts. When a backend starts, before the window can reach it, the main
   process (`gui/src/main/secrets.ts`, `keystore.ts`) sends the decrypted keys with `secrets.provide` on the backend's stdin; the backend keeps them in memory
-  (`watchdog/keystore.py`) and hands each job only the key per provider its vault resolves to, as one
-  JSON line on the job's stdin (`WATCHDOG_SECRETS=stdin`), never in an environment variable or argv.
+  (`watchdog/keystore.py`) and hands each job only the key its vault resolves to for each provider
+  the job's models use (`jobs.run_providers_for`, from the run's own `resolve_plan`; every provider
+  when the plan can't be resolved), as one JSON line on the job's stdin (`WATCHDOG_SECRETS=stdin`), never in an environment variable or argv.
   A pasted key is sealed by the main process (`key_enc`) before the backend stores it; the window
   can't call `secrets.provide`. A process without the key it needs (a key that failed to decrypt, or
   one the app never handed it) raises `KeyLockedError`, a `KeyChoiceError`, so it stops before any call;
@@ -841,16 +858,18 @@ noted as such.
   *History: D45, D46.*
 - **I6 — Anything parsed out of a source document is untrusted input.** XML goes through
   `defusedxml`, never the stdlib parsers; metadata is allowlisted and length-capped; a failing
-  reader yields `{}`; document text in a note is defanged. A tool a vault's session runs without a
-  prompt reaches only that vault: each session tool is bound to it and takes no folder, project or
-  file outside it; an app session has no shell; and the vault denies its sessions `~/.watchdog`.
-  *History: D78, D110, D154, D241, D257, D299.*
+  reader yields `{}`; document text in a note is defanged. A vault's session reaches only that
+  vault: each session tool is bound to it and takes no folder, project or file outside it; a file
+  tool may change only the session's own pages; a tool that changes the records asks the reporter;
+  an app session has no shell and runs nothing a vault's own settings declare (hooks, MCP servers);
+  and its sessions are denied `~/.watchdog`. *History: D78, D110, D154, D241, D257, D299, D304.*
 - **I7 — The vault mutates only at the finalize commit.** Extraction stages
   `.watchdog/extracted/<sha>.json` and touches no committed state. Every vault write happens in the
   serial, sha-sorted commit pass, after the pre-commit fold and merges — so a reconcile failure
   leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
-  Investigation sessions don't hand-edit pipeline-owned files; they change pipeline state only
-  through deterministic session tools that take the registry lock. *History: D126–D129, D245, D258, D299.*
+  Investigation sessions can't hand-edit pipeline-owned files (the edit hook allows only their own
+  pages); they change pipeline state only through deterministic session tools that take the
+  registry lock and ask the reporter. *History: D126–D129, D245, D258, D299, D304.*
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
