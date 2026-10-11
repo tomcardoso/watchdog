@@ -455,7 +455,7 @@ SETTINGS = {
             "  openai:gpt-5.6-luna (see docs/benchmarks.md), use 'high' instead — Luna's own\n"
             "  effort-vs-recall curve climbs with effort, unlike Sonnet's. Left unset, this\n"
             "  default is skipped automatically for an extractor with no effort control at all\n"
-            "  (Haiku) — but setting it explicitly on a model that doesn't support that exact\n"
+            "  (Haiku 4.5) — but setting it explicitly on a model that doesn't support that exact\n"
             "  level errors rather than silently doing something else. 'xhigh'/'max' need a\n"
             "  model that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6)\n"
             "  support both; Claude support varies by model (Sonnet 4.6 takes 'max' but not\n"
@@ -467,7 +467,7 @@ SETTINGS = {
         "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     "finalizer_effort": {
-        "short": "Reasoning effort for the post-processing step (default: high)",
+        "short": "Reasoning effort for the post-processing step (default: not set)",
         "help": (
             "How hard the finalizer model thinks during post-processing. Reasoning helps the prose\n"
             "  steps, so keep this higher than the extractor unless cost-trimming; lower it to spend\n"
@@ -477,10 +477,10 @@ SETTINGS = {
             "  that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6) support\n"
             "  both; Claude support varies by model (Sonnet 4.6 takes 'max' but not 'xhigh'; Opus\n"
             "  4.8 takes both).\n"
-            "  Valid values: low, medium, high, xhigh, max. Default: high."
+            "  Valid values: low, medium, high, xhigh, max. Default: not set."
         ),
         "type": "enum",
-        "default": "high",
+        "default": None,
         "choices": ["low", "medium", "high", "xhigh", "max"],
     },
     "classifier_effort": {
@@ -490,7 +490,7 @@ SETTINGS = {
             "  'low' is the default: classification is a quick lookup against a short excerpt,\n"
             "  not a task reasoning helps with. Applied only when the resolved model actually\n"
             "  supports it, same as extractor_effort/finalizer_effort, so an unconfigured\n"
-            "  pipeline never fails on a model with no effort control at all (e.g. Haiku).\n"
+            "  pipeline never fails on a model with no effort control at all (e.g. Haiku 4.5).\n"
             "  Setting it explicitly on a model that doesn't support that exact level errors\n"
             "  rather than silently doing something else.\n"
             "  Valid values: low, medium, high, xhigh, max. Default: low."

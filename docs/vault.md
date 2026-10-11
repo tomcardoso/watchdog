@@ -51,8 +51,6 @@ my-investigation/
 
 **`context/`** holds background material — prior published stories, your notes, screenshots. Files here are not added as records; they feed the context interview that writes `context.md`, described in [Getting started](getting-started.md).
 
-Vaults created by earlier versions of Watchdog called these folders `_INCOMING/` and `_CONTEXT/`. They are renamed automatically, with nothing deleted, the first time the vault is opened. If you kept scripts or Obsidian plugins that point at the old names, update them.
-
 **`morgue/`** is where original files land after a successful run, organized by entity and document type. Each original sits beside a markdown file of its full extracted text, so you can search the complete text of every document from Watchdog's Search screen or from any program that searches files. Nothing is ever discarded: the file you dropped in is the file in the morgue.
 
 **`.watchdog/`** is Watchdog's internal state: the processing queue, a staging area for files mid-pipeline, the registries that record every entity, document, and relationship, and the version history. Do not edit anything in here by hand.
@@ -79,7 +77,6 @@ A page in `wiki/` or `queries/` ends in a `## Notes` section that is yours, as i
 
 ### The root files
 
-- **`hot.md`** — investigations started with an earlier version of Watchdog have one: a summary the briefing model rewrote after every run. Watchdog no longer writes or reads it, and leaves it where it is; you can delete it. Each Ask Claude conversation now starts with an account of the whole investigation that Watchdog builds from the records (see [Ask Claude](investigating.md#ask-claude)).
 - **`log.md`** — an append-only, human-readable record of every run.
 - **`timeline.md`** — every datable event extracted across the investigation, assembled into one chronological view. An event whose fact you have marked Disputed ends in **✗ disputed**.
 - **`context.md`** — your investigation intent and key questions, written by the context interview (**Seed investigation context** on the Ask Claude screen). You can also edit it directly under **Briefings**. It is sent to the AI model with every document you add, so write it as open questions and keep confidential material out of it; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended).
@@ -101,7 +98,7 @@ Two tables deserve attention. **Possible duplicate documents** lists documents t
 
 ## Entity notes
 
-An entity note is a view of the investigation's records, rewritten whenever something about the entity changes. It has up to six sections:
+An entity note is a view of the investigation's records, rewritten whenever something about the entity changes. It has up to five sections:
 
 - **`## Summary`** — an overview of who this entity is and why they matter, written by an AI model from the entity's facts once the entity appears in two or more documents. Where a sentence rests on a fact, it ends in a citation such as `(p. 4)` that links to that fact (see [Fact citations](#fact-citations)). Sentences without a citation are the model's own framing: connecting, summing up. The summary can be wrong. The facts below it are the record. A summary written before another record was merged into this one, or before a merge was undone, ends in an **Out of date** warning; the next run that adds documents rewrites it.
 - **`## Facts`** — every fact, from every document added so far, that is about this entity. Each line gives the fact, its document and a link to the page, any warning (*(inferred)*, a figure not found on the page), and your own check of it: **✓ verified**, **✗ disputed**, **? can't verify** or **not checked**. A fact you dispute stays in the list, labelled. Facts with dates come first, in the order the events happened; facts without their own date take their document's date. Where the model quoted the document, or Watchdog found the sentence the fact rests on, it is shown under the fact.
@@ -112,8 +109,6 @@ An entity note is a view of the investigation's records, rewritten whenever some
 An entity named in many documents can have hundreds of facts. Up to 40 are listed one by one. Past that, the list is grouped by document, five facts per document plus every fact you have marked, with a link to the document's own note for the rest; the 40 most recent documents get a group each and earlier ones one line each, with a count. The full list, with source passages, is always on the entity's page in the app.
 
 Every source citation is a direct page link into the original file in the morgue — `[[morgue/.../file.pdf#page=3|p. 3]]` — so you can jump from any fact straight to the page it came from. Each fact line, in an entity note and in its document's note, ends with a short marker such as `^f-3a9c5b2e1d`, which Obsidian hides; it lets other notes link to that exact fact.
-
-Investigations started with an earlier version of Watchdog have their notes rewritten in this form the next time documents are added, or when you choose **Rebuild notes**. Their summaries are kept. Claims recorded for documents whose extracted facts were not kept are kept too, as written, under **Earlier claims**.
 
 ## Fact citations
 

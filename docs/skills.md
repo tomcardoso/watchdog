@@ -88,7 +88,7 @@ You can add your own skills as plain markdown files, no code required. **Setting
 
 Claude's own instructions for an investigation (the `/watchdog-*` commands and the `.claude/CLAUDE.md` file in each vault) are separate from record skills. After you update Watchdog, run **Refresh Claude setup** under **Activity → Maintenance** to bring them up to date. Your own notes below the end marker in `.claude/CLAUDE.md` are kept. Record skills themselves are global and never need refreshing.
 
-Start from the template at [`_template.md`](../src/watchdog/skills/records/_template.md), which lays out the standard structure. The one authoring principle that matters most: lead with patterns that apply anywhere, and treat specific jurisdictions as examples rather than the frame. If you want to contribute a skill back to the project, the full authoring guide is in [CLAUDE.md](../CLAUDE.md).
+Start from the template at [`_template.md`](../src/watchdog/skills/records/_template.md), which lays out the standard structure. The one authoring principle that matters most: lead with patterns that apply anywhere, and treat specific jurisdictions as examples rather than the frame. If you want to contribute a skill back to the project, the full authoring guide is in [`.claude/skills/authoring-record-skills/SKILL.md`](../.claude/skills/authoring-record-skills/SKILL.md).
 
 ---
 
