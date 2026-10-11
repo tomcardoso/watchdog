@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 from watchdog import config
-from watchdog.pipeline.write_vault import slugify
 from watchdog.vault_paths import is_vault, preprocessing_lock, processing_lock
 
 # The schema a new investigation's registry is stamped with.
@@ -44,20 +43,13 @@ def projects_dir() -> Path:
     return Path(config.load().get("projects_dir") or Path.home() / "Investigations").expanduser()
 
 
-def find(name: str) -> tuple[str, dict]:
-    """`(slug, entry)` for an investigation named by its slug, its name, or an unambiguous
-    prefix of its slug."""
+def find(slug: str) -> tuple[str, dict]:
+    """`(slug, entry)` for the investigation listed under exactly `slug`. Never a prefix or a
+    name: the operations that call this rename, move and delete folders, and a near miss must
+    not land on another investigation (a stale "port" deleting "port-calder")."""
     projects = load()
-    slug = slugify(name)
-    if slug not in projects:
-        matches = [k for k in projects if k.startswith(slug)]
-        if len(matches) == 1:
-            slug = matches[0]
-        elif len(matches) > 1:
-            sys.exit(f"Error: “{name}” matches more than one investigation: "
-                     f"{', '.join(sorted(matches))}.")
-        else:
-            sys.exit(f"Error: no investigation named “{name}”.")
+    if not isinstance(slug, str) or slug not in projects:
+        sys.exit(f"Error: no investigation is listed as “{slug}”. Refresh the list and try again.")
     return slug, projects[slug]
 
 

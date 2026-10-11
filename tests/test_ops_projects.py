@@ -452,29 +452,29 @@ def test_obsidian_config_path_linux_without_xdg(monkeypatch, tmp_path):
     assert obsidian.config_path() == Path("/xdg") / "obsidian" / "obsidian.json"
 
 
-def test_find_exact_match(configured, wdg_home):
+def test_find_takes_the_exact_slug_only(configured, wdg_home):
     _new("Shell Co", configured)
-    slug, info = projects.find("Shell Co")
-    assert slug == "shell-co"
-    assert info["name"] == "Shell Co"
-
-
-def test_find_prefix_match(configured, wdg_home):
-    _new("Shell Company Investigation", configured)
     slug, info = projects.find("shell-co")
-    assert slug == "shell-company-investigation"
+    assert slug == "shell-co" and info["name"] == "Shell Co"
+    for near in ("Shell Co", "shell-c", "shell", "", None):
+        with pytest.raises(SystemExit, match="no investigation is listed"):
+            projects.find(near)
 
 
-def test_find_ambiguous_exits(configured, wdg_home):
-    _new("Shell Company Alpha", configured)
-    _new("Shell Company Beta", configured)
-    with pytest.raises(SystemExit, match="more than one"):
-        projects.find("shell-company")
-
-
-def test_find_not_found_exits(configured):
-    with pytest.raises(SystemExit, match="no investigation named"):
-        projects.find("nonexistent")
+def test_a_stale_slug_never_reaches_another_investigation(configured, wdg_home):
+    """Removing "port" and then a stale second "delete and purge port" used to purge Port Calder,
+    the only remaining prefix match (C3)."""
+    _new("Port", configured)
+    _new("Port Calder", configured)
+    pops.delete(REP, slug="port", purge=False)
+    with pytest.raises(SystemExit, match="no investigation is listed"):
+        pops.delete(REP, slug="port", purge=True)
+    assert (configured / "port-calder").is_dir() and "port-calder" in projects.load()
+    for op_args in ({"slug": "port", "name": "X"}, {"slug": "port", "path": str(configured / "x")}):
+        fn = pops.rename if "name" in op_args else pops.move
+        with pytest.raises(SystemExit, match="no investigation is listed"):
+            fn(REP, **op_args)
+    assert "port-calder" in projects.load()
 
 
 def test_delete_removes_from_registry(configured, monkeypatch, capsys):

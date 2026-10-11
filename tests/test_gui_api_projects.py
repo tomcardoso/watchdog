@@ -59,14 +59,12 @@ def test_a_vault_with_no_registry_yet_reads_as_empty(wdg_home, tmp_path):
     assert p["health"] is None and p["stats"]["documents"] == 0 and p["stats"]["last_ingest"] is None
 
 
-def test_get_exact_prefix_unknown_and_ambiguous(rich_vault, wdg_home, tmp_path):
+def test_get_takes_the_exact_slug_only(rich_vault, wdg_home, tmp_path):
     register(wdg_home, rich_vault, slug="shell-co", name="Shell Co")
     register(wdg_home, make_vault(tmp_path / "b"), slug="shell-bank", name="Shell Bank")
     assert call("projects.get", slug="shell-co")["name"] == "Shell Co"
-    assert call("projects.get", slug="shell-c")["slug"] == "shell-co"
-    assert call_error("projects.get", slug="shell")["code"] == "ambiguous"
-    assert call_error("projects.get", slug="nope")["code"] == "not_found"
-    assert call_error("projects.get", slug="")["code"] == "not_found"
+    for near in ("shell-c", "shell", "nope", ""):        # never a prefix (C3)
+        assert call_error("projects.get", slug=near)["code"] == "not_found"
 
 
 def test_for_path(rich_vault, wdg_home, tmp_path):
