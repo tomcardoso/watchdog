@@ -323,16 +323,10 @@ def _usage_totals(records: list[dict]) -> dict:
 
 
 def usage_files(vault: Path) -> list[Path]:
-    """Every persisted `usage-<ts>.json` for this vault, oldest first (#319). Checks both the
-    current location (`.watchdog/registry/usage/`) and the pre-move flat location
-    (`.watchdog/registry/`) directly, so a vault ingested before that reorganization doesn't
-    lose its older history — filenames sort chronologically regardless of which directory
-    they're in, so the two sets merge correctly once combined."""
-    reg_dir = vault / ".watchdog" / "registry"
-    usage_dir = reg_dir / "usage"
-    files = list(usage_dir.glob("usage-*.json")) if usage_dir.exists() else []
-    files += list(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []   # legacy location
-    return sorted(files, key=lambda p: p.name)
+    """Every persisted `usage-<ts>.json` for this vault (`.watchdog/registry/usage/`), oldest
+    first (#319): filenames sort chronologically."""
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    return sorted(usage_dir.glob("usage-*.json"), key=lambda p: p.name) if usage_dir.exists() else []
 
 
 def _write_usage_file(vault: Path, records: list[dict], ts: str,
@@ -1589,17 +1583,13 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 def _batch_skill(state: dict, sha: str, pinned_skill: str | None) -> tuple[str, str]:
     """The skill a batched document was submitted under, as `(skill_text, skill_label)`.
 
-    Read from the state's per-sha `skills` map (D144). Falls back to the pre-D144 state shape's
-    single run-wide `skill_label`, then to the run's own `--skill` pin, so a batch submitted by
-    an older version is still collectable after an upgrade rather than stranded — a batch can sit
-    in flight for up to 24h, which is easily long enough to span one."""
-    label = (state.get("skills") or {}).get(sha) or state.get("skill_label")
+    Read from the state's per-sha `skills` map (D144), else the run's own skill pin."""
+    label = (state.get("skills") or {}).get(sha)
     resolved = skills_catalog.resolve(label) if label else None
     if resolved:
         return Path(resolved).read_text(encoding="utf-8"), Path(resolved).stem
-    # An unresolvable label — a pre-D144 state whose `skill_label` was a file-path stem, or a
-    # user-local skill removed while the batch was in flight — falls back to this run's own pin
-    # rather than failing a batch that has already been paid for.
+    # An unresolvable label — a user-local skill removed while the batch was in flight — falls
+    # back to this run's own pin rather than failing a batch that has already been paid for.
     if pinned_skill:
         return Path(pinned_skill).read_text(encoding="utf-8"), Path(pinned_skill).stem
     raise model_client.ModelError(
@@ -2086,8 +2076,7 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
         f"## Anomalies worth a closer look\n\n"
         f"{_lines(anomalies) if anomalies else 'Nothing flagged.'}\n"
     )
-    # What hot.md used to carry (D285): the patterns, open questions and one-line status the
-    # model wrote for this batch now stay in the briefing itself.
+    # The patterns, open questions and one-line status the model wrote for this batch (D285).
     if emerging_patterns:
         body += f"\n## Emerging patterns\n\n{_lines(emerging_patterns)}\n"
     if open_questions:
@@ -2113,11 +2102,6 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                         "fact_refs": dict(sorted((fact_refs or {}).items())),
                         "citations": cite_stats})
     _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
-
-    # hot.md is retired (D285): sessions get a primer built by code at their start
-    # (`cmd/primer.py`), and the Overview reads `status` from the sidecar above. A hot.md an older
-    # Watchdog wrote stays on disk untouched; only its stale full-text row is dropped.
-    _fts_add_note_safe(vault, "hot", "hot", "", "")
 
     entry = (f"\n## {now.strftime('%Y-%m-%d %H:%M')} — Ingest\n\n"
              f"- **Files:** {len(results)} processed\n- **New entities:** {n_new}\n"

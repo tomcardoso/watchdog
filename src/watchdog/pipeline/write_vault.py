@@ -887,7 +887,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
 
 
 def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict],
-                            morgue_path: str = "", filename_shared: bool = False) -> None:
+                            morgue_path: str = "") -> None:
     """Embed this document's source passages into the semantic index, with a contextual
     prefix built from what extraction produced — the document's title, type, and the
     entities it names. The prefix anchors a passage that lacks the document's who/what,
@@ -910,8 +910,7 @@ def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dic
     if names:
         context += " Mentions: " + ", ".join(names) + "."
     from watchdog.pipeline.embed import add_document
-    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256,
-                 drop_legacy=not filename_shared)
+    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256)
     from watchdog.pipeline.fulltext import add_document as fts_add_document
     fts_add_document(vault_path, doc["filename"], sha256, pages, morgue_path=morgue_path)
 
@@ -1358,10 +1357,8 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # Index the source passages (corpus stream) with a contextual prefix — now that
         # extraction has supplied the title, type, and entities the prefix needs (D43).
         try:
-            filename_shared = any(e.get("filename") == doc["filename"]
-                                  for s, e in documents_reg.items() if s != doc_sha256)
             _index_corpus_passages(vault_path, doc, entity_entries_for_note,
-                                   morgue_path=morgue_relative, filename_shared=filename_shared)
+                                   morgue_path=morgue_relative)
         except Exception as e:
             print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
 

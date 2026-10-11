@@ -77,22 +77,20 @@ def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, 
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="Acme Corp filed an annual report.")
     ext = _extraction()
-    ext["document"]["key_facts"][0]["quote"] = "this exact sentence never appears in the document"
+    ext["document"]["key_facts"][0]["quote_locator"] = "this exact sentence never appears in the document"
     _mock(monkeypatch, extraction=ext)
 
     asyncio.run(orchestrate.run(vault))
 
     out = capsys.readouterr().out
     ok_index = out.index("OK")
-    warn_index = out.index("quote not found")
+    warn_index = out.index("quote_locator not found")
     assert ok_index < warn_index
 
 
 def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
-    """The live region (and its pinned "Elapsed" row) used to close the instant extraction's
-    gather finished — before finalize (reconcile/commit/synthesize/briefing) even started, so a
-    long post-processing step went silent with nothing to show it wasn't a stall (live-run
-    regression). It must stay open until finalize is done, and close cleanly afterward."""
+    """The run's progress lines stay open until finalize (reconcile/commit/synthesize/briefing)
+    is done, so a long post-processing step keeps reporting, and close cleanly afterward."""
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())
@@ -3268,7 +3266,8 @@ def test_latest_usage_none_before_any_ingest(tmp_path):
 
 def test_latest_usage_returns_the_most_recent_run(tmp_path):
     vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "registry"
+    reg = vault / ".watchdog" / "registry" / "usage"
+    reg.mkdir(parents=True, exist_ok=True)
     (reg / "usage-20260101T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
@@ -3279,21 +3278,6 @@ def test_latest_usage_returns_the_most_recent_run(tmp_path):
                                             "cost_usd": 0.05}}))
     totals = orchestrate.latest_usage(vault)
     assert totals["input_tokens"] == 999
-
-
-def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
-    """#319: usage-<ts>.json moved from the flat Registry dir into a `usage/` subfolder, but a
-    vault ingested before that move still has real history sitting in the old flat location —
-    `usage_files` (and everything built on it) must keep seeing both, in chronological order."""
-    vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "registry"
-    (reg / "usage-20260101T000000Z.json").write_text("{}")   # legacy (pre-move) location
-    usage_dir = reg / "usage"
-    usage_dir.mkdir(parents=True)
-    (usage_dir / "usage-20260102T000000Z.json").write_text("{}")   # current (post-move) location
-
-    files = orchestrate.usage_files(vault)
-    assert [f.name for f in files] == ["usage-20260101T000000Z.json", "usage-20260102T000000Z.json"]
 
 
 def test_latest_usage_prefers_new_subfolder_over_legacy_when_newer(tmp_path):
@@ -4299,24 +4283,20 @@ def test_run_batch_needs_no_pinned_skill(tmp_path, monkeypatch):
     assert out == {"results": [], "batch_pending": False}
 
 
-def test_batch_skill_prefers_per_sha_map_then_legacy_then_run_pin(tmp_path):
-    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), falling
-    back to the pre-D144 single `skill_label` so a batch submitted by an older version is still
-    collectable after an upgrade — a batch can sit in flight for up to 24h."""
+def test_batch_skill_prefers_per_sha_map_then_run_pin(tmp_path):
+    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), else
+    this run's own pin."""
     skill = tmp_path / "pinned.md"
     skill.write_text("RUN-PIN SKILL", encoding="utf-8")
 
     # per-sha map wins
-    state = {"skills": {"sha1": "bankruptcy"}, "skill_label": "financial-statements"}
+    state = {"skills": {"sha1": "bankruptcy"}}
     assert orchestrate._batch_skill(state, "sha1", str(skill))[1] == "bankruptcy"
-    # legacy single label, for a sha the map doesn't name
-    assert orchestrate._batch_skill(state, "sha2", str(skill))[1] == "financial-statements"
     # neither: fall back to this run's own pin
     assert orchestrate._batch_skill({}, "sha3", str(skill)) == ("RUN-PIN SKILL", "pinned")
-    # a label that no longer resolves to a skill file (a pre-D144 path stem, or a user-local
-    # skill deleted while the batch was in flight) also falls back rather than failing a batch
-    # that has already been paid for
-    assert orchestrate._batch_skill({"skill_label": "no-such-skill"}, "sha5", str(skill))[1] == "pinned"
+    # a label that no longer resolves to a skill file (a user-local skill deleted while the
+    # batch was in flight) also falls back rather than failing a batch already paid for
+    assert orchestrate._batch_skill({"skills": {"sha5": "no-such-skill"}}, "sha5", str(skill))[1] == "pinned"
     # nothing usable at all is a clear error, not a silently wrong skill
     with pytest.raises(model_client.ModelError, match="no usable skill"):
         orchestrate._batch_skill({}, "sha4", None)

@@ -391,7 +391,7 @@ _load = _load_all
 
 
 def add_document(vault_path: Path, filename: str, pages: list[dict], context: str = "",
-                 sha256: str | None = None, drop_legacy: bool = False) -> int:
+                 sha256: str | None = None) -> int:
     """Window each page, embed the passages, and write the per-document index file.
 
     ``context`` is an optional document-level contextual prefix (title, type, the entities
@@ -403,9 +403,6 @@ def add_document(vault_path: Path, filename: str, pages: list[dict], context: st
 
     ``sha256`` keys the index file on the document's content rather than its filename, so two
     different documents that share a filename no longer overwrite each other's passages (D241).
-    ``drop_legacy`` removes the filename-keyed file an older version wrote for this document — the
-    caller passes it only when no other committed document shares the filename, since that legacy
-    file may otherwise hold the other document's passages.
 
     Returns the number of passages indexed.
     """
@@ -424,11 +421,6 @@ def add_document(vault_path: Path, filename: str, pages: list[dict], context: st
     _docs_dir(vault_path).mkdir(parents=True, exist_ok=True)
     fid = sha256[:16] if sha256 else _doc_id(filename)
     _invalidate_cache(vault_path)
-    if sha256 and drop_legacy:
-        legacy = _doc_id(filename)
-        if legacy != fid:
-            for ext in (".npy", ".json"):
-                (_docs_dir(vault_path) / f"{legacy}{ext}").unlink(missing_ok=True)
     np.save(_docs_dir(vault_path) / f"{fid}.npy", vecs)
     (_docs_dir(vault_path) / f"{fid}.json").write_text(json.dumps(meta, ensure_ascii=False))
     return len(texts)

@@ -251,12 +251,11 @@ def check_text(text: str, resolver: Resolver) -> dict:
 
 # Pages a Claude session or Watchdog writes as prose that may cite facts.
 CHECKED_DIRS = ("queries", "wiki", "briefings")
-CHECKED_FILES: tuple[str, ...] = ()       # hot.md was checked here until it was retired (D285)
 
 
 def pages(vault: Path) -> list[Path]:
     vault = Path(vault)
-    out = [vault / f for f in CHECKED_FILES if (vault / f).is_file()]
+    out: list[Path] = []
     for d in CHECKED_DIRS:
         if (vault / d).is_dir():
             out += sorted(p for p in (vault / d).rglob("*.md") if p.is_file())

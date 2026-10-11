@@ -29,7 +29,7 @@ def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd,
                       est_input_tokens: int | None = None, calls: list | None = None,
                       cache_read_tokens: int = 0, cache_write_tokens: int = 0,
                       output_tokens: int = 0) -> None:
-    reg = vault / ".watchdog" / "registry"
+    reg = vault / ".watchdog" / "registry" / "usage"
     reg.mkdir(parents=True, exist_ok=True)
     totals = {"input_tokens": input_tokens, "output_tokens": output_tokens,
               "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,

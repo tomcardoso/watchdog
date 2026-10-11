@@ -60,8 +60,8 @@ REGISTRY_DIR = ".watchdog/registry/"
 REGISTRY_FILES = ("entities.json", "documents.json", "merges.json", "verification.json",
                   "resolutions.json", "requests.json", "relationships.json")
 # Top-level folders whose files are never versioned: the originals and their full text, the drop
-# zone, background material (and their pre-D266 names). Hidden folders are skipped everywhere.
-EXCLUDED_TOP = frozenset({"morgue", "incoming", "context", "_INCOMING", "_CONTEXT"})
+# zone and background material. Hidden folders are skipped everywhere.
+EXCLUDED_TOP = frozenset({"morgue", "incoming", "context"})
 MAX_FILE_BYTES = 32 * 1024 * 1024
 # A file whose mtime is this close to the snapshot is re-read next time even if its stat matches:
 # a second write within the filesystem's timestamp resolution would otherwise go unseen.
