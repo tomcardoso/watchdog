@@ -275,7 +275,7 @@ export interface EntityFact extends Fact {
 export interface EntitySynthesis {
   summary: string
   analysis: string | null
-  by: 'model' | 'session' | 'carried' | string | null
+  by: 'model' | 'session' | string | null
   model: string | null
   made_at: string | null
   facts_total: number | null
@@ -348,7 +348,6 @@ export interface EntityDetail extends EntityRow {
   timeline: TimelineEvent[]
   facts: EntityFact[]                  // every fact tagged to the entity, in date order (D280)
   synthesis: EntitySynthesis | null
-  legacy_claims: string | null         // claims an older version recorded with no stored extraction
 }
 
 export interface GraphData {
@@ -820,7 +819,6 @@ export interface Methods {
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
-  'vault.migrate': [{ vault: string }, { changes: string[] }]
 
   'history.file': [{ vault: string; path: string }, FileHistory]
   'history.read': [{ vault: string; path: string; version: number }, { path: string; version: number; exists: boolean; text: string }]
@@ -937,7 +935,7 @@ export interface UpdateState {
 export interface BackendStatus {
   state: 'starting' | 'ready' | 'error' | 'stopped'
   python: string | null
-  source: string | null // where the python was found: env | settings | pipx | path | dev
+  source: string | null // where the python was found: env | settings | managed | path
   message: string | null
   stderrTail: string[]
   /** No Python that can run Watchdog was found, and the app can build its own (the engine). */

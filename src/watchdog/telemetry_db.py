@@ -2,11 +2,11 @@
 
 The same records `orchestrate._record_usage` writes to each vault's usage files, in one SQLite
 database, so a question across vaults or models is one query. The per-vault JSON files stay
-authoritative for `watchdog usage`. A row adds the vault path and name, any benchmark arm, a hash
+authoritative for Usage. A row adds the vault path and name, any benchmark arm, a hash
 of the prompt sent, the codebase version and the run's config snapshot. Raw responses are not
 stored. A write failure never breaks a run: the caller logs it.
 
-On by default; `watchdog configure telemetry false` stops new rows, and `watchdog delete --purge`
+On by default; the `telemetry` setting stops new rows, and deleting an investigation with its folder
 removes a vault's rows. Rows hold vault paths and document filenames, so the file is as sensitive
 as the vaults it describes."""
 
@@ -82,7 +82,7 @@ def enabled() -> bool:
 
 def _connect() -> sqlite3.Connection:
     """The process's connection to `DB_PATH`, opened and given its schema on first use. WAL mode
-    lets another process (a `watchdog dig` against another vault, a benchmark arm) write at the
+    lets another process (a processing (`dig`) against another vault, a benchmark arm) write at the
     same time; the short busy timeout bounds how long a contended write can hold up the event
     loop this runs on — a write that still can't get the lock fails and is logged, never waited
     out. Caller holds `_lock`."""

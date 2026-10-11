@@ -6,7 +6,7 @@ operation that isn't in one) and writes to its stdin:
     {"op": "<name>", "params": {…}}\\n          the operation and its parameters
     {"keys": {…}}\\n                             only with WATCHDOG_SECRETS=stdin (D295)
 
-then closes it. The worker runs the operation with an `AppReporter`: plain log lines on stdout,
+then closes it. The worker runs the operation with a `Reporter`: plain log lines on stdout,
 warnings and errors on stderr, `watchdog.progress` events (`\\x1eWDP {json}`) on stdout, and last
 of all one `{"kind": "result", "op", "result"}` event carrying the operation's return value. It
 exits 0, the operation's own code (2: stopped partway, a re-run resumes), 1 on an error (the
@@ -36,7 +36,6 @@ def _read_request() -> dict:
 
 
 def main() -> int:
-    os.environ["WATCHDOG_APP"] = "1"
     os.environ["WATCHDOG_PROGRESS"] = "1"
     os.environ.setdefault("NO_COLOR", "1")
     if os.name == "nt":
@@ -53,9 +52,9 @@ def main() -> int:
         return 64
     read_stdin()      # the keys line, when the app hands this operation its keys (D295)
     name = req["op"]
-    rep = ops.AppReporter()
+    rep = ops.Reporter()
     try:
-        from watchdog.cmd.auth import KeyChoiceError
+        from watchdog.auth import KeyChoiceError
         try:
             result = ops.run(name, req.get("params") or {}, rep)
         except ops.OpError as e:

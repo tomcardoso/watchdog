@@ -39,11 +39,11 @@ to contact GitHub Support and request the dangling commit be purged.
 Check every non-trivial change against this list in one pass before calling it finished. Each item's full rule lives in the linked section — this checklist is the single source; the sections carry the detail, not a restatement of the obligation.
 
 - [ ] **Tests** written or updated, and the suite is green ([Testing](#testing))
-- [ ] **Lint** clean: `pipx run ruff check src tests` ([Linting](#linting))
+- [ ] **Lint** clean: `.venv/bin/ruff check src tests` ([Linting](#linting))
 - [ ] **`ARCHITECTURE.md`** updated if the change alters the pipeline's structure, the code/model split, or the vault/registry layout ([Architecture](#architecture))
 - [ ] **`DECISIONS.md`** has a new `D<n>` entry (ascending order, newest last) if the change forecloses a future option or would read as a bug without the rationale ([Architecture](#architecture))
 - [ ] **Invariants** (`ARCHITECTURE.md` §15) updated if a governing rule was established or revised ([Architecture](#architecture))
-- [ ] The canonical **`docs/`** page updated for any user-facing change — app screen or control, setting, default, workflow step, CLI flag ([Documentation](#documentation))
+- [ ] The canonical **`docs/`** page updated for any user-facing change — app screen or control, setting, default, workflow step ([Documentation](#documentation))
 - [ ] **`README.md`** left alone unless the pitch, requirements, install two-liner, or quick start changed ([Documentation](#documentation))
 
 ## Architecture
@@ -52,11 +52,12 @@ Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)
 
 **When a change alters the pipeline's structure, the split between deterministic code and the model, or the vault/registry layout, update `ARCHITECTURE.md` in the same change**, and append a `### D<n>` entry to `DECISIONS.md` (ascending order, newest last). If the change establishes or revises a governing rule, update the Invariants section in `ARCHITECTURE.md` too. **Keep decision entries concise** — a few sentences of rationale, then the tradeoff; the full record is in git and the PR, not the log. A decision earns an entry only if it forecloses a future option or would read as a bug without the rationale; pure refactors belong in the commit message. Both are items on the [definition of done](#definition-of-done).
 
+There is no command line (D300): the app starts Python through module entry points (`python -m watchdog.gui.server`, `python -m watchdog.worker`), and every change it makes is an operation in `watchdog/ops/`. An Ask Claude session never runs a command; give it a tool in `watchdog/session_tools.py` instead (D299).
+
 ## Documentation
 
-**When a change adds, removes, or modifies anything user-facing — an app screen or control, a setting, a default value, a workflow step, or (for the retiring command line) a command or flag — update the affected pages under `docs/` in the same change.** Every topic has exactly one canonical page; update that page and let the others keep linking to it, rather than re-explaining the topic in several places:
+**When a change adds, removes, or modifies anything user-facing — an app screen or control, a setting, a default value or a workflow step — update the affected pages under `docs/` in the same change.** Every topic has exactly one canonical page; update that page and let the others keep linking to it, rather than re-explaining the topic in several places:
 
-- `docs/commands.md` — the command line, being retired (D267): commands, flags and slash commands, kept as a reference for existing users
 - `docs/configuration.md` — Settings: every tab and field, defaults, model backends, cost
 - `docs/install.md` — downloading and installing the app, first-run setup, updating, uninstalling
 - `docs/app.md` — the desktop app: what each screen does, folder access, updates
@@ -74,37 +75,31 @@ Two files, split by how often they're read. **[ARCHITECTURE.md](ARCHITECTURE.md)
 
 Write tests for new features and any non-trivial function. The suite lives in `tests/`.
 
-**One-time dev setup** — inject pytest into the watchdog-intel pipx venv so it runs with all the package's dependencies:
+**Dev setup** — a plain venv with the package installed editable, without its heavy dependencies. Don't `pip install -e .[dev]`: that pulls in docling's full tree (torch, onnxruntime, …) and can take several minutes. Mirror the lightweight list `.github/actions/run-tests/action.yml` installs for CI:
 
 ```
-pipx inject watchdog-intel pytest numpy
+python3 -m venv .venv
+.venv/bin/pip install --no-deps -e .
+.venv/bin/pip install pyyaml pypdf numpy pytest pytest-timeout pytest-xdist jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk ruff
 ```
 
-**To run the suite:**
+**To run the suite:** `.venv/bin/pytest`.
 
-```
-~/.local/pipx/venvs/watchdog-intel/bin/pytest
-```
+**Faster: `scripts/check.sh`** runs the Python half (ruff, then the suite on every core with `pytest-xdist`) and the app half (typecheck, unit tests, build, the end-to-end tests side by side) at the same time; `scripts/check.sh py` or `scripts/check.sh app` runs one half. Set `PYTHON` to the venv's interpreter (`PYTHON=.venv/bin/python`). While iterating, run the tests a change touches; run the whole script once before merging.
 
-(`pipx run pytest` creates an isolated venv without watchdog's deps and will fail to collect most tests — don't use it for development.)
+Tests use `tmp_path` and `monkeypatch` to move Watchdog's own folder away from the real home directory: patch `watchdog.config.HOME`, the one place `~/.watchdog` is decided (settings, the list of investigations, credentials, chats). See the `wdg_home` fixture in `tests/gui_support.py` for the pattern.
 
-**Faster: `scripts/check.sh`** runs the Python half (ruff, then the suite on every core with `pytest-xdist`, in the `dev` extra) and the app half (typecheck, unit tests, build, the end-to-end tests side by side) at the same time; `scripts/check.sh py` or `scripts/check.sh app` runs one half. Set `PYTHON` to the interpreter with Watchdog's dependencies (e.g. `PYTHON=~/.local/pipx/venvs/watchdog-intel/bin/python`, after `pipx inject watchdog-intel pytest-xdist`). While iterating, run the tests a change touches; run the whole script once before merging.
-
-**No `pipx` available (e.g. a fresh container)?** Don't `pip install -e .[dev]` — that pulls in docling's full tree (torch, onnxruntime, …) and can take several minutes. Mirror `.github/workflows/ci.yml`'s `test` job instead: `pip install --no-deps -e .` plus the explicit lightweight dependency list from that job (pyyaml, pypdf, argcomplete, numpy, pytest, pytest-timeout, jsonschema, httpx, truststore, nh3, python-docx, python-pptx, openpyxl, Pillow, defusedxml) in a venv. Add `ruff` too if you also need to lint.
-
-Tests use `tmp_path` and `monkeypatch` to redirect `WATCHDOG_HOME`, `PROJECTS_FILE`, and `CONFIG_FILE` away from the real home directory — patch all three when testing anything that touches the registry or projects list. `CONFIG_FILE` lives in more than one module: patch `watchdog.config.CONFIG_FILE` as well as `watchdog.cmd.base`'s, or a config read falls through to the real `~/.watchdog/config.json`. See the `wdg_home` and `configured` fixtures in `tests/test_cli.py` for the pattern.
-
-CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml` and `publish.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
+CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml` and `app-release.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
 
 ## Linting
 
 Ruff runs in CI as a dedicated, blocking `lint` job (separate from the test matrix, run once). Run it locally before pushing:
 
 ```
-pipx run ruff check src tests
+.venv/bin/ruff check src tests
 ```
 
-The rule set is deliberately conservative — pyflakes (`F`) plus the pycodestyle logical-error subsets `E4`/`E7`/`E9`. It catches unused imports/variables and real logical errors, **not** formatting: line-length (`E501`) and import-sorting (`I`) are intentionally not enforced, and there is no autoformatter. `cli.py` is exempt from `F401` because it deliberately re-exports a wide surface for test monkeypatching (see the `# noqa` on `import sys` there); a genuine unused import anywhere else will still fail CI. See DECISIONS D106.
+The rule set is deliberately conservative — pyflakes (`F`) plus the pycodestyle logical-error subsets `E4`/`E7`/`E9`. It catches unused imports/variables and real logical errors, **not** formatting: line-length (`E501`) and import-sorting (`I`) are intentionally not enforced, and there is no autoformatter. See DECISIONS D106.
 
 ## Note on running tests and linters
 
@@ -128,7 +123,7 @@ Constants and choices that were fitted against a *specific* benchmark run and ar
 | The D246 prompt revision: invented examples in `extract_instructions.md`/`reconcile.md`, the `page`/empty-array fixes, `verify.md`'s rewrite, and display names in the briefing input; plus D262's replacement of the remaining corpus examples (the transcription example, the computed-figure amount, the sample document types, the `organization` definition, the `morgue_entity_id` examples, a `reconcile.md` example) | **The next benchmark run that exercises the extractor, verifier or reconciler.** Shipped unmeasured, alongside D203/D205/D207/D212/D216 — treat them as one revision. Also check recall on the PRESERVE CHANGES fact, the corpus merge pair the old examples named, and the dated-affidavit `must_not_miss` item D262's transcription example restated: if it drops, the archived figures for those items were inflated by the prompt itself. The same revision now also carries the October 2026 stale-instruction fixes: the record skills' red flags that told the extractor to compare against an "entity digest" it no longer receives (academic-research, administrative-tribunals, audio-video, bankruptcy, corporate-filings, dns-whois, government-contracts, legislature-transcripts, real-estate, regulatory-filings, tax-documents, vehicle-registrations, websites-html; government-reports and lobbying-records only in their journalist-facing notes), rewritten as within-document checks or leads, and `extract_instructions.md`'s basis paragraph, which no longer claims the contradiction check skips inferred claims (D214). Watch for a change in leads per document and in `inferred` rates on those skills' documents. |
 | `gpt-6-luna`'s `tokenizer_ratio` (0.80) and `deepseek-flash`'s (0.81) in `model_catalog.yaml` (D249, D250) | **The next time a billed `benchmarks/tokenizer_ratio.py --probe` is run** (~$0.11 for the OpenAI and DeepSeek pair; neither provider has a free counter). Both copied from the family they replaced — GPT-5.x's 0.80 and DeepSeek V4's 0.81 — so they assume GPT-6 and V4.1 kept their predecessors' tokenizers, which neither vendor states. A smaller-than-real ratio widens the sectioning budget, so a wrong copy errs toward larger calls; the 60% threshold headroom covers a modest error. |
 | `gemini-3.7-flash`'s and `gemini-3.5-flash-lite`'s `tokenizer_ratio` (0.91) in `model_catalog.yaml` (D217) | **Whenever a master chew of corpus-v1 next exists locally** — same trigger and same shape as the `claude-opus-5` row above, and cheaper: Gemini's `countTokens` is free and non-generative, so `benchmarks/tokenizer_ratio.py --count` confirms both ids for $0 with no run needed. Copied from the Gemini family value on this file's own convention (all three previous Gemini entries returned byte-identical counts), but unmeasured for these two ids, and they replaced the ids the 0.91 was actually measured on. |
-| DeepSeek's peak/off-peak rates and the V4 checkpoints behind its ids (`model_catalog.yaml`, D217) | **The next benchmark run with a DeepSeek arm, and any comparison against an archived DeepSeek figure.** Prices were replaced from DeepSeek's page on 2026-08-20 and Flash again on 2026-10-04 (D250), and the peak windows — Monday to Friday UTC, holidays unmodelled — are transcribed from that page rather than confirmed against a bill; worth checking one real invoice against `watchdog usage` once a DeepSeek run has crossed a window boundary, and one that fell on a weekend. Separately, `deepseek-flash` now serves `V4.1-Flash` (the old `deepseek-v4-flash` name is a `legacy_ids` alias) and `deepseek-v4-pro` serves `V4-Pro-0813`, not the checkpoints every archived arm measured, so quality figures are as uncomparable as the cost ones. |
+| DeepSeek's peak/off-peak rates and the V4 checkpoints behind its ids (`model_catalog.yaml`, D217) | **The next benchmark run with a DeepSeek arm, and any comparison against an archived DeepSeek figure.** Prices were replaced from DeepSeek's page on 2026-08-20 and Flash again on 2026-10-04 (D250), and the peak windows — Monday to Friday UTC, holidays unmodelled — are transcribed from that page rather than confirmed against a bill; worth checking one real invoice against Activity → Usage once a DeepSeek run has crossed a window boundary, and one that fell on a weekend. Separately, `deepseek-flash` now serves `V4.1-Flash` and `deepseek-v4-pro` serves `V4-Pro-0813`, not the checkpoints every archived arm measured, so quality figures are as uncomparable as the cost ones. |
 | The D278 arms in `benchmarks/benchmark.yaml`: `sonnet-5.5-med`/`-high` (the shipped default and its comparison), `haiku-5.5-low`/`-med` for extraction and `haiku-5.5-med` as finalizer, `sonnet-4.6-high` repeated, and the `sonnet-5.5-med` / `sonnet-5.5-med-brief` pair, three runs each | **The next benchmark run (the one these were added for).** Nothing about Sonnet 5.5 has been measured, so `docs/configuration.md`'s effort paragraph says so; once the run lands, replace that sentence with the measured gap and decide whether `medium` stays the default. Read a difference only where the repeated arms' ranges do not overlap. For the brief pair, check facts and `must_not_miss` recall and whether facts lean toward the brief's questions; `benchmarks/briefs/corpus-v1.md` is one brief, so a gap measures that wording, and Tom should read it before the run. Bare `haiku` arms change meaning when `haiku` moves to Haiku 5.5: repin them to `haiku-4.5` to keep the archived comparison. |
 | `MATCH_THRESHOLD` (0.45) and the figure penalty (`0.5 + 0.5 × share`) in `pipeline/passages.py` (D270) | **The next extraction benchmark.** Both were fitted on the demo investigation's facts, which are written close to their sources, so the 98% precision / 85% recall measured there is optimistic. Re-measure with `benchmarks/passage_accuracy.py` on a vault whose facts carry quote locators from a real extraction (`passage_accuracy.py VAULT`), and refit the threshold and penalty on those before quoting either as tuned. |
 | The machine-transcript note (`prompts/transcript_note.md`, added to the extraction and section prompts only when `source_type` is `transcript`), and `medium` as the default `transcription_model` (D273) | **The first benchmark run that includes a recording, or the first real investigation with several.** The note shipped unmeasured: check whether facts from a transcript attribute words to a named speaker only when the speech names them, and whether the "as transcribed, check against the recording" hedge lands on misheard names and figures without spreading to every fact. No other document's prompt changes, so this is separable from the D246/D262 revision. The default model was chosen on four samples on one Linux CPU (one a synthetic voice, none in French): re-time `medium` against `large-v3-turbo` on an Apple silicon and a Windows laptop, and on a real French recording, before quoting the speed figures in `docs/configuration.md` as typical. |
@@ -138,51 +133,16 @@ Constants and choices that were fitted against a *specific* benchmark run and ar
 | The synthesis prompt's rewrite (`prompts/synthesis.md`, D280): facts in, not earlier prose; `[f:…]` citations asked for, uncited framing allowed; Disputed facts shown labelled (never stated as established); `FACT_MAX` (120) and `FACT_BUDGET_CHARS` (24,000) in `pipeline/synthesis_bundle.py` with this batch's, then verified, then the most recent facts kept | **The first finalizer evaluation that scores synthesis (the demo answer key, recommendation 4 of the October 2026 review), or the next benchmark run that exercises the finalizer.** Shipped unmeasured, separately from every extraction-prompt revision above. Measure how many cited ids are real and how many sentences are uncited, whether summaries of hub entities drift toward the newest documents now that no earlier prose anchors them, and the token cost on an entity with several hundred facts before treating the budget as tuned. |
 | The reconcile prompt's Job 2 rewrite (`prompts/reconcile.md`, D280): new facts compared with stored facts and with each other, stored facts not with each other, source passages cut to 240 characters (`_PASSAGE_CHARS`), Disputed facts included, labelled | **The next benchmark or finalizer evaluation that exercises the reconciler.** Shipped unmeasured, alongside the D279 `same_name` paragraph (separable: Job 1 is unchanged). Check contradiction precision and recall against the demo's planted conflicts, and whether the passages (most of the 35% larger input on the demo) earn their tokens; a missed old-vs-old conflict is no longer looked for again by a run, by design (D287 adds an on-demand re-check). |
 | Entity-note caps in `pipeline/entity_notes.py` (D280): `FLAT_MAX` 40 facts listed one by one, then `GROUP_FACTS` 5 per document and `FULL_GROUPS` 40 documents in full | **The first real investigation with an entity named in more than a hundred documents.** Chosen by judgement on a 14-document demo. Ask the reporter whether the folded note is still useful in Obsidian, and look at note size and render time on that entity before changing them. |
-| The briefing prompt's citation paragraph and its citable fact lines (`prompts/briefing.md`, `orchestrate._briefing_cited_facts`, D283), the optional `a_fact`/`b_fact` in the reconcile schema and prompt, and the fact-citation instructions in the query, wiki, surface and research skills and the vault `CLAUDE.md` | **The first finalizer evaluation that scores the briefing, or the next benchmark run that exercises the finalizer; for the skills, the first real Ask Claude sessions after this ships.** All shipped unmeasured. Count, per briefing, citations made, dropped (`.watchdog/briefings/<ts>.json`: `unknown`, `missing`) and statements left uncited, and check that a cited fact actually supports its sentence (code checks only that it exists); check the briefing input's growth on a large batch, since each fact line now carries a ref, page and flags. For contradictions, count how often `a_fact`/`b_fact` resolve. For sessions, run `watchdog check-citations` over real `queries/` and `wiki/` pages and count "source not found". |
-| The contradiction re-check (D287): `MAX_ENTITY_CALLS` (45) in `pipeline/recheck.py`, `_RECHECK_OUTPUT_RATIO` (2% to 10%) in `pipeline/ingest_setup.py`, and the reconcile prompt's Job 2 used over an entity's whole record (every fact as `new_facts`) | **The first real re-checks, or the next finalizer evaluation that exercises the reconciler.** All judgement, none measured. Compare estimated with billed cost in `watchdog usage`, count findings per re-check and how many the reporter marks handled as not real (precision on a whole record may differ from new-vs-stored), and check whether any real entity reaches the call limit. |
+| The briefing prompt's citation paragraph and its citable fact lines (`prompts/briefing.md`, `orchestrate._briefing_cited_facts`, D283), the optional `a_fact`/`b_fact` in the reconcile schema and prompt, and the fact-citation instructions in the query, wiki, surface and research skills and the vault `CLAUDE.md` | **The first finalizer evaluation that scores the briefing, or the next benchmark run that exercises the finalizer; for the skills, the first real Ask Claude sessions after this ships.** All shipped unmeasured. Count, per briefing, citations made, dropped (`.watchdog/briefings/<ts>.json`: `unknown`, `missing`) and statements left uncited, and check that a cited fact actually supports its sentence (code checks only that it exists); check the briefing input's growth on a large batch, since each fact line now carries a ref, page and flags. For contradictions, count how often `a_fact`/`b_fact` resolve. For sessions, run Maintenance → Check citations over real `queries/` and `wiki/` pages and count "source not found". |
+| The contradiction re-check (D287): `MAX_ENTITY_CALLS` (45) in `pipeline/recheck.py`, `_RECHECK_OUTPUT_RATIO` (2% to 10%) in `pipeline/ingest_setup.py`, and the reconcile prompt's Job 2 used over an entity's whole record (every fact as `new_facts`) | **The first real re-checks, or the next finalizer evaluation that exercises the reconciler.** All judgement, none measured. Compare estimated with billed cost in Activity → Usage, count findings per re-check and how many the reporter marks handled as not real (precision on a whole record may differ from new-vs-stored), and check whether any real entity reaches the call limit. |
 | The relationship-labels prompt (`prompts/relationship_labels.md`, D291), code's normalization in `relationships.normalize` (articles, a leading "is"/"are", a plain plural `-s`), and `MAX_ITEMS_PER_CALL` (120) / `MAX_KEYS_PER_PAIR` (12) | **The next benchmark or finalizer evaluation that exercises post-processing, or the first real investigation with a few hundred relationships.** Shipped unmeasured; the demo's canned answer measures cost only (one call, about 880 input and 35 output tokens, about 1% of the batch's post-processing input). Count groups made per run, how many the reporter splits (`status: split` in `registry/relationships.json`) and whether any group joins different relationships (rank, side, scope, time); check that the plain-plural rule never folds two different words on a real corpus. Plant a near-synonym pair and a near-but-different pair in the finalizer evaluation's answer key. |
 
 ## Releasing the app
 
-Push a tag `app-v<semver>` (`app-v0.2.0-beta.1` for a beta) on the commit to release: `.github/workflows/app-release.yml` builds and signs the installers and publishes them, without touching PyPI. Testers download from the rolling `app-beta` release, which installed copies also read for updates. Details in `gui/DISTRIBUTION.md`. Never push a `v*` tag from `electron`: that is the Python package's release and publishes to PyPI.
-
-## Releasing to PyPI
-
-Pushing a version tag publishes the package: `.github/workflows/publish.yml` runs on any `v*` tag, tests it, builds the sdist and wheel with `hatch`, creates (or updates) the GitHub release with generated notes, and uploads to PyPI. Publishing uses OIDC trusted-publisher auth — no API tokens or secrets.
-
-**Release steps:**
-
-1. On a branch named `chore/v<version>`, bump `version` in `pyproject.toml` (follows [PEP 440](https://peps.python.org/pep-0440/): `0.1.0a1`, `0.1.0b1`, `0.1.0`, `0.2.0`, etc.). Put the release notes in the PR description under a "What's new" heading — the workflow uses that section as the release notes, falling back to GitHub's generated list of merged PRs.
-2. Merge the PR.
-3. Tag the merge commit and push the tag: `git tag v<version> && git push origin v<version>`.
-4. The workflow does the rest. Don't draft the release by hand in the GitHub UI first: the workflow overwrites its notes. A version ending in `a`, `b` or `rc` plus a number is marked as a pre-release.
-
-The `pypi` GitHub environment and PyPI trusted-publisher entry for `watchdog-intel` are already configured — no further setup needed.
+Push a tag `app-v<semver>` (`app-v0.2.0-beta.1` for a beta) on the commit to release: `.github/workflows/app-release.yml` builds and signs the installers and publishes them. Testers download from the rolling `app-beta` release, which installed copies also read for updates. Details in `gui/DISTRIBUTION.md`.
 
 ---
 
 ## Adding new record skills
 
 See the `authoring-record-skills` skill (`.claude/skills/authoring-record-skills/SKILL.md`) for where record skills live, the required section-by-section structure, red-flag authoring rules, and the questions to ask the user before starting.
-
----
-
-## Ingest workflow
-
-Ingest runs in Python with no Claude Code session involved. Users start it from the desktop app (Add documents), which runs the `add` operation (`watchdog/ops/ingest.py`) in a worker process, `python -m watchdog.worker` (D298, I10); every other change the app makes is an operation run the same way. The command line is being removed (#729): its commands are thin wrappers over the same operations until then (D267). The Python orchestrator (`pipeline/orchestrate.py`) drives extraction, synthesis, and the briefing via direct model calls (the orchestrator replaced the old `/watchdog-ingest` skill).
-
-**Intended workflow:**
-
-1. The `add` operation (Add documents in the app; `watchdog add [files…]` at a terminal) — chew
-   (OCR/Docling, local, no API tokens), then extraction, synthesis and the briefing, in one run
-   (D251). The `chew`, `dig` and `bark` operations run the same three steps one at a time. `watchdog ingest` still works but is deprecated
-   (#441/D138); don't recommend it in new code or docs.
-2. `watchdog ask ["question"]` (D253) opens a Claude Code session in the vault → ask investigation questions; the session starts with a primer Watchdog builds from the vault's records (`watchdog session-primer`, D285) and reads `briefings/` and the registry fresh, with no ingest-time context baggage
-
-Investigation sessions stay separate from ingest by construction, so a session's context is spent only on Q&A.
-
----
-
-## CLI style guide
-
-The terminal-output style guide for `cli.py` (colour semantics, layout conventions, adding a command or alias) lives in `src/watchdog/CLAUDE.md`, which loads automatically when working under `src/watchdog/`.

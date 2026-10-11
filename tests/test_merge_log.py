@@ -5,7 +5,7 @@ def test_possible_same_facts_carry_the_disputed_label(tmp_path):
     """D285: the facts shown with a "possible same" pair, in Review and in merges.md, are labelled
     when the reporter disputes them; the others are not."""
     import json as _json
-    from watchdog.cmd.review import _same_entities
+    from watchdog.review import same_entities
     from watchdog.pipeline import merge_log as _ml
     vault = tmp_path / "v"
     reg = vault / ".watchdog" / "registry"
@@ -23,7 +23,7 @@ def test_possible_same_facts_carry_the_disputed_label(tmp_path):
                      "a": side("a", "fact:1:s:1", "Jo Roe signed."), "b": side("b", "fact:1:s:2", "Jo Roe paid.")}}}))
     (reg / "verification.json").write_text(_json.dumps({"schema_version": 1, "marks": {
         "fact:1:s:1": {"status": "disputed", "fact": "Jo Roe signed.", "page": 2}}}))
-    item = _same_entities(vault, frozenset())[0]
+    item = same_entities(vault, frozenset())[0]
     assert [f["disputed"] for f in item["pair"]["a"]["facts"]] == [True]
     assert [f["disputed"] for f in item["pair"]["b"]["facts"]] == [False]
     text = _ml.render(vault).read_text(encoding="utf-8")

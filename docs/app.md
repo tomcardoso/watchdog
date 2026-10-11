@@ -2,7 +2,7 @@
 
 Watchdog is a desktop app. You use it entirely through its window: you never need a terminal. It shows what a list of files can't — a document's pages beside the facts taken from it, page thumbnails, an entity's connections drawn as a network, the timeline laid out by date, and progress you can watch.
 
-Underneath, the app runs Watchdog's engine, the same program that was once run from the command line. Every button that changes an investigation runs one of its steps, and every list and page reads the same files. Each investigation is still an ordinary folder of Markdown files, so it also opens in [Obsidian](https://obsidian.md). The command line is being retired; [Commands](commands.md) remains as a reference for people who already use it.
+Underneath, the app runs Watchdog's engine. Every button that changes an investigation runs one of its steps, and every list and page reads the same files. Each investigation is still an ordinary folder of Markdown files, so it also opens in [Obsidian](https://obsidian.md).
 
 > **Public records only.** The app sends the text of your documents to the cloud AI model you chose, and it shows a warning, with the number of documents about to be sent, before it sends anything. The rule is unchanged: use Watchdog only for documents that are public or presumptively public.
 

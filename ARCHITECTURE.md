@@ -21,8 +21,8 @@ vault/registry layout or an invariant updates this file in the same change (see
   gated, bounded and fed pre-digested input.
 - **Parallel extraction, serial writes.** Documents extract concurrently; every vault write
   happens in one serial commit pass (I7).
-- **Two runtimes.** The document pipeline (`chew`, `dig`, `bark`) is a terminal program whose
-  single-shot, schema-bound calls go through a provider-agnostic `model_client`, so each stage can
+- **Two runtimes.** The document pipeline (`chew`, `dig`, `bark`) is Python run by the app's
+  worker process; its single-shot, schema-bound calls go through a provider-agnostic `model_client`, so each stage can
   run on Claude, OpenAI, DeepSeek, Gemini, OpenRouter or a local model (D37, D94, D139). The
   investigation layer (`/watchdog-query`, `-surface`, `-wiki`, `-entity`, `-context`, `-health`,
   `-research`) runs inside Claude Code as interactive sessions and is not portable: Claude Code is
@@ -32,25 +32,24 @@ vault/registry layout or an invariant updates this file in the same change (see
 
 ## 2. Pipeline overview
 
-In the app and the docs the three stages are called pre-processing (`chew`), processing (`dig`) and post-processing (`bark`), and the whole flow is "adding documents"; code, commands, settings keys and RPC names keep the original words (D275).
+In the app and the docs the three stages are called pre-processing (`chew`), processing (`dig`) and post-processing (`bark`), and the whole flow is "adding documents"; code, operation names, settings keys and RPC names keep the original words (D275).
 
 ```
 incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watchdog/extracted/<sha>.json ─▶ bark ─▶ vault
  (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
 ```
 
-1. **Chew** (`watchdog chew`) — local, no model. Text/OCR, large-PDF chunking, near-duplicate
+1. **Chew** — local, no model. Text/OCR, large-PDF chunking, near-duplicate
    fingerprinting. One queue JSON per document.
-2. **Dig** (`watchdog dig`) — the orchestrator (`pipeline/orchestrate.py`) classifies and extracts
+2. **Dig** — the orchestrator (`pipeline/orchestrate.py`) classifies and extracts
    each queued document concurrently and stages the validated result. Touches no vault state.
-3. **Bark** (`watchdog bark`) — resolves the staged batch (exact-name fold, entity reconciliation),
+3. **Bark** — resolves the staged batch (exact-name fold, entity reconciliation),
    commits it to the vault in one serial pass, then runs post-ingest: contradictions, entity
    synthesis, timeline dedup, the briefing.
 
 The entry points are operations (`watchdog/ops/`, D298): `add` runs all three in one go (D251),
 `chew`, `dig` and `bark` one at a time, all in `ops/ingest.py`. The app runs them in a worker
-process (§14.5); the terminal's `watchdog add`, `chew`, `dig` and `bark` are thin wrappers over the
-same functions until the command line is removed (issue #729). A failed document is set aside in
+process (§14.5); there is no command line (D300). A failed document is set aside in
 `queue/_failed/` without sinking the batch.
 
 ---
@@ -101,11 +100,11 @@ same functions until the command line is removed (issue #729). A failed document
 
 ## 4. Run setup, locking and estimates
 
-**Code:** `pipeline/ingest_setup.py`, `pipeline/locks.py`, `cmd/ingest.py`.
+**Code:** `pipeline/ingest_setup.py`, `pipeline/locks.py`, `ops/ingest.py`.
 
 A run resolves auth, takes the run lock, scans the queue, and runs `orchestrate.run` in-process.
-Models, efforts, concurrency and classification come from `watchdog settings` or per-run flags;
-their defaults live in `watchdog/defaults.py`.
+Models, efforts, concurrency and classification come from Settings or the run's options
+(`ops.ingest.RunOptions`, resolved by `resolve_plan`); their defaults live in `watchdog/defaults.py`.
 
 - **Locks (D66, D69, D293).** The ingest, finalize, chew and re-check locks are created with
   `O_CREAT|O_EXCL` and record their holder: pid, the process's start time, host name, a hashed
@@ -113,21 +112,20 @@ their defaults live in `watchdog/defaults.py`.
   `locks.inspect` judges a lock: written on this computer (same machine id) and its process gone,
   or its pid now started at another time, it is dead and taken over at once; its process verified
   running, it is never taken over. Any lock that can't be checked (another computer on a synced
-  folder, an older `pid: cli` lock, a platform that reports no start time) is taken over once
+  folder, a damaged lock that names no computer, a platform that reports no start time) is taken over once
   `started_at` (else the file's mtime) is 15 minutes old (`STALE_SECONDS`). A takeover holds an
   `O_EXCL` claim file and re-reads the lock before replacing it, so two takers can't both win; a
   holder's release and heartbeat leave alone a lock another process now holds. The app's status
-  calls clear abandoned locks (`gui/runlocks.py`) and report the holder; `watchdog unlock` remains
-  for the terminal only. The history store's `.lock` and the registry's `.write-lock`
+  calls clear abandoned locks (`gui/runlocks.py`) and report the holder. The history store's `.lock` and the registry's `.write-lock`
   (`flock`/`msvcrt`) are OS locks, released by the system when their process dies.
-- **Estimates (D72, D135, D143).** `--estimate` multiplies the queue's token estimate (chars/4,
-  calibrated against this vault's past runs) by this vault's recent $/token, as a range. `bark
-  --estimate` prices the staged batch from standalone-finalize history. `--estimate-all` prices
-  every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
+- **Estimates (D72, D135, D143).** `ingest.estimate` (the app's estimate before a run) multiplies
+  the queue's token estimate (chars/4, calibrated against this vault's past runs) by this vault's
+  recent $/token, as a range; for post-processing it prices the staged batch from
+  standalone-finalize history. The all-models view prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
   gets token counts, never dollars.
 - **Rate limits (D71, D184).** A `RateLimitError` stops the batch cleanly; unfinished documents
-  stay queued and the next `dig` resumes. `--wait` sleeps until the reported reset and loops,
-  refreshing the lock. The stop message reports the run's observed tokens/min and the provider's
+  stay queued and the next `dig` resumes. With `wait` (`RunOptions.wait`) the run sleeps until the
+  reported reset and loops, refreshing the lock. The stop message reports the run's observed tokens/min and the provider's
   last reported remaining/limit.
 - **Admission control (D185).** A document is held before dispatch when recent tokens/min, plus
   every in-flight document's reservation (`_run.admission_reserved`), plus its own estimate would
@@ -162,7 +160,7 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    `document_requests` name obtainable documents the text cites (D111). Embedded file metadata is
    rendered as a data block. A model without a private reasoning channel also gets a scratch
    `document.plan` field, filled before `key_facts` (D208).
-4. **Verify** (optional, `verify_extraction`/`--verify`, D172) — a second, cheap call over the
+4. **Verify** (optional, `verify_extraction`, D172) — a second, cheap call over the
    same text asking what material fact is missing. On `claude-api` it re-reads the extraction
    call's prompt cache, so it runs on `extractor_model` at `verifier_effort`. Candidates are merged
    in code (`verify.merge_candidates`): sanitized, and suppressed when they near-duplicate an
@@ -181,10 +179,8 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
 **Two "already done" questions (D126).** `already_staged` (an artifact exists: skip
 classify/extract) and `already_extracted` (the sha is committed: nothing to do).
 
-**`--force` (D131).** `dig --force` re-extracts staged documents, overwriting the artifact. To
-regenerate a committed document, `watchdog ingest --force <doc>` re-chews it from the morgue,
-re-extracts it, lists the notes it will replace and confirms (default Cancel) before passing it to
-finalize as `force_shas`.
+**`force` (D131).** A processing run with `force` re-extracts staged documents, overwriting the
+artifact. A committed document is not regenerated in place (D300).
 
 **Large documents (D89, D196, D202).** A document over `section_token_threshold` is split into
 overlapping page-range sections, packed greedily by per-page token estimates, extracted one at a
@@ -214,7 +210,7 @@ GLiNER model, into a per-page checklist the prompt includes.
 
 **Failure.** A document whose extraction or post-flight fails is logged to `processing.log` and moved
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
-`watchdog requeue` puts failed documents back.
+The `requeue` operation (Requeue failed documents) puts failed documents back.
 
 ---
 
@@ -224,7 +220,7 @@ A dedicated cheap call before extraction (`classifier_model`, default haiku) pic
 skill from the in-memory index (`skills_catalog.build_index()`); Python injects that skill into the
 extraction prompt.
 
-- **Pinning.** `--skill`/`default_skill` skip classification for the run. A sidecar's `skill:` line
+- **Pinning.** The run's `skill` option or `default_skill` skip classification for the run. A sidecar's `skill:` line
   pins one document and wins over a run-wide pin (D120); it resolves by catalogue name only (D241).
 - **Provenance-aware (D84).** The classifier sees the sidecar as data, bounded by a schema that only
   admits a skill name.
@@ -244,7 +240,6 @@ except the journalist's Notes is the only copy of anything.
 |---|---|---|
 | `## Summary` | registry entry's `synthesis` (summary, analysis, model, date, facts shown/total, citation map, citation counts) | synthesis (§8) or a `/watchdog-entity` session; citations rendered as checked links (§8.6); no byline (D284), never a fact |
 | `## Facts` | every `key_facts` entry in the committed documents' stored extractions whose tags resolve to the entity | deterministic render: date order (fact date, else document date), document and page link, flags, quote or matched passage, reporter's mark, `^f-<hash>` block id; past 40 facts grouped by document (5 each plus every marked fact; the 40 most recent documents in full, earlier ones one line each) |
-| `## Earlier claims` | registry `legacy_claims` | carried once from a pre-D280 note for documents with no stored extraction |
 | `## Contradictions` | registry ledger, minus handled callouts | reconciliation (§8.5) |
 | `## Relationships` | registry roles + stored extractions' roles, grouped by `relationships.View` | deterministic render: one line per counterpart, direction and meaning (canonical label, every source document and page, the documents' wordings when they differ, D291) |
 | `## Notes` | the note on disk | the journalist; never touched |
@@ -256,9 +251,7 @@ once, before the registries persist (`RegistryBatch.render_notes`). A reporter's
 the fact's entities' notes when the registry lock is free, else queues them in
 `registry/notes-stale.json` for the next flush. `entity_notes.rebuild` (the Maintenance job "Rebuild
 notes") rewrites every entity and document note from the registries and stored extractions with no
-model call; rebuilding the demo after deleting every note gives identical files. A vault whose
-`registry.json` lacks `entity_note_format: 2` is rebuilt once at its next commit, carrying older
-notes' AI prose into `synthesis` (`by: carried`). Timeline events live in the registry and
+model call; rebuilding the demo after deleting every note gives identical files. Timeline events live in the registry and
 `timeline.md`; the note's chronological Facts list replaces its old Timeline section.
 
 ---
@@ -316,7 +309,7 @@ every document's claims side by side:
   the stored and staged extractions (D280), never a note: `new_facts` (this batch's documents) and
   `stored_facts` (earlier ones), each grouped under a `[[documents/<slug>|<title>]]` heading, each
   fact with its short id, page, warnings and source passage (quote or matched passage, cut to 240
-  characters). Disputed facts are included, labelled; `legacy_claims` join the stored side. The model compares
+  characters). Disputed facts are included, labelled. The model compares
   new against stored and new against new; a merged survivor's follow-up call treats every fact as
   new. An oversized entity loses its oldest stored facts, never the new ones. `apply_contradictions`
   files each conflict through `contradiction.run`, which validates both document slugs (D81).
@@ -410,11 +403,11 @@ registry, keyed for idempotent replay (D67).
   citations as links (§8.6) and writes `briefings/<ts>.md` (a counter suffix on collision; its
   emerging patterns, open questions and one-line status included), a `log.md` entry and
   `.watchdog/briefings/<ts>.json` (the ref map, citation counts and the status line the Overview
-  shows as its headline). `--skip-briefing` skips the call and those files (D134). It no longer
-  writes `hot.md` (D285): see the session primer, §12.
+  shows as its headline). The run's `skip_briefing` option skips the call and those files (D134).
+  The session primer (§12) carries the rest of what a session needs.
 - **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
-  `watchdog review` (`cmd/review.py`) steps through the open ones, plus near-duplicate documents
+  The app's Review (`watchdog/review.py`) lists the open ones, plus near-duplicate documents
   (`documents.json` `near_duplicate_of`, stamped at extraction from chew's MinHash match), and
   writes to the same store (D252). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
@@ -422,7 +415,7 @@ registry, keyed for idempotent replay (D67).
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
   `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
-A batch is always finalized, never discarded (D242); `bark` with nothing pending reports so.
+A batch is always finalized, never discarded (D242); post-processing with nothing pending reports so.
 
 ---
 
@@ -435,21 +428,21 @@ lists them as "Possible duplicate documents".
 
 ## 11. Search
 
-**Code:** `pipeline/embed.py`, `pipeline/fulltext.py`, `cmd/reindex.py`.
+**Code:** `pipeline/embed.py`, `pipeline/fulltext.py`, `ops/reindex.py`, `search.py`.
 
 - **Semantic index (D38, D43).** Local fastembed vectors (`embed_model`) for overlapping word
   windows of each page — each window is a citable passage — plus one per note. Built at commit,
   with a contextual prefix (title, type, entities) prepended before embedding. Index files are
   keyed by document sha (D241).
 - **Hybrid ranking.** Corpus passages: dense cosine and BM25 fused by reciprocal rank, then
-  reranked by a local cross-encoder (`rerank_model`; `none` or `--no-rerank` disables it). Notes:
+  reranked by a local cross-encoder (`rerank_model`; `none`, or a query's `rerank: false`, disables it). Notes:
   cosine only, shown as a separate section. A derived cache (`.embeddings/_cache/`, numpy only,
   fingerprinted on file names/sizes/mtimes) makes repeat queries fast.
 - **Full-text lane (D57).** SQLite FTS5 over morgue pages and every generated note: every exact
-  occurrence, unscored. `--batch` checks a term list (manifest names plus full text, no semantic
-  lane); `--everywhere` runs the same lanes across every registered vault (D72). A failed
+  occurrence, unscored. `search.batch` checks a term list (manifest names plus full text, no
+  semantic lane); `search.everywhere` runs the same lanes across every registered vault (D72). A failed
   full-text lookup is reported as "not checked", never as no hits.
-- **`watchdog reindex` (D53)** rebuilds both indexes from the registry and morgue text, with no OCR
+- **The `reindex` operation (D53)** rebuilds both indexes from the registry and morgue text, with no OCR
   or model calls — the way to change `embed_model`.
 
 ---
@@ -467,7 +460,7 @@ briefings/                   briefings, leads, alerts, research memos
 requests.md                  open document requests
 verification.md              generated list of the facts a reporter has marked (D271); never hand-edited
 merges.md                    generated record of every entity merge and open "possible same" pair (D279)
-context.md / log.md          investigation context, run log (an older vault's hot.md is left in place, unread, D285)
+context.md / log.md          investigation context, run log
 index.md / dashboard.base    landing page and Obsidian Bases dashboard (D42)
 queries/ wiki/               session-written findings and threads
 .embeddings/ .fulltext/      search indexes
@@ -504,13 +497,12 @@ queries/ wiki/               session-written findings and threads
 **Passages and the verification ledger (D270, D271).** Each fact in `.watchdog/extracted/<sha>.json`
 carries `passage`, `passage_page`, `passage_method` and `passage_score`, and the document records
 `passages_version`; they are stamped in post-flight, so they reach the vault only through the
-finalize commit (I7). Documents committed earlier have none and are not backfilled. Facts have no
+finalize commit (I7). Facts have no
 stored id: `pipeline/verification.py` derives one from the document's SHA-256, the fact's page and
 its normalized text. `registry/verification.json` (`schema_version`) holds the marks, each with a
 snapshot of the fact it was made on and a history; it has its own lock, `.verification-lock`, so a
 mark never waits on a commit pass, and every write regenerates `verification.md` (`format_version`)
-at the vault root. The ledger never changes a fact, and the app writes it through `verification.mark`,
-the function `watchdog verify-fact` calls (I10).
+at the vault root. The ledger never changes a fact, and the app writes it through `verification.mark` (I10).
 
 **Recordings in the registry (D273).** A recording's `documents.json` entry carries the `media`
 block from pre-processing (stamped on the document at extraction): readers use the fields they
@@ -523,23 +515,20 @@ to the investigation rather than the computer, and travels with the folder: toda
 and history (it is not pipeline state, and a key choice is not a version of the investigation).
 
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
-through `vault_paths.py` helpers; the same migration renames an older vault's `.chew-lock`,
-`.ingest-lock`, `ingest-state.json` and `ingest.log`.
+through `vault_paths.py` helpers.
 
 **Folder names (D266).** `vault_paths.py` is the one place the `incoming/` and `context/` names live, with
-helpers for every path under them. `migrate_folder_names` renames an older vault's `_INCOMING/` and
-`_CONTEXT/` (never deleting a file) and runs at the start of each command that touches them and when the
-app opens a vault (`require_vault`).
+helpers for every path under them.
 
 Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
-filename, model, tokens, cost. Off with `telemetry false`; `delete --purge` removes a vault's rows
+filename, model, tokens, cost. Off with the `telemetry` setting; deleting an investigation with its folder removes its rows
 (D247).
 
 **Session boundaries (D245, D299).** A vault's Claude Code settings pre-authorize writes only to the
 session's own pages (`queries/`, `wiki/`, `briefings/`, `context.md`, `.watchdog/research/`) and
 Watchdog's session tools (`mcp__watchdog__*`), deny `~/.watchdog`, confine reads to the vault and
-carry no hooks. An app session has no shell: every tool that runs a command (`Bash`, `PowerShell`, `Monitor`) is disallowed, and everything it did
-through `watchdog …` commands is a tool of the in-process MCP server `watchdog`
+carry no hooks. An app session has no shell: every tool that runs a command (`Bash`, `PowerShell`, `Monitor`) is disallowed, and what it needs from
+Watchdog is a tool of the in-process MCP server `watchdog`
 (`watchdog/session_tools.py`): `search`, `leads`, `check_citations` and `research_seen` read;
 `timeline`, `write_entity`, `watchlist_add` and `contradiction_add` write. Each tool set is bound to
 the session's vault and takes no folder, project or outside file; the writers call the library
@@ -547,10 +536,10 @@ function under the registry lock, refuse a vault without folder access and recor
 (`{"kind": "session", "tool": …}`). The hooks are Python callbacks registered in `gui/chat.py`:
 the page-notes pair below, the vault-only edit guard, and a UserPromptSubmit note of documents
 still waiting. A Claude Code session opened on the folder outside the app gets the instructions and
-the permission rules, but no tools and no hooks. `refresh-skills` updates commands, permissions
-and dashboard views.
+the permission rules, but no tools and no hooks. The `refresh-claude-setup` operation updates commands,
+permissions and dashboard views.
 
-**Session primer (D285).** The app appends `cmd/primer.session_text(vault)` (`build`, never
+**Session primer (D285).** The app appends `primer.session_text(vault)` (`build`, never
 raising) to a session's system prompt when it connects, at the start and on every resume (D299);
 the system prompt survives compaction. It holds the questions
 in `context.md`, counts and verification progress, the most-mentioned entities with note links,
@@ -559,10 +548,9 @@ citation links), the last three briefings with their status lines, and how to ci
 the registry, the ledger, the merge log and the requests ledger with no model call, built fresh for
 every session, and budgeted (`BUDGET_CHARS`, 6,000 characters; lists shrink from five items to
 none until it fits). It never fails a session's start, and is not rebuilt after a compaction. The app's Briefings → Current state renders the same
-`primer.gather` data for the reporter, without the citing instructions, command lines or budget
+`primer.gather` data for the reporter, without the citing instructions or budget
 (`gui/current_state.py`, `vault.currentState`); the primer itself, verbatim, is its secondary
-"What Claude is given" view (`vault.sessionPrimer`). `hot.md` is no longer written, read, indexed
-or citation-checked.
+"What Claude is given" view (`vault.sessionPrimer`).
 
 **Saved-page notes (D296).** The reporter's `## Notes` on a page in `queries/` or `wiki/` is guarded
 by `pipeline/page_notes.py` under `.notes-lock`: the app's `vault.saveNotes` writes it with a
@@ -590,7 +578,7 @@ left as they are now) atomically under the store lock, records on the file's nex
 how many versions were removed before it (`gaps`) and nothing else, then deletes every blob no
 line names; a file's newest entry is never removed. App-only (I10).
 
-**Merging entities (D54).** `watchdog merge-entities <keep> <merge>` unions the losing entity onto
+**Merging entities (D54).** The `merge-entities` operation (`keep`, `merge`) unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
 what it changes. The merged id's facts reach the survivor through the merge log (§7). It keeps one
 `synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one.
@@ -618,7 +606,7 @@ active groups of `registry/relationships.json` (`schema_version` 1: `groups` wit
 `keys`, `canonical` — always one of the member wordings — `decided_by`, `model`, `reason`, `run`,
 `status` active/superseded/split; `evaluated`, per ordered pair, the keys already put to the model).
 Ids follow the merge log. The graph (`vault.graph`: one edge per unordered pair listing every
-row), entity notes, the entity page and `watchdog export` (canonical type plus `wording`) read it.
+row), entity notes, the entity page and the `export` operation (canonical type plus `wording`) read it.
 Post-processing step 0b (`orchestrate._relationship_labels`, task `relationship-labels`, finalizer
 model) asks about ordered pairs a batch document touched with two or more keys not all `evaluated`,
 batched at 120 wordings per call; `apply` checks each proposed group (two or more of that pair's
@@ -657,7 +645,7 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
   and effort (I4). Auth and billing failures raise `ProviderAuthError` (D242).
 - **Catalogue (D142, D217, D249, D250).** `model_catalog.yaml` single-sources ids, pricing (including
   time-of-day, optionally weekday-only, `price_periods`), context windows, output caps, tokenizer
-  ratios and capability flags. A retired provider id lives on its replacement's `legacy_ids`. A
+  ratios and capability flags. A retired provider id is removed, with no alias (D300); a
   vendor-deprecated model is removed; a merely legacy one stays.
 - **Batch backends (D52, D144, D169).** `claude-batch` and `openai-batch` submit the whole queue to
   the provider's Batch API at half price; `dig` submits and exits, and a later `dig` collects
@@ -702,13 +690,13 @@ same content to the user's own model server; every other backend sends it to tha
 
 ## 14. Web research
 
-**Code:** `pipeline/research.py`, `pipeline/capture.py`, `cmd/research.py`.
+**Code:** `pipeline/research.py`, `pipeline/capture.py`, `ops/research.py`.
 **Skill:** `skills/watchdog-research.md`.
 
-`watchdog research` opens a Claude Code session on `/watchdog-research`, which proposes a mission,
-researches in rounds and appends kept sources to `.watchdog/research/queue.tsv`. When the session
-ends, Python downloads the queued URLs into `incoming/` (after a confirm); chew and dig remain the
-journalist's step (I5).
+Web research opens a Claude Code session on `/watchdog-research`, which proposes a mission,
+researches in rounds and appends kept sources to `.watchdog/research/queue.tsv`. The reporter then
+downloads the queued URLs into `incoming/` (the `research-fetch` operation); adding them remains
+the journalist's step (I5).
 
 - **The skill curates; Python fetches.** `research.py` validates each URL before connecting
   (http/https, no private or loopback addresses, re-checked on every redirect), caps the body at
@@ -718,13 +706,13 @@ journalist's step (I5).
   Chromium with the same address check on every subresource, then saved as one self-contained file
   with scripts stripped, assets inlined and a `default-src 'none'` CSP. Without it, the plain fetch
   is sanitized with `nh3`.
-- **Durability.** The worklist survives a crashed session; `watchdog`, `chew` and `status` warn when
-  URLs are queued but not downloaded, and `research-fetch` finishes the download. Failed rows are
-  retained. `research-seen` returns already-captured URLs so a recurring investigation doesn't
+- **Durability.** The worklist survives a crashed session; processing runs warn when URLs are
+  queued but not downloaded, and `research-fetch` finishes the download. Failed rows are
+  retained. The session tool `research_seen` returns already-captured URLs so a recurring investigation doesn't
   re-fetch them.
 - **Wayback (optional).** With `wayback_save` and keys set, each source is also submitted to Save
   Page Now; failures never block a download.
-- **`watchdog research fetch`** downloads a given list of links through the same path, without a session.
+- **`fetch-links`** downloads a given list of links through the same path, without a session.
 - Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
   advisory; only the egress checks are enforced. Web tools are granted by the skill's own
   `allowed-tools`, not the vault-wide permissions.
@@ -738,21 +726,20 @@ See D45–D48.
 **Code:** `gui/` (Electron main, preload, React renderer), `watchdog/gui/` (server, `api/*.py`,
 `jobs.py`, `chat.py`, `demo.py`), `watchdog/ops/`, `watchdog/worker.py`, `watchdog/progress.py`. **Contract:** `gui/API.md`.
 
-- **One program, two front ends (D265).** The app starts `python -m watchdog.gui.server` and speaks
+- **One program, one front end (D265, D300).** The app starts `python -m watchdog.gui.server` and speaks
   line-delimited JSON-RPC over its stdio. Reads run in-process; `sys.stdout` is pointed at stderr so
   a library `print()` can't corrupt the protocol.
 - **Mutations are operations run by a worker (D298).** Every change the app makes is a registered
   operation (`watchdog/ops/`): a library function whose keyword parameters, with their types, are
-  its schema (`jobs.ops`), taking a `Reporter` for its log lines, warnings, progress events and
-  question-asking. `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
+  its schema (`jobs.ops`), taking a `Reporter` for its log lines, warnings and progress events. `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
   `merge-entities`…) and `action.run` (quick ones: `projects-rename`, `requeue`…) check the
   parameters, then run `python -m watchdog.worker` in the vault with `{op, params}` on stdin
-  (and the keys, for the four operations that call a model, D295), `NO_COLOR=1`, `WATCHDOG_APP=1`
-  and `WATCHDOG_PROGRESS=1`. The worker's `AppReporter` writes app-worded log lines and
+  (and the keys, for the four operations that call a model, D295), `NO_COLOR=1` (for third-party
+  libraries) and `WATCHDOG_PROGRESS=1`. The worker's `Reporter` writes log lines and
   `progress` events (chew files, per-document extraction states, finalize stages), which the
-  server turns into `job.progress` events, then the operation's result; it declines any question
-  (the app asks before it starts). Stop is SIGINT to the worker. The few in-process writes go
-  through library functions (`resolutions`, `_coerce_value`/`_persist`, auth state, a note's
+  server turns into `job.progress` events, then the operation's result. An operation never asks a
+  question: the app asks before it starts and passes the answer as a parameter. Stop is SIGINT to the worker. The few in-process writes go
+  through library functions (`resolutions`, `settings.coerce` and `config.save`, auth state, a note's
   `## Notes` body), plus the app-only version history (D286).
 - **The public-records gate** runs in the app after chew and before the model call, from
   `ingest.preflight` (count, models, `auto_approve` verdict, the warning text), then `add` with
@@ -778,8 +765,10 @@ See D45–D48.
   `engine.setReady` lifts it without a restart (an operation's `engine` flag, `add` or `index`, says
   which are refused). `engine.json` is versioned (`schema`, finished
   `phases`); an unreadable or foreign record rebuilds the environment. `WATCHDOG_PYTHON` or a user's choice overrides it; in
-  development the repository's source goes first on `PYTHONPATH`. The terminal commands are
-  retired from user-facing documentation and wrap the same operations (D298). The transcription
+  development the repository's source goes first on `PYTHONPATH`. The app starts Python only
+  through module entry points: `python -m watchdog.gui.server` (the sidecar), `python -m
+  watchdog.worker` (each operation, D298) and `python -m watchdog.gui.engine_setup`; there is no
+  console script (D300). The transcription
   model is an on-demand step (`engine_setup.ON_DEMAND`): never in the first-run download, fetched by
   the first recording or by `setup.downloadModel`, the `download-model` operation as a job (D273).
 - **Folder access (D268).** `~/.watchdog/access.json` lists the folders the user has allowed;
@@ -794,13 +783,12 @@ See D45–D48.
   encrypted by the main process with Electron `safeStorage` (Keychain, DPAPI, a Linux keyring;
   Linux `basic_text` counts as none, and keys then stay plaintext in the 0600 file, with a warning in
   Settings). Python never decrypts. When a backend starts, before the window can reach it, the main
-  process (`gui/src/main/secrets.ts`, `keystore.ts`) encrypts any plaintext keys in place and sends
-  the decrypted keys with `secrets.provide` on the backend's stdin; the backend keeps them in memory
+  process (`gui/src/main/secrets.ts`, `keystore.ts`) sends the decrypted keys with `secrets.provide` on the backend's stdin; the backend keeps them in memory
   (`watchdog/keystore.py`) and hands each job only the key per provider its vault resolves to, as one
   JSON line on the job's stdin (`WATCHDOG_SECRETS=stdin`), never in an environment variable or argv.
   A pasted key is sealed by the main process (`key_enc`) before the backend stores it; the window
-  can't call `secrets.provide`. A process without the key it needs (the terminal CLI, or a key that
-  failed to decrypt) raises `KeyLockedError`, a `KeyChoiceError`, so it stops before any call;
+  can't call `secrets.provide`. A process without the key it needs (a key that failed to decrypt, or
+  one the app never handed it) raises `KeyLockedError`, a `KeyChoiceError`, so it stops before any call;
   environment variables still override every stored key.
 - **Find in a document (D289).** Every viewer has a visible find box; one matcher
   (`lib/findText.ts`: case, accents, quote style, dashes and white space ignored, matches mapped
@@ -812,18 +800,16 @@ See D45–D48.
   (`history.file`, `history.diff`, `history.restore`, `history.remove`), Activity has the
   investigation's versions (`history.versions`, `history.remove` of a whole version), Settings →
   Version history shows the store's size and clears it (`history.clear`), and each project card
-  its size (`stats.history_bytes`, D288). These call `pipeline/history` in-process; there is no CLI
-  command.
+  its size (`stats.history_bytes`, D288). These call `pipeline/history` in-process.
 - **Re-check contradictions (D287).** An entity page's Re-check and Maintenance's whole-investigation
   card call `contradictions.estimate`, then `jobs.recheckContradictions`, which runs the
   `recheck-contradictions` operation as a job (engine-gated, refused while a run holds the vault).
-  No CLI command.
 - **Notes (D288).** Entity notes, document notes and saved pages (`queries/`, `wiki/`) share one
   editor (`NotesEditor`, `lib/notesSaver.ts`) that writes only the `## Notes` section through
   `vault.saveNotes`; saves outlive the screen, retry while the commit pass holds the registry lock
   and keep a draft on failure, and quitting closes the window first so an outstanding save reaches
   the backend.
-- **Release and updates (D269).** `electron-builder.config.cjs` and `publish.yml`'s `app` job
+- **Release and updates (D269).** `electron-builder.config.cjs` and `app-release.yml`
   build signed (when configured) installers from the version tag; `gui/src/main/updater.ts` offers
   updates from GitHub Releases. See `gui/DISTRIBUTION.md`.
 
@@ -869,8 +855,9 @@ noted as such.
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
   `page` citation, D177, is not covered: a citation is checkable.) *History: D167, D177.*
-- **I9 — Styling is a terminal affordance.** `--json` output, and any output off a real terminal,
-  carries no escape bytes; diagnostics go to stderr in every mode. *History: D174.*
+- **I9 — Output is plain text.** An operation's output is lines of plain text, structured progress
+  events and a result; nothing writes a terminal escape sequence, and warnings go to stderr.
+  *History: D174, D300.* Guarded by `tests/test_invariants.py::test_I9_…`.
 - **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
   makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
   writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
@@ -878,9 +865,10 @@ noted as such.
   function called in-process; either way under folder access (D268), the operation's locks (D293)
   and I7's commit discipline. The app keeps the
   gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
-  before it starts an operation and passing the answer as a parameter; an operation never asks. The
-  terminal commands wrap the same operations until the command line is removed, so neither front
-  end has behaviour the other lacks. *History: D265, D271, D286, D288, D298, D299.*
+  before it starts an operation and passing the answer as a parameter; an operation never asks.
+  The app is the only front end: there is no command line, and nothing imports `watchdog.cli` or
+  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300.* Guarded by
+  `tests/test_app_wording.py`.
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
   allowed folder or an exempt location are refused, and only the app's main process ever writes
@@ -919,7 +907,6 @@ noted as such.
   every path that would send that provider's key (processing, post-processing, the batch path, the
   contradiction re-check, Ask Claude and Research in API-key mode) stops before any call and names the
   missing key; none falls back to the default or another key. The same holds when the key is stored
-  encrypted by the app and this process can't read it (the command line, or a key that failed to
-  decrypt): it stops and says why. An environment variable still overrides, as it overrides
+  encrypted by the app and this process can't read it (a key that failed to decrypt): it stops and says why. An environment variable still overrides, as it overrides
   everything. *History: D290, D295.* Guarded by `tests/test_invariants.py::test_I16_…`,
   `tests/test_labelled_keys.py` and `tests/test_keystore.py`.

@@ -1,7 +1,6 @@
 # Watchdog desktop app
 
-An Electron app over the same Python program as the `watchdog` command. Everything the CLI does,
-the app does too — by calling the same code — and it adds what a terminal can't: a document
+An Electron app over Watchdog's Python engine (`src/watchdog/`). It offers a document
 library with page thumbnails, a PDF viewer beside the extracted facts, an entity browser, a
 network graph, a visual timeline, a review queue, and a chat with Claude inside the app.
 
@@ -14,7 +13,7 @@ User documentation is in [docs/app.md](../docs/app.md). This page is for develop
 │ renderer (React)  ⇄  preload  ⇄  main │  ─────────────────────────────────────▶ │ watchdog.gui    │
 │  views, design system   bridge   │ ◀──────────── responses + events ────────── │  .server        │
 │                                   │                                            │   api/*.py      │
-│  wdfile:// (vault files only)     │                                            │   jobs → `python -m watchdog …`
+│  wdfile:// (vault files only)     │                                            │   jobs → `python -m watchdog.worker`
 └───────────────────────────────────┘                                            └────────────────┘
 ```
 
@@ -24,11 +23,10 @@ User documentation is in [docs/app.md](../docs/app.md). This page is for develop
   worker process, `python -m watchdog.worker` (`jobs.start` for long work like `add`, `action.run`
   for quick ones like `projects-rename`; D298). Progress comes back as structured events (see
   `src/watchdog/progress.py`).
-- **Claude sessions** (`ask`, `ask --context`, `research`) run through the Claude Agent SDK in the
+- **Claude sessions** (Ask Claude, setting the context, web research) run through the Claude Agent SDK in the
   vault folder, so the vault's own `.claude/` settings and `/watchdog-*` commands apply.
 - The main process finds Python in this order. A packaged app: `WATCHDOG_PYTHON`, the interpreter
-  chosen in the app, **the managed engine**, then pipx's `watchdog-intel` venv, the `watchdog`
-  launcher's shebang and `python3` (an external install is used only if it is at least the version
+  chosen in the app, **the managed engine**, then `python3` on the PATH (an external install is used only if it is at least the version
   the app bundles). Development (unpackaged, or `WATCHDOG_SRC` set): the same, with the managed
   engine last, and the repo's `src/` laid ahead of the Python on `PYTHONPATH`. The managed engine
   needs no overlay: its wheel is built from the same source.
@@ -77,7 +75,7 @@ somewhere disposable); `npm run engine:check` checks the engine logic without th
 ```bash
 cd gui
 npm install
-WATCHDOG_PYTHON=~/.local/pipx/venvs/watchdog-intel/bin/python npm run dev
+WATCHDOG_PYTHON=../.venv/bin/python npm run dev   # a venv with `pip install -e ..` (see CLAUDE.md)
 ```
 
 `npm run dev` hot-reloads the renderer. `npm run typecheck` checks both sides; `npm run build`

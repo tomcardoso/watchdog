@@ -2,7 +2,6 @@
 fact's words do, the generated verification.md, format versions, the CLI command, the RPC methods
 and the export."""
 
-import argparse
 import csv
 import json
 
@@ -199,45 +198,25 @@ def test_passages_of_a_newer_format_are_ignored(tmp_path, wdg_home):
 
 # ── CLI ───────────────────────────────────────────────────────────────────────────────
 
-def _args(**kw):
-    return argparse.Namespace(**{"id": None, "status": None, "note": None, "by": None, "list": False, **kw})
-
-
-def test_verify_fact_command(tmp_path, wdg_home, monkeypatch, capsys):
-    from watchdog.cmd.verify import cmd_verify_fact
+def test_marking_a_fact_records_and_clears_it(tmp_path, wdg_home):
     vault = _vault(tmp_path, FACTS)
     fid = V.fact_ids(SHA, FACTS)[1]
-    monkeypatch.chdir(vault)
-    cmd_verify_fact(_args(id=fid, status="cant-verify", note="No signed copy", by="Jordan Ellis"))
-    out = capsys.readouterr().out
-    assert "Marked" in out and "Can't verify" in out and "verification.md" in out
+    V.mark(vault, fid, V.parse_status("cant-verify"), note="No signed copy", by="Jordan Ellis")
     assert V.marks(vault)[fid]["status"] == "unverifiable"
-    cmd_verify_fact(_args(list=True))
-    out = capsys.readouterr().out
-    assert "0 of 2 facts verified" in out and fid in out and "No signed copy" in out
-    with pytest.raises(SystemExit, match="Unknown status"):
-        cmd_verify_fact(_args(id=fid, status="maybe"))
-    with pytest.raises(SystemExit, match="No current fact"):
-        cmd_verify_fact(_args(id=f"fact:1:{SHA[:12]}:0000000000", status="verified"))
-    with pytest.raises(SystemExit, match="--status is required"):
-        cmd_verify_fact(_args(id=fid))
-    cmd_verify_fact(_args(id=fid, status="clear"))
+    assert (vault / "verification.md").exists()
+    assert V.summary(vault)["verified"] == 0
+    with pytest.raises(ValueError, match="Unknown status"):
+        V.parse_status("maybe")
+    with pytest.raises(LookupError, match="No current fact"):
+        V.mark(vault, f"fact:1:{SHA[:12]}:0000000000", "verified")
+    V.mark(vault, fid, V.parse_status("clear"))
     assert V.marks(vault) == {}
 
 
-def test_verify_fact_is_a_hidden_maintenance_command():
-    from watchdog import cli
-    from watchdog.cmd import groups
-    assert "verify-fact" in [c for c, _ in groups.MAINTENANCE]
-    assert "verify-fact" in cli._subparsers(cli.build_parser())
-
-
 def test_sessions_are_not_pre_authorized_to_mark_facts():
-    from watchdog.cmd.base import _VAULT_PERMISSIONS
-    assert not any("verify-fact" in p for p in _VAULT_PERMISSIONS)
+    from watchdog.vault import SESSION_PERMISSIONS
+    assert not any("verify" in p.lower() for p in SESSION_PERMISSIONS)
 
-
-# ── RPC and export ────────────────────────────────────────────────────────────────────
 
 def test_rpc_mark_and_facts(rich_vault, wdg_home):
     v = str(rich_vault)
@@ -272,18 +251,19 @@ def test_rpc_mark_errors(rich_vault, wdg_home):
 
 
 def test_export_writes_facts_with_passages_and_marks(rich_vault, wdg_home, monkeypatch, capsys):
-    from watchdog.ops.export import cmd_export
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.export import export
     v = str(rich_vault)
     fid = call("vault.document", vault=v, sha=SHA1)["facts"][0]["id"]
     call("verify.mark", vault=v, id=fid, status="verified", note="ok")
-    monkeypatch.setattr("watchdog.ops.export._resolve_vault", lambda p: ("rich", {"name": "Rich"}, rich_vault))
     out = rich_vault / "out"
-    cmd_export(argparse.Namespace(project=None, output=str(out), format="csv"))
+    rep = CollectingReporter()
+    export(rep, rich_vault, format="csv", output=str(out))
     rows = list(csv.DictReader((out / "facts.csv").open(encoding="utf-8")))
     marked = [r for r in rows if r["fact_id"] == fid]
     assert marked and marked[0]["status"] == "Verified" and marked[0]["note"] == "ok"
     assert all(r["status"] == "" for r in rows if r["fact_id"] != fid)
-    assert "facts.csv" in capsys.readouterr().out
+    assert "facts.csv" in rep.text
 
 
 def test_settings_offer_your_name_with_a_neutral_default(wdg_home):

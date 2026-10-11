@@ -1,7 +1,5 @@
-import argparse
 import csv
 import json
-import re
 from pathlib import Path
 
 import pytest
@@ -11,12 +9,9 @@ from watchdog.ops.export import (
     _forward_edges,
     _write_csv,
     _write_cypher,
-    cmd_export,
+    export,
 )
-
-
-def _strip_ansi(s: str) -> str:
-    return re.sub(r"\x1b\[[0-9;]*m", "", s)
+from watchdog.ops import CollectingReporter
 
 
 def _entities():
@@ -127,7 +122,7 @@ def test_write_cypher_escapes_quotes(tmp_path):
     assert r"n.name = 'O\'Brien'" in path.read_text(encoding="utf-8")
 
 
-# ── cmd_export integration ──────────────────────────────────────────────────────
+# ── the export operation ──────────────────────────────────────────────────────
 
 def _vault_with_entities(tmp_path, entities) -> Path:
     vault = tmp_path / "vault"
@@ -137,45 +132,45 @@ def _vault_with_entities(tmp_path, entities) -> Path:
     return vault
 
 
-def _args(**kw):
-    return argparse.Namespace(**{"project": None, "output": None, "format": "csv", **kw})
-
-
-def test_cmd_export_writes_files(tmp_path, monkeypatch, capsys):
+def test_export_writes_files(tmp_path):
     vault = _vault_with_entities(tmp_path, _entities())
-    monkeypatch.chdir(vault)
     out = tmp_path / "out"
-    cmd_export(_args(output=str(out)))
+    rep = CollectingReporter()
+    result = export(rep, vault, output=str(out))
 
     assert (out / "nodes.csv").exists()
     assert (out / "relationships.csv").exists()
-    printed = _strip_ansi(capsys.readouterr().out)
-    assert "2 nodes" in printed and "1 relationship" in printed
-    assert "Skipped 1 relationship" in printed
+    assert result["entities"] == 2 and result["relationships"] == 1
+    assert "2 entities and 1 relationships" in rep.text
+    assert "Skipped 1 relationship" in rep.text
 
 
-def test_cmd_export_cypher_format(tmp_path, monkeypatch):
+def test_export_defaults_to_a_folder_inside_the_investigation(tmp_path):
     vault = _vault_with_entities(tmp_path, _entities())
-    monkeypatch.chdir(vault)
+    result = export(CollectingReporter(), vault)
+    assert Path(result["output"]) == vault / "vault-export"
+    assert (vault / "vault-export" / "nodes.csv").exists()
+
+
+def test_export_cypher_format(tmp_path):
+    vault = _vault_with_entities(tmp_path, _entities())
     out = tmp_path / "out"
-    cmd_export(_args(output=str(out), format="cypher"))
+    export(CollectingReporter(), vault, output=str(out), format="cypher")
     assert (out / "graph.cypher").exists()
     assert not (out / "nodes.csv").exists()
 
 
-def test_cmd_export_empty_registry_exits(tmp_path, monkeypatch):
+def test_export_empty_registry_exits(tmp_path):
     vault = _vault_with_entities(tmp_path, {})
-    monkeypatch.chdir(vault)
     with pytest.raises(SystemExit):
-        cmd_export(_args(output=str(tmp_path / "out")))
+        export(CollectingReporter(), vault, output=str(tmp_path / "out"))
 
 
-def test_cmd_export_missing_registry_exits(tmp_path, monkeypatch):
+def test_export_missing_registry_exits(tmp_path):
     vault = tmp_path / "vault"
-    (vault / ".watchdog").mkdir(parents=True)
-    monkeypatch.chdir(vault)
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
     with pytest.raises(SystemExit):
-        cmd_export(_args(output=str(tmp_path / "out")))
+        export(CollectingReporter(), vault, output=str(tmp_path / "out"))
 
 
 def test_export_carries_canonical_type_and_original_wording(tmp_path):
@@ -205,7 +200,7 @@ def test_export_carries_canonical_type_and_original_wording(tmp_path):
     assert "MERGE (a)-[r:`PARTNER_AT` {wording: 'partner at'}]->(b)" in text
 
 
-def test_cmd_export_reads_the_relationship_log(tmp_path, monkeypatch):
+def test_export_reads_the_relationship_log(tmp_path):
     from watchdog.pipeline import relationships
     vault = tmp_path / "v"
     reg = vault / ".watchdog" / "registry"
@@ -225,9 +220,7 @@ def test_cmd_export_reads_the_relationship_log(tmp_path, monkeypatch):
         "schema_version": 1, "evaluated": {},
         "groups": [{"id": "rel:x", "from": "ann", "to": "firm", "keys": ["counsel with", "lawyer at"],
                     "canonical": "lawyer at", "status": "active", "decided_by": "model"}]}))
-    import watchdog.ops.export as export
-    monkeypatch.setattr(export, "_resolve_vault", lambda p: ("v", {"name": "V"}, vault))
     out = tmp_path / "out"
-    export.cmd_export(argparse.Namespace(project=None, output=str(out), format="csv"))
+    export(CollectingReporter(), vault, output=str(out))
     rels = list(csv.reader((out / "relationships.csv").open(encoding="utf-8")))[1:]
     assert sorted((r[2], r[3]) for r in rels) == [("lawyer at", "Counsel with"), ("lawyer at", "lawyer at")]

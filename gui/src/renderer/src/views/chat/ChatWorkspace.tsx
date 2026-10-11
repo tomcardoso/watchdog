@@ -192,7 +192,7 @@ export default function ChatWorkspace(p: Props) {
           buf.current = []
           const mode = startMode ?? p.mode
           // A plain first question goes in as the prompt, which the server wraps for the query
-          // skill as `watchdog ask` does. A prompt that is already a slash command is sent as a
+          // skill. A prompt that is already a slash command is sent as a
           // message once the session is open, so it is never wrapped.
           const asPrompt = !!t && !t.startsWith('/') && mode !== 'context'
           const r = await call('chat.start', { vault, mode, model: MODEL_ARG[model], prompt: asPrompt ? t : undefined })

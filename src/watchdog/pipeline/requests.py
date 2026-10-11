@@ -13,7 +13,7 @@ Ledger at ``.watchdog/registry/requests.json``::
 
 Entries are keyed on the normalized ``what`` text, so identical wording converges; paraphrases
 are folded by the finalize-time dedup call. Resolution is manual (in the app's Review, or
-``watchdog resolve``). ``write_requests`` renders open entries to ``requests.md``."""
+`marking an item handled in Review`). ``write_requests`` renders open entries to ``requests.md``."""
 
 import datetime
 import json

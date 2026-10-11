@@ -9,7 +9,7 @@ appends the schema; these builders supply the task-specific instructions + data 
 
 The prompt templates are deliberately **separate** from the record skills in
 ``watchdog/skills/records/`` — ``skills_catalog`` never scans this directory, so editing a
-prompt here does not touch the classifier index or ``watchdog show-skills``.
+prompt here does not touch the classifier index or `the skills list`.
 """
 
 import importlib.resources

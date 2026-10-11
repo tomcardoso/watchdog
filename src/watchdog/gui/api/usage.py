@@ -1,9 +1,9 @@
 """`usage.*` — per-run token, cost and latency records (`.watchdog/registry/usage/usage-<ts>.json`),
 and each Ask Claude or Web research session's (`usage/sessions/`, D296), listed beside them.
 
-The grouping, totals and notes come from `cmd/usage`'s own helpers, so a run reads the same here
-as in `watchdog usage`. Records written by older versions can be missing fields; every call is
-normalised before it is summed rather than failing the screen.
+The grouping, totals and notes come from `watchdog.usage`. A call record can lack a field (a
+backend that reports no cache tokens, a call that failed before any usage came back); every call
+is normalised before it is summed rather than failing the screen.
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ def _calls(path: Path) -> list[dict]:
 
 
 def _corpus(vault: Path) -> dict | None:
-    from watchdog.cmd.usage import _corpus_pages
-    found = _corpus_pages(vault)
+    from watchdog.usage import corpus_pages
+    found = corpus_pages(vault)
     return {"documents": found[1], "pages": found[0]} if found else None
 
 
@@ -57,7 +57,7 @@ def _kind(path: Path) -> dict:
 
 @method("usage.runs")
 def runs(vault: str) -> dict:
-    from watchdog.cmd.usage import _STAGE, _run_backends, _run_totals, _subscription_note, cost_by_key
+    from watchdog.usage import STAGE, run_backends, run_totals, subscription_note, cost_by_key
     from watchdog.pipeline.orchestrate import usage_files
 
     from watchdog.pipeline import session_usage
@@ -66,17 +66,17 @@ def runs(vault: str) -> dict:
     rows = []
     for f in usage_files(v) + session_usage.files(v):
         calls = _calls(f)
-        t = _run_totals(calls)
+        t = run_totals(calls)
         stages: dict[str, float] = {}
         for c in calls:
-            stage = _STAGE.get(c["task"], c["task"])
+            stage = STAGE.get(c["task"], c["task"])
             stages[stage] = stages.get(stage, 0.0) + c["cost_usd"]
         rows.append({
             "ts": _ts(f), "file": f.name, "calls": len(calls),
             "input_tokens": t["input_tokens"], "output_tokens": t["output_tokens"],
             "cache_read_tokens": t["cache_read_tokens"], "cache_write_tokens": t["cache_write_tokens"],
             "cost_usd": t["cost_usd"], "latency_s": t["latency_s"],
-            "backends": _run_backends(calls), "subscription": _subscription_note(calls) is not None,
+            "backends": run_backends(calls), "subscription": subscription_note(calls) is not None,
             "stages": stages, "by_key": cost_by_key(calls), **_kind(f),
         })
     rows.sort(key=lambda r: r["ts"], reverse=True)
@@ -84,8 +84,8 @@ def runs(vault: str) -> dict:
 
 
 def _call_row(c: dict) -> dict:
-    from watchdog.cmd.usage import _pages_in_detail
-    pages = _pages_in_detail(c.get("detail"))
+    from watchdog.usage import pages_in_detail
+    pages = pages_in_detail(c.get("detail"))
     return {
         "task": c["task"], "filename": c.get("filename"), "detail": c.get("detail"),
         "model": c.get("model"), "backend": c.get("backend"), "auth_mode": c.get("auth_mode"),
@@ -113,10 +113,10 @@ def _totals(calls: list[dict]) -> dict:
 
 @method("usage.run")
 def run(vault: str, ts: str | None = None) -> dict:
-    """One run's breakdown by stage (latest when `ts` is omitted), as `watchdog usage` prints it."""
-    from watchdog.cmd.usage import (
-        _STAGE, _STAGE_ORDER, _batch_lifecycle_note, _peak_concurrency, _stage_backends,
-        _stage_models, _subscription_note, _wall_span, cost_by_key,
+    """One run's breakdown by stage (latest when `ts` is omitted), as Usage prints it."""
+    from watchdog.usage import (
+        STAGE, STAGE_ORDER, batch_lifecycle_note, peak_concurrency, stage_backends,
+        stage_models, subscription_note, wall_span, cost_by_key,
     )
     from watchdog.pipeline.orchestrate import usage_files
 
@@ -145,8 +145,8 @@ def run(vault: str, ts: str | None = None) -> dict:
     calls = _calls(chosen)
     by_stage: dict[str, list[dict]] = {}
     for c in calls:
-        by_stage.setdefault(_STAGE.get(c["task"], c["task"]), []).append(c)
-    ordered = [s for s in _STAGE_ORDER if s in by_stage] + [s for s in by_stage if s not in _STAGE_ORDER]
+        by_stage.setdefault(STAGE.get(c["task"], c["task"]), []).append(c)
+    ordered = [s for s in STAGE_ORDER if s in by_stage] + [s for s in by_stage if s not in STAGE_ORDER]
 
     stages = []
     for stage in ordered:
@@ -154,16 +154,16 @@ def run(vault: str, ts: str | None = None) -> dict:
         batch_call = next((c for c in sc if c.get("batch_id")), None)
         stages.append({
             "stage": stage,
-            "model": _stage_models(sc),
-            "backend": _stage_backends(sc),
+            "model": stage_models(sc),
+            "backend": stage_backends(sc),
             "calls": [_call_row(c) for c in sorted(sc, key=lambda c: -c["cost_usd"])],
             "totals": _totals(sc),
-            "wall_seconds": _wall_span(sc),
-            "peak_concurrency": _peak_concurrency(sc) if len(sc) > 1 else 1,
-            "batch_note": _batch_lifecycle_note(batch_call) if batch_call else None,
+            "wall_seconds": wall_span(sc),
+            "peak_concurrency": peak_concurrency(sc) if len(sc) > 1 else 1,
+            "batch_note": batch_lifecycle_note(batch_call) if batch_call else None,
         })
 
-    totals = {**_totals(calls), "wall_seconds": _wall_span(calls)}
+    totals = {**_totals(calls), "wall_seconds": wall_span(calls)}
     corpus = _corpus(v)
     pages = corpus["pages"] if corpus else 0
     return {
@@ -171,7 +171,7 @@ def run(vault: str, ts: str | None = None) -> dict:
         **_kind(chosen),
         "stages": stages,
         "totals": totals,
-        "subscription_note": _subscription_note(calls),
+        "subscription_note": subscription_note(calls),
         "by_key": cost_by_key(calls),
         "corpus": corpus,
         "cost_per_page": (totals["cost_usd"] / pages) if pages else None,

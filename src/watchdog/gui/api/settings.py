@@ -1,10 +1,8 @@
 """`settings.*`, `auth.*`, `skills.*`, `setup.check` — configuration, credentials and first-run
 checks.
 
-Settings and credentials are written the way the CLI writes them: `settings.set` runs the CLI's
-own `_coerce_value` and `_persist` (so validation messages, side effects and the 0600 file mode
-are identical), and `auth.*` use `cmd/auth`'s `_load_state`/`_save_state` and its concurrency
-auto-tune helpers. Secrets never travel back to the app: a stored key is returned masked only.
+`settings.set` validates through `watchdog.settings.coerce` and writes through `config.save` (the
+file is owner-only), and `auth.*` use `watchdog.auth`'s state and its concurrency auto-tune. Secrets never travel back to the app: a stored key is returned masked only.
 
 Under the app, the methods that take a key (`auth.setAnthropicMode`, `auth.setKey`, `auth.addKey`)
 also receive `key_enc`, the key encrypted by the app's main process; only that blob is written to
@@ -16,11 +14,11 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from watchdog.gui.rpc import RpcError, method
-from watchdog.gui.vaultio import strip_ansi
 
 _EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 _MODEL_KEYS = {"classifier_model", "extractor_model", "finalizer_model",
@@ -49,42 +47,37 @@ def _help(meta: dict) -> str:
 
 
 def _read_config() -> dict:
-    from watchdog.cmd import setup as setup_cmd
+    from watchdog import config
     from watchdog.pipeline.json_io import _read_json
-    path = setup_cmd.CONFIG_FILE
+    path = config.path()
     if not path.exists():
         return {}
     try:
         data = _read_json(path)
     except (OSError, ValueError):
-        raise RpcError("The settings file is damaged. Fix or remove it, or run setup again.",
+        raise RpcError(f"The settings file is damaged. Fix or remove {path}.",
                        code="config_corrupt")
     return data if isinstance(data, dict) else {}
 
 
 def _display(key: str, value, config: dict) -> str:
-    from watchdog.cmd.setup import _display_value
+    from watchdog.settings import display_value
     try:
-        return strip_ansi(_display_value(key, value, config))
+        return display_value(key, value, config)
     except Exception:  # noqa: BLE001 — a display hint must never break the settings screen
         return str(value) if value is not None else "(not set)"
 
 
-def _default_fn(ref: str):
-    from watchdog.cmd.setup import _call_default_fn
-    return _call_default_fn(ref)
-
-
 def _setting(key: str, meta: dict, config: dict) -> dict:
+    from watchdog.settings import default_value
     kind = _kind(key, meta)
     value = config.get(key)
     choices = meta.get("choices") if kind in ("choice", "effort") else None
     return {
         "key": key,
-        "short": app_text(meta.get("short") or ""),
-        "help": app_text(_help(meta)),
-        "default": (meta.get("default") if meta.get("default") is not None or not meta.get("default_fn")
-                    else _default_fn(meta["default_fn"])),
+        "short": meta.get("short") or "",
+        "help": help_text(_help(meta)),
+        "default": default_value(key),
         "current": None if kind == "secret" else value,
         "display": _display(key, value, config),
         "kind": kind,
@@ -93,40 +86,17 @@ def _setting(key: str, meta: dict, config: dict) -> dict:
     }
 
 
-# The settings' help text is shared with the command line, which names commands. The app shows it
-# with those references put in app terms, and with sentences that only make sense in a terminal
-# (one-run overrides, setup commands) left out.
-_APP_TERMS = [
-    (re.compile(r"`watchdog search`"), "Search"),
-    (re.compile(r"`watchdog research`"), "Web research"),
-    (re.compile(r"`watchdog new`"), "Watchdog"),
-    (re.compile(r"\(see `watchdog settings skills`\)"), "(see Settings → Record skills)"),
-    (re.compile(r"run `watchdog reindex`"), "rebuild the search index under Activity → Maintenance"),
-    (re.compile(r"`watchdog setup`/`watchdog settings auth` set this"), "Watchdog sets this"),
-    (re.compile(r"Pre-downloaded by `watchdog setup`"), "Downloaded during setup"),
-    (re.compile(r"— and restore it to 20"), "— and restores it to 20"),
-    (re.compile(r"Each vault's own usage files, which `watchdog usage` reads,"),
-     "Each investigation's own usage files, which Activity → Usage reads,"),
-]
-_TERMINAL_ONLY = re.compile(r"`?watchdog [a-z-]+|--[a-z]")
-
-
-def app_text(text: str | None) -> str | None:
+def help_text(text: str | None) -> str | None:
+    """A setting's help as prose: the text is hard-wrapped, so wrapped lines are rejoined into
+    paragraphs, keeping column-aligned lines (lists of models) as they are."""
     if not text:
         return text
-    for pattern, repl in _APP_TERMS:
-        text = pattern.sub(repl, text)
-    # The text is hard-wrapped for a terminal: rejoin wrapped prose so a sentence can be judged
-    # whole, keeping column-aligned lines (lists of models) as they are.
     out: list[str] = []
     prose: list[str] = []
 
     def flush():
         if prose:
-            sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z`(])", " ".join(prose))
-            kept = " ".join(x for x in sentences if not _TERMINAL_ONLY.search(x))
-            if kept:
-                out.append(kept)
+            out.append(" ".join(prose))
             prose.clear()
 
     for line in text.split("\n"):
@@ -144,7 +114,7 @@ def app_text(text: str | None) -> str | None:
 
 @method("settings.schema")
 def schema() -> dict:
-    from watchdog.cmd.setup import _CONFIGURE_KEYS, _CONFIGURE_SECTIONS
+    from watchdog.settings import SECTIONS as _CONFIGURE_SECTIONS, SETTINGS as _CONFIGURE_KEYS
 
     config = _read_config()
     shown: set[str] = set()
@@ -162,28 +132,29 @@ def schema() -> dict:
 
 @method("settings.set")
 def set_(key: str, value: str | None) -> dict:
-    """Validate and store one setting exactly as `watchdog settings <key> <value>` does. An empty
-    value clears a free-text or model setting back to its default."""
-    from watchdog.cmd import setup as setup_cmd
+    """Validate and store one setting. An empty value clears a free-text or model setting back to
+    its default."""
+    from watchdog import config as config_file
+    from watchdog import settings
 
-    if key not in setup_cmd._CONFIGURE_KEYS:
+    if key not in settings.SETTINGS:
         raise RpcError(f"“{key}” isn't a setting.", code="unknown_key")
-    meta = setup_cmd._CONFIGURE_KEYS[key]
+    meta = settings.SETTINGS[key]
     config = _read_config()
     text = "" if value is None else (value if isinstance(value, str) else str(value))
 
     if text.strip() == "" and meta.get("type") in ("string", "str"):
         config.pop(key, None)
-        setup_cmd._persist(config)
+        config_file.save(config)
         return {"key": key, "value": None, "display": _display(key, None, config)}
     if text.strip() == "" and meta.get("type") == "path":
         raise RpcError(f"“{key}” needs a folder.", code="bad_value")
 
     try:
-        shown = setup_cmd._coerce_value(config, key, text)
-    except setup_cmd._ConfigError as e:
+        shown = settings.coerce(config, key, text)
+    except settings.SettingError as e:
         raise RpcError(str(e), code="bad_value")
-    setup_cmd._persist(config)
+    config_file.save(config)
     secret = bool(meta.get("secret"))
     return {"key": key, "value": None if secret else config.get(key),
             "display": _display(key, config.get(key), config) if secret else shown}
@@ -235,10 +206,10 @@ def _claude_reason(claude: dict) -> str | None:
 
 
 def _auth_status() -> dict:
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     d = auth_cmd.status_data()
-    state = auth_cmd._load_state()
+    state = auth_cmd.load_state()
     claude = d["claude"]
     mode = claude["mode"]
     if mode == "subscription":
@@ -246,7 +217,7 @@ def _auth_status() -> dict:
     else:
         logged_in = bool(claude["key_masked"])
     providers = []
-    for p, meta in auth_cmd._PROVIDERS.items():
+    for p, meta in auth_cmd.PROVIDERS.items():
         providers.append({
             "provider": p, "label": meta["label"], "env": meta["env"],
             "requires_key": auth_cmd.provider_requires_key(p),
@@ -272,7 +243,7 @@ def _auth_status() -> dict:
         # Every stored key per provider, labelled and masked (#690); `users` names the registered
         # investigations that chose it, for the warning before a delete.
         "key_sets": {p: [{**k, "users": auth_cmd.key_users(p, k["id"])} for k in auth_cmd.list_keys(p, state)]
-                     for p in auth_cmd._PROVIDERS},
+                     for p in auth_cmd.PROVIDERS},
         "storage": _storage(state),
     }
 
@@ -283,10 +254,10 @@ def _storage(state: dict) -> dict:
     "plaintext" (no usable secure storage: a 0600 file) or "unknown" (no app said: a backend run
     outside the app). `locked` counts stored keys this process can't read."""
     from watchdog import keystore
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     st = keystore.status()
-    items = [i for p in auth_cmd._PROVIDERS for i in auth_cmd._key_items(state, p)[0]]
+    items = [i for p in auth_cmd.PROVIDERS for i in auth_cmd.key_items(state, p)[0]]
     return {"store": st["store"] or "unknown", "backend": st["backend"], "reason": st["reason"],
             "encrypted": sum(1 for i in items if not isinstance(i["stored"], str)),
             "plaintext": sum(1 for i in items if isinstance(i["stored"], str)),
@@ -299,10 +270,10 @@ def auth_status() -> dict:
 
 
 def _check_provider(provider: str) -> dict:
-    from watchdog.cmd.auth import _PROVIDERS
-    if provider not in _PROVIDERS:
+    from watchdog.auth import PROVIDERS
+    if provider not in PROVIDERS:
         raise RpcError(f"“{provider}” isn't a model provider Watchdog knows.", code="bad_params")
-    return _PROVIDERS[provider]
+    return PROVIDERS[provider]
 
 
 def _prefix_warning(meta: dict, key: str) -> str | None:
@@ -314,25 +285,26 @@ def _prefix_warning(meta: dict, key: str) -> str | None:
 
 @method("auth.setAnthropicMode")
 def set_anthropic_mode(mode: str, key: str | None = None, key_enc: dict | None = None) -> dict:
-    """Switch Claude between your subscription login and a metered API key, as `watchdog settings
-    auth` does — including the concurrency tune a subscription needs and an API key undoes."""
-    from watchdog.cmd import auth as auth_cmd
+    """Switch Claude between your subscription login and a metered API key, with the concurrency
+    tune a subscription needs and an API key undoes."""
+    from watchdog import auth as auth_cmd
+    from watchdog import config as config_file
 
     if mode not in ("subscription", "api-key"):
         raise RpcError("mode must be “subscription” or “api-key”.", code="bad_params")
-    meta = auth_cmd._PROVIDERS["anthropic"]
-    state = auth_cmd._load_state()
+    meta = auth_cmd.PROVIDERS["anthropic"]
+    state = auth_cmd.load_state()
     warning = None
     state["mode"] = mode
     if mode == "api-key" and key is not None and key.strip():
         _key_op(lambda: auth_cmd.store_default_key(state, "anthropic", key.strip(), enc=key_enc))
         warning = _prefix_warning(meta, key.strip())
-    auth_cmd._save_state(state)
+    auth_cmd.save_state(state)
     if mode == "subscription":
-        if auth_cmd._ingest_stage_provider(auth_cmd._load_config().get("extractor_model")) == "anthropic":
-            auth_cmd._maybe_tune_concurrency_for_subscription()
+        if auth_cmd.stage_provider(config_file.read().get("extractor_model")) == "anthropic":
+            auth_cmd.tune_concurrency_for_subscription()
     else:
-        auth_cmd._maybe_restore_concurrency_from_subscription()
+        auth_cmd.restore_concurrency_from_subscription()
     return {**_auth_status(), "warning": warning}
 
 
@@ -340,7 +312,7 @@ def set_anthropic_mode(mode: str, key: str | None = None, key_enc: dict | None =
 def set_key(provider: str, key: str, id: str | None = None, key_enc: dict | None = None) -> dict:
     """Store a provider's key. Without `id`, the default key's secret is replaced (a provider with
     none gets one named Default); with `id`, that labelled key's secret is."""
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     meta = _check_provider(provider)
     if not isinstance(key, str) or not key.strip():
@@ -348,9 +320,9 @@ def set_key(provider: str, key: str, id: str | None = None, key_enc: dict | None
     if id:
         _key_op(lambda: auth_cmd.replace_key(provider, id, key, enc=key_enc))
     else:
-        state = auth_cmd._load_state()
+        state = auth_cmd.load_state()
         _key_op(lambda: auth_cmd.store_default_key(state, provider, key.strip(), enc=key_enc))
-        auth_cmd._save_state(state)
+        auth_cmd.save_state(state)
     return {**_auth_status(), "warning": _prefix_warning(meta, key.strip())}
 
 
@@ -364,15 +336,15 @@ def _key_op(fn):
 @method("auth.deleteKey")
 def delete_key(provider: str, id: str | None = None) -> dict:
     """Delete one labelled key (`id`), or, without `id`, every stored key for the provider."""
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     _check_provider(provider)
     if id:
         _key_op(lambda: auth_cmd.delete_key(provider, id))
     else:
-        state = auth_cmd._load_state()
+        state = auth_cmd.load_state()
         if state["keys"].pop(provider, None) is not None:
-            auth_cmd._save_state(state)
+            auth_cmd.save_state(state)
     return {**_auth_status(), "warning": None}
 
 
@@ -380,7 +352,7 @@ def delete_key(provider: str, id: str | None = None) -> dict:
 def add_key(provider: str, label: str, key: str, make_default: bool = False,
             key_enc: dict | None = None) -> dict:
     """Add another labelled key for a provider (#690). Its first key becomes the default."""
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     meta = _check_provider(provider)
     if not isinstance(key, str) or not key.strip():
@@ -391,7 +363,7 @@ def add_key(provider: str, label: str, key: str, make_default: bool = False,
 
 @method("auth.renameKey")
 def rename_key(provider: str, id: str, label: str) -> dict:
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     _check_provider(provider)
     _key_op(lambda: auth_cmd.rename_key(provider, id, label))
@@ -400,7 +372,7 @@ def rename_key(provider: str, id: str, label: str) -> dict:
 
 @method("auth.setDefaultKey")
 def set_default_key(provider: str, id: str) -> dict:
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
 
     _check_provider(provider)
     _key_op(lambda: auth_cmd.set_default_key(provider, id))
@@ -410,16 +382,16 @@ def set_default_key(provider: str, id: str) -> dict:
 # ── the investigation's choice of key (D290) ─────────────────────────────────────
 
 def _investigation_keys(v: Path) -> dict:
-    from watchdog.cmd import auth as auth_cmd
-    from watchdog.cmd.base import load_config
+    from watchdog import auth as auth_cmd
+    from watchdog import config as config_file
 
-    state = auth_cmd._load_state()
+    state = auth_cmd.load_state()
     choices = auth_cmd.investigation_keys(v)
-    config = load_config()
-    used = {auth_cmd._ingest_stage_provider(config.get(k) or d) for k, d in auth_cmd._INGEST_STAGES}
+    config = config_file.load()
+    used = {auth_cmd.stage_provider(config.get(k) or d) for k, d in auth_cmd.INGEST_STAGES}
     used.add("anthropic")   # Ask Claude and Research always run on Claude
     rows = []
-    for p, meta in auth_cmd._PROVIDERS.items():
+    for p, meta in auth_cmd.PROVIDERS.items():
         keys = auth_cmd.list_keys(p, state)
         summary = auth_cmd.billing_summary(v, [p])[0]
         choice = choices.get(p)
@@ -447,7 +419,7 @@ def investigation_keys(vault: str) -> dict:
 def choose_key(vault: str, provider: str, id: str | None = None) -> dict:
     """Set which labelled key the investigation bills for `provider`; `id` null returns it to the
     default. Writes `.watchdog/settings.json` in the investigation's folder (D290)."""
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import auth as auth_cmd
     from watchdog.gui.vaultio import require_vault
 
     _check_provider(provider)
@@ -459,14 +431,14 @@ def choose_key(vault: str, provider: str, id: str | None = None) -> dict:
 @method("auth.setBaseUrl")
 def set_base_url(provider: str, url: str) -> dict:
     """Set (or, with an empty `url`, remove) the endpoint of a provider that takes one."""
-    from watchdog.cmd import auth as auth_cmd
+    from watchdog import config as config_file
 
     meta = _check_provider(provider)
     base_key = meta.get("base_url_key")
     if not base_key:
         raise RpcError(f"{provider} doesn't take a base URL.", code="bad_params")
     text = (url or "").strip() if isinstance(url, str) else ""
-    config = auth_cmd._load_config()
+    config = config_file.read()
     if text:
         parts = urlsplit(text)
         if parts.scheme not in ("http", "https") or not parts.netloc:
@@ -474,7 +446,7 @@ def set_base_url(provider: str, url: str) -> dict:
         config[base_key] = text.rstrip("/")
     else:
         config.pop(base_key, None)
-    auth_cmd._save_config(config)
+    config_file.save(config)
     return {**_auth_status(), "warning": None}
 
 
@@ -523,28 +495,30 @@ def _gliner_cached() -> bool:
     return (cache / "models--urchade--gliner_multi-v2.1").is_dir()
 
 
+# Programs Watchdog uses when they are installed: (command, label). None blocks the app: qpdf and
+# Ghostscript are only fallbacks for damaged PDFs, Tesseract is one of several OCR engines (the
+# engine ships its own), and Claude Code comes bundled with the engine. Settings explains each.
+_HELPERS = [("qpdf", "qpdf"), ("gs", "ghostscript")]
+if sys.platform != "darwin":
+    _HELPERS.append(("tesseract", "Tesseract OCR"))
+_HELPERS.append(("claude", "Claude Code"))
+
+
 @method("setup.check")
 def setup_check() -> dict:
-    from watchdog import setup_cmd
-    from watchdog.cmd.base import CONFIG_FILE, load_config
+    from watchdog import config
 
-    deps = []
-    for binary, label, hint in setup_cmd._DEPS:
-        ok = shutil.which(binary) is not None
-        # None of these blocks the app: qpdf and Ghostscript are only fallbacks for damaged PDFs,
-        # Tesseract is one of several OCR engines (the engine ships a pip-installable one), and
-        # Claude Code comes bundled with the engine.
-        deps.append({"label": label, "ok": ok, "hint": None if ok else hint, "required": False})
+    deps = [{"label": label, "ok": shutil.which(binary) is not None, "hint": None, "required": False}
+            for binary, label in _HELPERS]
     try:
         from watchdog.pipeline import capture
         playwright = bool(capture.render_available())
     except Exception:  # noqa: BLE001
         playwright = False
-    config = load_config()
     return {
         "deps": deps,
         "playwright": playwright,
         "gliner_model": _gliner_cached(),
-        "projects_dir": config.get("projects_dir") or None,
-        "config_exists": CONFIG_FILE.exists(),
+        "projects_dir": config.load().get("projects_dir") or None,
+        "config_exists": config.path().exists(),
     }

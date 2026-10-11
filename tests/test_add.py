@@ -1,24 +1,13 @@
-"""`watchdog add`, auto-approve (D263), and the bare-`watchdog` home screen (D251)."""
+"""Adding documents (`ops.ingest.add_documents`, D251), auto-approve (D263), and the Overview's
+summary of what is waiting."""
 
-import watchdog.cmd.ingest as cmd_ing
-import argparse
 import json
-import re
 
 import pytest
 
-import watchdog.cmd.home as home
 import watchdog.ops.ingest as ing
-
-_ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
-
-def _plain(s: str) -> str:
-    return _ANSI.sub("", s)
-
-
-def _no_prompt(*a, **k):
-    raise AssertionError("prompted when it should not have")
+from watchdog import overview
+from watchdog.ops import CollectingReporter, using
 
 
 # ── auto-approve gate (D263) ─────────────────────────────────────────────────
@@ -31,11 +20,11 @@ def test_auto_approve_is_on_only_when_explicitly_true(config, expected):
     assert ing._auto_approve_on(config) is expected
 
 
-def test_an_approved_run_goes_ahead_without_asking(monkeypatch, capsys):
-    monkeypatch.setattr(ing.interactive, "pick", _no_prompt)
-    assert ing._confirm_public_records(3, gate={"approve": True}, enabled=True) is True
-    out = _plain(capsys.readouterr().out)
-    assert "Auto-approved" in out and "subscription" in out and "3 documents" in out
+def test_an_approved_run_goes_ahead_without_the_acknowledgement():
+    rep = CollectingReporter()
+    with using(rep):
+        assert ing._confirm_public_records(3, gate={"approve": True}, enabled=True) is True
+    assert "Auto-approved" in rep.text and "subscription" in rep.text and "3 documents" in rep.text
 
 
 @pytest.mark.parametrize("gate, reason", [
@@ -44,43 +33,54 @@ def test_an_approved_run_goes_ahead_without_asking(monkeypatch, capsys):
     # a raw cost_estimate dict can never approve: its keys are not the gate's
     ({"cost_high": 0.01, "subscription": True}, "could not be checked"),
 ])
-def test_an_unapproved_run_says_why_and_asks(monkeypatch, capsys, gate, reason):
-    asked = []
-    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 0)
-    assert ing._confirm_public_records(2, gate=gate, enabled=True) is True
-    assert asked
-    out = _plain(capsys.readouterr().out)
-    assert reason in out and "Public records only" in out
+def test_an_unapproved_run_says_why_and_sends_nothing_without_the_acknowledgement(gate, reason):
+    rep = CollectingReporter()
+    with using(rep):
+        assert ing._confirm_public_records(2, gate=gate, enabled=True) is False
+    assert reason in rep.text and "Nothing was sent" in rep.text
 
 
-def test_with_auto_approve_off_an_approving_verdict_still_asks(monkeypatch, capsys):
-    asked = []
-    monkeypatch.setattr(ing.interactive, "pick", lambda *a, **k: asked.append(1) or 1)
-    assert ing._confirm_public_records(2, gate={"approve": True}, enabled=False) is False
-    assert asked
-    assert "auto-approve" not in _plain(capsys.readouterr().out).lower()
+def test_an_unapproved_run_goes_ahead_once_acknowledged():
+    rep = CollectingReporter()
+    with using(rep):
+        assert ing._confirm_public_records(2, gate={"blocker": "x"}, enabled=True,
+                                           skip_warning=True) is True
+    assert "Sending 2 documents" in rep.text
 
 
-# ── watchdog add ─────────────────────────────────────────────────────────────
+def test_with_auto_approve_off_an_approving_verdict_still_needs_the_acknowledgement():
+    rep = CollectingReporter()
+    with using(rep):
+        assert ing._confirm_public_records(2, gate={"approve": True}, enabled=False) is False
+    assert "auto-approve" not in rep.text.lower()
+
+
+def test_a_run_that_sends_nothing_passes_the_gate_silently():
+    rep = CollectingReporter()
+    with using(rep):
+        assert ing._confirm_public_records(0) is True
+    assert rep.lines == []
+
+
+# ── adding documents ─────────────────────────────────────────────────────────
 
 @pytest.fixture
 def vault(tmp_path, monkeypatch):
     v = tmp_path / "probe"
     (v / ".watchdog" / "queue").mkdir(parents=True)
     (v / "incoming").mkdir()
-    monkeypatch.chdir(v)
     monkeypatch.setattr("watchdog.pipeline.research.pending_count", lambda vault: 0)
     return v
 
 
 def _spy_add_stages(monkeypatch):
     calls = []
-    monkeypatch.setattr(ing, "_run_preprocess", lambda vault, **k: calls.append("chew"))
-    monkeypatch.setattr(ing, "_ingest", lambda a, _v, **k: calls.append(("ingest", a.command)) or {})
+    monkeypatch.setattr(ing, "preprocess", lambda vault, *a, **k: calls.append("chew"))
+    monkeypatch.setattr(ing, "process", lambda _v, opts, *, finalize: calls.append(("process", finalize)) or {})
     return calls
 
 
-def test_add_copies_files_and_folders_then_runs_the_pipeline(vault, tmp_path, monkeypatch, capsys):
+def test_add_copies_files_and_folders_then_runs_the_pipeline(vault, tmp_path, monkeypatch):
     calls = _spy_add_stages(monkeypatch)
     src = tmp_path / "downloads"
     (src / "sub").mkdir(parents=True)
@@ -90,19 +90,21 @@ def test_add_copies_files_and_folders_then_runs_the_pipeline(vault, tmp_path, mo
     single = tmp_path / "c.txt"
     single.write_text("one")
 
-    cmd_ing.cmd_add(argparse.Namespace(paths=[str(src), str(single)], retry=False))
+    rep = CollectingReporter()
+    with using(rep):
+        ing.add_documents(vault, [str(src), str(single)])
 
     incoming = sorted(p.name for p in (vault / "incoming").iterdir())
     assert incoming == ["a.pdf", "a.pdf.yml", "b.txt", "c.txt"]
     assert (src / "a.pdf").exists() and single.exists()          # originals stay put
-    assert calls == ["chew", ("ingest", "add")]
-    assert "Copied 3 files" in _plain(capsys.readouterr().out)
+    assert calls == ["chew", ("process", True)]
+    assert "Copied 3 files" in rep.text
 
 
-def test_add_with_nothing_incoming_skips_chew(vault, monkeypatch):
+def test_add_with_nothing_incoming_skips_preprocessing(vault, monkeypatch):
     calls = _spy_add_stages(monkeypatch)
-    cmd_ing.cmd_add(argparse.Namespace(paths=[], retry=False))
-    assert calls == [("ingest", "add")]
+    ing.add_documents(vault, [])
+    assert calls == [("process", True)]
 
 
 def test_add_retry_requeues_failed_documents_first(vault, monkeypatch):
@@ -110,31 +112,29 @@ def test_add_retry_requeues_failed_documents_first(vault, monkeypatch):
     failed = vault / ".watchdog" / "queue" / "_failed"
     failed.mkdir()
     (failed / f"{'a' * 64}.json").write_text("{}")
-    cmd_ing.cmd_add(argparse.Namespace(paths=[], retry=True))
+    ing.add_documents(vault, [], retry=True)
     assert (vault / ".watchdog" / "queue" / f"{'a' * 64}.json").exists()
 
 
 def test_add_missing_path_exits(vault):
     with pytest.raises(SystemExit, match="not found"):
-        cmd_ing.cmd_add(argparse.Namespace(paths=["/no/such/file.pdf"], retry=False))
+        ing.add_documents(vault, ["/no/such/file.pdf"])
 
 
-def test_add_outside_a_vault_exits(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(SystemExit, match="not inside a Watchdog project"):
-        cmd_ing.cmd_add(argparse.Namespace(paths=[], retry=False))
+def test_add_operation_outside_a_vault_exits(tmp_path):
+    with pytest.raises(SystemExit, match="not a Watchdog investigation"):
+        ing.add(CollectingReporter(), tmp_path)
 
 
-# ── home screen ──────────────────────────────────────────────────────────────
+# ── the Overview's summary ───────────────────────────────────────────────────
 
-def test_home_on_a_fresh_vault_has_nothing_waiting(vault):
-    s = home.summary(vault)
-    assert not home.has_work(s)
-    out = _plain(home.render("Probe", s))
-    assert "No briefing yet" in out and "Waiting on you" not in out
+def test_overview_of_a_fresh_vault_has_nothing_waiting(vault):
+    s = overview.summary(vault)
+    assert not overview.has_work(s)
+    assert s["briefing"] is None and s["headline"] is None
 
 
-def test_home_reports_briefing_waiting_items_and_work(vault):
+def test_overview_reports_briefing_waiting_items_and_work(vault):
     b = vault / "briefings"
     b.mkdir()
     (b / "2026-10-01-09-00.md").write_text("old")
@@ -142,8 +142,6 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
     (b / "leads-2026-10-03.md").write_text("not an ingest briefing")
     (b / "alerts-2026-10-03.md").write_text(
         "- [ ] **x** <!--wid:alert:abc1234:t1-->\n- [ ] **y** <!--wid:alert:def5678:t2-->\n")
-    # A retired hot.md (D285) is never read: the headline comes from the latest briefing's sidecar.
-    (vault / "hot.md").write_text("# Hot cache\n\n## Investigation status\n\nAn old hot.md line.\n")
     side = vault / ".watchdog" / "briefings"
     side.mkdir(parents=True)
     (side / "2026-10-01-09-00.json").write_text(json.dumps({"status": "An older status."}))
@@ -158,26 +156,9 @@ def test_home_reports_briefing_waiting_items_and_work(vault):
                  "contradictions": ["> [!contradiction] date\n> a vs b"], "appears_in": ["s1"]}}))
     (vault / "incoming" / "new.pdf").write_bytes(b"x")
 
-    s = home.summary(vault)
+    s = overview.summary(vault)
     assert s["briefing"].name == "2026-10-03-16-12.md"
     assert s["headline"] == "Contract went to a new firm [[documents/d#^f-abc|p. 2]]."
     assert (s["contradictions"], s["leads"], s["near_duplicates"], s["alerts"]) == (1, 1, 1, 1)
-    assert home.has_work(s)
-    out = _plain(home.render("Probe", s))
-    assert "old hot.md" not in out and "[[" not in out
-    for text in ("Contract went to a new firm (p. 2).", "contradiction", "open lead",
-                 "possible duplicate document", "watch-list hit", "file in incoming/",
-                 "watchdog add", 'watchdog ask "…"'):
-        assert text in out
-
-
-def test_home_offers_add_only_when_there_is_work(vault, monkeypatch):
-    import sys
-    monkeypatch.setattr(home, "load_projects", lambda: {})
-    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
-    monkeypatch.setattr(home.interactive, "confirm", _no_prompt)
-    assert home.cmd_home(argparse.Namespace()) is None          # nothing waiting: no prompt
-
-    (vault / "incoming" / "new.pdf").write_bytes(b"x")
-    monkeypatch.setattr(home.interactive, "confirm", lambda *a, **k: False)
-    assert home.cmd_home(argparse.Namespace()) is None          # declined
+    assert s["incoming"] == 1
+    assert overview.has_work(s)

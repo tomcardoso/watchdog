@@ -2,7 +2,7 @@
 
 Everything here is a pure function of vault files — no model calls, no writes except
 `write_text_atomic`, which only the narrow, spec-listed mutations use (`vault.saveNotes`,
-`vault.writeFile`). The helpers are deliberately forgiving: a new empty vault, an old vault
+`vault.writeFile`). The helpers are deliberately forgiving: a new empty vault, a document
 without `morgue_path`, a missing extracted JSON or a half-written note all yield empty values
 rather than exceptions, because the app calls these on every navigation.
 
@@ -25,12 +25,12 @@ import yaml
 
 from watchdog.gui.rpc import RpcError
 from watchdog.pipeline.json_io import _read_json_or
-from watchdog.vault_paths import ensure_current_layout_once, is_vault
+from watchdog.vault_paths import is_vault
 
 # ── small text helpers ───────────────────────────────────────────────────────────
 
-# CSI sequences (colours, cursor) and OSC sequences (the OSC 8 terminal hyperlinks `note_link`
-# emits), which the CLI's `_format_*` helpers can contain when colour is on.
+# CSI sequences (colours, cursor) and OSC sequences (hyperlinks), which third-party output can
+# carry.
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)")
 
 
@@ -193,7 +193,6 @@ def require_vault(path: Any) -> Path:
     if not p.is_dir() or not is_vault(p):
         raise RpcError(f"{p} is not a Watchdog investigation folder.", code="not_a_vault")
     require_granted(p)
-    ensure_current_layout_once(p)       # an older vault's folders are renamed on first open (D266)
     return p
 
 
@@ -256,7 +255,7 @@ def read_json(path: Path, default: Any) -> Any:
 
 def registered_projects() -> dict:
     """`projects.json` as a dict; a corrupt or unreadable file reads as empty."""
-    from watchdog.cmd.base import load_projects
+    from watchdog.projects import load as load_projects
     try:
         data = load_projects()
     except SystemExit:
@@ -501,13 +500,8 @@ def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> di
     """The app's `EntityRow` for one `entities.json` record."""
     note_stem = ent.get("note_path")
     synthesis = ent.get("synthesis") if isinstance(ent.get("synthesis"), dict) else None
-    if synthesis is not None or "synthesis" in ent:
-        # The AI-written summary lives in the registry (D280); the note is a view of it.
-        summary_text = (synthesis or {}).get("summary")
-    else:   # a note written before D280
-        parsed = parse_note_file(note_file(vault, note_stem) or Path("/nonexistent"))
-        summary_text = (parsed or {}).get("sections", {}).get("summary") if parsed else None
-    summary = first_paragraph(summary_text)
+    # The AI-written summary lives in the registry (D280); the note is a view of it.
+    summary = first_paragraph((synthesis or {}).get("summary"))
     return {
         "id": eid,
         "name": ent.get("name") or eid,
@@ -557,7 +551,7 @@ def _ndjson(path: Path) -> list[dict]:
 
 def raw_timeline_events(vault: Path, docs: dict) -> list[dict]:
     """Canonical events plus the raw per-document events of committed documents that a failed
-    dedup left behind — the set `timeline.cmd_rebuild_timeline` renders into `timeline.md`."""
+    dedup left behind — the set `timeline.rebuild_timeline` renders into `timeline.md`."""
     td = vault / ".watchdog" / "timeline"
     if not td.is_dir():
         return []

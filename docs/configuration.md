@@ -10,7 +10,7 @@ The tabs are in two groups. **General** holds the pipeline's settings, one tab p
 
 Each field in General shows its name, a one-line description, and a **More** link for the full help. The control saves as you use it: a switch or a menu saves straight away, and a text box shows a **Save** button (or press Enter). A small "Saved" appears when it takes. Below each field the app shows either the current value or "Using the default", and **Reset to default** puts a changed value back.
 
-Each field shows its label and, in small grey type beside it, the setting's stored name (such as `extractor_model`). The stored names are the ones the older command line uses. Everything is stored in one file, `config.json`, in Watchdog's settings folder (`.watchdog/` in your home folder). **Settings → Appearance** shows its exact location.
+Each field shows its label and, in small grey type beside it, the setting's stored name (such as `extractor_model`). Everything is stored in one file, `config.json`, in Watchdog's settings folder (`.watchdog/` in your home folder). **Settings → Appearance** shows its exact location.
 
 ## General settings
 
@@ -252,13 +252,11 @@ Keys are kept in a file in Watchdog's settings folder on your computer, `credent
 - **Windows:** with Windows' data protection for your user account.
 - **Linux:** with a key held in your desktop's keyring (GNOME Keyring or KWallet), when one is running and unlocked.
 
-The rest of the file (each key's name, which key is the default) is not secret and stays readable. The first time Watchdog starts with secure storage available, it encrypts any keys an earlier version stored in plain text, in place. It keeps no unencrypted copy, but a backup or a copy of your home folder made before then may still hold one: if that matters, replace the key with the provider (make a new one and delete the old one), then add the new key here.
+The rest of the file (each key's name, which key is the default) is not secret and stays readable.
 
-Some Linux computers have no keyring Watchdog can use. There, keys stay unencrypted in the private file, and **Provider keys** shows a warning: anyone who can sign in as you, or who has a copy of your home folder, could read them. Installing and unlocking a keyring, then restarting Watchdog, lets it encrypt them.
+Some Linux computers have no keyring Watchdog can use. There, keys stay unencrypted in the private file, and **Provider keys** shows a warning: anyone who can sign in as you, or who has a copy of your home folder, could read them. To have them encrypted, install and unlock a keyring, restart Watchdog, then add the keys again.
 
 A key encrypted on one computer, or under one user account, can't be decrypted on another. If you copy Watchdog's settings folder to a new computer, **Provider keys** marks those keys as unreadable; replace them there. Anything that needs such a key stops before sending anything.
-
-Only the Watchdog app can read encrypted keys. The command line can't; to use it, set the key in an environment variable instead ([Commands](commands.md#watchdog-settings-auth)).
 
 **Use a key made for Watchdog, with a spending limit.** Create a separate key for Watchdog with each provider and give its account or project a monthly limit, so a mistake or a stolen key can't run up an open-ended bill. In Anthropic's Claude Console, set a monthly **spend limit** under Settings → Billing, or put the key in its own **workspace** with its own spend limit. In OpenAI's platform, create a **project** for Watchdog with its own key and set a hard **spend limit** for it; spend alerts only send an email and don't stop anything. Other providers' controls vary; check their billing settings. These names were checked against the providers' documentation in October 2026 and may change.
 
@@ -291,7 +289,7 @@ Lists every record skill, with a filter box. Select one to read it. Your own ski
 
 **Theme** is System (which follows your computer's light or dark setting), Light or Dark.
 
-**Python backend** describes the Watchdog program the app runs behind the scenes: its location, version, how the app found it (its own engine, a separate Watchdog installation, or one you chose), the platform, the settings file and the data folder. **Restart backend** restarts it, and **Choose Python…** points the app at a different Python, which only developers need.
+**Python backend** describes the Watchdog program the app runs behind the scenes: its location, version, how the app found it (its own engine, or one you chose), the platform, the settings file and the data folder. **Restart backend** restarts it, and **Choose Python…** points the app at a different Python, which only developers need.
 
 ### Check vaults
 
@@ -342,7 +340,7 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 | `claude-api:opus` / `claude-agent-sdk:sonnet` | Claude, forcing a specific backend. |
 | `openai:gpt-5-mini` | OpenAI. |
 | `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's current high-volume model, cheaper than GPT-5.6 Luna ($0.10 against $0.20 per million input tokens, $0.50 against $1.20 for output). The benchmark figures below were measured on GPT-5.6 Luna, not this model. |
-| `deepseek:deepseek-flash` | DeepSeek V4.1 Flash, non-thinking (append `-thinking` to enable thinking mode). Rates double during DeepSeek's peak hours; see [Controlling cost](#controlling-cost). DeepSeek has retired the older `deepseek-v4-flash` name and answers it with this model at the same price, so a setup that still names it keeps working and is priced correctly. |
+| `deepseek:deepseek-flash` | DeepSeek V4.1 Flash, non-thinking (append `-thinking` to enable thinking mode). Rates double during DeepSeek's peak hours; see [Controlling cost](#controlling-cost). |
 | `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro, non-thinking (append `-thinking` to enable thinking mode). Same peak-hour pricing as Flash. |
 | `gemini:gemini-3.7-flash` | Gemini 3.7 Flash, stable, 1-million-token context window. |
 | `gemini:gemini-3.5-flash-lite` | Gemini 3.5 Flash-Lite, stable, the cheapest Gemini tier. |

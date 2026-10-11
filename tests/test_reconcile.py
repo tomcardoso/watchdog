@@ -522,7 +522,6 @@ def test_taxonomy_existing_existing_gets_full_merge_entities_surgery(tmp_path, m
     assert list((vault / ".watchdog" / "backups").glob("*-merge-entities"))   # a real backup snapshot
 
     note = (vault / "entities" / "company" / "acme-corp.md").read_text()
-    assert "Filed in Ontario." in note       # the merged record's claim, kept (D280)
     assert "Acme Corp signed a new lease." in note
 
     log = json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())

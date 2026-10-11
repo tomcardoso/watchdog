@@ -9,5 +9,5 @@ def test_settings_help_in_the_app_names_no_terminal_commands():
         for row in section["keys"]:
             for field in ("short", "help"):
                 assert not re.search(r"watchdog [a-z]|--[a-z]", row[field] or ""), (row["key"], field)
-    assert "Activity → Maintenance" in settings_api.app_text("After changing this, run `watchdog reindex` — rebuilt.")
-    assert settings_api.app_text("Keep this. Override for one run with `watchdog dig --x N`.") == "Keep this."
+    assert settings_api.help_text("One line\n  wrapped.\n\n  auto:   aligned\n  tesseract:   aligned") \
+        == "One line wrapped.\n\n  auto:   aligned\n  tesseract:   aligned"

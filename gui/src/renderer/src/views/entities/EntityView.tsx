@@ -125,13 +125,6 @@ export default function EntityView() {
             <section className="ent-sec">
               <SecTitle icon={ListChecks} title="Facts" count={e.facts.length} />
               <EntityFacts facts={e.facts} />
-              {e.legacy_claims && (
-                <div className="ent-legacy">
-                  <div className="ent-legacy-head">Earlier claims</div>
-                  <p className="faint">Recorded by an earlier version of Watchdog from documents whose extraction was not kept, so they cannot be shown as facts. Kept as written.</p>
-                  <Markdown text={e.legacy_claims} compact />
-                </div>
-              )}
             </section>
 
             <Contradictions e={e} onAdd={() => setContraOpen(true)} onRecheck={mergedInto ? undefined : () => setRecheckOpen(true)} tooLarge={tooLargeText} />

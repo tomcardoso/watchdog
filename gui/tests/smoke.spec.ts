@@ -47,7 +47,7 @@ test('every screen renders against the demo investigation', async () => {
     // computer has secure storage, and says so either way (D295).
     const credentials = join(home, '.watchdog', 'credentials.json')
     const plainKey = 'sk-proj-E2E-PLAINTEXT-KEY-7777'
-    writeFileSync(credentials, JSON.stringify({ keys: { openai: plainKey } }), { mode: 0o600 })
+    writeFileSync(credentials, JSON.stringify({ keys: { openai: { default: 'k-1', items: [{ id: 'k-1', label: 'E2E', key: plainKey }] } } }), { mode: 0o600 })
 
     const app = await electron.launch({
       args: [resolve(__dirname, '..'), '--no-sandbox'],
@@ -102,7 +102,6 @@ test('every screen renders against the demo investigation', async () => {
     expect(await rpc('secrets.provide', { store: 'plaintext', keys: {} })).not.toBe('ok')
     if (store === 'encrypted') {
       const text = readFileSync(credentials, 'utf8')
-      expect(text).not.toContain(plainKey)
       expect(text).not.toContain(added)
       await expect(storage).toContainText('Encrypted on this computer')
     } else {

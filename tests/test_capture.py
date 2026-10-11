@@ -214,25 +214,27 @@ def test_try_render_passes_the_factorys_browser_through(monkeypatch):
     assert result == b"<html>ok</html>"
 
 
-def test_report_deposits_tips_install_when_html_saved_without_renderer(monkeypatch, capsys, tmp_path):
-    from watchdog.cmd import research as cmd_research
-    monkeypatch.setattr(cmd_research.capture, "render_available", lambda: False)
+def test_report_tips_the_capture_browser_when_html_saved_without_it(monkeypatch, tmp_path):
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops import research as research_op
+    monkeypatch.setattr(research_op.capture, "render_available", lambda: False)
+    rep = CollectingReporter()
     results = [research.Deposit("http://e.com/a", tmp_path / "a-12345678.html")]
-    cmd_research._report_deposits(results, wayback=None, requeued_failures=False)
-    out = capsys.readouterr().out
-    assert "playwright install chromium" in out
+    research_op._report(rep, results, wayback=None, failures_kept=False)
+    assert "capture browser" in rep.text
 
 
-def test_report_deposits_no_tip_when_renderer_available_or_no_html(monkeypatch, capsys, tmp_path):
-    from watchdog.cmd import research as cmd_research
-    monkeypatch.setattr(cmd_research.capture, "render_available", lambda: True)
-    results = [research.Deposit("http://e.com/a", tmp_path / "a-12345678.html")]
-    cmd_research._report_deposits(results, wayback=None, requeued_failures=False)
-    assert "playwright" not in capsys.readouterr().out
-    monkeypatch.setattr(cmd_research.capture, "render_available", lambda: False)
-    results = [research.Deposit("http://e.com/r.pdf", tmp_path / "r-12345678.pdf")]
-    cmd_research._report_deposits(results, wayback=None, requeued_failures=False)
-    assert "playwright" not in capsys.readouterr().out
+def test_report_no_tip_when_browser_available_or_no_html(monkeypatch, tmp_path):
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops import research as research_op
+    monkeypatch.setattr(research_op.capture, "render_available", lambda: True)
+    rep = CollectingReporter()
+    research_op._report(rep, [research.Deposit("http://e.com/a", tmp_path / "a-12345678.html")],
+                        wayback=None, failures_kept=False)
+    monkeypatch.setattr(research_op.capture, "render_available", lambda: False)
+    research_op._report(rep, [research.Deposit("http://e.com/r.pdf", tmp_path / "r-12345678.pdf")],
+                        wayback=None, failures_kept=False)
+    assert "capture browser" not in rep.text
 
 
 # ── End-to-end render (real Chromium) ──────────────────────────────────────────

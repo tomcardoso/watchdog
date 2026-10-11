@@ -15,8 +15,6 @@ import json
 import sys
 from pathlib import Path
 
-from watchdog.appmode import hint as _hint
-from watchdog.vault_paths import is_vault
 from watchdog.pipeline.json_io import _read_json_or
 
 
@@ -193,11 +191,6 @@ def collisions(vault: Path) -> list[dict]:
     return result
 
 
-def cmd_timeline_collisions(vault: Path) -> None:
-    """Prints a JSON array of collision objects to stdout (CLI wrapper)."""
-    print(json.dumps(collisions(vault), ensure_ascii=False))
-
-
 def _valid_index(i, n: int) -> bool:
     return isinstance(i, int) and not isinstance(i, bool) and 0 <= i < n
 
@@ -354,14 +347,14 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict, index=None) -> 
     return f"- **{rendered_date}**{entity_part} — {_defang(ev.get('event', ''))}{source_part}{basis_note}"
 
 
-def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
+def rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     """Read all canonical {date}.ndjson files, plus committed documents' raw files a failed dedup
     left behind, and render timeline.md.
 
     The single global-timeline renderer (#237): reads the cross-document-deduped canonical
     NDJSON and resolves each record's ``source_sha256`` / ``page`` / ``entity_ids`` into
     document links and entity links, grouped by year. Every command that touches the vault
-    (``ingest``, ``merge-entities``, a session's entity refresh, standalone ``watchdog timeline``)
+    (``ingest``, ``merge-entities``, a session's entity refresh, standalone `the timeline rebuild`)
     renders through here, so ``timeline.md``'s shape no longer depends on which ran last.
 
     Returns (date_count, event_count) so callers can report progress.
@@ -388,7 +381,7 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
 
     # Raw per-document files a failed dedup left behind (D260). Without them, a date whose
     # collision couldn't be resolved this run showed only the one document that was promoted, and
-    # `watchdog timeline` couldn't bring the rest back. Only committed documents' raws are shown —
+    # the timeline rebuild couldn't bring the rest back. Only committed documents' raws are shown —
     # raws are staged at extraction, before the commit (I7) — and an event already in the canonical
     # file isn't repeated. A committed document that `--force` has re-extracted is staged, not
     # committed, until `bark`: its queue file is waiting and its per-run result was written after
@@ -440,15 +433,6 @@ def cmd_rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
     content = _TIMELINE_HEADER + "\n\n".join(sections) + "\n"
     _write_timeline_md(vault, content)
     if not quiet:
-        from watchdog.links import note_link
-        print(f"{note_link(vault, 'timeline.md')} rebuilt — {len(canonical_files)} date(s), "
+        print(f"timeline.md rebuilt — {len(canonical_files)} date(s), "
               f"{len(events)} event(s)")
     return (len(canonical_files), len(events))
-
-
-def main_rebuild() -> None:
-    vault = Path(".").resolve()
-    if not is_vault(vault):
-        sys.exit(_hint("Error: not inside a watchdog project. Run `watchdog timeline <name>` or cd into a project first.",
-                       "Error: this folder is not an investigation."))
-    cmd_rebuild_timeline(vault)

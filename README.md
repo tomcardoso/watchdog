@@ -2,7 +2,7 @@
 
 **Document intelligence for journalists — drop records in, find connections.**
 
-[![PyPI](https://img.shields.io/pypi/v/watchdog-intel)](https://pypi.org/project/watchdog-intel/) [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
+[![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
 
 Watchdog is a desktop app for journalists who accumulate large sets of public records — court filings, corporate records, freedom-of-information responses, land registries and so on. You drop documents into an investigation, Watchdog reads every page, pulls out every person, company, address and relationship it finds, and builds them into a linked investigation you can search and question in plain English. Every extracted fact cites the document and page it came from.
 
@@ -80,7 +80,6 @@ For a full first-investigation walkthrough, see [Getting started](https://github
 | [Methodology](https://github.com/tomcardoso/watchdog/blob/main/docs/methodology.md) | What actually happens to your documents, and why, in plain English |
 | [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md) | Your first investigation, start to finish |
 | [Investigating](https://github.com/tomcardoso/watchdog/blob/main/docs/investigating.md) | Day-to-day work: questions, search, leads, web research |
-| [Commands](https://github.com/tomcardoso/watchdog/blob/main/docs/commands.md) | The command line (being retired): a reference for people who already use it |
 | [Configuration](https://github.com/tomcardoso/watchdog/blob/main/docs/configuration.md) | Every setting, model choices, controlling cost |
 | [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) | How model/effort defaults are measured, and what to expect in time and cost |
 | [The vault](https://github.com/tomcardoso/watchdog/blob/main/docs/vault.md) | What Watchdog builds on disk and how to read it |

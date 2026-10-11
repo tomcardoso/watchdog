@@ -5,7 +5,7 @@ Three shipped features can *detect* a duplicate entity — the dashboard's "Poss
 duplicates" view, the `/watchdog-health` near-duplicate check, and D39's Neo4j-export
 tradeoff note ("the same person under name variants appears as separate nodes, which
 the export can't fix") — but none of them could *fix* one. `merge()` is the surgery;
-`run()` is the vault-level operation `watchdog merge-entities <keep-id> <merge-id>`
+`run()` is the vault-level operation the `merge-entities` operation
 drives. Pure I1-side code: no model calls, no judgement calls beyond the two ids the
 caller supplies.
 """
@@ -17,7 +17,6 @@ from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.write_vault import (
     _write_json_atomic,
-    _extract_contradictions,
     _extract_notes_section,
     _extract_section,
     _now_iso,
@@ -27,7 +26,7 @@ from watchdog.pipeline.write_vault import (
     _frontmatter,
 )
 from watchdog.pipeline import resolutions
-from watchdog.pipeline.timeline import cmd_rebuild_timeline
+from watchdog.pipeline.timeline import rebuild_timeline
 
 _DEFAULT_NOTES_MARKER = "<!-- Journalist annotations — never overwritten by ingestion. -->"
 
@@ -169,7 +168,6 @@ def undo_snapshot(entry: dict) -> dict:
         "date_first_seen": entry.get("date_first_seen"),
         "contradictions": list(entry.get("contradictions") or []),
         "synthesis": entry.get("synthesis"),
-        "legacy_claims": entry.get("legacy_claims"),
     }
 
 
@@ -208,12 +206,12 @@ def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int
 
 
 def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
-    """Perform the full `watchdog merge-entities` operation on a vault on disk:
+    """Perform the full the `merge-entities` operation operation on a vault on disk:
     registry surgery (`merge`), note concatenation/redirect, timeline NDJSON entity-tag
     remap, manifest + timeline rebuild, and a best-effort search-index refresh of the two
     touched notes.
 
-    Returns a report dict for the CLI to print. Raises `ValueError` on bad input —
+    Returns a report dict for the operation to print. Raises `ValueError` on bad input —
     the caller is expected to turn that into a clean `sys.exit`.
     """
     registry_dir = vault_path / ".watchdog" / "registry"
@@ -244,22 +242,11 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
 
     # The merged record's note is about to become a redirect stub; its journalist notes are the
     # one thing nothing else recovers, so read them first. Everything else is data (D280).
-    keep_note_callouts = resolutions.split_callouts(_extract_contradictions(keep_note_file))
-    merge_note_callouts = resolutions.split_callouts(_extract_contradictions(merge_note_file))
     notes_section = _extract_notes_section(keep_note_file)
     merge_note_text = merge_note_file.read_text(encoding="utf-8") if merge_note_file.exists() else ""
     merge_notes_body = _extract_section(merge_note_text, "Notes") if merge_note_text else ""
     from watchdog.pipeline import entity_notes, merge_log
     keep_synth, merge_synth = entities_reg[keep_id].get("synthesis"), entities_reg[merge_id].get("synthesis")
-    def _has_facts(sha: str) -> bool:
-        return (vault_path / ".watchdog" / "extracted" / f"{sha}.json").exists()
-    entity_notes.carry_old_prose(entities_reg[keep_id], keep_note_file.read_text(encoding="utf-8")
-                                 if keep_note_file.exists() else None, documents_reg, _has_facts)
-    entity_notes.carry_old_prose(entities_reg[merge_id], merge_note_text or None, documents_reg,
-                                 _has_facts)
-    keep_synth = entities_reg[keep_id].get("synthesis")
-    merge_synth = entities_reg[merge_id].get("synthesis")
-    merge_legacy = entities_reg[merge_id].get("legacy_claims")
 
     # The merge log (D279): a reporter's merge is logged here; a merge the pipeline decided arrives
     # with its entry already built (`log_entry`). Either way it gets the losing record's snapshot.
@@ -289,10 +276,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
         log_entry["undo"]["backup"] = str(Path(backup_dir).relative_to(vault_path)) \
             if Path(backup_dir).is_relative_to(vault_path) else str(backup_dir)
 
-    # The registry list is the contradiction ledger (#282); fold in note-only callouts first.
-    keep["contradictions"] = resolutions.dedup_callouts(
-        keep["contradictions"] + keep_note_callouts + merge_note_callouts
-    )
     stats["contradictions"] = len(keep["contradictions"])
 
     # One AI-written summary survives: the keeper's, else the merged record's. Either was written
@@ -301,8 +284,6 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     chosen = keep_synth or merge_synth
     if chosen:
         keep["synthesis"] = {**chosen, "stale": "merge"}
-    if merge_legacy:
-        keep["legacy_claims"] = "\n\n".join(x for x in (keep.get("legacy_claims"), merge_legacy) if x)
 
     # Carry over the losing note's journalist annotations too, if the writer left any
     # beyond the boilerplate placeholder — those are the one thing nothing else recovers.
@@ -340,7 +321,7 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault_path, entities_reg)
     stats["timeline_records_remapped"] = _remap_timeline_ndjson(vault_path, keep_id, merge_id)
-    cmd_rebuild_timeline(vault_path, quiet=True)
+    rebuild_timeline(vault_path, quiet=True)
 
     existing_registry = (
         _read_json_or(registry_path, {}, catch=(json.JSONDecodeError,))
@@ -387,7 +368,7 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
 
 def run(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
-    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    from a Claude Code session or a second terminal while post-processing (`bark`) commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
     from watchdog.pipeline import history
     from watchdog.pipeline.write_vault import _registry_lock

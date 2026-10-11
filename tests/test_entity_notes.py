@@ -183,16 +183,13 @@ def test_a_mark_during_a_commit_waits_for_that_commit(tmp_path):
     assert not (vault / ".watchdog/registry" / entity_notes.STALE_FILE).exists()
 
 
-def test_an_older_vault_is_upgraded_once(tmp_path):
+def test_a_rebuild_keeps_the_reporters_notes(tmp_path):
     vault, _ = _marked_vault(tmp_path)
     note = vault / "entities" / "person" / "x.md"
-    note.write_text("---\nid: x\n---\n\n# X\n\n## Summary\n\nOld prose.\n\n## Notes\n\nMine.\n")
-    _write(vault, "registry.json", {"schema_version": "1"})
-    assert entity_notes.needs_upgrade(vault)
+    note.write_text("---\nid: x\n---\n\n# X\n\n## Notes\n\nMine.\n")
     entity_notes.rebuild(vault, index_search=False)
-    assert not entity_notes.needs_upgrade(vault)
     text = note.read_text()
-    assert "## Summary\n\nOld prose." in text and "Paid $5." in text
+    assert "Paid $5." in text
     assert text.endswith("## Notes\n\nMine.\n")
 
 

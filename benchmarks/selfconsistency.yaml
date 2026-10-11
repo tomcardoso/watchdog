@@ -5,12 +5,12 @@
 # never be pooled into its recall table — the same reason sdk_check carries its own corpus_dir.
 #
 # Run it on its own:
-#     ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
+#     python benchmarks/run_benchmark.py \
 #         --config benchmarks/selfconsistency.yaml --stages extractor --estimate-only
 #     # then, once the estimate is approved, drop --estimate-only
 #
 # Then read the union curve (this is the actual measurement — the per-arm REPORT.md is not):
-#     ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/union_recall.py \
+#     python benchmarks/union_recall.py \
 #         benchmarks/runs/<run>/artifacts/bench-sc-luna-low-r*
 #
 # WHAT IT MEASURES

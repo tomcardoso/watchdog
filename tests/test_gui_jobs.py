@@ -105,12 +105,12 @@ def test_failed_job_reports_exit_code(sink, fake_cli):
 def test_env_and_cwd(sink, fake_cli, tmp_path):
     (tmp_path / ".watchdog" / "registry").mkdir(parents=True)
     script = ("import os,sys; print(os.getcwd()); print(os.environ['NO_COLOR'], "
-              "os.environ['WATCHDOG_PROGRESS'], os.environ['WATCHDOG_APP'], os.environ['PYTHONIOENCODING']); "
+              "os.environ['WATCHDOG_PROGRESS'], os.environ['PYTHONIOENCODING']); "
               "print(repr(sys.stdin.read()))")
     job = _wait(api.start(vault=str(tmp_path), op="vscript", params={"code": script}, label="env")["id"])
     out = [ln["text"] for ln in job.log]
     assert out[0] == str(tmp_path.resolve()) or out[0] == str(tmp_path)
-    assert out[1] == "1 1 1 utf-8" and out[2] == "''"           # nothing after the request line
+    assert out[1] == "1 1 utf-8" and out[2] == "''"           # nothing after the request line
     assert job.params == {"code": script}
 
 

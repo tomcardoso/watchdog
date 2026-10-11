@@ -122,14 +122,6 @@ Uninstalling Watchdog does not touch your investigations, which are ordinary fol
 
 On a Mac, the Library folder is hidden. In Finder, choose **Go → Go to Folder…** and paste the path. 
 
-## Already using the command-line version?
-
-Earlier versions of Watchdog were installed with `pipx` and run from a terminal. If you did that, the app finds that installation and can run on it, and your settings, investigations and API keys are kept in the same `.watchdog` folder, so they carry over. If the existing installation is older than the version the app needs, the app skips it and installs its own engine. **Choose Python…** in the app's start-up error screen and in **Settings → Appearance** lets you point it at a particular installation.
-
-Older investigations are renamed to the new folder names (`incoming/` and `context/`, formerly `_INCOMING/` and `_CONTEXT/`) the first time they are opened. Nothing is deleted. The first time you open an existing investigation, Watchdog also asks you to allow access to its folder; see [Folder access](app.md#folder-access).
-
-The command line is being retired. It still works, because the app runs it underneath, but it is no longer the way in. [Commands](commands.md) remains as a reference for people who already use it.
-
 ## Where next
 
 Watchdog is installed. [Getting started](getting-started.md) walks you through your first investigation from start to finish. If anything on this page did not work, see [Troubleshooting](troubleshooting.md).

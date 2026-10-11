@@ -16,7 +16,8 @@ def V(vault):
 
 
 def credentials(home, mode, keys=None):
-    (home / "credentials.json").write_text(json.dumps({"mode": mode, "keys": keys or {}}))
+    from tests.keys_support import stored
+    (home / "credentials.json").write_text(json.dumps({"mode": mode, "keys": stored(**(keys or {}))}))
 
 
 def config(home, **values):
@@ -202,7 +203,7 @@ def test_estimate_empty_queue_with_quarantined_documents(rich_vault, wdg_home):
     for f in (rich_vault / ".watchdog" / "queue").glob("*.json"):
         f.unlink()
     r = call("ingest.estimate", vault=V(rich_vault), stage="dig")
-    assert "1 document need attention" in r["text"] and "queue/_failed/" in r["text"]
+    assert "1 document need attention" in r["text"] and "Requeue failed documents" in r["text"]
     assert r["estimate"] is None
 
 

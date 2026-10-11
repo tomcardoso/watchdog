@@ -17,7 +17,7 @@ import sys
 import uuid
 
 from watchdog import model_client as mc
-from watchdog.cmd import auth
+from watchdog import auth
 from watchdog.pipeline import prompts, schemas
 
 MODEL = "gpt-5.6-luna"
@@ -85,7 +85,7 @@ async def arm(label, api_key):
 async def main():
     api_key = auth.get_api_key("openai")
     if not api_key:
-        sys.exit("No OpenAI key stored — run `watchdog auth` first.")
+        sys.exit("No OpenAI key available: set OPENAI_API_KEY, or add one in the app (Settings → Models & keys).")
 
     print(f"\nProbe: {MODEL}, two arms x two calls. Each arm's prefix carries its own nonce.")
     fixed = await arm("ARM FIXED  (prompt_cache_breakpoint + explicit mode)", api_key)

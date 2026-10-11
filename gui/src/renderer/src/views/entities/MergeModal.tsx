@@ -1,5 +1,5 @@
 // The merge flow: choose the entity to keep and the duplicate to fold into it, see both, read
-// exactly what `watchdog review merge-entities` will do, confirm, then follow the job.
+// exactly what the merge will do, confirm, then follow the job.
 
 import { ENGINE_WAIT_OTHER, useEngineGate } from '@renderer/lib/engine'
 import { ArrowLeftRight, ArrowRight, GitMerge, RefreshCw, Search } from 'lucide-react'

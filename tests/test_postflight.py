@@ -669,7 +669,7 @@ def test_postflight_flags_unverified_quote_and_warns(tmp_path, capsys):
                   {"page": 3, "markdown": "Also nothing relevant."}],
     }))
     ext = _extraction()
-    ext["document"]["key_facts"][0]["quote"] = "Transfer ratio set at 65.8%."
+    ext["document"]["key_facts"][0]["quote_locator"] = "Transfer ratio set at 65.8%."
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
     ext_path.write_text(json.dumps(ext), encoding="utf-8")
 

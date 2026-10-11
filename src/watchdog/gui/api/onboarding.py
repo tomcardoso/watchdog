@@ -1,9 +1,8 @@
-"""First-run setup for the desktop app: the non-interactive counterpart of `watchdog setup`.
+"""First-run setup for the desktop app.
 
-`setup.complete` writes the same configuration `watchdog setup` writes (an existing config file
-is the "set up" signal), `setup.models` reports which local models are on disk, and
-`auth.routeIngestion` points the three ingestion stages at one model from another provider,
-exactly as the terminal wizard does after it asks for the provider (cmd/auth.py).
+`setup.complete` writes the first configuration (an existing config file is the "set up" signal),
+`setup.models` reports which local models are on disk, and `auth.routeIngestion` points the three
+processing stages at one model from another provider.
 """
 
 from __future__ import annotations
@@ -37,11 +36,11 @@ def download_model(model: str) -> dict:
 
 @method("setup.complete")
 def complete(projects_dir: str | None = None, auto_approve: bool = False) -> dict:
-    """Write the configuration `watchdog setup` writes, without asking anything: the projects
+    """Write the first-run configuration: the projects
     folder, automatic worker counts, the auto-approve answer, and a pip-installable OCR engine
     where Tesseract is missing (only when the person has not chosen an engine themselves).
     Existing settings are merged, never replaced."""
-    from watchdog.cmd import setup as setup_cmd
+    from watchdog import config as config_file
     from watchdog.gui import engine_setup
     from watchdog.gui.api.settings import _read_config
 
@@ -61,7 +60,7 @@ def complete(projects_dir: str | None = None, auto_approve: bool = False) -> dic
         config["auto_approve"] = True
     else:
         config.pop("auto_approve", None)
-    setup_cmd._persist(config)
+    config_file.save(config)
     return {"projects_dir": str(path), "ocr_engine": config.get("ocr_engine"),
             "auto_approve": bool(config.get("auto_approve"))}
 
@@ -70,8 +69,8 @@ def complete(projects_dir: str | None = None, auto_approve: bool = False) -> dic
 def route_ingestion(provider: str, model: str) -> dict:
     """Route classifier, extractor and finalizer to `model` (a `provider:model` value from
     `settings.models`), once the provider's key or base URL is stored."""
-    from watchdog.cmd import auth as auth_cmd
-    from watchdog.cmd import setup as setup_cmd
+    from watchdog import auth as auth_cmd
+    from watchdog import config as config_file
     from watchdog.gui.api.settings import _auth_status, _check_provider, _read_config
 
     _check_provider(provider)
@@ -84,6 +83,6 @@ def route_ingestion(provider: str, model: str) -> dict:
         raise RpcError("Add this provider's key or address first.", code="not_ready")
     config = _read_config()
     auth_cmd.route_stages_to_model(config, provider, value)
-    setup_cmd._persist(config)
-    auth_cmd._maybe_restore_concurrency_from_subscription()
+    config_file.save(config)
+    auth_cmd.restore_concurrency_from_subscription()
     return _auth_status()

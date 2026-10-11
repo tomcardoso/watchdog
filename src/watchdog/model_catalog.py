@@ -1,8 +1,7 @@
 """Single source of truth for every model Watchdog knows about — ids, pricing, context
 windows, and OpenAI reasoning capability — loaded from model_catalog.yaml. No
-watchdog-internal imports: both model_client.py and cmd/base.py depend on this without
-risking an import cycle (model_client.py already imports watchdog.cmd.auth, which
-imports watchdog.cmd.base).
+watchdog-internal imports: both model_client.py and settings.py depend on this without
+risking an import cycle.
 """
 
 import importlib.resources
@@ -31,21 +30,9 @@ def _tier_aliases(entry: dict) -> list[str]:
 
 _MODEL_IDS = {alias: m["id"] for m in _CATALOG["models"] for alias in _tier_aliases(m)}
 
-# Retired provider ids that still work on the wire and are answered by a catalogued model — a
-# model's `legacy_ids` in the YAML (D250). Without this, a config naming the old id would read as
-# an uncatalogued model and lose its pricing, price windows and effort levels.
-_LEGACY_IDS = {legacy.lower(): m["id"] for m in _CATALOG["models"] for legacy in m.get("legacy_ids", [])}
-
-
-def canonical_id(model_id: str) -> str:
-    """The catalogued id a model id resolves to: a legacy id maps to the model that now answers
-    it, anything else is returned unchanged (not lowercased — callers' own matching is)."""
-    return _LEGACY_IDS.get(model_id.lower(), model_id)
-
-
 def _entry(model_id: str) -> dict | None:
-    """The catalog entry for a model id, following a legacy id to its current model."""
-    return _MODELS.get(canonical_id(model_id).lower())
+    """The catalog entry for a model id."""
+    return _MODELS.get(model_id.lower())
 
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param,
 # and Watchdog keeps the choice inside the model token — `deepseek-flash` (non-thinking) vs
@@ -93,7 +80,7 @@ def resolve_model_id(model: str) -> str:
 
 
 def display_name(model_id: str) -> str:
-    """Pretty display form of a model id, for the CLI/usage logging — e.g. 'gpt-5.6-terra' ->
+    """Pretty display form of a model id, for display and usage logging — e.g. 'gpt-5.6-terra' ->
     'GPT-5.6 Terra'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
     model, or an old id no longer in the catalog) rather than raising or guessing."""
     entry = _entry(model_id)
@@ -282,7 +269,7 @@ def price_multiplier(model_id: str, at: datetime | None = None) -> float:
     be one of them; the weekday is the UTC calendar day the moment falls on, which is also how the
     window's hours are read (a midnight-wrapping window would be checked on the day it is entered
     on the clock, not the day it began — none declares both `days` and a wrap today)."""
-    windows = _PRICE_PERIODS.get(canonical_id(model_id).lower())
+    windows = _PRICE_PERIODS.get(model_id.lower())
     if not windows:
         return 1.0
     moment = at or datetime.now(timezone.utc)

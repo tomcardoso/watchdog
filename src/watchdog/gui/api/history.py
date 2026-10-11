@@ -1,8 +1,8 @@
 """`history.*` — the version history of every file Watchdog generates or the app edits (D286).
 
-App-only: there is no terminal command. Reads come from `pipeline/history`; the writes,
+Reads come from `pipeline/history`; the writes,
 restoring a version, removing versions (D288) and clearing the history, call its library
-functions directly, the first vault mutations with no CLI equivalent (D286 amends I10). Folder access (D268) still applies: the
+functions directly (D286 amends I10). Folder access (D268) still applies: the
 vault must be allowed, and the audit hook refuses any write outside it.
 """
 

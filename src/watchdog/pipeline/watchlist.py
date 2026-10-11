@@ -55,7 +55,7 @@ def add_terms(vault: Path, terms: list[str]) -> list[str]:
     """Append new terms to ``watchlist.md``, skipping any already present — case-insensitively,
     against the same parsed term text ``load_terms`` matches on (so a candidate already covered
     by an existing ``/regex/`` line's literal text is still caught as a duplicate). Creates the
-    file if it doesn't exist yet (normally already created by ``watchdog new``). Existing lines,
+    file if it doesn't exist yet (normally already created by `creating an investigation`). Existing lines,
     including ``#`` comments, are untouched — this only ever appends.
 
     Returns the terms actually added, in order (#229 — `/watchdog-context` proposing seed terms).

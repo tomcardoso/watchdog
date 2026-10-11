@@ -40,7 +40,7 @@ _MAX_ASSET_BYTES = 5 * 1024 * 1024  # 5 MiB — per-asset inlining cap, independ
 def render_available() -> bool:
     """True iff Playwright's sync API is importable **and** its Chromium binary is installed —
     i.e. both halves of the optional two-step install are done. Backs the post-download install
-    tip in `cmd/research.py`; forgetting `playwright install chromium` is the likelier miss, so
+    tip in `ops/research.py`; forgetting `playwright install chromium` is the likelier miss, so
     checking the import alone would silence the tip exactly when it's needed. The capture path
     itself never consults this — it just attempts a render and falls back on any failure."""
     try:

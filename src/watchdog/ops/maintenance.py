@@ -10,8 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from watchdog.ops import op
-from watchdog.ops.ingest import _require_vault
+from watchdog.ops import op, require_vault
 
 
 def _plural(n: int, word: str, many: str | None = None) -> str:
@@ -21,9 +20,9 @@ def _plural(n: int, word: str, many: str | None = None) -> str:
 @op("rebuild-timeline")
 def rebuild_timeline(rep, vault: Path) -> dict:
     """Write `timeline.md` again from the canonical event files."""
-    from watchdog.pipeline.timeline import cmd_rebuild_timeline
-    _require_vault(vault)
-    dates, events = cmd_rebuild_timeline(vault)
+    from watchdog.pipeline import timeline
+    require_vault(vault)
+    dates, events = timeline.rebuild_timeline(vault)
     return {"dates": dates, "events": events}
 
 
@@ -32,7 +31,7 @@ def rebuild_notes(rep, vault: Path) -> dict:
     """Rewrite every entity and document note from stored data, with no model call (I13, D280).
     The reporter's own Notes sections are kept."""
     from watchdog.pipeline import entity_notes
-    _require_vault(vault)
+    require_vault(vault)
     rep.progress("stage", stage="rebuild-notes", done=None, total=None)
     out = entity_notes.rebuild(vault)
     rep.log(f"Rebuilt {out['entities']} entity notes and {out['documents']} document notes from the "
@@ -44,7 +43,7 @@ def rebuild_notes(rep, vault: Path) -> dict:
 def lead_sweep(rep, vault: Path) -> dict:
     """The deterministic lead sweep over the whole investigation; Review shows what it finds."""
     from watchdog.pipeline import leads
-    _require_vault(vault)
+    require_vault(vault)
     data = leads.scan(vault)
     counts = {k: len(data.get(k) or []) for k in ("unprofiled", "isolated", "contradictions", "inferred")}
     if not leads.total(data):
@@ -68,7 +67,7 @@ def watchlist_check(rep, vault: Path) -> dict:
     """Check every document in the investigation against the watch list, not only the newest."""
     from watchdog.pipeline import watchlist
     from watchdog.pipeline.json_io import _read_json_or
-    _require_vault(vault)
+    require_vault(vault)
     documents = _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {})
     if not documents:
         rep.log("No documents have been added yet, so there is nothing to check.")
@@ -92,29 +91,12 @@ def refresh_claude_setup(rep, vault: Path) -> dict:
     """Bring the investigation's Claude setup up to this version of Watchdog: the shortcut
     commands, `.claude/settings.json` (written whole from the current rules) and Watchdog's
     section of `.claude/CLAUDE.md`. The reporter's notes below the end marker are kept."""
-    from watchdog.cmd.base import _render_template, _vault_settings, load_projects
-    from watchdog.setup_cmd import install_skills
-    _require_vault(vault)
+    from watchdog import projects
+    from watchdog.vault import claude_settings, install_commands, write_claude_md
+    require_vault(vault)
     claude = vault / ".claude"
-    install_skills(claude / "commands")
-    (claude / "settings.json").write_text(json.dumps(_vault_settings(), indent=2) + "\n")
-
-    resolved = vault.resolve()
-    name = next((info.get("name") for info in load_projects().values()
-                 if info.get("path") and Path(info["path"]).expanduser().resolve() == resolved),
-                None) or vault.name
-    block = _render_template("CLAUDE.md", name=name).rstrip("\n")
-    path = claude / "CLAUDE.md"
-    current = path.read_text(encoding="utf-8") if path.exists() else ""
-    begin, end = current.find(_CLAUDE_MD_BEGIN), current.find(_CLAUDE_MD_END)
-    if 0 <= begin < end:
-        current = current[:begin] + block + current[end + len(_CLAUDE_MD_END):]
-    else:
-        current = block + "\n"
-    path.write_text(current, encoding="utf-8")
+    install_commands(claude / "commands")
+    (claude / "settings.json").write_text(json.dumps(claude_settings(), indent=2) + "\n")
+    write_claude_md(vault, projects.name_for(vault))
     rep.log("Updated the shortcuts, Claude's instructions and Claude's settings for this investigation.")
     return {"updated": True}
-
-
-_CLAUDE_MD_BEGIN = "<!-- watchdog:begin"
-_CLAUDE_MD_END = "<!-- watchdog:end -->"

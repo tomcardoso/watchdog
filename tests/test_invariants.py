@@ -55,6 +55,7 @@ from pathlib import Path
 from watchdog import model_client as mc
 from watchdog import skills_catalog as sc
 from watchdog.pipeline import orchestrate, preprocess, research
+from tests.keys_support import item, stored  # noqa: F401
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "watchdog"
 
@@ -135,7 +136,7 @@ def test_I2_chew_path_imports_no_network_library_at_module_level():
     chew_files = [
         _SRC / "pipeline" / "preprocess.py",
         _SRC / "pipeline" / "preprocess_batch.py",
-        _SRC / "cmd" / "live.py",   # imported by preprocess_batch
+        _SRC / "progress.py",   # imported by preprocess_batch
     ]
     for f in chew_files:
         imports = _module_level_imports(f)
@@ -185,27 +186,28 @@ def test_I3_prompt_templates_never_appear_in_skills_catalog():
         assert f"`{name}.md`" not in index
 
 
-def test_I3_fresh_vault_copies_no_record_skills_directory(tmp_path):
+def test_I3_fresh_vault_copies_no_record_skills_directory(tmp_path, monkeypatch):
     """Creating a vault installs the per-vault Claude Code command skills (workflow slash
     commands like /watchdog-query) but must never copy the global record-skills directory
     (src/watchdog/skills/records/) onto disk anywhere under the vault — those stay
     package-resident and are read live via watchdog.skills_catalog (D21)."""
-    from watchdog.setup_cmd import install_skills
+    from watchdog.ops.projects import create
 
-    commands_dir = tmp_path / "vault" / ".claude" / "commands"
-    install_skills(commands_dir)
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    vault = create("Fresh", parent=tmp_path / "vault")
+    commands_dir = vault / ".claude" / "commands"
 
     installed = {p.name for p in commands_dir.glob("*.md")}
-    assert installed, "expected install_skills to write at least one command file"
+    assert installed, "expected a new investigation to have at least one command file"
 
     record_skill_names = {
         p.name for p in (importlib.resources.files("watchdog") / "skills" / "records").iterdir()
         if p.name.endswith(".md")
     }
     assert not (installed & record_skill_names)
-    assert not (tmp_path / "vault" / ".claude" / "commands" / "records").exists()
-    # no "records" directory should exist anywhere under the installed vault scaffold
-    assert not any(p.name == "records" for p in (tmp_path / "vault").rglob("*") if p.is_dir())
+    assert not (commands_dir / "records").exists()
+    # no "records" directory should exist anywhere under the new vault
+    assert not any(p.name == "records" for p in vault.rglob("*") if p.is_dir())
 
 
 # ── I4 — configured model and effort only; no automatic escalation ───────────
@@ -342,57 +344,20 @@ def test_I6_no_module_parses_xml_with_the_stdlib():
             assert not bad, f"{f.relative_to(_SRC)} imports stdlib XML: {bad}"
 
 
-# ── I9 — styling is a terminal affordance, never part of the output ──────────
+# ── I9 — output is plain text ─────────────────────────────────────────────────
 
-def test_I9_colour_is_off_whenever_stdout_is_not_a_terminal(monkeypatch):
-    """The gate every styled string goes through: colour only on a real terminal, never forced
-    on by FORCE_COLOR (which Claude Code sets for the commands it runs), always off with NO_COLOR."""
-    import io
-    import sys
-    from watchdog import terminal
-
-    class _Tty(io.StringIO):
-        def isatty(self):
-            return True
-
-    monkeypatch.delenv("NO_COLOR", raising=False)
-    monkeypatch.setenv("FORCE_COLOR", "3")
-    monkeypatch.setattr(sys, "stdout", io.StringIO())
-    assert terminal._color_enabled() is False
-    monkeypatch.setattr(sys, "stdout", _Tty())
-    assert terminal._color_enabled() is True
-    monkeypatch.setenv("NO_COLOR", "1")
-    assert terminal._color_enabled() is False
-
-
-def test_I9_the_colour_constants_follow_the_gate_at_import():
-    """The constants styled strings use are computed once, at import, so checking
-    `_color_enabled()` alone never touches them. Import the module fresh in a subprocess — once
-    with stdout piped, once on a pseudo-terminal — so nothing is reloaded in this process."""
-    import os
-    import subprocess
-    import sys
-    code = "from watchdog import terminal; print(repr(terminal._RESET + terminal._BOLD))"
-    from pathlib import Path
-    import watchdog
-    src = str(Path(watchdog.__file__).resolve().parent.parent)     # the package under test
-    env = {**os.environ, "FORCE_COLOR": "3",
-           "PYTHONPATH": os.pathsep.join([src, os.environ.get("PYTHONPATH", "")])}
-    env.pop("NO_COLOR", None)
-    piped = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
-                           check=True)
-    assert piped.stdout.strip() == "''"
-    if sys.platform == "win32":
-        return
-    import pty
-    leader, follower = pty.openpty()
-    try:
-        subprocess.run([sys.executable, "-c", code], env=env, stdout=follower, check=True)
-        out = os.read(leader, 4096).decode()
-    finally:
-        os.close(leader)
-        os.close(follower)
-    assert "\\x1b[0m" in out
+def test_I9_no_module_writes_terminal_escape_codes():
+    """Operations report through the worker's line protocol and the app shows the lines as text,
+    so nothing in the package emits an ANSI escape sequence. The only escapes allowed are inside
+    the patterns that strip them from third-party output."""
+    import re
+    escape = re.compile(r"\\x1b|\\033|\\u001b")
+    offenders = []
+    for f in sorted(_SRC.rglob("*.py")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if escape.search(line) and "_ANSI = re.compile" not in line:
+                offenders.append(f"{f.relative_to(_SRC)}: {line.strip()}")
+    assert not offenders, offenders
 
 
 # ── I10 — the app's mutations go through library operations ───────────────────
@@ -485,16 +450,16 @@ def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
     import asyncio
     import pytest
     from watchdog import model_client as mc
-    from watchdog.cmd import auth, base
+    from watchdog import auth
     from watchdog.gui import chat
     from watchdog.gui.rpc import RpcError
-    monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home")
-    for p in auth._PROVIDERS.values():
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     vault = tmp_path / "case"
     (vault / ".watchdog").mkdir(parents=True)
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-default-1234567890",
-                                                  "anthropic": "sk-ant-default-1234567890"}})
+    auth.save_state({"mode": "api-key", "keys": stored(openai="sk-default-1234567890",
+                                                     anthropic="sk-ant-default-1234567890")})
     for provider in ("openai", "anthropic"):
         kid = auth.add_key(provider, "Globe", f"sk-{provider}-globe-1234567890")
         auth.choose_key(vault, provider, kid)

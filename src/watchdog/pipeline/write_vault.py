@@ -60,7 +60,7 @@ import yaml
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json_or
-from watchdog.vault_paths import incoming_dir, modernize_path
+from watchdog.vault_paths import incoming_dir
 
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
@@ -354,53 +354,6 @@ def _extract_notes_section(note_path: Path) -> str:
     return "\n" + content[idx:] if idx != -1 else default
 
 
-def _extract_analysis(note_path: Path) -> str:
-    """Return the existing ## Analysis body, or empty string."""
-    if not note_path.exists():
-        return ""
-    return _extract_section(note_path.read_text(encoding="utf-8"), "Analysis")
-
-
-def _extract_summary(note_path: Path) -> str | None:
-    """Return the existing ## Summary body, or None if absent."""
-    if not note_path.exists():
-        return None
-    text = _extract_section(note_path.read_text(encoding="utf-8"), "Summary")
-    return text or None
-
-
-def _extract_contradictions(note_path: Path) -> str:
-    """Return the existing ## Contradictions body, or empty string."""
-    if not note_path.exists():
-        return ""
-    return _extract_section(note_path.read_text(encoding="utf-8"), "Contradictions")
-
-
-# Header a document contributes to an entity note's ## Analysis section, e.g.
-# ``*3 May 2026, via [[documents/acme-annual-report|Acme Annual Report]]:*``. The doc-note
-# link is stable per document (1:1 with its sha via the slug), so it keys the block for
-# replace-not-append rewrites (#259).
-_ANALYSIS_HEADER_RE = re.compile(r"^\*[^\n]*?via \[\[([^\]|]+)[|\]]", re.MULTILINE)
-
-
-def _drop_analysis_entry(analysis: str, doc_note: str) -> str:
-    """Remove any prior ## Analysis block this document contributed, so re-running write_vault
-    for the same document replaces its entry instead of appending a duplicate (#259). Blocks are
-    delimited by their ``*…via [[doc_note|…]]:*`` header; everything from one header up to the
-    next is one document's contribution."""
-    if not analysis:
-        return analysis
-    matches = list(_ANALYSIS_HEADER_RE.finditer(analysis))
-    if not matches:
-        return analysis
-    kept = analysis[: matches[0].start()]  # preamble before the first header (normally empty)
-    for i, m in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(analysis)
-        if m.group(1) != doc_note:
-            kept += analysis[m.start():end]
-    return kept.strip()
-
-
 # ── Timeline helpers ──────────────────────────────────────────────────────────
 
 def _date_sort_key(date_str: str) -> str:
@@ -447,7 +400,7 @@ def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha25
 def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
     """Render an entity note's ``## Timeline`` section from its dated tagged facts, year-grouped
     and attributed to each event's source document. The *global* timeline is rendered separately
-    from the cross-document-deduped NDJSON (`timeline.cmd_rebuild_timeline`, #237)."""
+    from the cross-document-deduped NDJSON (`timeline.rebuild_timeline`, #237)."""
     if not events:
         return ""
 
@@ -870,7 +823,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
     """Write the Docling per-page markdown next to the original in the morgue (#140).
 
     Best-effort: the page markdown lives in the chew-time queue descriptor, which is present during
-    ingest but gone on a re-run from disk (`watchdog bark`); skip silently if unavailable.
+    ingest but gone on a re-run from disk (post-processing (`bark`)); skip silently if unavailable.
     Pages are joined with `<!-- PAGE N -->` markers so the file is both greppable and page-aligned.
     """
     queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
@@ -887,7 +840,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
 
 
 def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict],
-                            morgue_path: str = "", filename_shared: bool = False) -> None:
+                            morgue_path: str = "") -> None:
     """Embed this document's source passages into the semantic index, with a contextual
     prefix built from what extraction produced — the document's title, type, and the
     entities it names. The prefix anchors a passage that lacks the document's who/what,
@@ -910,8 +863,7 @@ def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dic
     if names:
         context += " Mentions: " + ", ".join(names) + "."
     from watchdog.pipeline.embed import add_document
-    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256,
-                 drop_legacy=not filename_shared)
+    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256)
     from watchdog.pipeline.fulltext import add_document as fts_add_document
     fts_add_document(vault_path, doc["filename"], sha256, pages, morgue_path=morgue_path)
 
@@ -1358,17 +1310,15 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # Index the source passages (corpus stream) with a contextual prefix — now that
         # extraction has supplied the title, type, and entities the prefix needs (D43).
         try:
-            filename_shared = any(e.get("filename") == doc["filename"]
-                                  for s, e in documents_reg.items() if s != doc_sha256)
             _index_corpus_passages(vault_path, doc, entity_entries_for_note,
-                                   morgue_path=morgue_relative, filename_shared=filename_shared)
+                                   morgue_path=morgue_relative)
         except Exception as e:
             print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
 
     # The global timeline is no longer rebuilt per document (#237): it is rendered
     # exclusively from the cross-document-deduped canonical NDJSON, which only exists after
     # `_post_ingest` runs the dedup pass at the end of a batch. A standalone write-vault
-    # therefore leaves timeline.md to the next ingest run or explicit `watchdog timeline`.
+    # therefore leaves timeline.md to the next ingest run or explicit the timeline rebuild.
 
     # ── 7. Move source file to morgue ─────────────────────────────────────────
 
@@ -1377,7 +1327,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     )
     morgue_dir.mkdir(parents=True, exist_ok=True)
 
-    source = vault_path / modernize_path(doc.get("original_path", f"incoming/{doc['filename']}"))
+    source = vault_path / doc.get("original_path", f"incoming/{doc['filename']}")
     if source.exists():
         morgue_name = Path(morgue_relative).name
         shutil.move(str(source), str(morgue_dir / morgue_name))

@@ -8,15 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-from watchdog.ops import current, hint, op, say  # noqa: F401
-from watchdog.cmd.base import (
-    _BOLD,
-    _CYAN,
-    _DIM,
-    _GREEN,
-    _RESET,
-    _resolve_vault,
-)
+from watchdog.ops import op, require_vault
 from watchdog.pipeline.json_io import _read_json
 
 
@@ -166,60 +158,40 @@ def _write_cypher(entities: dict, edges: list[dict], out: Path) -> Path:
     return path
 
 
-def cmd_export(args) -> None:
-    slug, info, vault = _resolve_vault(args.project)
-
+@op("export")
+def export(rep, vault: Path, *, format: str = "csv", output: str | None = None) -> dict:
+    """Export the entity graph as CSV (with the facts) or Cypher, into `output` (default: an
+    `<investigation>-export` folder inside the investigation)."""
+    if format not in ("csv", "cypher"):
+        sys.exit("Error: the format is csv or cypher.")
+    require_vault(vault)
     entities_path = vault / ".watchdog" / "registry" / "entities.json"
     if not entities_path.exists():
-        sys.exit(f"Error: no entity registry found for {info['name']} — has anything been ingested?")
+        sys.exit("Error: nothing has been added to this investigation yet, so there is nothing to export.")
     try:
         entities = _read_json(entities_path)
     except json.JSONDecodeError as e:
-        sys.exit(f"Error: entities.json is corrupt — {e}")
-
+        sys.exit(f"Error: the entity registry is damaged ({e}).")
     if not entities:
-        sys.exit(f"Error: {info['name']} has no entities to export yet.")
+        sys.exit("Error: this investigation has no entities to export yet.")
 
     from watchdog.pipeline import relationships
+    from watchdog.pipeline.write_vault import slugify
     view = relationships.View(vault)
     edges, dangling = _forward_edges(entities, view.canonical)
-
-    out = Path(args.output) if args.output else Path(f"{slug}-export")
+    out = Path(output) if output else vault / f"{slugify(vault.name)}-export"
     out.mkdir(parents=True, exist_ok=True)
 
-    say()
-    if args.format == "cypher":
+    rep.log(f"Exported {len(entities)} entities and {len(edges)} relationships to {out}.")
+    if format == "cypher":
         path = _write_cypher(entities, edges, out)
-        say(f"  {_GREEN}Exported:{_RESET} {_BOLD}{len(entities)}{_RESET} nodes, "
-              f"{_BOLD}{len(edges)}{_RESET} relationships")
-        say(f"  {_CYAN}{path}{_RESET}")
-        say(f"  {_DIM}Load with:  cat {path} | cypher-shell{_RESET}")
+        rep.log(f"  {path.name}: load it with Neo4j's cypher-shell.")
     else:
         nodes_csv, rels_csv = _write_csv(entities, edges, out)
-        say(f"  {_GREEN}Exported:{_RESET} {_BOLD}{len(entities)}{_RESET} nodes, "
-              f"{_BOLD}{len(edges)}{_RESET} relationships")
-        say(f"  {_CYAN}{nodes_csv}{_RESET}")
-        say(f"  {_CYAN}{rels_csv}{_RESET}")
-        say(f"  {_DIM}Import with:  neo4j-admin database import full "
-              f"--nodes={nodes_csv.name} --relationships={rels_csv.name} <db>{_RESET}")
-        say(f"  {_DIM}Or open nodes.csv / relationships.csv directly in Gephi.{_RESET}")
+        rep.log(f"  {nodes_csv.name} and {rels_csv.name}: import them into Neo4j, or open them in Gephi.")
         facts_csv, n_facts, n_marked = _write_facts_csv(vault, out)
-        say(f"  {_CYAN}{facts_csv}{_RESET}  {_DIM}{n_facts} facts with their source passages; "
-              f"{n_marked} marked in the verification ledger{_RESET}")
-
+        rep.log(f"  {facts_csv.name}: {n_facts} facts with their source passages; {n_marked} "
+                "marked in the verification ledger.")
     if dangling:
-        say(f"  {_DIM}Skipped {dangling} relationship(s) pointing at unprofiled entities.{_RESET}")
-    say()
-
-
-@op("export")
-def export(rep, vault: Path, *, format: str = "csv", output: str | None = None) -> dict:
-    """Export the entity graph as CSV (with the facts) or Cypher, into `output` or a folder
-    beside the investigation's own files."""
-    from types import SimpleNamespace
-    if format not in ("csv", "cypher"):
-        sys.exit("Error: the format is csv or cypher.")
-    from watchdog.ops.ingest import _require_vault
-    _require_vault(vault)
-    cmd_export(SimpleNamespace(project=None, format=format, output=output))
-    return {"format": format, "output": output}
+        rep.log(f"Skipped {dangling} relationship(s) pointing at entities without a note of their own.")
+    return {"format": format, "output": str(out), "entities": len(entities), "relationships": len(edges)}

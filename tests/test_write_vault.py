@@ -318,35 +318,6 @@ def test_multiblock_callout_fully_resolved_not_left_in_fragments(tmp_path):
     assert "Filed as 123 Main St" not in content
 
 
-def test_note_only_contradiction_backfilled_into_registry(tmp_path):
-    # #288: a callout that only ever lived in the note body (pre-#282 vault) must be folded
-    # into the registry entry the first time the entity is touched by an ingest, not left
-    # stranded where the lead sweep and unresolve can never see it.
-    vault = make_vault(tmp_path)
-    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
-    note = vault / "entities" / "person" / "alice-smith.md"
-    note.parent.mkdir(parents=True, exist_ok=True)
-    note.write_text(
-        "---\nid: alice-smith\n---\n\n"
-        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n"
-        "## Notes\n\n<!-- Journalist annotations — never overwritten by ingestion. -->\n"
-    )
-    existing_entities = {
-        "alice-smith": {
-            "id": "alice-smith", "name": "Alice Smith", "type": "Person",
-            "aliases": [], "appears_in": ["prior-sha"],
-            "note_path": "entities/person/alice-smith",
-            "roles": [], "date_first_seen": "2024-01-01", "date_last_updated": "2024-01-01",
-        }
-    }
-    (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps(existing_entities))
-
-    run(make_extraction(tmp_path), vault)
-
-    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
-
-
 def test_relationship_line_includes_source_doc_link(tmp_path):
     vault = make_vault(tmp_path)
     (vault / "incoming" / "test-doc.pdf").write_text("dummy")
@@ -394,86 +365,6 @@ def test_existing_entity_notes_section_preserved(tmp_path):
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
     assert "My hand-written note." in content
-
-
-def test_old_note_claims_without_a_stored_extraction_are_kept(tmp_path):
-    """A note written before D280 holds per-document claim blocks; a block whose document has no
-    stored extraction exists nowhere else, so it is carried into the registry and kept."""
-    vault = make_vault(tmp_path)
-    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
-
-    existing_note = vault / "entities" / "person" / "alice-smith.md"
-    existing_note.write_text(
-        "---\nid: alice-smith\n---\n\n"
-        "## Analysis\n\n*2024-01-01, via [[documents/old-doc|Old Doc]]:* Prior finding.\n\n"
-        "## Notes\n\nJournalist note.\n"
-    )
-    existing_entities = {
-        "alice-smith": {
-            "id": "alice-smith",
-            "name": "Alice Smith",
-            "type": "Person",
-            "aliases": [],
-            "appears_in": ["prior-sha"],
-            "note_path": "entities/person/alice-smith",
-            "roles": [],
-            "date_first_seen": "2024-01-01",
-            "date_last_updated": "2024-01-01",
-        }
-    }
-    (vault / ".watchdog" / "registry" / "entities.json").write_text(
-        json.dumps(existing_entities)
-    )
-
-    run(make_extraction(tmp_path), vault)
-
-    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Earlier claims" in content and "Prior finding." in content
-    assert "Smith is listed as director" in content
-    assert "Journalist note." in content
-    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
-    assert "Prior finding." in entry["legacy_claims"]
-
-    # A second write reads the registry, not the note, and keeps them once.
-    run(make_extraction(tmp_path), vault)
-    assert (vault / "entities" / "person" / "alice-smith.md").read_text().count("Prior finding.") == 1
-
-
-def test_old_summary_is_carried_into_the_registry(tmp_path):
-    """An older note's Summary is model prose that exists nowhere else: the first rewrite moves it
-    into the registry's synthesis record, labelled as carried over, instead of dropping it."""
-    vault = make_vault(tmp_path)
-    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
-
-    existing_note = vault / "entities" / "person" / "alice-smith.md"
-    existing_note.write_text(
-        "---\nid: alice-smith\n---\n\n"
-        "## Summary\n\nOld summary.\n\n"
-        "## Notes\n\n"
-    )
-    existing_entities = {
-        "alice-smith": {
-            "id": "alice-smith",
-            "name": "Alice Smith",
-            "type": "Person",
-            "aliases": [],
-            "appears_in": ["prior-sha"],
-            "note_path": "entities/person/alice-smith",
-            "roles": [],
-            "date_first_seen": "2024-01-01",
-            "date_last_updated": "2024-01-01",
-        }
-    }
-    (vault / ".watchdog" / "registry" / "entities.json").write_text(
-        json.dumps(existing_entities)
-    )
-
-    run(make_extraction(tmp_path), vault)
-
-    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "## Summary\n\nOld summary." in content
-    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
-    assert entry["synthesis"]["summary"] == "Old summary." and entry["synthesis"]["by"] == "carried"
 
 
 # ── Entity merge ──────────────────────────────────────────────────────────────
@@ -1030,7 +921,7 @@ def test_timeline_dedup_keeps_events_with_long_shared_opening(tmp_path):
 
 # The global timeline is no longer a write_vault product (#237) — write_vault.run() does not
 # touch timeline.md; it is rendered from the cross-document-deduped NDJSON by
-# timeline.cmd_rebuild_timeline. See test_timeline.py for the global timeline's attribution,
+# timeline.rebuild_timeline. See test_timeline.py for the global timeline's attribution,
 # entity-link, and page-link coverage. write_vault still owns the per-entity `## Timeline`
 # section (tested by test_entity_note_has_timeline_section / test_entity_timeline_has_page_link).
 
@@ -1699,16 +1590,6 @@ def test_registry_lock_is_noop_when_neither_locking_mechanism_available(tmp_path
         pass  # must not raise
 
     assert (vault / ".watchdog" / "registry" / ".write-lock").exists()
-
-
-def test_drop_analysis_entry_replaces_only_matching_document():
-    analysis = (
-        "*3 May 2026, via [[documents/doc-a|Doc A]]:*\n- Claim A\n\n"
-        "*3 May 2026, via [[documents/doc-b|Doc B]]:*\n- Claim B"
-    )
-    kept = wv._drop_analysis_entry(analysis, "documents/doc-a")
-    assert "Claim A" not in kept
-    assert "Claim B" in kept
 
 
 def test_replaying_a_commit_after_a_crash_reuses_its_own_original_and_note(tmp_path):

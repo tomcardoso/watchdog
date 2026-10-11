@@ -220,7 +220,7 @@ def build_sidecar(*, source: str, title: str, source_type: str, relevance: str,
 
 
 # ── Wayback Machine — Save Page Now (#201) ─────────────────────────────────────
-# Optional, off by default, gated on archive.org S3 keys set via `watchdog configure`. A best-effort
+# Optional, off by default, gated on archive.org S3 keys set via Settings. A best-effort
 # provenance win: alongside the local deposit, ask the Wayback Machine to archive the source so a
 # citable public snapshot survives even if the original is later changed or taken down. The snapshot
 # URL is recorded in the `.yml` sidecar's `archived:` field. Never fails a deposit — archiving is a
@@ -380,7 +380,6 @@ def deposit_many(vault: Path, entries: list[dict], *, max_bytes: int = _MAX_BYTE
 # separate "done" ledger — done-ness is derived from those artifacts (see `seen_urls`).
 
 QUEUE_REL = Path(".watchdog") / "research" / "queue.tsv"
-_OLD_QUEUE_REL = Path(".watchdog") / "tmp" / "research-queue.tsv"  # pre-#196 location, read once
 
 
 def queue_path(vault: Path) -> Path:
@@ -388,15 +387,9 @@ def queue_path(vault: Path) -> Path:
 
 
 def read_queue_text(vault: Path) -> str | None:
-    """Return the worklist text, falling back to the pre-#196 `.watchdog/tmp/` path so a queue left
-    by an older session isn't lost across the move. Returns None when no worklist exists."""
-    new = queue_path(vault)
-    if new.exists():
-        return new.read_text(encoding="utf-8")
-    old = vault / _OLD_QUEUE_REL
-    if old.exists():
-        return old.read_text(encoding="utf-8")
-    return None
+    """Return the worklist text, or None when no worklist exists."""
+    path = queue_path(vault)
+    return path.read_text(encoding="utf-8") if path.exists() else None
 
 
 def pending_count(vault: Path) -> int:
@@ -420,14 +413,11 @@ def retain_pending(vault: Path, keep: list[dict]) -> None:
     """Rewrite the worklist to just `keep` (the rows still to download); delete it when empty. Used
     after a download pass to drop the URLs now captured while leaving failures queued for retry."""
     path = queue_path(vault)
-    old = vault / _OLD_QUEUE_REL
     if not keep:
         path.unlink(missing_ok=True)
-        old.unlink(missing_ok=True)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(serialize_worklist(keep), encoding="utf-8")
-    old.unlink(missing_ok=True)  # consumed the fallback; the durable path is now canonical
 
 
 def seen_urls(vault: Path) -> set[str]:

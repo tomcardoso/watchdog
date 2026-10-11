@@ -75,9 +75,6 @@ def check(vault: Path, entry: dict, entities: dict | None = None) -> str | None:
         return "This merge has already been undone."
     if undo.get("available") is False:
         return undo.get("reason") or "This merge cannot be undone."
-    if (undo.get("version") or 1) < merge_log.UNDO_VERSION:
-        return ("This merge was made by an earlier version of Watchdog, which did not record which "
-                "facts moved, so it cannot be split exactly.")
     keep = (entry.get("keep") or {}).get("id")
     merged = (entry.get("merged") or {}).get("id")
     if keep not in entities:
@@ -317,7 +314,7 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
     from watchdog.pipeline import entity_notes, resolutions
     from watchdog.pipeline.backup import snapshot
     from watchdog.pipeline.identity import pair_id
-    from watchdog.pipeline.timeline import cmd_rebuild_timeline
+    from watchdog.pipeline.timeline import rebuild_timeline
     from watchdog.pipeline.verification import reporter_name
     from watchdog.pipeline.write_vault import _now_iso, _today, _type_dir, _update_manifest, _write_json_atomic
 
@@ -364,8 +361,6 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
     }
     if snap.get("synthesis"):
         entities[new]["synthesis"] = {**snap["synthesis"], "stale": "undo"}
-    if snap.get("legacy_claims"):
-        entities[new]["legacy_claims"] = snap["legacy_claims"]
     candidates = list(dict.fromkeys([*(entities[keep].get("appears_in") or []),
                                      *(snap.get("appears_in") or []), *arts]))
     entities[new]["appears_in"] = [s for s in candidates if s in set(snap.get("appears_in") or []) | set(arts)]
@@ -401,7 +396,7 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
                                           index=entity_facts.FactIndex(vault, entities, documents))
     _write_json_atomic(reg / "entities.json", entities)
     merge_log.render(vault)
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     entity_notes.index_notes(vault, written)
     return {"keep_id": keep, "keep_name": entities[keep]["name"], "split_id": new,
             "split_name": entities[new]["name"],

@@ -16,8 +16,8 @@ private pipe, never through the environment or argv:
     one per provider, as one JSON line on its stdin (`WATCHDOG_SECRETS=stdin`; `read_stdin`).
 
 The keys live only in this module's memory, keyed by the blob's `data`, so `reveal(blob)` turns
-a stored blob into the key it stands for, or None when this process wasn't given it. A command
-run from a terminal is given nothing: `auth.resolve_key` then stops with a message pointing at
+a stored blob into the key it stands for, or None when this process wasn't given it. A process the
+app did not start (a benchmark, a script) is given nothing: `auth.resolve_key` then stops with a message pointing at
 the environment variable, which still overrides every stored key.
 """
 
@@ -35,7 +35,7 @@ _lock = threading.Lock()
 _plain: dict[str, str] = {}
 # `store`: "encrypted" when the app encrypts keys (a write must carry the app's blob), "plaintext"
 # when the app said this computer has no usable secure storage, None when no app has said anything
-# (a terminal command, a job, the test suite).
+# (a benchmark, a script, the test suite).
 _status: dict = {"store": None, "backend": None, "reason": None, "unreadable": 0}
 
 

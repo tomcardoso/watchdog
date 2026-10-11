@@ -11,7 +11,7 @@ Stored at ``.watchdog/registry/merges.json``::
 
 A merge is one decision to treat two records as one entity: `keep` survives, `merged` is folded
 into it. `decided_by` is ``rule`` (code, under `identity.classify`), ``model`` (the reconcile
-model, judging a medium-tier pair) or ``reporter`` (`watchdog merge-entities`, the app's Merge).
+model, judging a medium-tier pair) or ``reporter`` (the `merge-entities` operation, the app's Merge).
 The same decision recurring — one more document naming "Northgate Civil Works Ltd." — adds an
 occurrence to the existing entry instead of a new entry, so the log grows with the number of
 entities and name variants, not with documents × entities. `undo` keeps what a later split needs:

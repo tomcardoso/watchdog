@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.cmd import primer
+from watchdog import primer
 
 from tests.test_write_vault import make_vault
 

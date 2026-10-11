@@ -283,7 +283,7 @@ def test_medium_pair_goes_to_the_model_with_both_sides_facts_and_a_yes_merges(tm
 
 
 def test_medium_pair_the_model_declines_stays_apart_and_becomes_a_review_item(tmp_path, monkeypatch):
-    from watchdog.cmd.review import open_items
+    from watchdog.review import open_items
     vault = make_vault(tmp_path)
     _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")])
     _commit(vault, ["sha-a"])
@@ -304,7 +304,7 @@ def test_medium_pair_the_model_declines_stays_apart_and_becomes_a_review_item(tm
 
 
 def test_not_the_same_stops_every_later_automatic_merge(tmp_path, monkeypatch):
-    from watchdog.cmd.review import open_items
+    from watchdog.review import open_items
     vault = make_vault(tmp_path)
     _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")])
     _commit(vault, ["sha-a"])
@@ -326,7 +326,7 @@ def test_not_the_same_stops_every_later_automatic_merge(tmp_path, monkeypatch):
 
 
 def test_reporter_merge_from_review_is_logged_and_closes_the_item(tmp_path, monkeypatch):
-    from watchdog.cmd.review import open_items
+    from watchdog.review import open_items
     vault = make_vault(tmp_path)
     _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")])
     _commit(vault, ["sha-a"])

@@ -17,8 +17,8 @@ re-stamps while the run works. ``inspect`` reads a lock and says whether its hol
   start time). Never taken over, however old.
 - **remote** — written on another computer (a synced folder), so its process can't be checked.
   Taken over once ``started_at`` is ``STALE_SECONDS`` old: several missed heartbeats.
-- **stale** — any lock whose holder can't be checked (another computer, a lock written by an
-  older Watchdog, a platform that can't report a start time) and whose age has passed
+- **stale** — any lock whose holder can't be checked (another computer, a damaged lock, a
+  platform that can't report a start time) and whose age has passed
   ``STALE_SECONDS``. Taken over.
 
 Anything unknown falls back to the age rule; nothing is ever called dead on a guess.
@@ -276,7 +276,7 @@ def inspect(lock_file: Path, stale_seconds: float = STALE_SECONDS) -> dict | Non
     """Who holds ``lock_file`` and whether they are still running, or None when it is free.
 
     Returns ``{"state", "where", "host", "label", "started_at", "age", "raw"}``. ``where`` is
-    ``"here"``, ``"elsewhere"`` (another computer's name is on it) or ``"unknown"`` (an older
+    ``"here"``, ``"elsewhere"`` (another computer's name is on it) or ``"unknown"`` (a damaged
     lock that names no computer). ``age`` is from ``started_at``, else from the file's
     modification time, which every write and heartbeat updates."""
     try:
@@ -293,7 +293,7 @@ def inspect(lock_file: Path, stale_seconds: float = STALE_SECONDS) -> dict | Non
     host = f.get("host") or None
     local = _is_local(f)
     where = "here" if local else ("elsewhere" if f.get("machine") or host else "unknown")
-    info = {"where": where, "host": host, "label": f.get("label") or f.get("pid"),
+    info = {"where": where, "host": host, "label": f.get("label"),
             "started_at": f.get("started_at"), "age": age, "raw": raw}
     pid = _holder_pid(f)
     if local and pid is not None:
@@ -428,12 +428,12 @@ def clear_abandoned(lock_file: Path, stale_seconds: float = STALE_SECONDS) -> di
 
 
 def _belongs_to_another(text: str) -> bool:
-    """True when the lock names a holder other than this process. A lock that names no process
-    on this computer (an older format) is treated as ours, as before."""
+    """True when the lock does not name this process on this computer. A damaged lock, naming
+    no process or no computer, is not ours to remove."""
     f = _fields(text)
     pid = _holder_pid(f)
     if pid is None or not f.get("machine"):
-        return False
+        return True
     return f.get("machine") != machine_id() or pid != os.getpid()
 
 
@@ -471,7 +471,7 @@ def _stamp(lock_file: Path) -> bool:
 def refresh_lock(lock_file: Path) -> None:
     """Rewrite an already-held lock's ``started_at`` to now, keeping who holds it.
 
-    For a long-lived holder (e.g. `watchdog dig --wait` sleeping through a rate limit) so
+    For a long-lived holder (e.g. a run waiting out a rate limit) so
     the age rule never mistakes a live-but-sleeping run for an abandoned one."""
     _stamp(lock_file)
 

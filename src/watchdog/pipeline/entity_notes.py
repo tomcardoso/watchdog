@@ -14,11 +14,7 @@ An entity note is rendered entirely from data the vault already keeps:
 Because nothing in a note is the only copy of anything (except the journalist's Notes), any note
 can be deleted and rebuilt with no model call (`rebuild`), and rebuilding gives the same file.
 
-The note's frontmatter carries `note_format`; a reader ignores fields it does not know. A note
-written before format 2 may hold model prose that exists nowhere else — the old `## Summary` and,
-for entities that had one, the prose `## Analysis`. The first time such a note is rewritten, that
-prose is moved into the registry's `synthesis` record, labelled as carried over, so it is kept
-rather than lost (`carry_old_prose`).
+The note's frontmatter carries `note_format`; a reader ignores fields it does not know.
 """
 
 from __future__ import annotations
@@ -32,10 +28,8 @@ from watchdog.pipeline import citations, entity_facts
 from watchdog.pipeline.json_io import _read_json_or
 
 # 3 (D283): document notes carry a block id on each fact line, so a citation can link to it, and
-# summaries render their citations as links. A vault below 3 is rebuilt once at its next commit.
+# summaries render their citations as links.
 NOTE_FORMAT = 3
-# Notes below this format hold model prose that exists nowhere else (`carry_old_prose`).
-PROSE_IN_NOTE_BELOW = 2
 SYNTHESIS_VERSION = 1
 
 # A short entity note lists every fact in date order. Past FLAT_MAX facts the list is grouped by
@@ -59,54 +53,6 @@ def notes_section(text: str | None) -> str:
         return _NOTES_DEFAULT
     m = _NOTES_RE.search(text)
     return "\n" + text[m.start():] if m else _NOTES_DEFAULT
-
-
-def _frontmatter_format(text: str) -> int | None:
-    m = re.match(r"---\n(.*?)\n---\n", text or "", re.DOTALL)
-    if not m:
-        return None
-    f = re.search(r"^note_format:\s*(\d+)\s*$", m.group(1), re.MULTILINE)
-    return int(f.group(1)) if f else None
-
-
-def carry_old_prose(entry: dict, text: str | None, documents: dict | None = None,
-                    has_facts=None) -> bool:
-    """Move what only an older note holds into the registry entry, once. Returns True if it did.
-
-    Only a note written before format 2 is read. Its `## Summary` is model prose (synthesis or a
-    Claude session) and becomes `entry["synthesis"]`, labelled as carried over; a prose
-    `## Analysis` beside it goes with it. An `## Analysis` made of the old writer's per-document
-    claim blocks is superseded by the Facts section, except for blocks whose document has no
-    stored extraction (`has_facts(sha)` false): those exist nowhere else and are kept, as
-    written, in `entry["legacy_claims"]`."""
-    from watchdog.pipeline.write_vault import _ANALYSIS_HEADER_RE, _extract_section
-    if not text or (_frontmatter_format(text) or 1) >= PROSE_IN_NOTE_BELOW:
-        return False
-    changed = False
-    summary = _extract_section(text, "Summary")
-    analysis = _extract_section(text, "Analysis")
-    blocks = list(_ANALYSIS_HEADER_RE.finditer(analysis)) if analysis else []
-    if summary and "synthesis" not in entry:
-        entry["synthesis"] = {
-            "version": SYNTHESIS_VERSION, "summary": summary,
-            "analysis": "" if blocks else analysis,
-            "by": "carried", "model": None, "made_at": entry.get("date_last_updated"),
-            "facts_total": None, "facts_shown": None, "fact_refs": {},
-        }
-        changed = True
-    if blocks and "legacy_claims" not in entry:
-        by_note = {d.get("document_note"): sha for sha, d in (documents or {}).items()
-                   if isinstance(d, dict)}
-        kept = []
-        for i, m in enumerate(blocks):
-            end = blocks[i + 1].start() if i + 1 < len(blocks) else len(analysis)
-            sha = by_note.get(m.group(1))
-            if sha is None or has_facts is None or not has_facts(sha):
-                kept.append(analysis[m.start():end].strip())
-        if kept:
-            entry["legacy_claims"] = "\n\n".join(kept)
-            changed = True
-    return changed
 
 
 # ── rendering ────────────────────────────────────────────────────────────────────────────────
@@ -330,10 +276,6 @@ def render(entry: dict, facts: list[dict], documents: dict, contradictions: str,
     listed = facts_section(facts)
     if listed:
         body += f"\n## Facts\n\n{listed}\n"
-    if (entry.get("legacy_claims") or "").strip():
-        body += ("\n## Earlier claims\n\n*Recorded by an earlier version of Watchdog from "
-                 "documents whose extraction was not kept, so they cannot be rebuilt as facts. "
-                 f"Kept as written.*\n\n{entry['legacy_claims'].strip()}\n")
     if contradictions:
         if resolver is not None:
             contradictions = citations.annotate_callouts(contradictions, resolver)
@@ -351,13 +293,12 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
                    resolved: frozenset[str] | None = None,
                    notes: dict[str, str] | None = None) -> list[tuple[str, str, str]]:
     """Render and write the notes of `ids` from the registries the caller holds, mutating each
-    entry only to fold note-only contradiction callouts into its ledger (as every writer always
-    has) and to carry an older note's prose into `synthesis`. Returns (note_path, name, content)
+    entry's stored summary. Returns (note_path, name, content)
     for the search indexes, which the caller updates once its registries are persisted. `notes`
     maps an id to a Notes section to use instead of the one on disk (a merge carrying the merged
     record's notes over)."""
     from watchdog.pipeline import resolutions
-    from watchdog.pipeline.write_vault import _assert_in_vault, _extract_section
+    from watchdog.pipeline.write_vault import _assert_in_vault
     from watchdog.pipeline import relationships as rel
     vault = Path(vault)
     index = index or entity_facts.FactIndex(vault, entities, documents)
@@ -371,11 +312,7 @@ def write_entities(vault: Path, ids, entities: dict, documents: dict, *,
             continue
         path = _assert_in_vault(vault / f"{entry['note_path']}.md", vault, "entity note_path")
         old = path.read_text(encoding="utf-8") if path.exists() else None
-        carry_old_prose(entry, old, documents, lambda sha: index.document(sha) is not None)
-        callouts = resolutions.dedup_callouts(
-            list(entry.get("contradictions") or [])
-            + resolutions.split_callouts(_extract_section(old or "", "Contradictions")))
-        entry["contradictions"] = callouts
+        callouts = list(entry.get("contradictions") or [])
         body = "\n\n".join(resolutions.filter_callouts(callouts, resolved))
         own_notes = (notes or {}).get(eid) or notes_section(old)
         stats = citations.new_stats()
@@ -460,10 +397,6 @@ def _rebuild_unlocked(vault: Path, ids=None, documents_too: bool = True, index_s
     if index_search:
         index_notes(vault, written, "entity", embed=embed)
         index_notes(vault, docs_written, "document", embed=embed)
-    registry = _read_json_or(reg / "registry.json", {})
-    if registry.get("entity_note_format") != NOTE_FORMAT and ids is None:
-        registry["entity_note_format"] = NOTE_FORMAT
-        _write_json_atomic(reg / "registry.json", registry)
     return {"entities": len(written), "documents": len(docs_written)}
 
 
@@ -479,14 +412,6 @@ def rebuild(vault: Path, ids=None, documents_too: bool = True, index_search: boo
     from watchdog.pipeline import history
     with _registry_lock(reg), history.recording(vault, {"kind": "rebuild"}):
         return _rebuild_unlocked(vault, ids, documents_too, index_search)
-
-
-def needs_upgrade(vault: Path) -> bool:
-    """True when the vault's entity notes were last written in an older format."""
-    reg = Path(vault) / ".watchdog" / "registry"
-    if not _read_json_or(reg / "entities.json", {}):
-        return False
-    return _read_json_or(reg / "registry.json", {}).get("entity_note_format") != NOTE_FORMAT
 
 
 # ── keeping notes current outside a commit ───────────────────────────────────────────────────

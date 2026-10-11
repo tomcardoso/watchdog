@@ -1,6 +1,5 @@
 """`projects.*` handlers."""
 
-import json
 
 from tests.gui_support import call, call_error, register
 from tests.test_write_vault import make_vault
@@ -109,23 +108,19 @@ def test_log_of_a_vault_without_a_log(wdg_home, tmp_path):
     assert call("projects.log", slug="gone") == {"lines": []}
 
 
-def test_doctor_reports_the_three_kinds_of_problem(rich_vault, wdg_home, tmp_path):
-    old = make_vault(tmp_path / "old")
-    (old / ".watchdog" / "registry" / "registry.json").write_text(json.dumps({"schema_version": "0"}))
+def test_doctor_reports_missing_folders_and_damaged_registries(rich_vault, wdg_home, tmp_path):
     corrupt = make_vault(tmp_path / "corrupt")
     (corrupt / ".watchdog" / "registry" / "registry.json").write_text("{nope")
     register(wdg_home, rich_vault, slug="fine", name="A fine one")
     register(wdg_home, tmp_path / "gone", slug="gone", name="B gone")
-    register(wdg_home, old, slug="old", name="C old")
     register(wdg_home, corrupt, slug="corrupt", name="D corrupt")
     issues = call("projects.doctor")["issues"]
     assert [(i["slug"], i["kind"]) for i in issues] == [
-        ("gone", "missing"), ("old", "schema"), ("corrupt", "corrupt_registry")]
+        ("gone", "missing"), ("corrupt", "corrupt_registry")]
     gone = issues[0]
     assert gone["name"] == "B gone" and "Folder not found" in gone["problem"]
-    assert "watchdog projects move gone" in gone["suggestion"]
-    assert issues[1]["problem"] == "Schema v0 — current is v1"
-    assert "registry.json" in issues[2]["problem"]
+    assert "Move" in gone["suggestion"] and "watchdog" not in gone["suggestion"]
+    assert "registry.json" in issues[1]["problem"]
 
 
 def test_doctor_with_nothing_registered(wdg_home):

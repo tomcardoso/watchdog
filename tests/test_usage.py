@@ -1,13 +1,10 @@
-"""Tests for `watchdog usage` (#319) — the per-call token/cost/latency breakdown that folds
-the former standalone `scripts/analyze-session` dev tool into the CLI."""
+"""The usage analysis Activity → Usage reads (`watchdog.usage`, #319): stage grouping, wall-clock
+and peak concurrency, backends and auth, the subscription caveat, batch lifecycle notes, cost per
+page and totals."""
 
-import argparse
 import json
-from pathlib import Path
 
-import pytest
-
-from watchdog.cmd.usage import cmd_usage
+from watchdog import usage
 
 
 def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
@@ -40,519 +37,83 @@ def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claud
     return call
 
 
-def _build_vault(tmp_path: Path, *, runs: dict[str, list[dict]], documents=None) -> Path:
-    """A vault with one usage-<stem>.json per entry in `runs` (stem -> list of call dicts)."""
-    vault = tmp_path / "vault"
-    registry = vault / ".watchdog" / "registry"
-    registry.mkdir(parents=True)
-    for stem, calls in runs.items():
-        (registry / f"{stem}.json").write_text(json.dumps({"calls": calls}), encoding="utf-8")
-    if documents is not None:
-        (registry / "documents.json").write_text(json.dumps(documents), encoding="utf-8")
-    return vault
-
-
-def _args(project=None, all_runs=False, run=None):
-    return argparse.Namespace(project=project, all=all_runs, run=run)
-
-
-def test_cmd_usage_no_runs_yet(tmp_path, monkeypatch):
-    vault = tmp_path / "vault"
-    (vault / ".watchdog" / "registry").mkdir(parents=True)
-    monkeypatch.chdir(vault)
-    with pytest.raises(SystemExit, match="no ingest runs recorded"):
-        cmd_usage(_args())
-
-
-def test_cmd_usage_defaults_to_latest_run(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [_call(task="classify", cost_usd=0.001, latency_s=0.5)],
-        "usage-2026-02-01T00-00-00": [_call(task="extract", cost_usd=0.02, latency_s=3.0)],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "usage-2026-02-01T00-00-00" in out   # the later run, not the earlier one
-    assert "usage-2026-01-01T00-00-00" not in out
-    assert "EXTRACTOR" in out
-    assert "doc.pdf" in out and "pages 1–1" in out
-    assert "3.0s" in out   # latency surfaced
-    assert "$0.0200" in out
-
-
-def test_cmd_usage_shows_auth_mode_and_retry_marker(tmp_path, monkeypatch, capsys):
-    """#319: auth_mode (which billing lane paid for a call) and a retry marker for any call
-    that needed more than one attempt are both surfaced per call."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="sub.pdf", auth_mode="subscription", attempts=1, cost_usd=0.01),
-            _call(filename="key.pdf", auth_mode="api-key", attempts=3, cost_usd=0.02),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "Auth" in out
-    assert "sub" in out and "key" in out
-    assert "×3" in out   # the retried call is flagged inline
-
-
-def test_cmd_usage_shows_api_time_alongside_latency_when_present(tmp_path, monkeypatch, capsys):
-    """#402: a claude-agent-sdk call's harness timing (api_ms/num_turns) surfaces next to the
-    wall-clock Latency figure — a large latency-vs-api gap is the throttling signature this
-    exists to reveal. A call with no api_ms (e.g. a raw-API backend) shows nothing extra."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="throttled.pdf", latency_s=2621.0, api_ms=726_000, num_turns=5),
-            _call(filename="plain.pdf", latency_s=10.0),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "api 12.1m" in out       # 726_000ms == 12.1 minutes
-    assert "5 turns" in out
-    throttled_line = next(line for line in out.splitlines() if "throttled.pdf" in line)
-    plain_line = next(line for line in out.splitlines() if "plain.pdf" in line)
-    assert "api" in throttled_line
-    assert "api" not in plain_line   # no harness timing on this call — nothing appended
-
-
-def test_cmd_usage_omits_turns_note_when_a_single_turn(tmp_path, monkeypatch, capsys):
-    """A single-turn call is the healthy baseline — noting `1 turns` on every row would just be
-    noise, so the turns count is only appended when it deviates from 1."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [_call(filename="healthy.pdf", api_ms=5000, num_turns=1)],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    row = next(line for line in out.splitlines() if "healthy.pdf" in line)
-    assert "api 5.0s" in row
-    assert "turns" not in row
-
-
-def test_cmd_usage_shows_wall_clock_elapsed_for_concurrent_stage(tmp_path, monkeypatch, capsys):
-    """When a stage's calls overlapped in time, the summed Latency column overstates the stage's
-    real duration — the wall-clock span (max end − min start) is shown alongside it (#317
-    follow-up). Three 3s calls finishing at t=100/101/102 span only 5s of wall time, not 9s."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="a.pdf", latency_s=3.0, end_ts=100.0),
-            _call(filename="b.pdf", latency_s=3.0, end_ts=101.0),
-            _call(filename="c.pdf", latency_s=3.0, end_ts=102.0),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "9.0s" in out                       # summed call time (subtotal)
-    assert "5.0s elapsed" in out               # wall-clock span, per stage
-    assert "up to 3 concurrent" in out         # all three genuinely overlap at t=99 (#457)
-    assert "5.0s elapsed" in out.split("TOTAL")[1]   # and on the TOTAL line
-
-
-def test_cmd_usage_peak_concurrency_not_just_call_count(tmp_path, monkeypatch, capsys):
-    """#457: the old message reported `len(calls)` as "N calls ran concurrently", which
-    overstates it whenever a run was concurrency-capped below the stage's total call count —
-    four calls that ran two at a time still extend the wall-clock span past one call's latency
-    (so the line fires) and total 4, even though only 2 were ever in flight together. Four 2s
-    calls in two back-to-back overlapping pairs (a/b end at t=10/11, c/d end at t=13/14) never
-    have more than 2 overlapping at once."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="a.pdf", latency_s=2.0, end_ts=10.0),
-            _call(filename="b.pdf", latency_s=2.0, end_ts=11.0),
-            _call(filename="c.pdf", latency_s=2.0, end_ts=13.0),
-            _call(filename="d.pdf", latency_s=2.0, end_ts=14.0),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "4 calls, up to 2 concurrent" in out
-
-
-def test_cmd_usage_omits_wall_clock_when_no_end_ts(tmp_path, monkeypatch, capsys):
-    """Usage files written before end_ts was recorded have no wall-clock data — the elapsed
-    line is omitted rather than guessed, and the summed call time still prints."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="a.pdf", latency_s=3.0),
-            _call(filename="b.pdf", latency_s=3.0),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "elapsed" not in out
-    assert "call time" in out
-
-
-def test_cmd_usage_shows_failed_marker_and_includes_in_subtotal(tmp_path, monkeypatch, capsys):
-    """#412/D125: a call that never returned valid JSON is recorded with `failed: true` rather
-    than vanishing from telemetry — it gets a visibly distinct marker, and its tokens/cost still
-    count toward the stage subtotal (it was real spend)."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="ok.pdf", cost_usd=0.01, input_tokens=100),
-            _call(filename="broke.pdf", cost_usd=0.02, input_tokens=200, attempts=2, failed=True),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    failed_line = next(line for line in out.splitlines() if "broke.pdf" in line)
-    ok_line = next(line for line in out.splitlines() if "ok.pdf" in line)
-    assert "failed" in failed_line
-    assert "failed" not in ok_line
-    assert "$0.0300" in out   # subtotal includes the failed call's cost (0.01 + 0.02)
-
-
-def test_cmd_usage_all_compares_every_run(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [_call(cost_usd=0.01, latency_s=1.0)],
-        "usage-2026-02-01T00-00-00": [_call(cost_usd=0.02, latency_s=2.0)],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args(all_runs=True))
-
-    out = capsys.readouterr().out
-    assert "usage-2026-01-01T00-00-00" in out
-    assert "usage-2026-02-01T00-00-00" in out
-    assert "TOTAL" in out
-    assert "0.0300" in out   # grand total cost
-
-
-def test_cmd_usage_run_flag_picks_specific_run(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [_call(filename="jan.pdf", cost_usd=0.01)],
-        "usage-2026-02-01T00-00-00": [_call(filename="feb.pdf", cost_usd=0.02)],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args(run="2026-01-01"))
-
-    out = capsys.readouterr().out
-    assert "jan.pdf" in out
-    assert "feb.pdf" not in out
-
-
-def test_cmd_usage_shows_full_model_name_next_to_stage(tmp_path, monkeypatch, capsys):
-    """The model column used to abbreviate by splitting on '-' and taking the second segment,
-    which worked for 'claude-sonnet-4-6' -> 'sonnet' but mangled non-Claude ids like
-    'gemini-3.5-flash-lite' into '3.5'. The full model name is now printed once next to the
-    stage header instead (via the model catalog's pretty display_name, e.g. 'Gemini 3.1
-    Flash-Lite'), and there's no more per-row Model column."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="classify", model="gemini-3.5-flash-lite", cost_usd=0.001),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "CLASSIFIER" in out and "model: Gemini 3.5 Flash-Lite" in out
-    assert "  Model  " not in out   # no more per-row Model column
-
-
-def test_cmd_usage_flags_local_backend_as_not_actually_free(tmp_path, monkeypatch, capsys):
-    """#380: a `local` call's $0 cost is real but reads as "free" at a glance — the stage header
-    gets a note pointing at Latency as the real cost signal. A stage with no local calls gets no
-    such note."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", model="llama-3.3-70b", backend="local", cost_usd=0.0),
-            _call(task="classify", model="gemini-3.5-flash-lite", cost_usd=0.001),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "local model — no per-token cost; Latency is the real cost signal here" in out
-    classifier_section, extractor_section = out.split("EXTRACTOR")
-    assert "local model" not in classifier_section
-    assert "local model" in extractor_section
-
-
-def test_cmd_usage_shows_batch_lifecycle_note_for_a_batch_collected_stage(tmp_path, monkeypatch, capsys):
-    """A claude-batch-collected extractor stage gets a submitted->ended->collected lifecycle
-    note under its header — the only place that lifecycle is visible once `_resume_batch` clears
-    the transient batch-pending.json state on a clean collection."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", backend="claude-batch", filename="a.pdf",
-                 batch_id="b1", batch_submitted_at="2026-07-29T02:54:46Z",
-                 batch_ended_at="2026-07-29T03:36:02Z", batch_collected_at="2026-07-29T04:10:00Z"),
-            _call(task="classify", model="gemini-3.5-flash-lite", cost_usd=0.001),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    classifier_section, extractor_section = out.split("EXTRACTOR")
-    assert "batch b1" not in classifier_section
-    assert "batch b1" in extractor_section
-    assert "submitted 2026-07-29T02:54:46Z" in extractor_section
-    assert "ended 2026-07-29T03:36:02Z (processed 41.3m)" in extractor_section
-    assert "collected 2026-07-29T04:10:00Z (idle 34.0m)" in extractor_section
-
-
-def test_cmd_usage_no_batch_note_for_a_non_batch_stage(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [_call(task="extract", backend="claude-api")],
-    })
-    monkeypatch.chdir(vault)
-    cmd_usage(_args())
-    assert "batch " not in capsys.readouterr().out
-
-
-def test_cmd_usage_reconcile_task_groups_under_finalizer(tmp_path, monkeypatch, capsys):
-    """The reconcile call (#381/D118) is a post-ingest step like synthesis/timeline/briefing, so
-    it must group under FINALIZER — not render as its own stray stage section — and its cost must
-    count toward the finalizer column in the `--all` comparison."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="reconcile", filename="reconcile", detail="2 entities · 1 pairs",
-                  cost_usd=0.01),
-            _call(task="entity-synthesis", filename="entity-synthesis", cost_usd=0.02),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-    out = capsys.readouterr().out
-    assert "FINALIZER" in out
-    assert "RECONCILE" not in out
-
-    capsys.readouterr()
-    cmd_usage(_args(all_runs=True))
-    out = capsys.readouterr().out
-    # Run row: Run | Backend | Calls | Classifier | Extractor | Finalizer | ... | Cost — the
-    # Finalizer column must carry both calls' cost (0.03), not just entity-synthesis's (0.02),
-    # or the stage columns stop summing to the Cost column on the right.
-    run_row = next(line for line in out.splitlines() if "usage-2026-01-01" in line)
-    dollars = [float(v) for v in run_row.replace("$", "").split()[3:6]]
-    assert dollars == [0.0, 0.0, 0.03]   # classifier, extractor, finalizer
-
-
-def test_cmd_usage_run_flag_no_match(tmp_path, monkeypatch):
-    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call()]})
-    monkeypatch.chdir(vault)
-    with pytest.raises(SystemExit, match="no run matching"):
-        cmd_usage(_args(run="2099-01-01"))
-
-
-def test_cmd_usage_run_flag_ambiguous(tmp_path, monkeypatch):
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [_call()],
-        "usage-2026-01-01T00-00-01": [_call()],
-    })
-    monkeypatch.chdir(vault)
-    with pytest.raises(SystemExit, match="Ambiguous run"):
-        cmd_usage(_args(run="2026-01-01"))
-
-
-def test_cmd_usage_cost_per_page_from_documents_registry(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(
-        tmp_path,
-        runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=1.0)]},
-        documents={"sha1": {"page_count": 10}, "sha2": {"page_count": 10}},
-    )
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "20 pages across 2 documents" in out
-    assert "$0.0500" in out   # 1.0 / 20 pages
-
-
-def test_cmd_usage_cost_per_page_from_extracted_artifacts_without_registry(tmp_path, monkeypatch, capsys):
-    """A dig-only vault (#457/#461) has never committed anything — no documents.json — but
-    `watchdog dig` already staged `.watchdog/extracted/<sha>.json` for each document, carrying
-    the same page_count. Cost/page must work from that alone rather than require a commit."""
-    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=1.0)]})
-    extracted = vault / ".watchdog" / "extracted"
+def test_stage_buckets_put_each_task_where_its_run_reads_it():
+    assert usage.STAGE["classify"] == "classifier"
+    assert usage.STAGE["verify"] == "extractor"            # same model, same document, same stage
+    assert usage.STAGE["reconcile"] == "finalizer" and usage.STAGE["relationship-labels"] == "finalizer"
+    assert usage.STAGE["ask"] == "ask" and usage.STAGE["research"] == "research"
+
+
+def test_wall_span_is_the_real_elapsed_time_for_concurrent_calls():
+    calls = [_call(latency_s=10, end_ts=110), _call(latency_s=10, end_ts=112), _call(latency_s=4, end_ts=104)]
+    assert usage.wall_span(calls) == 12            # 100 → 112, not the summed 24s
+
+
+def test_wall_span_is_none_without_end_times():
+    assert usage.wall_span([_call(), _call()]) is None
+
+
+def test_peak_concurrency_counts_overlap_not_calls():
+    # Four calls, two at a time.
+    calls = [_call(latency_s=10, end_ts=10), _call(latency_s=10, end_ts=10),
+             _call(latency_s=10, end_ts=20), _call(latency_s=10, end_ts=20)]
+    assert usage.peak_concurrency(calls) == 2
+    assert usage.peak_concurrency([_call(), _call()]) == 1           # no end_ts: nothing knowable
+
+
+def test_stage_models_names_each_model_once():
+    calls = [_call(model="claude-sonnet-4-6"), _call(model="claude-sonnet-4-6"), _call(model="gpt-5-mini")]
+    names = usage.stage_models(calls).split(", ")
+    assert len(names) == 2
+
+
+def test_backends_name_auth_only_for_claude():
+    calls = [_call(backend="claude-agent-sdk", auth_mode="subscription"), _call(backend="deepseek", auth_mode=None)]
+    assert usage.stage_backends(calls) == "claude-agent-sdk (subscription), deepseek"
+    assert usage.run_backends(calls) == "sdk/sub, deepseek"
+    assert usage.run_backends([]) == "—"
+
+
+def test_subscription_costs_are_flagged_as_list_price():
+    assert "list-price" in usage.subscription_note([_call(backend="claude-agent-sdk", auth_mode="subscription")])
+    assert usage.subscription_note([_call(backend="claude-api", auth_mode="api-key")]) is None
+    assert usage.subscription_note([_call(backend="openai", auth_mode="subscription")]) is None
+
+
+def test_batch_lifecycle_note_spans_processing_and_idle_time():
+    note = usage.batch_lifecycle_note(_call(
+        backend="claude-batch", batch_id="msgbatch_1", batch_submitted_at="2026-01-01T00:00:00Z",
+        batch_ended_at="2026-01-01T00:30:00Z", batch_collected_at="2026-01-01T05:30:00Z"))
+    assert "msgbatch_1" in note and "processed 30.0m" in note and "idle 300.0m" in note
+
+
+def test_pages_in_detail_reads_page_ranges_only():
+    assert usage.pages_in_detail("pages 1–36") == 36
+    assert usage.pages_in_detail("pages 15–34") == 20
+    assert usage.pages_in_detail("digest") is None and usage.pages_in_detail(None) is None
+
+
+def test_corpus_pages_reads_the_extracted_artifacts(tmp_path):
+    extracted = tmp_path / ".watchdog" / "extracted"
     extracted.mkdir(parents=True)
-    (extracted / "sha1.json").write_text(json.dumps({"document": {"page_count": 10}}))
-    (extracted / "sha2.json").write_text(json.dumps({"document": {"page_count": 10}}))
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "20 pages across 2 documents" in out
-    assert "$0.0500" in out   # 1.0 / 20 pages
+    (extracted / "a.json").write_text(json.dumps({"document": {"page_count": 10}}))
+    (extracted / "b.json").write_text(json.dumps({"document": {"page_count": 5}}))
+    assert usage.corpus_pages(tmp_path) == (15, 2)
+    assert usage.corpus_pages(tmp_path / "nothing") is None
 
 
-def test_cmd_usage_no_extracted_or_registry_reports_unavailable(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=1.0)]})
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "unavailable" in out
-
-
-def test_cmd_usage_per_call_cost_per_page(tmp_path, monkeypatch, capsys):
-    """#457: a "$/pg" column per row, parsed from that call's own page range in `detail` — not
-    the whole-corpus figure. A digest call (no page range) shows "—" instead of a bogus value."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(filename="a.pdf", detail="pages 1–36", cost_usd=0.36),
-            _call(filename="b.pdf", detail="digest", cost_usd=0.10),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    lines = out.splitlines()
-    a_row = next(line for line in lines if "a.pdf" in line)
-    b_row = next(line for line in lines if "b.pdf" in line)
-    assert "$0.0100" in a_row   # 0.36 / 36 pages
-    assert "—" in b_row
+def test_run_totals_split_cost_by_stage_and_count_failed_calls():
+    calls = [_call(task="classify", cost_usd=0.01), _call(task="extract", cost_usd=0.10),
+             _call(task="extract", cost_usd=0.05, failed=True), _call(task="reconcile", cost_usd=0.02)]
+    t = usage.run_totals(calls)
+    assert round(t["cost_usd"], 4) == 0.18
+    assert (round(t["classifier_cost"], 4), round(t["extractor_cost"], 4), round(t["finalizer_cost"], 4)) \
+        == (0.01, 0.15, 0.02)
+    assert t["input_tokens"] == 400
 
 
-# ── backend + auth reporting (#475) ────────────────────────────────────────────
-
-def test_cmd_usage_names_backend_and_auth_next_to_stage_model(tmp_path, monkeypatch, capsys):
-    """A bare `sonnet` resolves to claude-agent-sdk or claude-api by auth mode, silently — and
-    the two have materially different input-token costs. The stage header names which one ran,
-    with the auth mode that selected it, so two runs of the "same" arm are distinguishable."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", backend="claude-agent-sdk", auth_mode="subscription"),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "backend: claude-agent-sdk (subscription)" in out
-
-
-def test_cmd_usage_omits_auth_for_non_claude_backends(tmp_path, monkeypatch, capsys):
-    """Auth mode is only interesting where it *chose* the backend. A DeepSeek call is always
-    api-key, so tagging it would be noise."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", model="deepseek-flash", backend="deepseek"),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args())
-
-    out = capsys.readouterr().out
-    assert "backend: deepseek" in out
-    assert "deepseek (api-key)" not in out
-
-
-def test_cmd_usage_flags_subscription_costs_as_notional(tmp_path, monkeypatch, capsys):
-    """On subscription auth `cost_usd` is a list-price equivalent, not money billed. Printing it
-    as a bare dollar figure next to metered runs is how a subscription arm gets mistaken for a
-    priced one — so it carries a caveat."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", backend="claude-agent-sdk", auth_mode="subscription"),
-        ],
-    })
-    monkeypatch.chdir(vault)
-    cmd_usage(_args())
-    assert "not amounts billed" in capsys.readouterr().out
-
-
-def test_cmd_usage_no_notional_caveat_on_metered_runs(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", backend="claude-api", auth_mode="api-key"),
-        ],
-    })
-    monkeypatch.chdir(vault)
-    cmd_usage(_args())
-    assert "not amounts billed" not in capsys.readouterr().out
-
-
-def test_cmd_usage_all_shows_backend_column_per_run(tmp_path, monkeypatch, capsys):
-    """The `--all` comparison is where an unexplained cost gap between two runs of the same
-    model shows up, so each run names its backend/auth compactly."""
-    vault = _build_vault(tmp_path, runs={
-        "usage-2026-01-01T00-00-00": [
-            _call(task="extract", backend="claude-agent-sdk", auth_mode="subscription"),
-        ],
-        "usage-2026-01-02T00-00-00": [
-            _call(task="extract", backend="claude-api", auth_mode="api-key"),
-        ],
-    })
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args(all_runs=True))
-
-    out = capsys.readouterr().out
-    assert "Backend" in out
-    assert "sdk/sub" in out
-    assert "api/key" in out
-
-
-def _session_file(vault: Path, stem: str, task: str, calls: list[dict]) -> None:
-    d = vault / ".watchdog" / "registry" / "usage" / "sessions"
-    d.mkdir(parents=True, exist_ok=True)
-    (d / f"{stem}.json").write_text(json.dumps({"session": {"id": "s", "mode": task, "task": task,
-                                                            "title": "t"}, "calls": calls}))
-
-
-def test_cmd_usage_all_lists_ask_claude_and_web_research_on_their_own_lines(tmp_path, monkeypatch, capsys):
-    """D296: sessions are recorded beside the runs, not inside one, and shown as their own lines."""
-    vault = _build_vault(tmp_path, runs={"usage-2026-01-01T00-00-00": [_call(cost_usd=0.01)]})
-    sdk = dict(backend="claude-agent-sdk", filename=None, detail=None, auth_mode="subscription")
-    _session_file(vault, "usage-20260102T000000Z-aaa", "ask",
-                  [_call(task="ask", cost_usd=0.10, **sdk), _call(task="ask", cost_usd=0.05, **sdk)])
-    _session_file(vault, "usage-20260103T000000Z-bbb", "research", [_call(task="research", cost_usd=0.20, **sdk)])
-    monkeypatch.chdir(vault)
-
-    cmd_usage(_args(all_runs=True))
-    out = capsys.readouterr().out
-    assert "Ask Claude     1 session, 2 turns" in out and "$0.1500" in out
-    assert "Web research   1 session, 1 turn" in out and "$0.2000" in out
-    assert "All together   $0.3600" in out
-    assert "not amounts billed" in out          # subscription sessions: list-price, not billed
-
-    cmd_usage(_args(run="20260102T000000Z"))
-    assert "ASK CLAUDE  (2 calls)" in capsys.readouterr().out
-
-
-def test_cmd_usage_with_only_sessions_shows_them(tmp_path, monkeypatch, capsys):
-    vault = tmp_path / "vault"
-    (vault / ".watchdog" / "registry").mkdir(parents=True)
-    _session_file(vault, "usage-20260102T000000Z-aaa", "ask", [_call(task="ask", cost_usd=0.10)])
-    monkeypatch.chdir(vault)
-    cmd_usage(_args())
-    assert "Ask Claude     1 session, 1 turn" in capsys.readouterr().out
+def test_cost_by_key_groups_calls_by_the_key_that_paid():
+    calls = [dict(_call(cost_usd=1.0), key_label="Globe"), dict(_call(cost_usd=0.5), key_label="Personal"),
+             dict(_call(cost_usd=2.0), key_label="Globe"), _call(cost_usd=0.0)]
+    rows = usage.cost_by_key(calls)
+    assert [(r["label"], r["calls"]) for r in rows] == [("Globe", 2), ("Personal", 1), (None, 1)]

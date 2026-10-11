@@ -2,7 +2,7 @@
 cross-investigation "have I seen this name anywhere?" lookup.
 
 `search.query` runs `embed.search` and `fulltext.search` as a session's `search` tool does and
-returns the same JSON shape (`cmd/vault._build_search_json`), each item enriched with the document
+returns the same JSON shape (`search.build_json`), each item enriched with the document
 sha, its note and its original so the app can link straight to them. The batch and everywhere
 lookups share the library's data functions (`batch_report`, `everywhere_report`). Without
 fastembed installed the semantic lane reports `semantic_error` and the exact lane still answers.
@@ -78,7 +78,7 @@ def _exact_hit(index: _DocIndex, h: dict) -> dict:
 @method("search.query")
 def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
           rerank: bool = True) -> dict:
-    from watchdog.cmd.vault import _build_search_json
+    from watchdog.search import build_json as _build_search_json
     from watchdog.pipeline import embed, fulltext
 
     v = require_vault(vault)
@@ -102,7 +102,7 @@ def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
     # background phase (D272); until then only exact matches are searched.
     semantic_pending = not engine_setup.engine_ready()
     if not index_empty and not semantic_pending:
-        # Without an explicit threshold nothing is filtered (cosine ≥ -1 always holds), as in the CLI.
+        # Without an explicit threshold nothing is filtered (cosine ≥ -1 always holds).
         min_score = threshold if threshold is not None else -1.0
         try:
             passages_raw = embed.search(v, query, top_n=n, min_score=min_score, scope="corpus",
@@ -155,7 +155,7 @@ def batch(terms: list[str], vault: str | None = None, everywhere: bool = False,
     """Every term checked against manifest names/aliases and the full-text index — the lane that
     scales to a leaked roster or sanctions list. A term whose exact-match lookup failed comes back
     `checked: false`, never as an empty result."""
-    from watchdog.cmd.vault import batch_report, everywhere_report
+    from watchdog.search import batch_report, everywhere_report
 
     if not isinstance(terms, list):
         raise RpcError("terms must be a list of strings", code="bad_params")
@@ -187,7 +187,7 @@ def batch(terms: list[str], vault: str | None = None, everywhere: bool = False,
 
 @method("search.everywhere")
 def everywhere(query: str, top: int = 5) -> dict:
-    from watchdog.cmd.vault import everywhere_report
+    from watchdog.search import everywhere_report
 
     if not isinstance(query, str) or not query.strip():
         raise RpcError("Type something to search for.", code="bad_params")

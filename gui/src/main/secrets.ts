@@ -11,14 +11,13 @@ import { MAIN_ONLY_METHODS, credentialsFile, prepare, sealParams, type StoreStat
 
 let status: StoreStatus | null = null
 
-/** Run when a backend has started, before the window can reach it: migrate, decrypt, hand over. */
+/** Run when a backend has started, before the window can reach it: decrypt, hand over. */
 export async function provideSecrets(request: (method: string, params: unknown) => Promise<unknown>): Promise<void> {
   let provision
   try {
     const r = prepare(safeStorage, process.platform, credentialsFile())
     status = r.status
     provision = r.provision
-    if (r.migrated) log.info(`keys: encrypted ${r.migrated} stored key(s) with the system's secure storage (${r.status.backend})`)
     if (r.status.store === 'plaintext') log.warn(`keys: no usable secure storage (${r.status.backend}); keys stay in a private file`)
     if (r.provision.unreadable) log.warn(`keys: ${r.provision.unreadable} stored key(s) could not be decrypted on this computer`)
   } catch (e) {

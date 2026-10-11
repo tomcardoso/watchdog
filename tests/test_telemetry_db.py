@@ -149,19 +149,17 @@ from watchdog.telemetry_db import enabled as _real_enabled   # noqa: E402 — be
     ({"telemetry": False}, False),
 ])
 def test_enabled_reads_the_telemetry_key(tmp_path, monkeypatch, config, expected):
-    from watchdog import config as base
     cfg = tmp_path / "config.json"
     if config is not None:
         cfg.write_text(json.dumps(config))
-    monkeypatch.setattr(base, "CONFIG_FILE", cfg)
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path)
     assert _real_enabled() is expected
 
 
 def test_enabled_treats_unreadable_config_as_on(tmp_path, monkeypatch):
-    from watchdog import config as base
     cfg = tmp_path / "config.json"
     cfg.write_text("{not json")
-    monkeypatch.setattr(base, "CONFIG_FILE", cfg)
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path)
     assert _real_enabled() is True
 
 

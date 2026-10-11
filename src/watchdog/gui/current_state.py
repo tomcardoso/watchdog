@@ -1,10 +1,10 @@
 """Briefings → Current state: the session primer's picture of the investigation, written for the
 reporter rather than for Claude.
 
-The primer (`cmd/primer.py`, D285) is the text every Ask Claude session starts with. It carries
+The primer (`primer.py`, D285) is the text every Ask Claude session starts with. It carries
 instructions meant for the model (how to cite a fact, the name of a session tool)
 and points to files and commands, under a budget that shrinks its lists. The app showed it
-verbatim, so a reporter read model instructions and terminal commands. This renders the same
+verbatim, so a reporter read model instructions. This renders the same
 records (`primer.gather`, so the two never disagree on a count) without the instructions, with
 the app's own names for where things live, and without the budget. The primer itself stays
 available in the app as "What Claude is given".
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from watchdog.cmd import primer
+from watchdog import primer
 
 _LIST_MAX = 6
 _QUESTIONS_MAX = 12

@@ -1,19 +1,14 @@
-"""Tests for `watchdog merge-entities` (#219): deterministic registry surgery that
-folds a duplicate entity into another. No model calls."""
+"""Merging a duplicate entity into another (#219): deterministic registry surgery that folds
+one entity into another. No model calls."""
 
-import argparse
 import json
-import re
 from pathlib import Path
 
 import pytest
 
-from watchdog.ops.merge import cmd_merge_entities
+from watchdog.ops import CollectingReporter
+from watchdog.ops.merge import merge_entities
 from watchdog.pipeline.merge_entities import merge, run
-
-
-def _strip_ansi(s: str) -> str:
-    return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -314,19 +309,6 @@ def test_run_updates_registry_entity_count(tmp_path):
     assert registry["entity_count"] == 3
 
 
-def test_run_keeps_both_records_claims(tmp_path):
-    """Both notes predate stored extractions here, so their claim blocks exist only in the notes:
-    the merge carries both into the survivor's registry entry and renders them (D280)."""
-    vault = make_vault(tmp_path)
-    run(vault, "alice-smith", "a-smith-duplicate")
-
-    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Alice Smith is listed as director" in content
-    assert "Signed as officer of Acme Corp" in content
-    assert "## Earlier claims" in content
-    assert "a-smith-duplicate" in content
-
-
 def test_run_carries_over_journalist_notes(tmp_path):
     vault = make_vault(tmp_path)
     run(vault, "alice-smith", "a-smith-duplicate")
@@ -446,22 +428,6 @@ def test_run_merge_carries_registry_contradiction_to_survivor(tmp_path):
     assert "Loser-side callout" in content
 
 
-def test_run_backfills_note_only_contradiction_into_registry(tmp_path):
-    """#288: a callout that only ever lived in a note body (pre-#282 vault) must be
-    folded into the registry entry by the merge, not silently dropped."""
-    vault = make_vault(tmp_path)
-    note = vault / "entities" / "person" / "alice-smith.md"
-    note.write_text(note.read_text().replace(
-        "## Notes",
-        "## Contradictions\n\n> [!contradiction] Note-only callout\n\n## Notes",
-    ))
-
-    run(vault, "alice-smith", "a-smith-duplicate")
-
-    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert entities["alice-smith"]["contradictions"] == ["> [!contradiction] Note-only callout"]
-
-
 def test_run_remaps_resolutions_onto_survivor(tmp_path):
     from watchdog.pipeline import resolutions
     vault = make_vault(tmp_path)
@@ -479,96 +445,43 @@ def test_run_remaps_resolutions_onto_survivor(tmp_path):
     assert resolutions.contradiction_id("> [!contradiction] shared callout") in ids
 
 
-# ── cmd_merge_entities — CLI wrapper ──────────────────────────────────────────
+# ── the merge-entities operation ──────────────────────────────────────────────
 
-def _args(keep_id, merge_id, force=True):
-    return argparse.Namespace(keep_id=keep_id, merge_id=merge_id, force=force)
-
-
-def test_cli_requires_running_inside_a_vault(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)   # no .watchdog/ here
+def test_op_requires_an_investigation(tmp_path):
     with pytest.raises(SystemExit):
-        cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))
+        merge_entities(CollectingReporter(), tmp_path, keep="alice-smith", merge="a-smith-duplicate")
 
 
-def test_cli_reports_unknown_id(tmp_path, monkeypatch, capsys):
+def test_op_reports_unknown_id(tmp_path):
     vault = make_vault(tmp_path)
-    monkeypatch.chdir(vault)
     with pytest.raises(SystemExit) as exc:
-        cmd_merge_entities(_args("alice-smith", "nobody-here"))
-    assert "not found" in str(exc.value)
+        merge_entities(CollectingReporter(), vault, keep="alice-smith", merge="nobody-here")
+    assert "no entity" in str(exc.value)
 
 
-def test_cli_prints_merge_summary(tmp_path, monkeypatch, capsys):
+def test_op_merges_and_reports(tmp_path):
     vault = make_vault(tmp_path)
-    monkeypatch.chdir(vault)
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True: no prompt
-
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Merged:" in out
-    assert "A. Smith" in out and "Alice Smith" in out
-    assert "watchdog reindex" in out
-    assert "backup:" in out and ".watchdog/backups/" in out and "undo" in out
-
+    rep = CollectingReporter()
+    result = merge_entities(rep, vault, keep="alice-smith", merge="a-smith-duplicate")
+    assert "Merged A. Smith into Alice Smith" in rep.text
+    assert "Rebuild the search index" in rep.text
+    assert result["backup_dir"] and ".watchdog/backups/" in result["backup_dir"]
     entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "a-smith-duplicate" not in entities
-
-
-def test_cli_shows_preview_and_asks_for_confirmation(tmp_path, monkeypatch, capsys):
-    """Without --force, both entities are shown before anything happens, and declining
-    (the default on a bare Enter) leaves the registry untouched."""
-    vault = make_vault(tmp_path)
-    monkeypatch.chdir(vault)
-    prompts = []
-    monkeypatch.setattr("builtins.input", lambda p="": prompts.append(p) or "")  # bare Enter → default No
-
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate", force=False))
-
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Alice Smith" in out and "A. Smith" in out   # preview shown
-    assert "cannot be undone" in _strip_ansi(prompts[0])   # real input() prints the prompt too
-    assert "Cancelled" in out
-    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert "a-smith-duplicate" in entities   # nothing merged
-
-
-def test_cli_proceeds_on_explicit_yes(tmp_path, monkeypatch, capsys):
-    vault = make_vault(tmp_path)
-    monkeypatch.chdir(vault)
-    monkeypatch.setattr("builtins.input", lambda *_: "y")
-
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate", force=False))
-
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Merged:" in out
-    entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert "a-smith-duplicate" not in entities
-
-
-def test_cli_warns_on_mismatched_types(tmp_path, monkeypatch, capsys):
-    vault = make_vault(tmp_path)
-    monkeypatch.chdir(vault)
-    reg_path = vault / ".watchdog" / "registry" / "entities.json"
-    entities = json.loads(reg_path.read_text())
-    entities["a-smith-duplicate"]["type"] = "Company"   # was Person — force a mismatch
-    reg_path.write_text(json.dumps(entities))
-
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True
-
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "different entity types" in out.lower()
 
 
 # ── #313: nudge a /watchdog-entity refresh when the merge drops a prose Summary ──
 
 def _give_loser_a_summary(vault: Path) -> None:
-    """The default fixture's losing note has no Summary; add one so the merge has a
-    second prose account to drop."""
-    note = vault / "entities" / "person" / "a-smith-duplicate.md"
-    note.write_text(note.read_text().replace(
-        "# A. Smith\n\n",
-        "# A. Smith\n\n## Summary\n\nA. Smith signed as an officer of Acme Corp.\n\n",
-    ))
+    """Give both records a stored summary, so the merge has a second prose account to drop."""
+    path = vault / ".watchdog" / "registry" / "entities.json"
+    reg = json.loads(path.read_text())
+    for eid, text in (("alice-smith", "Alice is a director of Acme Corp."),
+                      ("a-smith-duplicate", "A. Smith signed as an officer of Acme Corp.")):
+        reg[eid]["synthesis"] = {"version": 1, "summary": text, "analysis": "", "by": "model",
+                                 "model": None, "made_at": None, "facts_total": None,
+                                 "facts_shown": None, "fact_refs": {}}
+    path.write_text(json.dumps(reg))
 
 
 def test_run_flags_summary_dropped_when_both_entities_had_one(tmp_path):
@@ -582,21 +495,16 @@ def test_run_summary_not_dropped_when_loser_had_no_summary(tmp_path):
     assert run(vault, "alice-smith", "a-smith-duplicate")["summary_dropped"] is False
 
 
-def test_cli_nudges_watchdog_entity_refresh_when_summary_dropped(tmp_path, monkeypatch, capsys):
+def test_op_says_the_summary_now_covers_only_the_kept_entity(tmp_path):
     vault = make_vault(tmp_path)
     _give_loser_a_summary(vault)
-    monkeypatch.chdir(vault)
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True
-
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "/watchdog-entity alice-smith" in out
-    assert "re-synthesize" in out
+    rep = CollectingReporter()
+    merge_entities(rep, vault, keep="alice-smith", merge="a-smith-duplicate")
+    assert "only the kept entity" in rep.text
 
 
-def test_cli_suppresses_nudge_when_loser_had_no_summary(tmp_path, monkeypatch, capsys):
-    vault = make_vault(tmp_path)   # loser note carries no Summary section
-    monkeypatch.chdir(vault)
-    cmd_merge_entities(_args("alice-smith", "a-smith-duplicate"))   # force=True
-
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "/watchdog-entity" not in out
+def test_op_says_nothing_about_the_summary_when_the_loser_had_none(tmp_path):
+    vault = make_vault(tmp_path)
+    rep = CollectingReporter()
+    merge_entities(rep, vault, keep="alice-smith", merge="a-smith-duplicate")
+    assert "only the kept entity" not in rep.text

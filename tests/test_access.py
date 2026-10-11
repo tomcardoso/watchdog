@@ -124,16 +124,16 @@ def test_extra_roots_and_symlinks(home):
     assert _results(r.stdout) == {"engine": "ok", "via-link": "denied"}, r.stderr
 
 
-def test_a_real_command_runs_in_a_granted_vault_and_is_refused_in_another(home, tmp_path):
+def test_a_real_operation_runs_in_a_granted_vault_and_is_refused_in_another(home, tmp_path):
     from tests.test_write_vault import make_vault
     granted = make_vault(home / "granted")
     other = make_vault(home / "elsewhere")
-    (home / ".watchdog" / "config.json").write_text("{}")     # "set up", as far as the CLI cares
     (tmp_path / "tmp").mkdir(exist_ok=True)
     for vault, expect_ok in ((granted, True), (other, False)):
         env = {**os.environ, "HOME": str(home), "PYTHONPATH": SRC, "WATCHDOG_ENFORCE_ACCESS": "1",
                "NO_COLOR": "1", "TMPDIR": str(tmp_path / "tmp")}
-        r = subprocess.run([sys.executable, "-m", "watchdog", "timeline"], cwd=vault, env=env,
+        r = subprocess.run([sys.executable, "-m", "watchdog.worker"], cwd=vault, env=env,
+                           input='{"op": "rebuild-timeline", "params": {}}\n',
                            capture_output=True, text=True, timeout=60)
         assert (r.returncode == 0) is expect_ok, (vault, r.stdout, r.stderr)
         assert (vault / "timeline.md").exists() is expect_ok

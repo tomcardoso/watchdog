@@ -1,10 +1,9 @@
 name: App release
 
-# The desktop app's own releases, separate from the Python package's (publish.yml, `v*` tags,
-# PyPI). Push a tag `app-v<semver>`:
+# The desktop app's releases. Push a tag `app-v<semver>`:
 #   app-v0.2.0-beta.1   a beta: installers on a pre-release, and the `app-beta` channel updated
 #   app-v0.2.0          a stable release: the same, on the `app-stable` channel
-# Nothing here touches PyPI. Each build's in-app updater reads its channel's rolling release
+# Each build's in-app updater reads its channel's rolling release
 # (`app-beta` or `app-stable`, see gui/electron-builder.config.cjs), whose files this workflow
 # replaces, so testers on a beta are offered the next beta. See gui/DISTRIBUTION.md.
 #

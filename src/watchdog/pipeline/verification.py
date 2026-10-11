@@ -50,7 +50,7 @@ ID_SCHEME = 1
 NOTE_FORMAT = 1
 STATUSES = ("verified", "disputed", "unverifiable")
 LABELS = {"verified": "Verified", "disputed": "Disputed", "unverifiable": "Can't verify"}
-# What the CLI accepts for each status, besides its own name.
+# What `parse_status` accepts for each status, besides its own name.
 STATUS_ALIASES = {"cant-verify": "unverifiable", "can't-verify": "unverifiable",
                   "cannot-verify": "unverifiable", "clear": None, "none": None}
 NOTE_CAP = 2000
@@ -333,7 +333,7 @@ def _mark(vault: Path, fid: str, status: str | None, note: str | None = None,
         if (current.get("date") or "").strip() and (vault / "timeline.md").exists():
             from watchdog.pipeline import timeline
             try:
-                timeline.cmd_rebuild_timeline(vault, quiet=True)
+                timeline.rebuild_timeline(vault, quiet=True)
             except OSError as e:
                 print(f"  Warning: timeline not refreshed after the mark: {e}", file=sys.stderr)
     return {"id": fid, **entry}

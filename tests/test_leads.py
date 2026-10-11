@@ -1,15 +1,10 @@
-import argparse
 import json
-import re
 from pathlib import Path
 
 
+from watchdog.ops import CollectingReporter
+from watchdog.ops.maintenance import lead_sweep
 from watchdog.pipeline import leads
-from watchdog.cmd.leads import cmd_leads
-
-
-def _strip_ansi(s: str) -> str:
-    return re.sub(r"\x1b\[[0-9;]*m", "", s)
 
 
 def _registry():
@@ -234,7 +229,7 @@ def test_write_leads_overwrites_not_appends(tmp_path):
     assert body.count("# Investigative leads") == 1
 
 
-# ── scan + cmd_leads ────────────────────────────────────────────────────────────
+# ── scan + the lead-sweep operation ────────────────────────────────────────────────────────────
 
 def _vault(tmp_path, registry) -> Path:
     vault = tmp_path / "vault"
@@ -244,35 +239,23 @@ def _vault(tmp_path, registry) -> Path:
     return vault
 
 
-def _args(**kw):
-    return argparse.Namespace(**{"project": None, **kw})
-
-
 def test_scan_reads_registry(tmp_path):
     vault = _vault(tmp_path, _registry())
     assert leads.total(leads.scan(vault)) == 4
 
 
-def test_cmd_leads_prints_sections(tmp_path, monkeypatch, capsys):
+def test_lead_sweep_counts_each_kind(tmp_path):
     vault = _vault(tmp_path, _registry())
-    monkeypatch.chdir(vault)
-    cmd_leads(_args())
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "Named but never profiled  (1)" in out
-    assert "Shell Co" in out
-    assert "Mentioned often but unconnected  (1)" in out
-    assert "Unresolved contradictions  (1)" in out
-    assert "Inferred facts to verify  (1)" in out
-    assert "Carol White" in out
-    assert "Advisor → Alice Smith" in out
+    rep = CollectingReporter()
+    assert lead_sweep(rep, vault) == {"unprofiled": 1, "isolated": 1, "contradictions": 1, "inferred": 1}
+    assert "1 entity named but never profiled" in rep.text and "Review → Leads" in rep.text
 
 
-def test_cmd_leads_empty(tmp_path, monkeypatch, capsys):
+def test_lead_sweep_with_nothing_to_report(tmp_path):
     vault = _vault(tmp_path, {})
-    monkeypatch.chdir(vault)
-    cmd_leads(_args())
-    out = _strip_ansi(capsys.readouterr().out)
-    assert "No leads" in out
+    rep = CollectingReporter()
+    assert lead_sweep(rep, vault) == {"unprofiled": 0, "isolated": 0, "contradictions": 0, "inferred": 0}
+    assert "No leads" in rep.text
 
 
 # ── resolution filtering (#266) ─────────────────────────────────────────────────

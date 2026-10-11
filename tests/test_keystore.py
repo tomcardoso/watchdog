@@ -19,18 +19,14 @@ import pytest
 
 from watchdog import keystore
 from watchdog import model_client as mc
-from watchdog.cmd import auth, base
+from watchdog import auth
+from tests.keys_support import stored
 
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home")
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "home" / "config.json")
-    monkeypatch.setattr(base, "PROJECTS_FILE", tmp_path / "home" / "projects.json")
-    import watchdog.config
-    monkeypatch.setattr(watchdog.config, "CONFIG_FILE", tmp_path / "home" / "config.json")
-    monkeypatch.delenv("WATCHDOG_APP", raising=False)
-    for p in auth._PROVIDERS.values():
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     return tmp_path / "home"
 
@@ -67,7 +63,7 @@ def test_the_app_writes_only_the_encrypted_blob(home):
     text = raw(home)
     assert key not in text and "sk-proj-work-secret-1234" not in text
     data = json.loads(text)
-    blob = data["keys"]["anthropic"]
+    blob = data["keys"]["anthropic"]["items"][0]["key"]
     assert blob["enc"] == keystore.ENC_TAG and blob["masked"] == "sk-ant-api…WXYZ"
     assert data["keys"]["openai"]["items"][0]["key"]["enc"] == keystore.ENC_TAG   # a named key: item form
     # This process may use them at once: the app sent the key with its blob.
@@ -108,14 +104,12 @@ def test_a_malformed_blob_is_refused(home):
 
 # ── reading: what the app hands over ────────────────────────────────────────────
 
-def test_migrated_file_reads_back_through_the_keys_the_app_provides(home):
-    """The shape the main process writes when it migrates a plaintext file (keystore.ts): every
-    secret replaced by a blob, structure untouched."""
+def test_encrypted_keys_read_back_through_the_keys_the_app_provides(home):
     personal, work = "sk-proj-personal-1111", "sk-proj-work-2222"
     anth = "sk-ant-api03-anthropic-3333"
-    blobs = {k: {**seal(k), "masked": auth._mask(k)} for k in (personal, work, anth)}
-    auth._save_state({"mode": "api-key", "keys": {
-        "anthropic": blobs[anth],
+    blobs = {k: {**seal(k), "masked": auth.mask(k)} for k in (personal, work, anth)}
+    auth.save_state({"mode": "api-key", "keys": {
+        **stored(anthropic=blobs[anth]),
         "openai": {"default": "k-1", "items": [{"id": "k-1", "label": "Personal", "key": blobs[personal]},
                                                {"id": "k-2", "label": "Work", "key": blobs[work]}]}}})
     keystore.provide({b["data"]: k for k, b in blobs.items()}, store="encrypted", backend="keychain")
@@ -127,7 +121,7 @@ def test_migrated_file_reads_back_through_the_keys_the_app_provides(home):
     auth.rename_key("openai", "k-2", "Newsroom")
     data = json.loads(raw(home))
     assert data["keys"]["openai"]["items"][1]["key"] == blobs[work]
-    assert data["keys"]["anthropic"] == blobs[anth]
+    assert data["keys"]["anthropic"]["items"][0]["key"] == blobs[anth]
 
 
 def test_auth_status_reports_where_keys_are_stored_and_never_the_key(home):
@@ -144,7 +138,7 @@ def test_secrets_provide_is_an_rpc_that_takes_the_keys_and_the_store(home):
     from watchdog.gui.api import keystore as api
     from watchdog.gui.rpc import RpcError
     blob = seal("sk-proj-provided-1234")
-    auth._save_state({"mode": None, "keys": {"openai": {**blob, "masked": "x"}}})
+    auth.save_state({"mode": None, "keys": stored(openai={**blob, "masked": "x"})})
     assert api.provide("encrypted", {blob["data"]: "sk-proj-provided-1234"}, backend="dpapi") == {"ok": True, "keys": 1}
     assert auth.get_api_key("openai") == "sk-proj-provided-1234"
     with pytest.raises(RpcError):
@@ -158,7 +152,7 @@ def test_without_secure_storage_keys_stay_plaintext_in_a_private_file(home):
     keystore.provide({}, store="plaintext", backend="basic_text", reason="no keyring")
     api.set_key("openai", "sk-proj-fallback-1234")
     data = json.loads(raw(home))
-    assert data["keys"]["openai"] == "sk-proj-fallback-1234"
+    assert data["keys"]["openai"]["items"][0]["key"] == "sk-proj-fallback-1234"
     assert stat.S_IMODE(os.stat(home / "credentials.json").st_mode) == 0o600
     s = api.auth_status()["storage"]
     assert s["store"] == "plaintext" and s["backend"] == "basic_text" and s["plaintext"] == 1
@@ -167,54 +161,32 @@ def test_without_secure_storage_keys_stay_plaintext_in_a_private_file(home):
 def test_fallback_counts_keys_it_cannot_read(home):
     """Keys encrypted earlier, on a session whose keyring is now unavailable: listed, locked."""
     from watchdog.gui.api import settings as api
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": {**seal("sk-ant-x-0000"), "masked": "sk-ant-x…0000"}}})
+    auth.save_state({"mode": "api-key", "keys": stored(anthropic={**seal("sk-ant-x-0000"), "masked": "sk-ant-x…0000"})})
     keystore.provide({}, store="plaintext", backend="basic_text", unreadable=1)
     s = api.auth_status()
     assert s["storage"]["locked"] == 1
     assert s["claude"]["key_masked"] == "sk-ant-x…0000"
 
 
-# ── the command line ─────────────────────────────────────────────────────────────
+# ── a key this process wasn't given ─────────────────────────────────────────────
 
 def _blob_file(home, key="sk-ant-api03-locked-5678", provider="anthropic"):
-    auth._save_state({"mode": "api-key", "keys": {provider: {**seal(key), "masked": auth._mask(key)}}})
+    auth.save_state({"mode": "api-key", "keys": stored(**{provider: {**seal(key), "masked": auth.mask(key)}})})
 
 
-def test_the_command_line_cannot_read_an_encrypted_key_and_says_what_to_do(home):
+def test_a_locked_key_says_to_restart_and_sends_nothing(home):
     _blob_file(home)
     with pytest.raises(auth.KeyLockedError) as e:
         auth.get_api_key("anthropic")
     msg = str(e.value)
-    assert "stored by the Watchdog app" in msg and "ANTHROPIC_API_KEY" in msg and "Nothing has been sent" in msg
+    assert "Restart Watchdog" in msg and "Nothing has been sent" in msg and "ANTHROPIC_API_KEY" not in msg
     assert isinstance(e.value, auth.KeyChoiceError)
 
 
-def test_the_command_line_exits_cleanly_rather_than_crashing(home, monkeypatch, capsys):
-    from watchdog import cli
-    _blob_file(home, "sk-proj-locked-1111", "openai")
-    monkeypatch.setattr(cli, "_main", lambda: auth.get_api_key("openai"))
-    with pytest.raises(SystemExit) as e:
-        cli.main()
-    assert "OPENAI_API_KEY" in str(e.value.code) and str(e.value.code).startswith("Error:")
-
-
-def test_the_command_line_status_lists_locked_keys_masked(home, capsys):
+def test_status_lists_locked_keys_masked(home):
     _blob_file(home)
     d = auth.status_data()
     assert d["keys"][0]["locked"] is True and d["keys"][0]["masked"] == "sk-ant-api…5678"
-    auth._status()
-    out = capsys.readouterr().out
-    assert "stored by the app, encrypted" in out and "ANTHROPIC_API_KEY" in out
-
-
-def test_the_command_line_does_not_write_plaintext_beside_the_apps_keys(home, monkeypatch, capsys):
-    _blob_file(home)
-    monkeypatch.setattr(auth, "getpass", lambda prompt: "sk-proj-typed-0000")
-    assert auth.prompt_and_store_key("openai", auth._load_state()) is False
-    assert "sk-proj-typed-0000" not in raw(home)
-    assert "Settings → Models & keys" in capsys.readouterr().out
-    with pytest.raises(ValueError):
-        auth.add_key("openai", "Work", "sk-proj-typed-0000")
 
 
 def test_the_environment_variable_still_overrides_an_encrypted_key(home, vault, monkeypatch):
@@ -228,7 +200,7 @@ def test_the_environment_variable_still_overrides_an_encrypted_key(home, vault, 
 def test_a_locked_key_stops_before_any_model_call(home, vault, monkeypatch):
     """I16 unchanged: no key this process can use means no call, and never another key."""
     personal = "sk-proj-plain-default-0000"
-    auth._save_state({"mode": None, "keys": {"openai": {"default": "k-2", "items": [
+    auth.save_state({"mode": None, "keys": {"openai": {"default": "k-2", "items": [
         {"id": "k-1", "label": "Personal", "key": personal},
         {"id": "k-2", "label": "Work", "key": {**seal("sk-proj-work-9999"), "masked": "m"}}]}}})
     sent = []
@@ -237,7 +209,7 @@ def test_a_locked_key_stops_before_any_model_call(home, vault, monkeypatch):
         sent.append(a)
         return {"text": "{}", "usage": {}, "cost_usd": 0.0}
     monkeypatch.setitem(mc._ABACKENDS, "openai", backend)
-    with pytest.raises(mc.ModelError, match="OPENAI_API_KEY"):
+    with pytest.raises(mc.ModelError, match="Nothing has been sent"):
         asyncio.run(mc.acomplete_json(task="t", prompt="p", schema={"type": "object"},
                                       model="gpt-5.6-luna", backend="openai"))
     assert sent == []                                    # never fell back to the readable Personal key
@@ -245,22 +217,14 @@ def test_a_locked_key_stops_before_any_model_call(home, vault, monkeypatch):
         auth.check_run_keys(vault, ["openai"])
 
 
-def test_under_the_app_a_locked_key_says_to_restart_not_to_set_a_variable(home, monkeypatch):
-    _blob_file(home)
-    monkeypatch.setenv("WATCHDOG_APP", "1")
-    with pytest.raises(auth.KeyLockedError) as e:
-        auth.get_api_key("anthropic")
-    assert "Restart Watchdog" in str(e.value) and "ANTHROPIC_API_KEY" not in str(e.value)
-
-
 # ── jobs: each is handed only its investigation's keys ──────────────────────────
 
 def _two_investigations(home, tmp_path):
     work, personal = "sk-proj-work-AAAA", "sk-proj-personal-BBBB"
     anth = "sk-ant-api03-only-CCCC"
-    b = {k: {**seal(k), "masked": auth._mask(k)} for k in (work, personal, anth)}
-    auth._save_state({"mode": "api-key", "keys": {
-        "anthropic": b[anth],
+    b = {k: {**seal(k), "masked": auth.mask(k)} for k in (work, personal, anth)}
+    auth.save_state({"mode": "api-key", "keys": {
+        **stored(anthropic=b[anth]),
         "openai": {"default": "k-p", "items": [{"id": "k-p", "label": "Personal", "key": b[personal]},
                                                {"id": "k-w", "label": "Work", "key": b[work]}]}}})
     keystore.provide({v["data"]: k for k, v in b.items()}, store="encrypted", backend="keychain")

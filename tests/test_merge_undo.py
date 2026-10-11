@@ -108,10 +108,7 @@ def test_undo_of_a_reporter_merge_restores_the_record_and_leaves_notes_on_the_su
 
 def test_undo_is_refused_when_it_cannot_be_done_correctly(vault):
     data = merge_log.load(vault)
-    old = dict(data["merges"][0])
-    old["undo"] = {"extracted_id": "x"}                       # logged before D280
-    assert "earlier version" in merge_undo.check(vault, old)
-    inside = dict(old, undo={"version": 2, "available": False, "reason": "Merged inside one document."})
+    inside = dict(data["merges"][0], undo={"version": 2, "available": False, "reason": "Merged inside one document."})
     assert merge_undo.check(vault, inside) == "Merged inside one document."
     gone = dict(data["merges"][0], keep={"id": "no-such-entity"})
     assert "merged into another" in merge_undo.check(vault, gone)

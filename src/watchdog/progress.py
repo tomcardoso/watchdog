@@ -1,4 +1,4 @@
-"""Structured progress for the desktop app, written alongside the normal terminal output.
+"""Structured progress for the desktop app, written alongside the operation's log lines.
 
 When the environment variable `WATCHDOG_PROGRESS` is `1` (the worker that runs the app's
 operations sets it, D298), `emit(kind, **fields)` writes one line to the real stdout:
@@ -7,7 +7,7 @@ operations sets it, D298), `emit(kind, **fields)` writes one line to the real st
 
 The record-separator prefix cannot occur in ordinary output, so the app can tell these lines from
 the human-readable ones around them and keep them out of the log it shows. With the variable unset
-`emit` returns immediately and writes nothing, so the terminal experience is unchanged.
+`emit` returns immediately and writes nothing (the benchmarks and the tests).
 
 Events (every one has `kind`):
 
@@ -72,3 +72,23 @@ def parse(line: str) -> dict | None:
     except ValueError:
         return None
     return event if isinstance(event, dict) else None
+
+
+class Lines:
+    """Per-item progress lines for a stage's log (the job log in the app), one line per change.
+    `update` is a document's or file's current state, `finish` its outcome, `note` anything
+    else."""
+
+    def update(self, key: str, line: str, plain_line: str | None = None, *, pin: bool = False) -> None:
+        self._print(plain_line if plain_line is not None else line)
+
+    def finish(self, key: str, line: str) -> None:
+        self._print(line)
+
+    def note(self, line: str) -> None:
+        self._print(line)
+
+    @staticmethod
+    def _print(line: str) -> None:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()

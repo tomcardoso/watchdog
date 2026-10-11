@@ -186,9 +186,9 @@ def test_a_contradiction_side_naming_its_fact_links_to_that_fact(tmp_path):
 
 
 def test_search_json_lists_each_hits_facts_with_a_citation_to_paste(tmp_path):
-    """D283: `watchdog search --json` gives every passage and exact match in a document's text the
+    """D283: the search tool's JSON gives every passage and exact match in a document's text the
     facts recorded on that page, with their id and the link a session pastes to cite one."""
-    from watchdog.cmd.vault import _build_search_json
+    from watchdog.search import build_json as _build_search_json
     paid, appraisal, _ = _ids()
     vault = _vault(tmp_path)
     verification.mark(vault, paid, "disputed", by="R")

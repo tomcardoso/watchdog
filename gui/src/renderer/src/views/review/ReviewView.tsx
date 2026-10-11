@@ -1,4 +1,4 @@
-// `watchdog review` and everything under it: the five queues (contradictions, leads, watch-list
+// Review: the five queues (contradictions, leads, watch-list
 // hits, possible duplicates, possible same entities), what has been handled, the watch list
 // itself, open document requests and the merge log. Built for triage by keyboard: J/K to move,
 // H to mark handled, O to open, U to undo.

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from watchdog import model_client, telemetry_db
-from watchdog.cmd import auth as auth_module
+from watchdog import auth as auth_module
 from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
 from tests.test_write_vault import make_extraction, make_vault
@@ -77,29 +77,23 @@ def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, 
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="Acme Corp filed an annual report.")
     ext = _extraction()
-    ext["document"]["key_facts"][0]["quote"] = "this exact sentence never appears in the document"
+    ext["document"]["key_facts"][0]["quote_locator"] = "this exact sentence never appears in the document"
     _mock(monkeypatch, extraction=ext)
 
     asyncio.run(orchestrate.run(vault))
 
     out = capsys.readouterr().out
     ok_index = out.index("OK")
-    warn_index = out.index("quote not found")
+    warn_index = out.index("quote_locator not found")
     assert ok_index < warn_index
 
 
 def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
-    """The live region (and its pinned "Elapsed" row) used to close the instant extraction's
-    gather finished — before finalize (reconcile/commit/synthesize/briefing) even started, so a
-    long post-processing step went silent with nothing to show it wasn't a stall (live-run
-    regression). It must stay open until finalize is done, and close cleanly afterward."""
-    from watchdog.terminal import LiveRegion as _RealLiveRegion
+    """The run's progress lines stay open until finalize (reconcile/commit/synthesize/briefing)
+    is done, so a long post-processing step keeps reporting, and close cleanly afterward."""
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())
-    # Force the live region on even though pytest's captured stdout isn't a real TTY — the
-    # timer task and board teardown are gated on `_board.enabled`.
-    monkeypatch.setattr(orchestrate, "LiveRegion", lambda: _RealLiveRegion(enabled=True))
 
     board_during_finalize = []
     real_finalize = orchestrate.finalize
@@ -2557,7 +2551,8 @@ def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
         {"status": "ok", "record_skill": "general-records"},
         {"status": "ok", "record_skill": "general-records"},
     ])
-    assert "watchdog dig --skill general-records" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "general-records" in out and "choosing that record skill" in out
 
 
 def test_nudge_skill_pin_silent_when_mixed_or_single_or_failed(capsys):
@@ -3271,7 +3266,8 @@ def test_latest_usage_none_before_any_ingest(tmp_path):
 
 def test_latest_usage_returns_the_most_recent_run(tmp_path):
     vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "registry"
+    reg = vault / ".watchdog" / "registry" / "usage"
+    reg.mkdir(parents=True, exist_ok=True)
     (reg / "usage-20260101T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
@@ -3282,21 +3278,6 @@ def test_latest_usage_returns_the_most_recent_run(tmp_path):
                                             "cost_usd": 0.05}}))
     totals = orchestrate.latest_usage(vault)
     assert totals["input_tokens"] == 999
-
-
-def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
-    """#319: usage-<ts>.json moved from the flat Registry dir into a `usage/` subfolder, but a
-    vault ingested before that move still has real history sitting in the old flat location —
-    `usage_files` (and everything built on it) must keep seeing both, in chronological order."""
-    vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "registry"
-    (reg / "usage-20260101T000000Z.json").write_text("{}")   # legacy (pre-move) location
-    usage_dir = reg / "usage"
-    usage_dir.mkdir(parents=True)
-    (usage_dir / "usage-20260102T000000Z.json").write_text("{}")   # current (post-move) location
-
-    files = orchestrate.usage_files(vault)
-    assert [f.name for f in files] == ["usage-20260101T000000Z.json", "usage-20260102T000000Z.json"]
 
 
 def test_latest_usage_prefers_new_subfolder_over_legacy_when_newer(tmp_path):
@@ -3447,10 +3428,8 @@ def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
     assert "Re-run" not in out
 
 
-def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsys):
-    """The extraction rate-limit stop notice names `run`'s `resume_hint` — the surface that
-    launched the run — not a hardcoded `watchdog dig`, so a guided bare-`watchdog` walk points
-    back at `watchdog`, not `dig` (#441, D138)."""
+def test_rate_limit_stop_says_to_add_documents_again(tmp_path, monkeypatch, capsys):
+    """The extraction rate-limit stop notice tells the reporter how to continue."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="aaa111", filename="one.pdf")
 
@@ -3461,11 +3440,10 @@ def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsy
         raise model_client.RateLimitError("session limit")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, concurrency=1, resume_hint="watchdog"))
+    asyncio.run(orchestrate.run(vault, concurrency=1))
     out = capsys.readouterr().out
-    assert "Re-run" in out
-    assert "once it resets to continue" in out
-    assert "watchdog dig" not in out
+    assert "Add documents again once it resets to continue" in out
+    assert "watchdog" not in out.lower().replace("watchdog/", "")
 
 
 def test_rate_limit_stop_reports_observed_rate_and_provider_headers(tmp_path, monkeypatch, capsys):
@@ -3947,9 +3925,8 @@ def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
     assert result["entities"] == 1   # only acme-corp crosses appears_in >= 2
 
 
-def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
-    """wipe_pending=False (the merge choice) keeps a prior batch's post-ingest inputs;
-    the default clears them."""
+def test_ingest_setup_keeps_a_pending_batch(tmp_path):
+    """A new run keeps a prior batch's post-ingest inputs, so the two finalize together."""
     from watchdog.pipeline import ingest_setup
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="new1", filename="new.pdf")          # a queued doc → total > 0
@@ -3957,63 +3934,20 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "result_old.json").write_text("{}")
     (tmp / "notes_old.md").write_text("obs")
-    lock = vault / ".watchdog" / "registry" / ".processing-lock"
-
-    # merge: inputs preserved so this run finalizes together with the pending batch
-    ingest_setup.run(vault, wipe_pending=False)
+    ingest_setup.run(vault)
     assert (tmp / "result_old.json").exists() and (tmp / "notes_old.md").exists()
-
-    # default: inputs wiped for a fresh batch
-    lock.unlink(missing_ok=True)                               # release the lock from the prior call
-    ingest_setup.run(vault, wipe_pending=True)
-    assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
-
-
-def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
-    """#270: the discard choice (wipe_pending=True with leftover residue from a prior
-    unfinalized batch) is irreversible — back up result_*.json and notes_*.md before
-    deleting them."""
-    from watchdog.pipeline import ingest_setup
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="new1", filename="new.pdf")
-    tmp = vault / ".watchdog" / "tmp"
-    tmp.mkdir(parents=True, exist_ok=True)
-    (tmp / "result_old.json").write_text('{"old": true}')
-    (tmp / "notes_old.md").write_text("scratchpad notes")
-
-    state = ingest_setup.run(vault, wipe_pending=True)
-
-    assert state["backup_dir"] is not None
-    backup_dir = Path(state["backup_dir"])
-    assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
-    assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
-    # And the originals are still gone — the backup doesn't block the wipe.
-    assert not (tmp / "result_old.json").exists()
-
-
-def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
-    """A routine ingest with nothing left over from a prior unfinalized batch is a
-    no-op for the wipe step, so it must not leave an empty backup directory behind."""
-    from watchdog.pipeline import ingest_setup
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="new1", filename="new.pdf")
-
-    state = ingest_setup.run(vault, wipe_pending=True)
-
-    assert state["backup_dir"] is None
     assert not (vault / ".watchdog" / "backups").exists()
 
 
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
-    """watchdog requeue moves quarantined queue files back into the active queue."""
-    from watchdog.cmd.ingest import cmd_requeue
+    """The requeue operation moves quarantined queue files back into the active queue."""
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.ingest import requeue
     vault = make_vault(tmp_path)
     failed = vault / ".watchdog" / "queue" / "_failed"
     failed.mkdir(parents=True, exist_ok=True)
     (failed / "ddd444.json").write_text("{}")
-    monkeypatch.chdir(vault)
-
-    cmd_requeue(None)
+    assert requeue(CollectingReporter(), vault) == {"requeued": 1}
 
     assert (vault / ".watchdog" / "queue" / "ddd444.json").exists()
     assert not (failed / "ddd444.json").exists()
@@ -4306,24 +4240,20 @@ def test_run_batch_needs_no_pinned_skill(tmp_path, monkeypatch):
     assert out == {"results": [], "batch_pending": False}
 
 
-def test_batch_skill_prefers_per_sha_map_then_legacy_then_run_pin(tmp_path):
-    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), falling
-    back to the pre-D144 single `skill_label` so a batch submitted by an older version is still
-    collectable after an upgrade — a batch can sit in flight for up to 24h."""
+def test_batch_skill_prefers_per_sha_map_then_run_pin(tmp_path):
+    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), else
+    this run's own pin."""
     skill = tmp_path / "pinned.md"
     skill.write_text("RUN-PIN SKILL", encoding="utf-8")
 
     # per-sha map wins
-    state = {"skills": {"sha1": "bankruptcy"}, "skill_label": "financial-statements"}
+    state = {"skills": {"sha1": "bankruptcy"}}
     assert orchestrate._batch_skill(state, "sha1", str(skill))[1] == "bankruptcy"
-    # legacy single label, for a sha the map doesn't name
-    assert orchestrate._batch_skill(state, "sha2", str(skill))[1] == "financial-statements"
     # neither: fall back to this run's own pin
     assert orchestrate._batch_skill({}, "sha3", str(skill)) == ("RUN-PIN SKILL", "pinned")
-    # a label that no longer resolves to a skill file (a pre-D144 path stem, or a user-local
-    # skill deleted while the batch was in flight) also falls back rather than failing a batch
-    # that has already been paid for
-    assert orchestrate._batch_skill({"skill_label": "no-such-skill"}, "sha5", str(skill))[1] == "pinned"
+    # a label that no longer resolves to a skill file (a user-local skill deleted while the
+    # batch was in flight) also falls back rather than failing a batch already paid for
+    assert orchestrate._batch_skill({"skills": {"sha5": "no-such-skill"}}, "sha5", str(skill))[1] == "pinned"
     # nothing usable at all is a clear error, not a silently wrong skill
     with pytest.raises(model_client.ModelError, match="no usable skill"):
         orchestrate._batch_skill({}, "sha4", None)
@@ -4463,7 +4393,7 @@ def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatc
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "gpt-5.6-luna",
-            "skill_label": "financial-statements", "effort": None, "backend": "openai-batch"}
+            "skills": {}, "effort": None, "backend": "openai-batch"}
     batch_extract.write_state(vault, state)
 
     seen_backends = []
@@ -4485,29 +4415,6 @@ def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatc
 
     assert out["batch_pending"] is False
     assert seen_backends == [("status", "openai-batch"), ("collect", "openai-batch")]
-
-
-def test_resume_batch_defaults_missing_backend_to_claude_batch(tmp_path, monkeypatch):
-    """State persisted before #530 (no `backend` field at all) must still resume against
-    Anthropic — an in-flight batch across an upgrade shouldn't strand."""
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="sha1", filename="a.pdf")
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None}   # no "backend" key
-    batch_extract.write_state(vault, state)
-
-    seen_backends = []
-
-    async def fake_status(batch_id, api_key, backend=None):
-        seen_backends.append(backend)
-        return {"processing_status": "in_progress", "request_counts": {}}
-    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
-
-    skill_file = tmp_path / "pinned.md"
-    skill_file.write_text("SKILL")
-    asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
-
-    assert seen_backends == ["claude-batch"]
 
 
 def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
@@ -4585,7 +4492,7 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
     vault = make_vault(tmp_path)
     state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-4-6",
-            "skill_label": "s", "effort": None}
+            "skills": {}, "effort": None, "backend": "claude-batch"}
 
     async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "in_progress", "request_counts": {"processing": 1, "succeeded": 1}}
@@ -4601,7 +4508,7 @@ def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     # Pre-D144 state shape (one run-wide `skill_label`, no per-sha map) — still collectable.
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None}
+            "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key, backend=None):
@@ -4640,7 +4547,7 @@ def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None,
+            "skills": {}, "effort": None, "backend": "claude-batch",
             "submitted_at": "2026-07-29T02:54:46Z"}
     batch_extract.write_state(vault, state)
 
@@ -4820,7 +4727,7 @@ def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
     skill_file = tmp_path / "pinned.md"
     skill_file.write_text("SKILL")
     batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-4-6",
-                                      "skill_label": "s", "effort": None})
+                                      "skills": {}, "effort": None, "backend": "claude-batch"})
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
     submit_calls = []
@@ -5322,7 +5229,7 @@ def test_verifier_effort_is_configurable(tmp_path, monkeypatch):
     _queue_doc(vault)
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"verifier_effort": "medium"}))
-    monkeypatch.setattr("watchdog.config.CONFIG_FILE", config)
+    monkeypatch.setattr("watchdog.config.HOME", config.parent)
     calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
 
     asyncio.run(orchestrate.run(vault, verify=True))
@@ -5538,7 +5445,7 @@ def test_staged_extraction_without_results_still_finalizes(tmp_path, monkeypatch
     for p in (vault / ".watchdog" / "tmp").glob("result_*.json"):
         p.unlink()
     assert orchestrate.has_pending_finalization(vault)
-    ingest_setup.run(vault, wipe_pending=False)
+    ingest_setup.run(vault)
     (vault / ".watchdog" / "registry" / ".processing-lock").unlink(missing_ok=True)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 0 and "post_ingest" in summary
@@ -5572,7 +5479,7 @@ def test_provider_auth_error_stops_the_run_without_quarantining(tmp_path, monkey
     assert summary["auth_error"] == "invalid x-api-key"
     assert summary["failed"] == 0 and summary["quarantined"] == 0
     assert len(list((vault / ".watchdog" / "queue").glob("*.json"))) == 2
-    from watchdog.cmd.ingest import exit_code_for
+    from watchdog.ops.ingest import exit_code_for
     assert exit_code_for(summary) == 1
 
 
@@ -5738,7 +5645,7 @@ def test_resume_batch_stops_cleanly_on_an_auth_failure(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
-             "skill_label": "financial-statements", "effort": None, "backend": "claude-batch"}
+             "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key, backend=None):

@@ -1,57 +1,23 @@
 """What a Claude Code session in a vault can reach without a prompt (I6, D257, D299). The tools'
 own confinement is tested in test_session_tools.py."""
 
-import argparse
 import json
 
-import pytest
+from watchdog import session_tools
+from watchdog.ops import CollectingReporter
+from watchdog.ops.maintenance import refresh_claude_setup
+from watchdog.vault import claude_settings
 
-from watchdog.cmd.base import _vault_settings
 
 def test_vault_settings_deny_watchdog_config_and_keys():
-    deny = _vault_settings()["permissions"]["deny"]
+    deny = claude_settings()["permissions"]["deny"]
     assert "Read(~/.watchdog/**)" in deny and "Edit(~/.watchdog/**)" in deny
-
-
-def _refresh(tmp_path, monkeypatch, settings_value):
-    from watchdog.cmd import setup
-    vault = tmp_path / "v"
-    (vault / ".claude").mkdir(parents=True)
-    (vault / ".watchdog").mkdir()
-    settings = vault / ".claude" / "settings.json"
-    settings.write_text(json.dumps(settings_value))
-    monkeypatch.setattr("watchdog.setup_cmd.install_skills", lambda *a, **k: None)
-    monkeypatch.chdir(vault)
-    setup.cmd_refresh_skills(argparse.Namespace(name=None, project=None))
-    return json.loads(settings.read_text())
-
-
-@pytest.mark.parametrize("deny, expected_first", [
-    (["Read(./secret)"], "Read(./secret)"),
-    ("Read(./secret)", "Read(./secret)"),
-    (None, "Read(~/.watchdog/**)"),
-])
-def test_refresh_adds_the_deny_rules_and_keeps_the_users(tmp_path, monkeypatch, deny, expected_first):
-    out = _refresh(tmp_path, monkeypatch, {"permissions": {"allow": [], "deny": deny}})
-    assert out["permissions"]["deny"][0] == expected_first
-    assert "Read(~/.watchdog/**)" in out["permissions"]["deny"]
-
-
-@pytest.mark.parametrize("value", [{"permissions": None}, ["not", "a", "dict"],
-                                   {"permissions": {"allow": [], "deny": {"a": 1}}}])
-def test_refresh_leaves_an_unrecognised_settings_file_alone(tmp_path, monkeypatch, capsys, value):
-    assert _refresh(tmp_path, monkeypatch, value) == value
-    out = capsys.readouterr().out
-    assert "unchanged" in out
-    for claim in ("Permissions updated", "Read access confined", "keys protected"):
-        assert claim not in out
 
 
 def test_vault_settings_preapprove_watchdogs_tools_and_run_no_commands():
     """A new vault's settings name Watchdog's tools, never a shell command, and carry no hooks:
     the app registers its own in-process (D299)."""
-    from watchdog import session_tools
-    settings = _vault_settings()
+    settings = claude_settings()
     allow = settings["permissions"]["allow"]
     assert [r for r in allow if r.startswith("mcp__")] == [session_tools.tool_name(t)
                                                            for t in session_tools.TOOLS]
@@ -60,9 +26,17 @@ def test_vault_settings_preapprove_watchdogs_tools_and_run_no_commands():
     assert "watchdog " not in json.dumps(settings)
 
 
-def test_refresh_adds_the_tool_permissions_and_keeps_the_users(tmp_path, monkeypatch):
-    from watchdog import session_tools
-    out = _refresh(tmp_path, monkeypatch, {"permissions": {"allow": ["Read(./mine)"], "deny": []}})
-    allow = out["permissions"]["allow"]
-    assert allow[0] == "Read(./mine)"
-    assert all(session_tools.tool_name(t) in allow for t in session_tools.TOOLS)
+def test_refresh_writes_the_settings_whole_and_keeps_the_reporters_notes(tmp_path, monkeypatch):
+    """Refreshing an investigation's Claude setup writes `.claude/settings.json` from the current
+    rules (D298) and replaces only Watchdog's part of `.claude/CLAUDE.md`."""
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    vault = tmp_path / "v"
+    (vault / ".claude").mkdir(parents=True)
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    (vault / ".claude" / "settings.json").write_text(json.dumps({"permissions": {"allow": ["Read(./mine)"]}}))
+    (vault / ".claude" / "CLAUDE.md").write_text("<!-- watchdog:begin -->\nSTALE-SECTION\n<!-- watchdog:end -->\nMy notes.\n")
+    refresh_claude_setup(CollectingReporter(), vault)
+    assert json.loads((vault / ".claude" / "settings.json").read_text()) == claude_settings()
+    text = (vault / ".claude" / "CLAUDE.md").read_text()
+    assert "STALE-SECTION" not in text and text.endswith("My notes.\n") and "<!-- watchdog:end -->" in text
+    assert (vault / ".claude" / "commands" / "watchdog-query.md").exists()

@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
-# Thin wrapper around run_benchmark.py — dev convenience only, not part of the shipped
-# `watchdog` CLI (see docs/benchmarks.md). Exists so you don't have to remember the pipx
-# venv's interpreter path or the full flag set every time you want a quick estimate.
+# The developer entry point to the benchmarks: a thin wrapper around run_benchmark.py and the
+# scorers, not part of the app (see docs/benchmarks.md). Runs them with the development
+# environment's Python (PYTHON, as scripts/check.sh takes it, else the repo's .venv) against
+# this checkout's src/.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RUNNER="$HERE/run_benchmark.py"
-VENV_PY="$HOME/.local/pipx/venvs/watchdog-intel/bin/python"
+REPO="$(cd "$HERE/.." && pwd)"
+VENV_PY="${PYTHON:-$REPO/.venv/bin/python}"
+export PYTHONPATH="$REPO/src${PYTHONPATH:+:$PYTHONPATH}"
 # Default shadow vault root (run_benchmark.py's own default) — `clean` targets this unless
 # the config or --vault-root sends vaults somewhere else, in which case remove that path by hand.
 # Stale vaults are reset automatically at the start of a run, so this is for reclaiming disk
@@ -46,8 +49,8 @@ if [ "$#" -eq 0 ] || [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 fi
 
 if [ ! -x "$VENV_PY" ]; then
-    echo "Error: pipx venv python not found at $VENV_PY" >&2
-    echo "Run: pipx inject watchdog-intel pytest numpy   (see CLAUDE.md's Testing section)" >&2
+    echo "Error: no development Python at $VENV_PY" >&2
+    echo "Set PYTHON, or create the venv as CLAUDE.md's Testing section describes." >&2
     exit 1
 fi
 

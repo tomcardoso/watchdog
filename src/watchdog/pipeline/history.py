@@ -60,8 +60,8 @@ REGISTRY_DIR = ".watchdog/registry/"
 REGISTRY_FILES = ("entities.json", "documents.json", "merges.json", "verification.json",
                   "resolutions.json", "requests.json", "relationships.json")
 # Top-level folders whose files are never versioned: the originals and their full text, the drop
-# zone, background material (and their pre-D266 names). Hidden folders are skipped everywhere.
-EXCLUDED_TOP = frozenset({"morgue", "incoming", "context", "_INCOMING", "_CONTEXT"})
+# zone and background material. Hidden folders are skipped everywhere.
+EXCLUDED_TOP = frozenset({"morgue", "incoming", "context"})
 MAX_FILE_BYTES = 32 * 1024 * 1024
 # A file whose mtime is this close to the snapshot is re-read next time even if its stat matches:
 # a second write within the filesystem's timestamp resolution would otherwise go unseen.
@@ -258,8 +258,8 @@ def _update_size_cache(hdir: Path, prev_log_bytes: int | None, added: int) -> No
 
 def history_bytes(vault: Path) -> int | None:
     """The history's size on disk, or None when the investigation has none. Cheap: three stats
-    and a small file read, falling back to walking the store when its size cache is behind (a
-    history written before the cache existed, or after a crash between the log and the cache)."""
+    and a small file read, falling back to walking the store when its size cache is behind (after
+    a crash between the log and the cache)."""
     hdir = history_dir(vault)
     log = hdir / "log.jsonl"
     try:

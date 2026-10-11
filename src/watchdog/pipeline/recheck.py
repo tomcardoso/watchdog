@@ -24,14 +24,13 @@ same two facts as a recorded one (or, where either lacks fact links, the same tw
 is dropped, and `contradiction.run` drops an identical callout by its id.
 
 App-only (I10, D286): the app runs `python -m watchdog.pipeline.recheck` as a job. It holds the
-processing lock for its whole length, as `watchdog bark` does, so it never runs beside a run;
+processing lock for its whole length, as post-processing (`bark`) does, so it never runs beside a run;
 records its calls in the vault's usage files like any post-processing call; and records one
 version of the vault's history.
 """
 
 from __future__ import annotations
 
-import argparse
 import asyncio
 import re
 import sys
@@ -93,10 +92,7 @@ def entity_calls(ledger: reconcile._FactLedger, eid: str, entry: dict, budget: i
     facts = entity_facts.chronological(ledger.index.facts_for(eid))
     refs = entity_facts.short_refs(facts)
     base = _base(eid, entry)
-    legacy = (entry.get("legacy_claims") or "").strip()
     whole = ledger._render(facts, refs)
-    if legacy:
-        whole = (legacy + "\n\n" + whole).strip()
     single = {**base, "new_facts": whole}
     if json_size(single) <= budget:
         return [single], len(facts)
@@ -105,11 +101,6 @@ def entity_calls(ledger: reconcile._FactLedger, eid: str, entry: dict, budget: i
     # shared by consecutive facts) is never more than the sum.
     items: list = list(facts)
     sizes = [json_size(ledger._render([f], refs)) for f in facts]
-    if legacy:
-        if json_size(legacy) > half:
-            legacy = legacy[: half - 80].rsplit(" ", 1)[0] + "… [earlier claims shortened]"
-        items.insert(0, legacy)
-        sizes.insert(0, json_size(legacy))
     blocks = ["\n\n".join(([b[0]] if isinstance(b[0], str) else [])
                           + [ledger._render([f for f in b if isinstance(f, dict)], refs)]).strip()
               for b in _blocks(items, sizes, half)]
@@ -146,7 +137,7 @@ def plan(vault: Path, ids: list[str] | None, model: str, backend: str | None) ->
         # of its facts can disagree within that document (owner's call, D287).
         docs = len(entry.get("appears_in") or [])
         mine, n_facts = entity_calls(ledger, eid, entry, budget)
-        if n_facts + (1 if entry.get("legacy_claims") else 0) < 2:
+        if n_facts < 2:
             if ids is not None:
                 skipped.append({"id": eid, "name": name, "reason": "too_few_facts"})
             continue
@@ -240,15 +231,11 @@ def _self_contradiction(key: tuple) -> bool:
 def finalizer_stage() -> tuple[str | None, str, str | None]:
     """(backend, model, effort) the re-check runs on: the configured reconciliation model, which
     is the finalizer model unless Settings routes reconciliation elsewhere, at the finalizer
-    effort — resolved by the same code `watchdog bark` resolves them with."""
-    from watchdog import defaults
-    from watchdog.cmd.base import load_config
-    from watchdog.ops.ingest import _effort, _resolve_finalizer_overrides, _resolve_stage
-    config = load_config()
-    backend, model = _resolve_stage(None, config.get("finalizer_model"), default=defaults.FINALIZER_MODEL)
-    overrides = _resolve_finalizer_overrides(argparse.Namespace(), config, backend, model)
-    return (overrides["reconciliation_backend"], overrides["reconciliation_model"],
-            _effort(None, config.get("finalizer_effort")))
+    effort, resolved by the same code post-processing uses."""
+    from watchdog.ops.ingest import RunOptions, resolve_plan
+    plan = resolve_plan(RunOptions())
+    return (plan.overrides["reconciliation_backend"], plan.overrides["reconciliation_model"],
+            plan.post_effort)
 
 
 def cause(names: list[str], whole: bool) -> dict:
@@ -309,7 +296,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
     if model is None:
         backend, model, effort = finalizer_stage()
     # The investigation's chosen key must be on this computer before any call (D290).
-    from watchdog.cmd.auth import check_run_keys
+    from watchdog.auth import check_run_keys
     check_run_keys(vault, [backend])
     lock = processing_lock(vault)
     if not acquire_or_take_stale(lock, lock_contents("recheck-contradictions"),

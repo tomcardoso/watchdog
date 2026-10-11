@@ -73,7 +73,7 @@ def _briefing_date(name: str, path: Path) -> str | None:
 
 @method("vault.summary")
 def summary(vault: str) -> dict:
-    from watchdog.cmd import home
+    from watchdog import overview as home
 
     v = require_vault(vault)
     s = home.summary(v)
@@ -373,9 +373,7 @@ def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
                                                         by_id, resolver, stats)
                                     if (synth.get("analysis") or "").strip() else None)
         synthesis["citations"] = stats
-    legacy = (ents.get(eid) or {}).get("legacy_claims")
-    return {"facts": rows, "synthesis": synthesis,
-            "legacy_claims": legacy if isinstance(legacy, str) and legacy.strip() else None}
+    return {"facts": rows, "synthesis": synthesis}
 
 
 @method("vault.entity")
@@ -730,7 +728,7 @@ def _files(directory: Path) -> list[Path]:
 
 def _incoming_files(incoming: Path) -> list[Path]:
     """Everything chew would pick up: files anywhere under `incoming/` except in its `failed`
-    and `skipped` folders (the same rule `cmd.base._count_incoming` counts by)."""
+    and `skipped` folders (the same rule `vault.count_incoming` counts by)."""
     import os
     out: list[Path] = []
     if not incoming.is_dir():
@@ -899,7 +897,7 @@ def read_file(vault: str, path: str) -> dict:
 def session_primer(vault: str) -> dict:
     """The primer every Ask Claude session starts with (D285), built now from the vault's records
     exactly as a session's system prompt carries it (D299). Read-only, no model."""
-    from watchdog.cmd import primer
+    from watchdog import primer
     text = primer.build(require_vault(vault))
     return {"text": text, "chars": len(text), "budget": primer.BUDGET_CHARS}
 
@@ -965,10 +963,3 @@ def context_files(vault: str) -> list[dict]:
     return out
 
 
-@method("vault.migrate")
-def migrate(vault: str) -> dict:
-    """Bring an older vault's folder names up to date (`_INCOMING` -> `incoming`, `_CONTEXT` ->
-    `context`; D266). Opening a vault already does this once per process; this is the explicit
-    call. Returns `{changes: [str]}` — empty when the vault was already current."""
-    from watchdog.vault_paths import ensure_current_layout
-    return {"changes": ensure_current_layout(require_vault(vault))}

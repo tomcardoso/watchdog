@@ -114,7 +114,7 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
     return undefined
   })
   ipcMain.handle('shell:openInObsidian', async (_e, vault: string, note?: string) => {
-    // Same URL the CLI's links.obsidian_url builds: obsidian://open?path=<absolute file>
+    // Obsidian's own URL scheme: obsidian://open?path=<absolute file>
     const target = note ? join(vault, note.endsWith('.md') || /\.[a-z0-9]{2,5}$/i.test(note) ? note : note + '.md') : vault
     try {
       await shell.openExternal('obsidian://open?path=' + encodeURIComponent(target))

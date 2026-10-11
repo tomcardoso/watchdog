@@ -70,7 +70,7 @@ Project = {
 | `projects.forPath` | `{path}` | `Project \| null` — the registered project at that folder |
 | `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: RunLock\|null, ingest: RunLock\|null}, stopped_run: string\|null, pending_finalization: {...}\|null, size_bytes}` — `RunLock` is `{where: "here"\|"elsewhere"\|"unknown", host, started_at}`. Reading it clears a lock whose run has died (`locks.clear_abandoned`, the function `watchdog unlock` calls, I10), so a lock reported here is a run in progress (D293) |
 | `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — the last `lines` (default 500) of `.watchdog/registry/processing.log` |
-| `projects.doctor` | — | `{issues: [{kind: "missing"\|"schema"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
+| `projects.doctor` | — | `{issues: [{kind: "missing"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
 
 Mutations go through `action.run` as the `projects-new`, `projects-register`, `projects-rename`,
 `projects-describe`, `projects-move`, `projects-archive` and `projects-delete` operations (see
@@ -140,7 +140,6 @@ EntityRow = {
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
-| `vault.migrate` | `{vault}` | `{changes: string[]}` — renames an older vault's `_INCOMING/`/`_CONTEXT/` folders to `incoming/`/`context/` (D266); opening a vault does this once automatically |
 
 ```
 DocumentDetail = DocumentRow & {
@@ -215,7 +214,7 @@ A fact's `id` is `fact:<scheme>:<12 characters of the document's SHA-256>:<10-ch
 
 ## history — version history of generated and app-edited files (D286)
 
-App-only: no CLI command. Tracked files are Markdown outside `morgue/`, `incoming/`, `context/` and
+Tracked files are Markdown outside `morgue/`, `incoming/`, `context/` and
 hidden folders, plus `.watchdog/registry/{entities,documents,merges,verification,resolutions,requests}.json`.
 `path` is vault-relative; a note path may omit `.md`. An untracked path fails with `not_tracked`; a
 version the file does not have, `not_found`; a store written by a newer Watchdog refuses writes
@@ -411,10 +410,10 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `cmd/review.open_items` |
 | `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
-| `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — what `review resolve --list` shows |
+| `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
 | `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watch-list-hit items for the term |
-| `review.watchlistAdd` | `{vault, term}` | `{added}` — refuses a blank, multi-line, `#`-leading, invalid `/regex/` or duplicate term (`bad_params`); appends to `watchlist.md` (what `watchdog watchlist-add` does), recorded as a version of the file's history |
+| `review.watchlistAdd` | `{vault, term}` | `{added}` — refuses a blank, multi-line, `#`-leading, invalid `/regex/` or duplicate term (`bad_params`); appends to `watchlist.md`, recorded as a version of the file's history |
 | `review.watchlistRemove` | `{vault, term}` | `{removed}` — drops the matching line only, keeping comments and other terms; `not_found` if absent; recorded in history |
 | `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |
 | `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
@@ -427,7 +426,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | Method | Params | Result |
 |---|---|---|
 | `settings.schema` | — | `{sections: [{title, blurb, keys: SettingKey[]}]}` |
-| `settings.set` | `{key, value: string}` | `{key, value, display}` — validated by the CLI's `_coerce_value`; a bad value raises `RpcError` (code `bad_value`) with the CLI's message. An empty value clears a text/model key to its default. A secret's `value` is `null` and its `display` masked |
+| `settings.set` | `{key, value: string}` | `{key, value, display}` — validated by `settings.coerce`; a bad value raises `RpcError` (code `bad_value`) with its message. An empty value clears a text/model key to its default. A secret's `value` is `null` and its `display` masked |
 | `settings.models` | — | `{models: [{value, label, id, provider, backend (null for Claude tiers), input_per_mtok\|null, output_per_mtok\|null, context_window\|null, efforts: string[], notes\|null}], efforts: string[]}` — for model pickers |
 | `auth.status` | — | `{claude: {mode, logged_in, reason\|null, env_key_set, key_masked\|null, key_source, key_label\|null}, stages: [{stage, config_key, value, provider, ready, billing\|null}], keys: [{provider, masked, in_use: "in use"\|"unused"\|"inactive", detail, source: "stored"\|"env"}], base_urls: [{provider, url}], providers: [{provider, label, env, requires_key, base_url_setting\|null, base_url\|null, ready}], key_sets: {[provider]: [LabelledKey]}, storage: {store: "encrypted"\|"plaintext"\|"unknown", backend\|null, reason: "unavailable"\|"basic_text"\|null, encrypted, plaintext, locked}}` — `keys` describes each provider's default key; `key_sets` lists every stored key (D290), each `LabelledKey` with `encrypted` and `locked` (stored encrypted but not readable here). `storage` says where keys are kept (D295). `claude.key_label` names the default Anthropic key when there are several |
 | `auth.setAnthropicMode` | `{mode: "subscription"\|"api-key", key?, key_enc?}` | `auth.status` result plus `warning\|null` (as do `setKey`, `deleteKey`, `setBaseUrl`) |
@@ -445,7 +444,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `setup.check` | — | `{deps: [{label, ok, hint\|null, required: false}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` — no dependency blocks the app |
 | `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null, transcription: bool, transcription_model, transcription_size_mb}` — what is on disk, no network |
 | `setup.downloadModel` | `{model: "transcription"}` | `Job` — downloads an on-demand model ahead of time (D273) as a job running the `download-model` operation; progress is the `model` stage |
-| `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes what `watchdog setup` writes; an existing config file is the "set up" signal |
+| `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes the first settings; an existing config file is the "set up" signal |
 | `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
 
 **Keys (D295).** `key_enc` is never sent by the renderer: the main process adds it to `auth.setAnthropicMode`, `auth.setKey` and `auth.addKey` when this computer has secure storage (and discards one the window sends). It is the key encrypted with Electron `safeStorage`, `{enc: "safeStorage:v1", data: base64}`, and is all the backend writes; the plain `key` is used only for the prefix warning, the masked display and this process's memory. With secure storage available, a key method without `key_enc` is refused (`bad_params`). A method that needs a key the backend can't read answers `key_missing`. Jobs receive their investigation's keys on stdin (`WATCHDOG_SECRETS=stdin`), never in their environment or arguments.
@@ -471,13 +470,13 @@ Downloading runs as a job: the `research-fetch` operation for the queue, `fetch-
 
 ## chat — Claude Code sessions inside the app
 
-Replaces the terminal hand-off of `watchdog ask`, `ask --context` and `research` with a session
-run through the Claude Agent SDK in the vault's folder, so the vault's own `.claude/` settings,
-`CLAUDE.md` and `/watchdog-*` commands apply exactly as they do in the terminal.
+Ask Claude, setting the investigation's context, and web research run as a session through the
+Claude Agent SDK in the vault's folder, so the vault's own `.claude/` settings, `CLAUDE.md` and
+`/watchdog-*` commands apply.
 
 | Method | Params | Result |
 |---|---|---|
-| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built as the CLI builds it (`ask.prompt_for`, `/watchdog-context`, `/watchdog-research <q>`). The session gets Watchdog's tools from the in-process MCP server `watchdog` (`mcp__watchdog__*`, pre-approved), the primer in its system prompt, and no shell (D299); a `chat.permission` request is never for `Bash`. In API-key mode the session runs on the investigation's chosen Anthropic key, passed as `ANTHROPIC_API_KEY` (D290); `key_missing` when that key is not on this computer (also from `chat.resume`) |
+| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built by `chat.first_prompt` (the query skill for a question, `/watchdog-context`, `/watchdog-research <q>`). The session gets Watchdog's tools from the in-process MCP server `watchdog` (`mcp__watchdog__*`, pre-approved), the primer in its system prompt, and no shell (D299); a `chat.permission` request is never for `Bash`. In API-key mode the session runs on the investigation's chosen Anthropic key, passed as `ANTHROPIC_API_KEY` (D290); `key_missing` when that key is not on this computer (also from `chat.resume`) |
 | `chat.send` | `{session, text}` | `{ok}` |
 | `chat.interrupt` | `{session}` | `{ok}` |
 | `chat.close` | `{session}` | `{ok, research_queued: int}` |

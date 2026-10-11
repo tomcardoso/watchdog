@@ -8,7 +8,6 @@ Watchdog is built on a program it installs for itself, called the engine. If it 
 
 1. Choose **Try again**.
 2. If it fails again, choose **Repair the engine**. This reinstalls the engine. Your investigations, settings and downloaded models are not touched.
-3. If you installed the older command-line version and want the app to use that, **Choose Python…** lets you point it at a particular installation.
 
 You can also repair from inside the app: **Settings → Setup → Repair or reinstall the engine**.
 
@@ -72,10 +71,6 @@ If you denied it by mistake, open Keychain Access, find "Watchdog Safe Storage",
 ## "Watchdog couldn't read the key from this computer's secure storage"
 
 The key was encrypted under another user account or on another computer, or the system's secure storage was reset (on Linux, the keyring may not be running or unlocked). **Settings → Models & keys** marks such keys "can't be read". Replace each one with the key itself, or delete it. On Linux, check that your keyring is unlocked, then restart Watchdog.
-
-## The command line says keys are stored by the Watchdog app
-
-The `watchdog` command line can't read keys the app has encrypted, and stops before sending anything. To use it, set the provider's environment variable for that session, for example `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`; it always takes precedence over a stored key. The command line also refuses to store a key beside the app's encrypted ones: add keys in the app. See [Commands](commands.md#watchdog-settings-auth).
 
 ## A file landed in incoming/failed/
 
@@ -197,4 +192,4 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 
 ## Where next
 
-[The desktop app](app.md) describes every screen. For settings such as concurrency and models, see [Configuration](configuration.md). If you already use the command line, [Commands](commands.md) is the reference for the command line (being retired).
+[The desktop app](app.md) describes every screen. For settings such as concurrency and models, see [Configuration](configuration.md).

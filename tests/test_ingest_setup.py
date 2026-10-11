@@ -29,7 +29,7 @@ def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd,
                       est_input_tokens: int | None = None, calls: list | None = None,
                       cache_read_tokens: int = 0, cache_write_tokens: int = 0,
                       output_tokens: int = 0) -> None:
-    reg = vault / ".watchdog" / "registry"
+    reg = vault / ".watchdog" / "registry" / "usage"
     reg.mkdir(parents=True, exist_ok=True)
     totals = {"input_tokens": input_tokens, "output_tokens": output_tokens,
               "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,
@@ -66,7 +66,7 @@ def test_force_lock_still_blocked_by_a_fresh_existing_lock(tmp_path):
     lock_file.write_text(f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
     result = run(vault, force_lock=True)
     assert "error" in result
-    assert "already running" in result["error"]
+    assert "already being added" in result["error"]
 
 
 def test_queued_files_acquires_lock_and_writes_state(tmp_path):
@@ -88,7 +88,7 @@ def test_queued_files_acquires_lock_and_writes_state(tmp_path):
 
     lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     assert lock_file.exists()
-    assert "label: cli" in lock_file.read_text()
+    assert "label: processing" in lock_file.read_text()
 
 
 def test_queue_file_paths_are_vault_relative(tmp_path):
@@ -153,7 +153,7 @@ def test_fresh_lock_blocks_ingest(tmp_path):
     result = run(vault)
 
     assert "error" in result
-    assert "already running" in result["error"]
+    assert "already being added" in result["error"]
 
 
 def test_stale_lock_is_replaced(tmp_path):
@@ -169,12 +169,12 @@ def test_stale_lock_is_replaced(tmp_path):
     result = run(vault)
 
     assert result["lock_acquired"] is True
-    assert "label: cli" in lock_file.read_text()
+    assert "label: processing" in lock_file.read_text()
 
 
 def test_malformed_lock_is_refused_not_deleted(tmp_path):
     """A lock with no parseable started_at is of unknown age. The old check-then-unlink deleted
-    it regardless and proceeded; now ingest refuses and leaves it for `watchdog unlock` (#257)."""
+    it regardless and proceeded; now ingest refuses and leaves it to be cleared from the app (#257)."""
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
     lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
@@ -183,7 +183,7 @@ def test_malformed_lock_is_refused_not_deleted(tmp_path):
     result = run(vault)
 
     assert "error" in result
-    assert "already running" in result["error"]
+    assert "already being added" in result["error"]
     assert lock_file.read_text() == "pid: mystery\n"   # preserved, not clobbered
 
 

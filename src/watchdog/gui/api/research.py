@@ -9,7 +9,7 @@ from watchdog.gui.vaultio import require_vault
 
 @method("research.status")
 def status(vault: str) -> dict:
-    from watchdog.cmd.research import _wayback_creds
+    from watchdog.ops.research import wayback_creds as _wayback_creds
     from watchdog.pipeline import research
 
     v = require_vault(vault)

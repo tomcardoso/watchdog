@@ -6,13 +6,7 @@ Used by post-ingest after synthesis. The prose is stored in the registry entry's
 record and shown in the note under "Summary"; every other section of the note is
 rendered from data (`entity_notes`), and the journalist's ## Notes are never touched. It backs the
 bulk synthesis path (``synthesis_bundle.apply_bundle``, called from `orchestrate.py`); this
-module's own ``main()`` below is a standalone single-entity entry point (not wired into the
-`watchdog` CLI), runnable as ``python -m watchdog.pipeline.finalize_entity``.
-
-Usage:
-    python -m watchdog.pipeline.finalize_entity --entity-id alice-smith --extraction .watchdog/tmp/wdg_synth-alice-smith.json [--vault .]
-
-Extraction JSON schema:
+module's ``run`` writes one entity's synthesis from a JSON file of this shape:
 {
   "entity_id": str,
   "summary": str,
