@@ -7,10 +7,10 @@ multiplier is `model_catalog.yaml`'s `tokenizer_ratio`, which `section.model_def
 its window-derived threshold/budget by. Before this script it was set from a vendor sentence for
 two Claude models and left at an unmeasured 1.0 for everyone else.
 
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/tokenizer_ratio.py
+    python benchmarks/tokenizer_ratio.py
 
 (Add `PYTHONPATH=<checkout>/src` when running from a worktree, so it measures *that* checkout's
-`est_tokens` rather than the pipx-installed package's.)
+`est_tokens` rather than an installed copy's.)
 
 Two independent modes, both reported by default, because neither alone covers the catalog:
 
@@ -112,7 +112,7 @@ def slice_pages(doc: dict, start: int, end: int) -> tuple[int, str]:
 def load_chew(vault: Path) -> dict[str, dict]:
     """Master-chew documents keyed by filename: `{pages: {1-based page -> markdown}, ...}`.
 
-    Reads the queue files `watchdog chew` wrote, which hold the exact markdown strings the
+    Reads the queue files pre-processing wrote, which hold the exact markdown strings the
     extraction path applies `est_tokens` to — measuring anything else (the source PDF, a
     re-chew) would measure a different corpus."""
     queue = vault / ".watchdog" / "queue"

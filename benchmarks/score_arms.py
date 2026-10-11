@@ -3,14 +3,14 @@
 Not a pytest module — a standalone benchmark tool (no ``test_`` prefix, so pytest never
 collects it). Run it against one or more benchmark vaults, dig-only or fully finalized:
 
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/score_arms.py \
+    python benchmarks/score_arms.py \
         ~/Investigations/bench-ex-sonnet-med ~/Investigations/bench-t0-sonnet-med ...
 
 For each key item (facts F*, must_not_miss M*), it pulls numeric anchors from the key text,
 generates formatting variants (comma-grouped, thousands-as-millions decimal, rounded $M),
 and checks them against `.watchdog/extracted/*.json` — the raw per-document extraction
-artifacts `watchdog dig` stages before any finalizer call. Scoring against these instead of
-the committed vault notes means `watchdog bark` never needs to run for an extractor-only
+artifacts processing stages before any finalizer call. Scoring against these instead of
+the committed vault notes means post-processing never needs to run for an extractor-only
 arm, and the finalizer's reconciliation/synthesis pass can't dilute the measurement — the
 artifacts persist after `bark` too, so this reads the same regardless of whether a vault has
 been finalized.

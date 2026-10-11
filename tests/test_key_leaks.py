@@ -9,8 +9,7 @@ events the backend sent the app, job logs and RPC responses for any sentinel. Co
   - a model call that succeeds (usage records, `telemetry.db`) and one a server refuses while
     echoing the Authorization header back (the error that reaches job logs, failure notes and the
     app's toasts);
-  - a `watchdog` job started by the app, handed its keys on stdin, and the same command from a
-    terminal, which can't read them;
+  - an operation the app starts in a worker, handed its keys on stdin;
   - an Ask Claude session's saved transcript;
   - a version-history snapshot of the investigation;
   - the backend's error responses, including a bad parameter that prints a traceback.
@@ -32,7 +31,7 @@ import pytest
 
 from watchdog import keystore
 from watchdog import model_client as mc
-from watchdog import auth, base
+from watchdog import auth
 
 TOKEN = secrets.token_hex(8).upper()
 KEYS = {
@@ -93,14 +92,9 @@ def world(tmp_path, monkeypatch):
                    check=True, capture_output=True, timeout=180)
     wd = home / ".watchdog"
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setattr(base, "WATCHDOG_HOME", wd)
-    monkeypatch.setattr(base, "CONFIG_FILE", wd / "config.json")
-    monkeypatch.setattr(base, "PROJECTS_FILE", wd / "projects.json")
-    import watchdog.config
-    monkeypatch.setattr(watchdog.config, "CONFIG_FILE", wd / "config.json")
+    monkeypatch.setattr("watchdog.config.HOME", wd)
     for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
-    monkeypatch.delenv("WATCHDOG_APP", raising=False)
     return tmp_path, home, vault
 
 
@@ -141,7 +135,7 @@ def test_no_key_reaches_any_file_log_or_message(world, provider_server, monkeypa
     finally:
         orchestrate._end_usage_run(vault)
 
-    # ── an operation the app starts (handed the keys), and a terminal command ──────
+    # ── an operation the app starts, handed the keys ───────────────────────────────
     job = jobs.MANAGER.start(vault, "bark", {}, "Post-processing", None)
     deadline = time.time() + 60
     while job.state == "running" and time.time() < deadline:
@@ -153,10 +147,6 @@ def test_no_key_reaches_any_file_log_or_message(world, provider_server, monkeypa
     # It was handed the keys its investigation bills; nothing was staged, so it finished at once.
     assert job.exit_code == 0, job_out
     assert "Nothing to finish" in job_out
-    terminal = subprocess.run([sys.executable, "-m", "watchdog", "auth"], cwd=vault, capture_output=True,
-                              text=True, timeout=60, env={**__import__("os").environ, "NO_COLOR": "1"})
-    seen.append(terminal.stdout + terminal.stderr)
-    assert "stored by the app, encrypted" in terminal.stdout
 
     # ── an Ask Claude session's transcript ───────────────────────────────────────
     session = chat.Session(vault, "ask", None, "Ask")

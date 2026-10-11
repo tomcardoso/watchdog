@@ -5322,7 +5322,7 @@ def test_verifier_effort_is_configurable(tmp_path, monkeypatch):
     _queue_doc(vault)
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"verifier_effort": "medium"}))
-    monkeypatch.setattr("watchdog.config.CONFIG_FILE", config)
+    monkeypatch.setattr("watchdog.config.HOME", config.parent)
     calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
 
     asyncio.run(orchestrate.run(vault, verify=True))

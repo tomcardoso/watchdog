@@ -754,16 +754,15 @@ def test_openrouter_backend_without_key_errors(monkeypatch):
                          model="anthropic/claude-3.5-sonnet")
 
 
-def test_context_window_local_conservative_default(monkeypatch):
-    from watchdog.cmd import base as cmd_base
-    monkeypatch.setattr(cmd_base, "CONFIG_FILE", cmd_base.WATCHDOG_HOME / "does-not-exist.json")
+def test_context_window_local_conservative_default(tmp_path, monkeypatch):
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path)
     assert mc.context_window("llama-3.3-70b", "local") == 8_000
 
 
 def test_context_window_local_config_override(tmp_path, monkeypatch):
     config_file = tmp_path / "config.json"
     config_file.write_text('{"local_context_window": 32000}')
-    monkeypatch.setattr("watchdog.config.CONFIG_FILE", config_file)
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path)
     assert mc.context_window("llama-3.3-70b", "local") == 32_000
 
 

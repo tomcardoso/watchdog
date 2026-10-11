@@ -135,7 +135,7 @@ def _pct_cell(totals: dict, vault_basename: str, *, partial_suffix: str | None =
 def is_partial(r) -> bool:
     """True when an extractor arm didn't get through the whole corpus — a rate limit, a Ctrl-C,
     or per-document failures that left fewer staged extractions than the corpus had documents
-    (#559). Distinct from `r.ok`, which stays True for all three (`cmd_extract` catches and
+    (#559). Distinct from `r.ok`, which stays True for all three (processing catches and
     returns a summary, never raises), and from `r.doc_errors`, which is only the third case —
     without this, a partial arm's recall figure reads as a real (catastrophic) quality result
     instead of the different, smaller question it actually answers."""
@@ -383,7 +383,7 @@ def _failed_line(r) -> str:
 
 def _errors_log_text(results: list) -> str:
     """Full failure detail for every arm that had any — a hard failure (`error`, arm-level),
-    per-document failures caught and tallied internally by cmd_extract/cmd_finalize (`doc_errors`
+    per-document failures caught and tallied internally by processing and post-processing (`doc_errors`
     — these never raise, so `ok` alone misses them), or a rate limit / partial completion (#559).
     That third case used to write nothing at all: a rate limit's documents get `status: cancelled`
     on the in-flight ones, which `doc_errors` correctly excludes as not-a-failure, so the arm had

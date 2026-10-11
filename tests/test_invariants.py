@@ -55,6 +55,7 @@ from pathlib import Path
 from watchdog import model_client as mc
 from watchdog import skills_catalog as sc
 from watchdog.pipeline import orchestrate, preprocess, research
+from tests.keys_support import item, stored  # noqa: F401
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "watchdog"
 
@@ -485,16 +486,16 @@ def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
     import asyncio
     import pytest
     from watchdog import model_client as mc
-    from watchdog import auth, base
+    from watchdog import auth
     from watchdog.gui import chat
     from watchdog.gui.rpc import RpcError
-    monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home")
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
     for p in auth.PROVIDERS.values():
         monkeypatch.delenv(p["env"], raising=False)
     vault = tmp_path / "case"
     (vault / ".watchdog").mkdir(parents=True)
-    auth.save_state({"mode": "api-key", "keys": {"openai": "sk-default-1234567890",
-                                                  "anthropic": "sk-ant-default-1234567890"}})
+    auth.save_state({"mode": "api-key", "keys": stored(openai="sk-default-1234567890",
+                                                     anthropic="sk-ant-default-1234567890")})
     for provider in ("openai", "anthropic"):
         kid = auth.add_key(provider, "Globe", f"sk-{provider}-globe-1234567890")
         auth.choose_key(vault, provider, kid)

@@ -31,9 +31,18 @@ import score_arms as sa  # noqa: E402
 import score_index as si  # noqa: E402
 import verifier_precision as vp  # noqa: E402
 
-import watchdog.cmd.ingest as wd_ingest  # noqa: E402
+import watchdog.ops.ingest as wd_ingest  # noqa: E402
+
+
+def _ext(stub):
+    """`stub(opts)` standing in for `ops.ingest.process(vault, opts, finalize=…)`."""
+    return lambda vault, opts, *, finalize: stub(opts)
+
+
+def _fin(stub):
+    """`stub(opts)` standing in for `ops.ingest.finish(vault, opts)`."""
+    return lambda vault, opts: stub(opts)
 import watchdog.ops.ingest as wd_ops_ingest  # noqa: E402
-import watchdog.interactive as wd_interactive  # noqa: E402
 
 
 # ── load_config ───────────────────────────────────────────────────────────────
@@ -257,7 +266,7 @@ def test_main_lists_a_stale_vault_before_the_prompt_and_resets_it_after(tmp_path
     monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
     monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
                                                                      "cost_high": 0.0})
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)   # decline
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: False)   # decline
 
     rb.main(["--config", str(cfg), "--stages", "extractor"])
 
@@ -297,7 +306,7 @@ def test_main_reseeds_a_vault_it_reset(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(rb, "seed_arm_vault", fake_seed)
     monkeypatch.setattr(rb, "preview_extractor_arm", lambda *a, **k: {"cost_low": 0.0,
                                                                      "cost_high": 0.0})
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)   # accept
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)   # accept
     monkeypatch.setattr(rb, "run_extractor_arm",
                         lambda arm, vault: rb.ArmResult(arm_id=arm["id"], stage="extractor",
                                                         vault=vault, ok=True))
@@ -356,81 +365,79 @@ def test_arm_vault_uses_given_root(tmp_path):
     assert rb.arm_vault("bench-ex3", "haiku", tmp_path) == tmp_path / "bench-ex3-haiku"
 
 
-def test_ensure_master_vault_passes_shadow_root_to_cmd_new(monkeypatch, tmp_path):
+def test_ensure_master_vault_passes_shadow_root_to_create(monkeypatch, tmp_path):
     """A benchmark vault must be created under the shadow root it's handed, never wherever the
-    installed watchdog's own _projects_dir() happens to resolve. Mocks cmd_new/_run_preprocess
-    rather than doing a real chew, matching this file's convention (see module docstring) of not
+    `projects_dir` setting happens to resolve. Mocks `create`/`preprocess` rather than doing a
+    real pre-processing run, matching this file's convention (see module docstring) of not
     exercising real vault I/O."""
-    import watchdog.cmd.vault as wd_vault
+    import watchdog.ops.projects as wd_projects
 
     captured = {}
 
-    def _fake_cmd_new(args):
-        captured["dir"] = args.dir
-        # Real cmd_new would build the full vault layout on disk; recreate just enough for the
+    def _fake_create(name, *, description="", parent=None):
+        captured["dir"] = parent
+        # The real `create` builds the full vault layout on disk; recreate just enough for the
         # existence checks ensure_master_vault performs right after.
-        (Path(args.dir) / args.name / ".watchdog" / "queue").mkdir(parents=True)
-        (Path(args.dir) / args.name / "incoming").mkdir(parents=True)
+        (parent / name / ".watchdog" / "queue").mkdir(parents=True)
+        (parent / name / "incoming").mkdir(parents=True)
+        return parent / name
 
-    monkeypatch.setattr(wd_vault, "cmd_new", _fake_cmd_new)
+    monkeypatch.setattr(wd_projects, "create", _fake_create)
     monkeypatch.setattr(rb, "_deregister_benchmark_vault",
                         lambda slug: captured.setdefault("deregistered", slug))
     monkeypatch.setattr(rb, "_deregister_obsidian_vault",
                         lambda path: captured.setdefault("obsidian_deregistered", path))
-    monkeypatch.setattr(wd_ops_ingest, "_run_preprocess", lambda *a, **k: None)
+    monkeypatch.setattr(wd_ops_ingest, "preprocess", lambda *a, **k: None)
 
     shadow_root = tmp_path / "shadow"
     vault = rb.ensure_master_vault("bench-master-test", [], with_sidecars=True, root=shadow_root)
 
-    assert captured["dir"] == str(shadow_root)
+    assert captured["dir"] == shadow_root
     assert vault == shadow_root / "bench-master-test"
     assert captured["deregistered"] == "bench-master-test"
     assert captured["obsidian_deregistered"] == vault
 
 
 def test_deregister_benchmark_vault_removes_only_its_own_slug(monkeypatch, tmp_path):
-    """cmd_new always registers the vault it creates — undoing that must touch only the slug
+    """`create` always registers the vault it creates — undoing that must touch only the slug
     just created, never any other project (a real investigation, or another benchmark vault)."""
-    import watchdog.cmd.base as wd_base
+    from watchdog import projects as wd_projects
     home = tmp_path / ".watchdog"
     home.mkdir()
-    monkeypatch.setattr(wd_base, "WATCHDOG_HOME", home)
-    monkeypatch.setattr(wd_base, "PROJECTS_FILE", home / "projects.json")
-    wd_base.save_projects({"bench-master": {"name": "bench-master"},
+    monkeypatch.setattr("watchdog.config.HOME", home)
+    wd_projects.save({"bench-master": {"name": "bench-master"},
                           "toms-real-investigation": {"name": "Tom's real investigation"}})
 
     rb._deregister_benchmark_vault("bench-master")
 
-    projects = wd_base.load_projects()
+    projects = wd_projects.load()
     assert "bench-master" not in projects
     assert "toms-real-investigation" in projects
 
 
 def test_deregister_benchmark_vault_is_a_noop_when_slug_absent(monkeypatch, tmp_path):
-    import watchdog.cmd.base as wd_base
+    from watchdog import projects as wd_projects
     home = tmp_path / ".watchdog"
     home.mkdir()
-    monkeypatch.setattr(wd_base, "WATCHDOG_HOME", home)
-    monkeypatch.setattr(wd_base, "PROJECTS_FILE", home / "projects.json")
-    wd_base.save_projects({"toms-real-investigation": {"name": "x"}})
+    monkeypatch.setattr("watchdog.config.HOME", home)
+    wd_projects.save({"toms-real-investigation": {"name": "x"}})
 
     rb._deregister_benchmark_vault("bench-master")  # never registered — must not raise
 
-    assert wd_base.load_projects() == {"toms-real-investigation": {"name": "x"}}
+    assert wd_projects.load() == {"toms-real-investigation": {"name": "x"}}
 
 
-# ── _deregister_obsidian_vault: the Obsidian-side half of undoing cmd_new ─────
+# ── _deregister_obsidian_vault: the Obsidian-side half of undoing `create` ────
 #
-# cmd_new registers a vault in TWO places — projects.json (above) and Obsidian's own
+# `create` registers a vault in TWO places — projects.json (above) and Obsidian's own
 # obsidian.json, the vault switcher in the app itself. A user's real obsidian.json can end up
 # almost entirely bench-* fixtures if only the projects.json side gets deregistered.
 
 def test_deregister_obsidian_vault_removes_only_its_own_path(monkeypatch, tmp_path):
     """Obsidian's `vaults` dict is keyed by an opaque random id, not the vault's path — matching
     has to be on the `path` field inside each entry, never the key."""
-    import watchdog.cmd.vault as wd_vault
     cfg = tmp_path / "obsidian.json"
-    monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: cfg)
+    monkeypatch.setattr("watchdog.obsidian.config_path", lambda: cfg)
     bench_path = tmp_path / "bench-master"
     real_path = tmp_path / "toms-real-investigation"
     cfg.write_text(json.dumps({"vaults": {
@@ -451,8 +458,7 @@ def test_deregister_obsidian_vault_is_a_noop_when_config_missing(monkeypatch, tm
     alone can't tell a correct early exit (config genuinely absent) apart from a broken early
     exit whose resulting FileNotFoundError just gets silently swallowed by that same except.
     Spy on `Path.read_text` — the missing-config branch must return before ever calling it."""
-    import watchdog.cmd.vault as wd_vault
-    monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: tmp_path / "does-not-exist.json")
+    monkeypatch.setattr("watchdog.obsidian.config_path", lambda: tmp_path / "does-not-exist.json")
 
     calls = []
     real_read_text = Path.read_text
@@ -468,13 +474,12 @@ def test_deregister_obsidian_vault_is_a_noop_when_config_missing(monkeypatch, tm
 
 
 def test_deregister_obsidian_vault_swallows_malformed_config(monkeypatch, tmp_path):
-    """Mirrors _register_obsidian_vault's own non-fatal posture (see that function) — a missing,
+    """Mirrors obsidian.register's own non-fatal posture (see that function) — a missing,
     unreadable, or corrupt obsidian.json, or Obsidian not being installed at all, must never fail
     a benchmark run."""
-    import watchdog.cmd.vault as wd_vault
     cfg = tmp_path / "obsidian.json"
     cfg.write_text("not valid json{")
-    monkeypatch.setattr(wd_vault, "_obsidian_config_path", lambda: cfg)
+    monkeypatch.setattr("watchdog.obsidian.config_path", lambda: cfg)
     rb._deregister_obsidian_vault(tmp_path / "bench-master")  # must not raise
 
 
@@ -503,7 +508,7 @@ def test_quiet_reprints_captured_buffer_before_reraising(capsys):
 def test_confirm_run_estimate_only_never_asks(monkeypatch, capsys):
     def _boom(*a, **k):
         raise AssertionError("must not prompt when --estimate-only")
-    monkeypatch.setattr(wd_interactive, "confirm", _boom)
+    monkeypatch.setattr(rb, "_ask", _boom)
 
     previews = [
         ("extractor:haiku", {"cost_low": 1.0, "cost_high": 2.0}, {}),
@@ -519,8 +524,7 @@ def test_confirm_run_estimate_only_never_asks(monkeypatch, capsys):
 
 def test_confirm_run_asks_once_when_not_estimate_only(monkeypatch):
     calls = []
-    monkeypatch.setattr(wd_interactive, "confirm",
-                        lambda *a, **k: calls.append((a, k)) or True)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: calls.append((a, k)) or True)
     previews = [("extractor:haiku", {"cost_low": 1.0, "cost_high": 2.0}, {})]
     assert rb.confirm_run(previews, estimate_only=False) is True
     assert len(calls) == 1
@@ -543,7 +547,7 @@ def test_arm_line_hard_failure_points_to_errors_log():
 
 
 def test_arm_line_per_document_failures_not_masked_by_ok_true():
-    """The exact real-world case: cmd_extract returns ok=True with everything failed inside."""
+    """The exact real-world case: process returns ok=True with everything failed inside."""
     text = rb._arm_line(3, 16, "extractor:sonnet-med",
                         _arm_result(ok=True, doc_errors=["a: x", "b: y"]), 3.0)
     assert "✗" in text
@@ -591,7 +595,7 @@ def test_arm_starting_line_shares_index_and_label_with_the_completion_line():
 def test_run_extractor_arm_records_failure_without_raising(monkeypatch, tmp_path):
     def _fails(ns, **kw):
         raise SystemExit("boom")
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _fails)
+    monkeypatch.setattr(wd_ingest, "process", _ext(_fails))
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is False
     assert result.error == "boom"
@@ -600,7 +604,7 @@ def test_run_extractor_arm_records_failure_without_raising(monkeypatch, tmp_path
 
 
 def test_run_extractor_arm_ok_reads_usage(monkeypatch, tmp_path):
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: None)
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: None))
     usage_dir = tmp_path / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True)
     (usage_dir / "usage-1.json").write_text(json.dumps({"calls": [{"cost_usd": 1.5}]}))
@@ -615,35 +619,20 @@ def test_run_extractor_arm_ok_reads_usage(monkeypatch, tmp_path):
 def test_run_extractor_arm_usage_run_id_none_without_a_usage_file(monkeypatch, tmp_path):
     """A vault with no usage file at all (nothing extracted, or a hard failure before the first
     write) has no telemetry to join to — `None`, not a guessed or empty-string id."""
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: None)
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: None))
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.usage is None
     assert result.usage_run_id is None
 
 
-def test_run_extractor_arm_calls_cmd_extract_non_interactively(monkeypatch, tmp_path):
-    """run_benchmark.py has no human to answer a prompt — cmd_extract must always be called with
-    non_interactive=True from here, not left to its interactive default (#494)."""
-    captured = {}
-
-    def _capture(ns, **kw):
-        captured.update(kw)
-        return {"cancelled": False, "results": []}
-
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
-    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
-    assert captured.get("non_interactive") is True
-
-
 def test_run_extractor_arm_tags_ns_with_benchmark_arm_id(monkeypatch, tmp_path):
     """#611: every arm's telemetry should be identifiable as a benchmark run, and as this arm
-    specifically — `cmd_extract` reads `ns.benchmark_arm_id` and threads it down to the global
+    specifically — `process` reads `opts.benchmark_arm_id` and threads it down to the global
     telemetry store."""
     captured = {}
-    monkeypatch.setattr(wd_ingest, "cmd_extract",
-                        lambda ns, **kw: captured.update(benchmark_arm_id=ns.benchmark_arm_id) or
-                        {"cancelled": False, "results": []})
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: captured.update(benchmark_arm_id=ns.benchmark_arm_id) or
+                        {"cancelled": False, "results": []}))
     rb.run_extractor_arm({"id": "sonnet-high", "extractor_model": "sonnet"}, tmp_path)
     assert captured["benchmark_arm_id"] == "sonnet-high"
 
@@ -657,38 +646,10 @@ def test_run_extractor_arm_pins_the_verification_pass_per_arm(monkeypatch, tmp_p
     """#535: an arm must never inherit `verify_extraction` from the machine running the sweep —
     the pass changes both the arm's spend and its recall, so an unset arm means off, explicitly."""
     captured = {}
-    monkeypatch.setattr(wd_ingest, "cmd_extract",
-                        lambda ns, **kw: captured.update(verify=ns.verify) or
-                        {"cancelled": False, "results": []})
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: captured.update(verify=ns.verify) or
+                        {"cancelled": False, "results": []}))
     rb.run_extractor_arm(arm, tmp_path)
     assert captured["verify"] is expected
-
-
-def test_run_extractor_arm_chdirs_into_the_target_vault(monkeypatch, tmp_path):
-    """`cmd_extract` (via `cmd_ingest`) resolves its vault from the current working directory
-    only — no explicit-path argument exists (`ingest.py`'s `Path(".").resolve()`). Without a
-    chdir into the arm's vault first, every real run fails identically with 'must be run from
-    inside a Watchdog vault directory', regardless of which arm or vault — this was live and
-    unnoticed until the first real (non-estimate) run of the tool."""
-    seen_cwd = {}
-
-    def _capture(ns, **kw):
-        seen_cwd["cwd"] = Path.cwd()
-
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
-    outside = Path.cwd()
-    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
-    assert seen_cwd["cwd"] == tmp_path.resolve()
-    assert Path.cwd() == outside   # restored afterward, not left inside the vault
-
-
-def test_run_extractor_arm_restores_cwd_even_on_failure(monkeypatch, tmp_path):
-    def _fails(ns, **kw):
-        raise SystemExit("boom")
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _fails)
-    outside = Path.cwd()
-    rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
-    assert Path.cwd() == outside
 
 
 def test_run_extractor_arm_suppresses_cmd_extract_stdout(monkeypatch, tmp_path, capsys):
@@ -697,28 +658,28 @@ def test_run_extractor_arm_suppresses_cmd_extract_stdout(monkeypatch, tmp_path, 
     def _noisy(ns, **kw):
         print("Sending 6 documents to a cloud AI model.")
         return {"cancelled": False, "results": []}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _noisy)
+    monkeypatch.setattr(wd_ingest, "process", _ext(_noisy))
     rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert "Sending 6 documents" not in capsys.readouterr().out
 
 
 def test_run_extractor_arm_picks_up_cancelled_from_summary(monkeypatch, tmp_path):
-    """cmd_extract traps ctrl+c internally and returns normally with `cancelled: True` — no
-    exception to catch, so this has to come from the return value now that cmd_ingest exposes it."""
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: {"cancelled": True, "results": []})
+    """process traps ctrl+c internally and returns normally with `cancelled: True` — no
+    exception to catch, so this has to come from the return value now that processing returns it."""
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: {"cancelled": True, "results": []}))
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.cancelled is True
 
 
 def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path):
-    """A per-document failure (e.g. the file_metadata schema bug) is caught inside cmd_extract
+    """A per-document failure (e.g. the file_metadata schema bug) is caught inside process
     and tallied in `results`, never raised — `ok` alone would miss it entirely."""
     summary = {"cancelled": False, "results": [
         {"sha256": "a1", "filename": "doc1.pdf", "status": "failed", "reason": "400: bad schema"},
         {"sha256": "a2", "filename": "doc2.pdf", "status": "ok"},
     ]}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: summary))
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.doc_errors == ["doc1.pdf: 400: bad schema"]
@@ -727,7 +688,7 @@ def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path)
 def test_run_extractor_arm_reports_rate_limited_and_document_counts(monkeypatch, tmp_path):
     """#559: `orchestrate._extract` already computes `rate_limited`/`stop_message` — this is the
     read that used to be dropped entirely (only `cancelled` reached the old ArmResult). The
-    corpus size comes from the queue, counted before `cmd_extract` runs (a real run consumes/
+    corpus size comes from the queue, counted before `process` runs (a real run consumes/
     moves queue files as it goes, so counting after would undercount)."""
     queue = tmp_path / ".watchdog" / "queue"
     queue.mkdir(parents=True)
@@ -736,7 +697,7 @@ def test_run_extractor_arm_reports_rate_limited_and_document_counts(monkeypatch,
 
     summary = {"cancelled": True, "rate_limited": True, "stop_message": "rate_limit_error",
               "extracted": 2, "skipped": 0, "failed": 0, "wait_count": 2, "results": []}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: summary))
 
     result = rb.run_extractor_arm({"id": "gpt-luna-low-verify",
                                    "extractor_model": "openai:gpt-5.6-luna"}, tmp_path)
@@ -760,7 +721,7 @@ def test_run_extractor_arm_passes_concurrency_and_wait_bound_through(monkeypatch
         captured["max_rate_limit_waits"] = ns.max_rate_limit_waits
         captured["concurrency"] = ns.concurrency
         return {"cancelled": False, "results": []}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
+    monkeypatch.setattr(wd_ingest, "process", _ext(_capture))
 
     rb.run_extractor_arm({"id": "gpt-mini-low-verify", "extractor_model": "openai:gpt-5.4-mini",
                           "concurrency": 3, "max_rate_limit_waits": 4}, tmp_path)
@@ -769,7 +730,7 @@ def test_run_extractor_arm_passes_concurrency_and_wait_bound_through(monkeypatch
 
 
 def test_run_extractor_arm_never_waits_on_a_batch_backend(monkeypatch, tmp_path):
-    """A batch backend already refuses `--wait` outright (`cmd_ingest`'s own guard) — its results
+    """A batch backend already refuses to wait (processing's own guard) — its results
     come back hours later in a separate process, so there is nothing to wait *for* here. Passing
     `wait=True` anyway would just sys.exit the arm."""
     captured = {}
@@ -777,7 +738,7 @@ def test_run_extractor_arm_never_waits_on_a_batch_backend(monkeypatch, tmp_path)
     def _capture(ns, **kw):
         captured["wait"] = ns.wait
         return {"cancelled": False, "results": []}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", _capture)
+    monkeypatch.setattr(wd_ingest, "process", _ext(_capture))
 
     rb.run_extractor_arm({"id": "batch-sonnet-med", "extractor_model": "claude-batch:sonnet"},
                          tmp_path)
@@ -792,7 +753,7 @@ def test_run_finalizer_arm_passes_arm_knobs_through(monkeypatch, tmp_path):
     def _capture(ns):
         captured["finalizer_model"] = ns.finalizer_model
         captured["finalizer_effort"] = ns.finalizer_effort
-    monkeypatch.setattr(wd_ingest, "cmd_finalize", _capture)
+    monkeypatch.setattr(wd_ingest, "finish", _fin(_capture))
 
     arm = {"id": "gemini-flash-lite", "finalizer_model": "gemini:gemini-3.5-flash-lite"}
     result = rb.run_finalizer_arm(arm, tmp_path)
@@ -806,15 +767,14 @@ def test_run_finalizer_arm_tags_ns_with_benchmark_arm_id(monkeypatch, tmp_path):
     captured = {}
     def _capture(ns):
         captured["benchmark_arm_id"] = ns.benchmark_arm_id
-    monkeypatch.setattr(wd_ingest, "cmd_finalize", _capture)
+    monkeypatch.setattr(wd_ingest, "finish", _fin(_capture))
 
     rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
     assert captured["benchmark_arm_id"] == "haiku"
 
 
 def test_run_finalizer_arm_records_failure(monkeypatch, tmp_path):
-    monkeypatch.setattr(wd_ingest, "cmd_finalize",
-                        lambda ns: (_ for _ in ()).throw(SystemExit("locked")))
+    monkeypatch.setattr(wd_ingest, "finish", _fin(lambda ns: (_ for _ in ()).throw(SystemExit("locked"))))
     result = rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
     assert result.ok is False
     assert result.error == "locked"
@@ -824,8 +784,7 @@ def test_run_finalizer_arm_captures_non_raised_failure(monkeypatch, tmp_path):
     """A rate limit or reconciliation error during finalize is returned, not raised (same
     silent-ok=True trap as extraction's per-document failures) — _run_finalize's own `out.get
     ("error")` check, mirrored here so the terse runner can flag it too."""
-    monkeypatch.setattr(wd_ingest, "cmd_finalize",
-                        lambda ns: {"error": "rate limit reached"})
+    monkeypatch.setattr(wd_ingest, "finish", _fin(lambda ns: {"error": "rate limit reached"}))
     result = rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.doc_errors == ["rate limit reached"]
@@ -835,7 +794,7 @@ def test_run_finalizer_arm_suppresses_cmd_finalize_stdout(monkeypatch, tmp_path,
     def _noisy(ns):
         print("Finalizing — entity reconciliation + synthesis + timeline + briefing.")
         return {}
-    monkeypatch.setattr(wd_ingest, "cmd_finalize", _noisy)
+    monkeypatch.setattr(wd_ingest, "finish", _fin(_noisy))
     rb.run_finalizer_arm({"id": "haiku", "finalizer_model": "haiku"}, tmp_path)
     assert "Finalizing" not in capsys.readouterr().out
 
@@ -1637,7 +1596,7 @@ def test_arm_backend_honours_an_explicit_pin_regardless_of_auth_mode(monkeypatch
 
 
 def test_confirm_run_prints_backend_and_auth_per_arm(monkeypatch, capsys):
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: False)
     previews = [("extractor:sonnet-med-sdk", {"cost_low": 1.0, "cost_high": 2.0},
                  {"backend": "claude-agent-sdk", "auth_mode": "subscription"}),
                 ("extractor:ds-flash", {"cost_low": 0.01, "cost_high": 0.02},
@@ -1660,7 +1619,7 @@ def test_arms_filter_runs_only_the_named_arms(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: False)
 
     rb.main(["--config", str(cfg), "--stages", "extractor",
              "--arms", "sonnet-med-sdk,sonnet-med-api"])
@@ -1683,7 +1642,7 @@ def test_arms_filter_rejects_an_unknown_arm_id(tmp_path, monkeypatch):
 # ── ctrl+c stops the whole run, not just the current arm ───────────────────────
 
 def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, capsys):
-    """cmd_extract traps ctrl+c internally and returns normally (`cancelled: True` in its
+    """process traps ctrl+c internally and returns normally (`cancelled: True` in its
     summary) rather than raising — before this fix the outer loop had no way to see that and
     just started the next arm's real API calls, which is why a single ctrl+c wasn't enough."""
     cfg = _matrix_config(tmp_path)   # sonnet-med-sdk, sonnet-med-api, haiku — three arms
@@ -1695,7 +1654,7 @@ def test_cancelled_arm_stops_the_run_before_the_next_arm(tmp_path, monkeypatch, 
     monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)
 
     calls = []
 
@@ -1749,13 +1708,13 @@ def test_fixture_capture_enabled_only_during_the_run(tmp_path, monkeypatch):
 
     assert not fc.enabled()
 
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: False)
     rb.main(["--config", str(cfg), "--stages", "extractor", "--estimate-only"])
     assert seen_enabled == []          # estimate-only never reaches the run loop
     assert not fc.enabled()
     assert not (tmp_path / ".fixture-capture").exists()
 
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)
     rb.main(["--config", str(cfg), "--stages", "extractor"])
 
     assert seen_enabled and all(seen_enabled)   # capture was on for every real arm
@@ -1793,7 +1752,7 @@ def _stub_common_arm_plumbing(monkeypatch, tmp_path):
     monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": 1.0, "cost_high": 2.0})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-api")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "api-key")
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)
 
 
 def test_keyboard_interrupt_mid_arm_still_writes_a_report(tmp_path, monkeypatch, capsys):
@@ -1901,7 +1860,7 @@ def test_sdk_check_arm_relabeled_and_excluded_from_recall_scoring(tmp_path, monk
     monkeypatch.setattr(rb, "preview_extractor_arm", lambda v, m, *a, **k: {"cost_low": None, "cost_high": None})
     monkeypatch.setattr(rb, "arm_backend", lambda m, default: "claude-agent-sdk")
     monkeypatch.setattr(rb, "_auth_mode", lambda: "subscription")
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)
     monkeypatch.setattr(
         rb, "run_extractor_arm",
         lambda arm, vault: rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=str(vault),
@@ -2040,7 +1999,7 @@ def test_fallback_estimate_unknown_model_returns_none():
 
 
 def test_confirm_run_labels_projected_estimates_as_rough_projection(monkeypatch, capsys):
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: False)
     previews = [("extractor:gpt-luna", {"cost_low": 5.0, "cost_high": 5.0, "projected": True}, {}),
                 ("extractor:ds-flash", {"cost_low": 0.01, "cost_high": 0.02}, {})]
     rb.confirm_run(previews, estimate_only=True)
@@ -2051,7 +2010,7 @@ def test_confirm_run_labels_projected_estimates_as_rough_projection(monkeypatch,
 
 
 def test_confirm_run_omits_projection_note_when_nothing_is_projected(monkeypatch, capsys):
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: False)
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: False)
     previews = [("extractor:ds-flash", {"cost_low": 0.01, "cost_high": 0.02}, {})]
     rb.confirm_run(previews, estimate_only=True)
     out = capsys.readouterr().out
@@ -2985,9 +2944,8 @@ def test_main_arms_filter_selects_every_run_of_a_repeated_arm(tmp_path, monkeypa
 def test_run_extractor_arm_withholds_the_brief_only_when_the_arm_says_so(monkeypatch, tmp_path,
                                                                          arm, withheld):
     captured = {}
-    monkeypatch.setattr(wd_ingest, "cmd_extract",
-                        lambda ns, **kw: captured.update(w=ns.withhold_brief) or
-                        {"cancelled": False, "results": []})
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: captured.update(w=ns.withhold_brief) or
+                        {"cancelled": False, "results": []}))
     rb.run_extractor_arm(arm, tmp_path)
     assert captured["w"] is withheld
 
@@ -3062,9 +3020,8 @@ def test_run_extractor_arm_writes_a_brief_file_into_the_vault_as_context_md(monk
     vault = tmp_path / "vault"
     vault.mkdir()
     seen = {}
-    monkeypatch.setattr(wd_ingest, "cmd_extract",
-                        lambda ns, **kw: seen.update(ctx=(Path.cwd() / "context.md").read_text(),
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: seen.update(ctx=(vault / "context.md").read_text(),
                                                      w=ns.withhold_brief) or
-                        {"cancelled": False, "results": []})
+                        {"cancelled": False, "results": []}))
     rb.run_extractor_arm({"id": "a", "extractor_model": "haiku", "brief": str(brief)}, vault)
     assert seen == {"ctx": "I want to understand the filing.\n", "w": False}

@@ -131,8 +131,8 @@ Override the location with `--vault-root PATH` or a top-level `vault_root:` key 
 root is gitignored; delete it any time with `bench clean` (below) or `rm -rf benchmarks/.vaults`.
 
 **The `bench` wrapper (dev convenience, not shipped).** `benchmarks/bench` fronts every step of a
-pass — the runner, the scorers and the judge tooling — so you don't have to remember the pipx
-venv's interpreter path or where each script lives. `bench -h` is the full list:
+pass — the runner, the scorers and the judge tooling — so you don't have to remember the
+development Python's path or where each script lives. `bench -h` is the full list:
 
 ```
 benchmarks/bench estimate --stages extractor --arms haiku,gemini-flash-low   # --estimate-only
@@ -449,7 +449,7 @@ keys' numeric-anchored items — roughly a third of them — against one or more
 (dig-only or finalized, both work), offline, no model calls:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/score_arms.py \
+python benchmarks/score_arms.py \
     <projects_dir>/bench-ex-sonnet-med <projects_dir>/bench-t0-sonnet-med
 ```
 
@@ -466,7 +466,7 @@ verification pass, so the difference within a pair is the pass and nothing else.
 a time**, on its own:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
+python benchmarks/run_benchmark.py \
     --stages extractor --arms gpt-mini-low-verify,gpt-mini-low-noverify
 ```
 
@@ -486,11 +486,11 @@ one self-contained judging packet per document — the added facts, the extracto
 restatement reference, the page text as the grounding reference — and tallies the grades:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \
+python benchmarks/verifier_precision.py build \
     benchmarks/.vaults/bench-ex-gpt-mini-verify --out /tmp/verifier-judge
 # a judge grades each fact grounded_material / grounded_trivial / unsupported,
 # writing judgment-<document>.json beside each packet, then:
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate \
+python benchmarks/verifier_precision.py aggregate \
     /tmp/verifier-judge
 ```
 
@@ -506,7 +506,7 @@ Separate from the arm matrix: measures how many real tokens each model counts fo
 every value in the catalog now comes from this script rather than a vendor sentence (D198).
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/tokenizer_ratio.py
+python benchmarks/tokenizer_ratio.py
 ```
 
 **A bare run is free** — no extraction calls, no generation, no subscription session window. It

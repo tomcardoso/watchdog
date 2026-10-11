@@ -62,7 +62,7 @@ class FakeClient:
 @pytest.fixture
 def env(tmp_path, monkeypatch):
     FakeClient.instances, FakeClient.scripts = [], []
-    monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path / "home" / ".watchdog")
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home" / ".watchdog")
     monkeypatch.setattr(chat, "make_client", FakeClient)
     events: list = []
     monkeypatch.setattr(rpc, "_test_sink", events)
