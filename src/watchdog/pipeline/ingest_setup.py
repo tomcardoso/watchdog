@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from watchdog import defaults
-from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline import locks as _locks
 from watchdog.pipeline.locks import acquire_or_take_stale
@@ -394,11 +393,11 @@ def recheck_cost_estimate(vault: Path, est_tokens: int, model: str, backend: str
 
 def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         finalizer_model: str = defaults.FINALIZER_MODEL,
-        wipe_pending: bool = True, force_lock: bool = False) -> dict:
+        force_lock: bool = False) -> dict:
     """Acquire lock, scan queue, write state file. Returns the state dict.
 
-    ``wipe_pending=False`` keeps a prior run's un-finalized post-ingest inputs so this
-    ingest *merges* into that batch (both finalize together) instead of discarding it.
+    A prior run's un-finalized post-ingest inputs are kept, so this run *merges* into that
+    batch and both finalize together; a run never discards them.
 
     ``force_lock=True`` acquires the lock even with an empty queue (#214) — a pending
     batch extraction (claude-batch or openai-batch, #530) still needs mutual exclusion
@@ -439,20 +438,6 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         err = _live_lock_error()
         return err if err is not None else {"error": busy_message(None)}
 
-    # Fresh run — clear the post-ingest inputs (per-doc results and scratchpads) left by a
-    # prior ingest so the finalizer gate + briefing see only this run's documents. Skipped when
-    # merging into a pending batch (wipe_pending=False), so this run's documents accumulate onto
-    # it and they finalize together.
-    backup_dir = None
-    if wipe_pending:
-        tmp = vault / ".watchdog" / "tmp"
-        about_to_wipe = [*tmp.glob("result_*.json"), *tmp.glob("notes_*.md")]
-        # A no-op on an ordinary ingest (nothing left over from a prior run to wipe) — this
-        # only produces a backup when the discard choice is actually throwing something away.
-        backup_dir = _snapshot(vault, "ingest-discard", about_to_wipe)
-        for p in list(tmp.glob("result_*.json")) + list(tmp.glob("notes_*.md")):
-            p.unlink(missing_ok=True)
-
     state = {
         "lock_acquired": True,
         "started_at": started_at,
@@ -468,7 +453,6 @@ def run(vault: Path, extractor_model: str = defaults.EXTRACTOR_MODEL,
         # default regardless of what's actually configured, a separate pre-existing gap nothing
         # currently reads back (`state["section_token_threshold"]` has no reader) — out of scope.
         "section_token_threshold": _section_token_threshold(extractor_model, vault=vault),
-        "backup_dir": str(backup_dir) if backup_dir else None,
     }
     state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     return state

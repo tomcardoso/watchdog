@@ -3925,9 +3925,8 @@ def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
     assert result["entities"] == 1   # only acme-corp crosses appears_in >= 2
 
 
-def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
-    """wipe_pending=False (the merge choice) keeps a prior batch's post-ingest inputs;
-    the default clears them."""
+def test_ingest_setup_keeps_a_pending_batch(tmp_path):
+    """A new run keeps a prior batch's post-ingest inputs, so the two finalize together."""
     from watchdog.pipeline import ingest_setup
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="new1", filename="new.pdf")          # a queued doc → total > 0
@@ -3935,50 +3934,8 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "result_old.json").write_text("{}")
     (tmp / "notes_old.md").write_text("obs")
-    lock = vault / ".watchdog" / "registry" / ".processing-lock"
-
-    # merge: inputs preserved so this run finalizes together with the pending batch
-    ingest_setup.run(vault, wipe_pending=False)
+    ingest_setup.run(vault)
     assert (tmp / "result_old.json").exists() and (tmp / "notes_old.md").exists()
-
-    # default: inputs wiped for a fresh batch
-    lock.unlink(missing_ok=True)                               # release the lock from the prior call
-    ingest_setup.run(vault, wipe_pending=True)
-    assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
-
-
-def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
-    """#270: the discard choice (wipe_pending=True with leftover residue from a prior
-    unfinalized batch) is irreversible — back up result_*.json and notes_*.md before
-    deleting them."""
-    from watchdog.pipeline import ingest_setup
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="new1", filename="new.pdf")
-    tmp = vault / ".watchdog" / "tmp"
-    tmp.mkdir(parents=True, exist_ok=True)
-    (tmp / "result_old.json").write_text('{"old": true}')
-    (tmp / "notes_old.md").write_text("scratchpad notes")
-
-    state = ingest_setup.run(vault, wipe_pending=True)
-
-    assert state["backup_dir"] is not None
-    backup_dir = Path(state["backup_dir"])
-    assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
-    assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
-    # And the originals are still gone — the backup doesn't block the wipe.
-    assert not (tmp / "result_old.json").exists()
-
-
-def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
-    """A routine ingest with nothing left over from a prior unfinalized batch is a
-    no-op for the wipe step, so it must not leave an empty backup directory behind."""
-    from watchdog.pipeline import ingest_setup
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="new1", filename="new.pdf")
-
-    state = ingest_setup.run(vault, wipe_pending=True)
-
-    assert state["backup_dir"] is None
     assert not (vault / ".watchdog" / "backups").exists()
 
 
@@ -5488,7 +5445,7 @@ def test_staged_extraction_without_results_still_finalizes(tmp_path, monkeypatch
     for p in (vault / ".watchdog" / "tmp").glob("result_*.json"):
         p.unlink()
     assert orchestrate.has_pending_finalization(vault)
-    ingest_setup.run(vault, wipe_pending=False)
+    ingest_setup.run(vault)
     (vault / ".watchdog" / "registry" / ".processing-lock").unlink(missing_ok=True)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 0 and "post_ingest" in summary

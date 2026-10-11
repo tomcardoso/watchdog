@@ -786,7 +786,7 @@ def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
     # force_lock so two concurrent runs can't both try to collect the same batch.
     batch_pending = extract_backend in BATCH_BACKENDS and batch_extract.read_state(vault) is not None
 
-    result = is_run(vault, wipe_pending=False, force_lock=batch_pending)
+    result = is_run(vault, force_lock=batch_pending)
     if "error" in result:
         sys.exit(f"Error: {result['error']}")
     if result["total"] == 0 and not batch_pending:

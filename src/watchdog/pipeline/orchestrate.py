@@ -3349,7 +3349,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     elif waiting and not cancelled_flag:
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
-            # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
+            # ones) so a merged batch — a prior pending run, which a new run always keeps — is
             # synthesized and briefed together with this run's documents.
             summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
                                                     post_effort=post_effort, post_backend=post_backend,

@@ -1,6 +1,6 @@
 """Pre-mutation snapshots for irreversible vault operations (#270).
 
-`merge-entities`, ingest's `discard` choice, and `delete --purge` are all one-way,
+Merging entities and deleting an investigation with its files are both one-way,
 but the state actually at risk is small — a couple of registry files and a handful
 of notes. `snapshot()` copies exactly those files into `.watchdog/backups/<ts>-
 <operation>/` before the caller mutates or deletes them, so a mistake is a manual
