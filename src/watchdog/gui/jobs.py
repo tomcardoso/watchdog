@@ -87,12 +87,39 @@ def _clock(seconds) -> str:
     return f"{h}:{m:02d}:{sec:02d}" if h else f"{m}:{sec:02d}"
 
 
-def _secrets(vault: Path | None) -> dict[str, str]:
-    """The encrypted keys a command in `vault` may use (`auth.secrets_for_run`). A failure here
-    must not stop the command: it then finds the key locked and stops with that reason itself."""
+# The model settings an operation's parameters can override, by operation.
+_MODEL_PARAMS = ("extractor_model", "classifier_model", "finalizer_model",
+                 "finalizer_reconciliation_model", "finalizer_synthesis_model",
+                 "finalizer_timeline_model", "finalizer_briefing_model")
+
+
+def run_providers_for(op: str, params: dict) -> list[str] | None:
+    """The providers whose keys operation `op` would send, resolved from its parameters and the
+    settings by the same code the run uses (`resolve_plan`, `recheck.finalizer_stage`), or None
+    (every provider) when that can't be worked out. Adding documents counts every stage, as its
+    own key check does; the re-check counts its reconciliation model."""
+    from watchdog.auth import run_providers
+    try:
+        if op in ("add", "dig", "bark"):
+            from watchdog.ops.ingest import RunOptions, resolve_plan
+            plan = resolve_plan(RunOptions(**{k: params[k] for k in _MODEL_PARAMS if params.get(k)}))
+            return run_providers(plan.backends)
+        if op == "recheck-contradictions":
+            from watchdog.pipeline import recheck
+            return run_providers([recheck.finalizer_stage()[0]])
+    except (Exception, SystemExit):  # noqa: BLE001 — a bad setting is the run's to report
+        return None
+    return None
+
+
+def _secrets(vault: Path | None, op: str | None = None, params: dict | None = None) -> dict[str, str]:
+    """The encrypted keys a command in `vault` may use (`auth.secrets_for_run`), narrowed to the
+    providers its models use when that can be worked out. A failure here must not stop the
+    command: it then finds the key locked and stops with that reason itself."""
     try:
         from watchdog.auth import secrets_for_run
-        return secrets_for_run(vault)
+        providers = run_providers_for(op, params or {}) if op else None
+        return secrets_for_run(vault, providers)
     except Exception:  # noqa: BLE001
         return {}
 
@@ -215,7 +242,7 @@ class JobManager:
         spec, checked, cwd = prepare(vault, op, params)
         _require_granted_cwd(cwd)
         job = Job(cwd, op, checked, label or op, kind)
-        keys = _secrets(cwd) if spec.secrets else {}
+        keys = _secrets(cwd, op, checked) if spec.secrets else {}
         popen_kwargs: dict = {}
         if os.name == "nt":
             popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
@@ -345,7 +372,7 @@ def run_action(vault: Path | None, op: str, params: dict | None, timeout: float)
     is its output with progress lines removed and `error` the reason it gives when it fails."""
     spec, checked, cwd = prepare(vault, op, params)
     _require_granted_cwd(cwd)
-    keys = _secrets(cwd) if spec.secrets else {}
+    keys = _secrets(cwd, op, checked) if spec.secrets else {}
     from watchdog.keystore import child_input
     payload = _request_line({"op": op, "params": checked}) + (child_input(keys) if keys else b"")
     try:
