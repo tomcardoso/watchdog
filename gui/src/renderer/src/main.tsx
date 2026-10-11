@@ -21,3 +21,5 @@ createRoot(document.getElementById('root')!).render(
 
 // End-to-end tests and the screenshot script drive navigation through this handle.
 ;(window as unknown as { __watchdogApp: unknown }).__watchdogApp = (await import('./lib/store')).useApp
+// …and the guided tour (D303) through this one: its state, and Help → Take the tour.
+;(window as unknown as { __watchdogTour: unknown }).__watchdogTour = await import('./tour/Tour').then((m) => ({ useTour: m.useTour, takeTour: m.takeTour, exploreSample: m.exploreSample }))

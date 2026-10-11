@@ -71,6 +71,8 @@ export function buildMenu(getWindow: () => BrowserWindow | null): void {
     {
       role: 'help',
       submenu: [
+        { label: 'Take the Tour', click: send('take-tour') },
+        { type: 'separator' },
         { label: 'Watchdog Documentation', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/tree/main/docs') },
         { label: 'Report an Issue', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/issues') },
         { label: 'Show Log File', click: () => shell.showItemInFolder(log.transports.file.getFile().path) },

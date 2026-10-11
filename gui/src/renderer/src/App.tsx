@@ -14,6 +14,7 @@ import { Toasts } from './shell/Toasts'
 import { TooltipLayer } from './components/TooltipLayer'
 import { Topbar } from './shell/Topbar'
 import { GlobalDialogs } from './views/dialogs/GlobalDialogs'
+import { exploreSample, takeTour, TourLayer } from './tour/Tour'
 import { VIEWS } from './views'
 
 const GO: Record<string, Route> = {
@@ -48,6 +49,10 @@ function runCommand(name: string): void {
       return void window.watchdog.shell.openPath(s.project!.path)
     case 'open-obsidian':
       return void window.watchdog.shell.openInObsidian(s.project!.path)
+    case 'take-tour':
+      return void takeTour()
+    case 'explore-sample':
+      return void exploreSample()
     case 'new-investigation':
     case 'fetch-links':
       // Handled by GlobalDialogs. Only these two are re-dispatched: the wd:command listener
@@ -173,6 +178,7 @@ function Shell() {
       </main>
       <CommandPalette />
       <GlobalDialogs />
+      <TourLayer />
       <DropOverlay />
       <Toasts />
     </div>

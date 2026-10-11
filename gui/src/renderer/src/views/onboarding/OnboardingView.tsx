@@ -2,7 +2,7 @@
 // answer the auto-approve question, then start. Progress is remembered (preferences 'onboarding'),
 // so closing the app part-way and reopening returns to the right step.
 
-import { ArrowLeft, Check, CheckCircle2, FolderOpen, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Compass, FolderOpen, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import type { AuthStatus, BackendStatus, ModelChoice } from '@shared/api'
 import { Button, Callout, Field, Spinner, cx } from '@renderer/components/ui'
@@ -30,7 +30,8 @@ interface Props {
   mode: OnboardingMode
   /** WATCHDOG_FORCE_ONBOARDING: a step id to start on. */
   forceStep?: string | null
-  onDone: (openNewInvestigation?: boolean) => void
+  /** `next`: what to open once setup is done (a new investigation, or the sample and its tour). */
+  onDone: (next?: 'new' | 'sample') => void
   onBackendAction: (fn: () => Promise<BackendStatus>) => Promise<void>
 }
 
@@ -478,7 +479,7 @@ function ApproveStep({ next, back, busy, error }: { next: (autoApprove: boolean)
 
 // ── f. done ──────────────────────────────────────────────────────────────────
 
-function DoneStep({ onDone }: { onDone: (openNew?: boolean) => void }) {
+function DoneStep({ onDone }: { onDone: (next?: 'new' | 'sample') => void }) {
   const info = useRpc('app.info', {})
   return (
     <>
@@ -486,12 +487,22 @@ function DoneStep({ onDone }: { onDone: (openNew?: boolean) => void }) {
       <h1>Watchdog is ready</h1>
       <p className="onb-lead">
         {info.data?.projects_dir ? <>Investigations will be kept in <span className="mono selectable">{info.data.projects_dir}</span>. </> : null}
-        Start your first investigation now, or open Watchdog and begin later.
+        Start your first investigation now, or explore a sample one first.
       </p>
+      <button type="button" className="onb-option" onClick={() => onDone('sample')}>
+        <span className="onb-sample-icon"><Compass /></span>
+        <span className="grow">
+          <span className="onb-option-title">Explore a sample investigation</span>
+          <span className="onb-option-body">
+            A made-up case, already processed, with a short guided tour of each screen. It is built on this computer with prepared answers, so it costs
+            nothing and needs no sign-in.
+          </span>
+        </span>
+      </button>
       <div className="onb-footer">
         <span className="spacer" />
-        <Button size="lg" onClick={() => onDone(false)}>Open Watchdog</Button>
-        <Button variant="primary" size="lg" icon={Sparkles} onClick={() => onDone(true)}>Create my first investigation</Button>
+        <Button size="lg" onClick={() => onDone()}>Open Watchdog</Button>
+        <Button variant="primary" size="lg" icon={Sparkles} onClick={() => onDone('new')}>Create my first investigation</Button>
       </div>
     </>
   )

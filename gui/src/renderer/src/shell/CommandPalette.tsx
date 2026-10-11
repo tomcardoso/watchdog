@@ -2,7 +2,7 @@
 
 import { Command } from 'cmdk'
 import {
-  Activity, BookOpenText, CalendarRange, FilePlus2, Files, FolderOpen, Globe2, House, Link2, ListChecks,
+  Activity, BookOpenText, CalendarRange, Compass, FilePlus2, Files, FolderOpen, Globe2, House, Link2, ListChecks,
   MessageSquareText, Moon, Network, Plus, Search, Settings, Shapes, Sun
 } from 'lucide-react'
 import { useState } from 'react'
@@ -87,6 +87,12 @@ export function CommandPalette() {
               </Command.Item>
             </Command.Group>
           )}
+          <Command.Group heading="Help">
+            <Command.Item value="help take the tour sample investigation" onSelect={() => cmd('take-tour')}>
+              <Compass />
+              Take the tour of the sample investigation
+            </Command.Item>
+          </Command.Group>
           <Command.Group heading="Go to">
             {views.map((v) => (
               <Command.Item key={v.label} value={`go ${v.label}`} onSelect={() => go(v.route)}>

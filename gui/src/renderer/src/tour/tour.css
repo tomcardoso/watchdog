@@ -1,0 +1,115 @@
+/* The guided tour (D303): a ring around what a step points at, and a small panel that never blocks
+   the app. Above dialogs (the Add documents step opens one) and below menus, toasts and tooltips. */
+
+.tour-ring {
+  position: fixed;
+  z-index: 140;
+  pointer-events: none;
+  border-radius: var(--r-lg);
+  box-shadow: 0 0 0 3px var(--marker), 0 0 0 9px var(--highlight);
+  transition: top var(--dur) var(--ease), left var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease);
+  animation: tour-ring-in 260ms var(--ease);
+}
+@keyframes tour-ring-in {
+  from {
+    opacity: 0;
+    transform: scale(1.03);
+  }
+}
+
+.tour-panel {
+  position: fixed;
+  z-index: 145;
+  width: min(360px, calc(100vw - 40px));
+  padding: 14px 16px 14px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-lg);
+  animation: pop-in 200ms var(--ease);
+}
+.tour-br {
+  right: 20px;
+  bottom: 20px;
+}
+.tour-bl {
+  left: calc(var(--sidebar-w) + 20px);
+  bottom: 20px;
+}
+.tour-side {
+  left: 16px;
+  bottom: 16px;
+  width: min(300px, calc(100vw - 40px));
+}
+.tour-tr {
+  right: 20px;
+  top: calc(var(--topbar-h) + 12px);
+}
+
+.tour-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -4px -6px 6px 0;
+}
+.tour-count {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.tour-progress {
+  height: 3px;
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.tour-progress span {
+  display: block;
+  height: 100%;
+  background: var(--marker);
+  border-radius: inherit;
+  transition: width 240ms var(--ease);
+}
+.tour-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.tour-body p {
+  margin: 0 0 8px;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.tour-missing {
+  margin: 0 0 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-sm);
+}
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+.tour-prompt-text {
+  margin: 0;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-ring,
+  .tour-panel {
+    animation: none;
+    transition: none;
+  }
+}

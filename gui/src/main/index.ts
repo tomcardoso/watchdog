@@ -89,7 +89,9 @@ async function createWindow(): Promise<void> {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      spellcheck: true
+      spellcheck: true,
+      // The app's own version, for the sidebar (the engine reports the Python package's).
+      additionalArguments: [`--watchdog-app-version=${app.getVersion()}`]
     }
   })
   if (saved.maximized) win.maximize()

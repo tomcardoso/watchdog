@@ -3,7 +3,8 @@
 
 import {
   Archive, ArchiveRestore, BookOpenText, FolderInput, FolderOpen, FolderPlus, History, Pencil, Plus,
-  Stethoscope, TextCursorInput, Trash2, TriangleAlert, ExternalLink, MoreHorizontal, Search, Layers, Files, Clock, CircleCheck, FileClock
+  Stethoscope, TextCursorInput, Trash2, TriangleAlert, ExternalLink, MoreHorizontal, Search, Layers, Files, Clock, CircleCheck, FileClock,
+  Compass, RotateCcw
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Field, MenuItem, Modal, Skeleton, Switch } from '@renderer/components/ui'
@@ -12,6 +13,7 @@ import { runAction } from '@renderer/lib/jobs'
 import { fmtBytes, fmtRelative, fmtNum, basename, plural } from '@renderer/lib/format'
 import { toast, useApp } from '@renderer/lib/store'
 import { ProjectMark } from '@renderer/shell/Sidebar'
+import { exploreSample, rebuildSample, takeTour } from '@renderer/tour/Tour'
 import type { DoctorIssue, Project } from '@shared/api'
 import './projects.css'
 
@@ -68,6 +70,13 @@ export default function ProjectsView() {
     { label: 'Show in folder', icon: FolderOpen, onClick: () => window.watchdog.shell.showItemInFolder(p.path) },
     { label: 'Open in Obsidian', icon: ExternalLink, onClick: () => void window.watchdog.shell.openInObsidian(p.path), disabled: !!p.health },
     { label: 'Processing history', icon: History, onClick: () => setDialog({ kind: 'log', project: p }) },
+    ...(p.sample
+      ? [
+          { separator: true, label: '' },
+          { label: 'Take the tour', icon: Compass, onClick: () => void takeTour() },
+          { label: 'Rebuild the sample…', icon: RotateCcw, onClick: () => void rebuildSample() }
+        ]
+      : []),
     { separator: true, label: '' },
     { label: 'Remove from Watchdog…', icon: Trash2, danger: true, onClick: () => setDialog({ kind: 'remove', project: p }) },
     { label: 'Remove and delete files…', icon: Trash2, danger: true, onClick: () => setDialog({ kind: 'purge', project: p }) }
@@ -92,10 +101,13 @@ export default function ProjectsView() {
             <Button icon={Stethoscope} variant="ghost" onClick={() => setDialog({ kind: 'doctor' })}>
               Check vaults
             </Button>
+            <Button icon={Compass} variant="ghost" onClick={() => void exploreSample()}>
+              Sample investigation
+            </Button>
             <Button icon={FolderPlus} onClick={() => setDialog({ kind: 'register' })}>
               Add existing folder…
             </Button>
-            <Button icon={Plus} variant="primary" onClick={newInvestigation}>
+            <Button icon={Plus} variant="primary" onClick={newInvestigation} data-tour="new-investigation">
               New investigation
             </Button>
           </div>
@@ -235,9 +247,10 @@ function ProjectCard({ p, menu, onOpen, onFix, onRemove }: { p: Project; menu: M
               {s.last_ingest ? `Last processed ${fmtRelative(s.last_ingest)}` : 'Nothing added yet'}
             </span>
             <span className="spacer" />
+            {p.sample && <Badge tone="accent" icon={Compass} tip="Built for learning Watchdog; everyone in it is invented">Sample</Badge>}
             {p.archived && <Badge icon={Archive}>Archived</Badge>}
             {s.failed > 0 && <Badge tone="danger" tip="Documents that failed extraction">{s.failed} failed</Badge>}
-            {inProgress > 0 && <Badge tone="warning" tip="Documents waiting to be added or finished">{inProgress} in progress</Badge>}
+            {inProgress > 0 && <Badge tone="warning" tip="Documents waiting to be added or finished">{inProgress} waiting</Badge>}
             {!p.archived && !s.failed && !inProgress && s.documents > 0 && <Badge tone="success" icon={CircleCheck}>Up to date</Badge>}
           </div>
         </>
@@ -267,6 +280,13 @@ function Welcome({ onRegister }: { onRegister: () => void }) {
           Add existing folder…
         </Button>
       </div>
+      <p className="proj-welcome-sample">
+        New to Watchdog?{' '}
+        <button type="button" className="proj-welcome-link" onClick={() => void takeTour()}>
+          Explore a sample investigation
+        </button>{' '}
+        with a short guided tour. It is made up, costs nothing and needs no sign-in.
+      </p>
     </div>
   )
 }

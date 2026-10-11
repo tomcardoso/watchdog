@@ -87,7 +87,8 @@
 }
 .proj-stats {
   display: flex;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 6px 20px;
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
@@ -163,6 +164,29 @@
   color: var(--text-2);
   line-height: 1.6;
   font-size: var(--fs-md);
+}
+.proj-welcome p.proj-welcome-sample {
+  margin: 22px auto 0;
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.proj-welcome-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--marker);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.proj-welcome-link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
 }
 .proj-welcome-art {
   width: 60px;

@@ -413,7 +413,8 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
   const d = query.data
   if (!d) return null
 
-  if (d.index_empty) {
+  // With no meaning index but exact matches, show the matches (the hint below says what is missing).
+  if (d.index_empty && !d.exact.length) {
     return (
       <Empty
         icon={SearchX}
@@ -451,6 +452,11 @@ function HereResults({ submitted, query, terms, full, sel, idx, setSel, recent, 
         <Callout tone="warning" title="The exact-match lane was not checked">
           Exact matches could not be searched ({d.exact_error}). Treat the absence of exact matches below as unknown, not as “none”. Rebuilding the index usually fixes this.
         </Callout>
+      )}
+      {d.index_empty && !d.semantic_pending && (
+        <div className="faint srch-hint" style={{ marginTop: -14 }}>
+          Only exact matches are shown, because this investigation has no search index yet for finding passages by meaning. Rebuild the search index, in Activity under Maintenance, builds one on this computer with no model calls.
+        </div>
       )}
       {d.semantic_pending && (
         <div className="faint srch-hint" style={{ marginTop: -14 }}>

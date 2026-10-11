@@ -54,6 +54,8 @@ def project_dict(slug: str, info: dict) -> dict:
         "description": info.get("description") or None,
         "path": str(vault),
         "archived": bool(info.get("archived")),
+        # The app's sample investigation (D303), built with prepared answers for learning.
+        "sample": bool(info.get("sample")),
         "created": info.get("created_at") or None,
         "health": health,
         # Whether the user has allowed Watchdog to work in this folder (watchdog/access.py);

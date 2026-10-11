@@ -67,6 +67,8 @@
 .onb-ok svg { width: 16px; height: 16px; }
 .onb-seal { width: 52px; height: 52px; border-radius: var(--r-lg); display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
 .onb-seal svg { width: 26px; height: 26px; }
+.onb-sample-icon { flex: none; width: 34px; height: 34px; border-radius: var(--r-md); display: grid; place-items: center; background: var(--accent-soft); color: var(--accent-text); }
+.onb-sample-icon svg { width: 17px; height: 17px; }
 
 .onb-steps { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r-lg); overflow: hidden; background: var(--surface); }
 .onb-step { display: flex; align-items: center; gap: 12px; padding: 11px 16px; border-top: 1px solid var(--border); min-height: 46px; }

@@ -8,6 +8,16 @@ Two things to keep in mind before you begin.
 
 > **Verify before you publish.** AI extraction makes mistakes. Every fact Watchdog extracts links back to its source document and page, and facts the model inferred rather than read are marked as inferred — those are leads, not findings. Follow the link to the page before you publish anything.
 
+## Try the sample investigation
+
+If you would like to see what a finished investigation looks like before adding your own records, start with the sample. **Port Calder Waterfront (sample)** is a made-up case about a city's land purchase and a contract awarded without a tender. Every person, company and document in it is invented.
+
+To open it, choose **Explore a sample investigation** at the end of setup, **Sample investigation** on the Investigations screen, or **Help → Take the Tour**. The first time, Watchdog builds it on your computer, which takes under a minute. It uses prepared answers instead of an AI model, so it costs nothing and needs no sign-in, key or internet connection. Its runs show $0 under **Activity → Usage**.
+
+The tour then opens one screen at a time and points at a real finding: the briefing, a scanned page you can search, an entity's facts and their sources, a fact you can mark as checked, a contradiction, a near-duplicate, a lead, Search, the timeline and network, what a run costs, the Add documents window and Ask Claude. Use **Next** and **Back** to move through it, or **Skip tour** to close it. It remembers where you stopped, and **Help → Take the Tour** starts it again from the beginning.
+
+You can change anything in the sample. To start it afresh, choose **Rebuild the sample…** from its **⋯** menu on the Investigations screen; that replaces only the sample. Delete it like any other investigation when you no longer need it.
+
 ## Create an investigation
 
 Each investigation lives in its own folder on your computer: your documents, plus a linked set of notes Watchdog writes about them. To create one, choose **Create my first investigation** at the end of setup. Later, use **File → New Investigation…**, or open the investigation menu at the top of the sidebar and choose **New investigation…**.

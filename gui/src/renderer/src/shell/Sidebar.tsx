@@ -143,7 +143,7 @@ function BackendFoot() {
       <SetupProgress />
       <div className="sidebar-foot">
         <span className="status-dot" />
-        <span className="truncate">Watchdog {info?.version ?? ''}</span>
+        <span className="truncate">Watchdog {window.watchdog?.appVersion || info?.version || ''}</span>
       </div>
     </>
   )
