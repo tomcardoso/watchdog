@@ -43,7 +43,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 | `app.ping` | — | `{ok: true}` |
 | `app.info` | — | `{version, python, python_version, platform, watchdog_home, config_file, setup_complete, projects_dir, claude_code: {installed, logged_in}, obsidian_installed, engine_ready}` |
 | `engine.ready` | — | `{ready}`: false while the engine's background phase is unfinished (D272) |
-| `engine.setReady` | — | `{ready: true}`. Called by the main process when the background phase finishes: clears `WATCHDOG_ENGINE_PENDING` for the server and the commands it starts, and drops the import caches so the new packages load |
+| `engine.setReady` | — | `{ready: true}`. Called by the main process when the background phase finishes: clears `WATCHDOG_ENGINE_PENDING` for the server and the jobs it starts, and drops the import caches so the new packages load |
 
 ## access
 
@@ -91,14 +91,14 @@ The sample is built by the `sample-create` job (see [operations](#operations)).
 ## vault — reading an investigation
 
 ```
-Summary = {               // cmd/home.summary(), made JSON-safe
+Summary = {               // overview.summary(), made JSON-safe
   name, path,
   briefing: {path, name, date}|null,
   headline|null,         // the latest briefing's status line, Markdown with fact links, from its sidecar (D285)
   contradictions, leads, near_duplicates, possible_same, alerts, // waiting on you
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
-  has_work: bool,                                              // home.has_work()
+  has_work: bool,                                              // overview.has_work()
   totals: {documents, entities, pages, events},
   verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
@@ -145,7 +145,7 @@ EntityRow = {
 | `vault.briefings` | `{vault}` | `[{path, name, kind: "briefing"\|"leads"\|"alerts"\|"research", date, title}]`, newest first |
 | `vault.notes` | `{vault}` | `[{path, kind: "query"\|"wiki", title, modified}]` — pages Claude sessions saved in `queries/` and `wiki/`, most recently modified first |
 | `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` (not `hot.md`, retired in D285) |
-| `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`cmd/primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
+| `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
 | `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
@@ -256,7 +256,7 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 | `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null}` |
 
 ```
-RunOptions = {                       // mirrors the dig/bark/add flags; unset = configured default
+RunOptions = {                       // ops.ingest.RunOptions; unset = configured default
   extractor_model?, classifier_model?, finalizer_model?,
   finalizer_reconciliation_model?, finalizer_synthesis_model?,
   finalizer_timeline_model?, finalizer_briefing_model?,
@@ -284,7 +284,7 @@ LabelledKey = {id, label, masked, default: bool, users?: [investigation name]}
 InvestigationKeys = {claude_mode, providers: [{provider, provider_label, keys: [LabelledKey],
   chosen: {id, label}|null, resolved_label|null, source, missing, message|null,
   env: bool, used: bool}]}           // `used`: a configured stage (or Ask Claude) uses it
-KeyCost = {label|null, cost_usd, calls}   // cmd/usage.cost_by_key, most expensive first
+KeyCost = {label|null, cost_usd, calls}   // usage.cost_by_key, most expensive first
 ```
 
 `RunOptions` is passed as an operation's parameters as it is: the server drops a shared run option
@@ -387,7 +387,7 @@ RecheckEstimate = {
 
 | Method | Params | Result |
 |---|---|---|
-| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, semantic_error\|null, semantic_pending: bool, exact: [...], passages: [...], notes: [...]}` — the `--json` shape, each item enriched with `sha`, `note`, `original` where resolvable |
+| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, semantic_error\|null, semantic_pending: bool, exact: [...], passages: [...], notes: [...]}` — `search.build_json`'s shape, each item enriched with `sha`, `note`, `original` where resolvable |
 | `search.batch` | `{vault\|null, terms: string[], everywhere?: bool}` | `{terms: [{term, checked: bool, hits: [{vault_name?, kind, title, note, page, text, path, sha}]}]}` — entity matches are hits with `kind: "entity"`; `top?` limits hits per term |
 | `search.everywhere` | `{query, top?}` | `{vaults: [{slug, name, path, entity_hits: [...], exact: [...], error\|null}], skipped: [{slug, reason}]}` |
 | `search.status` | `{vault}` | `{total, documents, notes, passages, fulltext: {corpus, notes, total}}` — `embed.index_stats` (`documents` = indexed document files) |
@@ -417,7 +417,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 
 | Method | Params | Result |
 |---|---|---|
-| `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `cmd/review.open_items` |
+| `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `review.open_items` |
 | `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
@@ -481,8 +481,8 @@ Downloading runs as a job: the `research-fetch` operation for the queue, `fetch-
 ## chat — Claude Code sessions inside the app
 
 Ask Claude, setting the investigation's context, and web research run as a session through the
-Claude Agent SDK in the vault's folder, so the vault's own `.claude/` settings, `CLAUDE.md` and
-`/watchdog-*` commands apply.
+Claude Agent SDK in the vault's folder, so the vault's `.claude/CLAUDE.md` and `/watchdog-*`
+commands load; its settings, tools and hooks come from the app (`chat.start` below).
 
 | Method | Params | Result |
 |---|---|---|

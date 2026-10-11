@@ -24,7 +24,8 @@ User documentation is in [docs/app.md](../docs/app.md). This page is for develop
   for quick ones like `projects-rename`; D298). Progress comes back as structured events (see
   `src/watchdog/progress.py`).
 - **Claude sessions** (Ask Claude, setting the context, web research) run through the Claude Agent SDK in the
-  vault folder, so the vault's own `.claude/` settings and `/watchdog-*` commands apply.
+  vault folder, so the vault's `.claude/CLAUDE.md` and `/watchdog-*` commands load; their settings,
+  tools and hooks come from the app (`watchdog/gui/chat.py`, `watchdog/session_tools.py`; D299, D304).
 - The main process finds Python in this order. A packaged app: `WATCHDOG_PYTHON`, the interpreter
   chosen in the app, **the managed engine**, then `python3` on the PATH (an external install is used only if it is at least the version
   the app bundles). Development (unpackaged, or `WATCHDOG_SRC` set): the same, with the managed
@@ -43,7 +44,7 @@ A journalist never opens a terminal. On first run the app installs Watchdog itse
    `engine/requirements.lock`; the wheel goes in with `--no-deps`; then the light libraries from
    `python -m watchdog.gui.engine_setup core-requirements`, pinned to the lock. The backend starts
    on this with `WATCHDOG_ENGINE_PENDING=1`, which makes `jobs.start` refuse document-adding
-   commands.
+   operations.
 3. Phase 2, in the background: `uv pip install -r requirements.lock`, then
    `python -m watchdog.gui.engine_setup models` (Docling, GLiNER, the embedding model, the reranker
    and an OCR check; failures are warnings, each model is fetched again on first use). When it
@@ -114,7 +115,7 @@ xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calde
   and `components/EntityChip`.
 - **Data.** `useRpc(method, params)` for reads (react-query; pass `null` params to skip),
   `call(method, params)` for one-off calls, `invalidate('vault.')` after a change. Jobs:
-  `lib/jobs.ts` (`startJob`, `runAction`, `flagsFor`).
+  `lib/jobs.ts` (`startJob`, `runAction`, `waitForJob`).
 - **Navigation.** `navigate({view: 'entity', id})`. Wikilinks inside markdown are handled by
   `components/Markdown`, which resolves them with `vault.resolveLink`.
 - **Every state is designed.** Loading → `Skeleton`s shaped like the content; empty → `Empty` with
@@ -129,6 +130,6 @@ xvfb-run -a node scripts/shoot.mjs --home /tmp/wd-demo-home --project port-calde
 ## Packaging
 
 `npm run dist` builds installers with electron-builder (`electron-builder.config.cjs`): a `.dmg` on
-macOS, an NSIS installer on Windows, an AppImage and `.deb` on Linux. The `watchdog` Python package
+macOS (plus the `.zip` the updater downloads), an NSIS installer on Windows, an AppImage on Linux. The `watchdog` Python package
 is built into a wheel and bundled with `uv`; the app installs them into its own engine on first run (see
 "The managed engine"). `npm run engine:prepare` produces both for this computer.

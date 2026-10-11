@@ -150,14 +150,14 @@ benchmarks/bench clean                                                       # w
 are reset at the start of a run. [RUNBOOK.md](RUNBOOK.md) is the step-by-step.
 
 Run `benchmarks/bench --help` for the full list. It is dev tooling for whoever is running the
-benchmark, not part of the shipped `watchdog` CLI — see `docs/benchmarks.md` for that boundary.
+benchmark, not part of the app — see `docs/benchmarks.md` for that boundary.
 
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
 followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost
 preview first.
 
 **Do not run a live ingest (Steps 3, 4, 5, or 6) without Tom's explicit go-ahead.** These runs cost
-real money and share his subscription session window — `--estimate` first, always, but the
+real money and share his subscription session window — `bench estimate` first, always, but the
 estimate is a preview, not the ask.
 
 **Running a pass?** Follow [RUNBOOK.md](RUNBOOK.md) — the steps, in order, including the
@@ -168,18 +168,19 @@ pinned judge prompt. This file is the reasoning behind those steps, not the proc
 Watchdog makes three kinds of model call during ingest. This benchmark picks the right-size default
 for each, across Claude tiers and DeepSeek, plus the reasoning-effort knob where it applies.
 
-| Stage | Flag | Default | Effort knob? | Cost shape |
+| Stage | Option (`RunOptions`, an arm's keys) | Default | Effort knob? | Cost shape |
 |---|---|---|---|---|
-| **Classifier** | `--classifier-model` | `haiku` | no | 1 call/doc, first 5 pages only — trivial |
-| **Extractor** | `--extractor-model` / `--extractor-effort` | `sonnet` / `high` | yes | per page — **essentially the whole bill** |
-| **Finalizer** | `--finalizer-model` / `--finalizer-effort` | `haiku` / `high` | yes | ~3 calls + reconciliation per ingest — near-constant |
+| **Classifier** | `classifier_model` / `classifier_effort` | `haiku` / `low` | not swept | 1 call/doc, first 5 pages only — trivial |
+| **Extractor** | `extractor_model` / `extractor_effort` | `sonnet` / `medium` | yes | per page — **essentially the whole bill** |
+| **Finalizer** | `finalizer_model` / `finalizer_effort` | `haiku` / unset | yes | ~3 calls + reconciliation per ingest — near-constant |
 
 Candidate models per stage: Claude `haiku` / `sonnet` / `opus`, and DeepSeek `deepseek:deepseek-flash` /
 `deepseek:deepseek-v4-pro`. Notes that matter:
 
-- **Haiku has no effort knob** (`_EFFORT_UNSUPPORTED`) — `--extractor-effort` is ignored on Haiku.
-  So a Haiku arm is a single point, not a high/medium/low sweep.
-- **The classifier has no effort knob at all.**
+- **Claude Haiku 4.5 has no effort knob** (no `effort_levels` in `model_catalog.yaml`) — asking for
+  one errors, so a `haiku-4.5` arm is a single point, not a high/medium/low sweep. Bare `haiku` is
+  now Haiku 5.5 (D277), which takes every level.
+- **The classifier's effort is not swept**; it stays at its `low` default.
 - **DeepSeek's main knob is its thinking toggle**, swapped via the model id:
   `deepseek:deepseek-flash` (thinking off) vs `deepseek:deepseek-flash-thinking` (on), same for
   `-pro`. Tom's prior testing found non-thinking DeepSeek weak, so test both. Since 2026-08-13 the
@@ -208,12 +209,12 @@ sidecar. Entity resolution and cross-document contradiction detection moved to t
 
 Each stage is measured by varying it while holding the other two fixed at a known baseline.
 
-- **Extractor sweep** — vary `--extractor-model` × `--extractor-effort`; the finalizer never runs
+- **Extractor sweep** — vary `extractor_model` × `extractor_effort`; the finalizer never runs
   at all (processing only — see Step 4), since the metrics this sweep scores live entirely in
   the staged extraction artifacts; the corpus's per-document sidecar pins (D120) keep the
-  classifier out of the loop, no `--skill` flag needed. This is still where the money goes — it's
+  classifier out of the loop, no `skill` option needed. This is still where the money goes — it's
   just no longer paying for a finalizer it doesn't need too.
-- **Finalizer sweep** — vary `--finalizer-model` × `--finalizer-effort`; hold the extractor fixed
+- **Finalizer sweep** — vary `finalizer_model` × `finalizer_effort`; hold the extractor fixed
   at **`deepseek:deepseek-flash`**. Two reasons for the cheap fixed extractor: (a) it keeps the wasted
   re-extraction cheap — you cannot re-finalize a finished vault (#384), so each finalizer arm is its
   own full ingest; (b) a messier extraction gives reconciliation *more* to do (more duplicate
@@ -253,7 +254,7 @@ hashed to some value; it can't show what those keys said. Add the new row to the
 ## Step 1 — verify the corpus
 
 ```
-cd benchmarks/corpus && shasum -a 256 -c corpus-v1.sha256
+cd benchmarks/corpora/extract && shasum -a 256 -c corpus-v1.sha256
 ```
 
 All six must report `OK`. If any fails, stop — a single changed byte makes runs incomparable.
