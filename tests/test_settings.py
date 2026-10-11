@@ -113,3 +113,50 @@ def test_display_of_defaults_booleans_and_secrets():
     assert settings.display_value("ocr_languages", None) == "auto-detect (default)"
     assert settings.display_value("wayback_secret_key", "hunter2") == "•••••••• (set)"
     assert settings.display_value("finalizer_synthesis_model", None) == "(not set)"
+
+
+def test_defaults_shown_match_the_runtime_defaults():
+    """Settings shows each key's default from `SETTINGS`; the runtime reads `watchdog.defaults`.
+    They once disagreed (extract_concurrency: shown 5, used 20)."""
+    from watchdog import defaults
+    from watchdog.ops.ingest import _DEFAULT_EXTRACT_CONCURRENCY
+    s = settings.SETTINGS
+    assert s["extract_concurrency"]["default"] == _DEFAULT_EXTRACT_CONCURRENCY == 20
+    assert s["classify_pages"]["default"] == defaults.CLASSIFY_PAGES
+    assert s["extractor_model"]["default"] == defaults.EXTRACTOR_MODEL
+    assert s["classifier_model"]["default"] == defaults.CLASSIFIER_MODEL
+    assert s["finalizer_model"]["default"] == defaults.FINALIZER_MODEL
+    assert s["extractor_effort"]["default"] == defaults.EXTRACTOR_EFFORT
+    assert s["classifier_effort"]["default"] == defaults.CLASSIFIER_EFFORT
+
+
+def test_model_keys_are_free_form_and_default_skill_is_a_setting():
+    """A stage's model is a free-form `[backend:]model` string, not an enum."""
+    assert settings.SETTINGS["classifier_model"]["type"] == "string"
+    assert "default_skill" in settings.SETTINGS
+    cfg = {}
+    settings.coerce(cfg, "default_skill", "court-documents")
+    assert cfg == {"default_skill": "court-documents"}
+
+
+def test_ocr_languages_are_shown_as_set():
+    cfg = {}
+    settings.coerce(cfg, "ocr_languages", "en-US,fr-FR")
+    shown = settings.display_value("ocr_languages", cfg["ocr_languages"])
+    assert "en-US" in shown and "fr-FR" in shown
+
+
+def test_a_saved_settings_file_is_tightened_to_owner_only(tmp_path, monkeypatch):
+    """A settings file written loosely (0644) is tightened on the next save: it can hold the
+    Wayback Machine secret key (#304)."""
+    import os
+    import stat
+    import sys
+    from watchdog import config
+    monkeypatch.setattr(config, "HOME", tmp_path / "wd")
+    config.path().parent.mkdir(parents=True)
+    config.path().write_text("{}\n")
+    config.path().chmod(0o644)
+    config.save({"projects_dir": "/x"})
+    if sys.platform != "win32":
+        assert stat.S_IMODE(os.stat(config.path()).st_mode) == 0o600
