@@ -162,3 +162,28 @@ def test_overview_reports_briefing_waiting_items_and_work(vault):
     assert (s["contradictions"], s["leads"], s["near_duplicates"], s["alerts"]) == (1, 1, 1, 1)
     assert s["incoming"] == 1
     assert overview.has_work(s)
+
+
+def test_the_add_operation_honours_the_limit_the_preflight_prices(vault, monkeypatch):
+    """The Add dialog's Limit was counted and priced by the preflight but dropped by the `add`
+    operation, which then sent the whole queue (C2). It now reaches the run."""
+    from watchdog import ops
+    from watchdog.gui.api.ingest import run_options
+    seen = []
+    monkeypatch.setattr(ing, "preprocess", lambda *a, **k: None)
+    monkeypatch.setattr(ing, "process", lambda _v, opts, *, finalize: seen.append(opts) or {})
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    assert ops.validate("add", {"limit": 5, "skip_warning": True}) == {"limit": 5, "skip_warning": True}
+    ops.run("add", {"limit": 5, "skip_warning": True}, CollectingReporter(), vault)
+    assert seen[0].limit == 5 == run_options({"limit": 5}).limit
+
+
+def test_a_limited_run_sends_only_the_next_n_queued_documents(vault):
+    """The run's own selection (`limit_queue`) is the preflight's: the first N still to send."""
+    from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction
+    queue = [{"sha256": c * 64} for c in "abcdef"]
+    (vault / ".watchdog" / "extracted").mkdir(parents=True)
+    (vault / ".watchdog" / "extracted" / f"{'a' * 64}.json").write_text("{}")
+    picked = limit_queue(vault, queue, 2)
+    assert [q["sha256"][0] for q in picked] == ["b", "c"]
+    assert picked == needs_extraction(vault, queue)[:2]
