@@ -161,7 +161,7 @@ Each corpus PDF now ships with a `.yml` sidecar of the same name (e.g.
 `Annual-Financial-Report-20-21.pdf.yml`) carrying its correct `skill:` value — resolved
 deterministically in Python, never sent through the model, so it costs nothing and can't be
 misclassified. Copy every document into `incoming/` (sidecars travel with them), `chew`, then a
-single `watchdog ingest` with no `--skill` flag at all correctly classifies all six:
+single processing run with no skill pinned correctly classifies all six:
 
 | Skill | Documents |
 |---|---|
