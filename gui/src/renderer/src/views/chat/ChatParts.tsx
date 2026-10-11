@@ -10,7 +10,7 @@ export interface SlashCommand {
   name: string
   hint: string
   takesInput: boolean
-  /** What it does, one line (docs/commands.md § Slash commands). */
+  /** What it does, one line. */
   text: string
 }
 export const SLASH: SlashCommand[] = [

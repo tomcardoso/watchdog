@@ -285,4 +285,4 @@ Where the model knows a fact is its own reasoning rather than something a docume
 
 ## Where next
 
-[The desktop app](app.md) describes every screen. [The vault guide](vault.md) explains what Watchdog builds on disk and how to read it. [Settings](configuration.md) covers models, keys and cost. If you still use the older command line, [its reference](commands.md) remains available.
+[The desktop app](app.md) describes every screen. [The vault guide](vault.md) explains what Watchdog builds on disk and how to read it. [Settings](configuration.md) covers models, keys and cost.

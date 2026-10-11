@@ -6,7 +6,7 @@ Knowing this matters for the same reason a reporter needs to know how a database
 
 ## Three stages, one document at a time
 
-Every document you add to an investigation goes through three stages, in order. Watchdog calls them **pre-processing**, **processing** and **post-processing**. (The command line and older material call them chew, dig and bark.) **Add documents** runs all three for you. When you want to check the results in between, **Activity → Maintenance** has a card for each stage, so you can run them one at a time.
+Every document you add to an investigation goes through three stages, in order. Watchdog calls them **pre-processing**, **processing** and **post-processing**. (Older material calls them chew, dig and bark.) **Add documents** runs all three for you. When you want to check the results in between, **Activity → Maintenance** has a card for each stage, so you can run them one at a time.
 
 | Stage | What happens | Who does it |
 |---|---|---|
