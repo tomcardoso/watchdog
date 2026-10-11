@@ -29,6 +29,7 @@ import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { runAction, startJob } from '@renderer/lib/jobs'
+import { lastExportFolder } from '@renderer/lib/exportFolder'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
 import { fmtCost, plural } from '@renderer/lib/format'
@@ -395,11 +396,11 @@ function SimpleCard({ icon, title, text, label, onRun, tone }: { icon: LucideIco
 
 function ExportCard() {
   const project = useApp((s) => s.project!)
+  const jobs = useApp((s) => s.jobs)
   const [format, setFormat] = useState<'csv' | 'cypher'>('csv')
-  const [dir, setDir] = useState<string | null>(null)
+  const dir = lastExportFolder(jobs, project.path)
   const go = async (output: string | null) => {
     await launch('export', { format, output }, 'Export graph')
-    setDir(output ?? `${project.path}/${project.slug}-export`)
   }
   return (
     <MCard
