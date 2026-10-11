@@ -330,11 +330,31 @@ export function TourLayer() {
     entered.current = step
     useApp.getState().navigate(current.route(targets))
     current.enter?.()
-    requestAnimationFrame(() => next.current?.focus({ preventScroll: true }))
   }, [onSample, targets, step, current, steps])
 
   const selector = onSample && targets ? current.target(targets) : null
   const box = useTargetBox(selector, `${step}`)
+  // The panel's main button takes the keyboard focus once the step's screen has drawn (a screen
+  // that focuses its own field on opening would otherwise take it back), once per step.
+  const found = !!box
+  useEffect(() => {
+    if (!found) return
+    next.current?.focus({ preventScroll: true })
+    // A screen can focus its own field a moment later (Search does): take it back once, unless the
+    // reporter has started typing or clicking in the meantime.
+    let touched = false
+    const mark = () => (touched = true)
+    window.addEventListener('pointerdown', mark, true)
+    window.addEventListener('keydown', mark, true)
+    const t = setTimeout(() => {
+      if (!touched && !panel.current?.contains(document.activeElement)) next.current?.focus({ preventScroll: true })
+    }, 600)
+    return () => {
+      clearTimeout(t)
+      window.removeEventListener('pointerdown', mark, true)
+      window.removeEventListener('keydown', mark, true)
+    }
+  }, [found, step])
   // Said only once the screen has had time to draw: the reporter has moved elsewhere.
   const [lost, setLost] = useState(false)
   useEffect(() => {
