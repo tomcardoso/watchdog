@@ -1864,16 +1864,15 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
 
 def _nudge_skill_pin(results: list) -> None:
     """If every successfully-extracted document in a run classified to the same record skill,
-    tell the user they could have skipped classification with `--skill` (A4) — a batch of one
+    tell the reporter they could have skipped classification by choosing the skill (A4) — a batch of one
     filing type is the common case this tool targets, and the flag already exists but nothing
     surfaces that a run *was* homogeneous."""
     ok_skills = [r.get("record_skill") for r in results if r.get("status") == "ok"]
     distinct = {s for s in ok_skills if s}
     if len(ok_skills) > 1 and len(distinct) == 1:
         skill = next(iter(distinct))
-        _say(f"All {len(ok_skills)} documents classified as {skill}"
-             + (" — next time, choosing that record skill in Add documents skips "
-                     "classification."))
+        _say(f"All {len(ok_skills)} documents classified as {skill}. Next time, choosing that "
+             "record skill in Add documents skips classification.")
 
 
 def _lines(items: list) -> str:
@@ -3288,7 +3287,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                      "Waiting to resume automatically once it resets.")
                             else:
                                 _say("Stopping; finished documents are saved. "
-                                     + "Add documents again once it resets to continue.")
+                                     "Add documents again once it resets to continue.")
                             _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except model_client.ProviderAuthError as e:

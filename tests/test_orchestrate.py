@@ -93,13 +93,9 @@ def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
     gather finished — before finalize (reconcile/commit/synthesize/briefing) even started, so a
     long post-processing step went silent with nothing to show it wasn't a stall (live-run
     regression). It must stay open until finalize is done, and close cleanly afterward."""
-    from watchdog.terminal import LiveRegion as _RealLiveRegion
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())
-    # Force the live region on even though pytest's captured stdout isn't a real TTY — the
-    # timer task and board teardown are gated on `_board.enabled`.
-    monkeypatch.setattr(orchestrate, "LiveRegion", lambda: _RealLiveRegion(enabled=True))
 
     board_during_finalize = []
     real_finalize = orchestrate.finalize
@@ -2557,7 +2553,8 @@ def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
         {"status": "ok", "record_skill": "general-records"},
         {"status": "ok", "record_skill": "general-records"},
     ])
-    assert "watchdog dig --skill general-records" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "general-records" in out and "choosing that record skill" in out
 
 
 def test_nudge_skill_pin_silent_when_mixed_or_single_or_failed(capsys):
@@ -3447,10 +3444,8 @@ def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
     assert "Re-run" not in out
 
 
-def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsys):
-    """The extraction rate-limit stop notice names `run`'s `resume_hint` — the surface that
-    launched the run — not a hardcoded `watchdog dig`, so a guided bare-`watchdog` walk points
-    back at `watchdog`, not `dig` (#441, D138)."""
+def test_rate_limit_stop_says_to_add_documents_again(tmp_path, monkeypatch, capsys):
+    """The extraction rate-limit stop notice tells the reporter how to continue."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="aaa111", filename="one.pdf")
 
@@ -3461,11 +3456,10 @@ def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsy
         raise model_client.RateLimitError("session limit")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, concurrency=1, resume_hint="watchdog"))
+    asyncio.run(orchestrate.run(vault, concurrency=1))
     out = capsys.readouterr().out
-    assert "Re-run" in out
-    assert "once it resets to continue" in out
-    assert "watchdog dig" not in out
+    assert "Add documents again once it resets to continue" in out
+    assert "watchdog" not in out.lower().replace("watchdog/", "")
 
 
 def test_rate_limit_stop_reports_observed_rate_and_provider_headers(tmp_path, monkeypatch, capsys):
@@ -4005,15 +3999,14 @@ def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
 
 
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
-    """watchdog requeue moves quarantined queue files back into the active queue."""
-    from watchdog.cmd.ingest import cmd_requeue
+    """The requeue operation moves quarantined queue files back into the active queue."""
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.ingest import requeue
     vault = make_vault(tmp_path)
     failed = vault / ".watchdog" / "queue" / "_failed"
     failed.mkdir(parents=True, exist_ok=True)
     (failed / "ddd444.json").write_text("{}")
-    monkeypatch.chdir(vault)
-
-    cmd_requeue(None)
+    assert requeue(CollectingReporter(), vault) == {"requeued": 1}
 
     assert (vault / ".watchdog" / "queue" / "ddd444.json").exists()
     assert not (failed / "ddd444.json").exists()
@@ -5572,7 +5565,7 @@ def test_provider_auth_error_stops_the_run_without_quarantining(tmp_path, monkey
     assert summary["auth_error"] == "invalid x-api-key"
     assert summary["failed"] == 0 and summary["quarantined"] == 0
     assert len(list((vault / ".watchdog" / "queue").glob("*.json"))) == 2
-    from watchdog.cmd.ingest import exit_code_for
+    from watchdog.ops.ingest import exit_code_for
     assert exit_code_for(summary) == 1
 
 

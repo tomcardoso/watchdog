@@ -78,12 +78,12 @@ BLOCKED_RUN = textwrap.dedent("""
 
     sys.meta_path.insert(0, Blocker())
 
-    import watchdog.cli  # noqa: F401
+    import watchdog.worker  # noqa: F401
     from watchdog.gui import server
     server.load_api()
-    import watchdog.cmd, watchdog.gui.api, watchdog.pipeline
+    import watchdog, watchdog.gui.api, watchdog.pipeline
     failed = []
-    for pkg in (watchdog.gui.api, watchdog.cmd, watchdog.pipeline, watchdog.ops):
+    for pkg in (watchdog, watchdog.gui.api, watchdog.pipeline, watchdog.ops):
         for m in pkgutil.iter_modules(pkg.__path__):
             try:
                 importlib.import_module(f"{pkg.__name__}.{m.name}")

@@ -637,7 +637,7 @@ def test_openai_backend_routes_with_stored_key(openai_key, monkeypatch):
 
 def test_openai_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
-    with pytest.raises(mc.ModelError, match="watchdog settings auth"):
+    with pytest.raises(mc.ModelError, match="add one in Settings"):
         complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai")
 
 
@@ -682,7 +682,7 @@ def test_gemini_backend_routes_with_stored_key(gemini_key, monkeypatch):
 
 def test_gemini_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
-    with pytest.raises(mc.ModelError, match="watchdog settings auth"):
+    with pytest.raises(mc.ModelError, match="add one in Settings"):
         complete_json(task="t", prompt="p", schema=SCHEMA, backend="gemini")
 
 
@@ -717,7 +717,7 @@ def test_local_backend_runs_without_a_key(local_configured, monkeypatch):
 
 def test_local_backend_missing_base_url_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_base_url", lambda provider: None)
-    with pytest.raises(mc.ModelError, match="local_base_url"):
+    with pytest.raises(mc.ModelError, match="base URL"):
         complete_json(task="t", prompt="p", schema=SCHEMA, backend="local", model="llama-3.3-70b")
 
 
@@ -749,7 +749,7 @@ def test_openrouter_backend_without_key_errors(monkeypatch):
     monkeypatch.setattr(mc.auth, "get_base_url",
                         lambda provider: "https://openrouter.ai/api/v1" if provider == "openrouter" else None)
     monkeypatch.setattr(mc.auth, "get_api_key", lambda provider="anthropic": None)
-    with pytest.raises(mc.ModelError, match="watchdog settings auth"):
+    with pytest.raises(mc.ModelError, match="add one in Settings"):
         complete_json(task="t", prompt="p", schema=SCHEMA, backend="openrouter",
                          model="anthropic/claude-3.5-sonnet")
 

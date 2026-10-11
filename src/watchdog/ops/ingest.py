@@ -555,9 +555,8 @@ def _expand_paths(paths: list[str], vault: Path) -> list[Path]:
 
 def requeue_message(n: int) -> str:
     if not n:
-        return "\n  No documents in queue/_failed/ — nothing to requeue.\n"
-    return (f"\n  Requeued {n} document{'s' if n != 1 else ''}"
-            + " — add documents again to retry.\n")
+        return "No failed documents to requeue."
+    return f"Requeued {n} document{'s' if n != 1 else ''}. Add documents again to retry them."
 
 
 def _clean(result):

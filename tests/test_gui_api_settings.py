@@ -10,7 +10,7 @@ from watchdog import skills_catalog
 from watchdog import settings as settings_mod
 
 from tests.gui_support import call, call_error
-from tests.keys_support import item, stored
+from tests.keys_support import stored
 
 pytest_plugins = ["tests.gui_support"]   # the rich_vault / wdg_home fixtures
 

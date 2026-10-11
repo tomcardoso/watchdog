@@ -183,7 +183,7 @@ def test_settings_are_validated():
 
 
 def test_the_settings_screen_offers_the_models_and_languages():
-    from watchdog.cmd.setup import _CONFIGURE_KEYS
+    from watchdog.settings import SETTINGS as _CONFIGURE_KEYS
     assert _CONFIGURE_KEYS["transcription_model"]["choices"] == list(transcribe.MODELS)
     assert _CONFIGURE_KEYS["transcription_model"]["default"] == transcribe.DEFAULT_MODEL
     assert _CONFIGURE_KEYS["transcription_language"]["choices"][0] == "auto"

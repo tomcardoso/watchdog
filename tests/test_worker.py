@@ -121,7 +121,6 @@ def test_an_error_is_the_last_stderr_line_without_the_error_prefix(monkeypatch, 
 def test_add_round_trip_with_a_canned_model(wdg_home, tmp_path, monkeypatch, capfd):  # noqa: F811
     from watchdog.gui import demo
     (wdg_home / "config.json").write_text(json.dumps({"projects_dir": str(tmp_path / "inv")}))
-    monkeypatch.setattr("watchdog.cmd.vault._register_obsidian_vault", lambda v: None)
     made = ops.run("projects-new", {"name": "Worker Check", "dir": str(tmp_path / "inv")},
                    ops.CollectingReporter())
     vault = Path(made["path"])
@@ -151,7 +150,6 @@ def test_add_without_the_acknowledgement_sends_nothing(wdg_home, tmp_path, monke
     declines the gate, as a closed terminal prompt would."""
     from watchdog.gui import demo
     (wdg_home / "config.json").write_text(json.dumps({"projects_dir": str(tmp_path / "inv")}))
-    monkeypatch.setattr("watchdog.cmd.vault._register_obsidian_vault", lambda v: None)
     vault = Path(ops.run("projects-new", {"name": "Gate Check", "dir": str(tmp_path / "inv")},
                          ops.CollectingReporter())["path"])
     docs = demo.all_docs()
@@ -165,7 +163,7 @@ def test_add_without_the_acknowledgement_sends_nothing(wdg_home, tmp_path, monke
     monkeypatch.setattr("watchdog.auth.check_run_keys", lambda *a, **k: None)
     code, lines, events, result, err = _in_process(monkeypatch, capfd, {"op": "dig", "params": {}}, vault)
     assert code == 0 and result is None
-    assert "Public records only" in "\n".join(lines)
+    assert "Nothing was sent" in "\n".join(lines)
 
 
 # ── the re-check, with a fake model ───────────────────────────────────────────────────────
@@ -285,10 +283,8 @@ def test_no_app_path_builds_a_watchdog_command_line():
 
 
 def test_investigation_operations(wdg_home, tmp_path, monkeypatch):  # noqa: F811
-    from watchdog.cmd import base
+    from watchdog import projects
     (wdg_home / "config.json").write_text(json.dumps({"projects_dir": str(tmp_path / "inv")}))
-    monkeypatch.setattr("watchdog.cmd.vault._register_obsidian_vault", lambda v: None)
-    monkeypatch.setattr("watchdog.cmd.vault._obsidian_config_path", lambda: tmp_path / "obsidian.json")
     rep = ops.CollectingReporter()
     made = ops.run("projects-new", {"name": "Dock Leases", "description": "Who holds them?",
                                     "dir": str(tmp_path / "inv")}, rep)
@@ -296,10 +292,10 @@ def test_investigation_operations(wdg_home, tmp_path, monkeypatch):  # noqa: F81
     renamed = ops.run("projects-rename", {"slug": "dock-leases", "name": "Pier Leases"}, rep)
     assert renamed["slug"] == "pier-leases" and Path(renamed["path"]).name == "pier-leases"
     ops.run("projects-describe", {"slug": "pier-leases", "description": ""}, rep)
-    assert "description" not in base.load_projects()["pier-leases"]
+    assert "description" not in projects.load()["pier-leases"]
     ops.run("projects-archive", {"slug": "pier-leases"}, rep)
-    assert base.load_projects()["pier-leases"]["archived"] is True
+    assert projects.load()["pier-leases"]["archived"] is True
     ops.run("projects-archive", {"slug": "pier-leases", "archived": False}, rep)
-    assert "archived" not in base.load_projects()["pier-leases"]
+    assert "archived" not in projects.load()["pier-leases"]
     gone = ops.run("projects-delete", {"slug": "pier-leases", "purge": True}, rep)
     assert gone["removed"] and not Path(renamed["path"]).exists()
