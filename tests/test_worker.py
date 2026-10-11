@@ -73,7 +73,7 @@ def _parse(stdout: str) -> tuple[list[str], list[dict], object]:
 
 def _in_process(monkeypatch, capfd, request: dict, cwd: Path | None = None):
     """Run `worker.main()` here, with `request` as its stdin."""
-    for name in ("WATCHDOG_APP", "WATCHDOG_PROGRESS", "NO_COLOR"):
+    for name in ("WATCHDOG_PROGRESS", "NO_COLOR"):
         monkeypatch.setenv(name, "1")
     monkeypatch.delenv("WATCHDOG_SECRETS", raising=False)
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(request) + "\n"))
@@ -108,6 +108,17 @@ def test_an_unknown_operation_or_parameter_is_refused(monkeypatch, capfd, tmp_pa
     assert code == 64 and "Unknown operation" in err
     code, *_rest, err = _in_process(monkeypatch, capfd, {"op": "export", "params": {"format": 3}}, tmp_path)
     assert code == 64 and "format must be str" in err
+
+
+def test_a_missing_package_is_one_sentence_not_a_traceback(monkeypatch, capfd):
+    from watchdog import ops
+
+    def boom(*a, **k):
+        raise ModuleNotFoundError("No module named 'fastembed'", name="fastembed")
+    monkeypatch.setattr(ops, "run", boom)
+    code, lines, events, result, err = _in_process(monkeypatch, capfd, {"op": "reindex", "params": {}})
+    assert code == 1 and result is None
+    assert "fastembed" in err and "Traceback" not in err and len(err.strip().splitlines()) == 1
 
 
 def test_an_error_is_the_last_stderr_line_without_the_error_prefix(monkeypatch, capfd, tmp_path):
