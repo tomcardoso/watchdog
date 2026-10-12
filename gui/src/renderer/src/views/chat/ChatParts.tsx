@@ -90,14 +90,18 @@ export interface PermissionRequest {
   description: string | null
   /** The tool in plain words (Watchdog's own tools), else its name. */
   title?: string | null
-  /** What "Always allow" covers, in plain words: a folder, a site, an entity. Null: the whole tool. */
+  /** What "Allow for this conversation" covers, in plain words. Null: the whole tool. */
   scope?: string | null
+  /** Asked about every time: no "Allow for this conversation" (recording a contradiction, D308). */
+  once_only?: boolean
+  /** What "for this conversation" covers, or why only once, and whether version history keeps the change. */
+  note?: string | null
 }
-export function PermissionCard({ req, onAnswer }: { req: PermissionRequest; onAnswer: (allow: boolean, always?: boolean) => void }) {
+export function PermissionCard({ req, onAnswer }: { req: PermissionRequest; onAnswer: (allow: boolean, forConversation?: boolean) => void }) {
   const [busy, setBusy] = useState(false)
-  const answer = (a: boolean, always?: boolean) => {
+  const answer = (a: boolean, forConversation?: boolean) => {
     setBusy(true)
-    onAnswer(a, always)
+    onAnswer(a, forConversation)
   }
   return (
     <div className="chat-perm" role="alertdialog" aria-label="Permission request">
@@ -109,13 +113,14 @@ export function PermissionCard({ req, onAnswer }: { req: PermissionRequest; onAn
         </div>
       </div>
       <pre className="chat-perm-input selectable">{cut(typeof req.input === 'string' ? req.input : JSON.stringify(req.input, null, 2), 1200)}</pre>
-      <div className="row" style={{ gap: 8 }}>
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
         <Button size="sm" variant="primary" disabled={busy} onClick={() => answer(true)}>Allow once</Button>
-        <Button size="sm" disabled={busy} onClick={() => answer(true, true)} tip={req.scope ? `Stops asking about this for ${req.scope} for the rest of the session` : 'Stops asking about this tool for the rest of the session'}>
-          {req.scope ? `Always allow for ${cut(req.scope, 40)}` : 'Always allow'}
-        </Button>
+        {!req.once_only && (
+          <Button size="sm" disabled={busy} onClick={() => answer(true, true)}>Allow for this conversation</Button>
+        )}
         <Button size="sm" variant="ghost" disabled={busy} onClick={() => answer(false)}>Deny</Button>
       </div>
+      {req.note && <div className="muted chat-perm-note">{req.note}</div>}
     </div>
   )
 }

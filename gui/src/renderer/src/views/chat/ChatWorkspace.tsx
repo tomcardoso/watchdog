@@ -288,9 +288,9 @@ export default function ChatWorkspace(p: Props) {
     []
   )
 
-  const answer = async (req: PermissionRequest, allow: boolean, always?: boolean) => {
+  const answer = async (req: PermissionRequest, allow: boolean, forConversation?: boolean) => {
     try {
-      await call('chat.permission', { session: sessionRef.current!, request_id: req.request_id, allow, always })
+      await call('chat.permission', { session: sessionRef.current!, request_id: req.request_id, allow, for_conversation: forConversation })
       setPerms((ps) => ps.filter((x) => x.request_id !== req.request_id))
     } catch (e) {
       toast({ kind: 'error', title: 'Could not send your answer', body: errorMessage(e) })
@@ -449,7 +449,7 @@ export default function ChatWorkspace(p: Props) {
               ) : null
             })}
             {perms.map((r) => (
-              <PermissionCard key={r.request_id} req={r} onAnswer={(a, always) => void answer(r, a, always)} />
+              <PermissionCard key={r.request_id} req={r} onAnswer={(a, forConversation) => void answer(r, a, forConversation)} />
             ))}
             {thinking && perms.length === 0 && <Thinking />}
             {failure && (

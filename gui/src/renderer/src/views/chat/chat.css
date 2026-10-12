@@ -40,6 +40,7 @@
 .chat-perm { border: 1px solid var(--warning); background: var(--warning-soft); border-radius: var(--r-lg); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
 .chat-perm-head { display: flex; gap: 10px; align-items: flex-start; }
 .chat-perm-head svg { width: 18px; height: 18px; color: var(--warning); margin-top: 1px; flex: none; }
+.chat-perm-note { font-size: var(--fs-sm); }
 .chat-perm-input { margin: 0; padding: 8px 10px; border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--border); font-family: var(--font-mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; max-height: 160px; overflow: auto; }
 .chat-thinking { display: flex; align-items: center; gap: 5px; color: var(--text-3); font-size: var(--fs-sm); }
 .chat-thinking span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); animation: pulse 1.2s infinite; }

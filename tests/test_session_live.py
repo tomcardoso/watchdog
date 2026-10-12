@@ -144,3 +144,49 @@ def test_the_model_is_offered_only_the_allowlisted_tools(live, monkeypatch):
     assert builtin and builtin <= set(chat.SESSION_TOOLS)
     assert {t for t in offered if t.startswith("mcp__")} == {session_tools.tool_name(t) for t in session_tools.TOOLS}
     assert not builtin & {"Bash", "PowerShell", "Agent", "Task", "Workflow", "CronCreate", "EnterWorktree"}
+
+
+def test_a_write_tool_allowed_for_the_conversation_is_not_asked_again(live, monkeypatch):
+    """Through the app's own permission handler: after "Allow for this conversation" on one
+    entity's refresh, the CLI runs the next entity's without reaching the card (D308)."""
+    from claude_agent_sdk import ClaudeSDKClient
+    from watchdog.gui import chat, rpc
+    home, vault = live
+    registry = vault / ".watchdog" / "registry"
+    registry.mkdir(parents=True, exist_ok=True)
+    (registry / "entities.json").write_text(json.dumps({
+        eid: {"id": eid, "name": name, "type": "organization", "note_path": f"entities/organization/{eid}"}
+        for eid, name in (("acme", "Acme Holdings"), ("port", "Port Authority"))}))
+    manager, session = chat.ChatManager(), chat.Session(vault, "ask", None, "t")
+    cards: list = []
+
+    def emit(event, data=None):
+        # The reporter answers each card at once with "Allow for this conversation".
+        if event == "chat.permission":
+            cards.append(data)
+            session.permissions[data["request_id"]].set_result((True, True))
+    monkeypatch.setattr(rpc, "emit", emit)
+
+    async def can_use(tool, tool_input, ctx):
+        return await manager._can_use_tool(session, tool, tool_input, ctx)
+
+    async def run(api):
+        monkeypatch.setenv("ANTHROPIC_BASE_URL", api.url)
+        client = ClaudeSDKClient(chat.build_options(session, can_use))
+        await client.connect()
+        try:
+            await client.query("go")
+            async for _ in client.receive_response():
+                pass
+        finally:
+            await client.disconnect()
+
+    script = [["mcp__watchdog__write_entity", {"entity_id": eid, "summary": "Refreshed.", "timeline_events": []}]
+              for eid in ("acme", "port")]
+    with MockAPI(script) as api:
+        asyncio.run(asyncio.wait_for(run(api), 180))
+    results = api.tool_results()
+    assert len(results) == 2
+    assert [c["tool"] for c in cards] == ["mcp__watchdog__write_entity"]
+    assert not any(r.get("is_error") for r in results), results
+    assert session.allowed == {"mcp__watchdog__write_entity"}
