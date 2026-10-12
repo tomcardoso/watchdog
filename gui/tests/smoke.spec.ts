@@ -514,6 +514,54 @@ test('the pause names its investigation after a switch', async () => {
   }
 })
 
+// D306: with every stage on a model server on this computer, Add documents has no public-records
+// pause. The dialog says where the run goes instead, and the worker, started without
+// skip_warning, lets the run through on its own reading of the settings.
+test('a run on this computer skips the acknowledgement', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
+  const home = join(root, 'home')
+  try {
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    const cfgFile = join(home, '.watchdog', 'config.json')
+    const cfg = existsSync(cfgFile) ? JSON.parse(readFileSync(cfgFile, 'utf8')) : {}
+    // Nothing listens on port 9: the run fails at its first call, after the gate.
+    Object.assign(cfg, { extractor_model: 'local:qwen', classifier_model: 'local:qwen', finalizer_model: 'local:qwen', local_base_url: 'http://localhost:9/v1' })
+    writeFileSync(cfgFile, JSON.stringify(cfg, null, 2))
+    const slug = Object.keys(JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8')))[0]
+    const doc = join(root, 'local-memo.txt')
+    writeFileSync(doc, 'Memo. The harbour authority approved the lease on 3 March 2024.\n')
+
+    const app = await electron.launch({
+      args: [resolve(__dirname, '..'), '--no-sandbox'],
+      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc, LOCAL_BASE_URL: '' }
+    })
+    const page = await app.firstWindow()
+    const errors: string[] = []
+    page.on('pageerror', (e) => errors.push(e.message))
+    await page.waitForSelector('.app', { timeout: 90_000 })
+    await page.evaluate(async (s) => {
+      const w = window as any
+      w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
+    }, slug)
+    await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), doc)
+    await expect(page.locator('.modal')).toContainText('Reading and processing both stay on this computer.', { timeout: 90_000 })
+    const read = page.locator('.modal button', { hasText: 'Read documents' })
+    await expect(read).toBeEnabled({ timeout: 90_000 })
+    await read.click()
+    const line = 'Processing runs on the model server on this computer (localhost:9); nothing is sent to a cloud service.'
+    await expect(page.locator('.modal .callout', { hasText: line })).toBeVisible({ timeout: 120_000 })
+    await expect(page.locator('.modal button', { hasText: 'Acknowledge and add' })).toHaveCount(0)
+    // The worker said the same line: it let the run through without the acknowledgement.
+    await expect
+      .poll(() => page.evaluate((l) => Object.values((window as any).__watchdogApp.getState().jobs as Record<string, any>).some((j) => j.op === 'add' && (j.log ?? []).some((e: any) => String(e.text).includes(l))), line), { timeout: 60_000 })
+      .toBe(true)
+    expect(errors, 'renderer errors').toEqual([])
+    await app.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 // A job's start and end refetch the reads that carry run state (the lock, the queue) even where no
 // screen shows them, so a screen opened after a job never opens on the state from before it.
 test('run state is refetched when a job ends, on screen or not', async () => {
