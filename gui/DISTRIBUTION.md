@@ -84,3 +84,10 @@ npm run dist:mac      # or dist:win, dist:linux — each on its own platform
 
 Installers land in `dist/`. Cross-platform builds aren't supported: build each platform on that
 platform, or let CI do it.
+
+Only `dependencies` in `package.json` are copied into the installer, so that list holds just what
+the main process loads from `node_modules` at run time (`electron-log`, `electron-updater`).
+Everything the renderer uses is bundled into `out/renderer` by electron-vite and belongs in
+`devDependencies` (D305). A package the main or preload process starts importing goes in
+`dependencies`; otherwise the packaged app fails with "Cannot find module" though the dev build
+and the E2E tests work.

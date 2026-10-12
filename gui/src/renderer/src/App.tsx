@@ -1,7 +1,7 @@
 import { Suspense, useEffect } from 'react'
 import { Spinner } from '@renderer/components/ui'
 import { call, invalidate, useEvent } from '@renderer/lib/rpc'
-import { onJobFinished } from '@renderer/lib/jobs'
+import { onJobFinished, onJobProgress, onJobStarted } from '@renderer/lib/jobs'
 import { useEngineSync } from '@renderer/lib/engine'
 import { applyTheme, Route, Theme, useApp } from '@renderer/lib/store'
 import { AccessGate } from './shell/AccessGate'
@@ -128,10 +128,14 @@ function Shell() {
   useShortcuts()
   useEngineSync()
   useEvent('menu.command', ({ command }) => runCommand(command))
-  useEvent('job.started', ({ job }) => useApp.getState().upsertJob(job))
+  useEvent('job.started', ({ job }) => {
+    useApp.getState().upsertJob(job)
+    onJobStarted()
+  })
   useEvent('job.progress', ({ id, progress }) => {
     const j = useApp.getState().jobs[id]
     if (j) useApp.getState().upsertJob({ ...j, progress })
+    onJobProgress(id)
   })
   useEvent('job.log', ({ id, lines }) => useApp.getState().appendLog(id, lines))
   useEvent('job.finished', ({ job }) => {

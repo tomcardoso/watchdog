@@ -4,7 +4,7 @@ Watchdog is a desktop app. You use it entirely through its window: you never nee
 
 Underneath, the app runs Watchdog's engine. Every button that changes an investigation runs one of its steps, and every list and page reads the same files. Each investigation is still an ordinary folder of Markdown files, so it also opens in [Obsidian](https://obsidian.md).
 
-> **Public records only.** The app sends the text of your documents to the cloud AI model you chose, and it shows a warning, with the number of documents about to be sent, before it sends anything. The rule is unchanged: use Watchdog only for documents that are public or presumptively public.
+> **Public records only.** The app sends the text of your documents to the AI model you chose, and it shows a warning, with the number of documents about to be sent and where they go, before it sends anything. The warning names the provider (Anthropic, OpenAI, DeepSeek, Google or OpenRouter) or, for a [self-hosted model](configuration.md#local-and-self-hosted-models), the address of its server, and says when that server is on this computer. It appears for a self-hosted model too. The rule is unchanged: use Watchdog only for documents that are public or presumptively public.
 
 ## Installing it
 

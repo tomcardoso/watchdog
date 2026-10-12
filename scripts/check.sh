@@ -21,7 +21,7 @@ py_checks() {
   "$BIN/ruff" check src tests && "$PY" -m pytest -q $n -p no:cacheprovider
 }
 app_checks() {
-  cd gui && npm run --silent typecheck && npm run --silent test:unit >/dev/null && npx electron-vite build >/dev/null \
+  cd gui && npm run --silent typecheck && npm run --silent test:unit >/dev/null && npx electron-vite build >/dev/null && node scripts/check-runtime-deps.mjs \
     && WATCHDOG_PYTHON="$PY" xvfb_wrap npx playwright test
 }
 

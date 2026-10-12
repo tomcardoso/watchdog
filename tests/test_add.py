@@ -62,6 +62,43 @@ def test_a_run_that_sends_nothing_passes_the_gate_silently():
     assert rep.lines == []
 
 
+# ── where the warning says the text goes ─────────────────────────────────────
+
+def test_the_warning_names_a_cloud_provider(monkeypatch):
+    w = ing._public_records_warning(2, ["claude-agent-sdk", "openai", None])
+    assert "cloud AI models (Anthropic and OpenAI)" in w and "cannot be undone" in w
+    assert "2 documents will be sent" in w
+
+
+def test_the_warning_for_a_server_on_this_computer_does_not_say_cloud(monkeypatch):
+    monkeypatch.setenv("LOCAL_BASE_URL", "http://localhost:11434/v1")
+    w = ing._public_records_warning(1, ["local", "local", "local"])
+    assert "cloud AI model" not in w
+    assert "the model server on this computer (localhost:11434)" in w
+    assert "Public records only" in w and "public, or presumptively public" in w
+
+
+def test_the_warning_for_a_server_elsewhere_names_its_address(monkeypatch):
+    monkeypatch.setenv("LOCAL_BASE_URL", "http://192.168.1.20:8000/v1")
+    d = ing.send_destination(["local"])
+    assert d["local"] == "the model server at 192.168.1.20:8000" and not d["on_this_computer"]
+    assert "cannot be undone" in ing._public_records_warning(1, ["local"])
+
+
+def test_a_mixed_run_names_both_destinations(monkeypatch):
+    monkeypatch.setenv("LOCAL_BASE_URL", "http://127.0.0.1:1234/v1")
+    d = ing.send_destination(["local", "gemini", "local"])
+    assert d["short"] == "a cloud AI model (Google) and the model server on this computer (127.0.0.1:1234)"
+    assert not d["on_this_computer"]
+
+
+def test_an_acknowledged_run_says_where_it_sends():
+    rep = CollectingReporter()
+    with using(rep):
+        ing._confirm_public_records(2, skip_warning=True, destination="the model server at x")
+    assert "Sending 2 documents to the model server at x." in rep.text
+
+
 # ── adding documents ─────────────────────────────────────────────────────────
 
 @pytest.fixture

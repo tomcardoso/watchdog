@@ -13,7 +13,7 @@ import { EntityAvatar } from '@renderer/components/EntityChip'
 import { Markdown } from '@renderer/components/Markdown'
 import { typeMeta } from '@renderer/lib/entityTypes'
 import { fmtDate, fmtNum, fmtRelative, plural } from '@renderer/lib/format'
-import { runAction, startJob } from '@renderer/lib/jobs'
+import { runAction, startJob, useJobRunningIn } from '@renderer/lib/jobs'
 import { runLockState, type RunLockState } from '@renderer/lib/runlock'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
@@ -39,7 +39,8 @@ function excerpt(body: string, max = 1500): string {
 export default function HomeView() {
   const vault = useVault()
   const { data: s, error, isLoading, refetch } = useRpc('vault.summary', { vault }, { refetchInterval: 20_000 })
-  const { data: pipe } = useRpc('vault.pipeline', { vault }, { refetchInterval: 20_000 })
+  const running = useJobRunningIn(vault)
+  const { data: pipe } = useRpc('vault.pipeline', { vault }, { refetchInterval: running ? 4_000 : 20_000 })
   const briefingPath = s?.briefing?.path
   const { data: note, isLoading: noteLoading } = useRpc('vault.note', briefingPath ? { vault, path: briefingPath } : null)
 

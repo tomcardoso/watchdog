@@ -551,10 +551,12 @@
   z-index: 100;
   animation: fade-in 140ms var(--ease);
   padding: 24px;
+  /* room for the toast stack, which sits above an open dialog (Toasts.tsx) */
+  padding-top: calc(24px + var(--toasts-h, 0px));
 }
 .modal {
   width: min(560px, 100%);
-  max-height: calc(100vh - 48px);
+  max-height: calc(100vh - 48px - var(--toasts-h, 0px));
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -738,6 +740,16 @@
   gap: 8px;
   z-index: 200;
   pointer-events: none;
+}
+/* With a dialog open (or the tour panel at the bottom right), the stack moves to the top centre,
+   into the room the scrim leaves for it, so it never covers the buttons at the bottom right. */
+body:has(.scrim) .toasts,
+body:has(.tour-br) .toasts {
+  top: 18px;
+  bottom: auto;
+  right: auto;
+  left: 50%;
+  transform: translateX(-50%);
 }
 .toast {
   pointer-events: auto;

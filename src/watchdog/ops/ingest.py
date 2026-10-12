@@ -245,18 +245,81 @@ def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:
     return dest
 
 
-def _public_records_warning(n_docs: int) -> str:
+# Plain names for the hosted providers, as the warning says them.
+_CLOUD_NAMES = {"anthropic": "Anthropic", "openai": "OpenAI", "deepseek": "DeepSeek",
+                "gemini": "Google", "openrouter": "OpenRouter"}
+_LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def send_destination(backends) -> dict:
+    """Where a run on `backends` sends document text, in plain words, for the public-records
+    warning: `{"cloud": [provider names], "local": phrase or None, "on_this_computer": bool,
+    "short": phrase}`. A `local` stage goes to the self-hosted server named by `local_base_url`;
+    it counts as on this computer only when that address is a loopback one."""
+    from urllib.parse import urlsplit
+    from watchdog.auth import get_base_url
+    from watchdog.model_client import provider_for_backend
+    cloud: list[str] = []
+    has_local = False
+    for b in backends:
+        p = provider_for_backend(b)
+        if p == "local":
+            has_local = True
+        else:
+            name = _CLOUD_NAMES.get(p, p)
+            if name not in cloud:
+                cloud.append(name)
+    local = None
+    on_this_computer = False
+    if has_local:
+        url = get_base_url("local")
+        parts = urlsplit(url) if url else None
+        host = (parts.hostname or "") if parts else ""
+        where = parts.netloc if parts and parts.netloc else None
+        if host in _LOOPBACK_HOSTS or host.startswith("127."):
+            on_this_computer = True
+            local = f"the model server on this computer ({where})"
+        elif where:
+            local = f"the model server at {where}"
+        else:
+            local = "the self-hosted model server set in Settings"
+    cloud_phrase = None
+    if cloud:
+        cloud_phrase = (f"a cloud AI model ({cloud[0]})" if len(cloud) == 1
+                        else f"cloud AI models ({_and(cloud)})")
+    parts_ = [x for x in (cloud_phrase, local) if x]
+    return {"cloud": cloud, "local": local, "on_this_computer": on_this_computer and not cloud,
+            "short": " and ".join(parts_) or "a cloud AI model"}
+
+
+def _public_records_warning(n_docs: int, backends=None) -> str:
     """The README's `## Public records only` warning (README.md:13-17), reworded for the
-    gate at the point of no return (#426). Wording tracks the README section so the
-    two never drift.
+    gate at the point of no return (#426), and naming where this run's text actually goes
+    (`send_destination`): a cloud provider, a self-hosted server, or both. With no `backends`,
+    the generic cloud wording.
 
     The app shows it in the Add documents dialog before it starts a run, in a box that wraps
     lines itself: plain paragraphs, no terminal indentation or hard line breaks."""
+    rule = ("Use Watchdog only for documents that are public, or presumptively public — never "
+            "for confidential source material, leaks, or anything that could identify a source.")
+    if backends is None:
+        sent = "The extracted text of every queued document will be sent to a cloud AI model. " \
+               "This cannot be undone."
+    else:
+        d = send_destination(backends)
+        sent = f"The extracted text of every queued document will be sent to {d['short']}."
+        if d["on_this_computer"]:
+            sent += (" It does not go to a cloud AI service, unless that server is set up to "
+                     "pass it on.")
+        else:
+            sent += " This cannot be undone."
     return (
         "Public records only\n\n"
-        "The extracted text of every queued document will be sent to a cloud AI model. This cannot "
-        "be undone. Use Watchdog only for documents that are public, or presumptively public — never "
-        "for confidential source material, leaks, or anything that could identify a source.\n\n"
+        f"{sent} {rule}\n\n"
         f"{n_docs} document{'s' if n_docs != 1 else ''} will be sent to the model."
     )
 
@@ -685,7 +748,7 @@ def _resolve_pinned_skill(opts: RunOptions, config: dict) -> str | None:
 
 
 def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
-                            enabled: bool = False) -> bool:
+                            enabled: bool = False, destination: str = "a cloud AI model") -> bool:
     """The point of no return before a run sends documents to a model (#426). The app shows the
     public-records warning and asks before it starts a run, then passes `skip_warning`; without
     it, nothing is sent. With `auto_approve` on (D263), a run whose `gate` verdict approves it
@@ -698,7 +761,7 @@ def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: di
             f"document{plural} to a cloud AI model.")
         return True
     if skip_warning:
-        say(f"Sending {n_docs} document{plural} to a cloud AI model.")
+        say(f"Sending {n_docs} document{plural} to {destination}.")
         return True
     if enabled:
         say(f"Not auto-approved: {(gate or {}).get('blocker') or 'this run could not be checked'}.")
@@ -861,7 +924,8 @@ def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
 
     auto = _auto_approve_on(config)
     gate = (_auto_approve_verdict(auth_mode=a["mode"], stages=plan.backends) if auto and q else None)
-    if not _confirm_public_records(q, skip_warning=opts.skip_warning, gate=gate, enabled=auto):
+    if not _confirm_public_records(q, skip_warning=opts.skip_warning, gate=gate, enabled=auto,
+                                   destination=send_destination(plan.backends)["short"] if q else ""):
         _release_lock()
         return None
 
