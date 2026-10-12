@@ -74,6 +74,10 @@ def test_adding_the_waiting_files_runs_with_prepared_answers(added):
     names = {d["filename"] for d in docs.values()}
     assert {"pier-9-change-order-3.pdf", "site-meeting-notes-2022-09-14.docx"} <= names
     assert len(docs) == len(added["before"]["documents"]) + 2
+    # The tour still has everything it points at; its Adding documents step says the files are in.
+    from tests.gui_support import call
+    t = call("sample.tour", vault=str(added["vault"]))
+    assert t["incoming"] == [] and t["briefings"] == 3
 
 
 def test_the_run_costs_nothing_and_stays_out_of_the_usage_database(added):
