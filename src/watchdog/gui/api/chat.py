@@ -30,8 +30,8 @@ def close(session) -> dict:
 
 
 @method("chat.permission")
-def permission(session, request_id, allow, always=False) -> dict:
-    chat.MANAGER.answer(session, request_id, allow, always)
+def permission(session, request_id, allow, for_conversation=False) -> dict:
+    chat.MANAGER.answer(session, request_id, allow, for_conversation)
     return {"ok": True}
 
 

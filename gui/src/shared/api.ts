@@ -922,7 +922,7 @@ export interface Methods {
   'chat.send': [{ session: string; text: string }, { ok: boolean }]
   'chat.interrupt': [{ session: string }, { ok: boolean }]
   'chat.close': [{ session: string }, { ok: boolean; research_queued: number }]
-  'chat.permission': [{ session: string; request_id: string; allow: boolean; always?: boolean }, { ok: boolean }]
+  'chat.permission': [{ session: string; request_id: string; allow: boolean; for_conversation?: boolean }, { ok: boolean }]
   'chat.list': [{ vault: string }, ChatSessionRow[]]
   'chat.get': [{ session: string }, { session: string; mode: ChatMode; title: string; messages: ChatMessage[] }]
   'chat.resume': [{ session: string }, { session: string }]
@@ -942,7 +942,7 @@ export interface Events {
   'job.finished': { job: Job }
   'chat.delta': { session: string; message_id: string; text: string }
   'chat.message': { session: string; message: ChatMessage }
-  'chat.permission': { session: string; request_id: string; tool: string; input: unknown; description: string | null; title?: string | null; scope?: string | null }
+  'chat.permission': { session: string; request_id: string; tool: string; input: unknown; description: string | null; title?: string | null; scope?: string | null; once_only?: boolean; note?: string | null }
   'chat.status': { session: string; state: 'thinking' | 'idle' | 'closed' | 'error'; detail: string | null; cost_usd: number | null }
   'menu.command': { command: string }
   'files.dropped': { paths: string[] }

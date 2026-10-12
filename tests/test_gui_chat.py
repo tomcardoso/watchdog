@@ -165,7 +165,7 @@ def test_permission_round_trip(env):
         return await client.options.can_use_tool("Bash", {"command": "ls"}, ToolPermissionContext(title="Run ls?"))
 
     async def ask_again(client):
-        # The same command again: "always" covers that exact command only (D274).
+        # The same call again: "for this conversation" covers it.
         return await client.options.can_use_tool("Bash", {"command": "ls"}, ToolPermissionContext())
 
     FakeClient.scripts = [[ask_tool, ask_again, _result()]]
@@ -175,11 +175,11 @@ def test_permission_round_trip(env):
         time.sleep(0.02)
     req = next(e["data"] for e in events if e["event"] == "chat.permission")
     assert req["tool"] == "Bash" and req["input"] == {"command": "ls"} and req["description"] == "Run ls?"
-    api.permission(sid, req["request_id"], True, always=True)
+    api.permission(sid, req["request_id"], True, for_conversation=True)
     _wait_state(events)
     results = FakeClient.instances[0].permission_results
     assert all(isinstance(r, PermissionResultAllow) for r in results)
-    assert len([e for e in events if e["event"] == "chat.permission"]) == 1   # "always" skipped the second ask
+    assert len([e for e in events if e["event"] == "chat.permission"]) == 1   # the second call wasn't asked
 
 
 def test_permission_denied(env):
@@ -487,9 +487,9 @@ def _wait_permissions(events, n, timeout=10):
     raise AssertionError(f"expected {n} permission requests")
 
 
-def test_always_allow_covers_the_tool_within_its_scope_only(env):
-    """"Always allow" for a fetch on one site doesn't cover another site; for a page folder it
-    doesn't cover another folder (D304)."""
+def test_a_built_in_tool_is_allowed_for_the_conversation_within_its_scope_only(env):
+    """"Allow for this conversation" for a fetch on one site doesn't cover another site; for a page
+    folder it doesn't cover another folder (D304, D308)."""
     vault, events = env
     FakeClient.scripts = [[
         _ask_permission("WebFetch", {"url": "https://example.org/a"}),
@@ -498,8 +498,9 @@ def test_always_allow_covers_the_tool_within_its_scope_only(env):
         _result()]]
     sid = api.start(str(vault), "ask", prompt="x")["session"]
     first = _wait_permissions(events, 1)[0]
-    assert first["scope"] == "pages on example.org"
-    api.permission(sid, first["request_id"], True, always=True)
+    assert first["scope"] == "fetching pages on example.org" and first["once_only"] is False
+    assert "until you close this chat" in first["note"]
+    api.permission(sid, first["request_id"], True, for_conversation=True)
     second = _wait_permissions(events, 2)[1]
     assert second["input"] == {"url": "https://elsewhere.example/c"}
     api.permission(sid, second["request_id"], True)
@@ -508,41 +509,98 @@ def test_always_allow_covers_the_tool_within_its_scope_only(env):
     assert len([e for e in events if e["event"] == "chat.permission"]) == 2
 
 
-def test_a_watchdog_write_tool_asks_with_a_card_that_says_what_it_will_do(env):
+def _registry(vault):
     import json
-    vault, events = env
     (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps(
-        {"acme": {"name": "Acme Holdings", "note_path": "entities/organization/acme"}}))
+        {"acme": {"name": "Acme Holdings", "note_path": "entities/organization/acme"},
+         "port": {"name": "Port Authority", "note_path": "entities/organization/port"}}))
+
+
+def test_a_watchdog_write_tool_allowed_for_the_conversation_covers_every_entity(env):
+    """Refreshing twenty entities is one card, not twenty (D308)."""
+    vault, events = env
+    _registry(vault)
     FakeClient.scripts = [[
         _ask_permission("mcp__watchdog__write_entity",
                         {"entity_id": "acme", "summary": "S.", "timeline_events": [{"event": "e"}]}),
         _ask_permission("mcp__watchdog__write_entity",
-                        {"entity_id": "other", "summary": "S.", "timeline_events": []}),
+                        {"entity_id": "port", "summary": "S.", "timeline_events": []}),
+        _ask_permission("mcp__watchdog__watchlist_add", {"terms": ["Pier 9"]}),   # another tool: asks
         _result()]]
     sid = api.start(str(vault), "ask", prompt="x")["session"]
     req = _wait_permissions(events, 1)[0]
     assert req["title"] == "Rewrite an entity's summary and timeline"
     assert "Acme Holdings" in req["description"] and "1 timeline event " in req["description"]
-    assert req["scope"] == "Acme Holdings"
-    api.permission(sid, req["request_id"], True, always=True)
-    other = _wait_permissions(events, 2)[1]                      # another entity asks again
-    assert other["scope"] == "other"
+    assert req["scope"] == "rewriting any entity's summary and timeline" and req["once_only"] is False
+    assert "version history" in req["note"]
+    api.permission(sid, req["request_id"], True, for_conversation=True)
+    other = _wait_permissions(events, 2)[1]
+    assert other["tool"] == "mcp__watchdog__watchlist_add"         # the second entity wasn't asked
     api.permission(sid, other["request_id"], False)
     _wait_state(events)
+    results = FakeClient.instances[0].permission_results
+    assert [type(r) for r in results] == [PermissionResultAllow, PermissionResultAllow, PermissionResultDeny]
+
+
+def test_a_contradiction_is_asked_about_every_time(env):
+    """A "for this conversation" answer to `contradiction_add` is never remembered (D308)."""
+    vault, events = env
+    _registry(vault)
+    args = {"entity_id": "acme", "label": "Price", "a": "1", "a_doc": "d1", "b": "2", "b_doc": "d2"}
+    FakeClient.scripts = [[_ask_permission("mcp__watchdog__contradiction_add", args),
+                           _ask_permission("mcp__watchdog__contradiction_add", args), _result()]]
+    sid = api.start(str(vault), "ask", prompt="x")["session"]
+    first = _wait_permissions(events, 1)[0]
+    assert first["once_only"] is True and first["scope"] is None
+    assert "each contradiction separately" in first["note"]
+    api.permission(sid, first["request_id"], True, for_conversation=True)   # ignored for this tool
+    second = _wait_permissions(events, 2)[1]
+    api.permission(sid, second["request_id"], True)
+    _wait_state(events)
+    assert chat.MANAGER.sessions[sid].allowed == set()
+
+
+def test_conversation_approvals_end_with_the_chat(env):
+    """They live only in the backend's session: never in the saved chat, and a chat resumed after
+    it was closed (or the app restarted) asks again (D308)."""
+    import json
+    vault, events = env
+    _registry(vault)
+    write = {"entity_id": "acme", "summary": "S.", "timeline_events": []}
+    FakeClient.scripts = [[_ask_permission("mcp__watchdog__write_entity", write), _result()]]
+    sid = api.start(str(vault), "ask", prompt="x")["session"]
+    req = _wait_permissions(events, 1)[0]
+    api.permission(sid, req["request_id"], True, for_conversation=True)
+    _wait_state(events)
+    assert chat.MANAGER.sessions[sid].allowed == {"mcp__watchdog__write_entity"}
+    api.close(sid)
+    saved = (chat.chats_dir() / f"{sid}.json").read_text()
+    assert "allowed" not in json.loads(saved) and "write_entity" not in saved
+    events.clear()
+    FakeClient.scripts = [[_ask_permission("mcp__watchdog__write_entity", write), _result()]]
+    chat.MANAGER.resume(sid)
+    assert chat.MANAGER.sessions[sid].allowed == set()
+    api.send(sid, "again")
+    again = _wait_permissions(events, 1)[0]                     # asked again after the resume
+    api.permission(sid, again["request_id"], True)
+    _wait_state(events, count=2)                                # resume's own idle, then the turn's
 
 
 def test_permission_request_wording_for_each_kind_of_tool(tmp_path):
     vault = tmp_path / "v"
     (vault / "queries").mkdir(parents=True)
     w = chat.permission_request(vault, "Write", {"file_path": str(vault / "queries" / "a.md")})
-    assert w["scope"] == "files in queries/" and w["description"] == "Change queries/a.md."
+    assert w["scope"] == "changes to files in queries/" and w["description"] == "Change queries/a.md."
+    assert "version history" in w["note"]
     assert chat.permission_request(vault, "Write", {"file_path": "wiki/b.md"})["scope_key"] != w["scope_key"]
     c = chat.permission_request(vault, "mcp__watchdog__contradiction_add",
                                 {"entity_id": "x", "label": "Price", "a": "1", "a_doc": "d1", "b": "2", "b_doc": "d2"})
-    assert c["title"] == "Record a contradiction" and "“Price”" in c["description"]
+    assert c["title"] == "Record a contradiction" and "“Price”" in c["description"] and c["once_only"]
     t = chat.permission_request(vault, "mcp__watchdog__watchlist_add", {"terms": ["A", "B"]})
-    assert t["description"] == "Add to watchlist.md: A, B"
-    assert chat.permission_request(vault, "WebSearch", {"query": "q"})["scope_key"] == "WebSearch"
+    assert t["description"] == "Add to watchlist.md: A, B" and t["scope_key"] == "mcp__watchdog__watchlist_add"
+    s = chat.permission_request(vault, "WebSearch", {"query": "q"})
+    assert s["scope_key"] == "WebSearch" and "version history" not in s["note"]
+    assert "every use of WebSearch" in s["note"]
 
 
 def test_the_chat_loop_survives_a_session_that_raises_systemexit(env):

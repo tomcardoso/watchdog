@@ -493,7 +493,7 @@ commands load; its settings, tools and hooks come from the app (`chat.start` bel
 | `chat.send` | `{session, text}` | `{ok}` |
 | `chat.interrupt` | `{session}` | `{ok}` |
 | `chat.close` | `{session}` | `{ok, research_queued: int}` |
-| `chat.permission` | `{session, request_id, allow: bool, always?: bool}` | `{ok}` — `always` covers the tool within the request's `scope` only (a folder, a site, an entity, one command), for the rest of the session (D304) |
+| `chat.permission` | `{session, request_id, allow: bool, for_conversation?: bool}` | `{ok}` — `for_conversation` ("Allow for this conversation") stops asking for what the request's `scope` covers: a Watchdog tool that writes, for every entity; a built-in tool within one folder, site or command. It lasts while the session is open in this backend, is never saved with the chat, and is ignored for a `once_only` request (D304, D308) |
 | `chat.list` | `{vault}` | `[{session, mode, title, started, updated, model}]` saved transcripts, newest first |
 | `chat.get` | `{session}` | `{session, mode, title, messages: ChatMessage[]}` |
 | `chat.resume` | `{session}` | `{session}` — reopen a saved session (SDK `resume`), after the same folder checks as `chat.start` (`not_a_vault`, `not_granted`) |
@@ -505,6 +505,6 @@ ChatMessage = {id, role: "user"|"assistant"|"tool"|"system", text, tool?: {name,
 
 Events: `chat.delta {session, message_id, text}` (streamed assistant text), `chat.message
 {session, message: ChatMessage}`, `chat.permission {session, request_id, tool, input,
-description, title, scope}` (`description` says what the call will do in plain words; `title` names a
-Watchdog tool in plain words; `scope` is what "Always allow" would cover, or null for the whole tool), `chat.status {session, state: "thinking"|"idle"|"closed"|"error", detail|null,
+description, title, scope, once_only, note}` (`description` says what the call will do in plain words; `title` names a
+Watchdog tool in plain words; `scope` is what "Allow for this conversation" would cover, or null for the whole tool; `once_only` is true when the card offers only "Allow once" (`contradiction_add`); `note` is the card's sentence on what "for this conversation" covers, or why it is asked every time, and, for a call that changes a file, that version history keeps the change), `chat.status {session, state: "thinking"|"idle"|"closed"|"error", detail|null,
 cost_usd|null}`.

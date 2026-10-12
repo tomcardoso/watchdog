@@ -194,7 +194,7 @@ def _vault_relative(vault: Path, raw: str) -> str | None:
 def edit_outside_vault(vault: Path, tool: str, tool_input: dict) -> str | None:
     """Why `tool` may not run, or None. A session edits only its own pages in its own
     investigation folder (`vault.SESSION_WRITABLE`), and only when the user has allowed Watchdog
-    there (watchdog/access.py) — whatever the vault's settings or an "always allow" answer would
+    there (watchdog/access.py) — whatever the vault's settings or an "Allow for this conversation" answer would
     otherwise permit. Everything else in the folder belongs to the pipeline (the registry, the
     notes, the queue, the history) or to Claude Code's own setup (`.claude/`, `.mcp.json`), which
     a session that could write it could use to run commands in the next one (D304). A document
@@ -311,7 +311,10 @@ class Session:
         self.client = None
         self.lock: asyncio.Lock | None = None
         self.permissions: dict[str, asyncio.Future] = {}
-        self.always: set[str] = set()
+        # "Allow for this conversation" answers (D308): the permission card's scope keys. Held here
+        # only, never saved with the chat, so they end when the chat is closed or the app quits,
+        # and a resumed chat asks again.
+        self.allowed: set[str] = set()
         self.tools: dict[str, dict] = {}           # tool_use id -> its message
         self.stream_id: str | None = None
         self.cost = 0.0
@@ -327,7 +330,7 @@ class Session:
                 "usage_totals": self.usage_totals, "messages": self.messages}
 
 
-# The Watchdog tools that write, in plain words for the permission card (D304).
+# The Watchdog tools, in plain words for the permission card (D304).
 _WATCHDOG_TOOL_TITLES = {
     "timeline": "Rebuild the timeline",
     "write_entity": "Rewrite an entity's summary and timeline",
@@ -339,6 +342,17 @@ _WATCHDOG_TOOL_TITLES = {
     "research_seen": "List sources already captured",
 }
 
+# What "Allow for this conversation" covers for a Watchdog tool that writes (D308): the whole tool,
+# every entity included. `contradiction_add` has no entry: it is asked about every time.
+_WATCHDOG_TOOL_SCOPES = {
+    "write_entity": "rewriting any entity's summary and timeline",
+    "watchlist_add": "adding terms to the watch list",
+    "timeline": "rebuilding the timeline",
+}
+
+_UNTIL = "until you close this chat or quit Watchdog"
+_HISTORY = "Every change is recorded in version history, so you can see what was there before."
+
 
 def _entity_name(vault: Path, entity_id) -> str:
     from watchdog.pipeline.json_io import _read_json_or
@@ -348,56 +362,70 @@ def _entity_name(vault: Path, entity_id) -> str:
 
 
 def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
-    """What the permission card says about a tool call, and what an "Always allow" answer covers
-    (D304): never the whole tool, but the tool within one scope — a folder of the vault for a file
-    tool, a web site for a fetch, an entity for the Watchdog tools that change one, one command
-    for Skill. Returns `{title, description, scope, scope_key}`; `scope` is the plain-words label
-    the card shows beside "Always allow"."""
+    """What the permission card says about a tool call, and what an "Allow for this conversation"
+    answer covers (D304, D308). For the Watchdog tools that write, it covers the whole tool (every
+    entity) until the chat is closed; `contradiction_add` is never remembered, so each one is a
+    deliberate yes. For a built-in tool it covers the tool within one scope: a folder of the vault
+    for a file tool, a web site for a fetch, one command for Skill.
+
+    Returns `{title, description, scope, scope_key, once_only, note}`: `scope` is the plain-words
+    label for what a conversation-long answer covers (None for the whole tool, or when `once_only`),
+    `note` the sentence the card shows under the buttons."""
     from urllib.parse import urlsplit
     inp = tool_input if isinstance(tool_input, dict) else {}
     title, description, scope, part = tool, None, None, None
+    once_only, changes = False, False
     prefix = "mcp__watchdog__"
     if tool.startswith(prefix):
         name = tool[len(prefix):]
         title = _WATCHDOG_TOOL_TITLES.get(name, name.replace("_", " "))
-        if name in ("write_entity", "contradiction_add"):
+        changes = True
+        scope = _WATCHDOG_TOOL_SCOPES.get(name)
+        if name == "write_entity":
             entity = _entity_name(vault, inp.get("entity_id"))
-            part = f"entity:{inp.get('entity_id')}"
-            scope = entity
-            if name == "write_entity":
-                n = len(inp.get("timeline_events") or [])
-                description = (f"Replace the summary of {entity} and its {n} timeline "
-                               f"event{'s' if n != 1 else ''} with the text below.")
-            else:
-                description = (f"Add a contradiction to {entity}: “{inp.get('label', '')}”, "
-                               f"{inp.get('a', '')} ({inp.get('a_doc', '')}) against "
-                               f"{inp.get('b', '')} ({inp.get('b_doc', '')}).")
+            n = len(inp.get("timeline_events") or [])
+            description = (f"Replace the summary of {entity} and its {n} timeline "
+                           f"event{'s' if n != 1 else ''} with the text below.")
+        elif name == "contradiction_add":
+            once_only = True
+            entity = _entity_name(vault, inp.get("entity_id"))
+            description = (f"Add a contradiction to {entity}: “{inp.get('label', '')}”, "
+                           f"{inp.get('a', '')} ({inp.get('a_doc', '')}) against "
+                           f"{inp.get('b', '')} ({inp.get('b_doc', '')}).")
         elif name == "watchlist_add":
             terms = [str(t) for t in inp.get("terms") or []]
             description = "Add to watchlist.md: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
-            scope = "the watch list"
         elif name == "timeline":
             description = "Write timeline.md again from the stored events."
-            scope = "timeline.md"
     elif tool in _EDIT_TOOLS:
         raw = inp.get(_EDIT_TOOLS[tool])
         rel = _vault_relative(vault, raw) if isinstance(raw, str) and raw else None
         folder = (rel.split("/")[0] + "/") if rel and "/" in rel else (rel or "?")
         part = f"path:{folder}"
-        scope = f"files in {folder}" if folder.endswith("/") else folder
+        scope = f"changes to files in {folder}" if folder.endswith("/") else f"changes to {folder}"
         description = f"Change {rel or raw}."
+        changes = True
     elif tool == "WebFetch":
         host = urlsplit(str(inp.get("url") or "")).hostname or "?"
-        part, scope = f"host:{host}", f"pages on {host}"
+        part, scope = f"host:{host}", f"fetching pages on {host}"
         description = f"Fetch {inp.get('url')}"
     elif tool == "Skill":
         name = str(inp.get("skill") or inp.get("command") or "?")
-        part, scope = f"skill:{name}", f"/{name.lstrip('/')}"
+        part, scope = f"skill:{name}", f"running /{name.lstrip('/')}"
         description = f"Run the /{name.lstrip('/')} command."
     elif tool == "WebSearch":
         description = f"Search the web for “{inp.get('query', '')}”."
-    return {"title": title, "description": description, "scope": scope,
-            "scope_key": f"{tool}|{part}" if part else tool}
+    if once_only:
+        scope = None
+        note = ("Watchdog asks about each contradiction separately, so recording one is always your "
+                "own decision.")
+    else:
+        what = scope or f"every use of {title}"
+        note = f"“Allow for this conversation” covers {what}, {_UNTIL}."
+    if changes:
+        note += " " + _HISTORY
+    return {"title": title, "description": description, "scope": scope, "once_only": once_only,
+            "note": note, "scope_key": f"{tool}|{part}" if part else tool}
 
 
 def _check_session_key(vault: Path) -> None:
@@ -474,7 +502,7 @@ class ChatManager:
         from claude_agent_sdk import PermissionResultAllow, PermissionResultDeny
         ask = permission_request(s.vault, tool, tool_input)
         key = ask["scope_key"]
-        if key in s.always:
+        if not ask["once_only"] and key in s.allowed:
             return PermissionResultAllow()
         request_id = uuid.uuid4().hex
         fut = asyncio.get_running_loop().create_future()
@@ -482,14 +510,15 @@ class ChatManager:
         description = ask["description"] or getattr(ctx, "title", None) or f"Claude wants to use {tool}."
         rpc.emit("chat.permission", {"session": s.id, "request_id": request_id, "tool": tool,
                                      "input": tool_input, "description": description,
-                                     "title": ask["title"], "scope": ask["scope"]})
+                                     "title": ask["title"], "scope": ask["scope"],
+                                     "once_only": ask["once_only"], "note": ask["note"]})
         try:
-            allow, always = await fut
+            allow, for_conversation = await fut
         finally:
             s.permissions.pop(request_id, None)
         if allow:
-            if always:
-                s.always.add(key)
+            if for_conversation and not ask["once_only"]:
+                s.allowed.add(key)
             return PermissionResultAllow()
         return PermissionResultDeny(message="The user declined this action.")
 
@@ -628,12 +657,12 @@ class ChatManager:
                 pass
         self.submit(go())
 
-    def answer(self, sid: str, request_id: str, allow: bool, always: bool) -> None:
+    def answer(self, sid: str, request_id: str, allow: bool, for_conversation: bool) -> None:
         s = self._get(sid)
         fut = s.permissions.get(request_id)
         if fut is None:
             raise RpcError("That permission request is no longer waiting.", code="not_found")
-        self.loop().call_soon_threadsafe(lambda: fut.done() or fut.set_result((bool(allow), bool(always))))
+        self.loop().call_soon_threadsafe(lambda: fut.done() or fut.set_result((bool(allow), bool(for_conversation))))
 
     def close(self, sid: str) -> dict:
         s = self._get(sid)
