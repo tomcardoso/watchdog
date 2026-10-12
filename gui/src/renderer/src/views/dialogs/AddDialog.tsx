@@ -164,7 +164,8 @@ export function AddDialog() {
       setBusy(false)
       const ready = pf.auth.ok && !billingBlocked(pf.billing)
       const auto = pf.auto_approve.enabled && pf.auto_approve.approve && ready
-      const local = !pf.ack_required && ready
+      // The sample (D307) runs only its own example files; anything else stops at the pause.
+      const local = !pf.ack_required && ready && !pf.sample?.unprepared.length
       const somethingToRun = countFor(pf, retry, dirs.length) > 0 || !!pf.pending_finalization || pf.staged > 0
       if (local && somethingToRun) {
         setAutoNote(pf.ack_note)
@@ -240,7 +241,7 @@ export function AddDialog() {
     footer = (
       <>
         <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>
-          {engine.ready ? (pf0?.ack_required === false ? 'Reading and processing both stay on this computer.' : 'Reading files stays on this computer. You confirm before anything goes to a model.') : 'Files you choose stay listed here, ready to read when setup finishes.'}
+          {engine.ready ? (pf0?.sample ? 'Nothing is sent to a model: the sample uses prepared answers.' : pf0?.ack_required === false ? 'Reading and processing both stay on this computer.' : 'Reading files stays on this computer. You confirm before anything goes to a model.') : 'Files you choose stay listed here, ready to read when setup finishes.'}
         </span>
         <Button variant="ghost" onClick={close}>Cancel</Button>
         <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !!pfError || !engine.ready} loading={busy} onClick={() => void begin()}>
@@ -289,7 +290,7 @@ export function AddDialog() {
         {nothing ? (
           <Button variant="primary" onClick={close}>Close</Button>
         ) : (
-          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing)} onClick={() => void run(gate.pf, folders)}>
+          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing) || !!gate.pf.sample?.unprepared.length} onClick={() => void run(gate.pf, folders)}>
             Acknowledge and add
           </Button>
         )}
@@ -430,6 +431,12 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         )}
       </section>
 
+      {pf?.sample && (
+        <Callout tone="info" title="Prepared answers, no cost">
+          This is the sample investigation. Its example files are processed with prepared answers instead of an AI model, so nothing is sent anywhere and processing costs $0.00. Choose Read documents to add the files waiting here and watch the run.
+        </Callout>
+      )}
+
       {pf && <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />}
 
       {pf && !pf.auth.ok && (
@@ -438,19 +445,19 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         </Callout>
       )}
 
-      <section>
+      {!pf?.sample && <section>
         <button className="add-disclose" onClick={() => setShowOpts(!showOpts)} aria-expanded={showOpts}>
           {showOpts ? <ChevronDown /> : <ChevronRight />}
           Options
           <span className="faint">models, effort, checks, speed</span>
         </button>
         {showOpts && <OptionsForm options={options} setOptions={setOptions} />}
-      </section>
+      </section>}
 
       <section>
         <div className="row">
           <Button icon={Calculator} loading={est?.loading && !est.all} onClick={() => void estimate(false)}>Estimate cost</Button>
-          <Button variant="ghost" loading={est?.loading && !!est.all} onClick={() => void estimate(true)}>Compare all models</Button>
+          {!pf?.sample && <Button variant="ghost" loading={est?.loading && !!est.all} onClick={() => void estimate(true)}>Compare all models</Button>}
         </div>
         {est?.error && <Callout tone="danger" style={{ marginTop: 10 }}>{est.error}</Callout>}
         {est?.data && (
@@ -597,6 +604,14 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
   const auto = pf.auto_approve
   return (
     <div className="col gap-16">
+      {pf.sample && pf.sample.unprepared.length > 0 && (
+        <Callout tone="danger" title="Not an example file">
+          {pf.sample.refusal}
+          <ul className="add-issues">
+            {pf.sample.unprepared.map((n) => <li key={n}>{n}</li>)}
+          </ul>
+        </Callout>
+      )}
       {(issues.length > 0 || failed.length > 0) && (
         <Callout tone="warning" title="Some files could not be read">
           <ul className="add-issues">

@@ -833,8 +833,12 @@ See D45–D48.
   key or network. In sample mode the canned model records each call as model and backend `sample`
   at $0, telemetry is off for the build, the settings and access files are left alone, and the
   list entry carries `sample: true` and the folder `.watchdog/sample.json`; a rebuild deletes only
-  a folder with that marker. `sample.tour` reads the sample's registries for what each tour step
-  opens. The tour itself is renderer-only (`gui/src/renderer/src/tour/`): steps are a route plus a
+  a folder with that marker. The marker lists every file with a prepared answer by content hash
+  (D307): in a folder carrying it, `add`/`dig`/`bark`/`recheck-contradictions` run inside
+  `ops.sample.answers` (the canned model in place of `model_client.acomplete_json`, $0, no auth,
+  keys or acknowledgement), pre-processing reads the waiting files from their kept text, a queued
+  file without an answer is refused before any call, and Ask Claude is refused. `sample.tour`
+  reads the sample's registries for what each tour step opens. The tour itself is renderer-only (`gui/src/renderer/src/tour/`): steps are a route plus a
   CSS selector to ring, kept in local storage per viewer; it adds no pipeline behaviour.
 - **Release and updates (D269, D297).** `electron-builder.config.cjs` and `app-release.yml`
   build signed (when configured) installers from an `app-v*` tag; `gui/src/main/updater.ts` offers

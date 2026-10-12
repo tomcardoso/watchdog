@@ -69,7 +69,21 @@ test('the sample builds from the welcome card and every tour step points at some
         await expect(page.locator('.find-count')).not.toHaveText(/no match/i, { timeout: 10_000 })
         await main.focus()
       }
-      if (i === 12) await expect(page.locator('.modal').getByText('Add documents', { exact: true })).toBeVisible()
+      if (i === 12) {
+        // D307: the two waiting files are added for real, with prepared answers: the run needs no
+        // key and no acknowledgement, says so, and leaves a third briefing.
+        const modal = page.locator('.modal')
+        await expect(modal.getByText('Add documents', { exact: true })).toBeVisible()
+        await expect(modal.getByText('Prepared answers, no cost')).toBeVisible({ timeout: 30_000 })
+        await modal.getByRole('button', { name: 'Read documents' }).click()
+        await expect(modal.locator('.callout', { hasText: 'processed with prepared answers' })).toBeVisible({ timeout: 120_000 })
+        await expect(modal.getByText('Acknowledge and add')).toHaveCount(0)
+        await expect(modal.locator('.modal-title')).toContainText('Finished', { timeout: 120_000 })
+        const sample = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))['port-calder-waterfront-sample'].path
+        const briefings = await page.evaluate(async (v) => (await (window as any).watchdog.rpc('sample.tour', { vault: v })).briefings, sample)
+        expect(briefings).toBe(3)
+        await main.focus()
+      }
       await page.keyboard.press(i % 2 ? 'Enter' : 'Space')
     }
     await expect(panel).toHaveCount(0)

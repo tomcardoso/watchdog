@@ -14,6 +14,7 @@ import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { useState } from 'react'
 
 function costText(e: RecheckEstimate): string {
+  if (e.sample) return 'Nothing: the sample investigation uses prepared answers, so nothing is sent to a model.'
   if (e.subscription) return 'Uses your Claude subscription, so there is no separate charge.'
   if (e.cost_low === null || e.cost_high === null) return 'Watchdog has no price for this model, so it cannot estimate the cost.'
   const low = fmtCost(e.cost_low)

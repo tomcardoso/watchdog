@@ -470,6 +470,11 @@ export default function ChatWorkspace(p: Props) {
 
         <footer className="chat-composer-wrap">
           <div className="chat-col">
+            {project.sample && (
+              <Callout tone="info" title="Not available in the sample">
+                Ask Claude would send the sample to a real model, so it is switched off here. Create your own investigation to use it.
+              </Callout>
+            )}
             {sugg.length > 0 && (
               <div className="chat-sugg">
                 {sugg.map((s) => (
@@ -486,7 +491,8 @@ export default function ChatWorkspace(p: Props) {
                 ref={composer}
                 rows={1}
                 value={text}
-                placeholder={p.placeholder}
+                placeholder={project.sample ? 'Ask Claude is off in the sample investigation' : p.placeholder}
+                disabled={project.sample}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -500,7 +506,7 @@ export default function ChatWorkspace(p: Props) {
                   Stop
                 </Button>
               ) : (
-                <Button variant="primary" icon={ArrowUp} disabled={!text.trim() || busy} loading={busy} onClick={send} tip="Send (Enter)" />
+                <Button variant="primary" icon={ArrowUp} disabled={!text.trim() || busy || project.sample} loading={busy} onClick={send} tip="Send (Enter)" />
               )}
             </div>
             <div className="chat-hint">

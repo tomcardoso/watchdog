@@ -55,6 +55,9 @@ export function usePublicRecordsGate() {
           // Nothing will reach a model, so there is nothing to acknowledge.
           const job = await start(run, vault, false)
           navigate({ view: 'activity', job: job.id })
+        } else if (pf.sample && pf.sample.unprepared.length > 0) {
+          // The sample refuses a file it has no prepared answer for (D307); say so before starting.
+          toast({ kind: 'error', title: 'Not an example file', body: `${pf.sample.refusal} ${pf.sample.unprepared.join(', ')}` })
         } else if (!pf.ack_required && pf.auth.ok && !billingBlocked(pf.billing)) {
           const job = await start(run, vault, false)
           toast({ kind: 'info', title: `Processing ${plural(pf.documents_to_send, 'document')} from ${investigationName(vault)}`, body: pf.ack_note ?? undefined })

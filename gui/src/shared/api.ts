@@ -442,6 +442,9 @@ export interface Preflight {
   ack_required: boolean
   /** The plain line shown instead of the acknowledgement when `ack_required` is false. */
   ack_note: string | null
+  /** In the sample investigation (D307): queued files it has no prepared answer for, which a
+   * run refuses, and the refusal's wording. Null in any other investigation. */
+  sample: { unprepared: string[]; refusal: string } | null
   /** Which labelled key pays for each provider the run uses (#690, D290). */
   billing?: Billing[]
 }
@@ -512,6 +515,8 @@ export interface RecheckEstimate {
   price_multiplier: number
   model: { model: string; backend: string | null; effort: string | null; label: string; name: string }
   auth: { mode: string | null; ok: boolean; reason: string | null }
+  /** The sample investigation answers from prepared answers: no model, no cost (D307). */
+  sample?: boolean
   billing?: Billing[]
   busy: boolean
   engine_ready: boolean
