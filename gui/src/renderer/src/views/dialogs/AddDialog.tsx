@@ -1,6 +1,7 @@
 // Add documents: the `add` operation, the core workflow, as four steps. Choose → Read (local, no model)
 // → Public-records gate → Run. Nothing is sent to a model before the gate has been acknowledged
-// (or auto-approve, which the CLI itself honours, applies).
+// (or auto-approve, which the run itself honours, applies). A run with every stage on a model
+// server on this computer has no gate (D306): the preflight says so and the run decides it again.
 
 import {
   ArrowRight, Check, ChevronDown, ChevronRight, Circle, FilePlus2, FolderInput, RefreshCw, ShieldAlert, X, CircleCheck, CircleX, Calculator
@@ -48,7 +49,8 @@ export function AddDialog() {
   const [folders, setFolders] = useState<string[]>([])
   const [gate, setGate] = useState<{ pf: Preflight; blocked: { name: string; reason: string | null }[] } | null>(null)
   const [addJob, setAddJob] = useState<string | null>(null)
-  const [autoNote, setAutoNote] = useState(false)
+  // Why the public-records pause was not shown (auto-approve, or every stage on this computer).
+  const [autoNote, setAutoNote] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
   const phaseRef = useRef(phase)
@@ -160,13 +162,19 @@ export function AddDialog() {
       const blocked = [...pipe.chew_failed.map((f) => ({ name: f.name, reason: null as string | null })), ...pipe.skipped.map((f) => ({ name: f.name, reason: f.reason }))]
       setGate({ pf, blocked })
       setBusy(false)
-      const auto = pf.auto_approve.enabled && pf.auto_approve.approve && pf.auth.ok && !billingBlocked(pf.billing)
+      const ready = pf.auth.ok && !billingBlocked(pf.billing)
+      const auto = pf.auto_approve.enabled && pf.auto_approve.approve && ready
+      // The sample (D307) runs only its own example files; anything else stops at the pause.
+      const local = !pf.ack_required && ready && !pf.sample?.unprepared.length
       const somethingToRun = countFor(pf, retry, dirs.length) > 0 || !!pf.pending_finalization || pf.staged > 0
-      if (auto && somethingToRun) {
-        setAutoNote(true)
+      if (local && somethingToRun) {
+        setAutoNote(pf.ack_note)
+        await run(pf, dirs, false)
+      } else if (auto && somethingToRun) {
+        setAutoNote('Auto-approve is on for this investigation, so the public-records notice was not repeated. Change it in Settings.')
         await run(pf, dirs)
       } else {
-        setAutoNote(false)
+        setAutoNote(null)
         setPhase('gate')
         if (!useApp.getState().addOpen) useApp.getState().openAdd(paths) // the gate always needs a person
       }
@@ -178,7 +186,8 @@ export function AddDialog() {
   }
 
   // ── Step 3 → 4 ──────────────────────────────────────────────────────────────
-  const run = async (pf: Preflight, dirs: string[]) => {
+  // `acknowledged` is false only for a run on this computer, which the worker lets through itself.
+  const run = async (pf: Preflight, dirs: string[], acknowledged = true) => {
     setBusy(true)
     setError('')
     try {
@@ -187,7 +196,7 @@ export function AddDialog() {
       void _b
       const n = countFor(pf, retry, dirs.length)
       const label = n > 0 ? `Adding ${plural(n, 'document')}` : 'Finishing the batch'
-      const j = await startJob('add', { ...cleanOptions(addOpts), skip_warning: true, retry: retry || undefined, paths: dirs.length ? dirs : undefined }, label, 'add', flowVault.current)
+      const j = await startJob('add', { ...cleanOptions(addOpts), skip_warning: acknowledged || undefined, retry: retry || undefined, paths: dirs.length ? dirs : undefined }, label, 'add', flowVault.current)
       setAddJob(j.id)
       setPhase('running')
     } catch (e) {
@@ -232,7 +241,7 @@ export function AddDialog() {
     footer = (
       <>
         <span className="faint grow" style={{ fontSize: 'var(--fs-sm)' }}>
-          {engine.ready ? 'Reading files stays on this computer. You confirm before anything goes to a model.' : 'Files you choose stay listed here, ready to read when setup finishes.'}
+          {engine.ready ? (pf0?.sample ? 'Nothing is sent to a model: the sample uses prepared answers.' : pf0?.ack_required === false ? 'Reading and processing both stay on this computer.' : 'Reading files stays on this computer. You confirm before anything goes to a model.') : 'Files you choose stay listed here, ready to read when setup finishes.'}
         </span>
         <Button variant="ghost" onClick={close}>Cancel</Button>
         <Button variant="primary" iconRight={ArrowRight} disabled={!!nothingToDo || pfLoading || !!pfError || !engine.ready} loading={busy} onClick={() => void begin()}>
@@ -281,7 +290,7 @@ export function AddDialog() {
         {nothing ? (
           <Button variant="primary" onClick={close}>Close</Button>
         ) : (
-          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing)} onClick={() => void run(gate.pf, folders)}>
+          <Button variant="primary" autoFocus icon={Check} loading={busy} disabled={!gate.pf.auth.ok || !engine.ready || !!billingBlocked(gate.pf.billing) || !!gate.pf.sample?.unprepared.length} onClick={() => void run(gate.pf, folders)}>
             Acknowledge and add
           </Button>
         )}
@@ -422,6 +431,12 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         )}
       </section>
 
+      {pf?.sample && (
+        <Callout tone="info" title="Prepared answers, no cost">
+          This is the sample investigation. Its example files are processed with prepared answers instead of an AI model, so nothing is sent anywhere and processing costs $0.00. Choose Read documents to add the files waiting here and watch the run.
+        </Callout>
+      )}
+
       {pf && <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />}
 
       {pf && !pf.auth.ok && (
@@ -430,19 +445,19 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         </Callout>
       )}
 
-      <section>
+      {!pf?.sample && <section>
         <button className="add-disclose" onClick={() => setShowOpts(!showOpts)} aria-expanded={showOpts}>
           {showOpts ? <ChevronDown /> : <ChevronRight />}
           Options
           <span className="faint">models, effort, checks, speed</span>
         </button>
         {showOpts && <OptionsForm options={options} setOptions={setOptions} />}
-      </section>
+      </section>}
 
       <section>
         <div className="row">
           <Button icon={Calculator} loading={est?.loading && !est.all} onClick={() => void estimate(false)}>Estimate cost</Button>
-          <Button variant="ghost" loading={est?.loading && !!est.all} onClick={() => void estimate(true)}>Compare all models</Button>
+          {!pf?.sample && <Button variant="ghost" loading={est?.loading && !!est.all} onClick={() => void estimate(true)}>Compare all models</Button>}
         </div>
         {est?.error && <Callout tone="danger" style={{ marginTop: 10 }}>{est.error}</Callout>}
         {est?.data && (
@@ -589,6 +604,14 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
   const auto = pf.auto_approve
   return (
     <div className="col gap-16">
+      {pf.sample && pf.sample.unprepared.length > 0 && (
+        <Callout tone="danger" title="Not an example file">
+          {pf.sample.refusal}
+          <ul className="add-issues">
+            {pf.sample.unprepared.map((n) => <li key={n}>{n}</li>)}
+          </ul>
+        </Callout>
+      )}
       {(issues.length > 0 || failed.length > 0) && (
         <Callout tone="warning" title="Some files could not be read">
           <ul className="add-issues">
@@ -713,7 +736,7 @@ function DocState({ state }: { state: string }) {
   return <span className="spinner ds" style={{ width: 14, height: 14 }} />
 }
 
-function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; job?: Job; done: boolean; autoNote: boolean; startAtWrite: boolean }) {
+function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; job?: Job; done: boolean; autoNote: string | null; startAtWrite: boolean }) {
   const openPath = useApp((s) => s.project?.path)
   const stage = job?.progress.stage
   const ok = job?.state === 'done'
@@ -725,7 +748,7 @@ function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; 
   const tail = (useApp((s) => (job ? s.jobs[job.id]?.log : undefined)) ?? []).slice(-40)
   return (
     <div className="col gap-16">
-      {autoNote && <Callout tone="info">Auto-approve is on for this investigation, so the public-records notice was not repeated. Change it in Settings.</Callout>}
+      {autoNote && <Callout tone="info">{autoNote}</Callout>}
       <ol className="add-run">
         {RUN_STEPS.map((s, i) => (
           <li key={s} className={i < active ? 'done' : i === active ? 'now' : ''}>

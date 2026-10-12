@@ -60,6 +60,31 @@ def test_preflight_warning_text_is_plain(rich_vault, wdg_home):
     assert not w.startswith(("\n", " "))
 
 
+@pytest.mark.parametrize("cfg, base_url, required", [
+    ({"extractor_model": "local:q", "classifier_model": "local:q", "finalizer_model": "local:q"},
+     "http://localhost:11434/v1", False),
+    ({"extractor_model": "local:q", "classifier_model": "local:q", "finalizer_model": "local:q"},
+     "http://192.168.1.20:8000/v1", True),
+    ({"extractor_model": "local:q", "classifier_model": "local:q", "finalizer_model": "local:q",
+      "finalizer_timeline_model": "openai:gpt-6-luna"}, "http://localhost:11434/v1", True),
+    ({}, None, True),
+])
+def test_preflight_says_whether_the_acknowledgement_is_needed(rich_vault, wdg_home, monkeypatch,
+                                                              cfg, base_url, required):
+    """D306: every stage on a loopback model server needs no acknowledgement, and the preflight
+    says so with the line the dialog shows; a LAN server, a mixed run or a cloud run still asks."""
+    monkeypatch.delenv("LOCAL_BASE_URL", raising=False)
+    credentials(wdg_home, "subscription")
+    config(wdg_home, **cfg, **({"local_base_url": base_url} if base_url else {}))
+    p = call("ingest.preflight", vault=V(rich_vault))
+    assert p["ack_required"] is required
+    if required:
+        assert p["ack_note"] is None
+    else:
+        assert p["ack_note"] == ("Processing runs on the model server on this computer "
+                                 "(localhost:11434); nothing is sent to a cloud service.")
+
+
 def test_preflight_reports_missing_auth(rich_vault, wdg_home):
     p = call("ingest.preflight", vault=V(rich_vault))
     assert p["auth"]["mode"] == "none" and p["auth"]["ok"] is False

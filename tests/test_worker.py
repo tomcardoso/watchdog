@@ -177,6 +177,56 @@ def test_add_without_the_acknowledgement_sends_nothing(wdg_home, tmp_path, monke
     assert "Nothing was sent" in "\n".join(lines)
 
 
+@pytest.mark.parametrize("models, base_url, asks", [
+    ("local:qwen", "http://localhost:11434/v1", False),        # every stage on this computer
+    ("local:qwen", "http://127.0.0.1:1234/v1", False),
+    ("local:qwen", "http://192.168.1.20:8000/v1", True),       # a server elsewhere on the network
+    ("local:qwen", "http://127.0.0.1.example.com/v1", True),   # a name, not a loopback address
+    ("mixed", "http://localhost:11434/v1", True),              # one stage in the cloud
+    ("sonnet", None, True),                                    # all cloud
+])
+def test_a_run_on_this_computer_needs_no_acknowledgement(wdg_home, tmp_path, monkeypatch, capfd,  # noqa: F811
+                                                         models, base_url, asks):
+    """D306: the worker decides from the run's own backends and the configured server address,
+    never from the app: a run with every stage on a loopback server goes ahead without
+    skip_warning and says where; anything else still sends nothing without it."""
+    from watchdog.gui import demo
+    monkeypatch.delenv("LOCAL_BASE_URL", raising=False)
+    cfg = {"projects_dir": str(tmp_path / "inv")}
+    if base_url:
+        cfg["local_base_url"] = base_url
+    if models == "mixed":
+        cfg.update(extractor_model="local:qwen", classifier_model="local:qwen",
+                   finalizer_model="local:qwen", finalizer_briefing_model="sonnet")
+    else:
+        cfg.update(extractor_model=models, classifier_model=models, finalizer_model=models)
+    (wdg_home / "config.json").write_text(json.dumps(cfg))
+    vault = Path(ops.run("projects-new", {"name": "Local Gate", "dir": str(tmp_path / "inv")},
+                         ops.CollectingReporter())["path"])
+    docs = demo.all_docs()
+    demo.render_files(docs, tmp_path / "files")
+    demo._stage_chewed(vault, docs[:1])
+    sent = []
+
+    async def record(**kw):
+        sent.append(kw.get("backend"))
+        raise RuntimeError("stop here")
+    monkeypatch.setattr(model_client, "acomplete_json", record)
+    monkeypatch.setattr("watchdog.auth.resolve_auth", lambda *a, **k: {"mode": "api-key"})
+    monkeypatch.setattr("watchdog.auth.check_run_keys", lambda *a, **k: None)
+    _code, lines, _events, _result, _err = _in_process(
+        monkeypatch, capfd, {"op": "dig", "params": {}}, vault)
+    text = "\n".join(lines)
+    if asks:
+        assert "Nothing was sent" in text and not sent
+        assert "nothing is sent to a cloud service" not in text
+    else:
+        host = base_url.split("//")[1].split("/")[0]
+        assert (f"Processing runs on the model server on this computer ({host}); nothing is sent "
+                f"to a cloud service.") in text
+        assert "Nothing was sent" not in text and sent and set(sent) == {"local"}
+
+
 # ── the re-check, with a fake model ───────────────────────────────────────────────────────
 
 def test_recheck_round_trip(demo_copy, monkeypatch, capfd):

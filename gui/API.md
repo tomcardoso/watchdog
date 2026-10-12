@@ -273,6 +273,9 @@ Preflight = {
   models: [{stage: "classifier"|"extractor"|"finalizer"|"finalizer:<stage>", backend, model, effort|null, label}],
   auto_approve: {enabled: bool, approve: bool, blocker|null},  // ingest._auto_approve_verdict
   warning_text: string,              // the public-records warning, plain text, no ANSI
+  ack_required: bool,                // false: every stage on a model server on this computer (D306)
+  ack_note: string|null,             // the line shown instead of the acknowledgement then
+  sample: {unprepared: [filename], refusal}|null,  // the sample investigation (D307): prepared answers
   billing: [Billing]                 // which named key pays, per provider the run sends a key to
 }
 
@@ -381,7 +384,7 @@ RecheckEstimate = {
 
 | Method | Params | Result |
 |---|---|---|
-| `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287), plus `billing: Billing[]` (D290). The app shows it and asks before `jobs.recheckContradictions` |
+| `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287), plus `billing: Billing[]` (D290) and `sample: bool` (D307: prepared answers, $0). The app shows it and asks before `jobs.recheckContradictions` |
 
 ## search
 

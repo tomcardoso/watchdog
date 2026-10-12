@@ -49,6 +49,7 @@ SAMPLE_NAME = "Port Calder Waterfront (sample)"
 SAMPLE_DESCRIPTION = ("A sample investigation for learning Watchdog; every person and company in it "
                       "is invented.")
 SAMPLE_MARKER = "sample.json"     # in `.watchdog/`: this folder is the app's sample, safe to rebuild
+SAMPLE_CONVERSIONS = "sample-conversions"   # in `.watchdog/`: the waiting files' prepared text (D307)
 
 # The first ingest batch (`add`); everything else arrives in the second (`dig` + `bark`).
 BATCH_ONE = {
@@ -158,7 +159,10 @@ def render_files(docs: list[dict], out_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     for doc in docs:
         path = out_dir / doc["file"]
-        if doc["kind"] == "pdf":
+        if doc["kind"] == "docx":
+            demo_pdf.write_docx(path, doc["title"], doc["paras"], doc.get("table"))
+            doc["positions"] = {}
+        elif doc["kind"] == "pdf":
             # The file's own creation date is the date on the document, as for a file saved when issued.
             created = "D:" + doc["date"].replace("-", "") + "090000-05'00'"
             doc["md"] = demo_pdf.write_pdf(path, doc["pages"], title=doc["title"],
@@ -312,7 +316,15 @@ class CannedModel:
         return {"skill": self._doc_for(text)["skill"]}
 
     def extract(self, text: str) -> dict:
-        return extraction_for(self._doc_for(text))
+        doc = self._doc_for(text)
+        if doc.get("fails"):
+            # The illegible scan (D307): a prepared failure, so a retry ends where it started.
+            raise RuntimeError("the text of this scan is illegible, so no facts could be read from it")
+        return extraction_for(doc)
+
+    def verify(self, text: str) -> dict:
+        # The second read finds nothing missing: the prepared extraction is already complete.
+        return {"missing_facts": []}
 
     def reconcile(self, text: str) -> dict:
         from watchdog.gui import demo_story
@@ -361,6 +373,9 @@ class CannedModel:
         out = []
         for ent in bundle:
             canned = demo_story.SYNTHESIS.get(ent["entity_id"])
+            later = demo_story.SYNTHESIS_LATER.get(ent["entity_id"])
+            if later and any(later[0] in ln.lower() for ln in ent["facts"]):
+                canned = later[1:]
             if canned is None:
                 self.unsynthesized.add(ent["entity_id"])
                 continue
@@ -421,7 +436,10 @@ class CannedModel:
 
     def briefing(self, text: str) -> dict:
         from watchdog.gui import demo_story
-        canned = demo_story.BRIEFINGS["main" if "council-minutes" in text else "early"]
+        rows_text = text.split("RESULTS:\n", 1)[1].split("\n\nNEAR-DUP ALERTS:", 1)[0]
+        which = ("waiting" if any(d["file"] in rows_text for d in waiting_docs())
+                 else "main" if "council-minutes" in text else "early")
+        canned = demo_story.BRIEFINGS[which]
         rows = json.loads(text.split("RESULTS:\n", 1)[1].split("\n\nNEAR-DUP ALERTS:", 1)[0])
         lines = [ln for r in rows for ln in r.get("key_facts") or [] if isinstance(ln, str)]
         return {k: cite(v, lines) if isinstance(v, str) else [cite(x, lines) for x in v]
@@ -451,7 +469,8 @@ class CannedModel:
                        effort=None):
         from watchdog import model_client
         text = model_client._flatten_prompt(prompt)
-        handlers = {"classify": self.classify, "extract": self.extract, "reconcile": self.reconcile,
+        handlers = {"classify": self.classify, "extract": self.extract, "verify": self.verify,
+                    "reconcile": self.reconcile,
                     "entity-synthesis": self.synthesis, "timeline-dedup": self.timeline_dedup,
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
                     "briefing": self.briefing, "relationship-labels": self.relationship_labels}
@@ -484,32 +503,42 @@ class CannedModel:
 
 # ── building the vault ──────────────────────────────────────────────────────────────────────
 
+def conversion(doc: dict) -> dict:
+    """What pre-processing reads from `doc`'s rendered file: its sha, pages and metadata, the
+    shape `preprocess` returns (no staging path, near-duplicate matches or sidecar yet)."""
+    from watchdog.pipeline import file_metadata
+    data = doc["path"].read_bytes()
+    sha = hashlib.sha256(data).hexdigest()
+    pages = [{"page": i, "markdown": md} for i, md in enumerate(doc["md"], 1)]
+    result = {
+        "filename": doc["file"], "sha256": sha, "page_count": len(pages), "pages": pages,
+        "metadata": ({"ocr_used": True, "garbled_detected": False, "source_type": "docling",
+                      "chunked": False} if doc.get("ocr") or doc["kind"] == "docx" else
+                     {"ocr_used": False, "garbled_detected": False, "source_type": "direct_text",
+                      "chunked": False}),
+        "file_metadata": file_metadata.extract(doc["path"]),
+    }
+    if doc["kind"] == "docx":
+        result["metadata"]["ocr_used"] = False
+    scanned = sorted(int(n) for n in doc.get("positions") or {})
+    if scanned and doc["kind"] == "pdf":
+        result["metadata"].update(ocr_used=True, source_type="docling", ocr_pages=scanned)
+    return result
+
+
 def _stage_chewed(vault: Path, docs: list[dict]) -> None:
     """Do what chew does for each document: stage the file, compute its near-duplicate matches
     against the vault and the rest of the batch, and write the queue descriptor."""
-    from watchdog.pipeline import file_metadata, sidecar, text_positions
+    from watchdog.pipeline import sidecar, text_positions
     from watchdog.pipeline.preprocess_batch import NearDupIndex, _compute_near_dup
     index = NearDupIndex.from_vault(vault)
     for doc in docs:
-        data = doc["path"].read_bytes()
-        sha = hashlib.sha256(data).hexdigest()
-        doc["sha"] = sha
+        result = conversion(doc)
+        sha = doc["sha"] = result["sha256"]
         staging = vault / ".watchdog" / "staging" / sha
         staging.mkdir(parents=True, exist_ok=True)
-        (staging / doc["file"]).write_bytes(data)
-        pages = [{"page": i, "markdown": md} for i, md in enumerate(doc["md"], 1)]
-        result = {
-            "filename": doc["file"], "sha256": sha, "page_count": len(pages), "pages": pages,
-            "metadata": ({"ocr_used": True, "garbled_detected": False, "source_type": "docling",
-                          "chunked": False} if doc.get("ocr") else
-                         {"ocr_used": False, "garbled_detected": False, "source_type": "direct_text",
-                          "chunked": False}),
-            "file_metadata": file_metadata.extract(doc["path"]),
-            "source_path": f".watchdog/staging/{sha}/{doc['file']}",
-        }
-        scanned = sorted(int(n) for n in doc.get("positions") or {})
-        if scanned and doc["kind"] == "pdf":
-            result["metadata"].update(ocr_used=True, source_type="docling", ocr_pages=scanned)
+        (staging / doc["file"]).write_bytes(doc["path"].read_bytes())
+        result["source_path"] = f".watchdog/staging/{sha}/{doc['file']}"
         text_positions.write(vault, sha, text_positions.block(doc.get("positions") or {}, "demo"))
         result["near_dup"] = _compute_near_dup(result, vault, index=index)
         result["document_type"] = None
@@ -519,36 +548,31 @@ def _stage_chewed(vault: Path, docs: list[dict]) -> None:
             json.dumps(result, ensure_ascii=False), encoding="utf-8")
 
 
-def _loose_ends(vault: Path) -> None:
-    """The state a vault is in mid-investigation: unchewed files, a failure, context, research."""
-    from watchdog.gui import demo_pdf
+def waiting_docs() -> list[dict]:
+    """The two files left waiting in `incoming/`, with prepared answers (D307)."""
+    from watchdog.gui.demo_docs_waiting import WAITING
+    return copy.deepcopy(WAITING)
+
+
+def failed_doc() -> dict:
+    from watchdog.gui.demo_docs_waiting import FAILED
+    return copy.deepcopy(FAILED)
+
+
+def _loose_ends(vault: Path) -> list[dict]:
+    """The state a vault is in mid-investigation: unchewed files, a failure, context, research.
+    Returns the waiting files' story entries, rendered into `incoming/`."""
     from watchdog.pipeline import research
     from watchdog.pipeline import orchestrate
 
-    incoming = incoming_dir(vault)
-    demo_pdf.write_pdf(
-        incoming / "pier-9-change-order-3.pdf",
-        [[("letterhead", "City of Port Calder", "Procurement and Real Property Division"),
-          ("title", "Change Order 3 - Contract C-2022-041"),
-          ("kv", [("Contract", "C-2022-041"), ("Contractor", "Northgate Civil Works Ltd."),
-                  ("Date", "March 3, 2023"), ("Amount", "$1,180,000")]),
-          ("p", "Additional quay-wall piling required by the Contract Administrator following the November "
-                "2022 survey. Charged against the mobilization and contingency allowance."),
-          ("p", "Approved: Leonard Pike, Director of Procurement and Real Property.")]],
-        title="Change Order 3", author="City of Port Calder", footer="Change Order 3  -  Page {n} of {total}")
-    demo_pdf.write_docx(
-        incoming / "site-meeting-notes-2022-09-14.docx", "Pier 9 site meeting notes, September 14, 2022",
-        ["Attendees: Harbourline Engineering, Northgate Civil Works, Tideway Marine Services, City staff.",
-         "Dredging 62 percent complete. Tideway asks that its next invoice go to the City directly.",
-         "Action: Contract Administrator to confirm whether direct payment is permitted."],
-        [["Item", "Owner", "Due"], ["Confirm direct payment of Tideway invoices", "Harbourline", "2022-09-21"],
-         ["Updated dredging schedule", "Tideway", "2022-09-28"]])
+    waiting = waiting_docs()
+    render_files(waiting, incoming_dir(vault))
 
     context = context_dir(vault)
     (context / "ledger-story-pier-9-award.md").write_text(CONTEXT_NOTE, encoding="utf-8")
     (context / "harbourfront-timeline.txt").write_text(CONTEXT_TIMELINE, encoding="utf-8")
 
-    sha = hashlib.sha256(b"scanned-memo-illegible.pdf").hexdigest()
+    sha = FAILED_SHA
     failed = vault / ".watchdog" / "queue" / "_failed"
     failed.mkdir(parents=True, exist_ok=True)
     (failed / f"{sha}.json").write_text(json.dumps({
@@ -571,7 +595,10 @@ def _loose_ends(vault: Path) -> None:
         "title": "Council agenda package, April 26, 2022 (staff report CR-2022-029)",
         "source_type": "government", "relevance": "Attachments to the Pier 9 award report"}]),
         encoding="utf-8")
+    return waiting
 
+
+FAILED_SHA = hashlib.sha256(b"scanned-memo-illegible.pdf").hexdigest()
 
 REPORTER = "Jordan Ellis"   # the fictional reporter whose checks the demo's ledger records
 
@@ -690,12 +717,24 @@ def build(target: Path, *, verbose: bool = False, sample: bool = False,
 
     step("Recording checks and loose ends")
     _verification(vault, docs)
-    _loose_ends(vault)
+    waiting = _loose_ends(vault)
     shutil.rmtree(work, ignore_errors=True)
     if sample:
+        # Every file the sample has a prepared answer for (D307), by content: the fourteen built
+        # in, the two waiting and the failed one. The waiting files' conversions are kept too, so
+        # pre-processing them in the app gives exactly the text the prepared answers were written on.
+        prepared = {d["sha"]: d["file"] for d in docs}
+        prepared[FAILED_SHA] = failed_doc()["file"]
+        conv_dir = vault / ".watchdog" / SAMPLE_CONVERSIONS
+        conv_dir.mkdir(parents=True, exist_ok=True)
+        for d in waiting:
+            c = conversion(d)
+            prepared[c["sha256"]] = d["file"]
+            (conv_dir / f"{c['sha256']}.json").write_text(json.dumps(c, ensure_ascii=False),
+                                                          encoding="utf-8")
         (vault / ".watchdog" / SAMPLE_MARKER).write_text(json.dumps(
-            {"sample": "port-calder", "built": datetime.now(timezone.utc).isoformat()}) + "\n",
-            encoding="utf-8")
+            {"sample": "port-calder", "built": datetime.now(timezone.utc).isoformat(),
+             "prepared": prepared}, indent=1) + "\n", encoding="utf-8")
         obsidian.register(vault)
     if canned.unsynthesized and not sample:
         print("demo: entities with no canned synthesis: " + ", ".join(sorted(canned.unsynthesized)),

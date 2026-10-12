@@ -2,7 +2,9 @@
 // the CLI: `ingest.preflight` supplies the warning text, the model plan and the auto-approve
 // verdict; when auto-approve clears the run it goes ahead with a notice, otherwise the person
 // acknowledges here. The job then runs with skip_warning, because the pause has been done. The
-// pause names the investigation it is for, and the job runs there even if another was opened.
+// pause names the investigation it is for, and the job runs there even if another was opened. A run
+// with every stage on a model server on this computer has no pause (D306): it starts without
+// skip_warning, so the worker makes that decision itself, and a notice says where it runs.
 
 import { ShieldAlert } from 'lucide-react'
 import { useCallback, useState } from 'react'
@@ -52,6 +54,13 @@ export function usePublicRecordsGate() {
         if (pf.documents_to_send === 0) {
           // Nothing will reach a model, so there is nothing to acknowledge.
           const job = await start(run, vault, false)
+          navigate({ view: 'activity', job: job.id })
+        } else if (pf.sample && pf.sample.unprepared.length > 0) {
+          // The sample refuses a file it has no prepared answer for (D307); say so before starting.
+          toast({ kind: 'error', title: 'Not an example file', body: `${pf.sample.refusal} ${pf.sample.unprepared.join(', ')}` })
+        } else if (!pf.ack_required && pf.auth.ok && !billingBlocked(pf.billing)) {
+          const job = await start(run, vault, false)
+          toast({ kind: 'info', title: `Processing ${plural(pf.documents_to_send, 'document')} from ${investigationName(vault)}`, body: pf.ack_note ?? undefined })
           navigate({ view: 'activity', job: job.id })
         } else if (pf.auto_approve.approve && !billingBlocked(pf.billing)) {
           toast({ kind: 'info', title: `Sending ${plural(pf.documents_to_send, 'document')} from ${investigationName(vault)} to the model`, body: 'Auto-approve is on and every step uses your Claude subscription.' })

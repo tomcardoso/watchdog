@@ -164,14 +164,20 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
     {
       id: 'add',
       title: 'Adding documents',
-      body: (t) => (
-        <>
-          <p>{t.incoming.length === 1 ? 'One file is' : `${t.incoming.length} files are`} waiting in this investigation’s incoming folder. Read documents converts them on this computer, at no cost.</p>
-          <p>Before anything goes to a model, Watchdog shows what processing will cost and asks you to confirm the files are public records. Nothing is sent unless you go ahead.</p>
-        </>
-      ),
+      body: (t) =>
+        t.incoming.length > 0 ? (
+          <>
+            <p>{t.incoming.length === 1 ? 'One file is' : `${t.incoming.length} files are`} waiting in this investigation’s incoming folder. Choose Read documents to add {t.incoming.length === 1 ? 'it' : 'them'} and watch the run: Watchdog converts each file on this computer, extracts its facts, then updates the entities, the timeline and the briefing.</p>
+            <p>In the sample, prepared answers stand in for the AI model, so nothing is sent anywhere and it costs nothing. When the run finishes, the Overview has a new briefing, with a new contradiction to look at. With your own documents, Watchdog first shows what processing will cost and asks you to confirm they are public records.</p>
+          </>
+        ) : (
+          <>
+            <p>The sample’s example files have been added. The newest briefing on the Overview is from that run.</p>
+            <p>With your own documents, Watchdog shows what processing will cost and asks you to confirm they are public records before anything goes to a model.</p>
+          </>
+        ),
       route: () => ({ view: 'home' }),
-      target: () => '.add-waiting',
+      target: (t) => (t.incoming.length > 0 ? '.add-waiting' : '.modal .add-label'),
       enter: open.add,
       leave: open.closeAdd
     },
@@ -181,7 +187,7 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
       body: () => (
         <>
           <p>Ask Claude answers questions about the investigation, citing the documents and pages it relied on, and can look for connections across the whole record.</p>
-          <p>It runs Claude inside this investigation, so it needs a Claude sign-in, which you can add in Settings under Models &amp; keys.</p>
+          <p>It runs Claude inside your investigation, so it needs a Claude sign-in, which you can add in Settings under Models &amp; keys. It is switched off in the sample, which never sends anything to a real model.</p>
         </>
       ),
       route: () => ({ view: 'ask' }),

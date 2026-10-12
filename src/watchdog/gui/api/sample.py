@@ -118,6 +118,7 @@ def tour_targets(v: Path) -> dict:
         "lead": lead,
         "search": "time-critical" if any("time-critical" in (p.read_text(encoding="utf-8", errors="replace"))
                                          for p in (v / "documents").rglob("*.md")) else None,
-        "incoming": incoming or None,
+        # Empty once the reporter has added the waiting files (D307); the tour says so then.
+        "incoming": incoming,
         "runs": len(runs) or None,
     }

@@ -52,17 +52,31 @@ def estimate(vault: str, ids: list[str] | None = None, all: bool = False) -> dic
     from watchdog.gui.engine_setup import engine_ready
     from watchdog.pipeline import history, ingest_setup, recheck
 
+    from watchdog.defaults import FINALIZER_MODEL
+    from watchdog.ops import sample
     v = require_vault(vault)
     wanted = _ids(ids, all)
-    backend, model, effort = recheck.finalizer_stage()
-    auth = _auth(backend)
-    info = _model(backend, model, effort, auth["mode"])
+    in_sample = sample.is_sample_folder(v)
+    if in_sample:
+        # Prepared answers (D307): no model, no key, no cost.
+        backend, model, effort = None, FINALIZER_MODEL, None
+        auth = {"mode": None, "ok": True, "reason": None}
+        info = {"model": "sample", "backend": "sample", "effort": None, "label": "sample",
+                "name": "prepared answers"}
+    else:
+        backend, model, effort = recheck.finalizer_stage()
+        auth = _auth(backend)
+        info = _model(backend, model, effort, auth["mode"])
     p = recheck.plan(v, wanted, model, backend)
-    cost = ingest_setup.recheck_cost_estimate(v, p["est_tokens"], model, info["backend"])
+    if in_sample:
+        cost = {**ingest_setup.recheck_cost_estimate(v, p["est_tokens"], model, "claude-api"),
+                "cost_low": 0.0, "cost_high": 0.0, "subscription": False, "price_multiplier": 1.0}
+    else:
+        cost = ingest_setup.recheck_cost_estimate(v, p["est_tokens"], model, info["backend"])
     return {"scope": "all" if wanted is None else "entities",
             "entities": p["entities"], "skipped": p["skipped"], "calls": len(p["calls"]),
-            "facts": p["facts"], **cost, "model": info, "auth": auth,
-            "billing": billing_summary(v, run_providers([backend])),
+            "facts": p["facts"], **cost, "model": info, "auth": auth, "sample": in_sample,
+            "billing": [] if in_sample else billing_summary(v, run_providers([backend])),
             "busy": history.run_in_progress(v), "engine_ready": engine_ready(),
             "max_entity_calls": recheck.MAX_ENTITY_CALLS}
 
@@ -77,15 +91,17 @@ def start(vault: str, ids: list[str] | None = None, all: bool = False) -> dict:
     jobs.require_engine(KIND)
     if history.run_in_progress(v):
         raise RpcError(recheck.BUSY, code="busy")
-    backend, model, _effort = recheck.finalizer_stage()
-    auth = _auth(backend)
-    if not auth["ok"]:
-        raise RpcError(auth["reason"] or "No way to reach Claude is set up yet.", code="auth_required")
-    from watchdog.auth import KeyChoiceError, check_run_keys
-    try:
-        check_run_keys(v, [backend])
-    except KeyChoiceError as e:      # the investigation's chosen key isn't here (D290)
-        raise RpcError(str(e), code="key_missing") from None
+    from watchdog.ops import sample
+    if not sample.is_sample_folder(v):          # the sample needs neither (D307)
+        backend, model, _effort = recheck.finalizer_stage()
+        auth = _auth(backend)
+        if not auth["ok"]:
+            raise RpcError(auth["reason"] or "No way to reach Claude is set up yet.", code="auth_required")
+        from watchdog.auth import KeyChoiceError, check_run_keys
+        try:
+            check_run_keys(v, [backend])
+        except KeyChoiceError as e:      # the investigation's chosen key isn't here (D290)
+            raise RpcError(str(e), code="key_missing") from None
     if wanted is None:
         params = {"all": True}
         label = "Re-check contradictions: whole investigation"

@@ -495,7 +495,16 @@ def _run_ingest_inner(
         except ValueError:
             return path.name
 
+    # The sample investigation's waiting files are read from their prepared text (D307), so the
+    # prepared answers match what processing sends; every other file is read as usual.
+    from watchdog.ops import sample as _sample
+    in_sample = _sample.is_sample_folder(vault)
+
     def _chew(path: Path) -> dict:
+        if in_sample:
+            prepared = _sample.prepared_conversion(vault, path)
+            if prepared is not None:
+                return prepared
         if transcribe.is_media(path):
             # Transcription already uses every core, so recordings go one at a time (D273).
             with _MEDIA_SLOT:

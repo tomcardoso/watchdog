@@ -127,6 +127,8 @@ Before Watchdog sends documents to a model, it shows the public-records warning 
 
 Turning on Auto-approve skips the pause when you are signed in with your Claude subscription and every step of the run (classifying, extracting and the finishing steps) uses it. Instead of the warning, Watchdog shows one line saying how many documents it is sending. The setup screen asks about this, with no as the default; this field changes it later. Turn it on only if you already check that what you add is public record.
 
+A run where every step uses a model server on this computer never shows the pause, with or without Auto-approve; see [Local and self-hosted models](#local-and-self-hosted-models).
+
 A run where any step uses a paid API key always asks, however small it is, and says why. Watchdog does not estimate a run's cost to decide this: an estimate from past runs can come out low, and the pause it would skip is the only check on what leaves your computer.
 
 ### Models
@@ -362,6 +364,8 @@ Cost is one reason to run a step on a model on your own computer or network, and
 `local` works with any server that speaks the OpenAI-compatible Chat Completions wire format: Ollama, LM Studio, llama.cpp's server, vLLM and others. Set **Local model URL** (for example `http://localhost:11434/v1`, Ollama's default) and choose a model such as `local:llama-3.3-70b` for a step.
 
 Most self-hosted runners do not check for an API key at all, so `local` does not ask for one unless you add it under Provider keys (some gateways in front of a local model do check). Because a self-hosted model's name carries no vendor namespace, Watchdog cannot infer its context window the way it does for a hosted model. Set **Local context window** to the real figure (check your model's card or your runner's documentation) so sectioning sizes sections correctly. Left unset, Watchdog assumes a conservative 8,000 tokens, which errs toward more, smaller sections rather than risking an overrun.
+
+When every step of a run (classifying, extracting and each finishing step) uses `local`, and **Local model URL** points at this computer (`localhost`, `127.0.0.1`, `::1` or `0.0.0.0`), Watchdog does not show the public-records pause: nothing goes to anyone else's server. It shows one line instead, saying where processing runs. A server at any other address, even one on your own network such as `192.168.1.20`, is another computer, so the pause still appears, and so does it for a run where any one step uses a hosted model. Watchdog cannot see what your model server does with the text: if you have set that server up to pass requests on to a cloud service, that is where the text goes.
 
 Usage reports a local call's cost as $0. That is accurate, since there is no per-token bill, but $0 is not the same as free: a local model spends wall-clock time instead, and a "local model" note next to the usual figures says so, so a run that took an hour does not read as having cost nothing.
 

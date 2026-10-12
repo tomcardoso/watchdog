@@ -55,6 +55,15 @@ CONTRADICTIONS = [
          b_value="Not competitively procured; no justification on file",
          b_doc="city-auditor-procurement-review-ar-2023-04", b_page=2,
          a_cite="following a competitive process", b_cite="not competitively procured"),
+    # Found only once the sample's waiting files are added (D307): the site meeting notes treat
+    # paying Tideway directly as an open question a month after the register shows the City did.
+    dict(entity_id="tideway-marine-services", label="Whether the City may pay Tideway directly",
+         a_value="The City paid Tideway $1,640,000 directly on August 15, 2022",
+         a_doc="capital-payment-register-2022", a_page=2,
+         b_value="On September 14, 2022 the Contract Administrator had still to confirm whether direct "
+                 "payment of Tideway's invoices is permitted",
+         b_doc="site-meeting-notes-2022-09-14", b_page=1,
+         a_cite="paid $1,640,000 directly to Tideway", b_cite="whether direct payment of Tideway"),
 ]
 
 # Entity synthesis: id -> (summary, analysis). Only entities that recur across documents get one.
@@ -264,6 +273,21 @@ SYNTHESIS = {
         None),
 }
 
+# Entity synthesis once the sample's waiting files are added (D307): id -> (a phrase of the new
+# fact that selects it, summary, analysis). Used in place of `SYNTHESIS` when the entity's facts
+# include that phrase.
+SYNTHESIS_LATER = {
+    "tideway-marine-services": (
+        "asked that its next invoice",
+        "Tideway Marine Services Ltd. owns the Dredge Calder Princess and dredged the Pier 9 approach "
+        "channel from June to November 2022 as Northgate's subcontractor. The City paid it $1,640,000 "
+        "directly on August 15, 2022 {{paid $1,640,000 directly to Tideway}}, and at a September 14 site "
+        "meeting Tideway asked that its next invoice go to the City directly {{asked that its next invoice}}.",
+        "The site meeting treated direct payment as an open question, with the Contract Administrator to "
+        "confirm whether it is permitted {{whether direct payment of Tideway}}, a month after the City had "
+        "already paid Tideway that way. Neither the subcontract nor the invoice has been seen."),
+}
+
 # Two briefings, one per ingest batch: the early run covers four documents from the City's side of
 # the story; the main run adds the registry, lobbying, audit and court records that connect them.
 BRIEFINGS = {
@@ -306,6 +330,42 @@ BRIEFINGS = {
         "open_questions": [
             "Who owns the company that sold the City 14 Dockside Road?",
             "Did Council know Northgate belonged to Meridian when it voted?",
+        ],
+    },
+    # The sample's waiting files, once the reporter adds them (D307).
+    "waiting": {
+        "investigation_status": (
+            "Two more records from the Pier 9 works: a third change order that adds $1,180,000 on the "
+            "Procurement Director's signature alone, and site meeting notes that treat paying Tideway "
+            "directly as an open question a month after the City had already done it."),
+        "what_was_ingested": [
+            "pier-9-change-order-3.pdf - Change Order: $1,180,000 more for quay-wall piling, approved by "
+            "Leonard Pike",
+            "site-meeting-notes-2022-09-14.docx - Meeting Notes: Tideway asks to be paid by the City directly",
+        ],
+        "new_entities": [],
+        "connections": [
+            "Tideway Marine Services, Northgate's dredging subcontractor, asked to send its invoices to the "
+            "City instead {{asked that its next invoice}}.",
+        ],
+        "leads": [
+            "Ask the City for Change Orders 1 and 2 to Contract C-2022-041 and the running total charged "
+            "against the $3,740,000 allowance.",
+            "Ask Harbourline Engineering whether it confirmed that paying Tideway directly is permitted, "
+            "and when.",
+        ],
+        "anomalies": [
+            "On September 14, 2022 the Contract Administrator had still to confirm whether the City may pay "
+            "Tideway directly {{whether direct payment of Tideway}}; the payment register shows the City paid "
+            "it $1,640,000 that way on August 15.",
+        ],
+        "emerging_patterns": [
+            "More money keeps reaching the Pier 9 works on one official's signature: Leonard Pike approved "
+            "Change Order 3 alone {{approved Change Order 3}}.",
+        ],
+        "open_questions": [
+            "How much of the $3,740,000 mobilization and contingency allowance is left after three change "
+            "orders?",
         ],
     },
     "main": {

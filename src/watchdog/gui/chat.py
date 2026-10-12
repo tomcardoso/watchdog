@@ -401,8 +401,12 @@ def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
 
 
 def _check_session_key(vault: Path) -> None:
-    """Refuse to open a session whose investigation chose an Anthropic key this computer lacks."""
+    """Refuse to open a session whose investigation chose an Anthropic key this computer lacks,
+    or in the sample investigation, which never reaches a real model (D307)."""
     from watchdog import auth
+    from watchdog.ops import sample
+    if sample.is_sample_folder(vault):
+        raise RpcError(sample.CHAT_REFUSAL, code="sample")
     try:
         auth.resolve_auth("anthropic", vault)
     except auth.KeyChoiceError as e:
