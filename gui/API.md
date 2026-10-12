@@ -273,6 +273,8 @@ Preflight = {
   models: [{stage: "classifier"|"extractor"|"finalizer"|"finalizer:<stage>", backend, model, effort|null, label}],
   auto_approve: {enabled: bool, approve: bool, blocker|null},  // ingest._auto_approve_verdict
   warning_text: string,              // the public-records warning, plain text, no ANSI
+  ack_required: bool,                // false: every stage on a model server on this computer (D306)
+  ack_note: string|null,             // the line shown instead of the acknowledgement then
   billing: [Billing]                 // which named key pays, per provider the run sends a key to
 }
 

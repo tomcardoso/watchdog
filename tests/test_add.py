@@ -92,6 +92,42 @@ def test_a_mixed_run_names_both_destinations(monkeypatch):
     assert not d["on_this_computer"]
 
 
+@pytest.mark.parametrize("host, loopback", [
+    ("localhost", True), ("LOCALHOST", True), ("127.0.0.1", True), ("127.8.9.1", True),
+    ("::1", True), ("0.0.0.0", True), ("192.168.1.20", False), ("10.0.0.2", False),
+    ("127.0.0.1.example.com", False), ("127.attacker.net", False), ("", False),
+])
+def test_only_a_loopback_address_counts_as_this_computer(host, loopback):
+    assert ing._is_loopback(host) is loopback
+
+
+def test_a_run_on_this_computer_passes_the_gate_and_says_so():
+    rep = CollectingReporter()
+    with using(rep):
+        assert ing._confirm_public_records(2, local_only="Processing runs on x.") is True
+    assert rep.text.strip() == "Processing runs on x."
+
+
+@pytest.mark.parametrize("url, backends, note", [
+    ("http://localhost:11434/v1", ["local", "local", "local"],
+     "Processing runs on the model server on this computer (localhost:11434); nothing is sent "
+     "to a cloud service."),
+    ("http://[::1]:8080/v1", ["local"],
+     "Processing runs on the model server on this computer ([::1]:8080); nothing is sent to a "
+     "cloud service."),
+    ("http://192.168.1.20:8000/v1", ["local"], None),
+    ("http://localhost:11434/v1", ["local", "openai", "local"], None),
+    ("http://localhost:11434/v1", ["local", None], None),    # a bare Claude tier is the cloud
+    (None, ["claude-api"], None),
+])
+def test_local_only_note(monkeypatch, url, backends, note):
+    if url:
+        monkeypatch.setenv("LOCAL_BASE_URL", url)
+    else:
+        monkeypatch.delenv("LOCAL_BASE_URL", raising=False)
+    assert ing.local_only_note(backends) == note
+
+
 def test_an_acknowledged_run_says_where_it_sends():
     rep = CollectingReporter()
     with using(rep):

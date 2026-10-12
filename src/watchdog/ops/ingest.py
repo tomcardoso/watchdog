@@ -251,6 +251,18 @@ _CLOUD_NAMES = {"anthropic": "Anthropic", "openai": "OpenAI", "deepseek": "DeepS
 _LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 
+def _is_loopback(host: str) -> bool:
+    """Whether `host` (a URL's hostname) is this computer: `localhost`, `0.0.0.0` or a loopback
+    IP address (127.0.0.0/8, ::1). A name that merely starts with "127." is not one."""
+    import ipaddress
+    if host.lower() in _LOOPBACK_HOSTS:
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+
 def _and(names: list[str]) -> str:
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]
 
@@ -280,7 +292,7 @@ def send_destination(backends) -> dict:
         parts = urlsplit(url) if url else None
         host = (parts.hostname or "") if parts else ""
         where = parts.netloc if parts and parts.netloc else None
-        if host in _LOOPBACK_HOSTS or host.startswith("127."):
+        if _is_loopback(host):
             on_this_computer = True
             local = f"the model server on this computer ({where})"
         elif where:
@@ -322,6 +334,17 @@ def _public_records_warning(n_docs: int, backends=None) -> str:
         f"{sent} {rule}\n\n"
         f"{n_docs} document{'s' if n_docs != 1 else ''} will be sent to the model."
     )
+
+
+def local_only_note(backends) -> str | None:
+    """The one line shown instead of the public-records acknowledgement when every stage of a run
+    sends text only to a model server on this computer (D306), or None when the run must ask. Decided
+    from the run's resolved backends and the configured `local_base_url` (`send_destination`), so
+    the run-time gate and the app's preflight cannot disagree."""
+    d = send_destination(backends)
+    if not d["on_this_computer"]:
+        return None
+    return f"Processing runs on {d['local']}; nothing is sent to a cloud service."
 
 
 def _auto_approve_on(config: dict) -> bool:
@@ -748,12 +771,18 @@ def _resolve_pinned_skill(opts: RunOptions, config: dict) -> str | None:
 
 
 def _confirm_public_records(n_docs: int, *, skip_warning: bool = False, gate: dict | None = None,
-                            enabled: bool = False, destination: str = "a cloud AI model") -> bool:
+                            enabled: bool = False, destination: str = "a cloud AI model",
+                            local_only: str | None = None) -> bool:
     """The point of no return before a run sends documents to a model (#426). The app shows the
     public-records warning and asks before it starts a run, then passes `skip_warning`; without
     it, nothing is sent. With `auto_approve` on (D263), a run whose `gate` verdict approves it
-    goes ahead without the question. A run that sends nothing (`n_docs == 0`) passes silently."""
+    goes ahead without the question. A run whose every stage is on this computer (`local_only`,
+    the line from `local_only_note`, D306) goes ahead and says so. A run that sends nothing
+    (`n_docs == 0`) passes silently."""
     if n_docs == 0:
+        return True
+    if local_only:
+        say(local_only)
         return True
     plural = "s" if n_docs != 1 else ""
     if enabled and (gate or {}).get("approve"):
@@ -925,7 +954,8 @@ def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
     auto = _auto_approve_on(config)
     gate = (_auto_approve_verdict(auth_mode=a["mode"], stages=plan.backends) if auto and q else None)
     if not _confirm_public_records(q, skip_warning=opts.skip_warning, gate=gate, enabled=auto,
-                                   destination=send_destination(plan.backends)["short"] if q else ""):
+                                   destination=send_destination(plan.backends)["short"] if q else "",
+                                   local_only=local_only_note(plan.backends) if q else None):
         _release_lock()
         return None
 
@@ -1146,7 +1176,8 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
         chew_workers: int | None = None, chunk_workers: int | None = None,
         limit: int | None = None) -> dict | None:
     """Adding documents. The app shows the public-records acknowledgement before it starts this
-    and passes `skip_warning` once it has; without it nothing is sent. `limit` sends at most that
+    and passes `skip_warning` once it has; without it nothing is sent, unless every stage runs on
+    a model server on this computer (D306). `limit` sends at most that
     many queued documents to the model, as the app's preflight counts and prices them; the rest
     stay queued for the next run."""
     require_vault(vault)

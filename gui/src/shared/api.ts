@@ -438,6 +438,10 @@ export interface Preflight {
   models: { stage: string; backend: string | null; model: string; effort: string | null; label: string }[]
   auto_approve: { enabled: boolean; approve: boolean; blocker: string | null }
   warning_text: string
+  /** False when every stage runs on a model server on this computer: no acknowledgement (D306). */
+  ack_required: boolean
+  /** The plain line shown instead of the acknowledgement when `ack_required` is false. */
+  ack_note: string | null
   /** Which labelled key pays for each provider the run uses (#690, D290). */
   billing?: Billing[]
 }

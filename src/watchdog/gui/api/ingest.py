@@ -98,7 +98,8 @@ def _model_rows(plan: Plan, auth_mode: str | None) -> list[dict]:
 @method("ingest.preflight")
 def preflight(vault: str, options: dict | None = None) -> dict:
     from watchdog.vault import count_awaiting_post, count_failed, count_incoming, count_queued
-    from watchdog.ops.ingest import _auto_approve_on, _auto_approve_verdict, _public_records_warning
+    from watchdog.ops.ingest import (_auto_approve_on, _auto_approve_verdict, _public_records_warning,
+                                     local_only_note)
     from watchdog.pipeline import orchestrate
 
     v = require_vault(vault)
@@ -113,6 +114,9 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         gate = _auto_approve_verdict(auth_mode=auth["mode"], stages=plan.backends)
         approve, blocker = bool(gate.get("approve")), gate.get("blocker")
 
+    # Every stage on a model server on this computer: no acknowledgement, one plain line (D306).
+    # The run decides again for itself at the gate; this only tells the app what it will do.
+    local_only = local_only_note(plan.backends)
     warning = strip_ansi(_public_records_warning(len(to_send), plan.backends)).strip("\n")
     warning = "\n".join(ln[2:] if ln.startswith("  ") else ln for ln in warning.splitlines())
     return {
@@ -128,6 +132,8 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         "models": _model_rows(plan, auth["mode"]),
         "auto_approve": {"enabled": enabled, "approve": approve, "blocker": blocker},
         "warning_text": warning,
+        "ack_required": local_only is None,
+        "ack_note": local_only,
     }
 
 
