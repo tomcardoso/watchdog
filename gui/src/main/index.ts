@@ -26,6 +26,19 @@ app.on('second-instance', () => {
   win.focus()
 })
 
+// Spell-checking uses the system's checker on macOS. Elsewhere Electron's own checker downloads
+// its dictionaries from a Google server at launch, which a reporter may not want the app to
+// contact, so there it is off (D308). Switching it off in `webPreferences` is not enough: the
+// session starts the download as it is created, before the app is ready, unless its language list
+// is empty by then (checked under Xvfb with a net log; an empty list also replaces a language a
+// profile saved earlier).
+const SPELLCHECK = process.platform === 'darwin'
+app.on('session-created', (ses) => {
+  if (SPELLCHECK) return
+  ses.setSpellCheckerLanguages([])
+  ses.setSpellCheckerEnabled(false)
+})
+
 let win: BrowserWindow | null = null
 // Quitting closes the window first, so a save of the reporter's notes still in flight reaches the
 // backend (and the renderer can ask to wait) before the backend is stopped.
@@ -89,7 +102,7 @@ async function createWindow(): Promise<void> {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
-      spellcheck: true
+      spellcheck: SPELLCHECK
     }
   })
   if (saved.maximized) win.maximize()
