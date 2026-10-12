@@ -581,16 +581,27 @@ function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions:
 // ── Step 3 ───────────────────────────────────────────────────────────────────
 function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflight; blocked: { name: string; reason: string | null }[] }; retry: boolean; folders: string[]; issues: string[]; error: string }) {
   const { pf, blocked } = gate
+  // A file with a reason is a duplicate pre-processing set aside, not a failure to read it.
+  const failed = blocked.filter((b) => !b.reason)
+  const skipped = blocked.filter((b) => b.reason)
   const n = countFor(pf, retry, folders.length)
   const finishing = n === 0 && !!(pf.pending_finalization || pf.staged > 0)
   const auto = pf.auto_approve
   return (
     <div className="col gap-16">
-      {(issues.length > 0 || blocked.length > 0) && (
+      {(issues.length > 0 || failed.length > 0) && (
         <Callout tone="warning" title="Some files could not be read">
           <ul className="add-issues">
             {issues.map((i) => <li key={i}>{i}</li>)}
-            {blocked.map((b) => <li key={b.name}>{b.name}{b.reason ? `: ${b.reason}` : ' was set aside in incoming/failed'}</li>)}
+            {failed.map((b) => <li key={b.name}>{b.name} was set aside in incoming/failed</li>)}
+          </ul>
+        </Callout>
+      )}
+      {skipped.length > 0 && (
+        <Callout tone="info" title="Already in this investigation">
+          These were read, matched a document Watchdog already has, and were set aside in incoming/skipped.
+          <ul className="add-issues">
+            {skipped.map((b) => <li key={b.name}>{b.name}: {b.reason}</li>)}
           </ul>
         </Callout>
       )}

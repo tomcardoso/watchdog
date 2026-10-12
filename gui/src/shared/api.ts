@@ -1069,6 +1069,6 @@ export interface WatchdogBridge {
     install(): Promise<void>
   }
   platform: string
-  /** The desktop app's version (package.json), e.g. 0.1.0-beta.3. */
+  /** The app's own release version (0.1.0-beta.3), which the updater compares; the engine's is `app.info`'s `version`. */
   appVersion: string
 }

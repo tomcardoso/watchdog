@@ -86,6 +86,17 @@ def test_enforcement_allows_only_granted_and_exempt_folders(home):
     assert not (home / "elsewhere" / "a.md").exists()
 
 
+def test_a_temporary_file_as_the_first_write_does_not_hang(home):
+    # tempfile locates its folder on first use by writing a probe file under a lock; the hook used
+    # to ask tempfile for that folder again from inside the write, and wait on the lock forever.
+    r = run(home, """
+        import tempfile
+        import watchdog
+        print(tempfile.mkdtemp())
+    """)
+    assert r.returncode == 0, r.stderr
+
+
 def test_without_the_variable_nothing_is_enforced(home):
     (home / "elsewhere" / "keep.txt").write_text("mine")
     r = run(home, PROBE, enforce=False)

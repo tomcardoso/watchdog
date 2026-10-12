@@ -41,7 +41,12 @@ import type { EngineProgress, EngineState, EngineStatus, EngineStep } from '../s
 
 export const PYTHON_VERSION = '3.12'
 const PROGRESS_PREFIX = '\x1eWDP '
-const MIN_FREE_BYTES = 8 * 1024 ** 3
+/** Free space an install needs: a new environment downloads Python, the libraries and the models
+ * (about 7 GB while it installs); updating a working one replaces the Watchdog package and any
+ * libraries that changed, which needs far less. */
+export function freeSpaceNeeded(updating: boolean): { bytes: number; label: string } {
+  return updating ? { bytes: 1 * 1024 ** 3, label: '1 GB' } : { bytes: 8 * 1024 ** 3, label: '7 GB' }
+}
 /** The environment variable the backend reads while phase 2 is incomplete (engine_setup.PENDING_ENV). */
 export const PENDING_ENV = 'WATCHDOG_ENGINE_PENDING'
 
@@ -554,7 +559,8 @@ export class Engine {
       }
       let rec = this.record()
       const coreCurrent = !!rec && rec.phases.includes('core') && (wheel ? rec.wheelSha256 === sha256(wheel) : true)
-      if (!coreCurrent || !existsSync(this.venvPython())) this.checkFreeSpace()
+      // Each app update brings a new wheel, so only a missing environment needs the full amount.
+      if (!coreCurrent || !existsSync(this.venvPython())) this.checkFreeSpace(!!rec && rec.phases.includes('core') && this.venvWorks())
 
       this.setStep('python', 'running', 'Downloading Python')
       if (!this.venvWorks()) {
@@ -653,11 +659,12 @@ export class Engine {
     return join(this.dir, 'requirements.lock')
   }
 
-  private checkFreeSpace(): void {
+  private checkFreeSpace(updating: boolean): void {
+    const need = freeSpaceNeeded(updating)
     try {
       const free = statfsSync(this.dir)
-      if (free.bavail * free.bsize < MIN_FREE_BYTES) {
-        throw new Error('There is not enough free space on this computer: Watchdog needs about 7 GB while it installs.')
+      if (free.bavail * free.bsize < need.bytes) {
+        throw new Error(`There is not enough free space on this computer: Watchdog needs about ${need.label} while it ${updating ? 'updates' : 'installs'}.`)
       }
     } catch (e) {
       if ((e as Error).message.startsWith('There is not')) throw e

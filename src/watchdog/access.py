@@ -199,5 +199,10 @@ def install() -> None:
     global _installed
     if _installed or not enforced():
         return
+    # Find the temporary folder before the hook exists. `tempfile` finds it on first use by writing
+    # a probe file while holding a lock that isn't re-entrant; with the hook in place, that write
+    # would call the hook, whose `_exempt_roots` asks `tempfile` for the folder again and waits on
+    # the same lock forever. Any process whose first file change was a temporary file hung.
+    tempfile.gettempdir()
     sys.addaudithook(_hook)
     _installed = True

@@ -1,6 +1,6 @@
 // IPC handlers behind the preload bridge (window.watchdog).
 
-import { BrowserWindow, Notification, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, Notification, app, dialog, ipcMain, shell } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { getPref, setPref } from './prefs'
@@ -126,6 +126,9 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
 
   ipcMain.handle('thumbs:get', (_e, key: string) => getThumb(key))
   ipcMain.handle('thumbs:put', (_e, key: string, dataUrl: string) => putThumb(key, dataUrl))
+  ipcMain.on('app:version', (e) => {
+    e.returnValue = app.getVersion()
+  })
   ipcMain.handle('prefs:get', (_e, key: string) => getPref(key))
   ipcMain.handle('prefs:set', (_e, key: string, value: unknown) => setPref(key, value))
   ipcMain.on('notify', (_e, title: string, body: string) => {

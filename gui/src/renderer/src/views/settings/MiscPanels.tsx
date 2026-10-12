@@ -300,7 +300,9 @@ export function AboutPanel() {
     <div className="col" style={{ gap: 18 }}>
       <section className="card card-pad">
         <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 660 }}>Watchdog</div>
-        <div className="muted" style={{ margin: '4px 0 14px' }}>Version <span className="tnum">{info.data?.version ?? '—'}</span></div>
+        <div className="muted" style={{ margin: '4px 0 14px' }}>
+          Version <span className="tnum">{window.watchdog.appVersion}</span> · engine <span className="tnum">{info.data?.version ?? '—'}</span>
+        </div>
         <div className="muted" style={{ maxWidth: '60ch', lineHeight: 1.55, marginBottom: 16 }}>
           Turns public-records documents into a linked, sourced investigation vault. Open source, and it runs on your computer.
         </div>
