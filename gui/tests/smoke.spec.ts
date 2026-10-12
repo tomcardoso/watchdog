@@ -513,3 +513,41 @@ test('the pause names its investigation after a switch', async () => {
     rmSync(root, { recursive: true, force: true })
   }
 })
+
+// A job's start and end refetch the reads that carry run state (the lock, the queue) even where no
+// screen shows them, so a screen opened after a job never opens on the state from before it.
+test('run state is refetched when a job ends, on screen or not', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'wd-e2e-'))
+  const home = join(root, 'home')
+  try {
+    execFileSync(python, ['-m', 'watchdog.gui.demo', join(root, 'vault'), '--home', home], { env: { ...process.env, PYTHONPATH: repoSrc }, stdio: 'inherit' })
+    const slug = Object.keys(JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8')))[0]
+    const app = await electron.launch({
+      args: [resolve(__dirname, '..'), '--no-sandbox'],
+      env: { ...process.env, HOME: home, WATCHDOG_PYTHON: python, WATCHDOG_SRC: repoSrc }
+    })
+    const page = await app.firstWindow()
+    await page.waitForSelector('.app', { timeout: 90_000 })
+    const vault = await page.evaluate(async (s) => {
+      const w = window as any
+      const p = await w.watchdog.rpc('projects.get', { slug: s })
+      w.__watchdogApp.getState().setProject(p)
+      return p.path as string
+    }, slug)
+    // Overview reads the pipeline; then a screen that does not, so that read sits in the cache.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'home' }))
+    await expect.poll(() => page.evaluate((v) => (window as any).__watchdogQueries.getQueryState(['vault.pipeline', { vault: v }])?.status ?? null, vault), { timeout: 30_000 }).toBe('success')
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'timeline' }))
+    await page.waitForTimeout(500)
+    const before = await page.evaluate((v) => (window as any).__watchdogQueries.getQueryState(['vault.pipeline', { vault: v }]).dataUpdatedAt as number, vault)
+    const id = await page.evaluate((v) => (window as any).watchdog.rpc('jobs.start', { vault: v, op: 'rebuild-timeline', params: {}, label: 'Rebuild the timeline' }).then((j: any) => j.id as string), vault)
+    await expect.poll(() => page.evaluate((i) => (window as any).__watchdogApp.getState().jobs[i]?.state ?? null, id), { timeout: 60_000 }).toBe('done')
+    await expect.poll(() => page.evaluate((v) => {
+      const st = (window as any).__watchdogQueries.getQueryState(['vault.pipeline', { vault: v }])
+      return st && !st.isInvalidated && st.fetchStatus === 'idle' ? st.dataUpdatedAt : 0
+    }, vault), { timeout: 15_000 }).toBeGreaterThan(before)
+    await app.close()
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})

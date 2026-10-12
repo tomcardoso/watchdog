@@ -10,6 +10,7 @@ import { Button, Empty, ErrorNote, Segmented, Skeleton, useDebounced } from '@re
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { fmtDuration } from '@renderer/lib/media'
 import { useRpc } from '@renderer/lib/rpc'
+import { useJobRunningIn } from '@renderer/lib/jobs'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import type { DocumentRow } from '@shared/api'
 import { PipelineStrip } from './PipelineStrip'
@@ -110,7 +111,8 @@ export default function DocumentsView() {
   const vault = useVault()
   const route = useApp((s) => s.route)
   const docsQ = useRpc('vault.documents', { vault })
-  const pipeQ = useRpc('vault.pipeline', { vault })
+  const running = useJobRunningIn(vault)
+  const pipeQ = useRpc('vault.pipeline', { vault }, { refetchInterval: running ? 4_000 : false })
 
   const [layout, setLayout] = useState<Layout>('grid')
   const [filter, setFilter] = useState(route.view === 'documents' ? route.filter ?? '' : '')

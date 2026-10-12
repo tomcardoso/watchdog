@@ -1,7 +1,7 @@
 // Starting and following operations, each run in a worker process (see gui/API.md § jobs, D298).
 
 import type { Job, OpName, OpParams } from '@shared/api'
-import { call, invalidate } from './rpc'
+import { call, invalidate, queryClient } from './rpc'
 import { toast, useApp } from './store'
 import { investigationName, isElsewhere, switchTo } from './investigation'
 
@@ -39,9 +39,39 @@ export function waitForJob(id: string): Promise<Job> {
 
 export const isRunning = (j: Job) => j.state === 'running'
 
+/** Whether a job is running in investigation `vault`: screens showing run state poll faster then. */
+export function useJobRunningIn(vault: string | null | undefined): boolean {
+  return useApp((s) => !!vault && Object.values(s.jobs).some((j) => j.state === 'running' && j.vault === vault))
+}
+
+// The reads that carry a run's lock and the pipeline's state (vault.pipeline's `locks`, queue and
+// failures; the summary's work counts). Overview keeps them cached while Documents is closed, so a
+// plain invalidation (which refetches only what is on screen) left Documents to open on the old
+// state until its own refetch landed. These are refetched at once whether on screen or not.
+const RUN_STATE = new Set(['vault.pipeline', 'vault.summary', 'vault.documents'])
+
+export function refreshRunState(): void {
+  void queryClient.invalidateQueries({ predicate: (q) => RUN_STATE.has(String(q.queryKey[0])), refetchType: 'all' })
+}
+
+const seenProgress = new Set<string>()
+
+/** A job took its lock: refetch run state on its start and again on its first progress, since the
+ * worker takes the lock a moment after `job.started`. */
+export function onJobStarted(): void {
+  refreshRunState()
+}
+export function onJobProgress(id: string): void {
+  if (seenProgress.has(id)) return
+  seenProgress.add(id)
+  refreshRunState()
+}
+
 /** Called for every job.finished event: refresh what the job may have changed, and tell the user.
  * A job that ran in an investigation other than the open one says which, with a way back to it. */
 export function onJobFinished(job: Job): void {
+  seenProgress.delete(job.id)
+  refreshRunState()
   invalidate('vault.', 'review.', 'projects.', 'usage.', 'research.', 'search.', 'ingest.')
   const ok = job.state === 'done'
   const elsewhere = isElsewhere(job.vault) ? investigationName(job.vault) : null
