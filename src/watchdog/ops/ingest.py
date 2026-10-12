@@ -809,20 +809,41 @@ def _warn_pending_research(vault: Path) -> None:
 
 # ── the runs ─────────────────────────────────────────────────────────────────────────────
 
+def _sample_opts(opts: RunOptions) -> RunOptions:
+    """A run in the sample investigation (D307): the reporter's model settings and options that
+    only a real model needs are set aside; what to process (limit, force, briefing) stays."""
+    return RunOptions(limit=opts.limit, force=opts.force, skip_briefing=opts.skip_briefing,
+                      wait=opts.wait, verify=False)
+
+
 def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
     """Process the queue: classify and extract each document, then, with `finalize`, run
     post-processing over the batch (adding documents, D251). Without it the extractions are
     staged and the batch waits for `finish` (processing only, D138). Returns the run's summary,
-    or None when there was nothing to do or nothing was sent."""
-    plan = resolve_plan(opts)
+    or None when there was nothing to do or nothing was sent.
+
+    In the sample investigation every call is answered with the sample's prepared answers
+    (D307), decided here from the folder's marker, whatever the app asked for."""
+    from watchdog.ops import sample
+    if sample.is_sample_folder(vault):
+        with sample.answers(vault):
+            return _process(vault, _sample_opts(opts), finalize=finalize, in_sample=True)
+    return _process(vault, opts, finalize=finalize)
+
+
+def _process(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool = False) -> dict | None:
+    plan = resolve_plan(opts, {} if in_sample else None)
     config = plan.config
     extract_backend, extract_model = plan.extract
     post_backend, post_model = plan.post
     classify_backend, classify_model = plan.classify
     overrides = plan.overrides
 
-    a = _require_auth(plan.backends)
-    _require_investigation_keys(vault, plan.backends)
+    if in_sample:
+        a = {"mode": None}
+    else:
+        a = _require_auth(plan.backends)
+        _require_investigation_keys(vault, plan.backends)
     try:
         concurrency = int(opts.concurrency or config.get("extract_concurrency")
                           or _DEFAULT_EXTRACT_CONCURRENCY)
@@ -904,7 +925,16 @@ def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
     # already staged or committed are counted out unless `force` re-extracts them.
     to_send = result["queue_files"] if opts.force else needs_extraction(vault, result["queue_files"])
     q = len(to_send)
-    if q:
+    if in_sample:
+        from watchdog.ops import sample
+        if sample.unprepared(vault, to_send):
+            from watchdog.pipeline.locks import release_lock
+            release_lock(processing_lock(vault))
+            processing_state(vault).unlink(missing_ok=True)
+            sample.refuse_unprepared(vault, to_send)
+    if q and in_sample:
+        say(f"Prepared answers: {q} example document{'s' if q != 1 else ''}, no model, no cost.")
+    elif q:
         from watchdog.pipeline.ingest_setup import cost_estimate
         est = cost_estimate(vault, to_send, _effective_extract_backend(extract_backend, a["mode"]))
         say(_format_cost_estimate(est))
@@ -953,9 +983,13 @@ def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
 
     auto = _auto_approve_on(config)
     gate = (_auto_approve_verdict(auth_mode=a["mode"], stages=plan.backends) if auto and q else None)
+    if in_sample:
+        local_only = sample.NOTE if q else None
+    else:
+        local_only = local_only_note(plan.backends) if q else None
     if not _confirm_public_records(q, skip_warning=opts.skip_warning, gate=gate, enabled=auto,
                                    destination=send_destination(plan.backends)["short"] if q else "",
-                                   local_only=local_only_note(plan.backends) if q else None):
+                                   local_only=local_only):
         _release_lock()
         return None
 
@@ -1084,10 +1118,16 @@ def finish(vault: Path, opts: RunOptions) -> dict | None:
     """Post-processing for an already-extracted batch: entity reconciliation, summaries, the
     timeline and the briefing. For a batch a rate limit or a stop left half-done, or one
     processing staged on its own."""
+    from watchdog.ops import sample
     from watchdog.pipeline import orchestrate
     if not orchestrate.has_pending_finalization(vault):
         say("Nothing to finish: process documents first.")
         return None
+    if sample.is_sample_folder(vault):          # prepared answers (D307)
+        plan = resolve_plan(_sample_opts(opts), {})
+        with sample.answers(vault):
+            return _run_finalize(vault, plan.post[1], plan.post_effort, plan.post[0],
+                                 skip_briefing=opts.skip_briefing, finalizer_overrides=plan.overrides)
     plan = resolve_plan(opts)
     _require_auth(plan.finalizer_backends)
     _require_investigation_keys(vault, plan.finalizer_backends)

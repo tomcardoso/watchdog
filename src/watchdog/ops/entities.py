@@ -56,8 +56,16 @@ def recheck_contradictions(rep, vault: Path, *, ids: list[str] = (), all: bool =
     require_vault(vault)
     if not all and not ids:
         sys.exit("Error: name the entities to re-check, or ask for the whole investigation.")
+    from watchdog.defaults import FINALIZER_MODEL
+    from watchdog.ops import sample
     try:
-        out = recheck.run(vault, None if all else list(ids), say=rep.log, warn=rep.warn)
+        if sample.is_sample_folder(vault):
+            # The sample answers from its prepared story (D307): no model, no key, no cost.
+            with sample.answers(vault):
+                out = recheck.run(vault, None if all else list(ids), model=FINALIZER_MODEL, backend=None,
+                                  say=rep.log, warn=rep.warn, check_keys=False)
+        else:
+            out = recheck.run(vault, None if all else list(ids), say=rep.log, warn=rep.warn)
     except recheck.Busy as e:
         sys.exit(f"Error: {e}")
     rep.log(recheck.summary(out))

@@ -102,7 +102,10 @@ def preflight(vault: str, options: dict | None = None) -> dict:
                                      local_only_note)
     from watchdog.pipeline import orchestrate
 
+    from watchdog.ops import sample
     v = require_vault(vault)
+    if sample.is_sample_folder(v):
+        return _sample_preflight(v, run_options(options))
     opts = run_options(options)
     plan = resolve_plan(opts)
     _queue_files, to_send = _queue(v, opts)
@@ -134,6 +137,32 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         "warning_text": warning,
         "ack_required": local_only is None,
         "ack_note": local_only,
+        "sample": None,
+    }
+
+
+def _sample_preflight(v, opts: RunOptions) -> dict:
+    """The preflight in the sample investigation (D307): the run answers from prepared answers,
+    so no auth, key, model or acknowledgement, and it names any queued file that would be refused."""
+    from watchdog.ops import sample
+    from watchdog.ops.ingest import _sample_opts
+    from watchdog.pipeline import orchestrate
+    from watchdog.vault import count_awaiting_post, count_failed, count_incoming, count_queued
+    _queue_files, to_send = _queue(v, _sample_opts(opts))
+    return {
+        "documents_to_send": len(to_send),
+        "incoming": count_incoming(v), "queued": count_queued(v), "staged": count_awaiting_post(v),
+        "failed": count_failed(v),
+        "pending_finalization": (orchestrate.pending_finalization(v)
+                                 if orchestrate.has_pending_finalization(v) else None),
+        "auth": {"mode": None, "ok": True, "reason": None},
+        "billing": [],
+        "models": [],
+        "auto_approve": {"enabled": False, "approve": False, "blocker": None},
+        "warning_text": "",
+        "ack_required": False,
+        "ack_note": sample.NOTE,
+        "sample": {"unprepared": sample.unprepared(v, to_send), "refusal": sample.REFUSAL},
     }
 
 
@@ -160,9 +189,13 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
     from watchdog.pipeline import ingest_setup, orchestrate
     from watchdog.vault import count_failed
 
+    from watchdog.ops import sample
     if stage not in ("dig", "bark"):
         raise RpcError("stage must be “dig” or “bark”.", code="bad_params")
     v = require_vault(vault)
+    if sample.is_sample_folder(v):
+        # Prepared answers (D307): nothing to price, whatever model the options name.
+        return {"text": "Estimated cost: $0.00. " + sample.NOTE, "estimate": None, "all_models": None}
     opts = run_options(options)
     plan = resolve_plan(opts)
 

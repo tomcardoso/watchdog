@@ -281,7 +281,8 @@ def _file(vault: Path, found: list[tuple[set[str], list]], entities: dict, ledge
 
 
 def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
-        backend: str | None = None, effort: str | None = None, say=print, warn=None) -> dict:
+        backend: str | None = None, effort: str | None = None, say=print, warn=None,
+        check_keys: bool = True) -> dict:
     """Re-check `ids` (every recurring entity when None) under the processing lock, then file what
     the model found. Raises `Busy` when a run holds the vault. A stop (Ctrl+C, the app's Cancel) or
     a failed call ends the calls early; what the finished calls found is still filed."""
@@ -296,8 +297,9 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
     if model is None:
         backend, model, effort = finalizer_stage()
     # The investigation's chosen key must be on this computer before any call (D290).
-    from watchdog.auth import check_run_keys
-    check_run_keys(vault, [backend])
+    if check_keys:
+        from watchdog.auth import check_run_keys
+        check_run_keys(vault, [backend])
     lock = processing_lock(vault)
     if not acquire_or_take_stale(lock, lock_contents("recheck-contradictions"),
                                  STALE_SECONDS):
