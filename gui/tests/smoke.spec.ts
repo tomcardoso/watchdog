@@ -481,6 +481,28 @@ test('the pause names its investigation after a switch', async () => {
     await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().project?.name)).toBe('Port Calder Waterfront')
     await expect(page.locator('.modal .callout', { hasText: 'This is for' })).toHaveCount(0)
     await expect(page.locator('.modal')).toContainText('Before sending documents from Port Calder Waterfront to a model')
+    // A toast raised while the dialog is open sits clear of it: it never covers the acknowledgement,
+    // even in a small window where the dialog reaches the bottom right corner.
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setContentSize(1000, 680))
+    await page.waitForTimeout(300)
+    await page.evaluate(() => {
+      const s = (window as any).__watchdogApp.getState()
+      for (let i = 0; i < 3; i++) s.toast({ kind: 'error', title: `Toast ${i}`, body: 'A longer body that wraps onto a second line in the toast.' })
+    })
+    await expect(page.locator('.toast')).toHaveCount(3)
+    await page.waitForTimeout(300)
+    // Measured in one pass in the page, well inside the toasts' nine seconds on screen.
+    const covered = await page.evaluate(() => {
+      const ack = [...document.querySelectorAll('.modal-footer button')].find((b) => b.textContent?.includes('Acknowledge and add'))
+      const dialog = document.querySelector('.modal')
+      const toasts = [...document.querySelectorAll('.toast')].map((t) => t.getBoundingClientRect())
+      if (!ack || !dialog || toasts.length !== 3) return 'not measured'
+      const meets = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+      if (toasts.some((t) => meets(t, ack.getBoundingClientRect()))) return 'a toast covers Acknowledge and add'
+      if (toasts.some((t) => meets(t, dialog.getBoundingClientRect()))) return 'a toast covers the dialog'
+      return null
+    })
+    expect(covered).toBeNull()
     // The document was read into the first investigation, not the one opened meanwhile.
     const queued = (dir: string) => (existsSync(join(root, dir, '.watchdog', 'queue')) ? readdirSync(join(root, dir, '.watchdog', 'queue')) : []).length
     // Both demos start with the same queue; only the first gained the new document.
