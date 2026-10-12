@@ -113,7 +113,7 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         gate = _auto_approve_verdict(auth_mode=auth["mode"], stages=plan.backends)
         approve, blocker = bool(gate.get("approve")), gate.get("blocker")
 
-    warning = strip_ansi(_public_records_warning(len(to_send))).strip("\n")
+    warning = strip_ansi(_public_records_warning(len(to_send), plan.backends)).strip("\n")
     warning = "\n".join(ln[2:] if ln.startswith("  ") else ln for ln in warning.splitlines())
     return {
         "documents_to_send": len(to_send),
