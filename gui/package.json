@@ -23,9 +23,9 @@
     "predist:win": "node scripts/prepare-engine.mjs --target win --arch x64",
     "predist:linux": "node scripts/prepare-engine.mjs --target linux --arch x64",
     "dist": "electron-vite build && electron-builder --config electron-builder.config.cjs",
-    "dist:mac": "electron-vite build && electron-builder --config electron-builder.config.cjs --mac",
-    "dist:win": "electron-vite build && electron-builder --config electron-builder.config.cjs --win",
-    "dist:linux": "electron-vite build && electron-builder --config electron-builder.config.cjs --linux",
+    "dist:mac": "electron-vite build && node scripts/check-runtime-deps.mjs && electron-builder --config electron-builder.config.cjs --mac",
+    "dist:win": "electron-vite build && node scripts/check-runtime-deps.mjs && electron-builder --config electron-builder.config.cjs --win",
+    "dist:linux": "electron-vite build && node scripts/check-runtime-deps.mjs && electron-builder --config electron-builder.config.cjs --linux",
     "check:colours": "node scripts/check-colours.mjs"
   },
   "devDependencies": {
