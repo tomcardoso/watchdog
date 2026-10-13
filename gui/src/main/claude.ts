@@ -2,11 +2,41 @@
 // claude-agent-sdk package (the same copy the in-app chat runs). `claude auth login --claudeai`
 // opens the browser; this module then polls `claude auth status --json` until it reports a login.
 
-import { ChildProcess, spawn, spawnSync } from 'node:child_process'
+import { ChildProcess, execFile, spawn, spawnSync } from 'node:child_process'
 import { delimiter } from 'node:path'
 import { createInterface } from 'node:readline'
 
-export interface ClaudeStatus { installed: boolean; loggedIn: boolean }
+/** How Claude Code on this computer is signed in. `claude.ai` is a subscription login (what
+ * `claude auth login --claudeai` makes); `oauth_token` is a long-lived subscription token from the
+ * environment; `api_key` is an Anthropic API key. Anything else (a cloud provider, a gateway) is `other`. */
+export type ClaudeMethod = 'subscription' | 'token' | 'api_key' | 'other'
+export interface ClaudeStatus {
+  installed: boolean
+  loggedIn: boolean
+  /** Null when not signed in. */
+  method: ClaudeMethod | null
+  /** The subscription plan (for example `pro` or `max`), when the program reports one. */
+  plan: string | null
+  email: string | null
+}
+
+const NOT_SIGNED_IN: ClaudeStatus = { installed: true, loggedIn: false, method: null, plan: null, email: null }
+
+/** True for a login that runs on a Claude subscription, not an API key. */
+export const usesSubscription = (s: Pick<ClaudeStatus, 'loggedIn' | 'method'>): boolean => s.loggedIn && (s.method === 'subscription' || s.method === 'token')
+
+/** Read the JSON of `claude auth status --json`. */
+export function parseAuthStatus(stdout: string): ClaudeStatus {
+  try {
+    const j = JSON.parse(stdout) as Record<string, unknown>
+    if (j.loggedIn !== true) return NOT_SIGNED_IN
+    const text = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null)
+    const method: ClaudeMethod = j.authMethod === 'claude.ai' ? 'subscription' : j.authMethod === 'oauth_token' ? 'token' : j.authMethod === 'api_key' ? 'api_key' : 'other'
+    return { installed: true, loggedIn: true, method, plan: text(j.subscriptionType), email: text(j.email) }
+  } catch {
+    return NOT_SIGNED_IN
+  }
+}
 
 const POLL_MS = 2000
 const GIVE_UP_MS = 10 * 60 * 1000
@@ -26,17 +56,23 @@ export class ClaudeSignIn {
     this.simulate = simulate
   }
 
+  /** The sign-in check while a login is in progress; blocks, so only used where nothing else waits on it. */
   status(): ClaudeStatus {
-    if (this.simulate) return { installed: true, loggedIn: false }
+    if (this.simulate) return NOT_SIGNED_IN
     const cli = this.cli()
-    if (!cli) return { installed: false, loggedIn: false }
+    if (!cli) return { ...NOT_SIGNED_IN, installed: false }
     const r = spawnSync(cli, ['auth', 'status', '--json'], { encoding: 'utf8', timeout: 20000, env: this.env() })
-    if (r.status !== 0 && !r.stdout) return { installed: true, loggedIn: false }
-    try {
-      return { installed: true, loggedIn: JSON.parse(r.stdout).loggedIn === true }
-    } catch {
-      return { installed: true, loggedIn: false }
-    }
+    return parseAuthStatus(r.stdout ?? '')
+  }
+
+  /** The same check without blocking the main process, for the screen that asks on load. */
+  statusAsync(): Promise<ClaudeStatus> {
+    if (this.simulate) return Promise.resolve(NOT_SIGNED_IN)
+    const cli = this.cli()
+    if (!cli) return Promise.resolve({ ...NOT_SIGNED_IN, installed: false })
+    return new Promise((resolve) => {
+      execFile(cli, ['auth', 'status', '--json'], { encoding: 'utf8', timeout: 20000, env: this.env(), windowsHide: true }, (_err, stdout) => resolve(parseAuthStatus(stdout ?? '')))
+    })
   }
 
   cancel(): void {
@@ -87,11 +123,11 @@ export class ClaudeSignIn {
       child.on('close', (code) => {
         if (done) return
         // The command can exit once the browser step is complete; the status is the truth.
-        if (this.status().loggedIn) finish({ ok: true, message: null })
+        if (usesSubscription(this.status())) finish({ ok: true, message: null })
         else finish({ ok: false, message: code === 0 ? 'Sign-in did not complete.' : tail.slice(-2).join(' ') || 'Sign-in did not complete.' })
       })
       const poll = setInterval(() => {
-        if (this.status().loggedIn) finish({ ok: true, message: null })
+        if (usesSubscription(this.status())) finish({ ok: true, message: null })
       }, POLL_MS)
       const giveUp = setTimeout(() => finish({ ok: false, message: 'Sign-in timed out. Try again.' }), GIVE_UP_MS)
       this.stop = () => finish({ ok: false, message: 'Sign-in was cancelled.' })

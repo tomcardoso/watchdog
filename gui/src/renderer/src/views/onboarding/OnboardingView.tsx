@@ -254,14 +254,21 @@ function FolderStep({ next, back }: { next: (dir: string) => void; back: () => v
 
 // ── d. provider ──────────────────────────────────────────────────────────────
 
+type ClaudeLogin = Awaited<ReturnType<typeof window.watchdog.claude.status>>
+/** A login that runs on a subscription. An API key signed in to Claude Code is not one. */
+const onSubscription = (s: ClaudeLogin) => s.loggedIn && (s.method === 'subscription' || s.method === 'token')
+const planName = (s: ClaudeLogin) => (s.plan ? `${s.plan.charAt(0).toUpperCase()}${s.plan.slice(1)} plan` : null)
+
 function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { onSignedIn: () => void; label?: string }) {
   const [phase, setPhase] = useState<'idle' | 'waiting' | 'done'>('idle')
   const [url, setUrl] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [login, setLogin] = useState<ClaudeLogin | null>(null)
   useEvent('claude.signin', (d) => setUrl(d.url))
   useEffect(() => {
     void window.watchdog.claude.status().then((s) => {
-      if (s.loggedIn) {
+      setLogin(s)
+      if (onSubscription(s)) {
         setPhase('done')
         onSignedIn()
       }
@@ -280,9 +287,17 @@ function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { onSignedI
       setError(r.message ?? 'Sign-in did not complete.')
     }
   }
-  if (phase === 'done') return <div className="onb-ok"><CheckCircle2 /> Signed in to Claude</div>
+  if (phase === 'done') {
+    const detail = [login && planName(login), login?.email].filter(Boolean).join(', ')
+    return <div className="onb-ok"><CheckCircle2 /> Signed in to Claude{detail ? ` (${detail})` : ''}</div>
+  }
   return (
     <div className="col gap-12">
+      {login?.loggedIn && !onSubscription(login) && (
+        <div className="onb-note">
+          Claude on this computer is signed in with an API key, not a subscription. Sign in with your Claude account to use a subscription.
+        </div>
+      )}
       <div className="row">
         {phase === 'waiting' ? (
           <>
@@ -318,6 +333,13 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [claudeIn, setClaudeIn] = useState(false)
+  // A Claude subscription already signed in on this computer is found on arrival and chosen for
+  // the user, who can still pick another card. An API key signed in to Claude Code is not one.
+  useEffect(() => {
+    void window.watchdog.claude.status().then((s) => {
+      if (onSubscription(s)) setChoice((c) => c ?? 'subscription')
+    })
+  }, [])
 
   const providers = (status.data?.providers ?? []).filter((p: { provider: string }) => p.provider !== 'anthropic') as { provider: string; label: string; requires_key: boolean; base_url_setting: string | null }[]
   const meta = providers.find((p) => p.provider === provider)

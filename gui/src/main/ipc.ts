@@ -49,7 +49,7 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
   ipcMain.handle('engine:install', (_e, opts: { fresh?: boolean } = {}) => runInstall(backend, engine, !!opts.fresh))
   ipcMain.handle('engine:reinstall', () => runInstall(backend, engine, true))
   ipcMain.handle('engine:cancel', () => engine.cancel())
-  ipcMain.handle('claude:status', () => claude.status())
+  ipcMain.handle('claude:status', () => claude.statusAsync())
   ipcMain.handle('claude:signIn', () => claude.signIn())
   ipcMain.handle('claude:cancel', () => claude.cancel())
 

@@ -1052,7 +1052,7 @@ export interface WatchdogBridge {
     reinstall(): Promise<EngineStatus>
   }
   claude: {
-    status(): Promise<{ installed: boolean; loggedIn: boolean }>
+    status(): Promise<{ installed: boolean; loggedIn: boolean; method: 'subscription' | 'token' | 'api_key' | 'other' | null; plan: string | null; email: string | null }>
     /** Opens the browser; resolves when the person has signed in, or with the reason it did not. */
     signIn(): Promise<{ ok: boolean; message: string | null }>
     cancel(): Promise<void>
