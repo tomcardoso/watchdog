@@ -276,7 +276,8 @@ export default function ChatWorkspace(p: Props) {
   useEffect(() => {
     // A prompt arriving while a conversation is open (the palette's "Ask Claude") goes into it,
     // as if typed.
-    if (!p.prompt) lastPrompt.current = null
+    // In the sample nothing reaches Claude (D307, D309): the prepared questions stand in.
+    if (!p.prompt || demo) lastPrompt.current = null
     else if (p.prompt !== lastPrompt.current) {
       lastPrompt.current = p.prompt
       handledPrompt.current = true
