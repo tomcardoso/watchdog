@@ -15,7 +15,7 @@
   padding: 18px 28px 0;
   -webkit-app-region: drag;
 }
-/* Below the macOS window buttons, which sit in the top-left corner. */
+/* Below the macOS window buttons, which sit in the top-left corner (the class is on <html>, set in main.tsx). */
 .platform-darwin .onb-top { padding-top: 44px; }
 .onb-brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: -0.01em; color: var(--text); }
 .onb-brand svg { width: 22px; height: 22px; color: var(--text); }

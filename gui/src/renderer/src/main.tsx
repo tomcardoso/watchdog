@@ -11,6 +11,10 @@ import { createRoot } from 'react-dom/client'
 import { queryClient } from './lib/rpc'
 import App from './App'
 
+// The platform class goes on <html>, not only on the app shell, so first-run setup (which renders
+// before the shell) also clears the macOS window buttons.
+document.documentElement.classList.add(`platform-${window.watchdog.platform}`)
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
