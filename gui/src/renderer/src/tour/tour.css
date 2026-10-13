@@ -7,7 +7,8 @@
   pointer-events: none;
   border-radius: var(--r-lg);
   box-shadow: 0 0 0 3px var(--marker), 0 0 0 9px var(--highlight);
-  transition: top var(--dur) var(--ease), left var(--dur) var(--ease), width var(--dur) var(--ease), height var(--dur) var(--ease);
+  /* No transition on top/left: the ring is placed every frame, and easing it lags behind scrolling. */
+  transition: width var(--dur) var(--ease), height var(--dur) var(--ease);
   animation: tour-ring-in 260ms var(--ease);
 }
 @keyframes tour-ring-in {

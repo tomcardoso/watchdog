@@ -263,7 +263,7 @@ function useTargetBox(selector: string | null, key: string): Box | null {
     let scrolled = false
     let last: Box | null = null
     const started = Date.now()
-    const tick = () => {
+    const measure = () => {
       let el: Element | null = null
       try {
         el = document.querySelector(selector)
@@ -285,10 +285,19 @@ function useTargetBox(selector: string | null, key: string): Box | null {
         last = null
         setBox(null)
       }
+    }
+    const tick = () => {
+      measure()
       frame = requestAnimationFrame(tick)
     }
+    // A scroll in any container (they don't bubble, hence capture) re-measures at once, so the ring
+    // is placed in the same frame as the scrolled content rather than a frame behind it.
+    window.addEventListener('scroll', measure, { capture: true, passive: true })
     frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
+    return () => {
+      window.removeEventListener('scroll', measure, { capture: true })
+      cancelAnimationFrame(frame)
+    }
   }, [selector, key])
   return box
 }
