@@ -71,7 +71,7 @@ The first time Watchdog opens, it walks through setup. Each step has a **Continu
 
    If you are not ready, **Set up later** skips this step, and Watchdog asks again when it needs a model.
 5. **Confirm what you send.** Before documents go to a model, Watchdog normally pauses and asks you to confirm they are public records. You can choose to skip that pause for runs that use only your Claude subscription. The default, **Ask before every run**, is recommended. A run that uses a paid API key always asks. Choose **Finish setup**. You can change this later; see [Auto-approve](configuration.md#auto-approve).
-6. **Ready.** Choose **Create my first investigation**, **Explore a sample investigation** to learn the app on a made-up case first (see [Try the sample investigation](getting-started.md#try-the-sample-investigation)), or **Open Watchdog** to look around.
+6. **Ready.** Choose **Get started**, which offers the sample investigation: a made-up case with a short guided tour (see [Try the sample investigation](getting-started.md#try-the-sample-investigation)). Choose **Cancel** there to go straight to your own work. **Explore a sample investigation** starts the tour without asking, and **Open Watchdog** just opens the app.
 
 > **Public records only.** The originals of your files never leave your computer, and document conversion runs locally. But the extracted text of each document is sent to the AI model you chose, and that cannot be taken back. Use Watchdog only on documents that are public, or presumptively public. Never use it with confidential source communications, leaked or unpublished material, private correspondence, or anything that could identify a source.
 

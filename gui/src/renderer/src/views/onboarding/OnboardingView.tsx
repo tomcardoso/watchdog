@@ -30,7 +30,7 @@ interface Props {
   mode: OnboardingMode
   /** WATCHDOG_FORCE_ONBOARDING: a step id to start on. */
   forceStep?: string | null
-  /** `next`: what to open once setup is done (a new investigation, or the sample and its tour). */
+  /** `next`: what to open once setup is done (the sample investigation's prompt, or the sample and its tour straight away). */
   onDone: (next?: 'new' | 'sample') => void
   onBackendAction: (fn: () => Promise<BackendStatus>) => Promise<void>
 }
@@ -502,7 +502,7 @@ function DoneStep({ onDone }: { onDone: (next?: 'new' | 'sample') => void }) {
       <div className="onb-footer">
         <span className="spacer" />
         <Button size="lg" onClick={() => onDone()}>Open Watchdog</Button>
-        <Button variant="primary" size="lg" icon={Sparkles} onClick={() => onDone('new')}>Create my first investigation</Button>
+        <Button variant="primary" size="lg" icon={Sparkles} onClick={() => onDone('new')}>Get started</Button>
       </div>
     </>
   )

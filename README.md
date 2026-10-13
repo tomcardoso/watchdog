@@ -65,7 +65,7 @@ Open it and install as you would any app. The first time Watchdog opens, it walk
 ## Quick start
 
 1. Open Watchdog and finish the first-run setup.
-2. Choose **Create my first investigation** (or **New investigation…** from the File menu), and give it a name.
+2. Choose **New investigation…** from the File menu (or from the Investigations screen), and give it a name.
 3. Drag your documents onto the window, or choose **Add documents**.
 4. Confirm that the documents are public records, then watch them being read.
 5. Open the briefing, browse the **Documents**, **Entities**, **Timeline** and **Network** screens, and choose **Ask Claude** to ask a question.

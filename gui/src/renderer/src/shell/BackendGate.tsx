@@ -64,7 +64,9 @@ export function BackendGate({ children }: { children: ReactNode }) {
     setDismissed(true)
     setSetupDone(true)
     await refresh()
-    const command = next === 'new' ? 'new-investigation' : next === 'sample' ? 'take-tour' : null
+    // 'new' opens the sample investigation's prompt (the one behind "Sample investigation"), which
+    // offers the guided tour and has a Cancel for going straight to a first investigation.
+    const command = next === 'new' ? 'explore-sample' : next === 'sample' ? 'take-tour' : null
     if (command) setTimeout(() => window.dispatchEvent(new CustomEvent('wd:command', { detail: command })), 150)
   }
 
