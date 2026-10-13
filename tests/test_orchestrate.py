@@ -5696,3 +5696,27 @@ def test_withhold_brief_keeps_context_md_out_of_extraction_only(tmp_path, monkey
     assert prompts_by_task["extract"]
     assert any(marker in p for p in prompts_by_task["extract"]) is not withhold
     assert any(marker in p for p in prompts_by_task["briefing"])
+
+
+def test_two_runs_ending_in_the_same_second_keep_both_usage_records(tmp_path, monkeypatch):
+    """Usage files are named to the second; a run ending in the same second as the last one
+    used to overwrite its record. The second run now takes the next free second."""
+    import datetime as _dt
+    from watchdog.pipeline import orchestrate
+
+    frozen = _dt.datetime(2026, 10, 13, 17, 51, 40, 250000, tzinfo=_dt.timezone.utc)
+
+    class _Frozen(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(orchestrate.datetime, "datetime", _Frozen)
+    vault = make_vault(tmp_path)
+    rec = {"input_tokens": 10, "output_tokens": 5, "cache_read_tokens": 0, "cache_write_tokens": 0,
+           "cost_usd": 1.0, "latency_s": 0.1}
+    a = orchestrate._write_usage(vault, [{**rec, "task": "extract"}])
+    b = orchestrate._write_usage(vault, [{**rec, "task": "briefing"}])
+    assert a.endswith("usage-20261013T175140Z.json") and b.endswith("usage-20261013T175141Z.json")
+    runs = orchestrate.usage_files(vault)
+    assert [json.loads(p.read_text())["calls"][0]["task"] for p in runs] == ["extract", "briefing"]
