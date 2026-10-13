@@ -457,7 +457,7 @@ export default function ChatWorkspace(p: Props) {
             {!conversation && !loading && (demo ? <SampleEmpty name={project.name} questions={questions.data ?? []} onPick={(id) => void playback.play(id)} /> : p.empty(api))}
             {loading && <Skeleton h={80} />}
             {msgs.map((m) => {
-              if (m.role === 'tool') return <ToolRow key={m.id} msg={m} />
+              if (m.role === 'tool') return <ToolRow key={m.id} msg={m} vault={vault} />
               if (m.role === 'system') return <div key={m.id} className="chat-system">{m.text}</div>
               if (m.role === 'user')
                 return (
