@@ -57,9 +57,13 @@ module.exports = {
   },
   dmg: {
     title: 'Watchdog',
+    // The icons are placed by centre, measured from the top of the window's content area. Finder
+    // shows the toolbar (and sometimes the path bar) above that area, so the visible height is
+    // less than `height`; y sits the row about the middle of what is left.
+    window: { width: 540, height: 300 },
     contents: [
-      { x: 130, y: 220 },
-      { x: 410, y: 220, type: 'link', path: '/Applications' }
+      { x: 130, y: 115 },
+      { x: 410, y: 115, type: 'link', path: '/Applications' }
     ]
   },
   win: {
