@@ -123,7 +123,7 @@ A few things this benchmark doesn't cover yet:
   OpenAI's GPT-6 Luna; Google's Gemini 3.8 Flash
   and 3.5 Flash-Lite; and DeepSeek Flash and Pro, every one with the same short brief written as
   open questions. Its numbers are not comparable with the tables above. Claude Sonnet 5.5 and
-  Haiku 5.5 each run at low, medium and high effort. Every setting runs once, so read a gap
+  Haiku 5.5, GPT-6 Luna and Gemini 3.8 Flash each run at low, medium and high effort. Every setting runs once, so read a gap
   between two settings as a lead to check, not a result: single runs of one setting have
   differed by up to three times.
 - **Classifying document types.** The current document set only spans two of Watchdog's record

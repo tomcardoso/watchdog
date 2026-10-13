@@ -3009,13 +3009,13 @@ def test_repeat_table_says_so_when_nothing_was_repeated():
 
 
 def test_shipped_benchmark_yaml_runs_each_arm_once_and_sweeps_claude_effort():
-    """The owner's matrix (D314): one run per arm, and Sonnet 5.5 and Haiku 5.5 each at low,
-    medium and high for extraction."""
+    """The owner's matrix (D314): one run per arm, and Sonnet 5.5, Haiku 5.5, GPT-6 Luna and
+    Gemini 3.8 Flash each at low, medium and high for extraction."""
     config = rb.load_config(BENCHMARKS_DIR / "benchmark.yaml")
     for stage in ("extractor_sweep", "finalizer_sweep"):
         assert not [a["id"] for a in config[stage]["arms"] if a.get("repeat_of")], stage
     ids = {a["id"] for a in config["extractor_sweep"]["arms"]}
-    for model in ("sonnet-5.5", "haiku-5.5"):
+    for model in ("sonnet-5.5", "haiku-5.5", "gpt-6-luna", "gemini-3.8-flash"):
         assert {f"{model}-{e}" for e in ("low", "med", "high")} <= ids, model
 
 

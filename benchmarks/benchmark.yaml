@@ -53,11 +53,13 @@ extractor_sweep:
     # ── OpenAI ──
     - {id: gpt-6-luna-low,        extractor_model: "openai:gpt-6-luna", extractor_effort: low}
     - {id: gpt-6-luna-med,        extractor_model: "openai:gpt-6-luna", extractor_effort: medium}
+    - {id: gpt-6-luna-high,       extractor_model: "openai:gpt-6-luna", extractor_effort: high}
 
     # ── Gemini ── thinking is always on; each model takes low, medium and high. No Gemini 4
     # Argon arm: Google's flagship is not catalogued (D313).
     - {id: gemini-3.8-flash-low,  extractor_model: "gemini:gemini-3.8-flash", extractor_effort: low}
     - {id: gemini-3.8-flash-med,  extractor_model: "gemini:gemini-3.8-flash", extractor_effort: medium}
+    - {id: gemini-3.8-flash-high, extractor_model: "gemini:gemini-3.8-flash", extractor_effort: high}
     - {id: gemini-3.5-flash-lite-low, extractor_model: "gemini:gemini-3.5-flash-lite", extractor_effort: low}
 
     # ── DeepSeek ── two knobs, not one (D217): `-thinking` switches thinking mode on, and only the
