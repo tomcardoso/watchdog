@@ -156,7 +156,9 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
 # Claude tiers that ship extended thinking on by default (no `thinking` catalog flag needed —
 # see that field's own comment in model_catalog.yaml). Kept private: catalog_has_reasoning is
 # the only thing that should need this list.
-_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "sonnet-5.5", "opus-5", "opus-5.5"}
+# Every Claude model catalogued today; Haiku 5.5 was missing until D310, so its extractions got the
+# scaffold meant for a model with no channel.
+_THINKING_BY_DEFAULT_TIERS = {"haiku-5.5", "sonnet-5.5", "opus-5.5", "fable-5.1"}
 
 
 def catalog_has_reasoning(model_id: str) -> bool:
@@ -172,8 +174,9 @@ def catalog_has_reasoning(model_id: str) -> bool:
     entry = _entry(bare)
     if not entry:
         return False
-    if deepseek_thinking and entry.get("provider") == "deepseek":
-        return True
+    if deepseek_thinking:
+        # The marker is DeepSeek's grammar alone: on any other provider the id is not a real one.
+        return entry.get("provider") == "deepseek"
     if entry.get("reasoning") or entry.get("thinking"):
         return True
     tier = entry.get("tier")
@@ -197,19 +200,18 @@ def catalog_cache_breakpoints(model_id: str) -> bool:
 def catalog_effort_levels(model_id: str) -> set[str] | None:
     """Explicit set of `effort` levels a known catalog model id accepts (#518), or None if
     uncatalogued. Source of truth for effort capability across every provider — real per-model
-    coverage (e.g. Claude Sonnet 4.6 takes `max` but not `xhigh`), not a per-provider flag. A
-    catalogued model with no `effort_levels` field (Claude Haiku, DeepSeek) has none at all,
-    which `entry.get(..., [])` already expresses without a special case."""
+    coverage (e.g. Gemini stops at `high`), not a per-provider flag. A catalogued model with no
+    `effort_levels` field has none at all, which `entry.get(..., [])` already expresses without
+    a special case."""
     entry = _entry(model_id)
     return set(entry.get("effort_levels", [])) if entry else None
 
 
 def catalog_tokenizer_ratio(model_id: str) -> float | None:
     """Explicit tokenizer-ratio multiplier for a known catalog model id (#574), or None if
-    uncatalogued or the model doesn't declare one — the vast majority, which behave exactly as
-    the chars/4 `est_tokens` heuristic (`pipeline/section.py`) already assumes. Only Claude 4.7+
-    models (Opus 4.8, Sonnet 5) currently declare a value; see `model_catalog.yaml`'s
-    `tokenizer_ratio` field comment for the source and rationale. Callers wanting a safe default
+    uncatalogued or the model doesn't declare one, which behaves exactly as
+    the chars/4 `est_tokens` heuristic (`pipeline/section.py`) already assumes. See
+    `model_catalog.yaml`'s `tokenizer_ratio` field comment for the source and rationale. Callers wanting a safe default
     for "no declared ratio" should treat None as 1.0 (`model_client.tokenizer_ratio` does this)."""
     entry = _entry(model_id)
     return float(entry["tokenizer_ratio"]) if entry and "tokenizer_ratio" in entry else None

@@ -480,9 +480,9 @@ class CannedModel:
         self.calls[task] += 1
         parsed = copy.deepcopy(handler(text))
         try:
-            model_id = model_client.resolve_model_id(model) if model else "claude-haiku-4-5"
+            model_id = model_client.resolve_model_id(model) if model else "claude-haiku-5-5"
         except Exception:  # noqa: BLE001
-            model_id = "claude-haiku-4-5"
+            model_id = "claude-haiku-5-5"
         in_tok = max(60, len(text) // 4)
         out_tok = max(20, len(json.dumps(parsed)) // 4)
         usage = {"input_tokens": in_tok, "output_tokens": out_tok}

@@ -95,8 +95,8 @@ def test_section_auto_names_a_non_claude_backend_only():
     assert settings.display_value("section_token_threshold", "auto",
                                   {"extractor_model": "openai:gpt-5-mini"}) == "auto (240000 — openai:gpt-5-mini)"
     assert settings.display_value("section_token_threshold", "auto",
-                                  {"extractor_model": "gemini:gemini-3.7-flash"}) \
-        == "auto (659340 — gemini:gemini-3.7-flash)"
+                                  {"extractor_model": "gemini:gemini-3.8-flash"}) \
+        == "auto (659340 — gemini:gemini-3.8-flash)"
 
 
 def test_section_auto_ignores_extractor_effort():

@@ -7,7 +7,7 @@ import json
 from watchdog import usage
 
 
-def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-4-6",
+def _call(task="extract", filename="doc.pdf", detail="pages 1–1", model="claude-sonnet-5-5",
           cost_usd=0.01, input_tokens=100, output_tokens=20, latency_s=1.5,
           effort=None, auth_mode="api-key", attempts=1, end_ts=None, api_ms=None, num_turns=None,
           failed=False, backend="claude-api", batch_id=None, batch_submitted_at=None,
@@ -62,7 +62,7 @@ def test_peak_concurrency_counts_overlap_not_calls():
 
 
 def test_stage_models_names_each_model_once():
-    calls = [_call(model="claude-sonnet-4-6"), _call(model="claude-sonnet-4-6"), _call(model="gpt-5-mini")]
+    calls = [_call(model="claude-sonnet-5-5"), _call(model="claude-sonnet-5-5"), _call(model="gpt-5-mini")]
     names = usage.stage_models(calls).split(", ")
     assert len(names) == 2
 

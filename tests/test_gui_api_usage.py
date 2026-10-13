@@ -35,10 +35,10 @@ def write_usage(vault, ts, calls):
 @pytest.fixture
 def used(rich_vault):
     write_usage(rich_vault, "20260301T100000Z", [
-        call_rec("classify", cost=0.01, model="claude-haiku-4-5", latency=1, end=1000),
+        call_rec("classify", cost=0.01, model="claude-haiku-5-5", latency=1, end=1000),
         call_rec("extract", detail="pages 1–10", cost=0.50, end=1010, latency=10),
         call_rec("extract-section", filename="b.pdf", detail="pages 11–30", cost=0.30, end=1012, latency=10),
-        call_rec("briefing", filename=None, cost=0.05, model="claude-haiku-4-5", end=1020, latency=3),
+        call_rec("briefing", filename=None, cost=0.05, model="claude-haiku-5-5", end=1020, latency=3),
     ])
     write_usage(rich_vault, "20260302T100000Z", [
         call_rec("extract", cost=2.0, backend="openai", auth=None, model="gpt-5-mini", detail="pages 1–4"),

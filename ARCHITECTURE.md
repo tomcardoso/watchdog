@@ -647,9 +647,10 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
   no effort is sent), `verifier_effort` (low); the classifier and extractor defaults apply only where
   the model supports them. Defaults are in `watchdog/defaults.py`; per-run options override. GPT-5.6
   Luna is the documented recommendation for extraction (D221, D222).
-- **Effort and thinking (D36, D161, D206).** A requested effort is checked against the catalogue's
-  per-model `effort_levels` and mapped to each provider's control; an unsupported level fails
-  loudly. Models flagged `thinking: true` get Anthropic's `thinking` parameter explicitly.
+- **Effort and thinking (D36, D161, D206, D310).** A requested effort is checked against the
+  catalogue's per-model `effort_levels` and mapped to each provider's control, always sent as
+  asked (no level is treated as a model's default); an unsupported level fails loudly. Models
+  flagged `thinking: true` get Anthropic's `thinking` parameter explicitly (none today).
 - **Backends.** `claude-agent-sdk` (the only subscription path; tools disabled, D145),
   `claude-api` (streaming Messages with structured output), and the OpenAI-compatible `openai`,
   `deepseek`, `gemini`, `local` and `openrouter`, registered in one `_BACKEND_META` table. Gemini
@@ -657,10 +658,11 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
   JSON mode plus the schema in the prompt (D98). `local`/`openrouter` take a configured base URL;
   `local` takes an optional `local_context_window` (D139). A failed call retries on the same model
   and effort (I4). Auth and billing failures raise `ProviderAuthError` (D242).
-- **Catalogue (D142, D217, D249, D250).** `model_catalog.yaml` single-sources ids, pricing (including
-  time-of-day, optionally weekday-only, `price_periods`), context windows, output caps, tokenizer
-  ratios and capability flags. A retired provider id is removed, with no alias (D300); a
-  vendor-deprecated model is removed; a merely legacy one stays.
+- **Catalogue (D142, D217, D249, D250, D310).** `model_catalog.yaml` single-sources ids, pricing
+  (including time-of-day, optionally weekday-only, `price_periods`), context windows, output caps,
+  tokenizer ratios and capability flags. It holds each provider's current frontier models: a
+  superseded or retired model is removed, with no alias (D300, D310), unless something still needs
+  it. A price that changes on a calendar date is changed by hand on the day.
 - **Batch backends (D52, D144, D169).** `claude-batch` and `openai-batch` submit the whole queue to
   the provider's Batch API at half price; `dig` submits and exits, and a later `dig` collects
   (`batch-pending.json`, one batch per vault). Each document resolves its own skill first.

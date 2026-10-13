@@ -166,7 +166,7 @@ def test_call_model_records_failed_usage_and_reraises(tmp_path, monkeypatch):
         raise model_client.ModelError(
             "task 't' failed JSON validation after 2 attempt(s) on claude-api: bad json",
             usage={"input_tokens": 20}, cost_usd=0.05, attempts=2,
-            model="claude-sonnet-4-6", backend="claude-api", auth_mode="api-key")
+            model="claude-sonnet-5-5", backend="claude-api", auth_mode="api-key")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     orchestrate._run.usage = []
@@ -2609,7 +2609,7 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
-            parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
+            parsed=parsed, text="", model="claude-sonnet-5-5", backend="claude-api",
             auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20},
             latency_s=2.5)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
@@ -2770,7 +2770,7 @@ def test_record_usage_carries_agent_sdk_harness_timing():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-agent-sdk",
+            "extract", model="claude-sonnet-5-5", backend="claude-agent-sdk",
             usage={"input_tokens": 100, "output_tokens": 20,
                   "duration_api_ms": 12345, "num_turns": 3},
             cost_usd=0.01, latency_s=60.0)
@@ -2789,7 +2789,7 @@ def test_record_usage_omits_harness_timing_keys_for_other_backends():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20},
             cost_usd=0.01, latency_s=1.0)
         assert len(orchestrate._run.usage) == 1
@@ -2808,7 +2808,7 @@ def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract-section", model="gpt-5.4-mini", backend="openai",
+            "extract-section", model="gpt-6-luna", backend="openai",
             usage={"prompt_tokens": 20000, "completion_tokens": 5000,
                   "prompt_tokens_details": {"cached_tokens": 5900}},
             cost_usd=0.01, latency_s=1.0)
@@ -2839,7 +2839,7 @@ def test_record_usage_still_reads_anthropic_cache_write_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20,
                   "cache_creation_input_tokens": 7700},
             cost_usd=0.01, latency_s=1.0)
@@ -2869,7 +2869,7 @@ def test_record_usage_includes_pruned_keys_when_present():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01,
             pruned=["extra_field"])
         assert orchestrate._run.usage[0]["pruned"] == ["extra_field"]
@@ -2881,7 +2881,7 @@ def test_record_usage_omits_pruned_key_when_absent():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
         assert "pruned" not in orchestrate._run.usage[0]
     finally:
@@ -2894,7 +2894,7 @@ def test_record_usage_includes_rate_limit_when_present():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="gpt-5.4-mini", backend="openai",
+            "extract", model="gpt-6-luna", backend="openai",
             usage={"prompt_tokens": 100, "completion_tokens": 20}, cost_usd=0.01,
             rate_limit={"limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"})
         assert orchestrate._run.usage[0]["rate_limit"] == {
@@ -2907,7 +2907,7 @@ def test_record_usage_omits_rate_limit_key_when_absent():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
         assert "rate_limit" not in orchestrate._run.usage[0]
     finally:
@@ -2921,7 +2921,7 @@ def test_record_usage_includes_reasoning_tokens_from_openai_usage_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract-section", model="gpt-5.4-mini", backend="openai",
+            "extract-section", model="gpt-6-luna", backend="openai",
             usage={"prompt_tokens": 21058, "completion_tokens": 48000,
                   "completion_tokens_details": {"reasoning_tokens": 48000}},
             cost_usd=0.01, latency_s=1.0)
@@ -2937,7 +2937,7 @@ def test_record_usage_omits_reasoning_tokens_key_for_anthropic_shaped_usage():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
         assert "reasoning_tokens" not in orchestrate._run.usage[0]
     finally:
@@ -3248,7 +3248,7 @@ def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
-            parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
+            parsed=parsed, text="", model="claude-sonnet-5-5", backend="claude-api",
             auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
@@ -4491,7 +4491,7 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
 
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
     vault = make_vault(tmp_path)
-    state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-4-6",
+    state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-5-5",
             "skills": {}, "effort": None, "backend": "claude-batch"}
 
     async def fake_status(batch_id, api_key, backend=None):
@@ -4507,7 +4507,7 @@ def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     # Pre-D144 state shape (one run-wide `skill_label`, no per-sha map) — still collectable.
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
             "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
@@ -4546,7 +4546,7 @@ def test_fmt_span_is_none_when_either_timestamp_is_missing():
 def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
             "skills": {}, "effort": None, "backend": "claude-batch",
             "submitted_at": "2026-07-29T02:54:46Z"}
     batch_extract.write_state(vault, state)
@@ -4588,7 +4588,7 @@ def test_finish_batch_item_records_batch_lifecycle_when_batch_meta_given(tmp_pat
     try:
         asyncio.run(orchestrate._finish_batch_item(
             vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
-            model="claude-sonnet-4-6", batch_meta=batch_meta))
+            model="claude-sonnet-5-5", batch_meta=batch_meta))
         calls = [c for c in orchestrate._run.usage if c["task"] == "extract"]
         assert calls[0]["batch_id"] == "b1"
         assert calls[0]["batch_submitted_at"] == "2026-07-29T02:54:46Z"
@@ -4654,13 +4654,13 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
     try:
         result = asyncio.run(orchestrate._finish_batch_item(
             vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
-            model="claude-sonnet-4-6"))
+            model="claude-sonnet-5-5"))
         assert result["status"] == "ok"
         calls = [c for c in orchestrate._run.usage if c["task"] == "extract"]
         assert len(calls) == 1
         assert calls[0].pop("end_ts") > 0   # completion timestamp stamped at record time
         assert calls[0] == {
-            "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
+            "task": "extract", "model": "claude-sonnet-5-5", "backend": "claude-batch",
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
             "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "effort": None, "auth_mode": "api-key",
             "filename": "a.pdf", "detail": "pages 1–1",
@@ -4686,20 +4686,20 @@ def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
            "usage": None, "cost_usd": 0.015, "error": None}
     result = asyncio.run(orchestrate._finish_batch_item(
         vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
-        model="claude-sonnet-4-6", effort="medium"))
+        model="claude-sonnet-5-5", effort="medium"))
 
     assert result["status"] == "ok"
     staged = json.loads((vault / ".watchdog" / "extracted" / "sha1.json").read_text())
     doc = staged["document"]
     assert doc["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
-    assert doc["extract_model"] == "claude-sonnet-4-6"
+    assert doc["extract_model"] == "claude-sonnet-5-5"
     assert doc["extract_effort"] == "medium"
 
     orchestrate._commit_extracted(vault, "sha1")
     docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     entry = docs["sha1"]
     assert entry["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
-    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_model"] == "claude-sonnet-5-5"
     assert entry["extract_effort"] == "medium"
 
 
@@ -4726,7 +4726,7 @@ def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     skill_file = tmp_path / "pinned.md"
     skill_file.write_text("SKILL")
-    batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-4-6",
+    batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-5-5",
                                       "skills": {}, "effort": None, "backend": "claude-batch"})
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 

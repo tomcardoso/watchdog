@@ -131,11 +131,14 @@ def test_effort_default_applied_when_model_supports_it():
 
 
 def test_effort_default_skipped_when_model_does_not_support_it():
-    """Regression guard (#518): routing `extractor_model` to Haiku must not turn the implicit
-    `extractor_effort=medium` default (D26) into a hard failure for a stage nobody configured —
-    only an *explicit* effort choice should ever hit model_client's loud-fail path."""
+    """Regression guard (#518): routing `extractor_model` to a model with no `medium` level
+    (DeepSeek, either mode) must not turn the implicit `extractor_effort=medium` default (D26)
+    into a hard failure for a stage nobody configured — only an *explicit* effort choice should
+    ever hit model_client's loud-fail path."""
     from watchdog.ops.ingest import effort as _effort
-    assert _effort(None, None, default="medium", backend=None, model="haiku-4.5") is None
+    assert _effort(None, None, default="medium", backend="deepseek",
+                   model="deepseek-flash-thinking") is None
+    assert _effort(None, None, default="medium", backend="deepseek", model="deepseek-flash") is None
 
 
 def test_effort_no_default_stays_unset():

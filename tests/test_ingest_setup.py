@@ -537,7 +537,7 @@ def test_real_input_tokens_sums_cache_fields_only_for_anthropic(tmp_path):
 def test_model_tokenizer_calibration_no_history_returns_none(tmp_path):
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) is None
 
 
 def test_model_tokenizer_calibration_below_min_records_returns_none(tmp_path):
@@ -546,12 +546,12 @@ def test_model_tokenizer_calibration_below_min_records_returns_none(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [_record(model_id, None, "extract", 1000, 1300),
              _record(model_id, None, "extract-section", 500, 650)]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) is None
 
 
 def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
@@ -561,7 +561,7 @@ def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [
         _record(model_id, None, "extract", 1000, 1300),
         _record(model_id, None, "extract-section", 2000, 2600),
@@ -570,7 +570,7 @@ def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
     # sum(actual)/sum(estimated) = (1300+2600+650) / (1000+2000+500) = 4550/3500 = 1.3
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) == pytest.approx(1.3)
 
 
 def test_model_tokenizer_calibration_skips_pre_617_records(tmp_path):
@@ -583,14 +583,14 @@ def test_model_tokenizer_calibration_skips_pre_617_records(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     legacy = [{"model": model_id, "backend": None, "task": "extract",
                "est_input_tokens": est, "input_tokens": act,
                "cache_read_tokens": 0, "cache_write_tokens": 0}
               for est, act in ((1000, 1300), (2000, 2600), (500, 650))]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=legacy)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) is None
 
 
 def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_path):
@@ -599,7 +599,7 @@ def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_p
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [
         _record(model_id, None, "extract", 1000, 1300),
         _record(model_id, None, "extract-section", 2000, 2600),
@@ -610,7 +610,7 @@ def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_p
     ]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) == pytest.approx(1.3)
 
 
 def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
@@ -620,7 +620,7 @@ def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [
         _record(model_id, None, "extract", 1000, 1300),
         _record(model_id, None, "extract-section", 2000, 2600),
@@ -629,7 +629,7 @@ def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
     ]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) == pytest.approx(1.3)
 
 
 def test_model_tokenizer_calibration_stops_at_max_records(tmp_path):
@@ -638,14 +638,14 @@ def test_model_tokenizer_calibration_stops_at_max_records(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     # 4 identical 1.3-ratio records, then a 5th wildly different one — with max_records=4 the
     # 5th must never be counted.
     calls = [_record(model_id, None, "extract", 1000, 1300) for _ in range(4)]
     calls.append(_record(model_id, None, "extract", 1000, 100000))
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None, max_records=4) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None, max_records=4) == pytest.approx(1.3)
 
 
 # ── finalize --estimate (#417) ──────────────────────────────────────────────────
@@ -803,8 +803,8 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path, m
 def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path, monkeypatch):
     # Every catalogued model's measured tokenizer_ratio (#574, remeasured #617) is applied to its
     # projected input AND output tokens, so each is priced against its own real token count for
-    # the same text. The correction runs both directions: Sonnet 5's 1.28 prices it up, Sonnet
-    # 4.6's 0.93 prices it down, and only a model with no declared ratio is projected as-is.
+    # the same text. The correction runs both directions: Sonnet 5.5's 1.28 prices it up, Gemini's
+    # 0.91 prices it down, and only a model with no declared ratio is projected as-is.
     from watchdog.model_catalog import all_models
     _flat_prices(monkeypatch)
     vault = _make_vault(tmp_path)
@@ -821,9 +821,9 @@ def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path
         scaled_out = scaled_in * 0.5   # output_ratio (500/1000), applied after scaling
         return scaled_in * m["input"] + scaled_out * m["output"]
 
-    assert by_id["claude-sonnet-5"] == pytest.approx(projected("claude-sonnet-5", 1.28))
-    assert by_id["claude-sonnet-4-6"] == pytest.approx(projected("claude-sonnet-4-6", 0.93))
-    assert by_id["gemini-3.7-flash"] == pytest.approx(projected("gemini-3.7-flash", 0.91))
+    assert by_id["claude-sonnet-5-5"] == pytest.approx(projected("claude-sonnet-5-5", 1.28))
+    assert by_id["claude-haiku-5-5"] == pytest.approx(projected("claude-haiku-5-5", 1.21))
+    assert by_id["gemini-3.8-flash"] == pytest.approx(projected("gemini-3.8-flash", 0.91))
     assert by_id["gpt-6-luna"] == pytest.approx(projected("gpt-6-luna", 0.80))
     assert by_id["deepseek-flash"] == pytest.approx(projected("deepseek-flash", 0.81))
 
@@ -846,9 +846,9 @@ def test_cost_estimate_all_models_prices_a_scheduled_model_at_the_current_rate(t
     assert peak["deepseek-flash"]["cost"] == pytest.approx(
         2 * off_peak["deepseek-flash"]["cost"])
     assert peak["deepseek-flash"]["price_multiplier"] == 2.0
-    assert peak["claude-sonnet-4-6"]["cost"] == pytest.approx(
-        off_peak["claude-sonnet-4-6"]["cost"])          # a flat-priced model never moves
-    assert peak["claude-sonnet-4-6"]["price_multiplier"] == 1.0
+    assert peak["claude-sonnet-5-5"]["cost"] == pytest.approx(
+        off_peak["claude-sonnet-5-5"]["cost"])          # a flat-priced model never moves
+    assert peak["claude-sonnet-5-5"]["price_multiplier"] == 1.0
 
 
 def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):

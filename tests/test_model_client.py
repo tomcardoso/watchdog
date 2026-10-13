@@ -203,8 +203,8 @@ def test_prune_does_not_rescue_wrong_typed_field(api_key_auth, monkeypatch):
 def test_raw_model_id_does_not_escalate(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-sonnet-4-6")
-    assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == "claude-sonnet-4-6"
+    complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-opus-5-5")
+    assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == "claude-opus-5-5"
 
 
 def test_cost_accumulates_across_attempts(api_key_auth, monkeypatch):
@@ -221,7 +221,7 @@ def test_wire_max_tokens_is_task_independent(api_key_auth, monkeypatch, task):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     complete_json(task=task, prompt="p", schema=SCHEMA)
-    assert api.calls[0]["max_tokens"] == mc._wire_max_tokens("claude-api", "claude-sonnet-4-6")
+    assert api.calls[0]["max_tokens"] == mc._wire_max_tokens("claude-api", "claude-sonnet-5-5")
 
 
 # ── effort knob (D29) ─────────────────────────────────────────────────────────
@@ -233,21 +233,29 @@ def test_effort_passed_to_backend_for_sonnet(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] == "low"
 
 
-def test_effort_high_is_treated_as_no_override(api_key_auth, monkeypatch):
-    # `high` is the model default — sending nothing preserves current behaviour.
+@pytest.mark.parametrize("model", ["sonnet", "opus", "haiku"])
+def test_effort_high_is_sent_explicitly(api_key_auth, monkeypatch, model):
+    # D310: `high` used to be omitted as "the model's own default", but Opus 5.5 and Haiku 5.5
+    # default to `medium`, so a `high` request there ran at `medium`. It is always sent now.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="high")
-    assert api.calls[0]["effort"] is None
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model=model, effort="high")
+    assert api.calls[0]["effort"] == "high"
 
 
-def test_effort_rejected_for_haiku_4_5(api_key_auth, monkeypatch):
-    # Haiku 4.5 rejects output_config.effort (400) — requesting any level errors rather than
-    # silently sending nothing, so a misconfigured stage is caught instead of running unnoticed.
+def test_effort_rejected_for_a_claude_model_without_effort(api_key_auth, monkeypatch,
+                                                           catalog_entry):
+    # A model with no effort control rejects output_config.effort (400) — requesting any level
+    # errors rather than silently sending nothing, so a misconfigured stage is caught instead of
+    # running unnoticed. No current Claude model is one (Haiku 4.5 was), so the entry is made up.
+    catalog_entry(id="claude-test-no-effort", provider="anthropic", tier="test-no-effort",
+                  input=1e-6, output=5e-6, cache_write=1.25e-6, cache_read=0.1e-6,
+                  context_window=200_000, max_output_tokens=64_000)
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     with pytest.raises(mc.ModelError, match="low"):
-        complete_json(task="classify", prompt="p", schema=SCHEMA, model="haiku-4.5", effort="low")
+        complete_json(task="classify", prompt="p", schema=SCHEMA, model="test-no-effort",
+                      effort="low")
 
 
 def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
@@ -258,28 +266,27 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
 
 
 @pytest.mark.parametrize("provider,model_id,effort,expected", [
-    ("anthropic", "claude-sonnet-4-6", "low", "low"),
-    ("anthropic", "claude-opus-4-8", "medium", "medium"),
-    ("anthropic", "claude-sonnet-4-6", "high", None),    # Claude: high ≡ default
-    ("anthropic", "claude-sonnet-4-6", None, None),      # unset
+    ("anthropic", "claude-sonnet-5-5", "low", "low"),
+    ("anthropic", "claude-opus-5-5", "medium", "medium"),
+    ("anthropic", "claude-sonnet-5-5", "high", "high"),  # sent, even where it is the default (D310)
+    ("anthropic", "claude-opus-5-5", "high", "high"),    # Opus 5.5 defaults to medium
+    ("anthropic", "claude-haiku-5-5", "high", "high"),   # so does Haiku 5.5
+    ("anthropic", "claude-sonnet-5-5", None, None),      # unset
     ("openai", "gpt-5-mini", "low", "low"),              # OpenAI reasoning model → pass through
     ("openai", "gpt-5", "high", "high"),                 # OpenAI: high is NOT a no-op default
     ("gemini", "gemini-2.5-flash", "low", "low"),     # Gemini: every model passes through
     ("gemini", "gemini-2.5-pro", "high", "high"),
     # xhigh/max (#518): OpenAI reasoning models pass them through like any other level.
     ("openai", "gpt-5.6-luna", "xhigh", "xhigh"),
-    ("openai", "gpt-5.6-terra", "max", "max"),
-    # Claude coverage is per-model (Anthropic's own effort docs), not a flat yes/no: Sonnet 4.6
-    # takes `max` but not `xhigh`; Opus 4.8 takes both.
-    ("anthropic", "claude-sonnet-4-6", "max", "max"),
-    ("anthropic", "claude-opus-4-8", "max", "max"),
-    ("anthropic", "claude-opus-4-8", "xhigh", "xhigh"),
+    ("openai", "gpt-6-astra", "max", "max"),
+    ("openai", "gpt-6.1-sol", "xhigh", "xhigh"),
+    # Every current Claude model takes all five levels (Anthropic's effort docs).
     ("anthropic", "claude-opus-5-5", "xhigh", "xhigh"),
     ("anthropic", "claude-opus-5-5", "max", "max"),
-    # Sonnet 5 (#361/#509, D165) accepts xhigh unlike Sonnet 4.6 — additive catalog entry, not a
-    # tier-wide capability change.
-    ("anthropic", "claude-sonnet-5", "xhigh", "xhigh"),
-    ("anthropic", "claude-sonnet-5", "high", None),   # Claude: high ≡ default, same as any model
+    ("anthropic", "claude-sonnet-5-5", "xhigh", "xhigh"),
+    ("anthropic", "claude-haiku-5-5", "max", "max"),
+    ("anthropic", "claude-fable-5-1", "xhigh", "xhigh"),
+    ("anthropic", "claude-fable-5-1", "low", "low"),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
@@ -331,7 +338,7 @@ def test_price_multiplier_follows_the_declared_windows(hhmm, expected):
     at = datetime(2026, 8, 20, hh, mm, tzinfo=timezone.utc)
     assert price_multiplier("deepseek-flash", at) == expected
     assert price_multiplier("deepseek-v4-pro", at) == expected
-    assert price_multiplier("claude-sonnet-4-6", at) == 1.0     # flat-priced model, any hour
+    assert price_multiplier("claude-sonnet-5-5", at) == 1.0     # flat-priced model, any hour
     assert price_multiplier("not-a-real-model", at) == 1.0      # uncatalogued: never guess a surcharge
 
 
@@ -380,8 +387,38 @@ def test_deepseek_flash_matches_the_vendor_price_page():
     assert mc._OPENAI_PRICING["deepseek-v4-pro"] == (0.66e-6, 1.98e-6, 0.022e-6, 0.0)
 
 
+@pytest.mark.parametrize("model_id,rates", [
+    ("gpt-6-astra", (10.0e-6, 50.0e-6, 1.0e-6, 12.5e-6)),
+    ("gpt-6.1-sol", (2.0e-6, 10.0e-6, 0.10e-6, 2.5e-6)),   # cached input is 0.05x here
+    ("gpt-6-luna", (0.10e-6, 0.50e-6, 0.01e-6, 0.125e-6)),
+])
+def test_gpt_6_family_matches_the_vendor_price_page(model_id, rates):
+    """developers.openai.com/api/docs/models/<id> and .../pricing (fetched 2026-10-13): input,
+    output, cached input and the 1.25x cache write; a 1.05M window, 128K output, the 272K
+    whole-request boundary and five effort levels on every one (D310)."""
+    assert mc._OPENAI_PRICING[model_id] == rates
+    assert mc.catalog_cache_breakpoints(model_id) is True
+    assert mc.catalog_context_window(model_id) == 1_050_000
+    assert mc.catalog_long_context_threshold(model_id) == 272_000
+    assert mc.catalog_max_output_tokens(model_id) == 128_000
+    assert mc.catalog_is_reasoning(model_id) is True
+    assert mc._effort_levels("openai", model_id) == {"low", "medium", "high", "xhigh", "max"}
+
+
+def test_gpt_6_sol_is_left_out_but_routed_by_the_family_fallback():
+    """`gpt-6-sol` is not catalogued (GPT-6.1 Sol supersedes it, D310), but a user who types it
+    still gets the GPT-6 output cap and reasoning flag (so the request carries
+    `max_completion_tokens`, which a reasoning model requires). Its window stays at the 128K
+    default: with no catalogued pricing boundary, a 1.05M window would plan calls past 272K."""
+    from watchdog import model_catalog
+    assert model_catalog.catalog_context_window("gpt-6-sol") is None
+    assert mc.context_window("gpt-6-sol", backend="openai") == 128_000
+    assert model_catalog.fallback_max_output_tokens("gpt-6-sol") == 128_000
+    assert model_catalog.fallback_is_reasoning("gpt-6-sol") is True
+
+
 def test_gpt_6_luna_matches_the_vendor_price_page():
-    """developers.openai.com/api/docs/models/gpt-6-luna (fetched 2026-10-04). Cache write is 1.25x
+    """developers.openai.com/api/docs/models/gpt-6-luna (fetched 2026-10-13). Cache write is 1.25x
     input, and the 272K long-context boundary applies to the whole request."""
     assert mc._OPENAI_PRICING["gpt-6-luna"] == (0.10e-6, 0.50e-6, 0.01e-6, 0.125e-6)
     assert mc.catalog_cache_breakpoints("gpt-6-luna") is True
@@ -391,10 +428,21 @@ def test_gpt_6_luna_matches_the_vendor_price_page():
     assert mc._effort_levels("openai", "gpt-6-luna") == {"low", "medium", "high", "xhigh", "max"}
 
 
-def test_deprecated_models_are_not_catalogued():
-    """Models a vendor has formally deprecated are removed rather than kept (D249)."""
+@pytest.mark.parametrize("model_id", [
+    "gpt-5.4-nano",                                   # vendor-deprecated (D249)
+    # superseded, removed with nothing kept resolving to them (D301, D310)
+    "claude-sonnet-4-6", "claude-haiku-4-5", "claude-opus-4-8", "claude-opus-5", "claude-sonnet-5",
+    "gpt-5.4", "gpt-5.4-mini", "gpt-5.5", "gpt-5.6-terra", "gemini-3.7-flash",
+    "gemini-3.1-pro-preview",
+])
+def test_superseded_models_are_not_catalogued(model_id):
     from watchdog import model_catalog
-    assert model_catalog.catalog_context_window("gpt-5.4-nano") is None
+    assert model_catalog.catalog_context_window(model_id) is None
+
+
+@pytest.mark.parametrize("alias", ["sonnet-4.6", "haiku-4.5", "opus-4.8", "opus-5", "sonnet-5"])
+def test_removed_claude_aliases_no_longer_resolve(alias):
+    assert mc.resolve_model_id(alias) == alias
 
 
 def test_openai_cost_doubles_inside_a_peak_window(monkeypatch):
@@ -416,51 +464,53 @@ def test_api_cost_applies_the_multiplier_too(monkeypatch):
         cache_creation_input_tokens = cache_read_input_tokens = 0
 
     monkeypatch.setattr(mc, "price_multiplier", lambda *_a, **_k: 2.0)
-    assert mc._api_cost("claude-sonnet-4-6", _U()) == pytest.approx(2 * 3.0)
+    assert mc._api_cost("claude-sonnet-5-5", _U()) == pytest.approx(2 * 2.0)
 
 
-# ── Opus 5 catalog entry (#635) — additive alongside Opus 4.8, same pattern as Sonnet 5 ────────
+# ── Claude catalog entries (D249, D310) ─────────────────────────────────────────────────────
 
-def test_opus_tiers_resolve():
-    assert mc.resolve_model_id("opus-5") == "claude-opus-5"
-    assert mc.resolve_model_id("opus") == "claude-opus-5-5"   # bare `opus` means 5.5 since D249
-    assert mc.resolve_model_id("opus-5.5") == "claude-opus-5-5"
-    assert mc.resolve_model_id("opus-4.8") == "claude-opus-4-8"   # 4.8 kept reachable by name
-
-
-def test_opus_5_5_catalog_entry_matches_the_vendor_figures():
-    """Anthropic's published Opus 5.5 numbers (platform.claude.com, fetched 2026-10-04). The cache
-    read is 0.05x input — not the 0.1x every other Claude entry uses — so it is pinned here."""
-    assert mc._PRICING["claude-opus-5-5"] == (4.0e-6, 20.0e-6, 5.0e-6, 0.20e-6)
-    assert mc._effort_levels("anthropic", "claude-opus-5-5") == {"low", "medium", "high", "xhigh", "max"}
-    assert mc.catalog_max_output_tokens("claude-opus-5-5") == 128_000
-    assert mc.catalog_needs_thinking_param("claude-opus-5-5") is False   # thinking is always on
+@pytest.mark.parametrize("alias,model_id", [
+    ("haiku", "claude-haiku-5-5"), ("haiku-5.5", "claude-haiku-5-5"),
+    ("sonnet", "claude-sonnet-5-5"), ("sonnet-5.5", "claude-sonnet-5-5"),
+    ("opus", "claude-opus-5-5"), ("opus-5.5", "claude-opus-5-5"),
+    ("fable", "claude-fable-5-1"), ("fable-5.1", "claude-fable-5-1"),
+])
+def test_claude_tiers_resolve(alias, model_id):
+    assert mc.resolve_model_id(alias) == model_id
 
 
-def test_opus_5_effort_levels_match_opus_4_8():
-    assert mc._effort_levels("anthropic", "claude-opus-5") == \
-        mc._effort_levels("anthropic", "claude-opus-4-8") == \
-        {"low", "medium", "high", "xhigh", "max"}
+@pytest.mark.parametrize("model_id,pricing,batch_cap", [
+    # (input, output, 5m cache write, cache read) per token, from platform.claude.com's pricing
+    # page (fetched 2026-10-13). Cache reads are 0.1x input on Haiku, 0.05x on Sonnet 5.5 and Opus
+    # 5.5, 0.025x on Fable 5.1 — each entered as stated, not derived.
+    ("claude-haiku-5-5", (0.10e-6, 0.50e-6, 0.125e-6, 0.01e-6), 300_000),
+    ("claude-sonnet-5-5", (2.0e-6, 10.0e-6, 2.5e-6, 0.10e-6), 300_000),
+    ("claude-opus-5-5", (4.0e-6, 20.0e-6, 5.0e-6, 0.20e-6), 300_000),
+    ("claude-fable-5-1", (10.0e-6, 50.0e-6, 12.5e-6, 0.25e-6), None),   # not on the batch beta
+])
+def test_claude_catalog_entries_match_the_vendor_figures(model_id, pricing, batch_cap):
+    from watchdog import model_catalog
+    assert mc._PRICING[model_id] == pricing
+    assert mc._effort_levels("anthropic", model_id) == {"low", "medium", "high", "xhigh", "max"}
+    assert mc.catalog_max_output_tokens(model_id) == 128_000
+    assert mc.catalog_context_window(model_id) == 200_000     # 1M listed, pinned per D89
+    assert model_catalog._entry(model_id).get("max_output_tokens_batch") == batch_cap
+    assert mc.catalog_needs_thinking_param(model_id) is False  # thinking on by default on all
 
 
-def test_opus_5_pricing_matches_opus_4_8():
-    assert mc._PRICING["claude-opus-5"] == mc._PRICING["claude-opus-4-8"]
-
-
-def test_sonnet_5_5_matches_sonnet_5_pricing_and_effort():
-    assert mc._PRICING["claude-sonnet-5-5"] == mc._PRICING["claude-sonnet-5"]
-    assert mc._effort_levels("anthropic", "claude-sonnet-5-5") == \
-        {"low", "medium", "high", "xhigh", "max"}
+def test_haiku_5_5_is_the_only_claude_model_with_a_length_tier():
+    """Anthropic prices Haiku 5.5 higher above 100K prompt tokens; every other Claude model prices
+    the full window at one rate."""
+    assert mc.catalog_long_context_threshold("claude-haiku-5-5") == 100_000
+    for model_id in ("claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"):
+        assert mc.catalog_long_context_threshold(model_id) is None
 
 
 @pytest.mark.parametrize("model_id,needs_thinking_param", [
-    ("claude-sonnet-4-6", True),
-    ("claude-opus-4-8", True),
-    ("claude-sonnet-5", False),    # ships on by default — no param needed
-    ("claude-opus-5", False),      # ships on by default — no param needed
-    ("claude-opus-5-5", False),    # always on, cannot be disabled — no param needed
+    ("claude-haiku-5-5", False),   # ships on by default — no param needed
     ("claude-sonnet-5-5", False),  # ships on by default — no param needed
-    ("claude-haiku-4-5", False),   # no thinking control at all
+    ("claude-opus-5-5", False),    # always on, cannot be disabled — no param needed
+    ("claude-fable-5-1", False),   # always on, cannot be disabled — no param needed
     ("gpt-5", False),              # non-Claude — never consulted
     ("not-a-real-model", False),   # uncatalogued — correctness-safe default
 ])
@@ -468,18 +518,22 @@ def test_catalog_needs_thinking_param(model_id, needs_thinking_param):
     assert mc.catalog_needs_thinking_param(model_id) is needs_thinking_param
 
 
+def test_catalog_needs_thinking_param_for_a_model_that_ships_it_off(thinking_off_claude):
+    assert mc.catalog_needs_thinking_param(thinking_off_claude) is True
+    from watchdog.model_catalog import catalog_has_reasoning
+    assert catalog_has_reasoning(thinking_off_claude) is True   # thinking sent explicitly
+
+
 @pytest.mark.parametrize("model_id,has_reasoning", [
-    ("claude-sonnet-4-6", True),   # thinking sent explicitly (#635)
-    ("claude-opus-4-8", True),     # thinking sent explicitly (#635)
-    ("claude-sonnet-5", True),     # thinking on by default
-    ("claude-opus-5", True),       # thinking on by default
-    ("claude-opus-5-5", True),     # thinking always on
+    ("claude-haiku-5-5", True),    # thinking on by default (missing before D310)
     ("claude-sonnet-5-5", True),   # thinking on by default
-    ("claude-haiku-4-5", False),   # no thinking control at all
+    ("claude-opus-5-5", True),     # thinking always on
+    ("claude-fable-5-1", True),    # thinking always on
     ("gpt-5.6-luna", True),        # OpenAI reasoning model
-    ("gpt-6-luna", True),        # OpenAI reasoning model
-    ("deepseek-flash", False),  # no reasoning field in the catalog
-    ("gemini-3.7-flash", False),   # no reasoning field in the catalog
+    ("gpt-6-luna", True),          # OpenAI reasoning model
+    ("gpt-6-astra", True),
+    ("deepseek-flash", False),     # no reasoning field in the catalog
+    ("gemini-3.8-flash", False),   # no reasoning field in the catalog
     ("not-a-real-model", False),   # uncatalogued — never assume a channel that isn't confirmed
 ])
 def test_catalog_has_reasoning(model_id, has_reasoning):
@@ -493,10 +547,9 @@ def test_catalog_has_reasoning(model_id, has_reasoning):
 # always raises, whether that's a brand-new level (xhigh/max) or one of the original three.
 
 @pytest.mark.parametrize("provider,model_id,effort", [
-    ("anthropic", "claude-sonnet-4-6", "xhigh"),   # Sonnet 4.6 takes max, not xhigh
-    ("anthropic", "claude-haiku-4-5", "max"),      # Haiku has no effort control at all
-    ("anthropic", "claude-haiku-4-5", "low"),      # ...at any level, not just xhigh/max
     ("gemini", "gemini-2.5-pro", "xhigh"),
+    ("gemini", "gemini-4-argon", "xhigh"),         # Gemini thinking stops at high
+    ("gemini", "gemini-3.8-flash", "max"),
     ("deepseek", "deepseek-v4-pro", "max"),
     ("deepseek", "deepseek-v4-pro", "high"),       # DeepSeek has no portable knob at all
     ("local", "llama-3.3-70b", "xhigh"),
@@ -524,14 +577,6 @@ def test_openai_chat_model_rejects_max(openai_key, monkeypatch):
         complete_json(task="t", prompt="p", schema=SCHEMA, backend="openai", model="gpt-4o", effort="max")
 
 
-def test_claude_sonnet_rejects_xhigh(api_key_auth, monkeypatch):
-    # Sonnet 4.6 takes `max` but Anthropic hasn't extended `xhigh` coverage to it yet.
-    api = FakeBackend(_out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    with pytest.raises(mc.ModelError, match="xhigh"):
-        complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-4.6", effort="xhigh")
-
-
 def test_claude_sonnet_accepts_max(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
@@ -546,15 +591,13 @@ def test_claude_opus_accepts_xhigh(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] == "xhigh"
 
 
-def test_claude_sonnet5_accepts_xhigh_via_tier_name(api_key_auth, monkeypatch):
-    # End-to-end through the `sonnet-5` tier alias (#361/#509, D165) — not just _resolve_effort
-    # in isolation. Sonnet 4.6 rejects xhigh (test_claude_sonnet_rejects_xhigh above); Sonnet 5
-    # accepts it, confirming the new catalog entry resolves and its effort_levels take effect.
+def test_claude_fable_accepts_xhigh_via_tier_name(api_key_auth, monkeypatch):
+    # End-to-end through the `fable` tier alias (D310) — not just _resolve_effort in isolation.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet-5", effort="xhigh")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="fable", effort="xhigh")
     assert api.calls[0]["effort"] == "xhigh"
-    assert api.calls[0]["model_id"] == "claude-sonnet-5"
+    assert api.calls[0]["model_id"] == "claude-fable-5-1"
 
 
 def test_gemini_rejects_max(gemini_key, monkeypatch):
@@ -588,9 +631,11 @@ def test_deepseek_rejects_xhigh(monkeypatch):
     ("gemini-2.5-flash", 1_000_000),
     ("gemini-2.5-flash-lite", 1_000_000),
     ("gemini-2.5-pro", 1_000_000),
-    ("gemini-3.7-flash", 1_000_000),
+    ("gemini-3.8-flash", 1_000_000),
     ("gemini-3.5-flash-lite", 1_000_000),
-    ("gemini-3.1-pro-preview", 1_000_000),
+    ("gemini-4-argon", 1_000_000),
+    ("gpt-6-astra", 1_050_000),
+    ("gpt-6-sol", 128_000),                     # uncatalogued GPT-6 id: no row on purpose (D310)
     ("gpt-5-mini", 400_000),
     ("gpt-4o", 128_000),
     ("some-unknown-model", 128_000),            # conservative default for anything unlisted
@@ -753,24 +798,24 @@ def test_context_window_ignores_backend_for_hosted_models():
 
 # ── tokenizer ratio (#574, remeasured against corpus-v1 in #617) ────────────────
 
-# FOUR tokenizers cover all fifteen catalogued models: Claude through Sonnet 4.6, Claude 4.7+,
-# Gemini, GPT-5.x, and DeepSeek V4. Members of a family share a value exactly — every model within
-# one returned byte-identical counts on the corpus — which is what the paired rows below assert.
-# Only an UNCATALOGUED id falls through to 1.0 now.
+# Four measured tokenizer values cover every catalogued model (Haiku 5.5's is derived instead):
+# Claude 4.7+, Gemini, GPT-5.x, and DeepSeek V4. Members of a family share a value exactly — every
+# model within one returned byte-identical counts on the corpus — and a model joining a family
+# copies its value until measured (D310). Only an UNCATALOGUED id falls through to 1.0.
 @pytest.mark.parametrize("model, ratio", [
     ("sonnet", 1.28),            # default tier is Sonnet 5.5 — new Claude tokenizer (D236)
-    ("sonnet-4.6", 0.93),        # old Claude tokenizer (Sonnet 4.6)
-    ("haiku-4.5", 0.93),         # old Claude tokenizer — same value, same tokenizer
     ("haiku", 1.21),             # Haiku 5.5: derived from "about 30% more" than 4.5, unmeasured (D277)
     (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
-    ("sonnet-5", 1.28),          # new Claude tokenizer
-    ("sonnet-5.5", 1.28),        # same tokenizer family, copied not measured
+    ("sonnet-5.5", 1.28),        # new Claude tokenizer, copied not measured
     ("opus", 1.28),              # new Claude tokenizer (Opus 5.5, copied) — same value
-    ("gemini-3.7-flash", 0.91),  # Gemini tokenizer
-    ("gemini-3.1-pro-preview", 0.91),
-    ("gpt-6-luna", 0.80),      # GPT-5.x tokenizer — copied, unmeasured for GPT-6 (D249)
-    ("gpt-5.5", 0.80),           # same family, same value
-    ("gpt-5.6-luna", 0.80),
+    ("fable", 1.28),             # new Claude tokenizer (Fable 5.1, copied, D310)
+    ("gemini-4-argon", 0.91),    # Gemini tokenizer, copied (D310)
+    ("gemini-3.8-flash", 0.91),
+    ("gemini-3.5-flash-lite", 0.91),
+    ("gpt-6-luna", 0.80),        # GPT-5.x tokenizer — copied, unmeasured for GPT-6 (D249)
+    ("gpt-6-astra", 0.80),       # same, D310
+    ("gpt-6.1-sol", 0.80),
+    ("gpt-5.6-luna", 0.80),      # measured (#617)
     ("deepseek-flash", 0.81),  # DeepSeek V4 tokenizer
     ("deepseek-v4-pro", 0.81),
     ("gpt-5-mini", 1.0),         # uncatalogued id → no correction
@@ -783,12 +828,12 @@ def test_tokenizer_ratio(model, ratio):
 
 def test_tokenizer_ratio_local_backend_always_one():
     # A self-hosted model's id carries no catalog entry to declare a ratio.
-    assert mc.tokenizer_ratio("claude-sonnet-5", backend="local") == 1.0
+    assert mc.tokenizer_ratio("claude-sonnet-5-5", backend="local") == 1.0
 
 
 def test_tokenizer_ratio_no_vault_uses_catalog(tmp_path):
     # No vault context (e.g. `watchdog configure`'s preview, #606 Part A) — plain catalog value.
-    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=None) == 1.28
+    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=None) == 1.28
 
 
 def test_tokenizer_ratio_uses_vault_calibration_when_available(tmp_path, monkeypatch):
@@ -802,8 +847,8 @@ def test_tokenizer_ratio_uses_vault_calibration_when_available(tmp_path, monkeyp
 
     monkeypatch.setattr(ingest_setup, "_model_tokenizer_calibration", fake_calibration)
     vault = tmp_path / "vault"
-    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.55
-    assert calls == [(vault, "sonnet-5", None)]
+    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=vault) == 1.55
+    assert calls == [(vault, "sonnet-5.5", None)]
 
 
 def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp_path, monkeypatch):
@@ -811,8 +856,8 @@ def test_tokenizer_ratio_falls_back_to_catalog_when_calibration_returns_none(tmp
 
     monkeypatch.setattr(ingest_setup, "_model_tokenizer_calibration", lambda *a, **kw: None)
     vault = tmp_path / "vault"
-    # sonnet-5's catalog ratio (1.28) is used when the vault has no matching calibration history.
-    assert mc.tokenizer_ratio("sonnet-5", backend=None, vault=vault) == 1.28
+    # sonnet-5.5's catalog ratio (1.28) is used when the vault has no matching calibration history.
+    assert mc.tokenizer_ratio("sonnet-5.5", backend=None, vault=vault) == 1.28
 
 
 @pytest.mark.parametrize("model_id, expected_cap", [
@@ -888,26 +933,34 @@ def test_openai_cost(monkeypatch):
     assert mc._openai_cost("deepseek-flash", None) is None
 
 
+@pytest.fixture
+def earlier_openai(catalog_entry):
+    """An OpenAI model from before GPT-5.6, shaped like GPT-5.4 was ($2.50 / $15, cached $0.25, no
+    write fee, no explicit breakpoints). None is catalogued since D310; the pricing path for one
+    still has to hold."""
+    return catalog_entry(id="gpt-test-earlier", provider="openai", input=2.5e-6, output=15.0e-6,
+                         cached_input=0.25e-6, context_window=1_050_000, max_output_tokens=128_000,
+                         reasoning=True, effort_levels=["low", "medium", "high"])
+
+
 def test_openai_cost_prices_openai_models():
-    # gpt-5.4 standard: $2.50/1M input, $15/1M output.
-    assert mc._openai_cost("gpt-5.4",
+    # gpt-6.1-sol standard: $2/1M input, $10/1M output.
+    assert mc._openai_cost("gpt-6.1-sol",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(2.5 + 15)
+        == pytest.approx(2.0 + 10.0)
 
 
 @pytest.mark.parametrize("model_id, price_in, price_out", [
-    ("gpt-5.5", 5.0, 30.0),
-    ("gpt-5.4", 2.5, 15.0),
-    ("gpt-5.6-terra", 2.0, 12.0),
-    ("gpt-5.6-luna", 0.20, 1.20),
+    ("gpt-6-astra", 10.0, 50.0),
+    ("gpt-6.1-sol", 2.0, 10.0),
     ("gpt-6-luna", 0.10, 0.50),
+    ("gpt-5.6-luna", 0.20, 1.20),
 ])
 def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, price_out):
     """Per-model price sentinel (#555). gpt-5.6-terra shipped carrying gpt-5.4's rates (2.50/15.00
     rather than 2.00/12.00), over-stating every Terra cost by 25% — a copy-paste when the row was
-    added, invisible because nothing asserted a per-model price. Verified 2026-08-16 (and
-    `gpt-6-luna`, plus every other row here, again on 2026-10-04) against
-    developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
+    added, invisible because nothing asserted a per-model price. Every row here verified
+    2026-10-13 against developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
     deliberately, not discover the drift through a cost report."""
     assert mc._openai_cost(model_id, {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(price_in + price_out)
@@ -925,14 +978,14 @@ def test_openai_cost_deepseek_cache_hit(monkeypatch):
 @pytest.mark.parametrize("model_id, price_in, price_out", [
     ("deepseek-flash", 0.15, 0.60),
     ("deepseek-v4-pro", 0.66, 1.98),
-    ("gemini-3.7-flash", 0.75, 3.75),
+    ("gemini-4-argon", 2.00, 10.00),     # through 2026-11-30, then $4 / $20
+    ("gemini-3.8-flash", 0.75, 3.75),    # promotional through 2026-12-31, then $1.50 / $7.50
     ("gemini-3.5-flash-lite", 0.30, 2.50),
-    ("gemini-3.1-pro-preview", 2.00, 12.00),
 ])
 def test_deepseek_and_gemini_prices_match_the_published_rate_card(model_id, price_in, price_out,
                                                                   monkeypatch):
     """Per-model price sentinel, the DeepSeek/Gemini half of the OpenAI table above. Verified
-    2026-10-04 (Flash repriced when DeepSeek moved it to V4.1) against
+    2026-10-13 against
     api-docs.deepseek.com/quick_start/pricing (DeepSeek's OFF-PEAK column —
     peak is 2x, applied by `price_multiplier`, which is why this pins it) and
     ai.google.dev/gemini-api/docs/pricing. The DeepSeek rows in particular sat 1.6x-4.7x under the
@@ -942,9 +995,9 @@ def test_deepseek_and_gemini_prices_match_the_published_rate_card(model_id, pric
         == pytest.approx(price_in + price_out)
 
 
-def test_openai_cost_openai_cache_hit():
+def test_openai_cost_openai_cache_hit(earlier_openai):
     # OpenAI nests the cached count under prompt_tokens_details; it is a subset of prompt_tokens.
-    cost = mc._openai_cost("gpt-5.4",
+    cost = mc._openai_cost(earlier_openai,
                            {"prompt_tokens": 1_000_000, "completion_tokens": 0,
                             "prompt_tokens_details": {"cached_tokens": 400_000}})
     assert cost == pytest.approx(600_000 * 2.5e-6 + 400_000 * 0.25e-6)
@@ -963,13 +1016,13 @@ def test_openai_cost_charges_gpt56_cache_writes_at_the_premium_rate():
                                  + 200_000 * 0.25e-6)   # cache writes, 1.25x input
 
 
-def test_openai_cost_cache_writes_before_the_gpt56_family_stay_plain_input():
+def test_openai_cost_cache_writes_before_the_gpt56_family_stay_plain_input(earlier_openai):
     """Earlier families carry no additional fee for a write, which is NOT the same as free: those
     tokens are still ordinary input at the full rate. Carving them out at a 0.0 write rate would
     hand back a 40% discount that doesn't exist."""
     usage = {"prompt_tokens": 1_000_000, "completion_tokens": 0,
              "prompt_tokens_details": {"cached_tokens": 0, "cache_write_tokens": 400_000}}
-    assert mc._openai_cost("gpt-5.4", usage) == pytest.approx(1_000_000 * 2.5e-6)
+    assert mc._openai_cost(earlier_openai, usage) == pytest.approx(1_000_000 * 2.5e-6)
 
 
 def test_openai_cost_clamps_overlapping_cache_counters():
@@ -992,13 +1045,13 @@ def test_cache_write_tokens_reads_the_openai_shape_and_defaults_to_zero():
 
 def test_openai_batch_cost_is_half_the_openai_cost():
     usage = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}
-    live = mc._openai_cost("gpt-5.4", usage)
-    assert mc._openai_batch_cost("gpt-5.4", usage) == pytest.approx(live * 0.5)
+    live = mc._openai_cost("gpt-6.1-sol", usage)
+    assert mc._openai_batch_cost("gpt-6.1-sol", usage) == pytest.approx(live * 0.5)
 
 
 def test_openai_batch_cost_none_for_unknown_model_or_usage():
     assert mc._openai_batch_cost("not-a-real-model", {"prompt_tokens": 100}) is None
-    assert mc._openai_batch_cost("gpt-5.4", None) is None
+    assert mc._openai_batch_cost("gpt-6.1-sol", None) is None
 
 
 def test_openai_cost_prices_gemini_models():
@@ -1006,8 +1059,8 @@ def test_openai_cost_prices_gemini_models():
     assert mc._openai_cost("gemini-3.5-flash-lite",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(0.30 + 2.50)
-    # gemini-3.7-flash: $0.75/1M input, $3.75/1M output (promotional, through 2026-12-31).
-    assert mc._openai_cost("gemini-3.7-flash",
+    # gemini-3.8-flash: $0.75/1M input, $3.75/1M output (promotional, through 2026-12-31).
+    assert mc._openai_cost("gemini-3.8-flash",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
         == pytest.approx(0.75 + 3.75)
 
@@ -1098,12 +1151,12 @@ def test_gemini_hidden_reasoning_is_billed_as_output(monkeypatch):
     # Gemini call in proportion to how hard the model thought.
     _fake_usage_response(monkeypatch, {"prompt_tokens": 27147, "completion_tokens": 847,
                                        "total_tokens": 43131})
-    out = asyncio.run(mc._openai_complete_async("p", "gemini-3.7-flash", SCHEMA, "AIza-x", 64000,
+    out = asyncio.run(mc._openai_complete_async("p", "gemini-3.8-flash", SCHEMA, "AIza-x", 64000,
                                                 "high", base_url=mc._OPENAI_BASE["gemini"]))
     assert out["usage"]["completion_tokens"] == 15984
     assert out["cost_usd"] == pytest.approx(27147 * 0.75e-6 + 15984 * 3.75e-6)
     # …and not the 19x-understated figure the visible answer alone would have produced.
-    assert out["cost_usd"] > mc._openai_cost("gemini-3.7-flash",
+    assert out["cost_usd"] > mc._openai_cost("gemini-3.8-flash",
                                              {"prompt_tokens": 27147, "completion_tokens": 847})
 
 
@@ -1308,6 +1361,7 @@ def test_openai_backend_no_thinking_param(monkeypatch):
 
 @pytest.mark.parametrize("model_id, reasoning", [
     ("gpt-5", True), ("gpt-5-mini", True), ("gpt-5.4", True), ("gpt-5.5-pro", True),
+    ("gpt-6-sol", True),
     ("o1", True), ("o3-mini", True), ("o4-mini", True),
     ("gpt-4o", False), ("gpt-4.1", False), ("chatgpt-4o-latest", False),
     ("some-new-model", False),   # unlisted → chat, the safe default (never sends an unsupported param)
@@ -1529,12 +1583,13 @@ def test_gpt56_marks_only_the_first_breakpoint_even_with_a_document_breakpoint()
     assert marked == [1]
 
 
-def test_earlier_openai_families_keep_the_flat_string_and_no_cache_options(monkeypatch):
+def test_earlier_openai_families_keep_the_flat_string_and_no_cache_options(monkeypatch,
+                                                                          earlier_openai):
     """GPT-5.5 and earlier still do implicit longest-prefix matching, and don't accept these
     fields — leave those requests exactly as they were."""
     captured = {}
     _fake_httpx(monkeypatch, captured)
-    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, "gpt-5.4-mini", SCHEMA, "sk-o", 8000,
+    asyncio.run(mc._openai_complete_async(_BLOCK_PROMPT, earlier_openai, SCHEMA, "sk-o", 8000,
                                           base_url="https://api.openai.com/v1"))
     assert _user_content(captured) == mc._flatten_prompt(_BLOCK_PROMPT)
     assert "prompt_cache_options" not in captured["body"]
@@ -1594,13 +1649,13 @@ def test_openai_cache_blocks_none_when_there_is_nothing_to_mark():
     assert mc._openai_cache_blocks([{"type": "text", "text": "a"}]) is None
 
 
-def test_catalog_cache_breakpoints_marks_only_the_gpt56_family():
+def test_catalog_cache_breakpoints_marks_only_the_gpt56_family(earlier_openai):
     from watchdog.model_catalog import catalog_cache_breakpoints
-    assert catalog_cache_breakpoints("gpt-5.6-luna") is True
-    assert catalog_cache_breakpoints("gpt-5.6-terra") is True
-    assert catalog_cache_breakpoints("gpt-5.5") is False
-    assert catalog_cache_breakpoints("gpt-5.4-mini") is False
-    assert catalog_cache_breakpoints("claude-sonnet-4-6") is False
+    for model_id in ("gpt-5.6-luna", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"):
+        assert catalog_cache_breakpoints(model_id) is True
+    assert catalog_cache_breakpoints(earlier_openai) is False
+    assert catalog_cache_breakpoints("claude-sonnet-5-5") is False
+    assert catalog_cache_breakpoints("gemini-3.8-flash") is False
     # An uncatalogued id (a local/OpenRouter model behind an arbitrary runner) must never be sent
     # a body field it might reject.
     assert catalog_cache_breakpoints("some-self-hosted-model") is False
@@ -1610,7 +1665,7 @@ def test_gpt56_cache_write_price_is_exactly_1_25x_input():
     """OpenAI's rule, not a per-model quote — a drifting hand-typed rate would silently
     mis-bill every cached call on the family."""
     from watchdog.model_catalog import _OPENAI_PRICING
-    for model_id in ("gpt-5.6-luna", "gpt-5.6-terra"):
+    for model_id in ("gpt-5.6-luna", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"):
         inp, _out, _cached, write = _OPENAI_PRICING[model_id]
         assert write == pytest.approx(inp * 1.25)
 
@@ -1887,7 +1942,7 @@ def test_api_cost_uses_pricing_table():
         output_tokens = 0
         cache_creation_input_tokens = 0
         cache_read_input_tokens = 0
-    assert mc._api_cost("claude-sonnet-4-6", U()) == pytest.approx(3.0)   # $3 / 1M input
+    assert mc._api_cost("claude-sonnet-5-5", U()) == pytest.approx(2.0)   # $2 / 1M input
 
 
 def test_batch_cost_is_half_the_api_cost():
@@ -1896,8 +1951,8 @@ def test_batch_cost_is_half_the_api_cost():
         output_tokens = 1_000_000
         cache_creation_input_tokens = 0
         cache_read_input_tokens = 0
-    api = mc._api_cost("claude-sonnet-4-6", U())
-    assert mc._batch_cost("claude-sonnet-4-6", U()) == pytest.approx(api * 0.5)
+    api = mc._api_cost("claude-sonnet-5-5", U())
+    assert mc._batch_cost("claude-sonnet-5-5", U()) == pytest.approx(api * 0.5)
 
 
 def test_batch_cost_none_for_unknown_model():
@@ -1905,14 +1960,10 @@ def test_batch_cost_none_for_unknown_model():
 
 
 @pytest.mark.parametrize("tier, expected", [
-    ("haiku", "claude-haiku-5-5"), ("haiku-4.5", "claude-haiku-4-5"), ("sonnet", "claude-sonnet-5-5"),
-    ("opus", "claude-opus-5-5"), ("claude-sonnet-4-6", "claude-sonnet-4-6"),
-    # Bare `sonnet` moved from 4.6 to 5.5 (D236); `sonnet-4.6` and `sonnet-5` stay selectable
-    # by name so benchmark arms and pinned configs keep their meaning.
-    ("sonnet-4.6", "claude-sonnet-4-6"), ("sonnet-5", "claude-sonnet-5"),
-    ("sonnet-5.5", "claude-sonnet-5-5"),
-    # Bare `opus` moved from 4.8 to 5.5 (D249); `opus-4.8` and `opus-5` stay selectable by name.
-    ("opus-4.8", "claude-opus-4-8"), ("opus-5", "claude-opus-5"), ("opus-5.5", "claude-opus-5-5"),
+    ("haiku", "claude-haiku-5-5"), ("sonnet", "claude-sonnet-5-5"), ("opus", "claude-opus-5-5"),
+    ("fable", "claude-fable-5-1"), ("claude-sonnet-5-5", "claude-sonnet-5-5"),   # raw id as-is
+    ("sonnet-5.5", "claude-sonnet-5-5"), ("opus-5.5", "claude-opus-5-5"),
+    ("haiku-5.5", "claude-haiku-5-5"), ("fable-5.1", "claude-fable-5-1"),
 ])
 def test_resolve_model_id(tier, expected):
     assert mc.resolve_model_id(tier) == expected
@@ -2019,7 +2070,7 @@ def test_anthropic_backend_captures_rate_limit_headers_on_success(monkeypatch):
         headers={"anthropic-ratelimit-tokens-limit": "40000",
                 "anthropic-ratelimit-tokens-remaining": "39000",
                 "anthropic-ratelimit-tokens-reset": "2026-08-09T12:00:00Z"})
-    out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-5-5", SCHEMA, "sk-x", 8000))
     assert out["text"] == '{"name": "Acme"}'
     assert out["rate_limit"] == {"limit_tokens": 40000, "remaining_tokens": 39000,
                                  "reset_tokens": "2026-08-09T12:00:00Z"}
@@ -2038,7 +2089,7 @@ def test_anthropic_backend_429_carries_rate_limit_headers_on_the_exception(monke
     err = anthropic.RateLimitError("rate limited", response=resp, body=None)
     _fake_anthropic_client(monkeypatch, error=err)
     with pytest.raises(mc.RateLimitError) as exc_info:
-        asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+        asyncio.run(mc._api_complete_async("p", "claude-sonnet-5-5", SCHEMA, "sk-x", 8000))
     assert exc_info.value.rate_limit == {"limit_tokens": 40000, "remaining_tokens": 0,
                                          "reset_tokens": "2026-08-09T12:01:00Z"}
 
@@ -2064,54 +2115,43 @@ def _fake_anthropic_message(text='{"name": "Acme"}'):
 
 # ── thinking (#635, D206) ────────────────────────────────────────────────────
 
-def test_api_complete_sends_thinking_for_a_model_that_defaults_off(monkeypatch):
+def test_api_complete_sends_thinking_for_a_model_that_defaults_off(monkeypatch,
+                                                                   thinking_off_claude):
     calls = []
     _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
-    asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    asyncio.run(mc._api_complete_async("p", thinking_off_claude, SCHEMA, "sk-x", 8000))
     assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
 
 
-def test_api_complete_sends_thinking_for_opus_4_8(monkeypatch):
+@pytest.mark.parametrize("model_id", ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
+                                      "claude-fable-5-1"])
+def test_api_complete_omits_thinking_for_a_model_already_on_by_default(monkeypatch, model_id):
+    # Every current Claude model ships with thinking on already — sending the param isn't needed
+    # and would risk overriding the vendor default in a way this fix never intended.
     calls = []
     _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
-    asyncio.run(mc._api_complete_async("p", "claude-opus-4-8", SCHEMA, "sk-x", 8000))
-    assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
-
-
-def test_api_complete_omits_thinking_for_a_model_already_on_by_default(monkeypatch):
-    # Sonnet 5 / Opus 5 ship with thinking on already — sending the param isn't needed and would
-    # risk overriding the vendor default in a way this fix never intended.
-    calls = []
-    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
-    asyncio.run(mc._api_complete_async("p", "claude-sonnet-5", SCHEMA, "sk-x", 8000))
+    asyncio.run(mc._api_complete_async("p", model_id, SCHEMA, "sk-x", 8000))
     assert "thinking" not in calls[0]
 
 
-def test_api_complete_omits_thinking_for_haiku(monkeypatch):
-    calls = []
-    _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
-    asyncio.run(mc._api_complete_async("p", "claude-haiku-4-5", SCHEMA, "sk-x", 8000))
-    assert "thinking" not in calls[0]
-
-
-def test_api_complete_composes_thinking_with_effort(monkeypatch):
+def test_api_complete_composes_thinking_with_effort(monkeypatch, thinking_off_claude):
     # `thinking` and `effort` are independent controls (Anthropic docs) — both should land on
     # the same call, `effort` inside `output_config`, `thinking` as its own top-level kwarg.
     calls = []
     _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
-    asyncio.run(mc._api_complete_async("p", "claude-opus-4-8", SCHEMA, "sk-x", 8000,
+    asyncio.run(mc._api_complete_async("p", thinking_off_claude, SCHEMA, "sk-x", 8000,
                                        effort="medium"))
     assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
     assert calls[0]["output_config"]["effort"] == "medium"
 
 
-def test_api_complete_omits_thinking_on_a_continuation(monkeypatch):
+def test_api_complete_omits_thinking_on_a_continuation(monkeypatch, thinking_off_claude):
     # Anthropic rejects prefilling the assistant turn while thinking is on, and a continuation
     # (`prefix` set) does exactly that to resume a truncated call — thinking must stay off on
     # the retry even though the model needs it explicitly enabled on a fresh call.
     calls = []
     _fake_anthropic_client(monkeypatch, message=_fake_anthropic_message(), headers={}, calls=calls)
-    asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000,
+    asyncio.run(mc._api_complete_async("p", thinking_off_claude, SCHEMA, "sk-x", 8000,
                                        prefix="partial output"))
     assert "thinking" not in calls[0]
 
@@ -2135,19 +2175,19 @@ def test_api_complete_surfaces_anthropic_reasoning_tokens(monkeypatch):
         stop_reason = "end_turn"
 
     _fake_anthropic_client(monkeypatch, message=FakeMessage(), headers={})
-    out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+    out = asyncio.run(mc._api_complete_async("p", "claude-sonnet-5-5", SCHEMA, "sk-x", 8000))
     assert out["usage"]["completion_tokens_details"]["reasoning_tokens"] == 1200
 
 
 def test_claude_envelope_requires_streaming():
     # The Anthropic SDK (0.116.0) refuses a *non-streaming* request once
     # `3600 * max_tokens / 128_000 > 600`, i.e. max_tokens > 21,333
-    # (`Anthropic._calculate_nonstreaming_timeout`). Sonnet 4.6's catalogued envelope (#598) sits
+    # (`Anthropic._calculate_nonstreaming_timeout`). Sonnet 5.5's catalogued envelope (#598) sits
     # well past that threshold — this is why `_api_complete_async` streams instead of calling
     # `.create()`; it's the regression guard against reverting to the non-streaming call, which
     # would raise at request time for exactly this model/envelope.
     non_streaming_guard = 128_000 * 600 // 3600   # 21,333
-    envelope = mc._wire_max_tokens("claude-api", "claude-sonnet-4-6")
+    envelope = mc._wire_max_tokens("claude-api", "claude-sonnet-5-5")
     assert envelope > non_streaming_guard
 
 
@@ -2509,13 +2549,15 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
 
 
 @pytest.mark.parametrize("backend, model_id", [
-    ("claude-api", "claude-sonnet-4-6"),
-    ("claude-api", "claude-haiku-4-5"),
-    ("claude-api", "claude-opus-4-8"),
+    ("claude-api", "claude-sonnet-5-5"),
+    ("claude-api", "claude-haiku-5-5"),
+    ("claude-api", "claude-opus-5-5"),
+    ("claude-api", "claude-fable-5-1"),
     ("deepseek", "deepseek-flash"),
     ("deepseek", "deepseek-flash-thinking"),   # -thinking marker doesn't change the envelope
-    ("openai", "gpt-5.4"),
-    ("gemini", "gemini-3.7-flash"),
+    ("openai", "gpt-6.1-sol"),
+    ("gemini", "gemini-3.8-flash"),
+    ("gemini", "gemini-4-argon"),
 ])
 def test_wire_max_tokens_derives_from_catalog(backend, model_id):
     # #598: one per-model envelope — the catalogued `max_output_tokens` cap under
@@ -2538,9 +2580,9 @@ def test_wire_max_tokens_uncatalogued_falls_back_to_default():
 
 
 @pytest.mark.parametrize("backend, model", [
-    ("openai", "gpt-5.4"),                # OpenAI reasoning model — used to get an effort-scaled reserve
-    ("gemini", "gemini-3.7-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
-    ("claude-api", "claude-sonnet-4-6"),  # never had a reserve
+    ("openai", "gpt-6.1-sol"),            # OpenAI reasoning model — used to get an effort-scaled reserve
+    ("gemini", "gemini-3.8-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
+    ("claude-api", "claude-sonnet-5-5"),  # never had a reserve
 ])
 def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
     # `_wire_max_tokens(backend, model_id)` doesn't take task/effort parameters at all (#598
@@ -2557,8 +2599,8 @@ def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
     (None, None),                       # unresolved → routes to a Claude backend
 ])
 @pytest.mark.parametrize("backend, model", [
-    ("openai", "gpt-5.4"),
-    ("gemini", "gemini-3.7-flash"),
+    ("openai", "gpt-6.1-sol"),
+    ("gemini", "gemini-3.8-flash"),
     ("local", "llama-3.3-70b"),
     ("openrouter", "anthropic/claude-3.5-sonnet"),
 ])
@@ -2807,28 +2849,29 @@ def test_agent_supports_tools_detects_the_real_sdk_dataclass(monkeypatch):
 
 # ── agent SDK: thinking (#635, D206) ────────────────────────────────────────────
 
-def test_agent_query_sends_thinking_for_a_model_that_defaults_off(monkeypatch):
+def test_agent_query_sends_thinking_for_a_model_that_defaults_off(monkeypatch,
+                                                                  thinking_off_claude):
     captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True,
                                             with_thinking_field=True)
-    asyncio.run(mc._agent_query("p", "claude-sonnet-4-6", None))
+    asyncio.run(mc._agent_query("p", thinking_off_claude, None))
     assert captured["thinking"] == mc._THINKING_ADAPTIVE
 
 
 def test_agent_query_omits_thinking_for_a_model_already_on_by_default(monkeypatch):
-    # Sonnet 5 / Opus 5 ship with thinking on already — no catalog `thinking: true` flag, so
-    # the param is never sent and the model's own native default is left untouched.
+    # Every current Claude model ships with thinking on already — no catalog `thinking: true`
+    # flag, so the param is never sent and the model's own native default is left untouched.
     captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True,
                                             with_thinking_field=True)
-    asyncio.run(mc._agent_query("p", "claude-sonnet-5", None))
+    asyncio.run(mc._agent_query("p", "claude-sonnet-5-5", None))
     assert "thinking" not in captured
 
 
-def test_agent_query_omits_thinking_on_an_older_sdk(monkeypatch):
+def test_agent_query_omits_thinking_on_an_older_sdk(monkeypatch, thinking_off_claude):
     # `thinking` postdates the SDK floor just like `tools` — an older install keeps old behaviour
     # (no crash) rather than sending a kwarg ClaudeAgentOptions doesn't accept.
     captured = _patch_agent_query_capturing(monkeypatch, with_tools_field=True,
                                             with_thinking_field=False)
-    asyncio.run(mc._agent_query("p", "claude-sonnet-4-6", None))
+    asyncio.run(mc._agent_query("p", thinking_off_claude, None))
     assert "thinking" not in captured
 
 
@@ -2989,4 +3032,4 @@ def test_anthropic_402_is_a_billing_stop_whatever_its_message(monkeypatch):
     err = anthropic.APIStatusError("billing_error: account suspended", response=resp, body=None)
     _fake_anthropic_client(monkeypatch, error=err)
     with pytest.raises(mc.ProviderAuthError):
-        asyncio.run(mc._api_complete_async("p", "claude-sonnet-4-6", SCHEMA, "sk-x", 8000))
+        asyncio.run(mc._api_complete_async("p", "claude-sonnet-5-5", SCHEMA, "sk-x", 8000))

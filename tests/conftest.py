@@ -48,3 +48,39 @@ def no_app_provided_keys(monkeypatch):
     keystore.forget()
     yield
     keystore.forget()
+
+
+@pytest.fixture
+def catalog_entry(monkeypatch):
+    """Add a synthetic model to the catalog for one test, for behaviour no current model has (D310
+    removed the last Claude model with thinking off by default, and the last OpenAI model from
+    before explicit cache breakpoints). Call it with the entry's fields, as `model_catalog.yaml`
+    spells them; it returns the id."""
+    from watchdog import model_catalog as cat
+
+    def add(**entry):
+        mid = entry["id"]
+        monkeypatch.setitem(cat._MODELS, mid, entry)
+        for alias in cat._tier_aliases(entry):
+            monkeypatch.setitem(cat._MODEL_IDS, alias, mid)
+        if entry["provider"] == "anthropic":
+            monkeypatch.setitem(cat._PRICING, mid, (float(entry["input"]), float(entry["output"]),
+                                                    float(entry["cache_write"]),
+                                                    float(entry["cache_read"])))
+        else:
+            monkeypatch.setitem(cat._OPENAI_PRICING, mid, (
+                float(entry["input"]), float(entry["output"]), float(entry["cached_input"]),
+                float(entry.get("cache_write", 0.0))))
+        return mid
+    return add
+
+
+@pytest.fixture
+def thinking_off_claude(catalog_entry):
+    """A Claude model that ships with thinking off (`thinking: true`), shaped like Sonnet 4.6 was:
+    the case `catalog_needs_thinking_param` exists for (D206)."""
+    return catalog_entry(id="claude-test-thinking-off", name="Claude Test", provider="anthropic",
+                         tier="test-thinking-off", input=3.0e-6, output=15.0e-6,
+                         cache_write=3.75e-6, cache_read=0.30e-6, context_window=200_000,
+                         max_output_tokens=128_000, effort_levels=["low", "medium", "high", "max"],
+                         thinking=True)

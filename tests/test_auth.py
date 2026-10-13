@@ -246,9 +246,9 @@ def test_write_private_json_creates_owner_only_file(tmp_path):
 
 def test_route_stages_applies_one_model_and_each_stages_default_effort():
     cfg = {}
-    auth.route_stages_to_model(cfg, "gemini", "gemini:gemini-3.7-flash")
+    auth.route_stages_to_model(cfg, "gemini", "gemini:gemini-3.8-flash")
     assert cfg["classifier_model"] == cfg["extractor_model"] == cfg["finalizer_model"] \
-        == "gemini:gemini-3.7-flash"
+        == "gemini:gemini-3.8-flash"
     assert (cfg["classifier_effort"], cfg["extractor_effort"], cfg["finalizer_effort"]) \
         == ("low", "medium", "high")
 
