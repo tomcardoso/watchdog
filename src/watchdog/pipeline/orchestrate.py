@@ -359,8 +359,20 @@ def _write_usage(vault: Path, records: list[dict], est_input_tokens: int | None 
     model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
-    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return _write_usage_file(vault, records, ts, est_input_tokens=est_input_tokens)
+    return _write_usage_file(vault, records, _free_usage_ts(vault), est_input_tokens=est_input_tokens)
+
+
+def _free_usage_ts(vault: Path) -> str:
+    """Now, to the second, as a usage file's timestamp; if a file for that second already exists
+    (two runs ending in the same second), the next second that is free, so one run's record
+    never overwrites another's and the files still sort in the order the runs ended."""
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    when = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    while True:
+        ts = when.strftime("%Y%m%dT%H%M%SZ")
+        if not (usage_dir / f"usage-{ts}.json").exists():
+            return ts
+        when += datetime.timedelta(seconds=1)
 
 
 def _consolidate_orphaned_usage(vault: Path) -> None:
