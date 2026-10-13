@@ -157,6 +157,11 @@ export function torchArgs(platform: NodeJS.Platform = process.platform): string[
   return platform === 'darwin' ? [] : ['--torch-backend', 'cpu']
 }
 
+/** Phase 1's install, run from the engine folder (see the caller). */
+export function coreInstallArgs(python: string, platform: NodeJS.Platform = process.platform): string[] {
+  return ['pip', 'install', '--python', python, ...torchArgs(platform), '-c', 'requirements.lock', '-r', 'core.txt']
+}
+
 function friendlyError(text: string): string {
   const low = text.toLowerCase()
   if (/dns|resolve|connect|network|timed out|timeout|tls|certificate|error sending request|unreachable/.test(low)) {
@@ -427,10 +432,10 @@ export class Engine {
     return env
   }
 
-  private run(cmd: string, args: string[], env: NodeJS.ProcessEnv, onLine?: (line: string) => void): Promise<number> {
+  private run(cmd: string, args: string[], env: NodeJS.ProcessEnv, onLine?: (line: string) => void, cwd?: string): Promise<number> {
     return new Promise((resolve, reject) => {
       this.addLog(`$ ${[cmd, ...args].map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(' ')}`)
-      const child = spawn(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
+      const child = spawn(cmd, args, { env, cwd, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true })
       this.child = child
       const handle = (line: string) => {
         if (onLine) onLine(line)
@@ -446,11 +451,17 @@ export class Engine {
     })
   }
 
-  private async runOrThrow(label: string, cmd: string, args: string[], env: NodeJS.ProcessEnv, step: string): Promise<void> {
-    const code = await this.run(cmd, args, env, (line) => {
-      this.addLog(line)
-      this.setStep(step, 'running', line.replace(/^\s*[-+]?\s*/, '').slice(0, 140))
-    })
+  private async runOrThrow(label: string, cmd: string, args: string[], env: NodeJS.ProcessEnv, step: string, cwd?: string): Promise<void> {
+    const code = await this.run(
+      cmd,
+      args,
+      env,
+      (line) => {
+        this.addLog(line)
+        this.setStep(step, 'running', line.replace(/^\s*[-+]?\s*/, '').slice(0, 140))
+      },
+      cwd
+    )
     if (this.cancelled) throw new Error('cancelled')
     if (code !== 0) {
       const tail = this.log.slice(-6).join('\n')
@@ -584,13 +595,9 @@ export class Engine {
         this.setStep('packages', 'running', 'Installing Watchdog')
         await this.runOrThrow('Installing Watchdog', uv, args, env, 'packages')
         await this.writeCoreRequirements(python)
-        await this.runOrThrow(
-          'Installing Watchdog’s libraries',
-          uv,
-          ['pip', 'install', '--python', python, ...torchArgs(this.platform), '-c', this.lockPath(), '-r', join(this.dir, 'core.txt')],
-          env,
-          'packages'
-        )
+        // Both files are named relative to the engine folder, run from there: uv splits a `-c` path
+        // at its spaces, and the folder is under "Application Support" on a Mac.
+        await this.runOrThrow('Installing Watchdog’s libraries', uv, coreInstallArgs(python, this.platform), env, 'packages', this.dir)
         const version = wheel ? wheelVersion(wheel.split(/[\\/]/).pop()!) : this.pythonPackageVersion(python)
         this.writeRecord({
           schema: RECORD_SCHEMA,
