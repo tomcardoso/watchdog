@@ -2580,14 +2580,14 @@ def test_every_shipped_arm_pins_an_effort_its_model_accepts():
     """A sweep arm that names an effort its model rejects fails at the first model call — after
     the run has already seeded vaults and started spending on the arms before it. The catalog can
     answer this for free, so it does, on the real `benchmarks/benchmark.yaml` rather than a
-    fixture. Tier aliases (`sonnet`, `sonnet-4.6`) are resolved first, exactly as the pipeline
+    fixture. Tier aliases (`sonnet`, `sonnet-5.5`) are resolved first, exactly as the pipeline
     does; a `deepseek:…-thinking` id is left alone, since `_effort_levels` is what knows how to
     strip that marker (D217) and this is a test of the real path."""
     from watchdog.model_client import _resolve_effort, provider_for_backend, resolve_model_id
     config = yaml.safe_load((BENCHMARKS_DIR / "benchmark.yaml").read_text(encoding="utf-8"))
     checked = 0
     for stage in ("extractor_sweep", "finalizer_sweep", "classifier_sweep", "sdk_check"):
-        for arm in config[stage]["arms"]:
+        for arm in (config.get(stage) or {}).get("arms") or []:
             for kind in ("extractor", "finalizer", "classifier"):
                 model, effort = arm.get(f"{kind}_model"), arm.get(f"{kind}_effort")
                 if not model or effort is None:
@@ -2599,21 +2599,45 @@ def test_every_shipped_arm_pins_an_effort_its_model_accepts():
     assert checked > 10, "expected the sweep to pin effort on most of its arms"
 
 
+def test_every_shipped_arm_names_a_catalogued_model():
+    """Every model a shipped arm names is in the catalogue, so it is priced and its limits are
+    known; a removed id (D310) would otherwise run as an uncatalogued model, or not at all for a
+    Claude tier."""
+    from watchdog import model_catalog
+    from watchdog.model_client import resolve_model_id
+    config = rb.load_config(BENCHMARKS_DIR / "benchmark.yaml")
+    arms = [a for stage in ("extractor_sweep", "finalizer_sweep", "classifier_sweep")
+            for a in config[stage]["arms"]]
+    arms += [config["finalizer_sweep"]["base"], config["classifier_smoke"]["arm"],
+             config["classifier_sweep"]["fixed"]]
+    seen = 0
+    for arm in arms:
+        for kind in ("extractor", "finalizer", "classifier"):
+            model = arm.get(f"{kind}_model")
+            if not model:
+                continue
+            _backend, _, model_id = model.rpartition(":")
+            bare, _ = model_catalog._split_deepseek_thinking(resolve_model_id(model_id))
+            assert model_catalog.catalog_context_window(bare), f"{arm.get('id')}: {model}"
+            seen += 1
+    assert seen > 20
+
+
 def test_deepseek_arms_cross_thinking_with_effort():
-    """The DeepSeek sweep is a 2x2-ish grid, not one knob: thinking off (no effort — the provider
-    has none there), and `low`/`high` on each thinking id. `medium`/`xhigh` would be duplicates of
-    `high` under DeepSeek's own alias mapping, so their absence is deliberate (D217)."""
+    """DeepSeek has two knobs, not one: thinking off (no effort — the provider has none there),
+    and an effort level on the thinking ids. `medium`/`xhigh` would be duplicates of `high` under
+    DeepSeek's own alias mapping, so their absence is deliberate (D217)."""
     config = yaml.safe_load((BENCHMARKS_DIR / "benchmark.yaml").read_text(encoding="utf-8"))
     ds = {a["id"]: a for a in config["extractor_sweep"]["arms"]
           if a.get("extractor_model", "").startswith("deepseek:")}
-    assert set(ds) == {"ds-flash", "ds-flash-think-low", "ds-flash-think-high",
-                       "ds-pro", "ds-pro-think-low", "ds-pro-think-high"}
+    assert set(ds) == {"deepseek-flash", "deepseek-flash-think-high", "deepseek-pro-think-high"}
     for arm_id, arm in ds.items():
         thinking = arm["extractor_model"].endswith("-thinking")
         assert thinking == ("think" in arm_id)
         assert ("extractor_effort" in arm) is thinking, \
             f"{arm_id}: effort belongs on the thinking arms and only on them"
-    assert {ds[a]["extractor_effort"] for a in ds if "think" in a} == {"low", "high"}
+        if thinking:
+            assert arm["extractor_effort"] in {"low", "high", "max"}
 
 
 # ── score_index.py — the #551 model index ───────────────────────────────────────
@@ -2985,21 +3009,54 @@ def test_repeat_table_says_so_when_nothing_was_repeated():
 
 
 def test_shipped_benchmark_yaml_repeats_the_default_model_arms():
-    """The default model's arms are the ones every user's documents run on, so the shipped
-    matrix runs each of them at least three times (D278)."""
+    """The shipped defaults' arms are the ones every user's documents run on, so the shipped
+    matrix runs each of them at least three times (D278): Sonnet 5.5 at medium for extraction,
+    Haiku 5.5 at medium for post-processing."""
     config = rb.load_config(BENCHMARKS_DIR / "benchmark.yaml")
-    groups: dict[str, int] = {}
-    for a in config["extractor_sweep"]["arms"]:
-        if a.get("repeat_of"):
-            groups[a["repeat_of"]] = groups.get(a["repeat_of"], 0) + 1
-    for base in ("sonnet-5.5-med", "sonnet-5.5-high", "sonnet-4.6-high", "sonnet-5.5-med-brief"):
-        assert groups.get(base, 0) >= 3, base
-    # The brief pair differs only in the brief, so the difference between them is the brief's.
-    by_id = {a["id"]: a for a in config["extractor_sweep"]["arms"]}
-    plain, briefed = dict(by_id["sonnet-5.5-med-r1"]), dict(by_id["sonnet-5.5-med-brief-r1"])
-    assert Path(briefed.pop("brief")).is_file() and "brief" not in plain
-    assert {k: v for k, v in plain.items() if k not in ("id", "repeat_of")} == \
-        {k: v for k, v in briefed.items() if k not in ("id", "repeat_of")}
+    for stage, base in (("extractor_sweep", "sonnet-5.5-med"), ("finalizer_sweep", "haiku-5.5-med")):
+        runs = [a for a in config[stage]["arms"] if a.get("repeat_of") == base]
+        assert len(runs) >= 3, base
+
+
+def test_shipped_benchmark_yaml_briefs_every_arm():
+    """Every extractor arm, and the finalizer sweep's base extraction, run with the investigation
+    brief (D310), so no shipped arm measures the brief-less setting no real user runs."""
+    config = rb.load_config(BENCHMARKS_DIR / "benchmark.yaml")
+    briefs = {a["brief"] for a in config["extractor_sweep"]["arms"]}
+    briefs.add(config["finalizer_sweep"]["base"]["brief"])
+    assert len(briefs) == 1
+    brief = Path(briefs.pop())
+    assert brief.is_file() and brief.name == "corpus-v1.md"
+
+
+def test_load_config_copies_a_default_brief_onto_every_arm(tmp_path):
+    (tmp_path / "brief.md").write_text("# Brief\n")
+    (tmp_path / "other.md").write_text("# Other\n")
+    cfg = _write_config(tmp_path, extractor_sweep={
+        "vault_prefix": "bench-ex", "defaults": {"brief": "brief.md"}, "arms": [
+            {"id": "a", "extractor_model": "haiku"},
+            {"id": "b", "extractor_model": "haiku", "brief": "other.md"},
+            {"id": "c", "extractor_model": "haiku", "brief": False},
+            {"id": "d", "extractor_model": "haiku", "repeats": 2}]})
+    arms = {a["id"]: a for a in rb.load_config(cfg)["extractor_sweep"]["arms"]}
+    assert arms["a"]["brief"] == str((tmp_path / "brief.md").resolve())
+    assert arms["b"]["brief"] == str((tmp_path / "other.md").resolve())   # an arm's own wins
+    assert arms["c"]["brief"] is False
+    assert arms["d-r1"]["brief"] == arms["d-r2"]["brief"] == arms["a"]["brief"]
+
+
+def test_load_config_resolves_the_finalizer_base_brief(tmp_path):
+    (tmp_path / "brief.md").write_text("# Brief\n")
+    cfg = _write_config(tmp_path, finalizer_sweep={
+        "vault_prefix": "bench-fn", "base": {"extractor_model": "haiku", "brief": "brief.md"},
+        "arms": [{"id": "f", "finalizer_model": "haiku"}]})
+    base = rb.load_config(cfg)["finalizer_sweep"]["base"]
+    assert base["brief"] == str((tmp_path / "brief.md").resolve())
+    cfg = _write_config(tmp_path, finalizer_sweep={
+        "vault_prefix": "bench-fn", "base": {"extractor_model": "haiku", "brief": "nope.md"},
+        "arms": [{"id": "f", "finalizer_model": "haiku"}]})
+    with pytest.raises(SystemExit, match="finalizer_sweep base names a brief"):
+        rb.load_config(cfg)
 
 
 def test_load_config_resolves_a_brief_file_and_rejects_a_missing_one(tmp_path):
