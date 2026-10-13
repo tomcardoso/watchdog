@@ -189,12 +189,12 @@ def test_submit_passes_resolved_effort(tmp_path, monkeypatch):
 
 
 def test_submit_sends_effort_high_explicitly(tmp_path, monkeypatch):
-    # D310: `high` is no longer omitted as "the default" — Haiku 5.5 and Opus 5.5 default to medium.
+    # D310: `high` is no longer omitted as "the default" — Haiku 5.5 defaults to medium.
     vault = make_vault(tmp_path)
     fake = FakeBatches()
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
-    asyncio.run(be.submit(vault, docs, model="opus", effort="high",
+    asyncio.run(be.submit(vault, docs, model="haiku", effort="high",
                           skills={"sha1": "s"}, api_key="sk-x"))
     assert fake.create_calls[0][0]["params"]["output_config"]["effort"] == "high"
 

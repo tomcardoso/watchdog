@@ -223,7 +223,7 @@ def _configured_local_context_window() -> int | None:
 def context_window(model: str | None, backend: str | None = None) -> int:
     """Token context window for a stage's model, for provider-aware sectioning (#321).
 
-    `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-flash`,
+    `model` may be a tier name (haiku/sonnet), a raw provider id (`deepseek-flash`,
     `gpt-6-luna`), or None for the default tier — resolved first, then looked up in the model
     catalog, then the substring fallback table. Unlisted ids fall back to a conservative default
     rather than raising, so a new or misspelled id degrades to safe (small-chunk) sectioning
@@ -1235,7 +1235,7 @@ _BACKEND_META: dict[str, _BackendMeta] = {
 
 # Selectable backend names (public — Settings validates a stage's `backend:model` against this).
 BACKENDS = tuple(_BACKEND_META)
-# Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
+# Backends that take a Claude tier name (haiku/sonnet); the rest take a raw provider id.
 CLAUDE_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.provider == "anthropic")
 # Batch-mode-only backends (submit-many/poll/collect, valid only as extractor_model) — one per
 # provider that offers a Batch API (#214, #530).
@@ -1420,7 +1420,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     `prompt` is normally a string; a caller may instead pass a list of Anthropic content
     blocks with a `cache_control` breakpoint (A1) to make part of the prompt cache-eligible —
     only `claude-api` uses it natively, other backends flatten it to text (`_flatten_prompt`).
-    `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
+    `model` may be a tier name (haiku/sonnet) or a raw model id; omit it for the
     per-task default. `backend` forces a backend ('claude-api', 'claude-agent-sdk',
     'openai', 'deepseek', 'local', 'openrouter'); omit it to route by auth mode. `effort`
     (`low`/`medium`/`high`) is an abstract reasoning-depth intent — each provider maps it to its

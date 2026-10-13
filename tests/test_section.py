@@ -326,12 +326,12 @@ def test_model_defaults_unclamped_for_flat_priced_models(flat_openai):
     # A model with no catalogued boundary keeps the pure window-derived default — the clamp must
     # not leak onto models that price flat at every length, including ones sharing a family (and a
     # tokenizer) with a tiered one: the flat OpenAI model shares the 0.80 ratio but has a 400K
-    # window, and Sonnet and Opus share Haiku 5.5's provider but not its 100K boundary.
+    # window, and Sonnet shares Haiku 5.5's provider but not its 100K boundary.
     assert section.model_defaults(flat_openai, backend="openai") == (300_000, 150_000)
     for model in ("gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"):
         assert section.model_defaults(model, backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-flash", backend="deepseek") == (740_740, 370_370)
-    for model in ("sonnet", "opus"):
+    for model in ("sonnet",):
         assert section.model_defaults(model) == (93_750, 46_875)
 
 
@@ -422,10 +422,9 @@ def test_run_no_longer_accepts_an_effort_argument(tmp_path):
 def test_model_defaults_shrinks_for_new_tokenizer_claude_model():
     # Claude 4.7+ share a newer tokenizer that produces more real tokens for the same text than the
     # chars/4 est_tokens heuristic assumes — measured at 1.28 against corpus-v1 (#617) on models
-    # since removed, and copied to every current Claude model but Haiku 5.5. Threshold/budget
+    # since removed, and copied to Sonnet 5.5. Threshold/budget
     # shrink by that ratio so the real tokens a call sends still respect the 200K context window.
     assert section.model_defaults("sonnet") == (int(120_000 / 1.28), int(60_000 / 1.28))
-    assert section.model_defaults("opus") == (int(120_000 / 1.28), int(60_000 / 1.28))
 
 
 def test_model_defaults_widen_for_over_estimating_tokenizers(flat_openai):

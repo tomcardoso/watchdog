@@ -2763,3 +2763,8 @@ Tradeoff: a setup or benchmark arm naming a removed id stops working and has to 
 Owner's direction: these are more capable, and more expensive, than any of Watchdog's stages needs. Fable 5.1 and Astra cost US$10 in and US$50 out per million tokens, five times Sonnet 5.5; 6.1 Sol is priced like Sonnet but is OpenAI's near-Astra tier, and Sonnet is already the default. All three leave the catalogue, the Settings picker and the benchmark matrix (four arms), with no alias kept (D301). Opus 5.5 and Gemini 4 Argon stay. A typed `gpt-6-astra` or `gpt-6.1-sol` still routes as an uncatalogued GPT-6 id through the family fallback, as `gpt-6-sol` does (D310).
 
 Tradeoff: Fable cannot be chosen at all (a Claude stage takes only a catalogued tier), and Astra or 6.1 Sol only by typing the id, then without catalogued pricing or the 272K clamp; the benchmark cannot say whether a flagship model would have found facts the cheaper ones miss.
+
+### D312 — Claude Opus 5.5 leaves the catalogue too
+Owner's direction, extending D311: Opus 5.5 (US$4 in and US$20 out per million tokens, twice Sonnet 5.5) is also more than any processing stage needs. The `opus` and `opus-5.5` tiers stop resolving, with no alias kept (D301), and its two benchmark arms go. Claude stages now take `haiku` or `sonnet` only. Ask Claude's own model picker is separate: it hands its choice to Claude's agent program, which resolves the name itself, so that picker still offers Opus.
+
+Tradeoff: a setup naming `opus` for any stage fails at the start of a run and has to be changed, and the benchmark no longer shows whether a larger Claude model finds what Sonnet misses.

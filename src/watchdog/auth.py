@@ -659,7 +659,7 @@ def stage_provider(value: str | None) -> str:
     answer "which provider is this stage pointed at" (#325)."""
     backend, _ = defaults.split_backend_model(value or "")
     if backend is None:
-        return "anthropic"          # bare Claude tier (haiku/sonnet/opus)
+        return "anthropic"          # bare Claude tier (haiku/sonnet)
     from watchdog.model_client import provider_for_backend
     return provider_for_backend(backend)
 

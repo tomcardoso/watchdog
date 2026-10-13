@@ -119,7 +119,7 @@ A few things this benchmark doesn't cover yet:
 
 - **The current models, with the brief.** Every figure above was measured on models Watchdog no
   longer offers, and without an investigation brief, which real use always has. The next run
-  measures each provider's current models instead: Claude Haiku 5.5, Sonnet 5.5 and Opus 5.5;
+  measures each provider's current models instead: Claude Haiku 5.5 and Sonnet 5.5;
   OpenAI's GPT-6 Luna; Google's Gemini 4 Argon, 3.8 Flash
   and 3.5 Flash-Lite; and DeepSeek Flash and Pro, every one with the same short brief written as
   open questions. Its numbers are not comparable with the tables above. The shipped default,

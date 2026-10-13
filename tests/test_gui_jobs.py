@@ -239,7 +239,7 @@ def test_jobs_ops_lists_every_operation_with_typed_parameters():
 
 
 def test_shared_run_options_an_operation_does_not_take_are_dropped():
-    assert ops.validate("bark", {"skip_briefing": True, "extractor_model": "opus", "limit": 2}) == {
+    assert ops.validate("bark", {"skip_briefing": True, "extractor_model": "sonnet-5.5", "limit": 2}) == {
         "skip_briefing": True}
     assert ops.validate("dig", {"verify": False, "skill": "", "limit": None}) == {"verify": False}
     with pytest.raises(ops.OpError):

@@ -203,8 +203,8 @@ def test_prune_does_not_rescue_wrong_typed_field(api_key_auth, monkeypatch):
 def test_raw_model_id_does_not_escalate(api_key_auth, monkeypatch):
     api = FakeBackend(_out("bad"), _out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-opus-5-5")
-    assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == "claude-opus-5-5"
+    complete_json(task="t", prompt="p", schema=SCHEMA, model="claude-sonnet-5-5")
+    assert api.calls[0]["model_id"] == api.calls[1]["model_id"] == "claude-sonnet-5-5"
 
 
 def test_cost_accumulates_across_attempts(api_key_auth, monkeypatch):
@@ -233,10 +233,10 @@ def test_effort_passed_to_backend_for_sonnet(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] == "low"
 
 
-@pytest.mark.parametrize("model", ["sonnet", "opus", "haiku"])
+@pytest.mark.parametrize("model", ["sonnet", "haiku"])
 def test_effort_high_is_sent_explicitly(api_key_auth, monkeypatch, model):
-    # D310: `high` used to be omitted as "the model's own default", but Opus 5.5 and Haiku 5.5
-    # default to `medium`, so a `high` request there ran at `medium`. It is always sent now.
+    # D310: `high` used to be omitted as "the model's own default", but Haiku 5.5 (and Opus 5.5,
+    # since removed) default to `medium`, so a `high` request there ran at `medium`. It is always sent now.
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
     complete_json(task="extract", prompt="p", schema=SCHEMA, model=model, effort="high")
@@ -267,10 +267,9 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
 
 @pytest.mark.parametrize("provider,model_id,effort,expected", [
     ("anthropic", "claude-sonnet-5-5", "low", "low"),
-    ("anthropic", "claude-opus-5-5", "medium", "medium"),
+    ("anthropic", "claude-haiku-5-5", "medium", "medium"),
     ("anthropic", "claude-sonnet-5-5", "high", "high"),  # sent, even where it is the default (D310)
-    ("anthropic", "claude-opus-5-5", "high", "high"),    # Opus 5.5 defaults to medium
-    ("anthropic", "claude-haiku-5-5", "high", "high"),   # so does Haiku 5.5
+    ("anthropic", "claude-haiku-5-5", "high", "high"),   # Haiku 5.5 defaults to medium
     ("anthropic", "claude-sonnet-5-5", None, None),      # unset
     ("openai", "gpt-5-mini", "low", "low"),              # OpenAI reasoning model → pass through
     ("openai", "gpt-5", "high", "high"),                 # OpenAI: high is NOT a no-op default
@@ -280,11 +279,11 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("openai", "gpt-5.6-luna", "xhigh", "xhigh"),
     ("openai", "gpt-6-luna", "max", "max"),
     # Every current Claude model takes all five levels (Anthropic's effort docs).
-    ("anthropic", "claude-opus-5-5", "xhigh", "xhigh"),
-    ("anthropic", "claude-opus-5-5", "max", "max"),
+    ("anthropic", "claude-haiku-5-5", "xhigh", "xhigh"),
+    ("anthropic", "claude-sonnet-5-5", "max", "max"),
     ("anthropic", "claude-sonnet-5-5", "xhigh", "xhigh"),
     ("anthropic", "claude-haiku-5-5", "max", "max"),
-    ("anthropic", "claude-opus-5-5", "low", "low"),
+    ("anthropic", "claude-haiku-5-5", "low", "low"),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
@@ -468,7 +467,6 @@ def test_api_cost_applies_the_multiplier_too(monkeypatch):
 @pytest.mark.parametrize("alias,model_id", [
     ("haiku", "claude-haiku-5-5"), ("haiku-5.5", "claude-haiku-5-5"),
     ("sonnet", "claude-sonnet-5-5"), ("sonnet-5.5", "claude-sonnet-5-5"),
-    ("opus", "claude-opus-5-5"), ("opus-5.5", "claude-opus-5-5"),
 ])
 def test_claude_tiers_resolve(alias, model_id):
     assert mc.resolve_model_id(alias) == model_id
@@ -476,11 +474,10 @@ def test_claude_tiers_resolve(alias, model_id):
 
 @pytest.mark.parametrize("model_id,pricing,batch_cap", [
     # (input, output, 5m cache write, cache read) per token, from platform.claude.com's pricing
-    # page (fetched 2026-10-13). Cache reads are 0.1x input on Haiku, 0.05x on Sonnet 5.5 and Opus
-    # 5.5 — each entered as stated, not derived.
+    # page (fetched 2026-10-13). Cache reads are 0.1x input on Haiku, 0.05x on Sonnet 5.5 — each
+    # entered as stated, not derived.
     ("claude-haiku-5-5", (0.10e-6, 0.50e-6, 0.125e-6, 0.01e-6), 300_000),
     ("claude-sonnet-5-5", (2.0e-6, 10.0e-6, 2.5e-6, 0.10e-6), 300_000),
-    ("claude-opus-5-5", (4.0e-6, 20.0e-6, 5.0e-6, 0.20e-6), 300_000),
 ])
 def test_claude_catalog_entries_match_the_vendor_figures(model_id, pricing, batch_cap):
     from watchdog import model_catalog
@@ -496,14 +493,13 @@ def test_haiku_5_5_is_the_only_claude_model_with_a_length_tier():
     """Anthropic prices Haiku 5.5 higher above 100K prompt tokens; every other Claude model prices
     the full window at one rate."""
     assert mc.catalog_long_context_threshold("claude-haiku-5-5") == 100_000
-    for model_id in ("claude-sonnet-5-5", "claude-opus-5-5"):
+    for model_id in ("claude-sonnet-5-5",):
         assert mc.catalog_long_context_threshold(model_id) is None
 
 
 @pytest.mark.parametrize("model_id,needs_thinking_param", [
     ("claude-haiku-5-5", False),   # ships on by default — no param needed
     ("claude-sonnet-5-5", False),  # ships on by default — no param needed
-    ("claude-opus-5-5", False),    # always on, cannot be disabled — no param needed
     ("gpt-5", False),              # non-Claude — never consulted
     ("not-a-real-model", False),   # uncatalogued — correctness-safe default
 ])
@@ -520,7 +516,6 @@ def test_catalog_needs_thinking_param_for_a_model_that_ships_it_off(thinking_off
 @pytest.mark.parametrize("model_id,has_reasoning", [
     ("claude-haiku-5-5", True),    # thinking on by default (missing before D310)
     ("claude-sonnet-5-5", True),   # thinking on by default
-    ("claude-opus-5-5", True),     # thinking always on
     ("gpt-5.6-luna", True),        # OpenAI reasoning model
     ("gpt-6-luna", True),          # OpenAI reasoning model
     ("deepseek-flash", False),     # no reasoning field in the catalog
@@ -575,11 +570,12 @@ def test_claude_sonnet_accepts_max(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] == "max"
 
 
-def test_claude_opus_accepts_xhigh(api_key_auth, monkeypatch):
+def test_claude_sonnet_accepts_xhigh_via_tier_name(api_key_auth, monkeypatch):
     api = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    complete_json(task="extract", prompt="p", schema=SCHEMA, model="opus", effort="xhigh")
+    complete_json(task="extract", prompt="p", schema=SCHEMA, model="sonnet", effort="xhigh")
     assert api.calls[0]["effort"] == "xhigh"
+    assert api.calls[0]["model_id"] == "claude-sonnet-5-5"
 
 
 def test_gemini_rejects_max(gemini_key, monkeypatch):
@@ -603,7 +599,6 @@ def test_deepseek_rejects_xhigh(monkeypatch):
 
 @pytest.mark.parametrize("model, window", [
     ("sonnet", 200_000),                        # tier → claude
-    ("opus", 200_000),
     ("haiku", 200_000),
     (None, 200_000),                            # default tier (sonnet)
     ("deepseek-flash", 1_000_000),
@@ -789,7 +784,6 @@ def test_context_window_ignores_backend_for_hosted_models():
     ("haiku", 1.21),             # Haiku 5.5: derived from "about 30% more" than 4.5, unmeasured (D277)
     (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
     ("sonnet-5.5", 1.28),        # new Claude tokenizer, copied not measured
-    ("opus", 1.28),              # new Claude tokenizer (Opus 5.5, copied) — same value
     ("gemini-4-argon", 0.91),    # Gemini tokenizer, copied (D310)
     ("gemini-3.8-flash", 0.91),
     ("gemini-3.5-flash-lite", 0.91),
@@ -1937,9 +1931,9 @@ def test_batch_cost_none_for_unknown_model():
 
 
 @pytest.mark.parametrize("tier, expected", [
-    ("haiku", "claude-haiku-5-5"), ("sonnet", "claude-sonnet-5-5"), ("opus", "claude-opus-5-5"),
+    ("haiku", "claude-haiku-5-5"), ("sonnet", "claude-sonnet-5-5"),
     ("claude-sonnet-5-5", "claude-sonnet-5-5"),   # raw id as-is
-    ("sonnet-5.5", "claude-sonnet-5-5"), ("opus-5.5", "claude-opus-5-5"),
+    ("sonnet-5.5", "claude-sonnet-5-5"),
     ("haiku-5.5", "claude-haiku-5-5"),
 ])
 def test_resolve_model_id(tier, expected):
@@ -2100,7 +2094,7 @@ def test_api_complete_sends_thinking_for_a_model_that_defaults_off(monkeypatch,
     assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
 
 
-@pytest.mark.parametrize("model_id", ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"])
+@pytest.mark.parametrize("model_id", ["claude-haiku-5-5", "claude-sonnet-5-5"])
 def test_api_complete_omits_thinking_for_a_model_already_on_by_default(monkeypatch, model_id):
     # Every current Claude model ships with thinking on already — sending the param isn't needed
     # and would risk overriding the vendor default in a way this fix never intended.
@@ -2527,7 +2521,6 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
 @pytest.mark.parametrize("backend, model_id", [
     ("claude-api", "claude-sonnet-5-5"),
     ("claude-api", "claude-haiku-5-5"),
-    ("claude-api", "claude-opus-5-5"),
     ("deepseek", "deepseek-flash"),
     ("deepseek", "deepseek-flash-thinking"),   # -thinking marker doesn't change the envelope
     ("openai", "gpt-6-luna"),

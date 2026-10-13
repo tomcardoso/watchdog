@@ -211,11 +211,11 @@ def test_finalizer_model_written_to_state(tmp_path):
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
 
-    result = run(vault, finalizer_model="opus")
+    result = run(vault, finalizer_model="sonnet-5.5")
 
-    assert result["finalizer_model"] == "opus"
+    assert result["finalizer_model"] == "sonnet-5.5"
     state = json.loads((vault / ".watchdog" / "processing-state.json").read_text())
-    assert state["finalizer_model"] == "opus"
+    assert state["finalizer_model"] == "sonnet-5.5"
 
 
 def test_finalizer_model_defaults_to_the_shared_default(tmp_path):

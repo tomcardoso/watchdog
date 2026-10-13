@@ -82,8 +82,8 @@ FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
 def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
     """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
 
-    Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
-    `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
+    Plain `sonnet`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
+    `backend:model` form selects a backend explicitly — `claude-api:haiku` (a Claude tier), or
     `openai:gpt-6-luna` / `deepseek:deepseek-flash` (a raw provider model id). Carrying both in
     one value means a stage can never be half-configured."""
     from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
@@ -93,7 +93,7 @@ def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tup
         sys.exit(f"Error: unknown backend '{backend}' — choose {', '.join(BACKENDS)}")
     if backend is None or backend in CLAUDE_BACKENDS:
         if model not in _MODEL_IDS:
-            sys.exit(f"Error: unknown model '{model}' — choose haiku, sonnet or opus, "
+            sys.exit(f"Error: unknown model '{model}' — choose haiku or sonnet, "
                      f"or a backend:model form like deepseek:deepseek-flash")
     elif not model:
         sample = "deepseek-flash" if backend == "deepseek" else "gpt-6-luna"
@@ -174,7 +174,7 @@ def _format_all_models_estimate(rows: list[dict]) -> str:
 
 def _effective_extract_backend(extract_backend: str | None, auth_mode: str) -> str:
     """The backend that will actually serve extraction calls when `extract_backend` is unset
-    (plain sonnet/opus/haiku) — mirrors `model_client`'s own subscription/api-key routing, so the
+    (plain sonnet/haiku) — mirrors `model_client`'s own subscription/api-key routing, so the
     cost estimate knows whether a dollar figure means anything (#269)."""
     return extract_backend or ("claude-agent-sdk" if auth_mode == "subscription" else "claude-api")
 

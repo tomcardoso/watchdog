@@ -267,7 +267,7 @@ def test_a_non_deepseek_id_ending_in_thinking_is_not_granted_a_channel():
     assert catalog_has_reasoning("gemini-3.8-flash-thinking") is False
 
 
-@pytest.mark.parametrize("model", ["haiku", "sonnet", "opus", "gpt-6-luna"])
+@pytest.mark.parametrize("model", ["haiku", "sonnet", "gpt-6-luna"])
 def test_extract_prompt_omits_scaffold_for_a_reasoning_model(model):
     # Haiku 5.5 thinks by default too; it got the scaffold until D310 added it to the list.
     p = prompts.build_extract_prompt(

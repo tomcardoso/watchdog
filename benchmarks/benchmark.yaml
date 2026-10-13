@@ -42,13 +42,11 @@ extractor_sweep:
   # between two single-run arms is a lead, not a measurement.
   defaults: {concurrency: 5, max_rate_limit_waits: 2, brief: briefs/corpus-v1.md}
   arms:
-    # ── Anthropic ── Sonnet 5.5 at medium is what every user runs (D236). Haiku 5.5 and Opus 5.5
-    # default to medium on the API, Sonnet 5.5 to high; every arm pins its level. No Fable 5.1,
-    # GPT-6 Astra or GPT-6.1 Sol arm: those models are not catalogued (D311).
+    # ── Anthropic ── Sonnet 5.5 at medium is what every user runs (D236). Haiku 5.5 defaults to
+    # medium on the API, Sonnet 5.5 to high; every arm pins its level. No Opus 5.5, Fable 5.1,
+    # GPT-6 Astra or GPT-6.1 Sol arm: those models are not catalogued (D311, D312).
     - {id: sonnet-5.5-med,        extractor_model: sonnet-5.5, extractor_effort: medium, repeats: 3}
     - {id: sonnet-5.5-high,       extractor_model: sonnet-5.5, extractor_effort: high}
-    - {id: opus-5.5-med,          extractor_model: opus-5.5, extractor_effort: medium}
-    - {id: opus-5.5-high,         extractor_model: opus-5.5, extractor_effort: high}
     - {id: haiku-5.5-low,         extractor_model: haiku-5.5, extractor_effort: low, repeats: 3}
     - {id: haiku-5.5-med,         extractor_model: haiku-5.5, extractor_effort: medium, repeats: 3}
 

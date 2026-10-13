@@ -73,12 +73,12 @@ def test_schema_kinds_and_choices(wdg_home):
 
 def test_schema_current_default_and_display(wdg_home):
     (wdg_home / "config.json").write_text(json.dumps({
-        "extract_concurrency": 7, "extractor_model": "opus", "wayback_secret_key": "hunter2",
+        "extract_concurrency": 7, "extractor_model": "sonnet-5.5", "wayback_secret_key": "hunter2",
         "auto_approve": True}))
     k = keyed(call("settings.schema"))
     assert k["extract_concurrency"]["current"] == 7 and k["extract_concurrency"]["display"] == "7"
     assert k["extract_concurrency"]["default"] == 20 and k["extract_concurrency"]["is_set"] is True
-    assert k["extractor_model"]["current"] == "opus" and k["extractor_model"]["default"] == "sonnet"
+    assert k["extractor_model"]["current"] == "sonnet-5.5" and k["extractor_model"]["default"] == "sonnet"
     assert k["garbled_threshold"]["current"] is None and k["garbled_threshold"]["display"] == "0.6"
     assert k["garbled_threshold"]["is_set"] is False
     assert k["auto_approve"]["display"] == "true"
@@ -160,7 +160,7 @@ def test_set_projects_dir_creates_the_folder(wdg_home, tmp_path):
 
 
 def test_set_empty_clears_a_text_or_model_setting(wdg_home):
-    call("settings.set", key="extractor_model", value="opus")
+    call("settings.set", key="extractor_model", value="sonnet-5.5")
     r = call("settings.set", key="extractor_model", value="")
     assert r["value"] is None and "extractor_model" not in config(wdg_home)
     call("settings.set", key="default_skill", value="general-records")
@@ -170,10 +170,10 @@ def test_set_empty_clears_a_text_or_model_setting(wdg_home):
 
 
 def test_set_keeps_other_settings_and_never_echoes_a_secret(wdg_home):
-    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "opus"}))
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "sonnet-5.5"}))
     r = call("settings.set", key="wayback_secret_key", value="hunter2")
     assert r["value"] is None and "hunter2" not in json.dumps(r) and "set" in r["display"]
-    assert config(wdg_home) == {"extractor_model": "opus", "wayback_secret_key": "hunter2"}
+    assert config(wdg_home) == {"extractor_model": "sonnet-5.5", "wayback_secret_key": "hunter2"}
     assert mode_bits(wdg_home / "config.json") == 0o600
 
 
@@ -195,8 +195,7 @@ def test_models(wdg_home):
     assert sonnet["input_per_mtok"] == pytest.approx(2.0) and sonnet["output_per_mtok"] == pytest.approx(10.0)
     assert sonnet["context_window"] and sonnet["efforts"] == [e for e in r["efforts"] if e in sonnet["efforts"]]
     assert by_value["haiku"]["efforts"] == r["efforts"]
-    opus = by_value["opus"]   # the first alias is what a setting stores (D310)
-    assert opus["id"] == "claude-opus-5-5" and opus["efforts"] == r["efforts"]
+    assert "sonnet-5.5" not in by_value   # the first alias is what a setting stores (D310)
     assert by_value["gemini:gemini-4-argon"]["efforts"] == ["low", "medium", "high"]
     non_claude = [m for m in r["models"] if m["provider"] != "anthropic"]
     assert non_claude and all(m["value"] == f"{m['provider']}:{m['id']}" and m["backend"] == m["provider"]
@@ -361,9 +360,9 @@ def test_set_base_url(wdg_home):
 
 
 def test_set_base_url_keeps_other_settings_and_validates(wdg_home):
-    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "opus"}))
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "sonnet-5.5"}))
     call("auth.setBaseUrl", provider="openrouter", url="https://openrouter.example/api/v1")
-    assert config(wdg_home) == {"extractor_model": "opus",
+    assert config(wdg_home) == {"extractor_model": "sonnet-5.5",
                                 "openrouter_base_url": "https://openrouter.example/api/v1"}
     for bad in ("not a url", "ftp://host/x", "localhost:11434"):
         assert call_error("auth.setBaseUrl", provider="local", url=bad)["code"] == "bad_params"

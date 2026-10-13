@@ -102,10 +102,10 @@ def test_preflight_options_override_the_configured_models(rich_vault, wdg_home):
     credentials(wdg_home, "subscription")
     config(wdg_home, extractor_model="haiku", extractor_effort="low")
     p = call("ingest.preflight", vault=V(rich_vault), options={
-        "extractor_model": "opus", "extractor_effort": "high", "finalizer_briefing_model": "sonnet",
+        "extractor_model": "sonnet-5.5", "extractor_effort": "high", "finalizer_briefing_model": "sonnet",
         "classifier_model": None, "concurrency": 2})
     by_stage = {m["stage"]: m for m in p["models"]}
-    assert by_stage["extractor"]["model"] == "opus" and by_stage["extractor"]["effort"] == "high"
+    assert by_stage["extractor"]["model"] == "sonnet-5.5" and by_stage["extractor"]["effort"] == "high"
     assert by_stage["finalizer:briefing"]["model"] == "sonnet"
     assert "finalizer:synthesis" not in by_stage
     assert by_stage["classifier"]["model"] == "haiku"
@@ -113,9 +113,9 @@ def test_preflight_options_override_the_configured_models(rich_vault, wdg_home):
 
 def test_preflight_reads_configured_models(rich_vault, wdg_home):
     credentials(wdg_home, "subscription")
-    config(wdg_home, extractor_model="opus", finalizer_model="sonnet", finalizer_effort="high")
+    config(wdg_home, extractor_model="sonnet-5.5", finalizer_model="sonnet", finalizer_effort="high")
     by_stage = {m["stage"]: m for m in call("ingest.preflight", vault=V(rich_vault))["models"]}
-    assert by_stage["extractor"]["model"] == "opus" and by_stage["finalizer"]["effort"] == "high"
+    assert by_stage["extractor"]["model"] == "sonnet-5.5" and by_stage["finalizer"]["effort"] == "high"
     assert by_stage["finalizer"]["label"] == "sonnet"
 
 

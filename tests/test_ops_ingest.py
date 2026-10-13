@@ -61,13 +61,13 @@ def _vault_with_queued_doc(tmp_path):
 def test_resolve_stage_claude_tier_has_no_backend():
     from watchdog.ops.ingest import resolve_stage as _resolve_stage
     assert _resolve_stage(None, None, default="sonnet") == (None, "sonnet")
-    assert _resolve_stage("opus", None) == (None, "opus")
+    assert _resolve_stage("sonnet-5.5", None) == (None, "sonnet-5.5")
     assert _resolve_stage(None, "haiku") == (None, "haiku")        # from config
 
 
 def test_resolve_stage_explicit_claude_backend():
     from watchdog.ops.ingest import resolve_stage as _resolve_stage
-    assert _resolve_stage("claude-api:opus", None) == ("claude-api", "opus")
+    assert _resolve_stage("claude-api:sonnet-5.5", None) == ("claude-api", "sonnet-5.5")
 
 
 def test_resolve_stage_claude_batch_backend():
@@ -164,9 +164,9 @@ def test_resolve_finalizer_overrides_flag_overrides_one_stage():
     fall back to the aggregate finalizer."""
     from watchdog.ops.ingest import resolve_finalizer_overrides as _resolve_finalizer_overrides
     overrides = _resolve_finalizer_overrides(
-        RunOptions(finalizer_briefing_model="claude-api:opus"), {}, None, "haiku")
+        RunOptions(finalizer_briefing_model="claude-api:sonnet-5.5"), {}, None, "haiku")
     assert overrides["briefing_backend"] == "claude-api"
-    assert overrides["briefing_model"] == "opus"
+    assert overrides["briefing_model"] == "sonnet-5.5"
     assert overrides["reconciliation_backend"] is None
     assert overrides["reconciliation_model"] == "haiku"
     assert overrides["synthesis_backend"] is None
@@ -185,9 +185,9 @@ def test_resolve_finalizer_overrides_config_key_and_flag_precedence():
     assert overrides["synthesis_model"] == "gemini-2.5-flash"
 
     overrides = _resolve_finalizer_overrides(
-        RunOptions(finalizer_synthesis_model="opus"), config, None, "haiku")
+        RunOptions(finalizer_synthesis_model="sonnet-5.5"), config, None, "haiku")
     assert overrides["synthesis_backend"] is None
-    assert overrides["synthesis_model"] == "opus"
+    assert overrides["synthesis_model"] == "sonnet-5.5"
 
 
 def test_process_does_not_require_claude_auth_when_all_stages_non_claude(wdg_home, tmp_path, monkeypatch):

@@ -1065,10 +1065,10 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
                                         backend="b", auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, extract_model="opus", post_model="haiku", classify_model="haiku"))
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet-5.5", post_model="haiku", classify_model="haiku"))
     by_task = dict(seen)
     assert by_task["classify"] == "haiku"
-    assert by_task["extract"] == "opus"
+    assert by_task["extract"] == "sonnet-5.5"
     assert by_task["briefing"] == "haiku"
 
 
@@ -1149,9 +1149,9 @@ def test_reconcile_pre_commit_stage_override_routes_reconcile_call(tmp_path, mon
 
     asyncio.run(orchestrate._reconcile_pre_commit(
         vault, ["sha1"], "haiku", None, None,
-        finalizer_overrides={"reconciliation_model": "opus", "reconciliation_backend": "claude-api"}))
+        finalizer_overrides={"reconciliation_model": "sonnet-5.5", "reconciliation_backend": "claude-api"}))
 
-    assert seen == [("reconcile", "opus", "claude-api")]
+    assert seen == [("reconcile", "sonnet-5.5", "claude-api")]
 
 
 def test_reconcile_pre_commit_falls_back_to_post_model_when_unoverridden(tmp_path, monkeypatch):
@@ -1209,7 +1209,7 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     overrides = {
-        "synthesis_model": "opus", "synthesis_backend": "claude-api",
+        "synthesis_model": "sonnet-5.5", "synthesis_backend": "claude-api",
         "timeline_model": "gpt-5-mini", "timeline_backend": "openai",
         "briefing_model": "gemini-2.5-flash", "briefing_backend": "gemini",
     }
@@ -1217,7 +1217,7 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
                                          finalizer_overrides=overrides))
 
     by_task = {t: (m, b) for t, m, b in seen}
-    assert by_task["entity-synthesis"] == ("opus", "claude-api")
+    assert by_task["entity-synthesis"] == ("sonnet-5.5", "claude-api")
     assert by_task["timeline-dedup"] == ("gpt-5-mini", "openai")
     assert by_task["briefing"] == ("gemini-2.5-flash", "gemini")
 
@@ -1319,10 +1319,10 @@ def test_post_ingest_stage_override_routes_request_dedup_call(tmp_path, monkeypa
         "sha1", "doc.pdf", {"document": {"key_facts": []}, "entities": []}, {}, 0.0, {})]
     asyncio.run(orchestrate._post_ingest(
         vault, results, None, "haiku",
-        finalizer_overrides={"request_dedup_model": "opus", "request_dedup_backend": "claude-api"}))
+        finalizer_overrides={"request_dedup_model": "sonnet-5.5", "request_dedup_backend": "claude-api"}))
 
     by_task = {t: (m, b) for t, m, b in seen}
-    assert by_task["request-dedup"] == ("opus", "claude-api")
+    assert by_task["request-dedup"] == ("sonnet-5.5", "claude-api")
 
 
 def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):

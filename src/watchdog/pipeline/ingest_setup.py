@@ -219,7 +219,7 @@ def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> lis
     regardless of subscription auth — this is list price for comparison, not a real-billing
     projection. Returns `[]` with no usage history to derive `output_ratio` from — no dollar
     figure is invented. Each row's own `tokenizer_ratio` scales `est_tokens` so a new-tokenizer
-    model (Opus 4.8, Sonnet 5) prices against its real token count rather than the old-tokenizer
+    model (Sonnet 5.5) prices against its real token count rather than the old-tokenizer
     figure verbatim (#574, D135)."""
     if output_ratio is None:
         return []

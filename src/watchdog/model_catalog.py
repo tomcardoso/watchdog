@@ -75,7 +75,7 @@ _REASONING_FALLBACK = [(row[0], bool(row[1])) for row in _CATALOG["reasoning_fal
 
 
 def resolve_model_id(model: str) -> str:
-    """Tier name (haiku/sonnet/opus) -> API model id, or a raw id returned as-is."""
+    """Tier name (haiku/sonnet) -> API model id, or a raw id returned as-is."""
     return _MODEL_IDS.get(model, model)
 
 
@@ -158,7 +158,7 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
 # the only thing that should need this list.
 # Every Claude model catalogued today; Haiku 5.5 was missing until D310, so its extractions got the
 # scaffold meant for a model with no channel.
-_THINKING_BY_DEFAULT_TIERS = {"haiku-5.5", "sonnet-5.5", "opus-5.5"}
+_THINKING_BY_DEFAULT_TIERS = {"haiku-5.5", "sonnet-5.5"}
 
 
 def catalog_has_reasoning(model_id: str) -> bool:
