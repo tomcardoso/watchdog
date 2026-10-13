@@ -189,8 +189,7 @@
 # Batches API only, not the synchronous calls this client makes; omitted for every non-Anthropic
 # model (no documented equivalent). OpenAI (developers.openai.com/api/docs/models/<id>): a flat 128,000
 # across every GPT-5.6 and GPT-6 model in this catalog. Gemini
-# (ai.google.dev/gemini-api/docs/models/<id>): a flat 65,536 across every model in this catalog
-# (Gemini 4 Argon's default synchronous figure; its "long decode" mode is not used). DeepSeek
+# (ai.google.dev/gemini-api/docs/models/<id>): a flat 65,536 across every model in this catalog. DeepSeek
 # (api-docs.deepseek.com/quick_start/pricing/): 384,000 for both Flash and Pro, thinking on or off
 # — supersedes model_client.py's former
 # `_DEEPSEEK_THINKING_MAX_TOKENS = 48000`, whose cited source page
@@ -358,38 +357,24 @@ models:
   # .../docs/models/<id>, .../docs/thinking and .../docs/deprecations, fetched 2026-10-13. Thinking
   # cannot be turned off on any of these; each takes the thinking levels low, medium and high
   # (Flash-Lite also `minimal`, which the abstract effort knob has no level for). Gemini 2.5 is
-  # deliberately not catalogued (#583, D182). The pricing page lists no prompt-length tier for any
-  # of the three, so none carries `long_context_threshold`. Google gives a 1,048,576-token window;
+  # deliberately not catalogued (#583, D182). The pricing page lists no prompt-length tier for
+  # either, so none carries `long_context_threshold`. Google gives a 1,048,576-token window;
   # this catalog uses 1,000,000 for every Gemini entry.
   #
   # Removed (D310): `gemini-3.7-flash`, which Google now routes to `gemini-3.8-flash` ("the endpoint
   # is not shutting down and automatically routes API requests to gemini-3.8-flash", deprecations
-  # page), and `gemini-3.1-pro-preview`, a preview Google can retire on short notice, superseded by
-  # Gemini 4 Argon as the flagship.
+  # page), and `gemini-3.1-pro-preview`, a preview Google can retire on short notice. Gemini 4 Argon,
+  # Google's flagship, is left out with the other flagship-class models (D313).
   #
-  # DATED PRICE CHANGES. Two of these rows carry a price that changes on a calendar date. This
+  # DATED PRICE CHANGE. Gemini 3.8 Flash carries a price that changes on a calendar date. This
   # catalog has no dated-price mechanism (`price_periods` models a rate that cycles with the clock,
   # not a one-way change), so a human changes the numbers on the day — see the CLAUDE.md Standing
-  # Follow-ups. Until then the catalog prices those calls at the old rate.
+  # Follow-ups. Until then the catalog prices its calls at the old rate.
   #
   # `tokenizer_ratio` is copied from the Gemini family value (#617), not re-measured for any of
   # these ids. Gemini's token counter is free: `benchmarks/tokenizer_ratio.py --count` re-measures
   # them against corpus-v1 for $0.
   #
-  # Gemini 4 Argon — Google's "flagship reasoning model", stable, default thinking `medium`. Its
-  # context window is "unified input and output": 1,048,576 tokens shared between the prompt and the
-  # answer. Output is 65,536 by default; the "long decode" mode that reaches 1M output is not used
-  # here. Context caching is implicit only.
-  - id: gemini-4-argon
-    name: Gemini 4 Argon
-    provider: gemini
-    input: 2.00e-6            # through 2026-11-30; $4.00e-6 from 2026-12-01
-    output: 10.0e-6           # through 2026-11-30; $20.0e-6 from 2026-12-01
-    cached_input: 0.10e-6     # through 2026-11-30; $0.20e-6 from 2026-12-01
-    context_window: 1_000_000
-    max_output_tokens: 65_536
-    effort_levels: [low, medium, high]
-    tokenizer_ratio: 0.91     # Gemini family value (#617); not independently measured for this id
   # Gemini 3.8 Flash — "Most intelligent Flash model", stable, default thinking `medium`. Its rates
   # are PROMOTIONAL through 2026-12-31 and double on 2027-01-01.
   - id: gemini-3.8-flash

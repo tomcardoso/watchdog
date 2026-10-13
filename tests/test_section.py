@@ -328,7 +328,7 @@ def test_model_defaults_unclamped_for_flat_priced_models(flat_openai):
     # tokenizer) with a tiered one: the flat OpenAI model shares the 0.80 ratio but has a 400K
     # window, and Sonnet shares Haiku 5.5's provider but not its 100K boundary.
     assert section.model_defaults(flat_openai, backend="openai") == (300_000, 150_000)
-    for model in ("gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"):
+    for model in ("gemini-3.8-flash", "gemini-3.5-flash-lite"):
         assert section.model_defaults(model, backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-flash", backend="deepseek") == (740_740, 370_370)
     for model in ("sonnet",):

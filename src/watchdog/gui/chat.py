@@ -26,6 +26,10 @@ from watchdog.gui import rpc
 from watchdog.gui.rpc import RpcError
 
 MODES = ("ask", "context", "research")
+# The models a conversation can run on (D313). Always named, never left to Claude Code, whose own
+# default can be Opus.
+CHAT_MODELS = ("sonnet", "haiku")
+DEFAULT_CHAT_MODEL = "sonnet"
 _AUTH_HINT = ("Claude is not signed in. Sign in under Settings → Models & keys, then try again.")
 _MISSING_HINT = ("Claude, which comes with Watchdog's engine, could not be started. Repair the "
                  "engine under Settings → Setup, then try again.")
@@ -101,8 +105,7 @@ def build_options(session: "Session", can_use_tool):
     from watchdog.gui.engine_setup import bundled_claude_path
     if bundled_claude_path():
         kwargs["cli_path"] = bundled_claude_path()
-    if session.model:
-        kwargs["model"] = resolve_model_id(session.model)
+    kwargs["model"] = resolve_model_id(session.model if session.model in CHAT_MODELS else DEFAULT_CHAT_MODEL)
     if session.sdk_session_id:
         kwargs["resume"] = session.sdk_session_id
     kwargs["hooks"] = {
@@ -620,6 +623,9 @@ class ChatManager:
     def start(self, vault: Path, mode: str, model: str | None, prompt: str | None) -> dict:
         if mode not in MODES:
             raise RpcError(f"mode must be one of {', '.join(MODES)}.", code="bad_params")
+        model = model or DEFAULT_CHAT_MODEL
+        if model not in CHAT_MODELS:
+            raise RpcError(f"model must be one of {', '.join(CHAT_MODELS)}.", code="bad_params")
         _check_session_key(vault)
         opening = first_prompt(vault, mode, prompt)
         s = Session(vault, mode, model, _title(mode, prompt))

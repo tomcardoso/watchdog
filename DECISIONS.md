@@ -2768,3 +2768,8 @@ Tradeoff: Fable cannot be chosen at all (a Claude stage takes only a catalogued 
 Owner's direction, extending D311: Opus 5.5 (US$4 in and US$20 out per million tokens, twice Sonnet 5.5) is also more than any processing stage needs. The `opus` and `opus-5.5` tiers stop resolving, with no alias kept (D301), and its two benchmark arms go. Claude stages now take `haiku` or `sonnet` only. Ask Claude's own model picker is separate: it hands its choice to Claude's agent program, which resolves the name itself, so that picker still offers Opus.
 
 Tradeoff: a setup naming `opus` for any stage fails at the start of a run and has to be changed, and the benchmark no longer shows whether a larger Claude model finds what Sonnet misses.
+
+### D313 — Gemini 4 Argon leaves the catalogue; Ask Claude runs on Sonnet or Haiku, always named
+Owner's direction, completing D311 and D312: no flagship model anywhere in the app. Gemini 4 Argon, Google's flagship ($2 in and $10 out per million tokens, doubling on 2026-12-01), leaves the catalogue and the benchmark (two arms); Gemini 3.8 Flash and 3.5 Flash-Lite remain. Ask Claude loses its Opus choice and its "Default" choice: Default left the model to Claude Code, whose own default can be Opus. A conversation now always names Sonnet (the default) or Haiku, the backend refuses any other, and a saved conversation that recorded another model reopens on Sonnet.
+
+Tradeoff: no provider's top model can be used for processing or for Ask Claude, so a reporter who wants one for an unusually hard question has to go outside Watchdog.

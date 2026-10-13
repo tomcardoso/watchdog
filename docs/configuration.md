@@ -325,7 +325,7 @@ The installed version, and links to the project's page, the issue tracker and th
 
 Backend choice applies only to the extraction pipeline, the bounded reasoning steps that run when you add documents. **Ask Claude** and **Web research** are not affected: they are open-ended, multi-turn sessions that always run on Claude. The pipeline steps are single-shot calls, which tolerate a cheaper provider far better.
 
-Watchdog is designed around Claude and uses it by default, with no setup beyond signing in. But each step (classification, extraction, finishing) can run on a different provider, and each has its own model field. See [Controlling cost](#controlling-cost) for OpenAI's GPT-5.6 Luna, the benchmark-recommended alternative for extraction. The picker lists each provider's current models; older ones are removed as they are superseded. Each provider's flagship models (Claude Opus and Fable, GPT-6 Astra and GPT-6.1 Sol) are left out: they are built for harder work than any step here, and cost up to five times as much as Sonnet. A model field takes either a Claude tier (`haiku` or `sonnet`, routed by your Claude billing mode) or a `backend:model` value naming the provider and its model:
+Watchdog is designed around Claude and uses it by default, with no setup beyond signing in. But each step (classification, extraction, finishing) can run on a different provider, and each has its own model field. See [Controlling cost](#controlling-cost) for OpenAI's GPT-5.6 Luna, the benchmark-recommended alternative for extraction. The picker lists each provider's current models; older ones are removed as they are superseded. Each provider's flagship models (Claude Opus and Fable, GPT-6 Astra and GPT-6.1 Sol, Gemini 4 Argon) are left out: they are built for harder work than any step here, and cost up to five times as much as Sonnet. A model field takes either a Claude tier (`haiku` or `sonnet`, routed by your Claude billing mode) or a `backend:model` value naming the provider and its model:
 
 | Value | Runs on |
 |---|---|
@@ -338,7 +338,6 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 | `openai:gpt-5.6-luna` | GPT-5.6 Luna, the previous generation, kept because it is the model the benchmark recommendation below was measured on. |
 | `deepseek:deepseek-flash` | DeepSeek V4.1 Flash, non-thinking (append `-thinking` to enable thinking mode). Rates double during DeepSeek's peak hours; see [Controlling cost](#controlling-cost). |
 | `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro, non-thinking (append `-thinking` to enable thinking mode). Same peak-hour pricing as Flash. |
-| `gemini:gemini-4-argon` | Gemini 4 Argon, Google's most capable model. US$2 in and US$10 out per million tokens until 30 November 2026, then US$4 and US$20. |
 | `gemini:gemini-3.8-flash` | Gemini 3.8 Flash, Google's most capable Flash model. US$0.75 in and US$3.75 out per million tokens until 31 December 2026, then double. |
 | `gemini:gemini-3.5-flash-lite` | Gemini 3.5 Flash-Lite, the cheapest Gemini tier. |
 | `local:llama-3.3-70b` | A model on your own computer or network: Ollama, LM Studio, llama.cpp's server, vLLM, or anything else speaking the OpenAI-compatible wire format. Requires Local model URL; usually no key. |

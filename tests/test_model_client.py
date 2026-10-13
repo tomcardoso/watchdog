@@ -534,7 +534,7 @@ def test_catalog_has_reasoning(model_id, has_reasoning):
 
 @pytest.mark.parametrize("provider,model_id,effort", [
     ("gemini", "gemini-2.5-pro", "xhigh"),
-    ("gemini", "gemini-4-argon", "xhigh"),         # Gemini thinking stops at high
+    ("gemini", "gemini-3.8-flash", "xhigh"),       # Gemini thinking stops at high
     ("gemini", "gemini-3.8-flash", "max"),
     ("deepseek", "deepseek-v4-pro", "max"),
     ("deepseek", "deepseek-v4-pro", "high"),       # DeepSeek has no portable knob at all
@@ -610,7 +610,6 @@ def test_deepseek_rejects_xhigh(monkeypatch):
     ("gemini-2.5-pro", 1_000_000),
     ("gemini-3.8-flash", 1_000_000),
     ("gemini-3.5-flash-lite", 1_000_000),
-    ("gemini-4-argon", 1_000_000),
     ("gpt-6-luna", 1_050_000),
     ("gpt-6-sol", 128_000),                     # uncatalogued GPT-6 id: no row on purpose (D310)
     ("gpt-5-mini", 400_000),
@@ -784,7 +783,6 @@ def test_context_window_ignores_backend_for_hosted_models():
     ("haiku", 1.21),             # Haiku 5.5: derived from "about 30% more" than 4.5, unmeasured (D277)
     (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
     ("sonnet-5.5", 1.28),        # new Claude tokenizer, copied not measured
-    ("gemini-4-argon", 0.91),    # Gemini tokenizer, copied (D310)
     ("gemini-3.8-flash", 0.91),
     ("gemini-3.5-flash-lite", 0.91),
     ("gpt-6-luna", 0.80),        # GPT-5.x tokenizer — copied, unmeasured for GPT-6 (D249)
@@ -949,7 +947,6 @@ def test_openai_cost_deepseek_cache_hit(monkeypatch):
 @pytest.mark.parametrize("model_id, price_in, price_out", [
     ("deepseek-flash", 0.15, 0.60),
     ("deepseek-v4-pro", 0.66, 1.98),
-    ("gemini-4-argon", 2.00, 10.00),     # through 2026-11-30, then $4 / $20
     ("gemini-3.8-flash", 0.75, 3.75),    # promotional through 2026-12-31, then $1.50 / $7.50
     ("gemini-3.5-flash-lite", 0.30, 2.50),
 ])
@@ -2525,7 +2522,6 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     ("deepseek", "deepseek-flash-thinking"),   # -thinking marker doesn't change the envelope
     ("openai", "gpt-6-luna"),
     ("gemini", "gemini-3.8-flash"),
-    ("gemini", "gemini-4-argon"),
 ])
 def test_wire_max_tokens_derives_from_catalog(backend, model_id):
     # #598: one per-model envelope — the catalogued `max_output_tokens` cap under

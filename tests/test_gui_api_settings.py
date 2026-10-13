@@ -196,7 +196,7 @@ def test_models(wdg_home):
     assert sonnet["context_window"] and sonnet["efforts"] == [e for e in r["efforts"] if e in sonnet["efforts"]]
     assert by_value["haiku"]["efforts"] == r["efforts"]
     assert "sonnet-5.5" not in by_value   # the first alias is what a setting stores (D310)
-    assert by_value["gemini:gemini-4-argon"]["efforts"] == ["low", "medium", "high"]
+    assert by_value["gemini:gemini-3.8-flash"]["efforts"] == ["low", "medium", "high"]
     non_claude = [m for m in r["models"] if m["provider"] != "anthropic"]
     assert non_claude and all(m["value"] == f"{m['provider']}:{m['id']}" and m["backend"] == m["provider"]
                               for m in non_claude)

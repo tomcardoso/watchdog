@@ -13,7 +13,7 @@ import { PermissionCard, PermissionRequest, SLASH, Thinking, ToolRow } from './C
 import { SAMPLE_LABEL, SampleEmpty, SampleQuestions, useSamplePlayback } from './SamplePlayback'
 import './chat.css'
 
-type ModelChoice = 'default' | 'sonnet' | 'opus' | 'haiku'
+type ModelChoice = 'sonnet' | 'haiku'
 
 export interface WorkspaceApi {
   /** Start a session (or send into the open one). `startMode` overrides the workspace's mode. */
@@ -50,7 +50,6 @@ interface Props {
   samplePlayback?: boolean
 }
 
-const MODEL_ARG: Record<ModelChoice, string | null> = { default: null, sonnet: 'sonnet', opus: 'opus', haiku: 'haiku' }
 let localId = 1
 
 export default function ChatWorkspace(p: Props) {
@@ -69,7 +68,7 @@ export default function ChatWorkspace(p: Props) {
   const [state, setState] = useState<'idle' | 'thinking' | 'closed' | 'error'>('idle')
   const [, setDetail] = useState<string | null>(null)
   const [cost, setCost] = useState<number | null>(null)
-  const [model, setModel] = useState<ModelChoice>('default')
+  const [model, setModel] = useState<ModelChoice>('sonnet')
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -211,7 +210,7 @@ export default function ChatWorkspace(p: Props) {
           // skill. A prompt that is already a slash command is sent as a
           // message once the session is open, so it is never wrapped.
           const asPrompt = !!t && !t.startsWith('/') && mode !== 'context'
-          const r = await call('chat.start', { vault, mode, model: MODEL_ARG[model], prompt: asPrompt ? t : undefined })
+          const r = await call('chat.start', { vault, mode, model, prompt: asPrompt ? t : undefined })
           attach(r.session, true)
           if (t) optimistic(t)
           setState('thinking')
@@ -429,14 +428,12 @@ export default function ChatWorkspace(p: Props) {
             value={model}
             onChange={setModel}
             options={[
-              { value: 'default', label: 'Default', tip: 'Claude’s own default model' },
               { value: 'sonnet', label: 'Sonnet' },
-              { value: 'opus', label: 'Opus' },
-              { value: 'haiku', label: 'Haiku' }
+              { value: 'haiku', label: 'Haiku', tip: 'Cheaper and faster, for simple questions' }
             ]}
           />}
         </header>
-        {model !== 'default' && active && <div className="chat-model-note">The model applies to new conversations. This one keeps the model it started with.</div>}
+        {active && rows.find((r) => r.session === active)?.model !== model && <div className="chat-model-note">The model applies to new conversations. This one keeps the model it started with.</div>}
 
         {signinWarning && (
           <Callout tone="warning" title={!cc!.installed ? 'Claude is missing from the engine' : 'Claude is not signed in'} style={{ margin: '12px 20px 0' }} action={<Button size="sm" onClick={() => navigate({ view: 'settings', tab: 'auth' })}>Open settings</Button>}>

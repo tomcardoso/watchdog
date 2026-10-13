@@ -639,3 +639,19 @@ def test_resume_checks_the_folder_as_start_does(env, tmp_path):
     saved.write_text(json.dumps(data))
     with pytest.raises(rpc.RpcError):
         api.resume(sid)
+
+
+def test_a_conversation_always_names_its_model(env):
+    """Ask Claude runs on Sonnet or Haiku only, and always says which (D313): left unnamed,
+    Claude Code would pick its own default, which can be Opus."""
+    from watchdog.gui import chat
+    vault, events = env
+    api.start(str(vault), "ask", prompt="who?")
+    _wait_state(events)
+    assert FakeClient.instances[0].options.model == "claude-sonnet-5-5"
+    with pytest.raises(rpc.RpcError, match="sonnet, haiku"):
+        api.start(str(vault), "ask", model="opus", prompt="who?")
+    s = chat.Session(vault, "ask", "opus", "t")   # a conversation saved before D313
+    assert chat.build_options(s, None).model == "claude-sonnet-5-5"
+    s.model = "haiku"
+    assert chat.build_options(s, None).model == "claude-haiku-5-5"
