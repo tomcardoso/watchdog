@@ -122,3 +122,48 @@ def tour_targets(v: Path) -> dict:
         "incoming": incoming,
         "runs": len(runs) or None,
     }
+
+
+# ── prepared Ask Claude conversations (D309) ──────────────────────────────────────────────────
+
+def _sample_vault(vault: str) -> Path:
+    from watchdog.ops import sample
+    v = require_vault(vault)
+    if not sample.is_sample_folder(v):
+        raise RpcError("Prepared conversations exist only in the sample investigation.", code="not_sample")
+    return v
+
+
+@method("sample.questions")
+def questions(vault: str) -> list[dict]:
+    """The questions with a prepared conversation: `[{id, question, blurb, writes}]`."""
+    from watchdog.gui import demo_conversations
+    _sample_vault(vault)
+    return demo_conversations.questions()
+
+
+def _played(fn, *args) -> dict:
+    from watchdog.gui import demo_conversations
+    try:
+        return fn(*args)
+    except KeyError:
+        raise RpcError("There is no such prepared conversation.", code="not_found") from None
+    except demo_conversations.MissingFact as e:
+        raise RpcError("This sample does not hold what the prepared answer cites "
+                       f"({e}). Rebuild the sample and try again.", code="not_found") from None
+
+
+@method("sample.conversation")
+def conversation(vault: str, id: str) -> dict:
+    """A prepared conversation's events, to play in the chat screen: `{session, events, waiting}`.
+    No model is called and nothing is sent anywhere."""
+    from watchdog.gui import demo_conversations
+    return _played(demo_conversations.play, _sample_vault(vault), id)
+
+
+@method("sample.conversationAnswer")
+def conversation_answer(vault: str, id: str, request_id: str, allow: bool) -> dict:
+    """The rest of a prepared conversation after its permission card: `{events}`. Allowed, the
+    change is made in the sample through the session tool a live session calls."""
+    from watchdog.gui import demo_conversations
+    return _played(demo_conversations.answer, _sample_vault(vault), id, request_id, bool(allow))
