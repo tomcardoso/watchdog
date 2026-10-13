@@ -80,8 +80,8 @@ def resolve_model_id(model: str) -> str:
 
 
 def display_name(model_id: str) -> str:
-    """Pretty display form of a model id, for display and usage logging — e.g. 'gpt-6.1-sol' ->
-    'GPT-6.1 Sol'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
+    """Pretty display form of a model id, for display and usage logging — e.g. 'gpt-6-luna' ->
+    'GPT-6 Luna'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
     model, or an old id no longer in the catalog) rather than raising or guessing."""
     entry = _entry(model_id)
     return entry["name"] if entry and "name" in entry else model_id
@@ -158,7 +158,7 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
 # the only thing that should need this list.
 # Every Claude model catalogued today; Haiku 5.5 was missing until D310, so its extractions got the
 # scaffold meant for a model with no channel.
-_THINKING_BY_DEFAULT_TIERS = {"haiku-5.5", "sonnet-5.5", "opus-5.5", "fable-5.1"}
+_THINKING_BY_DEFAULT_TIERS = {"haiku-5.5", "sonnet-5.5", "opus-5.5"}
 
 
 def catalog_has_reasoning(model_id: str) -> bool:

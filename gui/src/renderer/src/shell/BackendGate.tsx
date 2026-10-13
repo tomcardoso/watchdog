@@ -49,9 +49,11 @@ export function BackendGate({ children }: { children: ReactNode }) {
   const unfinished = pending === true || (ready && setupDone === false) || forced
   let mode: OnboardingMode | null = null
   if (status?.needsEngine) {
-    // No usable engine. Without a settings file this is a first run; an engine that is out of date
-    // updates itself; anything else is a repair.
-    mode = unfinished || (engine && !engine.setupConfigExists) ? 'first-run' : engine?.engine === 'outdated' ? 'update' : 'repair'
+    // No usable engine. If the app never installed one here, or there is no settings file, this is
+    // a first run: a settings file alone can be left over from the old command-line version. An
+    // engine that is out of date updates itself; anything else is a repair.
+    const neverSetUp = engine && (!engine.setupConfigExists || engine.installedVersion === null)
+    mode = unfinished || neverSetUp ? 'first-run' : engine?.engine === 'outdated' ? 'update' : 'repair'
   } else if (ready && unfinished) {
     mode = 'first-run'
   }

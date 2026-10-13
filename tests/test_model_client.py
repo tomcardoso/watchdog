@@ -278,15 +278,13 @@ def test_effort_omitted_when_unset(api_key_auth, monkeypatch):
     ("gemini", "gemini-2.5-pro", "high", "high"),
     # xhigh/max (#518): OpenAI reasoning models pass them through like any other level.
     ("openai", "gpt-5.6-luna", "xhigh", "xhigh"),
-    ("openai", "gpt-6-astra", "max", "max"),
-    ("openai", "gpt-6.1-sol", "xhigh", "xhigh"),
+    ("openai", "gpt-6-luna", "max", "max"),
     # Every current Claude model takes all five levels (Anthropic's effort docs).
     ("anthropic", "claude-opus-5-5", "xhigh", "xhigh"),
     ("anthropic", "claude-opus-5-5", "max", "max"),
     ("anthropic", "claude-sonnet-5-5", "xhigh", "xhigh"),
     ("anthropic", "claude-haiku-5-5", "max", "max"),
-    ("anthropic", "claude-fable-5-1", "xhigh", "xhigh"),
-    ("anthropic", "claude-fable-5-1", "low", "low"),
+    ("anthropic", "claude-opus-5-5", "low", "low"),
 ])
 def test_resolve_effort(provider, model_id, effort, expected):
     assert mc._resolve_effort(provider, model_id, effort) == expected
@@ -388,14 +386,12 @@ def test_deepseek_flash_matches_the_vendor_price_page():
 
 
 @pytest.mark.parametrize("model_id,rates", [
-    ("gpt-6-astra", (10.0e-6, 50.0e-6, 1.0e-6, 12.5e-6)),
-    ("gpt-6.1-sol", (2.0e-6, 10.0e-6, 0.10e-6, 2.5e-6)),   # cached input is 0.05x here
     ("gpt-6-luna", (0.10e-6, 0.50e-6, 0.01e-6, 0.125e-6)),
 ])
 def test_gpt_6_family_matches_the_vendor_price_page(model_id, rates):
     """developers.openai.com/api/docs/models/<id> and .../pricing (fetched 2026-10-13): input,
     output, cached input and the 1.25x cache write; a 1.05M window, 128K output, the 272K
-    whole-request boundary and five effort levels on every one (D310)."""
+    whole-request boundary and five effort levels (D310). Astra and 6.1 Sol are not catalogued (D311)."""
     assert mc._OPENAI_PRICING[model_id] == rates
     assert mc.catalog_cache_breakpoints(model_id) is True
     assert mc.catalog_context_window(model_id) == 1_050_000
@@ -406,7 +402,7 @@ def test_gpt_6_family_matches_the_vendor_price_page(model_id, rates):
 
 
 def test_gpt_6_sol_is_left_out_but_routed_by_the_family_fallback():
-    """`gpt-6-sol` is not catalogued (GPT-6.1 Sol supersedes it, D310), but a user who types it
+    """`gpt-6-sol` is not catalogued (D310, D311), but a user who types it
     still gets the GPT-6 output cap and reasoning flag (so the request carries
     `max_completion_tokens`, which a reasoning model requires). Its window stays at the 128K
     default: with no catalogued pricing boundary, a 1.05M window would plan calls past 272K."""
@@ -473,7 +469,6 @@ def test_api_cost_applies_the_multiplier_too(monkeypatch):
     ("haiku", "claude-haiku-5-5"), ("haiku-5.5", "claude-haiku-5-5"),
     ("sonnet", "claude-sonnet-5-5"), ("sonnet-5.5", "claude-sonnet-5-5"),
     ("opus", "claude-opus-5-5"), ("opus-5.5", "claude-opus-5-5"),
-    ("fable", "claude-fable-5-1"), ("fable-5.1", "claude-fable-5-1"),
 ])
 def test_claude_tiers_resolve(alias, model_id):
     assert mc.resolve_model_id(alias) == model_id
@@ -482,11 +477,10 @@ def test_claude_tiers_resolve(alias, model_id):
 @pytest.mark.parametrize("model_id,pricing,batch_cap", [
     # (input, output, 5m cache write, cache read) per token, from platform.claude.com's pricing
     # page (fetched 2026-10-13). Cache reads are 0.1x input on Haiku, 0.05x on Sonnet 5.5 and Opus
-    # 5.5, 0.025x on Fable 5.1 — each entered as stated, not derived.
+    # 5.5 — each entered as stated, not derived.
     ("claude-haiku-5-5", (0.10e-6, 0.50e-6, 0.125e-6, 0.01e-6), 300_000),
     ("claude-sonnet-5-5", (2.0e-6, 10.0e-6, 2.5e-6, 0.10e-6), 300_000),
     ("claude-opus-5-5", (4.0e-6, 20.0e-6, 5.0e-6, 0.20e-6), 300_000),
-    ("claude-fable-5-1", (10.0e-6, 50.0e-6, 12.5e-6, 0.25e-6), None),   # not on the batch beta
 ])
 def test_claude_catalog_entries_match_the_vendor_figures(model_id, pricing, batch_cap):
     from watchdog import model_catalog
@@ -502,7 +496,7 @@ def test_haiku_5_5_is_the_only_claude_model_with_a_length_tier():
     """Anthropic prices Haiku 5.5 higher above 100K prompt tokens; every other Claude model prices
     the full window at one rate."""
     assert mc.catalog_long_context_threshold("claude-haiku-5-5") == 100_000
-    for model_id in ("claude-sonnet-5-5", "claude-opus-5-5", "claude-fable-5-1"):
+    for model_id in ("claude-sonnet-5-5", "claude-opus-5-5"):
         assert mc.catalog_long_context_threshold(model_id) is None
 
 
@@ -510,7 +504,6 @@ def test_haiku_5_5_is_the_only_claude_model_with_a_length_tier():
     ("claude-haiku-5-5", False),   # ships on by default — no param needed
     ("claude-sonnet-5-5", False),  # ships on by default — no param needed
     ("claude-opus-5-5", False),    # always on, cannot be disabled — no param needed
-    ("claude-fable-5-1", False),   # always on, cannot be disabled — no param needed
     ("gpt-5", False),              # non-Claude — never consulted
     ("not-a-real-model", False),   # uncatalogued — correctness-safe default
 ])
@@ -528,10 +521,8 @@ def test_catalog_needs_thinking_param_for_a_model_that_ships_it_off(thinking_off
     ("claude-haiku-5-5", True),    # thinking on by default (missing before D310)
     ("claude-sonnet-5-5", True),   # thinking on by default
     ("claude-opus-5-5", True),     # thinking always on
-    ("claude-fable-5-1", True),    # thinking always on
     ("gpt-5.6-luna", True),        # OpenAI reasoning model
     ("gpt-6-luna", True),          # OpenAI reasoning model
-    ("gpt-6-astra", True),
     ("deepseek-flash", False),     # no reasoning field in the catalog
     ("gemini-3.8-flash", False),   # no reasoning field in the catalog
     ("not-a-real-model", False),   # uncatalogued — never assume a channel that isn't confirmed
@@ -591,15 +582,6 @@ def test_claude_opus_accepts_xhigh(api_key_auth, monkeypatch):
     assert api.calls[0]["effort"] == "xhigh"
 
 
-def test_claude_fable_accepts_xhigh_via_tier_name(api_key_auth, monkeypatch):
-    # End-to-end through the `fable` tier alias (D310) — not just _resolve_effort in isolation.
-    api = FakeBackend(_out('{"name": "Acme"}'))
-    monkeypatch.setitem(mc._ABACKENDS, "claude-api", api)
-    complete_json(task="extract", prompt="p", schema=SCHEMA, model="fable", effort="xhigh")
-    assert api.calls[0]["effort"] == "xhigh"
-    assert api.calls[0]["model_id"] == "claude-fable-5-1"
-
-
 def test_gemini_rejects_max(gemini_key, monkeypatch):
     be = FakeBackend(_out('{"name": "Acme"}'))
     monkeypatch.setitem(mc._ABACKENDS, "gemini", be)
@@ -634,7 +616,7 @@ def test_deepseek_rejects_xhigh(monkeypatch):
     ("gemini-3.8-flash", 1_000_000),
     ("gemini-3.5-flash-lite", 1_000_000),
     ("gemini-4-argon", 1_000_000),
-    ("gpt-6-astra", 1_050_000),
+    ("gpt-6-luna", 1_050_000),
     ("gpt-6-sol", 128_000),                     # uncatalogued GPT-6 id: no row on purpose (D310)
     ("gpt-5-mini", 400_000),
     ("gpt-4o", 128_000),
@@ -808,13 +790,10 @@ def test_context_window_ignores_backend_for_hosted_models():
     (None, 1.28),                # default tier (sonnet = Sonnet 5.5)
     ("sonnet-5.5", 1.28),        # new Claude tokenizer, copied not measured
     ("opus", 1.28),              # new Claude tokenizer (Opus 5.5, copied) — same value
-    ("fable", 1.28),             # new Claude tokenizer (Fable 5.1, copied, D310)
     ("gemini-4-argon", 0.91),    # Gemini tokenizer, copied (D310)
     ("gemini-3.8-flash", 0.91),
     ("gemini-3.5-flash-lite", 0.91),
     ("gpt-6-luna", 0.80),        # GPT-5.x tokenizer — copied, unmeasured for GPT-6 (D249)
-    ("gpt-6-astra", 0.80),       # same, D310
-    ("gpt-6.1-sol", 0.80),
     ("gpt-5.6-luna", 0.80),      # measured (#617)
     ("deepseek-flash", 0.81),  # DeepSeek V4 tokenizer
     ("deepseek-v4-pro", 0.81),
@@ -944,15 +923,13 @@ def earlier_openai(catalog_entry):
 
 
 def test_openai_cost_prices_openai_models():
-    # gpt-6.1-sol standard: $2/1M input, $10/1M output.
-    assert mc._openai_cost("gpt-6.1-sol",
+    # gpt-6-luna standard: $0.10/1M input, $0.50/1M output.
+    assert mc._openai_cost("gpt-6-luna",
                            {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(2.0 + 10.0)
+        == pytest.approx(0.10 + 0.50)
 
 
 @pytest.mark.parametrize("model_id, price_in, price_out", [
-    ("gpt-6-astra", 10.0, 50.0),
-    ("gpt-6.1-sol", 2.0, 10.0),
     ("gpt-6-luna", 0.10, 0.50),
     ("gpt-5.6-luna", 0.20, 1.20),
 ])
@@ -1045,13 +1022,13 @@ def test_cache_write_tokens_reads_the_openai_shape_and_defaults_to_zero():
 
 def test_openai_batch_cost_is_half_the_openai_cost():
     usage = {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}
-    live = mc._openai_cost("gpt-6.1-sol", usage)
-    assert mc._openai_batch_cost("gpt-6.1-sol", usage) == pytest.approx(live * 0.5)
+    live = mc._openai_cost("gpt-6-luna", usage)
+    assert mc._openai_batch_cost("gpt-6-luna", usage) == pytest.approx(live * 0.5)
 
 
 def test_openai_batch_cost_none_for_unknown_model_or_usage():
     assert mc._openai_batch_cost("not-a-real-model", {"prompt_tokens": 100}) is None
-    assert mc._openai_batch_cost("gpt-6.1-sol", None) is None
+    assert mc._openai_batch_cost("gpt-6-luna", None) is None
 
 
 def test_openai_cost_prices_gemini_models():
@@ -1651,7 +1628,7 @@ def test_openai_cache_blocks_none_when_there_is_nothing_to_mark():
 
 def test_catalog_cache_breakpoints_marks_only_the_gpt56_family(earlier_openai):
     from watchdog.model_catalog import catalog_cache_breakpoints
-    for model_id in ("gpt-5.6-luna", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"):
+    for model_id in ("gpt-5.6-luna", "gpt-6-luna"):
         assert catalog_cache_breakpoints(model_id) is True
     assert catalog_cache_breakpoints(earlier_openai) is False
     assert catalog_cache_breakpoints("claude-sonnet-5-5") is False
@@ -1665,7 +1642,7 @@ def test_gpt56_cache_write_price_is_exactly_1_25x_input():
     """OpenAI's rule, not a per-model quote — a drifting hand-typed rate would silently
     mis-bill every cached call on the family."""
     from watchdog.model_catalog import _OPENAI_PRICING
-    for model_id in ("gpt-5.6-luna", "gpt-6-luna", "gpt-6.1-sol", "gpt-6-astra"):
+    for model_id in ("gpt-5.6-luna", "gpt-6-luna"):
         inp, _out, _cached, write = _OPENAI_PRICING[model_id]
         assert write == pytest.approx(inp * 1.25)
 
@@ -1961,9 +1938,9 @@ def test_batch_cost_none_for_unknown_model():
 
 @pytest.mark.parametrize("tier, expected", [
     ("haiku", "claude-haiku-5-5"), ("sonnet", "claude-sonnet-5-5"), ("opus", "claude-opus-5-5"),
-    ("fable", "claude-fable-5-1"), ("claude-sonnet-5-5", "claude-sonnet-5-5"),   # raw id as-is
+    ("claude-sonnet-5-5", "claude-sonnet-5-5"),   # raw id as-is
     ("sonnet-5.5", "claude-sonnet-5-5"), ("opus-5.5", "claude-opus-5-5"),
-    ("haiku-5.5", "claude-haiku-5-5"), ("fable-5.1", "claude-fable-5-1"),
+    ("haiku-5.5", "claude-haiku-5-5"),
 ])
 def test_resolve_model_id(tier, expected):
     assert mc.resolve_model_id(tier) == expected
@@ -2123,8 +2100,7 @@ def test_api_complete_sends_thinking_for_a_model_that_defaults_off(monkeypatch,
     assert calls[0]["thinking"] == mc._THINKING_ADAPTIVE
 
 
-@pytest.mark.parametrize("model_id", ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5",
-                                      "claude-fable-5-1"])
+@pytest.mark.parametrize("model_id", ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"])
 def test_api_complete_omits_thinking_for_a_model_already_on_by_default(monkeypatch, model_id):
     # Every current Claude model ships with thinking on already — sending the param isn't needed
     # and would risk overriding the vendor default in a way this fix never intended.
@@ -2552,10 +2528,9 @@ def test_agent_query_usage_stays_none_when_nothing_present(monkeypatch):
     ("claude-api", "claude-sonnet-5-5"),
     ("claude-api", "claude-haiku-5-5"),
     ("claude-api", "claude-opus-5-5"),
-    ("claude-api", "claude-fable-5-1"),
     ("deepseek", "deepseek-flash"),
     ("deepseek", "deepseek-flash-thinking"),   # -thinking marker doesn't change the envelope
-    ("openai", "gpt-6.1-sol"),
+    ("openai", "gpt-6-luna"),
     ("gemini", "gemini-3.8-flash"),
     ("gemini", "gemini-4-argon"),
 ])
@@ -2580,7 +2555,7 @@ def test_wire_max_tokens_uncatalogued_falls_back_to_default():
 
 
 @pytest.mark.parametrize("backend, model", [
-    ("openai", "gpt-6.1-sol"),            # OpenAI reasoning model — used to get an effort-scaled reserve
+    ("openai", "gpt-6-luna"),            # OpenAI reasoning model — used to get an effort-scaled reserve
     ("gemini", "gemini-3.8-flash"),       # Gemini — used to get an effort-scaled reserve unconditionally
     ("claude-api", "claude-sonnet-5-5"),  # never had a reserve
 ])
@@ -2599,7 +2574,7 @@ def test_wire_max_tokens_is_deterministic_for_fixed_args(backend, model):
     (None, None),                       # unresolved → routes to a Claude backend
 ])
 @pytest.mark.parametrize("backend, model", [
-    ("openai", "gpt-6.1-sol"),
+    ("openai", "gpt-6-luna"),
     ("gemini", "gemini-3.8-flash"),
     ("local", "llama-3.3-70b"),
     ("openrouter", "anthropic/claude-3.5-sonnet"),

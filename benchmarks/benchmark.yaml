@@ -43,20 +43,16 @@ extractor_sweep:
   defaults: {concurrency: 5, max_rate_limit_waits: 2, brief: briefs/corpus-v1.md}
   arms:
     # ── Anthropic ── Sonnet 5.5 at medium is what every user runs (D236). Haiku 5.5 and Opus 5.5
-    # default to medium on the API, Sonnet 5.5 and Fable 5.1 to high; every arm pins its level.
+    # default to medium on the API, Sonnet 5.5 to high; every arm pins its level. No Fable 5.1,
+    # GPT-6 Astra or GPT-6.1 Sol arm: those models are not catalogued (D311).
     - {id: sonnet-5.5-med,        extractor_model: sonnet-5.5, extractor_effort: medium, repeats: 3}
     - {id: sonnet-5.5-high,       extractor_model: sonnet-5.5, extractor_effort: high}
     - {id: opus-5.5-med,          extractor_model: opus-5.5, extractor_effort: medium}
     - {id: opus-5.5-high,         extractor_model: opus-5.5, extractor_effort: high}
     - {id: haiku-5.5-low,         extractor_model: haiku-5.5, extractor_effort: low, repeats: 3}
     - {id: haiku-5.5-med,         extractor_model: haiku-5.5, extractor_effort: medium, repeats: 3}
-    # The most expensive arm by far ($10 / $50 per MTok): one run, at its own default effort.
-    - {id: fable-5.1-high,        extractor_model: fable-5.1, extractor_effort: high}
 
     # ── OpenAI ──
-    - {id: gpt-6.1-sol-med,       extractor_model: "openai:gpt-6.1-sol", extractor_effort: medium}
-    - {id: gpt-6.1-sol-high,      extractor_model: "openai:gpt-6.1-sol", extractor_effort: high}
-    - {id: gpt-6-astra-med,       extractor_model: "openai:gpt-6-astra", extractor_effort: medium}
     - {id: gpt-6-luna-low,        extractor_model: "openai:gpt-6-luna", extractor_effort: low, repeats: 3}
     - {id: gpt-6-luna-med,        extractor_model: "openai:gpt-6-luna", extractor_effort: medium, repeats: 3}
 

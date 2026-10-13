@@ -623,9 +623,9 @@ def test_openai_collect_prices_at_half_the_standard_rate(monkeypatch):
         file_contents={"file-out-1": output_line})
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
 
-    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-6.1-sol", backend="openai-batch"))
-    # gpt-6.1-sol: $2/1M input, halved by the batch discount.
-    assert out["sha1"]["cost_usd"] == pytest.approx(1.0)
+    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-6-luna", backend="openai-batch"))
+    # gpt-6-luna: $0.10/1M input, halved by the batch discount.
+    assert out["sha1"]["cost_usd"] == pytest.approx(0.05)
 
 
 def test_openai_collect_surfaces_error_file_reason(monkeypatch):

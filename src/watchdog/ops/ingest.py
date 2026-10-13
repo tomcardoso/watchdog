@@ -82,7 +82,7 @@ FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
 def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
     """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
 
-    Plain `sonnet`/`opus`/`haiku`/`fable` → (None, tier): Claude, routed by auth mode (unchanged). A
+    Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
     `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
     `openai:gpt-6-luna` / `deepseek:deepseek-flash` (a raw provider model id). Carrying both in
     one value means a stage can never be half-configured."""
@@ -93,7 +93,7 @@ def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tup
         sys.exit(f"Error: unknown backend '{backend}' — choose {', '.join(BACKENDS)}")
     if backend is None or backend in CLAUDE_BACKENDS:
         if model not in _MODEL_IDS:
-            sys.exit(f"Error: unknown model '{model}' — choose haiku, sonnet, opus or fable, "
+            sys.exit(f"Error: unknown model '{model}' — choose haiku, sonnet or opus, "
                      f"or a backend:model form like deepseek:deepseek-flash")
     elif not model:
         sample = "deepseek-flash" if backend == "deepseek" else "gpt-6-luna"

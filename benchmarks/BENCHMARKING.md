@@ -182,8 +182,9 @@ D310), plus the reasoning-effort knob where it applies.
 | **Finalizer** | `finalizer_model` / `finalizer_effort` | `haiku` / unset | yes | ~3 calls + reconciliation per ingest — near-constant |
 
 Candidate models: every model in `model_catalog.yaml`, which holds each provider's current
-frontier models only — Claude Haiku 5.5, Sonnet 5.5, Opus 5.5 and Fable 5.1; GPT-6 Astra, GPT-6.1
-Sol and GPT-6 Luna; Gemini 4 Argon, 3.8 Flash and 3.5 Flash-Lite; DeepSeek Flash and V4 Pro.
+frontier models only, short of the flagship class (D311) — Claude Haiku 5.5, Sonnet 5.5 and Opus
+5.5; GPT-6 Luna and GPT-5.6 Luna; Gemini 4 Argon, 3.8 Flash and 3.5 Flash-Lite; DeepSeek Flash and
+V4 Pro.
 Arms pin a Claude model by its versioned tier (`sonnet-5.5`, not `sonnet`), so an arm means the
 same model whatever the bare name resolves to later. Notes that matter:
 
@@ -461,9 +462,9 @@ its family's value — or when the corpus itself changes.
 ## Rough cost
 
 Order-of-magnitude only (extraction is output-dominated): scale by each model's output rate
-against Sonnet 5.5's $10 per million tokens. Fable 5.1 and GPT-6 Astra cost about 5x Sonnet,
-Opus 5.5 about 2x, GPT-6.1 Sol and Gemini 4 Argon about the same (Argon doubles on 2026-12-01),
+against Sonnet 5.5's $10 per million tokens. Opus 5.5 costs about 2x Sonnet, Gemini 4 Argon
+about the same (it doubles on 2026-12-01),
 Gemini 3.8 Flash about 0.4x, Flash-Lite about 0.25x, Haiku 5.5 and GPT-6 Luna about 1/20 and
 DeepSeek Flash about 6% (double in its peak hours). Thinking spends output, so effort moves every
-figure. The Fable, Astra and Opus arms dominate the sweep. **`bench estimate` gives the real
+figure. The Opus arms dominate the sweep. **`bench estimate` gives the real
 numbers — trust it over this paragraph**, and run it before every run.

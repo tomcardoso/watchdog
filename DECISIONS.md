@@ -2757,3 +2757,9 @@ Re-reading the pages found three errors: Sonnet 5.5's cache read is $0.10 (0.05x
 The benchmark matrix is rebuilt the same way: every extractor arm, and the finalizer sweep's base extraction, runs with `briefs/corpus-v1.md` (a sweep-level `brief:` default, copied onto each arm so `run.json` records it), and the `-brief` pair, the backend A/B, the verify pairs and `sdk_check` are gone. Arm ids name the full model id so none collides with an archived arm in `score_index.py`, whose cohort key does not include the brief.
 
 Tradeoff: a setup or benchmark arm naming a removed id stops working and has to be changed; the new run cannot be compared with any archived figure (different models, and a brief); no current Claude, GPT-6 or Gemini id has a measured tokenizer ratio, all are copied; and a Gemini price that changes on a date is wrong in every estimate until someone edits it.
+
+### D311 — No flagship-class models: Claude Fable 5.1, GPT-6 Astra and GPT-6.1 Sol leave the catalogue
+
+Owner's direction: these are more capable, and more expensive, than any of Watchdog's stages needs. Fable 5.1 and Astra cost US$10 in and US$50 out per million tokens, five times Sonnet 5.5; 6.1 Sol is priced like Sonnet but is OpenAI's near-Astra tier, and Sonnet is already the default. All three leave the catalogue, the Settings picker and the benchmark matrix (four arms), with no alias kept (D301). Opus 5.5 and Gemini 4 Argon stay. A typed `gpt-6-astra` or `gpt-6.1-sol` still routes as an uncatalogued GPT-6 id through the family fallback, as `gpt-6-sol` does (D310).
+
+Tradeoff: Fable cannot be chosen at all (a Claude stage takes only a catalogued tier), and Astra or 6.1 Sol only by typing the id, then without catalogued pricing or the 272K clamp; the benchmark cannot say whether a flagship model would have found facts the cheaper ones miss.

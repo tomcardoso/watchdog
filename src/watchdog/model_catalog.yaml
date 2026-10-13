@@ -186,9 +186,8 @@
 # `max_output_tokens_batch` (Anthropic only, 300,000) is the higher ceiling reachable with the
 # `output-300k-2026-03-24` beta header
 # (platform.claude.com/docs/en/build-with-claude/batch-processing#extended-output-beta) — Message
-# Batches API only, not the synchronous calls this client makes; omitted for Fable 5.1 (the
-# overview's list of eligible models leaves it out) and for every non-Anthropic model (no
-# documented equivalent). OpenAI (developers.openai.com/api/docs/models/<id>): a flat 128,000
+# Batches API only, not the synchronous calls this client makes; omitted for every non-Anthropic
+# model (no documented equivalent). OpenAI (developers.openai.com/api/docs/models/<id>): a flat 128,000
 # across every GPT-5.6 and GPT-6 model in this catalog. Gemini
 # (ai.google.dev/gemini-api/docs/models/<id>): a flat 65,536 across every model in this catalog
 # (Gemini 4 Argon's default synchronous figure; its "long decode" mode is not used). DeepSeek
@@ -204,13 +203,15 @@
 models:
   # Each provider's current frontier models only (D310): a model its vendor has superseded leaves
   # the catalog unless something still needs it, and nothing keeps an older id resolving (D301).
-  # Claude entries come first, in the order the Settings picker lists them: haiku, sonnet, opus,
-  # fable. Every Claude figure below is from platform.claude.com/docs/en/about-claude/models/
-  # overview, .../about-claude/pricing and .../build-with-claude/effort, fetched 2026-10-13. All four
-  # list a 1M context window, pinned to 200K here (D89), and 128K output. Every one has adaptive
-  # thinking on by default (always on for Opus 5.5 and Fable 5.1), so none declares `thinking`
-  # (D206), and every one takes all five effort levels. The API's own default effort, used when
-  # Watchdog sends none, is `medium` on Haiku 5.5 and Opus 5.5 and `high` on Sonnet 5.5 and Fable 5.1.
+  # Flagship-class models are left out too (D311): Claude Fable 5.1, GPT-6 Astra and GPT-6.1 Sol
+  # are more capable, and more expensive, than Watchdog's stages need.
+  # Claude entries come first, in the order the Settings picker lists them: haiku, sonnet, opus.
+  # Every Claude figure below is from platform.claude.com/docs/en/about-claude/models/overview,
+  # .../about-claude/pricing and .../build-with-claude/effort, fetched 2026-10-13. All three list a
+  # 1M context window, pinned to 200K here (D89), and 128K output. Every one has adaptive thinking
+  # on by default (always on for Opus 5.5), so none declares `thinking` (D206), and every one takes
+  # all five effort levels. The API's own default effort, used when Watchdog sends none, is `medium`
+  # on Haiku 5.5 and Opus 5.5 and `high` on Sonnet 5.5.
   #
   # Claude Haiku 5.5 — the bare `haiku` default since 2026-10-09 (D277). Two rate cards chosen by
   # prompt length: $0.10 / $0.50 per MTok up to 100,000 input tokens, $0.50 / $2.50 above (the whole
@@ -266,27 +267,6 @@ models:
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.28     # copied from the new Claude tokenizer (#617), unconfirmed for this id
-  # Claude Fable 5.1 (D310) — Anthropic's model "for demanding reasoning and long-horizon agentic
-  # work", above Opus 5.5 (platform.claude.com/docs/en/models/fable-5-1/overview, fetched
-  # 2026-10-13). $10 / $50 per MTok, 5m cache write $12.50, cache read $0.25 (0.025x input).
-  # Thinking always on. The overview's 300K batch-output note does not list it, so no
-  # `max_output_tokens_batch`. Forced tool use returns an error on this model; Watchdog never
-  # forces a tool (structured output goes through `output_config.format`, which the
-  # structured-outputs page lists Fable 5.1 as supporting). Anthropic's overview says the current
-  # tokenizer was introduced with Opus 4.7 and gives no other for Fable 5.1, so the new-tokenizer
-  # value is copied, unmeasured for this id.
-  - id: claude-fable-5-1
-    name: Claude Fable 5.1
-    provider: anthropic
-    tier: [fable, fable-5.1]
-    input: 10.0e-6
-    output: 50.0e-6
-    cache_write: 12.5e-6
-    cache_read: 0.25e-6
-    context_window: 200_000
-    max_output_tokens: 128_000
-    effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 1.28     # copied from the new Claude tokenizer (#617), unconfirmed for this id
 
   # DeepSeek (1M-token window; a cache hit costs 1/50 of a miss on Flash, 1/30 on Pro).
   # Re-verified against api-docs.deepseek.com/quick_start/pricing on 2026-10-13: `deepseek-flash`
@@ -339,56 +319,22 @@ models:
     tokenizer_ratio: 0.81     # measured #617, corpus-v1 2026-08-15 (DeepSeek V4 tokenizer)
     price_periods: *deepseek_peak    # same windows as Flash — one schedule, both models
 
-  # OpenAI: the GPT-6 family (Astra, 6.1 Sol, Luna), standard tier, plus GPT-5.6 Luna. Every
-  # figure is from developers.openai.com/api/docs/models/<id> and .../api/docs/pricing, fetched
-  # 2026-10-13. All four: 1,050,000-token window (922,000 maximum input), 128,000 output, and the
+  # OpenAI: GPT-6 Luna and GPT-5.6 Luna, standard tier. Every figure is from
+  # developers.openai.com/api/docs/models/<id> and .../api/docs/pricing, fetched 2026-10-13. Both: 1,050,000-token window (922,000 maximum input), 128,000 output, and the
   # same whole-request long-context boundary — "Prompts with more than 272K input tokens are
   # priced at 2x input and cache rates and 1.5x output for the full request" — so every entry
-  # carries `long_context_threshold: 272_000` (D202). All four are GPT-5.6-or-later, so cache writes
+  # carries `long_context_threshold: 272_000` (D202). Both are GPT-5.6-or-later, so cache writes
   # bill at 1.25x the uncached input rate and caching needs explicit breakpoints
   # (developers.openai.com/api/docs/guides/prompt-caching: both apply to "GPT-5.6 and later"),
-  # hence `cache_write` and `cache_breakpoints` on every one. `reasoning.effort` also accepts `none`
+  # hence `cache_write` and `cache_breakpoints` on both. `reasoning.effort` also accepts `none`
   # on Luna, which the abstract effort knob has no level for, so it is not listed. The GPT-6
-  # tokenizer has not been measured: every GPT-6 `tokenizer_ratio` is COPIED from the GPT-5.x value
+  # tokenizer has not been measured: GPT-6 Luna's `tokenizer_ratio` is COPIED from the GPT-5.x value
   # (#617) — see the Standing Follow-ups.
   #
-  # Left out on purpose (D310): `gpt-6-sol` ($2 / $10, cached $0.20) is still priced and served,
-  # but OpenAI's models list shows only GPT-6.1 Sol and the gpt-6-sol page itself points to it as
-  # "the newer Sol model", at the same price with half the cached-input rate. GPT-5.6 Sol and
-  # Terra, and GPT-5.5/5.4/5.4-mini, are superseded by the GPT-6 family and were removed.
+  # Left out on purpose: GPT-6 Astra ($10 / $50) and GPT-6.1 Sol ($2 / $10), flagship-class
+  # (D311); `gpt-6-sol`, superseded by GPT-6.1 Sol (D310); GPT-5.6 Sol and Terra, and
+  # GPT-5.5/5.4/5.4-mini, superseded by the GPT-6 family (D310).
   #
-  # GPT-6 Astra — "Our most capable model for the most demanding work". The page lists no default
-  # effort.
-  - id: gpt-6-astra
-    name: GPT-6 Astra
-    provider: openai
-    input: 10.0e-6
-    output: 50.0e-6
-    cached_input: 1.0e-6
-    cache_write: 12.5e-6      # 1.25x uncached input
-    cache_breakpoints: true
-    context_window: 1_050_000
-    max_output_tokens: 128_000
-    reasoning: true
-    effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 0.80     # copied from the GPT-5.x value (#617), unconfirmed for GPT-6 (D310)
-    long_context_threshold: 272_000   # 2x input and cache / 1.5x output above this, whole request
-  # GPT-6.1 Sol — "Near-Astra performance for complex work at a lower cost". Default effort
-  # `medium`. Cached input is $0.10, 0.05x input (not the 0.1x of the rest of the family).
-  - id: gpt-6.1-sol
-    name: GPT-6.1 Sol
-    provider: openai
-    input: 2.0e-6
-    output: 10.0e-6
-    cached_input: 0.10e-6
-    cache_write: 2.5e-6       # 1.25x uncached input
-    cache_breakpoints: true
-    context_window: 1_050_000
-    max_output_tokens: 128_000
-    reasoning: true
-    effort_levels: [low, medium, high, xhigh, max]
-    tokenizer_ratio: 0.80     # copied from the GPT-5.x value (#617), unconfirmed for GPT-6.1 (D310)
-    long_context_threshold: 272_000   # 2x input and cache / 1.5x output above this, whole request
   # GPT-6 Luna — "Our most efficient model for focused, high-volume tasks". Default effort `medium`.
   - id: gpt-6-luna
     name: GPT-6 Luna

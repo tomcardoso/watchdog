@@ -195,8 +195,8 @@ def test_models(wdg_home):
     assert sonnet["input_per_mtok"] == pytest.approx(2.0) and sonnet["output_per_mtok"] == pytest.approx(10.0)
     assert sonnet["context_window"] and sonnet["efforts"] == [e for e in r["efforts"] if e in sonnet["efforts"]]
     assert by_value["haiku"]["efforts"] == r["efforts"]
-    fable = by_value["fable"]   # the first alias is what a setting stores (D310)
-    assert fable["id"] == "claude-fable-5-1" and fable["efforts"] == r["efforts"]
+    opus = by_value["opus"]   # the first alias is what a setting stores (D310)
+    assert opus["id"] == "claude-opus-5-5" and opus["efforts"] == r["efforts"]
     assert by_value["gemini:gemini-4-argon"]["efforts"] == ["low", "medium", "high"]
     non_claude = [m for m in r["models"] if m["provider"] != "anthropic"]
     assert non_claude and all(m["value"] == f"{m['provider']}:{m['id']}" and m["backend"] == m["provider"]

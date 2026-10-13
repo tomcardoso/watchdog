@@ -284,7 +284,7 @@ def test_model_defaults_ignores_the_output_ceiling(flat_openai):
     assert section.model_defaults("gemini-3.8-flash", backend="gemini") == (659_340, 329_670)
 
 
-_OPENAI_TIERED = ("gpt-6-astra", "gpt-6.1-sol", "gpt-6-luna", "gpt-5.6-luna")
+_OPENAI_TIERED = ("gpt-6-luna", "gpt-5.6-luna")
 
 
 def test_model_defaults_clamped_below_a_long_context_pricing_tier():
@@ -326,12 +326,12 @@ def test_model_defaults_unclamped_for_flat_priced_models(flat_openai):
     # A model with no catalogued boundary keeps the pure window-derived default — the clamp must
     # not leak onto models that price flat at every length, including ones sharing a family (and a
     # tokenizer) with a tiered one: the flat OpenAI model shares the 0.80 ratio but has a 400K
-    # window, and Sonnet, Opus and Fable share Haiku 5.5's provider but not its 100K boundary.
+    # window, and Sonnet and Opus share Haiku 5.5's provider but not its 100K boundary.
     assert section.model_defaults(flat_openai, backend="openai") == (300_000, 150_000)
     for model in ("gemini-4-argon", "gemini-3.8-flash", "gemini-3.5-flash-lite"):
         assert section.model_defaults(model, backend="gemini") == (659_340, 329_670)
     assert section.model_defaults("deepseek-flash", backend="deepseek") == (740_740, 370_370)
-    for model in ("sonnet", "opus", "fable"):
+    for model in ("sonnet", "opus"):
         assert section.model_defaults(model) == (93_750, 46_875)
 
 
@@ -339,9 +339,9 @@ def test_long_context_clamp_binds_the_threshold_not_just_the_budget():
     # The threshold decides whether a document is sectioned AT ALL, so an unclamped threshold would
     # send a document larger than the boundary in ONE whole-document call — the larger exposure,
     # since only big documents reach a pricing tier in the first place. A 350,000 est-token
-    # document (280,000 real) sits under gpt-6.1-sol's unclamped 787,500 threshold but over its
+    # document (280,000 real) sits under gpt-6-luna's unclamped 787,500 threshold but over its
     # clamped 306,000 one.
-    threshold, _ = section.model_defaults("gpt-6.1-sol", backend="openai")
+    threshold, _ = section.model_defaults("gpt-6-luna", backend="openai")
     assert 306_000 == threshold < 787_500
     assert 350_000 > threshold
 
@@ -352,7 +352,7 @@ def test_model_defaults_identical_across_every_backend(flat_openai):
     # the backend happened to paginate its output, which is what produced #555's 58x catalogue
     # spread. Both surviving terms (context window, pricing boundary) are properties of the model
     # id, so the backend cannot move either.
-    for model, expected in (("gpt-6.1-sol", (306_000, 306_000)),      # tiered
+    for model, expected in (("gpt-6-luna", (306_000, 306_000)),      # tiered
                             (flat_openai, (300_000, 150_000))):       # flat-priced
         for backend in ("openai", "claude-api", "claude-agent-sdk", "deepseek", None):
             assert section.model_defaults(model, backend=backend) == expected, (model, backend)
@@ -382,8 +382,8 @@ def test_section_token_threshold_identical_across_backends(monkeypatch, flat_ope
     # The same on the backend that enforces an output ceiling as on the one that paginates past it
     # (#555) — for a tiered model, where the pricing clamp binds, and a flat-priced one, where the
     # 1.05M/400K window fraction over the measured 0.80 ratio does.
-    assert section.section_token_threshold("gpt-6.1-sol", backend="openai") == 306_000
-    assert section.section_token_threshold("gpt-6.1-sol", backend="claude-api") == 306_000
+    assert section.section_token_threshold("gpt-6-luna", backend="openai") == 306_000
+    assert section.section_token_threshold("gpt-6-luna", backend="claude-api") == 306_000
     assert section.section_token_threshold(flat_openai, backend="openai") == 300_000
     assert section.section_token_threshold(flat_openai, backend="claude-api") == 300_000
 
@@ -396,12 +396,12 @@ def test_run_sectioning_decision_does_not_depend_on_backend(tmp_path, monkeypatc
     vault = _vault(tmp_path)
     pages = [{"page": n, "markdown": "x" * 400} for n in range(1, 601)]   # 60_000 est tokens
     _write_queue(vault, "doc1", pages, 600)
-    assert section.run(vault, "doc1", model="gpt-6.1-sol", backend="claude-api")["sectioned"] is False
-    assert section.run(vault, "doc1", model="gpt-6.1-sol", backend="openai")["sectioned"] is False
+    assert section.run(vault, "doc1", model="gpt-6-luna", backend="claude-api")["sectioned"] is False
+    assert section.run(vault, "doc1", model="gpt-6-luna", backend="openai")["sectioned"] is False
     # Still sections when the document genuinely exceeds the window-derived threshold.
     big = [{"page": n, "markdown": "x" * 400} for n in range(1, 9_001)]   # 900_000 est tokens
     _write_queue(vault, "doc2", big, 9_000)
-    assert section.run(vault, "doc2", model="gpt-6.1-sol", backend="openai")["sectioned"] is True
+    assert section.run(vault, "doc2", model="gpt-6-luna", backend="openai")["sectioned"] is True
 
 
 def test_run_no_longer_accepts_an_effort_argument(tmp_path):
@@ -412,9 +412,9 @@ def test_run_no_longer_accepts_an_effort_argument(tmp_path):
     vault = _vault(tmp_path)
     _write_queue(vault, "doc1", [{"page": 1, "markdown": "x" * 400}], 1)
     with pytest.raises(TypeError):
-        section.run(vault, "doc1", model="gpt-6.1-sol", backend="openai", effort="high")
+        section.run(vault, "doc1", model="gpt-6-luna", backend="openai", effort="high")
     with pytest.raises(TypeError):
-        section.model_defaults("gpt-6.1-sol", backend="openai", effort="high")
+        section.model_defaults("gpt-6-luna", backend="openai", effort="high")
 
 
 # ── tokenizer-aware thresholds (#574) ────────────────────────────────────────
