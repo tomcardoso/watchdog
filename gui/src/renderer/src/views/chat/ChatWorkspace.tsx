@@ -1,7 +1,7 @@
 // The conversation screen shared by Ask and Research: past sessions on the left, the live
 // conversation on the right, a composer, permissions, tool calls and cost.
 
-import { ArrowUp, Plus, Square, Trash2 } from 'lucide-react'
+import { ArrowUp, FastForward, Plus, Square, Trash2 } from 'lucide-react'
 import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatMessage, ChatMode, ChatSessionRow } from '@shared/api'
 import { Badge, Button, Callout, Segmented, Skeleton, cx } from '@renderer/components/ui'
@@ -10,6 +10,7 @@ import { call, errorMessage, invalidate, useEvent, useRpc } from '@renderer/lib/
 import { fmtCost, fmtRelative } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import { PermissionCard, PermissionRequest, SLASH, Thinking, ToolRow } from './ChatParts'
+import { SAMPLE_LABEL, SampleEmpty, SampleQuestions, useSamplePlayback } from './SamplePlayback'
 import './chat.css'
 
 type ModelChoice = 'default' | 'sonnet' | 'opus' | 'haiku'
@@ -45,6 +46,8 @@ interface Props {
   autoStart?: ChatMode
   onSessionEnded?: (queued: number) => void
   onMessage?: () => void
+  /** In the sample investigation, offer prepared conversations in place of a live session (D309). */
+  samplePlayback?: boolean
 }
 
 const MODEL_ARG: Record<ModelChoice, string | null> = { default: null, sonnet: 'sonnet', opus: 'opus', haiku: 'haiku' }
@@ -55,6 +58,9 @@ export default function ChatWorkspace(p: Props) {
   const vault = project.path
   const info = useRpc('app.info', {})
   const sessions = useRpc('chat.list', { vault })
+  // The sample never reaches a real model (D307); Ask offers prepared conversations there (D309).
+  const demo = !!project.sample && !!p.samplePlayback
+  const questions = useRpc('sample.questions', demo ? { vault } : null)
 
   const [active, setActive] = useState<string | null>(null)
   const [live, setLive] = useState(false)
@@ -126,6 +132,16 @@ export default function ChatWorkspace(p: Props) {
     },
     [applyDelta, applyMessage, applyStatus]
   )
+  const playback = useSamplePlayback(vault, apply, {
+    onStart: (session) => {
+      reset()
+      sessionRef.current = session
+      setActive(session)
+      setLive(false)
+      liveRef.current = false
+    },
+    onError: (m) => setFailure(m)
+  })
   const route = <K extends 'delta' | 'message' | 'permission' | 'status'>(kind: K, d: { session: string }) => {
     if (sessionRef.current === null && startingRef.current) buf.current.push({ kind, data: d as never })
     else if (d.session === sessionRef.current) apply(kind, d as never)
@@ -242,6 +258,7 @@ export default function ChatWorkspace(p: Props) {
   )
 
   const fresh = () => {
+    playback.stop()
     void close()
     sessionRef.current = null
     setActive(null)
@@ -259,7 +276,8 @@ export default function ChatWorkspace(p: Props) {
   useEffect(() => {
     // A prompt arriving while a conversation is open (the palette's "Ask Claude") goes into it,
     // as if typed.
-    if (!p.prompt) lastPrompt.current = null
+    // In the sample nothing reaches Claude (D307, D309): the prepared questions stand in.
+    if (!p.prompt || demo) lastPrompt.current = null
     else if (p.prompt !== lastPrompt.current) {
       lastPrompt.current = p.prompt
       handledPrompt.current = true
@@ -289,6 +307,11 @@ export default function ChatWorkspace(p: Props) {
   )
 
   const answer = async (req: PermissionRequest, allow: boolean, forConversation?: boolean) => {
+    if (demo) {
+      setPerms((ps) => ps.filter((x) => x.request_id !== req.request_id))
+      await playback.answer(req.request_id, allow)
+      return
+    }
     try {
       await call('chat.permission', { session: sessionRef.current!, request_id: req.request_id, allow, for_conversation: forConversation })
       setPerms((ps) => ps.filter((x) => x.request_id !== req.request_id))
@@ -362,7 +385,7 @@ export default function ChatWorkspace(p: Props) {
   // A hint, not a gate: the sign-in check is best-effort (an API key in the environment, or the
   // Agent SDK's bundled Claude Code, can work where it says no), and a session that really can't
   // start reports why through chat.status.
-  const signinWarning = cc && (!cc.installed || !cc.logged_in)
+  const signinWarning = !project.sample && cc && (!cc.installed || !cc.logged_in)
   const conversation = msgs.length > 0 || !!active
   const thinking = state === 'thinking'
 
@@ -376,7 +399,7 @@ export default function ChatWorkspace(p: Props) {
         </div>
         <div className="chat-side-list">
           {sessions.isLoading && Array.from({ length: 4 }, (_, i) => <Skeleton key={i} h={44} style={{ margin: '6px 0' }} />)}
-          {!sessions.isLoading && rows.length === 0 && <div className="chat-side-empty">Past conversations for this investigation appear here, so you can pick one up again.</div>}
+          {!sessions.isLoading && rows.length === 0 && <div className="chat-side-empty">{demo ? 'In the sample, conversations are prepared in advance and are not kept. In your own investigations, past conversations appear here, so you can pick one up again.' : 'Past conversations for this investigation appear here, so you can pick one up again.'}</div>}
           {rows.map((r) => (
             <div key={r.session} className={cx('chat-sess', r.session === active && 'on')}>
               <button className="chat-sess-main" onClick={() => navigate({ view: p.view, session: r.session })}>
@@ -398,11 +421,11 @@ export default function ChatWorkspace(p: Props) {
           <div className="grow">
             <div className="chat-head-title truncate">{p.title}</div>
             <div className="chat-head-sub">
-              {live ? (thinking ? 'Working…' : 'Open — ask a follow-up any time') : active ? 'Saved conversation — send a message to reopen it' : 'Runs on the Claude you are signed in with'}
+              {demo ? 'Sample conversations, prepared in advance: nothing is sent to Claude' : live ? (thinking ? 'Working…' : 'Open — ask a follow-up any time') : active ? 'Saved conversation — send a message to reopen it' : 'Runs on the Claude you are signed in with'}
               {cost !== null && <span className="tnum" data-tip="Cost so far. On a subscription this is what it would cost at published rates, not what is billed."> · {fmtCost(cost)}</span>}
             </div>
           </div>
-          <Segmented<ModelChoice>
+          {!demo && <Segmented<ModelChoice>
             value={model}
             onChange={setModel}
             options={[
@@ -411,7 +434,7 @@ export default function ChatWorkspace(p: Props) {
               { value: 'opus', label: 'Opus' },
               { value: 'haiku', label: 'Haiku' }
             ]}
-          />
+          />}
         </header>
         {model !== 'default' && active && <div className="chat-model-note">The model applies to new conversations. This one keeps the model it started with.</div>}
 
@@ -430,11 +453,11 @@ export default function ChatWorkspace(p: Props) {
             stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 60
           }}
         >
-          <div className="chat-col">
-            {!conversation && !loading && p.empty(api)}
+          <div className="chat-col" data-tour={demo ? 'sample-ask' : undefined}>
+            {!conversation && !loading && (demo ? <SampleEmpty name={project.name} questions={questions.data ?? []} onPick={(id) => void playback.play(id)} /> : p.empty(api))}
             {loading && <Skeleton h={80} />}
             {msgs.map((m) => {
-              if (m.role === 'tool') return <ToolRow key={m.id} msg={m} />
+              if (m.role === 'tool') return <ToolRow key={m.id} msg={m} vault={vault} />
               if (m.role === 'system') return <div key={m.id} className="chat-system">{m.text}</div>
               if (m.role === 'user')
                 return (
@@ -452,6 +475,9 @@ export default function ChatWorkspace(p: Props) {
               <PermissionCard key={r.request_id} req={r} onAnswer={(a, forConversation) => void answer(r, a, forConversation)} />
             ))}
             {thinking && perms.length === 0 && <Thinking />}
+            {demo && playback.current && !playback.playing && perms.length === 0 && !thinking && (
+              <SampleQuestions compact questions={questions.data ?? []} exclude={playback.current} onPick={(id) => void playback.play(id)} />
+            )}
             {failure && (
               <Callout
                 tone="danger"
@@ -470,7 +496,12 @@ export default function ChatWorkspace(p: Props) {
 
         <footer className="chat-composer-wrap">
           <div className="chat-col">
-            {project.sample && (
+            {demo && (
+              <Callout tone="info" title="Sample conversation">
+                {SAMPLE_LABEL}
+              </Callout>
+            )}
+            {project.sample && !demo && (
               <Callout tone="info" title="Not available in the sample">
                 Ask Claude would send the sample to a real model, so it is switched off here. Create your own investigation to use it.
               </Callout>
@@ -491,7 +522,7 @@ export default function ChatWorkspace(p: Props) {
                 ref={composer}
                 rows={1}
                 value={text}
-                placeholder={project.sample ? 'Ask Claude is off in the sample investigation' : p.placeholder}
+                placeholder={demo ? 'In the sample, choose one of the prepared questions' : project.sample ? 'Ask Claude is off in the sample investigation' : p.placeholder}
                 disabled={project.sample}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -501,7 +532,11 @@ export default function ChatWorkspace(p: Props) {
                   }
                 }}
               />
-              {thinking ? (
+              {demo && playback.playing ? (
+                <Button icon={FastForward} onClick={playback.skip} tip="Show the rest of this answer at once">
+                  Show it all
+                </Button>
+              ) : thinking && !demo ? (
                 <Button variant="danger" icon={Square} onClick={stop} tip="Stop Claude's current turn">
                   Stop
                 </Button>
@@ -510,7 +545,7 @@ export default function ChatWorkspace(p: Props) {
               )}
             </div>
             <div className="chat-hint">
-              <span><kbd className="kbd">Enter</kbd> to send · <kbd className="kbd">Shift</kbd> <kbd className="kbd">Enter</kbd> for a new line · type <span className="mono">/</span> for commands</span>
+              {demo ? <span>Links in an answer open the document at the fact they cite.</span> : <span><kbd className="kbd">Enter</kbd> to send · <kbd className="kbd">Shift</kbd> <kbd className="kbd">Enter</kbd> for a new line · type <span className="mono">/</span> for commands</span>}
               {live && (
                 <button className="chat-end" onClick={() => void api.end()}>
                   End session

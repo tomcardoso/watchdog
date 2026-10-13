@@ -186,12 +186,12 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
       title: 'Ask Claude',
       body: () => (
         <>
-          <p>Ask Claude answers questions about the investigation, citing the documents and pages it relied on, and can look for connections across the whole record.</p>
-          <p>It runs Claude inside your investigation, so it needs a Claude sign-in, which you can add in Settings under Models &amp; keys. It is switched off in the sample, which never sends anything to a real model.</p>
+          <p>Ask Claude answers questions about the investigation, citing the documents and pages it relied on, and can look for connections across the whole record. It asks you before it changes anything.</p>
+          <p>Try one of these questions. In the sample, the conversations were prepared in advance, so nothing is sent to Claude and it costs nothing. In your own investigations you can ask anything; it needs a Claude sign-in, which you can add in Settings under Models &amp; keys.</p>
         </>
       ),
       route: () => ({ view: 'ask' }),
-      target: () => '.chat-composer'
+      target: () => '[data-tour="sample-ask"]'
     },
     {
       id: 'next',

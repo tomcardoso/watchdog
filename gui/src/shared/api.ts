@@ -601,6 +601,21 @@ export interface OpSpec { params: Record<string, OpParamSpec>; vault: boolean; e
 /** Where the sample is, or would be built: `slug` is set when it is listed. */
 export interface SampleStatus { slug: string | null; path: string; listed: boolean; exists: boolean; archived: boolean }
 /** What each tour step opens in the sample (`sample.tour`). */
+/** A question with a prepared Ask Claude conversation in the sample (D309). */
+export interface SampleQuestion {
+  id: string
+  question: string
+  blurb: string
+  /** Stops at a permission card before changing the sample. */
+  writes: boolean
+}
+/** One event of a prepared conversation: a chat event's name and payload, and the delay before it. */
+export interface SamplePlayback {
+  after_ms: number
+  event: 'chat.message' | 'chat.delta' | 'chat.status' | 'chat.permission'
+  data: { session: string } & Record<string, unknown>
+}
+
 export interface TourTargets {
   sample: true
   briefings: number
@@ -826,6 +841,9 @@ export interface Methods {
   'projects.doctor': [Record<string, never>, { issues: DoctorIssue[] }]
   'sample.status': [{ dir?: string }, SampleStatus]
   'sample.tour': [{ vault: string }, TourTargets]
+  'sample.questions': [{ vault: string }, SampleQuestion[]]
+  'sample.conversation': [{ vault: string; id: string }, { session: string; events: SamplePlayback[]; waiting: string | null }]
+  'sample.conversationAnswer': [{ vault: string; id: string; request_id: string; allow: boolean }, { events: SamplePlayback[] }]
 
   'vault.summary': [{ vault: string }, Summary]
   'vault.documents': [{ vault: string }, DocumentRow[]]

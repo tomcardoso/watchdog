@@ -84,6 +84,14 @@ test('the sample builds from the welcome card and every tour step points at some
         expect(briefings).toBe(3)
         await main.focus()
       }
+      if (i === 13) {
+        // D309: in the sample, Ask Claude offers prepared conversations, labelled as such; the free
+        // text box stays off. Playing them is checked after the tour, with its panel closed.
+        await expect(page.locator('.callout', { hasText: 'Sample conversation' })).toContainText('prepared in advance, so trying them costs nothing')
+        await expect(page.locator('.chat-composer textarea')).toBeDisabled()
+        await expect(page.locator('.chat-sample-q')).toHaveCount(4)
+        await main.focus()
+      }
       await page.keyboard.press(i % 2 ? 'Enter' : 'Space')
     }
     await expect(panel).toHaveCount(0)
@@ -91,6 +99,30 @@ test('the sample builds from the welcome card and every tour step points at some
     expect(seen).toEqual(['overview', 'scanned', 'entity', 'verify', 'contradiction', 'duplicate', 'lead', 'search', 'timeline', 'network', 'usage', 'add', 'ask', 'next'])
     // The Add documents step closed its window on the way out, and nothing was sent anywhere.
     await expect(page.locator('.modal')).toHaveCount(0)
+
+    // D309: a prepared conversation plays in the real chat screen. A write stops at the real
+    // permission card; allowing it changes the sample's watch list through the session tool.
+    await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'ask' }))
+    await page.getByRole('button', { name: /Add Tideway Marine Services to my watch list/ }).click()
+    const card = page.locator('.chat-perm')
+    await expect(card).toContainText('Claude wants to: add to the watch list', { timeout: 15_000 })
+    await card.getByRole('button', { name: 'Allow once' }).click()
+    await expect(page.locator('.chat-assistant').last()).toContainText('is on the watch list', { timeout: 15_000 })
+    await expect(page.locator('.chat-user-bubble')).toHaveText(['Add Tideway Marine Services to my watch list.'])
+    const samplePath = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))['port-calder-waterfront-sample'].path
+    expect(readFileSync(join(samplePath, 'watchlist.md'), 'utf8')).toContain('Tideway Marine Services')
+    // A question: Claude's tool rows, then an answer whose citations resolve and open the document.
+    await page.locator('.chat-sample-pill', { hasText: 'how Tideway was paid' }).click()
+    // Playback is paced like a live session; the button shows the rest at once.
+    await page.getByRole('button', { name: 'Show the rest of this answer at once' }).click({ timeout: 15_000 })
+    await expect(page.locator('.chat-tool', { hasText: 'watchdog · search' })).toBeVisible()
+    const reply = page.locator('.chat-assistant').last()
+    await expect(reply).toContainText('The City paid Tideway Marine Services directly')
+    const cite = reply.locator('a.fact-cite.pill').first()
+    await expect(cite).toBeVisible({ timeout: 15_000 })
+    await expect(reply.locator('.fact-cite-missing')).toHaveCount(0)
+    await cite.click()
+    await expect.poll(() => page.evaluate(() => (window as any).__watchdogApp.getState().route.view)).toBe('document')
 
     // Back and Skip, and Help → Take the tour starts again from the first step with the sample
     // already there (no second build).

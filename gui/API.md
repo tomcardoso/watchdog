@@ -85,8 +85,11 @@ dir: "/x"}}`; each returns `{slug, name, path}` (delete: `{slug, removed}`). The
 |---|---|---|
 | `sample.status` | `{dir?}` | `{slug\|null, path, listed, exists, archived}` — where the sample is (the listed investigation marked `sample`), or where `sample-create` would build it (`dir`, else the investigations folder); `exists` is true when a folder carrying the sample's marker (`.watchdog/sample.json`) is at `path` |
 | `sample.tour` | `{vault}` | `TourTargets`: what each tour step opens, read from the sample's registries — `{sample, briefings, scanned: {sha, filename, title, page, find}, entity: {id, name, fact}, contradiction: {rid, title}, duplicate: {rid, title}, lead: {rid, title}, search, incoming: string[], runs}`; `not_found` naming whatever is missing |
+| `sample.questions` | `{vault}` | `SampleQuestion[]` — `{id, question, blurb, writes}`: the questions with a prepared Ask Claude conversation (D309); `not_sample` outside the sample |
+| `sample.conversation` | `{vault, id}` | `{session, events: SamplePlayback[], waiting: string\|null}` — a prepared conversation, built from the sample's registries when asked: each event is `{after_ms, event, data}`, `event` one of `chat.message`, `chat.delta`, `chat.status`, `chat.permission` and `data` that event's payload, so the chat screen plays it as a live session's stream. `waiting` is the permission request it stops at. No model, client or network; `not_found` when the sample lacks a fact the answer cites (rebuild it) |
+| `sample.conversationAnswer` | `{vault, id, request_id, allow}` | `{events}` — the rest of a conversation after its permission card. Allowed, the change is made in the sample through the same session tool a live session calls (`watchlist_add`), with its folder-access check and version history |
 
-The sample is built by the `sample-create` job (see [operations](#operations)).
+The sample is built by the `sample-create` job (see [operations](#operations)). Ask Claude itself (`chat.start`, `chat.resume`) is refused in the sample (D307); the prepared conversations above stand in for it.
 
 ## vault — reading an investigation
 

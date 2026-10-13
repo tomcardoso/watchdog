@@ -24,11 +24,20 @@ export const SLASH: SlashCommand[] = [
 ]
 
 const KEYS = ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'prompt', 'description']
-export function summarizeInput(input: unknown): string {
+/** A path inside the investigation, shown relative to it (`entities/…md`), so a tool row never
+ *  spells out the folder's full location on this computer. */
+export function relativeToVault(text: string, vault?: string): string {
+  if (!vault) return text
+  const root = vault.replace(/[\\/]+$/, '')
+  if (text === root) return '.'
+  for (const sep of ['/', '\\']) if (text.startsWith(root + sep)) return text.slice(root.length + 1)
+  return text
+}
+export function summarizeInput(input: unknown, vault?: string): string {
   if (typeof input === 'string') return input
   if (input && typeof input === 'object') {
     const o = input as Record<string, unknown>
-    for (const k of KEYS) if (typeof o[k] === 'string' && o[k]) return String(o[k])
+    for (const k of KEYS) if (typeof o[k] === 'string' && o[k]) return relativeToVault(String(o[k]), vault)
     try {
       return JSON.stringify(o)
     } catch {
@@ -50,7 +59,7 @@ function toolIcon(name: string) {
   return Wrench
 }
 
-export function ToolRow({ msg }: { msg: ChatMessage }) {
+export function ToolRow({ msg, vault }: { msg: ChatMessage; vault?: string }) {
   const [open, setOpen] = useState(false)
   const t = msg.tool
   if (!t) return null
@@ -68,7 +77,7 @@ export function ToolRow({ msg }: { msg: ChatMessage }) {
         <ChevronRight className="chev" />
         <Icon className="ico" />
         <span className="chat-tool-name">{toolName(t.name)}</span>
-        <span className="chat-tool-sum truncate">{cut(summarizeInput(t.input).replace(/\s+/g, ' '), 140)}</span>
+        <span className="chat-tool-sum truncate">{cut(summarizeInput(t.input, vault).replace(/\s+/g, ' '), 140)}</span>
         {pending && <span className="spinner" style={{ width: 11, height: 11 }} />}
       </button>
       {open && (
