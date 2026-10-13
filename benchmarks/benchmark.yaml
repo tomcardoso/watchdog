@@ -35,35 +35,35 @@ extractor_sweep:
   #
   # `repeats: N` runs an arm N times, as `<id>-r1` … `-rN`, and the report shows the spread
   # (mean, lowest–highest, standard deviation); `--arms <id>` selects all of them. One run is one
-  # sample: archived single runs of one configuration differed by up to 3x (D278). Three runs go
-  # to the shipped default, `sonnet-5.5-med`, because every user's documents are read by it, and
-  # to the cheap arms (Haiku 5.5, GPT-6 Luna, Gemini 3.5 Flash-Lite, DeepSeek Flash), where a
-  # run costs cents, so their spread comes almost free. Every other arm runs once: a difference
-  # between two single-run arms is a lead, not a measurement.
+  # sample: archived single runs of one configuration differed by up to 3x (D278). The owner chose
+  # one run per arm for this matrix (D314), so every difference between two arms is a lead, not a
+  # measurement; add `repeats` to an arm to confirm one before acting on it.
   defaults: {concurrency: 5, max_rate_limit_waits: 2, brief: briefs/corpus-v1.md}
   arms:
     # ── Anthropic ── Sonnet 5.5 at medium is what every user runs (D236). Haiku 5.5 defaults to
     # medium on the API, Sonnet 5.5 to high; every arm pins its level. No Opus 5.5, Fable 5.1,
     # GPT-6 Astra or GPT-6.1 Sol arm: those models are not catalogued (D311, D312).
-    - {id: sonnet-5.5-med,        extractor_model: sonnet-5.5, extractor_effort: medium, repeats: 3}
+    - {id: sonnet-5.5-low,        extractor_model: sonnet-5.5, extractor_effort: low}
+    - {id: sonnet-5.5-med,        extractor_model: sonnet-5.5, extractor_effort: medium}
     - {id: sonnet-5.5-high,       extractor_model: sonnet-5.5, extractor_effort: high}
-    - {id: haiku-5.5-low,         extractor_model: haiku-5.5, extractor_effort: low, repeats: 3}
-    - {id: haiku-5.5-med,         extractor_model: haiku-5.5, extractor_effort: medium, repeats: 3}
+    - {id: haiku-5.5-low,         extractor_model: haiku-5.5, extractor_effort: low}
+    - {id: haiku-5.5-med,         extractor_model: haiku-5.5, extractor_effort: medium}
+    - {id: haiku-5.5-high,        extractor_model: haiku-5.5, extractor_effort: high}
 
     # ── OpenAI ──
-    - {id: gpt-6-luna-low,        extractor_model: "openai:gpt-6-luna", extractor_effort: low, repeats: 3}
-    - {id: gpt-6-luna-med,        extractor_model: "openai:gpt-6-luna", extractor_effort: medium, repeats: 3}
+    - {id: gpt-6-luna-low,        extractor_model: "openai:gpt-6-luna", extractor_effort: low}
+    - {id: gpt-6-luna-med,        extractor_model: "openai:gpt-6-luna", extractor_effort: medium}
 
     # ── Gemini ── thinking is always on; each model takes low, medium and high. No Gemini 4
     # Argon arm: Google's flagship is not catalogued (D313).
     - {id: gemini-3.8-flash-low,  extractor_model: "gemini:gemini-3.8-flash", extractor_effort: low}
     - {id: gemini-3.8-flash-med,  extractor_model: "gemini:gemini-3.8-flash", extractor_effort: medium}
-    - {id: gemini-3.5-flash-lite-low, extractor_model: "gemini:gemini-3.5-flash-lite", extractor_effort: low, repeats: 3}
+    - {id: gemini-3.5-flash-lite-low, extractor_model: "gemini:gemini-3.5-flash-lite", extractor_effort: low}
 
     # ── DeepSeek ── two knobs, not one (D217): `-thinking` switches thinking mode on, and only the
     # thinking ids take an effort level. `high` is DeepSeek's own default, and `medium`/`xhigh`
     # are its aliases for it, so a thinking arm at `high` is the provider's standard behaviour.
-    - {id: deepseek-flash,        extractor_model: "deepseek:deepseek-flash", repeats: 3}
+    - {id: deepseek-flash,        extractor_model: "deepseek:deepseek-flash"}
     - {id: deepseek-flash-think-high, extractor_model: "deepseek:deepseek-flash-thinking", extractor_effort: high}
     - {id: deepseek-pro-think-high,   extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: high}
 
@@ -73,9 +73,8 @@ finalizer_sweep:
   # from it post-process with a brief as a real investigation does (D310).
   base: {extractor_model: "deepseek:deepseek-flash", brief: briefs/corpus-v1.md}
   arms:
-    # Haiku 5.5 is the shipped finalizer (D277), repeated since the finalizer's output (merges,
-    # contradictions) varies run to run on one fixed extraction.
-    - {id: haiku-5.5-med,         finalizer_model: haiku-5.5, finalizer_effort: medium, repeats: 3}
+    # Haiku 5.5 is the shipped finalizer (D277).
+    - {id: haiku-5.5-med,         finalizer_model: haiku-5.5, finalizer_effort: medium}
     - {id: sonnet-5.5-med,        finalizer_model: sonnet-5.5, finalizer_effort: medium}
     - {id: gpt-6-luna-med,        finalizer_model: "openai:gpt-6-luna", finalizer_effort: medium}
     - {id: gemini-3.8-flash-med,  finalizer_model: "gemini:gemini-3.8-flash", finalizer_effort: medium}

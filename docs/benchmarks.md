@@ -122,11 +122,10 @@ A few things this benchmark doesn't cover yet:
   measures each provider's current models instead: Claude Haiku 5.5 and Sonnet 5.5;
   OpenAI's GPT-6 Luna; Google's Gemini 3.8 Flash
   and 3.5 Flash-Lite; and DeepSeek Flash and Pro, every one with the same short brief written as
-  open questions. Its numbers are not comparable with the tables above. The shipped default,
-  Sonnet 5.5 at medium effort, runs three times, as do the cheapest models, because single runs
-  of one setting have differed by up to three times; read two settings as different only where
-  their ranges do not overlap. The finishing step gets the same treatment, with Haiku 5.5 (the
-  default) run three times.
+  open questions. Its numbers are not comparable with the tables above. Claude Sonnet 5.5 and
+  Haiku 5.5 each run at low, medium and high effort. Every setting runs once, so read a gap
+  between two settings as a lead to check, not a result: single runs of one setting have
+  differed by up to three times.
 - **Classifying document types.** The current document set only spans two of Watchdog's record
   skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
   those two right, not enough to rank classifier models against each other. That needs a

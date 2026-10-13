@@ -3008,14 +3008,15 @@ def test_repeat_table_says_so_when_nothing_was_repeated():
     assert br.repeat_table_md([_arm_result()], {"totals": {}}) == "No arm in this run was repeated."
 
 
-def test_shipped_benchmark_yaml_repeats_the_default_model_arms():
-    """The shipped defaults' arms are the ones every user's documents run on, so the shipped
-    matrix runs each of them at least three times (D278): Sonnet 5.5 at medium for extraction,
-    Haiku 5.5 at medium for post-processing."""
+def test_shipped_benchmark_yaml_runs_each_arm_once_and_sweeps_claude_effort():
+    """The owner's matrix (D314): one run per arm, and Sonnet 5.5 and Haiku 5.5 each at low,
+    medium and high for extraction."""
     config = rb.load_config(BENCHMARKS_DIR / "benchmark.yaml")
-    for stage, base in (("extractor_sweep", "sonnet-5.5-med"), ("finalizer_sweep", "haiku-5.5-med")):
-        runs = [a for a in config[stage]["arms"] if a.get("repeat_of") == base]
-        assert len(runs) >= 3, base
+    for stage in ("extractor_sweep", "finalizer_sweep"):
+        assert not [a["id"] for a in config[stage]["arms"] if a.get("repeat_of")], stage
+    ids = {a["id"] for a in config["extractor_sweep"]["arms"]}
+    for model in ("sonnet-5.5", "haiku-5.5"):
+        assert {f"{model}-{e}" for e in ("low", "med", "high")} <= ids, model
 
 
 def test_shipped_benchmark_yaml_briefs_every_arm():

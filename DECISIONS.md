@@ -2773,3 +2773,8 @@ Tradeoff: a setup naming `opus` for any stage fails at the start of a run and ha
 Owner's direction, completing D311 and D312: no flagship model anywhere in the app. Gemini 4 Argon, Google's flagship ($2 in and $10 out per million tokens, doubling on 2026-12-01), leaves the catalogue and the benchmark (two arms); Gemini 3.8 Flash and 3.5 Flash-Lite remain. Ask Claude loses its Opus choice and its "Default" choice: Default left the model to Claude Code, whose own default can be Opus. A conversation now always names Sonnet (the default) or Haiku, the backend refuses any other, and a saved conversation that recorded another model reopens on Sonnet.
 
 Tradeoff: no provider's top model can be used for processing or for Ask Claude, so a reporter who wants one for an unusually hard question has to go outside Watchdog.
+
+### D314 — The frontier benchmark runs every arm once, with Sonnet 5.5 and Haiku 5.5 at three effort levels
+Owner's direction: one run per arm instead of three for the default and the cheap arms (D278), and Sonnet 5.5 and Haiku 5.5 each at `low`, `medium` and `high` (two arms added). The matrix is now 14 extraction runs and 5 post-processing runs.
+
+Tradeoff: single runs of one setting have differed by up to three times (D278), so no gap between two arms can be told from run-to-run noise. A result that would change a default is re-run with `repeats` before it does.
