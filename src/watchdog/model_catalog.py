@@ -80,8 +80,8 @@ def resolve_model_id(model: str) -> str:
 
 
 def display_name(model_id: str) -> str:
-    """Pretty display form of a model id, for display and usage logging — e.g. 'gpt-5.6-terra' ->
-    'GPT-5.6 Terra'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
+    """Pretty display form of a model id, for display and usage logging — e.g. 'gpt-6.1-sol' ->
+    'GPT-6.1 Sol'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
     model, or an old id no longer in the catalog) rather than raising or guessing."""
     entry = _entry(model_id)
     return entry["name"] if entry and "name" in entry else model_id
