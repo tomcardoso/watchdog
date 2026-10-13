@@ -85,3 +85,10 @@
 .chat-url { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; color: var(--text-3); font-size: var(--fs-xs); cursor: pointer; max-width: 100%; }
 .chat-url svg { width: 11px; height: 11px; flex: none; }
 .chat-url:hover { color: var(--accent-text); }
+/* The sample's prepared conversations (D309). */
+.chat-sample-q .chat-chip-name { font-size: var(--fs-md); line-height: 1.4; align-items: flex-start; }
+.chat-sample-q .chat-chip-name svg { width: 14px; height: 14px; margin-top: 3px; flex: none; color: var(--accent-text); }
+.chat-sample-more { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 1px solid var(--border); }
+.chat-sample-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-sample-pill { border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); padding: 6px 12px; font-size: var(--fs-sm); cursor: pointer; text-align: left; transition: border-color var(--dur), background var(--dur); }
+.chat-sample-pill:hover { border-color: var(--border-strong); background: var(--hover); }

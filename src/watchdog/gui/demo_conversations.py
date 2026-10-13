@@ -80,14 +80,15 @@ class Script:
     WORDS_PER_CHUNK = 3
     CHUNK_MS = 24
 
-    def __init__(self, session: str):
+    def __init__(self, session: str, part: str = "m"):
         self.session = session
+        self.part = part        # keeps the ids of a turn's second part apart from its first
         self.events: list[dict] = []
         self._n = 0
 
     def _id(self) -> str:
         self._n += 1
-        return f"{self.session}-{self._n}"
+        return f"{self.session}-{self.part}{self._n}"
 
     def _emit(self, after_ms: int, event: str, data: dict) -> None:
         self.events.append({"after_ms": after_ms, "event": event, "data": {"session": self.session, **data}})
@@ -459,6 +460,6 @@ def answer(vault: Path, cid: str, request_id: str, allow: bool) -> dict:
     conv = _conversation(cid)
     if conv.after is None or request_id != _request_id(cid):
         raise KeyError(request_id)
-    turn = Turn(Path(vault), Facts(vault), Script(_session(cid)))
+    turn = Turn(Path(vault), Facts(vault), Script(_session(cid), part="a"))
     conv.after(turn, bool(allow))
     return {"events": turn.script.events}

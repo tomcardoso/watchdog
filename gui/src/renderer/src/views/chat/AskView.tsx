@@ -85,6 +85,7 @@ export default function AskView() {
       prompt={r.prompt}
       autoStart={'mode' in r && r.mode === 'context' ? 'context' : undefined}
       empty={(api) => <Empty api={api} name={project.name} />}
+      samplePlayback
     />
   )
 }

@@ -156,6 +156,9 @@ def test_the_write_stops_at_the_real_permission_card_then_applies_through_the_to
     result = json.loads(_messages(r["all"], "tool")[-1]["tool"]["result"])
     assert result == {"added": ["Tideway Marine Services"], "skipped": 0}
     assert "is on the watch list" in _answer(r["all"])
+    # The second part's messages never replace the first part's (the ids differ).
+    ids = [m["id"] for m in _messages(r["all"], "user") + _messages(r["all"], "assistant")]
+    assert len(ids) == len(set(ids)) == 3
     # The change is a version of the watch list's history, as a session's would be.
     hist = call("history.file", vault=str(vault), path="watchlist.md")
     assert any((v.get("cause") or {}).get("tool") == "watchlist_add" for v in hist["versions"])
