@@ -99,8 +99,8 @@ def long_context_input_cap(model: str | None, backend: str | None = None) -> int
     honest, since it prices every model at one flat rate. Returns None for an uncatalogued id: we
     can't know a self-hosted or OpenRouter model's rate card, and inventing a boundary would shrink
     its sections for no reason. Unlike `_output_envelope` there is no family-fallback table —
-    pricing tiers vary within a family (gpt-5.4-mini shares gpt-5.4's tokenizer but not its window,
-    and so never approaches the boundary), so a substring guess would be an over-claim."""
+    pricing tiers vary within a family (Haiku 5.5 is the only Claude model with one), so a
+    substring guess would be an over-claim."""
     threshold = catalog_long_context_threshold(resolve_model_id(model or DEFAULT_TIER))
     return int(threshold * (1 - _LONG_CONTEXT_HEADROOM)) if threshold else None
 
@@ -123,8 +123,8 @@ _THINKING_ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 # Reasoning-effort levels for the per-stage `effort` knob (D36) — an abstract intent the
 # pipeline passes down. `model_catalog.yaml`'s `effort_levels` is the single source of truth for
 # which of these a given model actually accepts (#518, D161) — real per-model coverage, not a
-# per-provider flag: it varies within a provider (Claude Sonnet 4.6 takes `max` but not `xhigh`)
-# as much as across providers. `_resolve_effort` below rejects an unsupported request loudly
+# per-provider flag: it varies across providers (Gemini stops at `high`) and has varied within
+# one. `_resolve_effort` below rejects an unsupported request loudly
 # rather than silently dropping it or sending a request the API would reject.
 _EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # OpenAI-provider model capabilities (#170). A *reasoning* model accepts `reasoning_effort` and
@@ -174,13 +174,15 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
     `model_catalog.yaml`'s `effort_levels` (via `_effort_levels` above) is the single source of
     truth for whether `provider`/`model_id` accepts `effort` at all (#518, D161) — a request for
     an unsupported level fails loud with a clear error rather than being silently dropped or sent
-    as a request the API would reject."""
+    as a request the API would reject.
+
+    A requested level is always sent, `high` on Claude included (D310): `high` used to be omitted
+    as "the model's own default" (D36), but Haiku 5.5 and Opus 5.5 default to `medium`, so a `high`
+    request there ran at `medium`."""
     if not effort:
         return None
     if effort not in _effort_levels(provider, model_id):
         raise ModelError(f"effort '{effort}' is not supported for '{model_id}' on provider '{provider}'")
-    if provider == "anthropic" and effort == "high":
-        return None   # ≡ the model's own default (D36) — omit the param rather than send it
     return effort
 
 
@@ -222,7 +224,7 @@ def context_window(model: str | None, backend: str | None = None) -> int:
     """Token context window for a stage's model, for provider-aware sectioning (#321).
 
     `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-flash`,
-    `gpt-5-mini`), or None for the default tier — resolved first, then looked up in the model
+    `gpt-6-luna`), or None for the default tier — resolved first, then looked up in the model
     catalog, then the substring fallback table. Unlisted ids fall back to a conservative default
     rather than raising, so a new or misspelled id degrades to safe (small-chunk) sectioning
     instead of an overrun.
@@ -660,7 +662,7 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
     # unnoticed precisely because behaviour was correct; only the bill showed it. See D145.
     if _agent_supports_tools():
         opts["tools"] = []
-    if effort:                  # only set when overriding the model default (D36)
+    if effort:                  # only set when a level was asked for (D36, D310)
         opts["effort"] = effort
     if catalog_needs_thinking_param(model) and _agent_supports_thinking():
         opts["thinking"] = _THINKING_ADAPTIVE

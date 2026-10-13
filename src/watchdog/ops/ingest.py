@@ -62,7 +62,7 @@ def effort(flag_val, config_val, *, default=None, backend=None, model=None):
     level for the resolved model fails loud downstream in `model_client._resolve_effort`, correctly, since it's exactly what was asked for. `default`
     (extractor_effort's `medium`, D26) is different: nothing the user touched, so it's applied
     only when `backend`/`model` actually supports it — otherwise routing a stage to a model with
-    no effort control (e.g. Haiku) would turn a setting nobody set into a hard failure (#518)."""
+    no such level (e.g. DeepSeek) would turn a setting nobody set into a hard failure (#518)."""
     e = flag_val or config_val
     if e is not None:
         if e not in _EFFORT_LEVELS:
@@ -82,9 +82,9 @@ FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
 def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
     """Resolve a stage's `[backend:]model` knob into (backend, model) (#125).
 
-    Plain `sonnet`/`opus`/`haiku` → (None, tier): Claude, routed by auth mode (unchanged). A
+    Plain `sonnet`/`opus`/`haiku`/`fable` → (None, tier): Claude, routed by auth mode (unchanged). A
     `backend:model` form selects a backend explicitly — `claude-api:opus` (a Claude tier), or
-    `openai:gpt-5-mini` / `deepseek:deepseek-flash` (a raw provider model id). Carrying both in
+    `openai:gpt-6-luna` / `deepseek:deepseek-flash` (a raw provider model id). Carrying both in
     one value means a stage can never be half-configured."""
     from watchdog.model_client import BACKENDS, CLAUDE_BACKENDS
     raw = flag_val or config_val or default
@@ -93,10 +93,10 @@ def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tup
         sys.exit(f"Error: unknown backend '{backend}' — choose {', '.join(BACKENDS)}")
     if backend is None or backend in CLAUDE_BACKENDS:
         if model not in _MODEL_IDS:
-            sys.exit(f"Error: unknown model '{model}' — choose sonnet, opus, or haiku, "
+            sys.exit(f"Error: unknown model '{model}' — choose haiku, sonnet, opus or fable, "
                      f"or a backend:model form like deepseek:deepseek-flash")
     elif not model:
-        sample = "deepseek-flash" if backend == "deepseek" else "gpt-5-mini"
+        sample = "deepseek-flash" if backend == "deepseek" else "gpt-6-luna"
         sys.exit(f"Error: backend '{backend}' needs a model id, e.g. {backend}:{sample}")
     return backend, model
 

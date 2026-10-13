@@ -347,8 +347,8 @@ SETTINGS = {
             "Model used for the cheap classification step that reads a document's first pages\n"
             "  and picks the matching record skill. Haiku is plenty for this; raise it only if\n"
             "  classification is going wrong on ambiguous documents.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: haiku. Recommended alternative: openai:gpt-5.6-luna (with classifier_effort\n"
             "  low), the strongest classifier in benchmark testing against real filings — see\n"
             "  docs/benchmarks.md. Not the shipped default because it needs its own OpenAI key\n"
@@ -363,8 +363,8 @@ SETTINGS = {
             "Model used to extract each document during processing.\n"
             "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
             "  Sonnet handles complex or ambiguous documents better.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: sonnet. Recommended alternative: openai:gpt-5.6-luna (with extractor_effort\n"
             "  high), which beat Sonnet at low effort outright in benchmark testing against real\n"
             "  filings — see docs/benchmarks.md. Not the shipped default because it needs its own\n"
@@ -384,8 +384,8 @@ SETTINGS = {
             "  This step works from compact digests rather than reading raw documents, so the\n"
             "  cheaper Haiku tier is the default; raise it if synthesized prose feels thin, if\n"
             "  duplicate entities slip through, or if contradictions are being missed.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: haiku. openai:gpt-5.6-luna is a reasonable alternative alongside\n"
             "  extractor_model's — this stage has no dedicated benchmark of its own yet, so\n"
             "  treat it as an extrapolation, not a measured recommendation."
@@ -399,8 +399,8 @@ SETTINGS = {
             "Overrides finalizer_model for just the reconciliation stage — merging duplicate\n"
             "  entities and flagging contradictions between documents. Leave unset to use\n"
             "  finalizer_model, like every other post-processing stage.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset."
         ),
         "type": "string",
@@ -412,8 +412,8 @@ SETTINGS = {
             "Overrides finalizer_model for just the synthesis stage — writing prose for entities\n"
             "  mentioned across more than one document. Leave unset to use finalizer_model, like\n"
             "  every other post-processing stage.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset."
         ),
         "type": "string",
@@ -425,8 +425,8 @@ SETTINGS = {
             "Overrides finalizer_model for just the timeline stage — deduplicating same-date\n"
             "  collisions and folding coarse-precision restatements into their exact date. Leave\n"
             "  unset to use finalizer_model, like every other post-processing stage.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset."
         ),
         "type": "string",
@@ -437,8 +437,8 @@ SETTINGS = {
         "help": (
             "Overrides finalizer_model for just the briefing stage. Leave unset to use\n"
             "  finalizer_model, like every other post-processing stage.\n"
-            "  Value: a Claude tier (haiku, sonnet, opus), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-5-mini, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
+            "  Value: a Claude tier (haiku, sonnet, opus, fable), or a backend:model form to route to\n"
+            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset."
         ),
         "type": "string",
@@ -454,12 +454,11 @@ SETTINGS = {
             "  model. If you switch extractor_model to the benchmark-recommended\n"
             "  openai:gpt-5.6-luna (see docs/benchmarks.md), use 'high' instead — Luna's own\n"
             "  effort-vs-recall curve climbs with effort, unlike Sonnet's. Left unset, this\n"
-            "  default is skipped automatically for an extractor with no effort control at all\n"
-            "  (Haiku 4.5) — but setting it explicitly on a model that doesn't support that exact\n"
-            "  level errors rather than silently doing something else. 'xhigh'/'max' need a\n"
-            "  model that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6)\n"
-            "  support both; Claude support varies by model (Sonnet 4.6 takes 'max' but not\n"
-            "  'xhigh'; Opus 4.8 takes both).\n"
+            "  default is skipped automatically for an extractor that has no 'medium' level\n"
+            "  (DeepSeek, either mode) — but setting it explicitly on a model that doesn't\n"
+            "  support that exact level errors rather than silently doing something else.\n"
+            "  'xhigh'/'max' need a model that supports them: every current Claude and OpenAI\n"
+            "  model does; Gemini stops at 'high'; DeepSeek takes 'max' but not 'xhigh'.\n"
             "  Valid values: low, medium, high, xhigh, max. Default: medium."
         ),
         "type": "enum",

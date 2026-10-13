@@ -86,18 +86,29 @@ def load_config(path: Path) -> dict:
 
     # `brief:` on an extractor arm (D278): a path (relative to this config file) to a brief that
     # becomes the arm vault's context.md, or `false` to withhold context.md from extraction.
-    # Absent means the vault's own context.md, which benchmark vaults never have.
-    for arm in (config.get("extractor_sweep") or {}).get("arms") or []:
+    # Absent means the vault's own context.md, which benchmark vaults never have. The sweep's
+    # `defaults:` may set it for every arm (D310); it is copied onto each arm that sets none here,
+    # rather than merged at run time like the other defaults, so the report records it per arm.
+    # The finalizer sweep's `base:` extraction takes one too, and the finalizer arms copied from
+    # that vault then post-process with the brief, as a real investigation does.
+    extractor = config.get("extractor_sweep") or {}
+    default_brief = (extractor.get("defaults") or {}).get("brief")
+    briefed = []
+    for arm in extractor.get("arms") or []:
+        if default_brief is not None:
+            arm.setdefault("brief", default_brief)
+        briefed.append((f"extractor_sweep arm '{arm.get('id')}'", arm))
+    if (config.get("finalizer_sweep") or {}).get("base"):
+        briefed.append(("finalizer_sweep base", config["finalizer_sweep"]["base"]))
+    for where, arm in briefed:
         brief = arm.get("brief")
         if brief is None or brief is False:
             continue
         if not isinstance(brief, str):
-            sys.exit(f"Error: extractor_sweep arm '{arm.get('id')}' has brief: {brief!r} — "
-                     f"use a path to a brief file, or false")
+            sys.exit(f"Error: {where} has brief: {brief!r} — use a path to a brief file, or false")
         brief_path = (path.parent / brief).resolve()
         if not brief_path.is_file():
-            sys.exit(f"Error: extractor_sweep arm '{arm.get('id')}' names a brief that does not "
-                     f"exist: {brief_path}")
+            sys.exit(f"Error: {where} names a brief that does not exist: {brief_path}")
         arm["brief"] = str(brief_path)
 
     for stage_key, arms_key in (("extractor_sweep", "arms"), ("finalizer_sweep", "arms")):

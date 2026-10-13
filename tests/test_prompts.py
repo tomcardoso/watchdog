@@ -224,9 +224,8 @@ def test_extract_prompt_carries_no_vault_state():
 # ── explicit scaffold for non-reasoning models (#570 Phase 1) ─────────────────────────────
 
 @pytest.mark.parametrize("model", [
-    "haiku",                # Claude, no thinking control at all
-    "deepseek-flash",    # DeepSeek's plain (non "-thinking") id
-    "gemini-3.7-flash",     # Gemini — no reasoning field in the catalog
+    "deepseek-flash",       # DeepSeek's plain (non "-thinking") id
+    "gemini-3.8-flash",     # Gemini — no reasoning field in the catalog
     "not-a-real-model",     # uncatalogued — conservative default is "no channel"
 ])
 def test_extract_prompt_adds_scaffold_for_a_non_reasoning_model(model):
@@ -264,14 +263,16 @@ def test_a_non_deepseek_id_ending_in_thinking_is_not_granted_a_channel():
     the same way would hand an unrelated model a reasoning channel on the strength of its name."""
     from watchdog.model_catalog import catalog_has_reasoning
     assert catalog_has_reasoning("deepseek-flash-thinking") is True
-    assert catalog_has_reasoning("claude-haiku-4-5-thinking") is False
-    assert catalog_has_reasoning("gemini-3.7-flash-thinking") is False
+    assert catalog_has_reasoning("claude-haiku-5-5-thinking") is False
+    assert catalog_has_reasoning("gemini-3.8-flash-thinking") is False
 
 
-def test_extract_prompt_omits_scaffold_for_a_reasoning_model():
+@pytest.mark.parametrize("model", ["haiku", "sonnet", "opus", "fable", "gpt-6-luna"])
+def test_extract_prompt_omits_scaffold_for_a_reasoning_model(model):
+    # Haiku 5.5 thinks by default too; it got the scaffold until D310 added it to the list.
     p = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
-        model="sonnet-4.6")
+        model=model)
     assert "no private reasoning channel" not in _flat(p)
 
 
@@ -284,29 +285,29 @@ def test_extract_prompt_omits_scaffold_when_no_model_given():
 
 
 def test_extract_prompt_scaffold_survives_tier_alias_resolution():
-    """`model` may be a tier alias ('haiku') or a raw catalog id ('claude-haiku-4-5') — both
+    """`model` may be a tier alias ('haiku') or a raw catalog id ('claude-haiku-5-5') — both
     must resolve to the same branch, since callers pass whichever they were given."""
     by_alias = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
         model="haiku")
     by_id = prompts.build_extract_prompt(
         pages_text="x", skill_text="", sidecar=None, brief=None, known_document_types=[],
-        model="claude-haiku-4-5")
-    assert "no private reasoning channel" in _flat(by_alias)
-    assert "no private reasoning channel" in _flat(by_id)
+        model="claude-haiku-5-5")
+    assert "no private reasoning channel" not in _flat(by_alias)
+    assert "no private reasoning channel" not in _flat(by_id)
 
 
 def test_section_prompt_adds_scaffold_for_a_non_reasoning_model():
     p = prompts.build_section_prompt(
         pages_text="x", skill_text="", carry_forward="", section_label="pages 1-5",
-        is_first=True, known_document_types=[], model="haiku")
+        is_first=True, known_document_types=[], model="deepseek-flash")
     assert "no private reasoning channel" in _flat(p)
 
 
 def test_section_prompt_omits_scaffold_for_a_reasoning_model():
     p = prompts.build_section_prompt(
         pages_text="x", skill_text="", carry_forward="", section_label="pages 1-5",
-        is_first=True, known_document_types=[], model="sonnet-5")
+        is_first=True, known_document_types=[], model="sonnet")
     assert "no private reasoning channel" not in _flat(p)
 
 

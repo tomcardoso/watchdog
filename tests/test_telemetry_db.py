@@ -10,7 +10,7 @@ import pytest
 from watchdog import telemetry_db
 
 _MINIMAL_RECORD = {
-    "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-api",
+    "task": "extract", "model": "claude-sonnet-5-5", "backend": "claude-api",
     "input_tokens": 100, "output_tokens": 20, "cache_read_tokens": 0, "cache_write_tokens": 0,
     "cost_usd": 0.01, "latency_s": 1.5, "attempts": 1, "end_ts": 1700000000.0,
 }
@@ -41,7 +41,7 @@ def test_record_call_creates_db_and_inserts_row(tmp_path, monkeypatch):
     assert row["vault_name"] == "vault"
     assert row["benchmark_arm_id"] is None
     assert row["task"] == "extract"
-    assert row["model"] == "claude-sonnet-4-6"
+    assert row["model"] == "claude-sonnet-5-5"
     assert row["input_tokens"] == 100
     assert row["output_tokens"] == 20
     assert row["cost_usd"] == 0.01

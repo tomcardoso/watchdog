@@ -64,7 +64,7 @@ only of this corpus.
 
 Judging takes a person or a model reading closely, so only a handful of arms get it at a time. A
 much wider sweep exists underneath the table above: every Claude, OpenAI, Gemini, and DeepSeek
-model and effort tier this project tracks, scored the fast, mechanical way instead — checking
+model and effort tier this project tracked at the time, scored the fast, mechanical way instead — checking
 whether a fact's own numeric anchor (a dollar figure, a date, a percentage) shows up in the
 extraction, rather than reading the extraction's prose. That check only reaches about a third of
 what a document needs captured, so treat rank here as a rough first cut, not a verdict — the
@@ -117,16 +117,16 @@ reproduced here so it doesn't live only in a maintainer's local, not-checked-in
 
 A few things this benchmark doesn't cover yet:
 
-- **The shipped default.** Every user's documents are read by Claude Sonnet 5.5 at medium effort,
-  and no run has measured it yet. Every figure above is one run of each setting, and single runs
-  of one setting have differed by up to three times, so the next run repeats the arms that matter
-  most three times each and reports the spread: Sonnet 5.5 at medium and high effort, Sonnet 4.6
-  at high, and Claude Haiku 5.5 at low and medium for extraction (and at medium as the finishing
-  model). Read two arms as different only where their ranges do not overlap.
-- **What the investigation brief changes.** The brief (`context.md`) is sent with every document
-  in real use, but the benchmark's investigation has none, so every figure above was measured
-  without one. The next run pairs Sonnet 5.5 at medium with and without a short brief written as
-  open questions, three runs each, to show whether the brief shifts what gets extracted.
+- **The current models, with the brief.** Every figure above was measured on models Watchdog no
+  longer offers, and without an investigation brief, which real use always has. The next run
+  measures each provider's current models instead: Claude Haiku 5.5, Sonnet 5.5, Opus 5.5 and
+  Fable 5.1; OpenAI's GPT-6 Astra, GPT-6.1 Sol and GPT-6 Luna; Google's Gemini 4 Argon, 3.8 Flash
+  and 3.5 Flash-Lite; and DeepSeek Flash and Pro, every one with the same short brief written as
+  open questions. Its numbers are not comparable with the tables above. The shipped default,
+  Sonnet 5.5 at medium effort, runs three times, as do the cheapest models, because single runs
+  of one setting have differed by up to three times; read two settings as different only where
+  their ranges do not overlap. The finishing step gets the same treatment, with Haiku 5.5 (the
+  default) run three times.
 - **Classifying document types.** The current document set only spans two of Watchdog's record
   skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
   those two right, not enough to rank classifier models against each other. That needs a
@@ -142,8 +142,8 @@ A few things this benchmark doesn't cover yet:
   - **Medium** — a real, sizeable recall gain for 50% more cost; a case worth making.
   - **High** — the gain narrows to nearly nothing, since the model already catches most of it.
 
-  The pass stays off by default — this is one run of each arm, not a settled number
-  (`benchmarks/FINDINGS.md`, 2026-09-03).
+  The pass stays off by default — this is one run of each arm, on models since retired, not a
+  settled number (`benchmarks/FINDINGS.md`, 2026-09-03).
 - **Running this automatically.** Right now a maintainer runs the benchmark by hand when a new
   model or effort combination is worth checking. Wiring it into a scheduled or on-demand GitHub
   Actions run is a reasonable next step, once it's clear how often that's actually useful.
