@@ -886,11 +886,16 @@ def main(argv: list[str] | None = None) -> int:
         base_vault = arm_vault(sweep["vault_prefix"], "base", root)
         base_master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
                                           root=root)
-        if not base_vault.exists():
+        def _seed_base() -> None:
             seed_arm_vault(base_master, base_vault)
             base_result = run_extractor_arm({"id": "base", **sweep["base"]}, base_vault)
             if not base_result.ok:
                 sys.exit(f"Error: finalizer sweep's base extraction failed: {base_result.error}")
+
+        # Through _seed_if_absent, not a bare `if not exists`: a stale base is deleted by the reset
+        # after the go-ahead, and only a recorded seed can rebuild it. Registering it here, before
+        # the arms below, also means it is restored before any arm copies from it.
+        _seed_if_absent(base_vault, _seed_base, reseed)
         for arm in sweep["arms"]:
             if not _selected(arm):
                 continue
