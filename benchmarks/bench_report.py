@@ -304,6 +304,8 @@ def _failed_line(r) -> str:
         done = r.documents_done if r.documents_done is not None else "?"
         total = r.documents_total if r.documents_total is not None else "?"
         return f"rate-limited after {done}/{total} docs"
+    if r.cancelled and r.stop_message:
+        return f"stopped — {r.stop_message}"
     if r.cancelled:
         return (f"interrupted after {r.documents_done}/{r.documents_total} docs"
                if r.documents_total is not None else "interrupted")
@@ -338,7 +340,10 @@ def _errors_log_text(results: list) -> str:
         elif is_partial(r):
             done = r.documents_done if r.documents_done is not None else "?"
             total = r.documents_total if r.documents_total is not None else "?"
-            cause = "interrupted" if r.cancelled else "per-document failures"
+            if r.cancelled:
+                cause = r.stop_message or "interrupted"
+            else:
+                cause = "per-document failures"
             parts.append(f"  incomplete ({cause}) — {done}/{total} documents extracted before "
                         f"this arm stopped.")
         if r.doc_errors:
