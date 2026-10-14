@@ -561,6 +561,17 @@ def test_arm_line_cancelled():
     assert "✓" not in text and "✗" not in text
 
 
+def test_arm_line_cancelled_with_a_stop_reason_is_not_called_interrupted():
+    """A provider refusal also sets `cancelled`, but the operator did not interrupt anything:
+    the line must say the arm was stopped and point at errors.log for the reason."""
+    text = rb._arm_line(4, 16, "extractor:deepseek-flash",
+                        _arm_result(cancelled=True, stop_message="provider refused the run — 401",
+                                    documents_done=0, documents_total=6), 12.0)
+    assert "interrupted" not in text
+    assert "✗" in text and "stopped" in text
+    assert "errors.log" in text
+
+
 def test_arm_line_rate_limited_is_distinguishable_from_plain_interrupted():
     """#559: a rate limit used to print identically to a Ctrl-C (`interrupted`, no further
     detail) — the one distinction that mattered most, since a rate limit means the harness
@@ -670,6 +681,19 @@ def test_run_extractor_arm_picks_up_cancelled_from_summary(monkeypatch, tmp_path
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.cancelled is True
+
+
+def test_run_extractor_arm_keeps_provider_auth_error_as_the_stop_reason(monkeypatch, tmp_path):
+    """A DeepSeek 401/402 stops the batch with `auth_error` and no `stop_message` — that reason
+    was dropped, so the arm read as a plain interrupt with nothing in errors.log."""
+    summary = {"cancelled": True, "rate_limited": False, "stop_message": None,
+               "auth_error": "https://api.deepseek.com rejected the API key (HTTP 401)",
+               "extracted": 0, "skipped": 0, "results": []}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+    result = rb.run_extractor_arm({"id": "ds", "extractor_model": "deepseek:deepseek-flash"}, tmp_path)
+    assert result.cancelled is True
+    assert result.rate_limited is False
+    assert "HTTP 401" in result.stop_message
 
 
 def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path):
@@ -822,6 +846,15 @@ def _arm_result(**kwargs):
     defaults = dict(arm_id="a", stage="extractor", vault=None, ok=True)
     defaults.update(kwargs)
     return rb.ArmResult(**defaults)
+
+
+def test_errors_log_names_the_stop_reason_for_a_refused_arm():
+    """The report must say why a stopped arm stopped, not just 'interrupted'."""
+    r = _arm_result(arm_id="ds", cancelled=True, stop_message="provider refused the run — 401",
+                    documents_done=0, documents_total=6)
+    text = br._errors_log_text([r])
+    assert "provider refused the run — 401" in text
+    assert "0/6" in text
 
 
 def test_extractor_table_renders_failed_arm():
