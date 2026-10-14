@@ -1,22 +1,17 @@
-import argparse
 import csv
 import json
-import re
 from pathlib import Path
 
 import pytest
 
-from watchdog.cmd.export import (
+from watchdog.ops.export import (
     _cypher_label,
     _forward_edges,
     _write_csv,
     _write_cypher,
-    cmd_export,
+    export,
 )
-
-
-def _strip_ansi(s: str) -> str:
-    return re.sub(r"\x1b\[[0-9;]*m", "", s)
+from watchdog.ops import CollectingReporter
 
 
 def _entities():
@@ -74,9 +69,10 @@ def test_write_csv_contents(tmp_path):
     assert by_id["acme"] == ["acme", "Acme Ltd", "company", "company", "1"]
 
     rels = list(csv.reader((tmp_path / "relationships.csv").open(encoding="utf-8")))
-    assert rels[0] == [":START_ID", ":END_ID", ":TYPE", "source_page:int", "basis", "date_range"]
+    assert rels[0] == [":START_ID", ":END_ID", ":TYPE", "wording", "source_page:int", "basis",
+                       "date_range"]
     assert len(rels) == 2                                  # header + one edge
-    assert rels[1] == ["alice", "acme", "Director", "3", "stated", "2019–2023"]
+    assert rels[1] == ["alice", "acme", "Director", "Director", "3", "stated", "2019–2023"]
 
 
 def test_write_csv_null_page_is_blank(tmp_path):
@@ -89,7 +85,7 @@ def test_write_csv_null_page_is_blank(tmp_path):
     edges, _ = _forward_edges(entities)
     _write_csv(entities, edges, tmp_path)
     rels = list(csv.reader((tmp_path / "relationships.csv").open(encoding="utf-8")))
-    assert rels[1] == ["a", "b", "Knows", "", "stated", ""]
+    assert rels[1] == ["a", "b", "Knows", "Knows", "", "stated", ""]
 
 
 # ── Cypher output ───────────────────────────────────────────────────────────────
@@ -113,7 +109,7 @@ def test_write_cypher(tmp_path):
     assert text.startswith("CREATE CONSTRAINT watchdog_entity_id IF NOT EXISTS")
     assert "MATCH (a:`WatchdogEntity` {id: 'alice'})" in text   # indexed lookup, not a scan
     assert "n.doc_count = 2" in text
-    assert "MERGE (a)-[r:`DIRECTOR`]->(b)" in text
+    assert "MERGE (a)-[r:`DIRECTOR` {wording: 'Director'}]->(b)" in text
     assert "date_range: '2019–2023'" in text
     # reverse + dangling edges are not emitted
     assert text.count("MERGE (a)-[r:") == 1
@@ -126,7 +122,7 @@ def test_write_cypher_escapes_quotes(tmp_path):
     assert r"n.name = 'O\'Brien'" in path.read_text(encoding="utf-8")
 
 
-# ── cmd_export integration ──────────────────────────────────────────────────────
+# ── the export operation ──────────────────────────────────────────────────────
 
 def _vault_with_entities(tmp_path, entities) -> Path:
     vault = tmp_path / "vault"
@@ -136,42 +132,95 @@ def _vault_with_entities(tmp_path, entities) -> Path:
     return vault
 
 
-def _args(**kw):
-    return argparse.Namespace(**{"project": None, "output": None, "format": "csv", **kw})
-
-
-def test_cmd_export_writes_files(tmp_path, monkeypatch, capsys):
+def test_export_writes_files(tmp_path):
     vault = _vault_with_entities(tmp_path, _entities())
-    monkeypatch.chdir(vault)
     out = tmp_path / "out"
-    cmd_export(_args(output=str(out)))
+    rep = CollectingReporter()
+    result = export(rep, vault, output=str(out))
 
     assert (out / "nodes.csv").exists()
     assert (out / "relationships.csv").exists()
-    printed = _strip_ansi(capsys.readouterr().out)
-    assert "2 nodes" in printed and "1 relationship" in printed
-    assert "Skipped 1 relationship" in printed
+    assert result["entities"] == 2 and result["relationships"] == 1
+    assert "2 entities and 1 relationships" in rep.text
+    assert "Skipped 1 relationship" in rep.text
 
 
-def test_cmd_export_cypher_format(tmp_path, monkeypatch):
+def test_export_defaults_to_a_folder_inside_the_investigation(tmp_path):
     vault = _vault_with_entities(tmp_path, _entities())
-    monkeypatch.chdir(vault)
+    result = export(CollectingReporter(), vault)
+    assert Path(result["output"]) == vault / "vault-export"
+    assert (vault / "vault-export" / "nodes.csv").exists()
+
+
+def test_export_cypher_format(tmp_path):
+    vault = _vault_with_entities(tmp_path, _entities())
     out = tmp_path / "out"
-    cmd_export(_args(output=str(out), format="cypher"))
+    export(CollectingReporter(), vault, output=str(out), format="cypher")
     assert (out / "graph.cypher").exists()
     assert not (out / "nodes.csv").exists()
 
 
-def test_cmd_export_empty_registry_exits(tmp_path, monkeypatch):
+def test_export_empty_registry_exits(tmp_path):
     vault = _vault_with_entities(tmp_path, {})
-    monkeypatch.chdir(vault)
     with pytest.raises(SystemExit):
-        cmd_export(_args(output=str(tmp_path / "out")))
+        export(CollectingReporter(), vault, output=str(tmp_path / "out"))
 
 
-def test_cmd_export_missing_registry_exits(tmp_path, monkeypatch):
+def test_export_missing_registry_exits(tmp_path):
     vault = tmp_path / "vault"
-    (vault / ".watchdog").mkdir(parents=True)
-    monkeypatch.chdir(vault)
+    (vault / ".watchdog" / "queue").mkdir(parents=True)
     with pytest.raises(SystemExit):
-        cmd_export(_args(output=str(tmp_path / "out")))
+        export(CollectingReporter(), vault, output=str(tmp_path / "out"))
+
+
+def test_export_carries_canonical_type_and_original_wording(tmp_path):
+    """D291: a wording the relationship log grouped exports under the canonical type, with the
+    document's own words kept as a property, in both formats."""
+    entities = {
+        "ann": {"id": "ann", "name": "Ann Vale", "type": "person", "appears_in": ["s1", "s2"],
+                "roles": [
+                    {"relationship": "Counsel with", "target_id": "firm", "page": 2,
+                     "source_sha256": "s1", "is_reverse": False},
+                    {"relationship": "lawyer at", "target_id": "firm", "page": 4,
+                     "source_sha256": "s2", "is_reverse": False},
+                    {"relationship": "partner at", "target_id": "firm", "page": 4,
+                     "source_sha256": "s2", "is_reverse": False}]},
+        "firm": {"id": "firm", "name": "Orme Lake LLP", "type": "organization",
+                 "appears_in": ["s1", "s2"], "roles": []},
+    }
+    canon = {"counsel with": "lawyer at", "lawyer at": "lawyer at"}
+    edges, _ = _forward_edges(entities, lambda a, b, w: canon.get(w.lower(), w))
+    _write_csv(entities, edges, tmp_path)
+    rels = list(csv.reader((tmp_path / "relationships.csv").open(encoding="utf-8")))[1:]
+    assert sorted((r[2], r[3]) for r in rels) == [
+        ("lawyer at", "Counsel with"), ("lawyer at", "lawyer at"), ("partner at", "partner at")]
+    text = _write_cypher(entities, edges, tmp_path).read_text(encoding="utf-8")
+    assert "MERGE (a)-[r:`LAWYER_AT` {wording: 'Counsel with'}]->(b)" in text
+    assert "MERGE (a)-[r:`LAWYER_AT` {wording: 'lawyer at'}]->(b)" in text
+    assert "MERGE (a)-[r:`PARTNER_AT` {wording: 'partner at'}]->(b)" in text
+
+
+def test_export_reads_the_relationship_log(tmp_path):
+    from watchdog.pipeline import relationships
+    vault = tmp_path / "v"
+    reg = vault / ".watchdog" / "registry"
+    reg.mkdir(parents=True)
+    ents = {
+        "ann": {"id": "ann", "name": "Ann Vale", "type": "person", "appears_in": [],
+                "roles": [{"relationship": "Counsel with", "target_id": "firm", "page": 2,
+                           "source_sha256": "s1", "is_reverse": False},
+                          {"relationship": "lawyer at", "target_id": "firm", "page": 4,
+                           "source_sha256": "s2", "is_reverse": False}]},
+        "firm": {"id": "firm", "name": "Orme Lake LLP", "type": "organization", "appears_in": [],
+                 "roles": []},
+    }
+    (reg / "entities.json").write_text(json.dumps(ents))
+    (reg / "documents.json").write_text("{}")
+    (reg / relationships.LOG_FILE).write_text(json.dumps({
+        "schema_version": 1, "evaluated": {},
+        "groups": [{"id": "rel:x", "from": "ann", "to": "firm", "keys": ["counsel with", "lawyer at"],
+                    "canonical": "lawyer at", "status": "active", "decided_by": "model"}]}))
+    out = tmp_path / "out"
+    export(CollectingReporter(), vault, output=str(out))
+    rels = list(csv.reader((out / "relationships.csv").open(encoding="utf-8")))[1:]
+    assert sorted((r[2], r[3]) for r in rels) == [("lawyer at", "Counsel with"), ("lawyer at", "lawyer at")]

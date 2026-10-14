@@ -174,7 +174,9 @@ def test_write_requests_renders_groups_and_checkbox_markers(tmp_path):
     body = (vault / "requests.md").read_text(encoding="utf-8")
     assert "## Hearing transcript" in body and "## Regulation" in body
     rid = resolutions.request_id("Hearing transcript, 14 March 2024")
-    assert f"- [ ] **Hearing transcript, 14 March 2024** <!--wid:{rid}-->" in body
+    assert f"- **Hearing transcript, 14 March 2024** <!--wid:{rid}-->" in body
+    assert "[ ]" not in body and "watchdog review" not in body
+    assert "Handled in Watchdog: Review → Requests" in body
     assert "  - Why: The order relies on testimony" in body
     assert "  - Likely source: Court registry" in body
     assert "  - Referenced in [[documents/order|order.pdf]]" in body
@@ -199,38 +201,6 @@ def test_write_requests_removes_the_file_once_everything_is_resolved(tmp_path):
 
     assert requests.write_requests(vault) is None
     assert not (vault / "requests.md").exists()
-
-
-# ── Checkbox sync from the vault-root requests.md ───────────────────────────────
-
-def test_sync_picks_up_a_ticked_request_checkbox(tmp_path):
-    vault = _vault(tmp_path)
-    _record(vault, [_req()])
-    requests.write_requests(vault)
-    rid = resolutions.request_id(_req()["what"])
-
-    # The journalist obtained the transcript and ticked the box.
-    md = vault / "requests.md"
-    md.write_text(md.read_text(encoding="utf-8").replace("- [ ]", "- [x]"), encoding="utf-8")
-    added, removed = resolutions.sync_from_briefings(vault)
-
-    assert added == [rid]
-    assert requests.open_requests(vault) == []
-
-
-def test_sync_unticking_a_request_reopens_it(tmp_path):
-    vault = _vault(tmp_path)
-    _record(vault, [_req()])
-    rid = resolutions.request_id(_req()["what"])
-    resolutions.resolve(vault, [rid], label="manual")
-    # requests.md still renders it only if unresolved, so write the un-ticked line by hand —
-    # exactly what a journalist undoing a resolution in the file does.
-    (vault / "requests.md").write_text(f"- [ ] **x** <!--wid:{rid}-->\n", encoding="utf-8")
-
-    added, removed = resolutions.sync_from_briefings(vault)
-
-    assert removed == [rid]
-    assert len(requests.open_requests(vault)) == 1
 
 
 # ── Section merge ───────────────────────────────────────────────────────────────
@@ -261,8 +231,8 @@ def test_write_vault_records_requests_from_an_extraction(tmp_path):
     from watchdog.pipeline import write_vault
 
     vault = _vault(tmp_path)
-    (vault / "_INCOMING").mkdir()
-    (vault / "_INCOMING" / "order.pdf").write_text("x", encoding="utf-8")
+    (vault / "incoming").mkdir()
+    (vault / "incoming" / "order.pdf").write_text("x", encoding="utf-8")
     extraction = {
         "document": {"sha256": SHA, "filename": "order.pdf", "title": "Order",
                      "document_type": "Court order", "summary": "An order.", "key_facts": []},

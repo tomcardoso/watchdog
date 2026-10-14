@@ -13,7 +13,7 @@ import json
 from pathlib import Path
 
 from watchdog import model_client
-from watchdog.pipeline import orchestrate, reconcile
+from watchdog.pipeline import identity, orchestrate, reconcile
 
 from tests.test_merge_entities import make_vault
 
@@ -172,8 +172,14 @@ def _stage(vault: Path, sha: str, filename: str, entities: list[dict], *, date="
     touched-this-run. Each entity dict is already in post-postflight shape (id/name/type/aliases/
     roles/evidence_fragments/timeline_events)."""
     (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    # Each fragment is a fact on the document tagged to its entity, the shape postflight fans out
+    # from (D26); entity notes and the contradiction ledger read the facts (D280).
+    key_facts = [{"fact": f["claim"], "page": f.get("page"), "basis": f.get("basis", "stated"),
+                  "entities": [e["id"]]}
+                 for e in entities for f in e.get("evidence_fragments") or []]
     artifact = {
-        "document": {"sha256": sha, "filename": filename, "title": filename, "date_of_document": date},
+        "document": {"sha256": sha, "filename": filename, "title": filename, "date_of_document": date,
+                     "key_facts": key_facts},
         "entities": entities,
     }
     (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text(json.dumps(artifact))
@@ -200,35 +206,61 @@ def test_build_bundle_gates_contradiction_candidates_on_recurrence(tmp_path):
     assert "carol-jones" not in ids      # appears_in only sha-d (this batch)
 
 
-def test_build_bundle_claims_come_from_the_analysis_ledger(tmp_path):
-    """The per-entity claim record the pass reasons over is reconstructed from the already-
-    committed note's ## Analysis section (source-attributed, exactly what a contradiction check
-    needs) plus this batch's own staged claim, rendered in the same shape."""
+def test_contradiction_check_reads_stored_facts_not_note_prose(tmp_path):
+    """D280: the contradiction check compares this batch's new facts with the entity's stored
+    facts — from the committed document's stored extraction, with page and passage — and never
+    with a note's Summary or Analysis prose."""
     vault = make_vault(tmp_path)
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / "sha-a.json").write_text(json.dumps({
+        "document": {"sha256": "sha-a", "filename": "doc-a.pdf", "passages_version": 1,
+                     "key_facts": [{"fact": "Acme Corp reported $10M revenue.", "page": 3,
+                                    "entities": ["acme-corp"], "passage_method": "matched",
+                                    "passage": "Revenue for the year was $10,000,000.",
+                                    "passage_page": 3}]},
+        "entities": [{"id": "acme-corp", "name": "Acme Corp", "type": "Company"}]}))
     acme_note = vault / "entities" / "company" / "acme-corp.md"
-    # write_vault appends one *<date>, via [[documents/<slug>|<title>]]:* block per document,
-    # followed by that document's claim bullets — reproduce that shape directly on the note.
-    acme_note.write_text(
-        acme_note.read_text().replace(
-            "## Notes",
-            "## Analysis\n\n*2024-01-01, via [[documents/doc-a|Doc A]]:*\n"
-            "- Acme Corp reported $10M revenue. (p. 3)\n\n## Notes",
-        )
-    )
+    acme_note.write_text(acme_note.read_text().replace(
+        "## Notes", "## Summary\n\nAcme had about $12M in revenue, the model says.\n\n## Notes"))
     _stage(vault, "sha-c", "doc-c.pdf",
-          [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp opened a new office.")])
+           [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp reported $14M revenue.")])
+
     bundle = reconcile.build_bundle(vault, ["sha-c"])
     acme = next(e for e in bundle["entities"] if e["entity_id"] == "acme-corp")
     assert acme["roles"]                 # roles digest is carried for role-vs-role conflicts
-    assert "via [[documents/doc-a|Doc A]]" in acme["claims"]         # pre-existing (committed)
-    assert "Acme Corp reported $10M revenue." in acme["claims"]     # pre-existing (committed)
-    assert "Acme Corp opened a new office." in acme["claims"]       # this batch's own staged claim
+    assert "summary" not in acme and "claims" not in acme
+    assert "$12M" not in json.dumps(acme)                               # never the prose
+    assert "Acme Corp reported $14M revenue." in acme["new_facts"]      # this batch
+    assert "[[documents/doc-c|doc-c.pdf]]" in acme["new_facts"]
+    stored = acme["stored_facts"]
+    assert "*[[documents/doc-a|Doc A]]" in stored                       # the committed document's slug
+    assert "Acme Corp reported $10M revenue. (p. 3)" in stored
+    assert "source passage: “Revenue for the year was $10,000,000.”" in stored
+    assert stored.split("\n")[1].startswith("- [f:")
+
+
+def test_contradiction_check_labels_disputed_facts_and_compares_all_after_a_merge(tmp_path):
+    vault = make_vault(tmp_path)
+    _stage(vault, "sha-c", "doc-c.pdf",
+           [_touch("acme-corp", "Acme Corp", "Company", "Acme Corp is insolvent.")])
+    from watchdog.pipeline import verification
+    fid = verification.fact_ids("sha-c", [{"fact": "Acme Corp is insolvent.", "page": 1}])[0]
+    (vault / ".watchdog" / "registry" / "verification.json").write_text(json.dumps({
+        "schema_version": 1, "marks": {fid: {"status": "disputed", "fact": "Acme Corp is insolvent.",
+                                             "page": 1}}}))
+    acme = next(e for e in reconcile.build_bundle(vault, ["sha-c"])["entities"]
+                if e["entity_id"] == "acme-corp")
+    assert "insolvent" in acme["new_facts"] and "disputed by the reporter" in acme["new_facts"]
+    # A merged survivor's follow-up call compares everything: no fact is "already checked".
+    followup = reconcile.build_bundle(vault, ["sha-c"], only={"acme-corp"})["entities"][0]
+    assert followup["stored_facts"] == ""
 
 
 def test_build_bundle_empty_when_nothing_staged(tmp_path):
     vault = make_vault(tmp_path)   # a populated registry, but no staged batch → nothing touched
     bundle = reconcile.build_bundle(vault, [])
-    assert bundle == {"entities": [], "pairs": [], "pairs_dropped": 0}
+    assert bundle == {"entities": [], "pairs": [], "pairs_dropped": 0, "pair_verdicts": [],
+                      "rule_merges": [], "candidates": [], "profiles": {}}
 
 
 # ── _rewrite_staged_ids: remap scope beyond entities[].id / role.target_id ────
@@ -455,31 +487,77 @@ def test_taxonomy_batch_existing_survives_on_the_committed_side(tmp_path, monkey
 
 
 def test_taxonomy_existing_existing_gets_full_merge_entities_surgery(tmp_path, monkeypatch):
-    """Branch 3: both sides of a confirmed merge are already committed (alice-smith touched by a
-    new document this batch, a-smith-duplicate untouched but named by the candidate pair). The
-    full `merge_entities.run` surgery still happens — stub + backup + "Merged from" provenance —
-    exactly as before phase 3, since both entities really existed."""
+    """Branch 3: both sides of a confirmed merge are already committed (acme-corp touched by a new
+    document this batch, acme-corp-canada untouched but named by the candidate pair). The full
+    `merge_entities.run` surgery still happens — stub + backup + "Merged from" provenance —
+    exactly as before phase 3, since both entities really existed. It is a medium-tier pair
+    (similar names), so the model decides it, and the merge is logged (D279)."""
     vault = make_vault(tmp_path)
-    _stage_touch(vault, "sha-f", "doc-f.pdf", "alice-smith", "Alice Smith", "Person",
-                "Alice Smith signed a new lease.")
+    reg_path = vault / ".watchdog" / "registry" / "entities.json"
+    reg = json.loads(reg_path.read_text())
+    reg["acme-corp-canada"] = {
+        "id": "acme-corp-canada", "name": "Acme Corp Canada", "type": "Company", "aliases": [],
+        "appears_in": ["sha-b"], "note_path": "entities/company/acme-corp-canada", "roles": [],
+        "timeline_events": [], "date_first_seen": "2021-05-01", "date_last_updated": "2021-05-01"}
+    reg_path.write_text(json.dumps(reg))
+    (vault / "entities" / "company" / "acme-corp-canada.md").write_text(
+        "---\nid: acme-corp-canada\nname: Acme Corp Canada\ntype: Company\n---\n\n"
+        "# Acme Corp Canada\n\n## Analysis\n\n*via [[documents/doc-b|Doc B]]:*\n"
+        "- Filed in Ontario. (p. 1)\n\n## Notes\n\n<!-- Journalist annotations — never "
+        "overwritten by ingestion. -->\n")
+    _stage_touch(vault, "sha-f", "doc-f.pdf", "acme-corp", "Acme Corp", "Company",
+                 "Acme Corp signed a new lease.")
     _mock_reconcile_confirm(
-        monkeypatch, [{"pair": 0, "keep_id": "alice-smith", "reason": "same person"}])
+        monkeypatch, [{"pair": 0, "keep_id": "acme-corp", "reason": "same company"}])
+
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    entities = json.loads(reg_path.read_text())
+    assert "acme-corp" in entities and "acme-corp-canada" not in entities
+    assert "sha-f" in entities["acme-corp"]["appears_in"]          # this batch's new document
+    assert "sha-b" in entities["acme-corp"]["appears_in"]
+
+    stub = vault / "entities" / "company" / "acme-corp-canada.md"
+    assert "merged_into: acme-corp" in stub.read_text()
+    assert list((vault / ".watchdog" / "backups").glob("*-merge-entities"))   # a real backup snapshot
+
+    note = (vault / "entities" / "company" / "acme-corp.md").read_text()
+    assert "Acme Corp signed a new lease." in note
+
+    log = json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())
+    by_merged = {m["merged"]["id"]: m for m in log["merges"]}
+    entry = by_merged["acme-corp-canada"]
+    assert (entry["decided_by"], entry["tier"], entry["model"]) == ("model", "medium", "haiku")
+    assert entry["undo"]["entry"]["appears_in"] == ["sha-b"]
+    assert entry["undo"]["backup"].startswith(".watchdog/backups/")
+
+
+def test_initialled_person_is_a_review_item_not_a_model_question(tmp_path, monkeypatch):
+    """"A. Smith" against "Alice Smith" is a low-tier pair (D279): never merged, never put to the
+    model, and staged as a "possible same" pair — even when the model would have said yes."""
+    vault = make_vault(tmp_path)
+    touch = _touch("alice-smith", "Alice Smith", "Person", "Alice Smith signed a new lease.")
+    touch["roles"] = [{"relationship": "Director of", "target_id": "acme-corp", "page": 1}]
+    _stage(vault, "sha-f", "doc-f.pdf", [touch, _touch("acme-corp", "Acme Corp", "Company")])
+    prompts = []
+
+    async def fake(*, task, prompt, schema, **kw):
+        prompts.append((task, prompt))
+        parsed = {"reconcile": {"merges": [{"pair": 0, "keep_id": "alice-smith", "reason": "x"}],
+                                "contradictions": []}}.get(task, {})
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
 
     entities = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
-    assert "alice-smith" in entities and "a-smith-duplicate" not in entities
-    assert "sha-f" in entities["alice-smith"]["appears_in"]          # this batch's new document
-    assert "sha-b" in entities["alice-smith"]["appears_in"]          # the merged-away entity's own doc
-
-    stub = vault / "entities" / "person" / "a-smith-duplicate.md"
-    assert stub.exists()
-    assert "merged_into: alice-smith" in stub.read_text()
-    assert list((vault / ".watchdog" / "backups").glob("*-merge-entities"))   # a real backup snapshot
-
-    note = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Merged from" in note
-    assert "Alice Smith signed a new lease." in note
+    assert "alice-smith" in entities and "a-smith-duplicate" in entities
+    assert "sha-f" in entities["alice-smith"]["appears_in"]     # same name + same directorship: high
+    assert not any("a-smith-duplicate" in p for t, p in prompts if t == "reconcile")
+    log = json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())
+    cand = log["candidates"][identity.pair_id("alice-smith", "a-smith-duplicate")]
+    assert (cand["tier"], cand["rule"], cand["status"]) == ("low", "partial-name", "open")
 
 
 # ── apply_contradictions: driving contradiction.run safely ────────────────────

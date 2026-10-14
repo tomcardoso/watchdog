@@ -1,148 +1,124 @@
 # Getting started
 
-This walkthrough takes you through your first investigation from start to finish — creating a vault, dropping in documents, running the pipeline, and reading the results in Obsidian. It assumes Watchdog is already installed and set up; if not, start with the [installation guide](install.md).
+This walkthrough takes you through your first investigation from start to finish: creating an investigation, adding documents, watching them being read, reading the briefing, and asking Claude questions. It assumes Watchdog is already installed and set up; if not, start with the [installation guide](install.md).
 
 Two things to keep in mind before you begin.
 
 > **Public records only.** Your original files never leave your computer — all the file conversion and OCR happens locally. But the extracted text of each document (a plain-text representation of its contents) is sent to a cloud AI model for analysis. That is why Watchdog must only be used on documents that are public or presumptively public. Never process confidential source material, leaked documents, private correspondence, or anything that could identify a source. If in doubt, do not process it.
 
-> **Verify before you publish.** AI extraction makes mistakes. Every fact Watchdog extracts links back to its source document and page, and facts the model inferred rather than read are marked `(inferred)` — those are leads, not findings. Follow the link before you publish anything.
+> **Verify before you publish.** AI extraction makes mistakes. Every fact Watchdog extracts links back to its source document and page, and facts the model inferred rather than read are marked as inferred — those are leads, not findings. Follow the link to the page before you publish anything.
 
-## Create the vault
+## Try the sample investigation
 
-Each investigation lives in its own vault — a folder of linked notes that you read in Obsidian. Create one:
+If you would like to see what a finished investigation looks like before adding your own records, start with the sample. **Port Calder Waterfront (sample)** is a made-up case about a city's land purchase and a contract awarded without a tender. Every person, company and document in it is invented.
 
-```bash
-watchdog new
-```
+To open it, choose **Get started** or **Explore a sample investigation** at the end of setup, **Sample investigation** on the Investigations screen, or **Help → Take the Tour**. The first time, Watchdog builds it on your computer, which takes under a minute. It uses prepared answers instead of an AI model, so it costs nothing and needs no sign-in, key or internet connection. Its runs show $0 under **Activity → Usage**.
 
-Watchdog prompts you for a name and an optional one-line description. The description pre-seeds `context.md` and is stored in your project registry, which is useful when you have several investigations open at once.
+The tour then opens one screen at a time and points at a real finding: the briefing, a scanned page you can search, an entity's facts and their sources, a fact you can mark as checked, a contradiction, a near-duplicate, a lead, Search, the timeline and network, what a run costs, adding documents and Ask Claude. Use **Next** and **Back** to move through it, or **Skip tour** to close it. It remembers where you stopped, and **Help → Take the Tour** starts it again from the beginning.
 
-If you would rather skip the prompts, pass everything on the command line:
+Two files are left waiting in the sample's incoming folder, a change order and the notes of a site meeting. When the tour reaches **Adding documents**, choose **Read documents** to add them and watch a run from start to finish: Watchdog reads the files on your computer, extracts their facts and writes a new briefing, which points to a new contradiction. Prepared answers stand in for the AI model here too, so the run costs nothing, sends nothing anywhere and does not ask you to confirm that the files are public records.
 
-```bash
-watchdog new "Shell Company Investigation" --description "Offshore owners behind city-adjacent land deals"
-```
+The sample only processes its own example files. If you add a document of your own to it, Watchdog stops before anything is sent and says so; create your own investigation for your documents. **Re-check contradictions** works in the sample with prepared answers.
 
-Use a name that will still make sense in six months. Watchdog creates a folder in your configured projects directory — by default, `~/Investigations/shell-company-investigation` — and sets up everything inside it:
+**Ask Claude** never reaches Claude in the sample. Instead it offers four questions with conversations prepared in advance, so you can see what a session does without spending anything on a made-up case. Choose one and the conversation plays as if live: Claude searches the documents and reads the notes (each step appears as a row you can open), then answers with a citation for each claim. Choose a citation to open the document at the fact it cites. One question asks Claude to add a name to the watch list, so you can see the card Claude shows before it changes anything; choose **Allow once** and the name really is added to the sample's watch list. A label says the conversations are prepared, and you cannot type your own question there. In your own investigations, Ask Claude answers any question, using your Claude account; see [Ask Claude](app.md#ask-claude-and-web-research).
 
-- The vault directory, with the full folder structure
-- An Obsidian vault, registered in Obsidian's settings so you can open it immediately
-- A Claude Code project configured inside the vault
-- Template files: `hot.md`, `log.md`, `context.md`, `index.md`
+You can change anything in the sample. To start it afresh, choose **Rebuild the sample…** from its **⋯** menu on the Investigations screen; that replaces only the sample. Delete it like any other investigation when you no longer need it.
 
-Open the vault in Obsidian:
+## Create an investigation
 
-```bash
-watchdog open shell-company-investigation
-```
+Each investigation lives in its own folder on your computer: your documents, plus a linked set of notes Watchdog writes about them. To create your first, choose **Cancel** on the sample prompt that follows setup, then **New investigation** on the Investigations screen. Later, use **File → New Investigation…**, or open the investigation menu at the top of the sidebar and choose **New investigation…**.
 
-You will see an empty vault with the folder structure in place. Content comes after ingestion.
+The dialog asks for three things:
+
+- **Name.** Use one that will still make sense in six months.
+- **One-line description.** Optional, and you can change it later from the Overview. It is the first thing Watchdog knows about your investigation, which is useful when you have several open at once.
+- **Where to keep it.** The default is the investigations folder you chose in setup. If you pick a different folder, Watchdog asks permission to work there; see [Folder access](app.md#folder-access).
+
+Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up its structure, including the `incoming/` and `context/` folders, the starting notes (`log.md`, `context.md`, `index.md`), and the settings for Claude. The [vault guide](vault.md) explains every folder and file.
+
+The investigation opens on its **Overview**. It is empty until you add documents.
 
 ## Seed your context (optional but recommended)
 
-Before dropping in records, it helps to tell Watchdog what you are investigating. This is especially useful for large or long-running investigations.
+Before adding records, it helps to tell Watchdog what you are investigating. This is especially useful for large or long-running investigations.
 
-First, copy any background material into the `_CONTEXT/` folder inside the vault — prior published stories, notes, screenshots of relevant web pages, anything that describes the investigation's scope. Then, from inside the vault directory, run:
+Put any background material in the investigation's `context/` folder: prior published stories, notes, screenshots of relevant web pages, anything that describes the scope. The fastest way to open the folder is **File → Show in Folder**. Then open **Ask Claude** and choose **Seed investigation context**.
 
-```bash
-watchdog ask --context
-```
+Claude reads the material and interviews you — who the key people and companies are, what you are looking for, what documents you expect. It then writes `context.md`, an investigative brief that persists across every future conversation and tells Claude what you already know.
 
-Claude reads the material and interviews you — who the key people and companies are, what you are looking for, what documents you expect. It then writes `context.md`, an investigative brief that persists across every future session and tells Claude what you already know. It also proposes a short list of watchlist candidates — names, companies, and addresses drawn from the same material — for you to accept, edit, or skip. Anything you approve is added to `watchlist.md` right away.
+Two things to keep in mind about the brief. First, it is sent to the AI model with every document you add, and used for the briefing, so it leaves your computer just as the documents do: keep source names, contact details, unpublished tips and anything confidential out of it, and out of the `context/` folder. Second, write it as open questions rather than conclusions: "I want to understand how the Pier 9 contract was awarded" or "I want to explore who owns the numbered company", not "the councillor hid her conflict". The model reads every document with the brief in view, and a brief that states what you expect to find can lead it to read the documents that way. Claude drafts the brief in this style; you can edit it at any time under **Briefings**. It also proposes a short list of watch-list candidates (names, companies and addresses drawn from the same material) for you to accept, edit or skip. Anything you approve is added to the watch list right away.
 
-This step is optional, but it noticeably improves the quality of extracted summaries and connection-finding. With a brief in `context.md`, Claude enters every session already oriented rather than starting cold.
+This step is optional, but it noticeably improves the quality of summaries and of connection-finding. Once the brief exists, the Overview also shows a prompt to read any background folder not yet read.
 
-## Drop in documents
+## Add documents
 
-Copy public records into the `_INCOMING/` folder inside your vault:
+You can add documents three ways:
 
-```
-~/Investigations/shell-company-investigation/_INCOMING/
-```
+- **Drag them onto the window.** Drop files or whole folders anywhere in the app, and Watchdog adds them to the open investigation.
+- **Choose Add documents.** The button is at the top right, and also under **File → Add Documents…**. On an empty investigation, the Overview shows **Choose files…** and **Choose a folder…** buttons that do the same.
+- **Put files in the `incoming/` folder** inside the investigation, using your file manager. Watchdog lists anything waiting there on the Overview and in the Add documents dialog.
 
-Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, images, web pages, plain text, and — with an optional install — audio and video; see the [supported file types](vault.md#supported-file-types) table for the full list.
+Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, images, web pages and plain text; see the [supported file types](vault.md#supported-file-types) for the full list.
 
-**Rename files before dropping them in.** Watchdog uses the filename when labelling documents. `shell-co-annual-report-2023.pdf` is useful; `scan0042.pdf` is not.
+**Rename files before adding them.** Watchdog uses the filename when labelling documents. `shell-co-annual-report-2023.pdf` is useful; `scan0042.pdf` is not.
 
-**Add sidecar files for provenance.** To record where a document came from, create a `.yml` file with the same base name alongside it:
+**Add a sidecar file for provenance.** To record where a document came from, put a small `.yml` file with the same base name next to it, as in `shell-co-annual-report-2023.pdf` and `shell-co-annual-report-2023.yml`. It can contain a `source`, the date `obtained`, and `notes`. The [vault guide](vault.md#sidecar-files) covers the format in full.
 
-```
-shell-co-annual-report-2023.pdf
-shell-co-annual-report-2023.yml
-```
+**Duplicates are handled automatically.** A document that is byte-identical to one already added, even under a new name, is set aside in `incoming/skipped/` rather than processed twice. A separate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them.
 
-The `.yml` file can contain:
+## Confirm and watch the run
 
-```yaml
-source: https://www.sedar.com/filing/xyz
-obtained: 2026-06-05
-notes: Check the director change on page 12.
-```
+The Add documents dialog takes you through four steps.
 
-This context is merged into the document record and preserved through ingest. The [vault guide](vault.md#supported-file-types) covers the sidecar format in full.
+1. **Choose.** Pick files or folders. The dialog also shows anything already waiting. **Estimate cost** shows what the run is likely to cost before you commit, and **Options** lets you change the models and other settings for this run only. The defaults are fine for a first run.
+2. **Reading documents.** Watchdog copies the files into `incoming/` (your originals stay where they are) and converts them to text on your computer, using OCR for scans. Nothing is sent anywhere during this step.
+3. **Before anything is sent.** This is the public-records confirmation. It shows the exact number of documents about to be sent and which model will receive them. Nothing goes until you choose **Acknowledge and add**. If you set Watchdog to skip this pause for runs that use only your Claude subscription, you see a short notice instead; see [Auto-approve](configuration.md#auto-approve). If every step runs on a model server on this computer, there is nothing to confirm and this step is skipped; see [Local and self-hosted models](configuration.md#local-and-self-hosted-models).
+4. **Adding.** Watchdog extracts entities, facts and timeline events from each document, writes everything to the investigation, and produces a **briefing**.
 
-**Duplicates are handled automatically.** A document that is byte-identical to one already ingested — even under a new name — is set aside in `_INCOMING/_SKIPPED/` rather than processed twice. A separate near-duplicate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them. It compares each file against everything already in the investigation and against the other files in the same drop, so two copies of one filing arriving together are caught too.
+Large documents can take several minutes each to extract, so a long pause on one document is normal. You can choose **Hide** to close the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends the run cleanly, and adding the documents again picks up where it left off. **Activity** lists every run with its full output.
 
-## Run the pipeline
+By default Watchdog uses Sonnet (Claude's mid-tier model) for extraction and Haiku (the fast, inexpensive tier) for classification and the wrap-up steps, so nothing beyond your Claude sign-in is needed. Benchmark testing against real court-and-financial filings found OpenAI's GPT-5.6 Luna the stronger choice for extraction (see [Benchmarks](benchmarks.md)); using it needs its own OpenAI key, which is why it is a recommendation rather than the default. The [configuration guide](configuration.md) covers changing models, tuning how much reasoning each stage spends, and controlling cost.
 
-From the vault directory, add documents with `watchdog add`. Name files or folders and they are copied in (the originals stay where they are); with nothing named, it adds whatever you dropped into `_INCOMING/`:
+Three features run alongside every run; each is covered in the [investigating guide](investigating.md):
 
-```bash
-cd ~/Investigations/shell-company-investigation
-watchdog add ~/Downloads/court-filings/
-```
+- **Watch list.** If you have listed terms in the watch list (a name, company, address or phrase) Watchdog scans every newly added document for them and records matches as watch-list alerts. See [the watchlist](investigating.md#the-watchlist).
+- **Leads.** At the end of each run, Watchdog sweeps the entity graph for things worth chasing — an entity named repeatedly but never profiled, for instance — and records them as leads. See [leads](investigating.md#leads).
+- **Resolving.** Once you have dealt with a lead or a hit, you can mark it handled so it stops reappearing, which turns those lists into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
 
-`watchdog add` takes the documents all the way in. It converts and OCRs them locally (no AI involved), extracts entities, facts and timeline events from each one, writes everything to the vault, and produces a **briefing** summarizing what was found, connections to entities already in the vault, and anything worth following up. Large documents can take several minutes each to extract, so a long pause on a status row is normal. Read the briefing carefully once it's done — the connections section is often where the story is.
+For a plain-English account of what each stage does to your documents, and what the AI model does and does not see, read [Methodology](methodology.md).
 
-It stops for you only twice: to show the public-records warning before anything is sent to a model, and if your provider refuses your key or account. If you hit a rate limit, it waits for the limit to reset and carries on. If every step runs on your Claude subscription, you can skip the warning: setup offers to, or run `watchdog settings auto_approve true`, and those runs go ahead with a one-line notice instead; see [Configuration](configuration.md#auto-approve).
+## Read the briefing
 
-Run `watchdog` on its own inside the vault at any time to see where things stand: the latest briefing, what is waiting on you (contradictions, leads, possible duplicates, watch-list hits), and anything still in progress, each with the command that deals with it. If documents are waiting, it offers to add them.
+When the run finishes, the **Overview** shows the headline from the latest briefing, with a button to read the whole thing. The briefing summarizes what was found, how it connects to entities already in the investigation, and anything worth following up. Read it carefully: the connections section is often where the story is.
 
-By default Watchdog uses Sonnet (Claude's mid-tier model) for extraction and Haiku (the fast, inexpensive tier) for classification and post-ingest — no setup beyond Claude Code itself. Benchmark testing against real court-and-financial filings found OpenAI's GPT-5.6 Luna the stronger choice for extraction and classification (see [Benchmarks](benchmarks.md)); switching to it needs its own OpenAI key, which is why it's a recommendation rather than the shipped default. You can change the models, tune how much reasoning each stage spends, and pin a specific domain skill — per run or as persistent defaults. The [configuration guide](configuration.md) covers all of it, including how to cut cost.
+The Overview also shows what is waiting on you (contradictions, leads, possible duplicates, possible same entities and watch-list alerts) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
 
-Three features run alongside every ingest; each has its full treatment in the [investigating guide](investigating.md):
+## Explore the results
 
-- **Watchlist.** If you have listed terms in the vault's `watchlist.md` — a name, company, address, or phrase, one per line — Watchdog scans every newly ingested document for them and writes matches to `briefings/alerts-<date>.md`, flagging them in the terminal too. See [the watchlist](investigating.md#the-watchlist).
+The sidebar lists the screens for the open investigation.
 
-- **Leads.** At the end of each ingest, a deterministic sweep of the entity graph flags things worth chasing — an entity named repeatedly but never profiled, for instance — and writes them to `briefings/leads-<date>.md`. See [leads](investigating.md#leads).
+- **Documents** shows every document as a thumbnail or a list. Open one to read the original beside the facts taken from it; each fact's page number scrolls the original to that page.
+- **Entities** lists every person, organization, place and so on, with the number of documents each appears in. An entity's page shows its summary, its relationships and the documents it appears in.
+- **Timeline** lays out every dated event, with links to the page each came from.
+- **Network** draws entities and their relationships as a graph. Entities that appear in many documents, or connect to many others, stand out.
+- **Search** finds exact words, passages ranked by meaning, and notes. Press Ctrl+K (⌘K on a Mac) anywhere to jump to something by name.
 
-- **Resolving.** Once you have dealt with a lead or an alert, you can mark it done so it stops reappearing, which turns those reports into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
+If the same person or company shows up twice under different names, see [duplicate entities](investigating.md#duplicate-entities) for the fix. [The desktop app](app.md) explains every screen.
 
-If you stop a run partway — with Ctrl+C, say — run `watchdog add` again and it picks up where it left off; see [troubleshooting](troubleshooting.md#hitting-rate-limits).
+If you prefer to browse the files themselves, **File → Show in Folder** opens the investigation's folder, and **File → Open in Obsidian** opens it in [Obsidian](https://obsidian.md). The vault guide explains the [folders and notes](vault.md), including the `dashboard.base` file, a set of live tables that Obsidian displays.
 
-Under the hood, `watchdog add` runs three steps you can also run one at a time — `watchdog chew` (local preprocessing), `watchdog dig` (extraction), and `watchdog bark` (writing to the vault and the briefing). Running them separately is useful when you want to chew now and extract later, check what got extracted before it lands in the vault, or try more than one post-processing model against the same extraction. See the [command reference](commands.md#adding-documents) for each one's flags in full, or [Methodology](methodology.md) for a plain-English account of what each step actually does to your documents and why.
+## Review what needs a decision
 
-## Explore the vault in Obsidian
+Choose **Review** to work through contradictions, leads, watch-list alerts, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview.
 
-After ingest, open Obsidian:
+## Ask Claude
 
-```bash
-watchdog open shell-company-investigation
-```
+Choose **Ask Claude** and type a question, such as "Who are the directors of Shell Co Ltd?". Claude answers using only the documents in your investigation, and cites the source for every claim. You can follow up ("what else has she signed?") in the same conversation. Past conversations are listed on the left, and you can start a new one with **New conversation**.
 
-To browse the raw files in Finder or your file explorer instead, run `watchdog open --folder shell-company-investigation`. From inside the vault directory, both commands work without the name.
+Start a new conversation for a new line of inquiry rather than reusing one that has run long. At the start of each conversation, Claude is given a short account of where the whole investigation stands, which Watchdog builds from its records, so it knows the state of things without re-reading everything, and a fresh conversation has the most working room for your questions.
 
-The vault now contains one note per person, company, and address found in any document (`entities/`), one note per ingested document (`documents/`), a current-state summary of the investigation (`hot.md`), and a running record of every ingest session (`log.md`). The [vault guide](vault.md) explains every folder and file, including the anatomy of an entity note.
-
-The vault also has a dashboard. `dashboard.base` is a set of live tables — most-mentioned entities, recent documents, people, companies, single-source entities to review, possible duplicate documents — that refresh as you ingest; `index.md` is a landing page that links to it. The tables use Obsidian Bases, a core Obsidian feature (version 1.9 and up), so there is nothing to install. Click a column header to sort; click a row to open the note. If the same person or company shows up twice under different names, see [duplicate entities](investigating.md#duplicate-entities) for the fix.
-
-Use Obsidian's graph view to see the relationship network across the whole investigation. Entities that appear in many documents, or that connect to many other entities, are visually prominent.
-
-For deeper network analysis in a dedicated graph tool, `watchdog export` writes the entity and relationship graph as CSV files loadable in Neo4j or Gephi; see the [command reference](commands.md) for the options.
-
-## Ask questions in a fresh session
-
-When `watchdog add` finishes, ask your first question:
-
-```bash
-watchdog ask "Who are the directors of Shell Co Ltd?"
-```
-
-This opens a **new** Claude Code session in the vault and starts it by answering your question. Claude answers using only the documents in your vault, and cites the source for every claim. The session stays open, so you can follow up ("what else has she signed?") until you exit with Ctrl-D. `watchdog ask` on its own opens a session ready for a question.
-
-Open a fresh session each time rather than reusing one that has been sitting open. At the start of each session, Claude reads `hot.md` automatically, so it knows the current state of the investigation without re-reading the vault. A fresh session has the full working room it needs for your questions; a stale one is carrying leftover baggage that crowds that room out.
+Before Claude changes the investigation's records, Watchdog shows what it is about to do and asks you first; see [Ask Claude](app.md#ask-claude-and-web-research).
 
 ## Where next
 
-The [investigating guide](investigating.md) covers everything you do from here — asking questions, searching, finding connections, researching on the web, and running the investigation day to day. If you want to understand what chew, dig, and bark actually do to your documents — and what the AI model does and doesn't see — read [Methodology](methodology.md).
+The [investigating guide](investigating.md) covers everything you do from here — asking questions, searching, finding connections, researching on the web, and running the investigation day to day. [The desktop app](app.md) describes each screen, and [Troubleshooting](troubleshooting.md) covers what to do if a run does not go as expected.

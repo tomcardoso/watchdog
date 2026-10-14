@@ -1,0 +1,179 @@
+// "Not yet in the vault": everything vault.pipeline reports that hasn't become a document note —
+// files waiting, queued or staged work, failures, set-aside files, a run in progress here or on another
+// computer, and a run that stopped before it finished. Locks clear themselves (D293): nothing here
+// offers to release one.
+
+import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Laptop, Loader, RotateCw, TriangleAlert, Workflow } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Badge, Button } from '@renderer/components/ui'
+import { fmtBytes, plural } from '@renderer/lib/format'
+import { runAction } from '@renderer/lib/jobs'
+import { runLockState } from '@renderer/lib/runlock'
+import { useEngineGate } from '@renderer/lib/engine'
+import { EngineWait } from '@renderer/components/EngineWait'
+import { errorMessage, invalidate } from '@renderer/lib/rpc'
+import { toast, useApp } from '@renderer/lib/store'
+import type { PipelineState } from '@shared/api'
+
+const SHOW = 40
+
+function FileList({ rows }: { rows: { key: string; name: string; why?: string | null; err?: boolean }[] }) {
+  return (
+    <div className="pipe-files selectable">
+      {rows.slice(0, SHOW).map((r) => (
+        <div className="pipe-file" key={r.key}>
+          <span className="name truncate" title={r.name}>{r.name}</span>
+          {r.why && <span className={'why truncate' + (r.err ? ' err' : '')} title={r.why}>{r.why}</span>}
+        </div>
+      ))}
+      {rows.length > SHOW && <div className="pipe-more">and {rows.length - SHOW} more</div>}
+    </div>
+  )
+}
+
+export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
+  const openAdd = useApp((s) => s.openAdd)
+  const engine = useEngineGate()
+  const [open, setOpen] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+
+  const p = pipeline
+  const waiting = p.queued.filter((q) => !q.staged)
+  const staged = p.queued.filter((q) => q.staged)
+  const finalizing = p.pending_finalization
+  const run = runLockState(p.locks)
+  const remote = run !== null && (p.locks.chew?.where === 'elsewhere' || p.locks.ingest?.where === 'elsewhere')
+  const groups =
+    (p.incoming.length ? 1 : 0) + (waiting.length ? 1 : 0) + (staged.length || finalizing ? 1 : 0) +
+    (p.failed.length ? 1 : 0) + (p.chew_failed.length ? 1 : 0) + (p.skipped.length ? 1 : 0) + (run ? 1 : 0) + (p.stopped_run ? 1 : 0)
+  const attention = p.failed.length > 0 || p.chew_failed.length > 0 || !!p.stopped_run
+
+  useEffect(() => {
+    window.watchdog.prefs.get<boolean>('docsPipelineOpen').then((v) => setOpen(v === null || v === undefined ? attention : !!v)).catch(() => setOpen(attention))
+  }, [attention])
+
+  if (!groups) return null
+  const expanded = open ?? false
+  const toggle = () => {
+    setOpen(!expanded)
+    void window.watchdog.prefs.set('docsPipelineOpen', !expanded)
+  }
+
+  const requeue = async () => {
+    setBusy('requeue')
+    try {
+      await runAction('requeue', {})
+      toast({ kind: 'success', title: 'Moved back into the queue', body: 'Run Add documents to extract them again.' })
+      invalidate('vault.', 'projects.', 'ingest.')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not requeue', body: errorMessage(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <section className="pipe" aria-label="Documents not yet in the vault">
+      <button className="pipe-head" aria-expanded={expanded} onClick={toggle}>
+        <ChevronRight />
+        <Workflow style={{ color: 'var(--text-2)' }} />
+        <span className="pipe-title">Pipeline</span>
+        <span className="pipe-summary">
+          {p.incoming.length > 0 && <Badge icon={Inbox}>{p.incoming.length} waiting</Badge>}
+          {waiting.length > 0 && <Badge icon={Hourglass}>{waiting.length} to extract</Badge>}
+          {(staged.length > 0 || finalizing) && <Badge icon={Hourglass}>{finalizing?.docs ?? staged.length} to finish</Badge>}
+          {p.failed.length > 0 && <Badge tone="danger" icon={AlertTriangle}>{p.failed.length} failed</Badge>}
+          {p.chew_failed.length > 0 && <Badge tone="warning" icon={FileWarning}>{p.chew_failed.length} unreadable</Badge>}
+          {p.skipped.length > 0 && <Badge icon={Copy}>{p.skipped.length} set aside</Badge>}
+          {run && <Badge tone="info" icon={remote ? Laptop : Loader}>{run.badge}</Badge>}
+          {p.stopped_run && <Badge tone="warning" icon={TriangleAlert}>stopped early</Badge>}
+        </span>
+        <span className="spacer" />
+        <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{expanded ? 'Hide' : 'Show'}</span>
+      </button>
+
+      {expanded && (
+        <div className="pipe-body">
+          {!engine.ready && <EngineWait style={{ gridColumn: '1 / -1' }} />}
+          {run && (
+            <div className="pipe-group wide">
+              <div className="pipe-group-head">{remote ? <Laptop style={{ color: 'var(--info)' }} /> : <Loader style={{ color: 'var(--info)' }} />}{run.title}</div>
+              <p>{run.detail}</p>
+            </div>
+          )}
+
+          {p.stopped_run && (
+            <div className="pipe-group wide">
+              <div className="pipe-group-head"><TriangleAlert style={{ color: 'var(--warning)' }} />Stopped before finishing</div>
+              <p>{p.stopped_run}</p>
+            </div>
+          )}
+
+          {p.incoming.length > 0 && (
+            <div className="pipe-group">
+              <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting in incoming <span className="n">{p.incoming.length}</span></div>
+              <p>Files in the investigation's incoming folder that haven't been read yet.</p>
+              <FileList rows={p.incoming.map((f) => ({ key: f.path, name: f.name, why: [fmtBytes(f.size), f.sidecar ? 'with sidecar' : ''].filter(Boolean).join(' · ') }))} />
+              <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Add them</Button></div>
+            </div>
+          )}
+
+          {waiting.length > 0 && (
+            <div className="pipe-group">
+              <div className="pipe-group-head"><Hourglass style={{ color: 'var(--text-2)' }} />Read, awaiting extraction <span className="n">{waiting.length}</span></div>
+              <p>Converted to text on this computer and queued. The model hasn't extracted facts from them yet.</p>
+              <FileList rows={waiting.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />
+              <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Extract them</Button></div>
+            </div>
+          )}
+
+          {(staged.length > 0 || finalizing) && (
+            <div className="pipe-group">
+              <div className="pipe-group-head"><Hourglass style={{ color: 'var(--text-2)' }} />Staged, awaiting finishing <span className="n">{finalizing?.docs ?? staged.length}</span></div>
+              <p>
+                Extracted, but not yet written to the vault. The wrap-up reconciles duplicate entities, writes the notes and produces the briefing
+                {finalizing ? ` (${plural(finalizing.docs, 'document')}, ${plural(finalizing.entities, 'entity', 'entities')})` : ''}. It is safe to run more than once, and nothing staged is ever discarded.
+              </p>
+              {staged.length > 0 && <FileList rows={staged.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />}
+              <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Finish them</Button></div>
+            </div>
+          )}
+
+          {p.failed.length > 0 && (
+            <div className="pipe-group">
+              <div className="pipe-group-head"><AlertTriangle style={{ color: 'var(--danger)' }} />Failed extraction <span className="n">{p.failed.length}</span></div>
+              <p>
+                These were set aside so the rest of the batch could finish. Requeue moves them back into the queue without running them. Retry puts them back and runs them again.
+              </p>
+              <FileList rows={p.failed.map((f) => ({ key: f.sha, name: f.filename, why: f.reason ?? 'No reason recorded. See Activity for the run output.', err: true }))} />
+              <div className="pipe-actions">
+                <Button size="sm" variant="primary" icon={RotateCw} disabled={!engine.ready} onClick={() => window.dispatchEvent(new CustomEvent('wd:add', { detail: { retry: true } }))}>Retry</Button>
+                <Button size="sm" loading={busy === 'requeue'} disabled={!engine.ready} onClick={requeue}>Requeue</Button>
+              </div>
+            </div>
+          )}
+
+          {p.chew_failed.length > 0 && (
+            <div className="pipe-group">
+              <div className="pipe-group-head"><FileWarning style={{ color: 'var(--warning)' }} />Couldn't be read <span className="n">{p.chew_failed.length}</span></div>
+              <p>
+                These landed in incoming/failed when pre-processing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into incoming.
+              </p>
+              <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: fmtBytes(f.size) }))} />
+            </div>
+          )}
+
+          {p.skipped.length > 0 && (
+            <div className="pipe-group">
+              <div className="pipe-group-head"><Copy style={{ color: 'var(--text-2)' }} />Set aside <span className="n">{p.skipped.length}</span></div>
+              <p>
+                Neither is an error. A file byte-identical to one already added is set aside rather than processed twice. A file with no readable text, even after OCR, is set aside too. Open the original to check a very poor scan.
+              </p>
+              <FileList rows={p.skipped.map((f) => ({ key: f.path, name: f.name, why: f.reason ?? undefined }))} />
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}

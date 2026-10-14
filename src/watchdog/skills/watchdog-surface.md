@@ -6,7 +6,7 @@ description: Full connection and anomaly analysis across the vault — shared ad
 
 Perform a full connection and anomaly analysis across every entity and document in the vault. Surface things the journalist may have missed.
 
-Run this on demand. It is computationally expensive on large vaults; run after major ingest batches.
+Run this on demand. It is computationally expensive on large vaults; run after adding a large batch of documents.
 
 ---
 
@@ -28,7 +28,7 @@ Build a working index in memory:
 - Entity ID → type, name, aliases, note_path (from manifest)
 - Document → document_type, entities_extracted, document_note (from documents.json; a document's own date is the `date_of_document` frontmatter field in its note)
 
-**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Summary`, `## Timeline`, `## Analysis`, or `## Relationships` content. Do not read all notes upfront.
+**Read individual entity notes on demand** — only when a specific analysis step requires the full `## Facts` (every fact about the entity, with its document and page, dated facts in date order), `## Summary` or `## Relationships` content. Do not read all notes upfront.
 
 ---
 
@@ -48,7 +48,7 @@ Find every `person` entity with a `Director` or `Officer` role. Find all the org
 
 ### Deterministic leads
 
-Run `watchdog leads` and fold its output into the report — it already computes entities named but never profiled, entities recurring but unconnected, and unresolved contradictions from the entity graph. Do not re-derive these by hand; spend the analysis effort on the connection patterns above and below, which code cannot judge.
+Call the `mcp__watchdog__leads` tool and fold its result into the report — it already computes entities named but never profiled, entities recurring but unconnected, and unresolved contradictions from the entity graph. Do not re-derive these by hand; spend the analysis effort on the connection patterns above and below, which code cannot judge.
 
 ### Company clusters
 
@@ -56,7 +56,7 @@ Find groups of companies that share 2 or more of: the same address, the same dir
 
 ### Timeline anomalies
 
-Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
+Read the dated entries of each entity's `## Facts` section and the global `timeline.md`. Look for:
 - An entity that appears in a document dated significantly earlier than `date_first_seen` in the registry (may indicate a missed prior document)
 - A company formed or dissolved within 30 days of a large transaction involving it
 - Clusters of events from multiple entities that all fall within a narrow date window — these often indicate a coordinated action worth examining
@@ -65,7 +65,7 @@ Read each entity's `## Timeline` section and the global `timeline.md`. Look for:
 
 ## 3. Contradiction scan
 
-Scan every entity note in `entities/` for `[!contradiction]` callouts. The pipeline writes them during finalization (`watchdog bark`), when reconciliation finds that one document contradicts a fact from another.
+Scan every entity note in `entities/` for `[!contradiction]` callouts. The pipeline writes them during post-processing, when reconciliation finds that one document contradicts a fact from another.
 
 For each callout found:
 - Record the entity, the disputed fact, both values, and both source documents
@@ -73,17 +73,17 @@ For each callout found:
 
 Also perform a cross-document scan for contradictions not yet flagged:
 
-For each entity that appears in 3 or more documents, compare the following fields across all documents it appears in (read from the `## Timeline` and `## Relationships` sections of the entity note, and from the source documents if needed):
+For each entity that appears in 3 or more documents, compare the following fields across all documents it appears in (read from the `## Facts` and `## Relationships` sections of the entity note, and from the source documents if needed):
 - Date of incorporation / formation / registration
 - Registered address or business address
 - Director or officer appointments (is the person listed as the same role in all documents?)
 - Transaction amounts (does the same transaction appear with different values in different documents?)
 
-Flag any case where the same fact is stated differently in two documents — both values directly stated (not `inferred`) — and that discrepancy is not already captured in a `[!contradiction]` callout.
+Flag any case where the same fact is stated differently in two documents and that discrepancy is not already captured in a `[!contradiction]` callout. Flag it whatever either claim's basis, as the pipeline's own check does; where one side is marked `inferred` or carries a figure note, say so beside it.
 
-**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are verified at extraction time and tracked by the resolutions layer (`watchdog resolve` / `unresolve`), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
+**Do not write `[!contradiction]` callouts into entity notes.** Entity notes are pipeline-owned: callouts are written during post-processing, when reconciliation compares every entity's claims across documents, and tracked by the resolutions layer (the journalist marks them handled in Review), and hand-inserted ones bypass both. Report newly found discrepancies in the surface report only, labelled as **candidate contradictions** so the journalist can verify them against the sources.
 
-Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, run `watchdog contradiction-add` yourself from the terminal with that candidate's values and report success/failure in the session output. If they do not confirm, leave it as a candidate in the report only.
+Include all contradictions (pre-existing callouts and new candidates, labelled as such) in the surface report under a dedicated section. For each **candidate**, ask the journalist whether to promote it now. If they explicitly confirm, call the `mcp__watchdog__contradiction_add` tool yourself with that candidate's values (the entity id, a short label, each side's value, the slug of its document and its page) and report what it returned. If they do not confirm, leave it as a candidate in the report only.
 
 ---
 
@@ -91,7 +91,7 @@ Include all contradictions (pre-existing callouts and new candidates, labelled a
 
 ### Disproportionate transactions
 
-Find all Transaction entities. Compare their amounts to the apparent scale of the entities involved (revenue, assets mentioned in nearby documents). Flag any transaction that is more than 2x the annual revenue of either party, or that involves round numbers with no stated purpose.
+Transactions are recorded as facts and timeline events, not as entities: find them in entity notes' `## Facts` sections and in `timeline.md`. Compare their amounts to the apparent scale of the entities involved (revenue, assets mentioned in nearby documents). Flag any transaction that is more than 2x the annual revenue of either party, or that involves round numbers with no stated purpose.
 
 ### Dormant entities in active documents
 
@@ -130,7 +130,7 @@ document_count: <n>
 - <Value A> — [[documents/<slug>|Document Title]], p. <n>
 - <Value B> — [[documents/<slug>|Document Title]], p. <n>
 - **Suggested follow-up:** <what would resolve this discrepancy>
-- **Promotion status (candidates only):** <left as candidate | promoted via watchdog contradiction-add>
+- **Promotion status (candidates only):** <left as candidate | promoted with the contradiction_add tool>
 
 <If no contradictions found: "No contradictions found.">
 
@@ -175,13 +175,13 @@ If context.md is filled in, prioritise leads that speak directly to the journali
 *Run `/watchdog-query` to dig into any of these. Run `/watchdog-health` to check vault integrity.*
 ```
 
-Print a summary to the terminal: contradiction count, connection count, anomaly count, gap count.
+Print a summary: contradiction count, connection count, anomaly count, gap count.
 
 ---
 
 ## Guidelines
 
-- **Cite everything.** Every finding must link to a specific entity note and document.
+- **Cite everything.** Every finding must link to a specific entity note and document. Where a finding rests on a recorded fact, cite the fact's line in its document note: `[[documents/<slug>#^f-<id>|p. N]]`, with the block id copied exactly from the `^f-…` at the end of the fact line in the entity or document note. Never invent an id; a fact the journalist marked disputed may be cited, described as disputed. Check the report with the `mcp__watchdog__check_citations` tool (`pages` set to the report's path) before finishing and fix anything it reports as not found.
 - **Don't speculate.** Flag what the data shows; don't invent explanations.
 - **Distinguish levels of certainty.** "Shares an address" is a fact. "May be a shell company" is an inference — label it as such.
 - **Be brief.** The report is a prompt for investigation, not a comprehensive analysis. Each finding should be one short paragraph.

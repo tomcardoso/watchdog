@@ -261,7 +261,12 @@ RECONCILE = _obj(
                              "description": "the second claim's conflicting value"},
                  "b_doc": {"type": "string",
                            "description": "the slug of the document the second claim comes from"},
-                 "b_page": {"type": ["integer", "null"]}},
+                 "b_page": {"type": ["integer", "null"]},
+                 "a_fact": {"type": ["string", "null"],
+                            "description": "the short id of the first claim's fact, e.g. "
+                                           "'f:3a9c', copied from the bundle; null if none"},
+                 "b_fact": {"type": ["string", "null"],
+                            "description": "the short id of the second claim's fact"}},
                 ["entity_id", "label", "a_value", "a_doc", "b_value", "b_doc"],
             ),
         },
@@ -335,3 +340,21 @@ TIMELINE_PRECISION_MATCH = _obj(
 # Same shape and code/model split as TIMELINE_DEDUP — the model groups by sameness, Python
 # performs the merge — so it is the same schema.
 REQUEST_DEDUP = TIMELINE_DEDUP
+
+# Relationship labels (D291): for each numbered pair of entities, the groups of its numbered
+# wordings that name the same relationship, and which member wording is the canonical label.
+# Pairs and wordings are referred to by number only; code checks every group and records it
+# (`relationships.apply`). A pair with nothing to group is left out.
+RELATIONSHIP_LABELS = _obj(
+    {"pairs": {"type": "array", "items": _obj(
+        {"pair": {"type": "integer"},
+         "groups": {"type": "array", "items": _obj(
+             {"labels": {"type": "array", "items": {"type": "integer"}},
+              "canonical": {"type": "integer"},
+              "reason": {"type": "string"}},
+             ["labels", "canonical", "reason"],
+         )}},
+        ["pair", "groups"],
+    )}},
+    ["pairs"],
+)

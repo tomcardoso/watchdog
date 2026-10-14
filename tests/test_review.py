@@ -1,20 +1,11 @@
-"""`watchdog review` — the one-at-a-time queue — and the near-duplicate stamp it reads (D252)."""
+"""The Review list (`watchdog.review`) and the near-duplicate stamp it reads (D252)."""
 
-import argparse
 import json
-import re
 
 import pytest
 
-import watchdog.cmd.review as review
+import watchdog.review as review
 from watchdog.pipeline import orchestrate, resolutions
-
-_ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
-
-def _plain(s: str) -> str:
-    return _ANSI.sub("", s)
-
 
 _CALLOUT = "> [!contradiction] Date of incorporation\n> 2019 per the filing vs 2020 per the registry"
 _ALERTS = """
@@ -83,57 +74,6 @@ def test_resolved_items_drop_out(vault):
 def test_an_alert_repeated_across_files_appears_once(vault):
     (vault / "briefings" / "alerts-2026-10-04.md").write_text(_ALERTS)
     assert len(review.open_items(vault, ("alerts",))) == 2
-
-
-def _picks(monkeypatch, *labels):
-    """Answer successive pick() calls by choice label."""
-    queue = list(labels)
-
-    def pick(items, current=0, **k):
-        label = queue.pop(0)
-        return review.interactive.CANCELLED if label is None else items.index(label)
-    monkeypatch.setattr(review.interactive, "pick", pick)
-    monkeypatch.setattr(review.sys.stdin, "isatty", lambda: True)
-    return queue
-
-
-def test_walk_marks_handled_keeps_open_and_opens_obsidian(vault, monkeypatch, capsys):
-    opened = []
-    monkeypatch.setattr(review, "open_url", lambda url: opened.append(url) or True)
-    _picks(monkeypatch, "Open in Obsidian", "Mark as handled", "Keep open", None)
-    review.cmd_review(argparse.Namespace(kind=None))
-    assert len(opened) == 1 and opened[0].startswith("obsidian://open?path=")
-    assert "acme.md" in opened[0]
-    assert resolutions.resolved_ids(vault) == {resolutions.contradiction_id(_CALLOUT)}
-    assert "1 handled" in _plain(capsys.readouterr().out)
-
-
-def test_review_one_kind(vault, monkeypatch):
-    _picks(monkeypatch, "Mark as handled")
-    review.cmd_review(argparse.Namespace(kind="duplicates"))
-    assert resolutions.resolved_ids(vault) == {resolutions.duplicate_id("a" * 64)}
-
-
-def test_off_a_terminal_it_prints_the_list(vault, monkeypatch, capsys):
-    monkeypatch.setattr(review.sys.stdin, "isatty", lambda: False)
-    monkeypatch.setattr(review.interactive, "pick", lambda *a, **k: pytest.fail("prompted"))
-    review.cmd_review(argparse.Namespace(kind=None))
-    out = _plain(capsys.readouterr().out)
-    for text in ("Contradictions", "Leads", "Watch-list hits", "Possible duplicate documents",
-                 "resolve: alert:aaaaaaa:t1", "watchdog review resolve <id>"):
-        assert text in out
-
-
-def test_nothing_to_review(vault, capsys):
-    resolutions.resolve(vault, [resolutions.duplicate_id("a" * 64)])
-    review.cmd_review(argparse.Namespace(kind="duplicates"))
-    assert "no open possible duplicate documents" in _plain(capsys.readouterr().out)
-
-
-def test_review_outside_a_vault_exits(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    with pytest.raises(SystemExit, match="not inside a Watchdog project"):
-        review.cmd_review(argparse.Namespace(kind=None))
 
 
 # ── near_duplicate_of stamp ──────────────────────────────────────────────────

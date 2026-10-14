@@ -19,17 +19,18 @@ write_vault crash *before* the commit: entity/document notes are written ahead o
 registry persist (#259), so an abort may leave rewritten notes and search-index rows
 whose registry entry was rolled back. Those are self-healing — re-ingesting the same
 document replaces its note and fragment contribution idempotently (keyed by doc-note /
-sha), and `watchdog reindex` rebuilds the indexes from the registry — so this command
+sha), and the `reindex` operation rebuilds the indexes from the registry — so this command
 leaves them in place rather than half-deleting a note a journalist may have annotated.
-The source file stays wherever `watchdog chew` already put it, in `.watchdog/staging/<sha256>/` — this command never touches it.
+The source file stays wherever pre-processing (`chew`) already put it, in `.watchdog/staging/<sha256>/` — this command never touches it.
 
 Re-ingest later: move the queue file back —
   mv .watchdog/queue/_failed/<sha>.json .watchdog/queue/
-then run `watchdog dig` again.
+then run processing (`dig`) again.
 """
 
 from datetime import datetime, timezone
 from pathlib import Path
+from watchdog.vault_paths import processing_log
 
 
 
@@ -41,7 +42,7 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
     """`keep_section_checkpoints` (#498) skips the per-section extraction checkpoints
     (`section_ex_{sha256}_*.json`) — set by the automatic failure path (`orchestrate._fail`) so a
     document that failed mid-sectioned-extraction can resume from its already-completed sections
-    on the next `watchdog dig` rather than re-paying for them. The default is a full wipe."""
+    on the next processing (`dig`) rather than re-paying for them. The default is a full wipe."""
     tmp = vault / ".watchdog" / "tmp"
     timeline = vault / ".watchdog" / "timeline"
     queue = vault / ".watchdog" / "queue"
@@ -93,7 +94,7 @@ def run(vault: Path, sha256: str, *, keep_section_checkpoints: bool = False) -> 
         queue_file.replace(dest)
         requeue_path = str(dest.relative_to(vault))
 
-    log = vault / ".watchdog" / "registry" / "ingest.log"
+    log = processing_log(vault)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         with open(log, "a", encoding="utf-8") as f:

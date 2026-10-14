@@ -48,10 +48,7 @@ Report any missing field: `MISSING FIELD: <file> — missing: <field>`
 
 Scan all `.md` files in `entities/` and `documents/` for `[[...]]` links.
 
-For each link, check that the target file exists:
-```bash
-grep -r '\[\[' entities/ documents/ --include="*.md" -h | grep -oP '\[\[\K[^\]|]+' | sort -u
-```
+For each link, check that the target file exists. Use the Grep tool (not a shell `grep`, whose options differ between macOS and Linux) to list the links: search `entities/` and `documents/` for the pattern `\[\[[^\]|]+` with output mode `content` and only-matching on, then strip the leading `[[`.
 
 Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the path portion before any `|` when checking file existence. Report broken links: `DEAD LINK: <source file> → [[<target>]] (file not found)`
 
@@ -59,8 +56,8 @@ Note: links use pipe-alias syntax (`[[path|Display Name]]`). Extract only the pa
 
 ## 4. Lock file check
 
-Check whether `.watchdog/registry/.ingest-lock` exists. If it does, read its `started_at` field and compute the age. If older than 30 minutes, report:
-`STALE LOCK: .watchdog/registry/.ingest-lock (created <timestamp>, <N>m ago) — run: watchdog unlock <project-slug>`
+Check whether `.watchdog/registry/.processing-lock` exists. If it does, read its `started_at` and `host` fields. Watchdog clears a lock on its own when the run that holds it stops, so a lock is normally a run in progress. Report it only when `started_at` is more than 15 minutes old, as:
+`OLD LOCK: .watchdog/registry/.processing-lock (host <host>, last updated <timestamp>, <N>m ago) — the next run, or opening the investigation in the Watchdog app, clears it if that run has stopped`
 
 ---
 
@@ -91,9 +88,8 @@ Read `.watchdog/registry/registry.json`. Compare `document_count` and `entity_co
 `COUNT MISMATCH: registry.json says <n> documents but documents.json has <m>`
 
 Also check that the following files exist at the vault root. Report any that are missing:
-- `timeline.md` — `MISSING FILE: timeline.md (rebuild with: watchdog timeline)`
-- `hot.md` — `MISSING FILE: hot.md (created automatically by watchdog dig; create manually if needed)`
-- `log.md` — `MISSING FILE: log.md (created automatically by watchdog dig; create manually if needed)`
+- `timeline.md` — `MISSING FILE: timeline.md` (rebuild it with the `mcp__watchdog__timeline` tool, then report that you did)
+- `log.md` — `MISSING FILE: log.md (created automatically by processing; create manually if needed)`
 
 ---
 
@@ -105,11 +101,7 @@ Find all entities in `entities.json` where `roles` is an empty list or absent. T
 
 ## 8. Unresolved contradictions
 
-The pipeline flags conflicts between sources as `> [!contradiction]` callouts in an entity's `## Contradictions` section, verified at extraction time and never auto-removed. They sit there until a journalist resolves them — but nothing surfaces the full list in one place. Find them:
-
-```bash
-grep -rn '\[!contradiction\]' entities/ --include="*.md"
-```
+The pipeline flags conflicts between sources as `> [!contradiction]` callouts in an entity's `## Contradictions` section, written during post-processing when reconciliation finds two documents disagree, and never auto-removed. They sit there until a journalist resolves them — but nothing surfaces the full list in one place. Find them with the Grep tool: search `entities/` for the pattern `\[!contradiction\]` in `*.md` files, with line numbers.
 
 For each callout, report: `CONTRADICTION: entities/<type>/<id>.md — <first line of the callout>`. These are conflicting claims a journalist should resolve (confirm which source is right; check dates and primary sources). Count them for the summary. They are append-only by design, so a callout the journalist has already worked through may still appear — treat the list as "conflicts on record," highest-value first.
 
@@ -121,13 +113,13 @@ During chew, MinHash flags a document that closely matches an earlier one, and e
 
 `NEAR-DUPLICATE: documents/<slug>.md ~ <near_duplicate_of> — confirm same or different`
 
-Skip any entry whose id `duplicate:<first 12 characters of its sha256>` is listed in `.watchdog/registry/resolutions.json` under `resolved` — the journalist has already reviewed it. Count the rest for the summary. A flagged pair stays flagged until the journalist acts (`watchdog review duplicates` marks it handled; removing the flagged copy also clears it), so this list is everything still awaiting that judgement. If the two documents also produced two separate entity records for what turns out to be the same real-world person or company (check the dashboard's "Single-source entities (review)" table, or look for entities with near-identical names or aliases in `entities.json` — the dashboard's "Possible duplicate documents" table lists documents, not entities), fix that with `watchdog merge-entities <keep-id> <merge-id>` — deterministic registry surgery that unions aliases, roles, and timeline events onto one id and remaps every relationship elsewhere in the vault that pointed at the losing id. The merge keeps only one entity's prose Summary, so when both entities had one, follow it with `/watchdog-entity <keep-id>` to re-synthesize the Summary and Timeline from every merged source (the command prints this nudge itself when a Summary was dropped).
+Skip any entry whose id `duplicate:<first 12 characters of its sha256>` is listed in `.watchdog/registry/resolutions.json` under `resolved` — the journalist has already reviewed it. Count the rest for the summary. A flagged pair stays flagged until the journalist acts (the journalist marks it handled in the app's Review; removing the flagged copy also clears it), so this list is everything still awaiting that judgement. If the two documents also produced two separate entity records for what turns out to be the same real-world person or company (check the dashboard's "Single-source entities (review)" table, or look for entities with near-identical names or aliases in `entities.json` — the dashboard's "Possible duplicate documents" table lists documents, not entities), say so and suggest the journalist merge them in the app (Review → Possible same, or Merge on the entity's page). You cannot merge entities from this session. The merge keeps only one entity's prose Summary, so when both entities had one, suggest `/watchdog-entity <keep-id>` afterwards to re-synthesize the Summary and Timeline from every merged source.
 
 ---
 
 ## 10. Report
 
-Print a health summary to the terminal:
+Print a health summary:
 
 ```
 Vault health check — <date>

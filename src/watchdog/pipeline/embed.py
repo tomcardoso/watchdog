@@ -78,6 +78,15 @@ def _model_name() -> str:
     return _config_get("embed_model", _MODEL_DEFAULT)
 
 
+def embedder_available() -> bool:
+    """Whether an embedding model can be loaded at all (fastembed installed, or one already
+    in place), so a caller can fail with a sentence before it starts changing an index."""
+    if _embedder is not None:
+        return True
+    import importlib.util
+    return importlib.util.find_spec("fastembed") is not None
+
+
 def _get_embedder():
     global _embedder
     if _embedder is None:
@@ -215,7 +224,7 @@ def _parse_query(query: str) -> tuple[list[str], list[str]]:
 class _CorpusIndex:
     """Everything one search needs, built once from the per-file index and cached on disk (#696).
 
-    Every `watchdog search` is a fresh process, and each one used to re-read every per-document
+    Every a search is a fresh process, and each one used to re-read every per-document
     and per-note file, re-tokenize every passage, and score BM25 in a Python loop — about 20–30
     seconds per query at 200,000 passages. The stacked vectors, the metadata, and a BM25 inverted
     index over the corpus passages are now written once to `.embeddings/_cache/` and reused until
@@ -382,7 +391,7 @@ _load = _load_all
 
 
 def add_document(vault_path: Path, filename: str, pages: list[dict], context: str = "",
-                 sha256: str | None = None, drop_legacy: bool = False) -> int:
+                 sha256: str | None = None) -> int:
     """Window each page, embed the passages, and write the per-document index file.
 
     ``context`` is an optional document-level contextual prefix (title, type, the entities
@@ -394,9 +403,6 @@ def add_document(vault_path: Path, filename: str, pages: list[dict], context: st
 
     ``sha256`` keys the index file on the document's content rather than its filename, so two
     different documents that share a filename no longer overwrite each other's passages (D241).
-    ``drop_legacy`` removes the filename-keyed file an older version wrote for this document — the
-    caller passes it only when no other committed document shares the filename, since that legacy
-    file may otherwise hold the other document's passages.
 
     Returns the number of passages indexed.
     """
@@ -415,11 +421,6 @@ def add_document(vault_path: Path, filename: str, pages: list[dict], context: st
     _docs_dir(vault_path).mkdir(parents=True, exist_ok=True)
     fid = sha256[:16] if sha256 else _doc_id(filename)
     _invalidate_cache(vault_path)
-    if sha256 and drop_legacy:
-        legacy = _doc_id(filename)
-        if legacy != fid:
-            for ext in (".npy", ".json"):
-                (_docs_dir(vault_path) / f"{legacy}{ext}").unlink(missing_ok=True)
     np.save(_docs_dir(vault_path) / f"{fid}.npy", vecs)
     (_docs_dir(vault_path) / f"{fid}.json").write_text(json.dumps(meta, ensure_ascii=False))
     return len(texts)
@@ -467,8 +468,8 @@ def search(vault_path: Path, query: str, top_n: int = 5,
     sparse BM25 leg, then a cross-encoder rerank of the fused pool (``rerank``, on by
     default; configurable via ``rerank_model``). ``"notes"`` and ``"all"`` rank by cosine.
 
-    Each result's ``score`` is the cosine similarity (so ``min_score`` / the CLI
-    ``--threshold`` keep their dense-cutoff meaning), even when the *order* is set by
+    Each result's ``score`` is the cosine similarity (so ``min_score`` / a search's
+    ``threshold`` keep their dense-cutoff meaning), even when the *order* is set by
     fusion + rerank.
     """
     index = _load_index(vault_path)

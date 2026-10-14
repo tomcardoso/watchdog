@@ -32,6 +32,8 @@ from pathlib import Path
 # hardening — and leave the entity-bomb test passing for the wrong reason. See I6.
 import defusedxml.ElementTree as _defused_ET
 
+from watchdog.pipeline.transcribe import MEDIA_SUFFIXES
+
 # Untrusted-content mitigation (docstring above): every value is capped at this length before
 # it can reach the extraction prompt.
 _MAX_VALUE_LEN = 200
@@ -257,7 +259,7 @@ def _read_image(path: Path) -> dict:
     return out
 
 
-# ── Audio/video (ffprobe container tags) ─────────────────────────────────────
+# ── Audio/video (container tags: ffprobe when installed, else PyAV) ─────────────
 
 def _parse_ffprobe_time(raw: str) -> "str | None":
     """ffprobe's creation_time tag is already ISO-8601 (e.g. '2023-01-15T12:00:00.000000Z').
@@ -269,20 +271,9 @@ def _parse_ffprobe_time(raw: str) -> "str | None":
         return None
 
 
-def _read_av(path: Path) -> dict:
-    if not shutil.which("ffprobe"):
-        return {}
-    try:
-        proc = subprocess.run(
-            ["ffprobe", "-v", "quiet", "-print_format", "json",
-             "-show_format", "-show_streams", str(path)],
-            capture_output=True, text=True, timeout=_FFPROBE_TIMEOUT,
-        )
-        data = json.loads(proc.stdout)
-    except Exception:
-        return {}
-    fmt = data.get("format", {}) or {}
-    tags = {k.lower(): v for k, v in (fmt.get("tags") or {}).items()}   # casing varies by container
+def _av_fields(tags: dict, duration) -> dict:
+    """Normalize container tags (keys any case) and a duration onto the allowlisted names."""
+    tags = {str(k).lower(): v for k, v in (tags or {}).items()}   # casing varies by container
     out = {}
     author = tags.get("artist") or tags.get("author")
     if author:
@@ -296,13 +287,50 @@ def _read_av(path: Path) -> dict:
         parsed = _parse_ffprobe_time(created)
         if parsed:
             out["created"] = parsed
-    duration = fmt.get("duration")
     if duration:
         try:
             out["duration_seconds"] = float(duration)
         except (TypeError, ValueError):
             pass
     return out
+
+
+def _read_av_ffprobe(path: Path) -> "dict | None":
+    """Container tags via a system ffprobe, or None when ffprobe isn't installed or fails."""
+    if not shutil.which("ffprobe"):
+        return None
+    try:
+        proc = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-print_format", "json",
+             "-show_format", "-show_streams", str(path)],
+            capture_output=True, text=True, timeout=_FFPROBE_TIMEOUT,
+        )
+        data = json.loads(proc.stdout)
+    except Exception:
+        return None
+    fmt = data.get("format", {}) or {}
+    return _av_fields(fmt.get("tags") or {}, fmt.get("duration"))
+
+
+def _read_av_pyav(path: Path) -> dict:
+    """Container tags via PyAV, which ships its own FFmpeg libraries (D273): the app installs no
+    ffprobe, so this is the reader there. Format-level tags first; an Ogg or Opus file keeps its
+    comments on the audio stream instead, so those fill any gap."""
+    import av
+    with av.open(str(path)) as container:
+        tags = {}
+        for stream in list(container.streams.audio[:1]):
+            tags.update({str(k).lower(): v for k, v in (stream.metadata or {}).items()})
+        tags.update({str(k).lower(): v for k, v in (container.metadata or {}).items()})
+        duration = container.duration / 1_000_000 if container.duration else None
+    return _av_fields(tags, duration)
+
+
+def _read_av(path: Path) -> dict:
+    found = _read_av_ffprobe(path)
+    if found is not None:
+        return found
+    return _read_av_pyav(path)
 
 
 _DISPATCH = {}
@@ -313,7 +341,7 @@ _DISPATCH[".pptx"] = _read_pptx
 _DISPATCH[".xlsx"] = _read_xlsx
 for _suf in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".webp"):
     _DISPATCH[_suf] = _read_image
-for _suf in (".mp4", ".avi", ".mov", ".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac"):
+for _suf in sorted(MEDIA_SUFFIXES):
     _DISPATCH[_suf] = _read_av
 
 

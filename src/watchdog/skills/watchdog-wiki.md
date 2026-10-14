@@ -30,7 +30,7 @@ Read existing thread pages — list them with the Glob tool (`wiki/**/*.md`).
 
 Do **not** load all entity notes or document notes upfront. Read individual notes on demand as you identify angles worth a thread. Use `note_path` from the manifest and `document_note` from documents.json to read specific notes when needed.
 
-For each central entity you decide to write about, read its note to get the `## Summary` section — this is the synthesized overview of who the entity is and their significance.
+For each central entity you decide to write about, read its note's `## Summary` section — a model's overview of who the entity is and their significance — and check what you use against the `## Facts` list below it, which cites each document and page.
 
 ---
 
@@ -87,7 +87,7 @@ last_updated: <today>
 
 ## What the evidence shows
 
-<Synthesized narrative. What do the documents collectively establish? Write in plain prose. Cite inline: "John Doe is listed as director of Shell Co ([[documents/shell-co-annual-report-2023|Shell Co Annual Report 2023]], p. 3)" — not just a link, a sentence with a purpose. State what is established, not just what was found.>
+<Synthesized narrative. What do the documents collectively establish? Write in plain prose. Cite each fact by linking to its line in its document note: "John Doe is listed as director of Shell Co ([[documents/shell-co-annual-report-2023#^f-3a9c51d0e2|p. 3]])" — not just a link, a sentence with a purpose. State what is established, not just what was found.>
 
 ## Open questions
 
@@ -120,7 +120,8 @@ Run /watchdog-surface for a fresh connection analysis.
 ## Guidelines
 
 - **Never speculate.** State what the evidence shows; label inferences explicitly ("this may indicate", "consistent with"). The thread is a working theory, not a conclusion.
-- **Cite everything.** Every factual claim in "What the evidence shows" must link to an entity note or document note.
+- **Cite facts by their block id.** Every fact line in an entity note's `## Facts` and a document note's `## Key facts` ends in a block id (`^f-3a9c51d0e2`). Cite a fact as `[[documents/<slug>#^f-<id>|p. N]]`, linking to the **document** note, with the id copied exactly from the fact line (or from the search tool's `facts[].cite`). Never invent an id: Watchdog checks every citation and shows one it cannot find as "source not found". A fact the journalist marked disputed may be cited, described as disputed, never as established. Framing sentences may stand uncited; a name, date, figure or event from a document carries a citation. A summary is not a source: cite the facts it rests on, not the `## Summary`.
+- **Check before you finish.** Call the `mcp__watchdog__check_citations` tool with `pages` set to each thread you wrote (`wiki/<slug>.md`), and fix anything it reports as not found.
 - **Keep threads focused.** One angle per thread. If an angle splits into two distinct questions, create two threads.
 - **Preserve journalist annotations.** The `## Notes` section is sacred — never overwrite it, even on update.
 - **Threads are not briefings.** Briefings are point-in-time snapshots after a single ingest. Threads accumulate across the entire investigation and deepen over time.

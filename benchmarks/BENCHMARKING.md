@@ -7,11 +7,24 @@ document stays as the spec that tool automates, and as the manual fallback if `r
 itself needs debugging.
 
 **Running a subset (#475).** `--arms` selects specific arm ids, so one comparison can run without
-paying for the whole ~$15 sweep. An unknown id is a hard error, not a silent full-sweep fallback:
+paying for the whole sweep. An unknown id is a hard error, not a silent full-sweep fallback:
 
 ```
-run_benchmark.py --stages extractor --arms sonnet-med-sdk,sonnet-med-api
+run_benchmark.py --stages extractor --arms sonnet-5.5-med,haiku-5.5-med
 ```
+
+**Repeated runs and the brief (D278).** `repeats: N` on an arm (or in a sweep's `defaults:`)
+runs it N times as `<id>-r1` … `<id>-rN`, each in its own vault; `--arms <id>` selects all N, and
+REPORT.md's "Spread across repeated runs" table (and `run.json`'s `repeat_groups`) gives the mean,
+lowest–highest and sample standard deviation of each group's recall and cost, counting only
+complete runs. Use it for any comparison you intend to act on: single runs of one configuration
+have differed by up to 3x (#581). `brief: <file>` on an extractor arm writes that file into the
+arm vault as `context.md`; `brief: false` withholds a vault's own `context.md` from extraction.
+`brief:` in the extractor sweep's `defaults:` applies to every arm that sets none, and on the
+finalizer sweep's `base:` it gives the shared extraction, and so every finalizer arm, the brief.
+Benchmark vaults have no `context.md` otherwise. The shipped matrix gives every arm
+`briefs/corpus-v1.md` (D310), as real use always has a brief; every archived arm extracted with
+none, so archived figures are not comparable with a briefed run.
 
 **Redoing an already-run arm needs its vault deleted first.** Each arm's vault is a fixed path
 (`bench-ex-<arm-id>`, etc.) — rerunning the same arm id against an existing vault does not start
@@ -21,8 +34,8 @@ touched, naming which vault(s) and the `rm -rf` to clear them (#494) — this co
 arm's config changes after it already ran once (an `extractor_effort` pin, a corrected model id):
 
 ```
-rm -rf benchmarks/.vaults/bench-ex-gpt-nano-low benchmarks/.vaults/bench-ex-gpt-mini-low
-run_benchmark.py --stages extractor --arms gpt-nano-low,gpt-mini-low
+rm -rf benchmarks/.vaults/bench-ex-gpt-6-luna-low-r1 benchmarks/.vaults/bench-ex-sonnet-5.5-high
+run_benchmark.py --stages extractor --arms gpt-6-luna-low,sonnet-5.5-high
 ```
 
 No separate deregistration step needed — shadow vaults under `benchmarks/.vaults/` are never
@@ -30,9 +43,9 @@ added to `~/.watchdog/projects.json` or Obsidian's vault switcher in the first p
 below), so a plain folder delete is the whole cleanup.
 
 **A real run is terse — one line per arm, not the underlying pipeline's own verbose output.**
-This is developer-only tooling, so `watchdog dig`/`watchdog bark`'s usual per-document progress,
+This is developer-only tooling, so processing's and post-processing's usual per-document progress,
 warnings, and elapsed ticker are suppressed; you get `[i/N] stage:arm  ✓/✗  duration` and nothing
-else per arm. Full failure detail — including a per-document failure that `cmd_extract` catches
+else per arm. Full failure detail — including a per-document failure that the processing run catches
 and tallies internally rather than raising, which an `ok`-only summary would miss entirely — goes
 to `errors.log` in the run's report folder, not the terminal; a failed or partially-failed arm's
 terse line just says `(see errors.log)`. Report folders are named to the minute
@@ -52,7 +65,7 @@ prints, so that wait is invisible at the terminal: an arm that seems to be hangi
 `running…` line for several minutes may simply be waiting out a rate limit, not stuck. It gives
 up and reports a partial arm once `max_rate_limit_waits` is exhausted, rather than waiting forever.
 
-**Ctrl+C stops the whole run, not just the current arm.** `cmd_extract`/`cmd_finalize` trap a
+**Ctrl+C stops the whole run, not just the current arm.** `ops.ingest.process`/`finish` trap a
 SIGINT internally and return normally (finishing in-flight writes first) rather than raising —
 without something checking for that, a single interrupt only ever stopped the *current* arm, and
 the runner just started the next one's real API calls. The runner now reads that signal off the
@@ -79,24 +92,27 @@ cache-*write* premium on text it never reads back. So:
 - every arm row in `REPORT.md` names the backend that served it;
 - a subscription arm's costs are marked `~` and captioned as list-price equivalents rather than
   amounts billed — they are comparable to each other, not to a metered arm's real spend;
-- the `sonnet-med-sdk` / `sonnet-med-api` arms pin the backend explicitly. Run them under api-key
-  auth (claude-api cannot run on a subscription) or the pair is not comparable.
+- to measure the backends themselves, pin them in a pair of arms (`claude-agent-sdk:sonnet-5.5`
+  and `claude-api:sonnet-5.5`, same effort) and run the pair under api-key auth (claude-api cannot
+  run on a subscription) or it is not comparable. The shipped matrix no longer carries that pair
+  (D310); add it to `extractor_sweep` when the question comes back.
 
-**Bracket the mode switch tightly around this pair.** Unlike DeepSeek/OpenAI/Gemini, a stored
-Anthropic key is not enough on its own — `resolve_auth()` only returns it while `watchdog auth`'s
-mode is `api-key`; a key sitting in credentials.json while mode is `subscription` is inert, pinned
-backend or not. So: switch to api-key mode, run this pair alone (`--arms
-sonnet-med-sdk,sonnet-med-api`), then switch straight back to subscription — leaving mode on
-api-key would also meter every other bare `sonnet`/`haiku`/`opus` arm in the sweep.
+**Bracket the mode switch tightly around such a pair.** Unlike DeepSeek/OpenAI/Gemini, a stored
+Anthropic key is not enough on its own — `resolve_auth()` only returns it while the Anthropic
+sign-in mode (`mode` in `~/.watchdog/credentials.json`, set in the app's Models & keys) is `api-key`; a key sitting in credentials.json while mode is `subscription` is inert, pinned
+backend or not. So: switch to api-key mode, run the pair alone with `--arms`, then switch
+straight back to subscription — leaving mode on api-key would also meter every other bare
+Claude arm in the sweep.
 
-**The third leg — `claude-agent-sdk` on subscription — is a separate stage, not part of this
-pair's run.** Once `sonnet-med-sdk`/`sonnet-med-api` have metered numbers, `sdk_check` (its own
-section in `benchmark.yaml`) re-runs the same `claude-agent-sdk:sonnet` pin under subscription
+**The third leg — `claude-agent-sdk` on subscription — is a separate stage, not part of that
+pair's run.** Once the pair has metered numbers, an `sdk_check` section in `benchmark.yaml` (not
+shipped since D310; its shape is `vault_prefix`, `corpus_dir` and `arms`, as in
+`tests/test_benchmark_runner.py`) re-runs the same `claude-agent-sdk` pin under subscription
 auth, giving a clean three-way read at the same effort level without conflating auth mode and
 harness overhead into one variable. It uses its own small two-document corpus
 (`corpora/sdk-check/`, not the frozen six-document `corpus-v1`) — a harness/backend spot-check
 doesn't need the full corpus, and keeping it small matters here since subscription mode spends
-session time, not dollars. Not part of the default `--stages` list — switch `watchdog auth` back
+session time, not dollars. Not part of the default `--stages` list — switch the sign-in mode back
 to subscription, then run it on its own:
 
 ```
@@ -109,11 +125,11 @@ its own "SDK backend check" section instead.
 
 **Benchmark vaults live in a shadow root, never in your real investigations folder (D146).**
 Early runs of `run_benchmark.py` created `bench-*` vaults straight in the installed watchdog's
-own `projects_dir` and let `cmd_new` register each one in the TWO places it always registers a new
+own `projects_dir` and let project creation register each one in the TWO places it always registers a new
 vault — `~/.watchdog/projects.json` and Obsidian's own `obsidian.json` (its vault switcher) — which
-is why a working copy of `watchdog projects`, or Obsidian's vault switcher itself, may already show
+is why the app's investigation list, or Obsidian's vault switcher itself, may already show
 a stack of stray `bench-*` entries. Those are left alone deliberately, see D146, but nothing new
-should join them. `run_benchmark.py` still creates vaults with the real `cmd_new` (fidelity to an
+should join them. `run_benchmark.py` still creates vaults with the real `ops.projects.create` (fidelity to an
 actual vault's layout is the point) but points it at `benchmarks/.vaults/` by default, and
 deregisters each vault from both `projects.json` and `obsidian.json` immediately afterward.
 Override the location with `--vault-root PATH` or a top-level `vault_root:` key in
@@ -121,12 +137,12 @@ Override the location with `--vault-root PATH` or a top-level `vault_root:` key 
 root is gitignored; delete it any time with `bench clean` (below) or `rm -rf benchmarks/.vaults`.
 
 **The `bench` wrapper (dev convenience, not shipped).** `benchmarks/bench` fronts every step of a
-pass — the runner, the scorers and the judge tooling — so you don't have to remember the pipx
-venv's interpreter path or where each script lives. `bench -h` is the full list:
+pass — the runner, the scorers and the judge tooling — so you don't have to remember the
+development Python's path or where each script lives. `bench -h` is the full list:
 
 ```
-benchmarks/bench estimate --stages extractor --arms haiku,gemini-flash-low   # --estimate-only
-benchmarks/bench run --stages extractor --arms haiku                         # the real thing
+benchmarks/bench estimate --stages extractor --arms haiku-5.5-low,gemini-3.8-flash-low  # --estimate-only
+benchmarks/bench run --stages extractor --arms haiku-5.5-low                         # the real thing
 benchmarks/bench arms                                                        # list arm ids per stage
 benchmarks/bench runs                                                        # kept runs + their commit
 benchmarks/bench score <vault> ...                                           # numeric-anchor recall
@@ -140,14 +156,14 @@ benchmarks/bench clean                                                       # w
 are reset at the start of a run. [RUNBOOK.md](RUNBOOK.md) is the step-by-step.
 
 Run `benchmarks/bench --help` for the full list. It is dev tooling for whoever is running the
-benchmark, not part of the shipped `watchdog` CLI — see `docs/benchmarks.md` for that boundary.
+benchmark, not part of the app — see `docs/benchmarks.md` for that boundary.
 
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
 followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost
 preview first.
 
 **Do not run a live ingest (Steps 3, 4, 5, or 6) without Tom's explicit go-ahead.** These runs cost
-real money and share his subscription session window — `--estimate` first, always, but the
+real money and share his subscription session window — `bench estimate` first, always, but the
 estimate is a preview, not the ask.
 
 **Running a pass?** Follow [RUNBOOK.md](RUNBOOK.md) — the steps, in order, including the
@@ -156,28 +172,36 @@ pinned judge prompt. This file is the reasoning behind those steps, not the proc
 ## What we are deciding
 
 Watchdog makes three kinds of model call during ingest. This benchmark picks the right-size default
-for each, across Claude tiers and DeepSeek, plus the reasoning-effort knob where it applies.
+for each, across each provider's current frontier models (Anthropic, OpenAI, Gemini and DeepSeek,
+D310), plus the reasoning-effort knob where it applies.
 
-| Stage | Flag | Default | Effort knob? | Cost shape |
+| Stage | Option (`RunOptions`, an arm's keys) | Default | Effort knob? | Cost shape |
 |---|---|---|---|---|
-| **Classifier** | `--classifier-model` | `haiku` | no | 1 call/doc, first 5 pages only — trivial |
-| **Extractor** | `--extractor-model` / `--extractor-effort` | `sonnet` / `high` | yes | per page — **essentially the whole bill** |
-| **Finalizer** | `--finalizer-model` / `--finalizer-effort` | `haiku` / `high` | yes | ~3 calls + reconciliation per ingest — near-constant |
+| **Classifier** | `classifier_model` / `classifier_effort` | `haiku` / `low` | not swept | 1 call/doc, first 5 pages only — trivial |
+| **Extractor** | `extractor_model` / `extractor_effort` | `sonnet` / `medium` | yes | per page — **essentially the whole bill** |
+| **Finalizer** | `finalizer_model` / `finalizer_effort` | `haiku` / unset | yes | ~3 calls + reconciliation per ingest — near-constant |
 
-Candidate models per stage: Claude `haiku` / `sonnet` / `opus`, and DeepSeek `deepseek:deepseek-flash` /
-`deepseek:deepseek-v4-pro`. Notes that matter:
+Candidate models: every model in `model_catalog.yaml`, which holds each provider's current
+frontier models only, short of the flagship class (D311–D313) — Claude Haiku 5.5 and Sonnet
+5.5; GPT-6 Luna and GPT-5.6 Luna; Gemini 3.8 Flash and 3.5 Flash-Lite; DeepSeek Flash
+and V4 Pro.
+Arms pin a Claude model by its versioned tier (`sonnet-5.5`, not `sonnet`), so an arm means the
+same model whatever the bare name resolves to later. Notes that matter:
 
-- **Haiku has no effort knob** (`_EFFORT_UNSUPPORTED`) — `--extractor-effort` is ignored on Haiku.
-  So a Haiku arm is a single point, not a high/medium/low sweep.
-- **The classifier has no effort knob at all.**
+- **Effort levels differ by provider** (`effort_levels` in `model_catalog.yaml`): every Claude and
+  OpenAI model takes all five, Gemini takes `low`/`medium`/`high`, DeepSeek only what is below.
+  `tests/test_benchmark_runner.py` checks every shipped arm's model and effort against the
+  catalogue, so a typo fails the suite rather than the first paid call.
+- **The classifier's effort is not swept**; it stays at its `low` default.
 - **DeepSeek's main knob is its thinking toggle**, swapped via the model id:
   `deepseek:deepseek-flash` (thinking off) vs `deepseek:deepseek-flash-thinking` (on), same for
   `-pro`. Tom's prior testing found non-thinking DeepSeek weak, so test both. Since 2026-08-13 the
   thinking ids *also* take an effort level — `low`/`high`/`max` only (`medium`/`xhigh` are DeepSeek's
   own aliases for `high` and are rejected here rather than run as duplicates, D217) — and a
-  thinking-off id still takes none. The sweep crosses the two knobs: a thinking-off arm per model
-  size, plus `low` and `high` on each thinking id. `max` is deliberately left out until `low` vs
-  `high` shows the knob moves anything on this corpus.
+  thinking-off id still takes none. The sweep runs Flash with thinking off and on (at `high`, the
+  provider's default), and Pro with thinking on. On the numeric check the archived runs found
+  `high` well ahead of `low` on both thinking ids (FINDINGS.md, run `2026-08-31-1645`), so the
+  frontier matrix runs `high` only.
 
 ## What changed with #381 (read this before designing runs)
 
@@ -198,12 +222,12 @@ sidecar. Entity resolution and cross-document contradiction detection moved to t
 
 Each stage is measured by varying it while holding the other two fixed at a known baseline.
 
-- **Extractor sweep** — vary `--extractor-model` × `--extractor-effort`; the finalizer never runs
-  at all (`watchdog dig` only — see Step 4), since the metrics this sweep scores live entirely in
+- **Extractor sweep** — vary `extractor_model` × `extractor_effort`; the finalizer never runs
+  at all (processing only — see Step 4), since the metrics this sweep scores live entirely in
   the staged extraction artifacts; the corpus's per-document sidecar pins (D120) keep the
-  classifier out of the loop, no `--skill` flag needed. This is still where the money goes — it's
+  classifier out of the loop, no `skill` option needed. This is still where the money goes — it's
   just no longer paying for a finalizer it doesn't need too.
-- **Finalizer sweep** — vary `--finalizer-model` × `--finalizer-effort`; hold the extractor fixed
+- **Finalizer sweep** — vary `finalizer_model` × `finalizer_effort`; hold the extractor fixed
   at **`deepseek:deepseek-flash`**. Two reasons for the cheap fixed extractor: (a) it keeps the wasted
   re-extraction cheap — you cannot re-finalize a finished vault (#384), so each finalizer arm is its
   own full ingest; (b) a messier extraction gives reconciliation *more* to do (more duplicate
@@ -243,64 +267,35 @@ hashed to some value; it can't show what those keys said. Add the new row to the
 ## Step 1 — verify the corpus
 
 ```
-cd benchmarks/corpus && shasum -a 256 -c corpus-v1.sha256
+cd benchmarks/corpora/extract && shasum -a 256 -c corpus-v1.sha256
 ```
 
 All six must report `OK`. If any fails, stop — a single changed byte makes runs incomparable.
 
 ## Step 2 — check auth
 
-You need Anthropic and DeepSeek credentials stored:
+You need Anthropic and DeepSeek credentials. Keys the desktop app stored are encrypted and the
+scripts here can't read them (D295): export them for the session instead (`ANTHROPIC_API_KEY`,
+`DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`), which always take precedence over a stored
+key. A key stored in plain text (a computer with no secure storage) still works. (Gemini is only
+needed later, for the DeepSeek-arm judge cross-check in scoring — not for the runs.)
+
+## Step 3 — how a run is built
+
+There is no command line (D300); `bench` (a thin wrapper around `run_benchmark.py`) drives the
+same library operations the app runs. For every arm it creates a fresh vault under
+`benchmarks/.vaults/` with `ops.projects.create`, copies the frozen corpus in with each PDF's own
+`.yml` sidecar (so each document's record skill is pinned, D120, and nothing is classified under
+the wrong one), pre-processes it once into a master vault (`ops.ingest.preprocess`), and copies the
+master for each arm. Extraction runs `ops.ingest.process` with the arm's `RunOptions`
+(`finalize=False`); post-processing runs `ops.ingest.finish`. Each arm's usage records, staged
+extractions and, when it finalized, its briefings and registry stay in its vault and are copied
+into the run's report folder.
 
 ```
-watchdog auth
-```
-
-Confirm both providers show as authenticated. (Gemini is only needed later, for the DeepSeek-arm
-judge cross-check in scoring — not for the runs.)
-
-## Step 3 — the per-condition recipe
-
-Every condition starts the same way — fresh vault, all six documents, chew. Worked below for
-`bench-ex-sonnet-high`; swap the vault name for every other row in Steps 4–6 (Step 5's
-`bench-fn-base` included).
-
-```
-# 1. Fresh vault
-watchdog new "bench-ex-sonnet-high"
-cd <projects_dir>/bench-ex-sonnet-high
-
-# 2. All six documents, one pass — each PDF's own .yml sidecar pins its record skill (D120),
-#    so no --skill flag is needed and nothing gets classified under the wrong one. The glob
-#    below grabs each PDF and its same-named sidecar together.
-cp "<corpus>/Laurentian Pre-Filing Report of the Proposed Monitor.pdf"* _INCOMING/
-cp "<corpus>/CV-21-00656040-00CL Laurentian U Initial Order 1 FEB 2021.pdf"* _INCOMING/
-cp "<corpus>/Laurentian First Report of the Monitor.pdf"* _INCOMING/
-cp "<corpus>/Pension Order Morawetz CJ- March 17 2021(as stamped by Court).PDF"* _INCOMING/
-cp "<corpus>/Annual-Financial-Report-19-20.pdf"* _INCOMING/
-cp "<corpus>/Annual-Financial-Report-20-21.pdf"* _INCOMING/
-watchdog chew
-```
-
-Confirm the sidecars landed before trusting the run: `ls _INCOMING/*.yml` should list six files.
-Classification is skipped for every document (each is pinned by its own sidecar), so this is one
-`chew`/`dig` pass instead of the two the corpus used to need — see `keys/README.md` for why.
-
-From here the two sweeps diverge (see Step 4 and Step 5): the extractor sweep only ever needs
-`watchdog dig`, since `score_arms.py` reads the staged `.watchdog/extracted/*.json` artifacts
-directly and those are written before any finalizer call. The finalizer sweep needs `watchdog
-bark` too, but only once per vault — extract once, copy the vault, finalize each copy
-differently.
-
-**Capture, per vault, before touching the next one** (the terminal output is not recoverable — page
--coverage warnings and per-document digest-size lines print only there):
-
-```
-watchdog usage --all > usage.txt      # token/cost/latency per stage
-cp -r .watchdog/extracted ../captures/<vault>-extracted/   # what score_arms.py reads
-# if bark ran: cp -r briefings/ ../captures/<vault>-briefings/
-#              cp -r .watchdog/registry ../captures/<vault>-registry/
-# and save the scrollback of each run
+bench arms                                   # every arm id in benchmark.yaml, by stage
+bench estimate --stages extractor            # free: what each arm would cost
+bench run --stages extractor --arms sonnet-5.5-high,haiku-5.5-low
 ```
 
 ## Step 4 — extractor sweep (the spend)
@@ -309,113 +304,52 @@ cp -r .watchdog/extracted ../captures/<vault>-extracted/   # what score_arms.py 
 the provider defaults to, which is neither reproducible nor comparable across providers. On OpenAI
 that default was measured burning a median 12K-24K *output* tokens per section call on this corpus
 (`gpt-mini` peaked at 46K against a 48K ceiling) — reasoning tokens dwarfing the JSON, on sections
-capped at ~7K estimated input tokens. Haiku is the exception: it has no effort control at all (no `effort_levels`
-in `model_catalog.yaml`), and asking for one errors. DeepSeek is a half-exception — effort exists
-only on its `-thinking` ids (D217), so the thinking arms pin `low`/`high` like everyone else and
-the thinking-off arms pin nothing, because there is no knob on them to pin.
+capped at ~7K estimated input tokens. DeepSeek is the one exception — effort exists only on its
+`-thinking` ids (D217), so the thinking arms pin a level like everyone else and the thinking-off
+arm pins nothing, because there is no knob on it to pin.
 
-`watchdog dig` only — **no `bark`**. Everything this step scores (material-fact recall,
+Processing only — **no post-processing**. Everything this step scores (material-fact recall,
 `must_not_miss`, coverage warnings) is in the staged extraction artifacts before any finalizer
 call runs, so finalizing here would just spend money and time on a stage this step doesn't
-measure. One vault each. Run `--estimate` before each.
-
-```
-# FREE cost preview — always run this first
-watchdog dig --extractor-model sonnet --extractor-effort high --estimate
-
-# The real run (same flags, no --estimate)
-watchdog dig --extractor-model sonnet --extractor-effort high
-```
-
-| Vault | `--extractor-model` | `--extractor-effort` | Serves |
-|---|---|---|---|
-| `bench-ex-sonnet-high` | `sonnet` | `high` | baseline · #215 high arm |
-| `bench-ex-sonnet-med` | `sonnet` | `medium` | #215 medium arm |
-| `bench-ex-haiku` | `haiku` | — (ignored) | #361: Haiku as shipped default? |
-| `bench-ex-opus-high` | `opus` | `high` | is Opus worth the premium? |
-| `bench-ex-ds-flash` | `deepseek:deepseek-flash` | — (none exists) | #361: DeepSeek, thinking off |
-| `bench-ex-ds-flash-think-low` | `deepseek:deepseek-flash-thinking` | `low` | DeepSeek flash, thinking on |
-| `bench-ex-ds-flash-think-high` | `deepseek:deepseek-flash-thinking` | `high` | ≡ the old unpinned `-think` arm |
-| `bench-ex-ds-pro` | `deepseek:deepseek-v4-pro` | — (none exists) | DeepSeek pro, thinking off |
-| `bench-ex-ds-pro-think-low` | `deepseek:deepseek-v4-pro-thinking` | `low` | DeepSeek pro, thinking on |
-| `bench-ex-ds-pro-think-high` | `deepseek:deepseek-v4-pro-thinking` | `high` | ≡ the old unpinned `-think` arm |
+measure. The arms are `extractor_sweep` in `benchmark.yaml`; run `bench estimate --stages
+extractor` before `bench run --stages extractor`.
 
 **`claude-batch` arms.** Since D144 a batch no longer needs a run-wide pinned skill — each
 document resolves its own, so corpus-v1's per-document sidecar pins (D120) carry through and the
 two-skill corpus batches correctly. A batch arm is submit-and-exit: the arm returns once the batch
 is submitted, and a *later* run collects it, so its `REPORT.md` row is empty until then.
 
-**Correction:** the original `bench-ex-sonnet-high` and `bench-ex-sonnet-med` vaults were run
-(2026-07-15) before the `dig`/`bark` split shipped (#403, merged 2026-07-20/21) — they have no
-`.watchdog/extracted/*.json` at all, just the old committed vault notes. They do **not** score
-through the current `score_arms.py`, and still need a fresh `dig` run under new vault names
-(e.g. `bench-ex2-sonnet-high`, `bench-ex2-sonnet-med`) alongside `bench-ex2-haiku`.
-
-Optional expansion if the core set leaves a question open: `sonnet`/`low`, `opus`/`medium`.
-
 Score against the frozen keys with `score_arms.py` (Step 7): **material-fact recall** and
 **`must_not_miss`** (the extractor metrics). Also read the coverage warnings on the 70-page
-report, printed during `dig` itself — that is where cheap conditions degrade first.
-
-If you want a briefing to eyeball for a particular arm, run `watchdog bark` on that vault
-afterward — it's optional and doesn't change how the arm scores.
+report, in the arm's `errors.log` and usage records — that is where cheap conditions degrade first.
 
 ## Step 5 — finalizer sweep (cheap)
 
-Extractor fixed at `deepseek:deepseek-flash`. Unlike Step 4, **extract once and reuse it** —
-the finalizer metrics (entity-duplicate count, contradictions) depend only on `bark`, so paying
-for six fresh extractions of the same fixed input would be wasted spend:
+The extractor is fixed (`finalizer_sweep.extractor` in `benchmark.yaml`). The runner **extracts
+once and reuses it**: the finalizer metrics (entity-duplicate count, contradictions) depend only
+on post-processing, so each `finalizer_sweep` arm finalizes its own copy of one extracted vault.
 
 ```
-# Following Step 3 with vault name "bench-fn-base":
-watchdog dig --extractor-model deepseek:deepseek-flash --extractor-effort high
-
-cd ..
-cp -r bench-fn-base bench-fn-haiku
-cp -r bench-fn-base bench-fn-sonnet-high
-cp -r bench-fn-base bench-fn-sonnet-med
-cp -r bench-fn-base bench-fn-opus-high
-cp -r bench-fn-base bench-fn-ds-flash
-cp -r bench-fn-base bench-fn-ds-pro-think
+bench estimate --stages finalizer
+bench run --stages finalizer
 ```
-
-Then, in each copy, `--estimate` first, then finalize:
-
-```
-cd bench-fn-haiku && watchdog bark --finalizer-model haiku --estimate
-watchdog bark --finalizer-model haiku
-```
-
-| Vault | `--finalizer-model` | `--finalizer-effort` |
-|---|---|---|
-| `bench-fn-haiku` | `haiku` | — (ignored) |
-| `bench-fn-sonnet-high` | `sonnet` | `high` |
-| `bench-fn-sonnet-med` | `sonnet` | `medium` |
-| `bench-fn-opus-high` | `opus` | `high` |
-| `bench-fn-ds-flash` | `deepseek:deepseek-flash` | — |
-| `bench-fn-ds-pro-think` | `deepseek:deepseek-v4-pro-thinking` | — |
 
 Score: **entity-duplicate count** and **contradictions C1/C2** (the finalizer metrics). Read the
-contradictions from the `[!contradiction]` callouts written into the entity notes — each carries a
+contradictions from the registry's contradiction ledger (`entities.json`, each entity's
+`contradictions`), rendered as `[!contradiction]` callouts in the entity notes — each carries a
 label, both values, both document slugs, and both page numbers — not the briefing's "flagged" count.
 This also answers #432 (should reconciliation use Haiku?) — no separate protocol needed.
 
 ## Step 6 — classifier smoke test
 
-One vault, no `--skill` (let it classify), default classifier. **Copy only the six bare PDFs, not
-their `.yml` sidecars** — a sidecar pin skips classification entirely (D120), which is exactly what
-this step needs to exercise:
-
-```
-watchdog new "bench-classify"
-# copy the six PDFs only (no *.yml), chew, then:
-watchdog ingest --extractor-model deepseek:deepseek-flash --finalizer-model deepseek:deepseek-flash
-```
+`bench run --stages classifier` runs one vault with the PDFs only, no `.yml` sidecars — a sidecar
+pin skips classification entirely (D120), which is exactly what this step needs to exercise —
+on the default classifier and a cheap extractor (`classifier_smoke` in `benchmark.yaml`).
 
 Check the classified skill for each document against `expected_skill` in the keys. All six should
 land on `bankruptcy` or `financial-statements` correctly. If they do, the classifier is fine on
-these types. This does **not** rank classifier models — corpus-v1 has too few skills for that.
-(A cheap extractor is used here because we only care about the classification decision.)
+these types. This does **not** rank classifier models — corpus-v1 has too few skills for that;
+`classifier-sweep` does, on its own corpus.
 
 ## Step 7 — score and decide
 
@@ -436,7 +370,7 @@ keys' numeric-anchored items — roughly a third of them — against one or more
 (dig-only or finalized, both work), offline, no model calls:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/score_arms.py \
+python benchmarks/score_arms.py \
     <projects_dir>/bench-ex-sonnet-med <projects_dir>/bench-t0-sonnet-med
 ```
 
@@ -447,21 +381,22 @@ First used for the Tier 0 checklist A/B (#412).
 
 ## Step 8 — the verification pass A/B (#535)
 
-`benchmark.yaml` carries a verify/noverify pair for each of the three candidate models — Sonnet
-4.6, `gpt-mini` and Luna. Each pair is the same extractor with and without the second-read
-verification pass, so the difference within a pair is the pass and nothing else. Run **one pair at
-a time**, on its own:
+The archived runs measured verify/noverify pairs on Sonnet 4.6, GPT-5.4 Mini and GPT-5.6 Luna; the
+frontier matrix no longer carries them (D310). To measure the pass on a current model, add a pair
+to `extractor_sweep`: the same model and effort with `verify: true` and `verify: false`, both at
+`concurrency: 3` (verify re-sends full-size section input, so its tokens per minute run about 2.7x
+the same model without it, #559). The difference within a pair is the pass and nothing else. Run
+**one pair at a time**, on its own:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
-    --stages extractor --arms gpt-mini-low-verify,gpt-mini-low-noverify
+python benchmarks/run_benchmark.py \
+    --stages extractor --arms gpt-6-luna-low-verify,gpt-6-luna-low-noverify
 ```
 
 **On the cost preview.** `cost_reference._matches` only reuses an archived usage file when every
 call in it shares one effort, so a verify arm's own history is reusable as a reference only when
-`extractor_effort` equals the `verifier_effort` config value (default `low`). The `gpt-mini` and
-Luna pairs satisfy that. The Sonnet pair is pinned `medium` — the judged candidate config, not
-`low` — so expect its preview to fall back to the static projection and say so.
+`extractor_effort` equals the `verifier_effort` config value (default `low`). A pair pinned at any
+other effort falls back to the static projection and says so.
 
 Score **recall** with `score_arms.py` and the judge pass, exactly as for any other arm pair — the
 question is whether `must_not_miss` closes the gap it has never closed by raising effort.
@@ -473,11 +408,11 @@ one self-contained judging packet per document — the added facts, the extracto
 restatement reference, the page text as the grounding reference — and tallies the grades:
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \
-    benchmarks/.vaults/bench-ex-gpt-mini-verify --out /tmp/verifier-judge
+python benchmarks/verifier_precision.py build \
+    benchmarks/.vaults/bench-ex-gpt-6-luna-low-verify --out /tmp/verifier-judge
 # a judge grades each fact grounded_material / grounded_trivial / unsupported,
 # writing judgment-<document>.json beside each packet, then:
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate \
+python benchmarks/verifier_precision.py aggregate \
     /tmp/verifier-judge
 ```
 
@@ -493,7 +428,7 @@ Separate from the arm matrix: measures how many real tokens each model counts fo
 every value in the catalog now comes from this script rather than a vendor sentence (D198).
 
 ```
-~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/tokenizer_ratio.py
+python benchmarks/tokenizer_ratio.py
 ```
 
 **A bare run is free** — no extraction calls, no generation, no subscription session window. It
@@ -526,11 +461,9 @@ its family's value — or when the corpus itself changes.
 
 ## Rough cost
 
-Order-of-magnitude, from the per-token pricing (extraction is output-dominated). The full corpus on
-Sonnet is around $5; scale by the model's output rate relative to Sonnet ($15/Mtok): Haiku ~⅓,
-Opus ~1.7×, DeepSeek flash ~2% of Sonnet, DeepSeek pro ~6%; thinking variants add roughly 2–4× for
-the chain-of-thought. Dropping `bark` from the extractor sweep (Step 4) removes a Sonnet/high
-finalize from every arm, so the sweep now lands near **$15** instead of $20, still dominated by
-the Opus and Sonnet extractor arms; the finalizer sweep (one extraction, six finalize calls) and
-classifier test are **~$2** combined. **`watchdog dig --estimate` / `watchdog bark --estimate` are
-the real numbers — trust them over this paragraph**, and run one before every condition.
+Order-of-magnitude only (extraction is output-dominated): scale by each model's output rate
+against Sonnet 5.5's $10 per million tokens. Gemini 3.8 Flash costs about 0.4x Sonnet (double
+from 2027-01-01), Flash-Lite about 0.25x, Haiku 5.5 and GPT-6 Luna about 1/20 and DeepSeek Flash
+about 6% (double in its peak hours). Thinking spends output, so effort moves every
+figure. The Sonnet arms dominate the sweep. **`bench estimate` gives the real
+numbers — trust it over this paragraph**, and run it before every run.

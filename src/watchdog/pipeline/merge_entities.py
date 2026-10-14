@@ -5,7 +5,7 @@ Three shipped features can *detect* a duplicate entity — the dashboard's "Poss
 duplicates" view, the `/watchdog-health` near-duplicate check, and D39's Neo4j-export
 tradeoff note ("the same person under name variants appears as separate nodes, which
 the export can't fix") — but none of them could *fix* one. `merge()` is the surgery;
-`run()` is the vault-level operation `watchdog merge-entities <keep-id> <merge-id>`
+`run()` is the vault-level operation the `merge-entities` operation
 drives. Pure I1-side code: no model calls, no judgement calls beyond the two ids the
 caller supplies.
 """
@@ -17,20 +17,16 @@ from watchdog.pipeline.backup import snapshot as _snapshot
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.write_vault import (
     _write_json_atomic,
-    _extract_analysis,
-    _extract_contradictions,
     _extract_notes_section,
     _extract_section,
-    _extract_summary,
     _now_iso,
     _timeline_dedup_key,
     _today,
     _update_manifest,
-    build_entity_note,
     _frontmatter,
 )
 from watchdog.pipeline import resolutions
-from watchdog.pipeline.timeline import cmd_rebuild_timeline
+from watchdog.pipeline.timeline import rebuild_timeline
 
 _DEFAULT_NOTES_MARKER = "<!-- Journalist annotations — never overwritten by ingestion. -->"
 
@@ -158,6 +154,48 @@ def merge(entities_reg: dict, keep_id: str, merge_id: str) -> dict:
     }
 
 
+def undo_snapshot(entry: dict) -> dict:
+    """The parts of a registry entry a later split needs (D279): who it was, which documents
+    named it, and the relationships it held — enough, with the facts' original entity tags in
+    `.watchdog/extracted/`, to rebuild it."""
+    return {
+        "id": entry.get("id"), "name": entry.get("name"), "type": entry.get("type"),
+        "aliases": list(entry.get("aliases") or []),
+        "appears_in": list(entry.get("appears_in") or []),
+        "note_path": entry.get("note_path"),
+        "roles": [{k: r.get(k) for k in ("relationship", "target_id", "source_sha256", "is_reverse")}
+                  for r in entry.get("roles") or []],
+        "date_first_seen": entry.get("date_first_seen"),
+        "contradictions": list(entry.get("contradictions") or []),
+        "synthesis": entry.get("synthesis"),
+    }
+
+
+def _reporter_log_entry(vault_path: Path, keep: dict, merged: dict) -> dict:
+    """The merge-log entry for a merge a reporter asked for. When it settles a "possible same" pair
+    from Review, the pair's tier, rule and evidence come with it."""
+    from watchdog.pipeline import identity, merge_log
+    from watchdog.pipeline.verification import reporter_name
+    data = merge_log.load(vault_path)
+    cand = data["candidates"].get(identity.pair_id(keep["id"], merged["id"]))
+    evidence = identity.Evidence(vault_path, {})
+    loser = evidence.registry_profile(merged["id"], merged)
+    occurrence = {"sha": None, "documents": list(merged.get("appears_in") or []),
+                  "facts": [f["id"] for f in loser.facts[:5]],
+                  "identifier": None, "shared": []}
+    reason = "Merged by a reporter."
+    if cand:
+        reason = f"Merged by a reporter from Review. {cand.get('reason') or ''}".strip()
+        ev = cand.get("evidence") or {}
+        occurrence.update({"identifier": ev.get("identifier"), "shared": ev.get("shared") or []})
+    return merge_log.merge_entry(
+        keep={"id": keep["id"], "name": keep["name"], "type": keep["type"]},
+        merged={"id": merged["id"], "name": merged["name"], "type": merged["type"]},
+        tier=cand.get("tier") if cand else "manual", decided_by="reporter",
+        rule=cand.get("rule") if cand else None, reason=reason, occurrence=occurrence,
+        reporter=reporter_name(), run=None)
+
+
 # ── Vault-level operation ──────────────────────────────────────────────────────
 
 def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int:
@@ -167,13 +205,13 @@ def _remap_timeline_ndjson(vault_path: Path, keep_id: str, merge_id: str) -> int
     return remap_entity_ids(vault_path, {merge_id: keep_id})
 
 
-def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
-    """Perform the full `watchdog merge-entities` operation on a vault on disk:
+def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
+    """Perform the full the `merge-entities` operation operation on a vault on disk:
     registry surgery (`merge`), note concatenation/redirect, timeline NDJSON entity-tag
     remap, manifest + timeline rebuild, and a best-effort search-index refresh of the two
     touched notes.
 
-    Returns a report dict for the CLI to print. Raises `ValueError` on bad input —
+    Returns a report dict for the operation to print. Raises `ValueError` on bad input —
     the caller is expected to turn that into a clean `sys.exit`.
     """
     registry_dir = vault_path / ".watchdog" / "registry"
@@ -202,19 +240,22 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     keep_note_file = vault_path / f"{keep_note_path}.md"
     merge_note_file = vault_path / f"{merge_note_path}.md"
 
-    # Read both notes' prose *before* the registry mutation and before the losing
-    # note is overwritten with its redirect stub.
-    keep_analysis = _extract_analysis(keep_note_file)
-    merge_analysis = _extract_analysis(merge_note_file)
-    # Registry note-body backfill (#288): fold in any callouts that only ever lived in a
-    # note body (pre-#282 vaults, or a stray hand-edit) before rendering from the registry.
-    keep_note_callouts = resolutions.split_callouts(_extract_contradictions(keep_note_file))
-    merge_note_callouts = resolutions.split_callouts(_extract_contradictions(merge_note_file))
-    keep_summary = _extract_summary(keep_note_file)
-    merge_summary = _extract_summary(merge_note_file)
+    # The merged record's note is about to become a redirect stub; its journalist notes are the
+    # one thing nothing else recovers, so read them first. Everything else is data (D280).
     notes_section = _extract_notes_section(keep_note_file)
     merge_note_text = merge_note_file.read_text(encoding="utf-8") if merge_note_file.exists() else ""
     merge_notes_body = _extract_section(merge_note_text, "Notes") if merge_note_text else ""
+    from watchdog.pipeline import entity_notes, merge_log
+    keep_synth, merge_synth = entities_reg[keep_id].get("synthesis"), entities_reg[merge_id].get("synthesis")
+
+    # The merge log (D279): a reporter's merge is logged here; a merge the pipeline decided arrives
+    # with its entry already built (`log_entry`). Either way it gets the losing record's snapshot.
+    if log_entry is None:
+        log_entry = _reporter_log_entry(vault_path, entities_reg[keep_id], entities_reg[merge_id])
+    undo = log_entry.setdefault("undo", {})
+    undo["entry"] = undo_snapshot(entities_reg[merge_id])
+    undo.setdefault("version", merge_log.UNDO_VERSION)
+    undo.setdefault("changes", [])        # stored extractions keep the merged id (D280)
 
     stats = merge(entities_reg, keep_id, merge_id)
     keep = entities_reg[keep_id]
@@ -227,33 +268,22 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     backup_paths += [
         vault_path / f"{entities_reg[eid]['note_path']}.md" for eid in stats["touched_entities"]
     ]
+    log_path = merge_log.path(vault_path)
+    if log_path.exists():
+        backup_paths.append(log_path)
     backup_dir = _snapshot(vault_path, "merge-entities", backup_paths)
+    if backup_dir:
+        log_entry["undo"]["backup"] = str(Path(backup_dir).relative_to(vault_path)) \
+            if Path(backup_dir).is_relative_to(vault_path) else str(backup_dir)
 
-    # Concatenate Analysis with provenance intact — a labelled block, not a blind splice.
-    if merge_analysis:
-        provenance = f"*Merged from [[{merge_note_path}|{merge_name}]] on {_today()}:*"
-        combined_analysis = (
-            keep_analysis.rstrip() + "\n\n" + provenance + "\n" + merge_analysis
-        ).lstrip() if keep_analysis else f"{provenance}\n{merge_analysis}"
-    else:
-        combined_analysis = keep_analysis
-
-    # The registry list is the contradiction ledger (#282); render the note from it
-    # rather than concatenating note bodies, so merges and ingests can't disagree (#288).
-    keep["contradictions"] = resolutions.dedup_callouts(
-        keep["contradictions"] + keep_note_callouts + merge_note_callouts
-    )
     stats["contradictions"] = len(keep["contradictions"])
-    resolved = resolutions.resolved_ids(vault_path)
-    combined_contradictions = "\n\n".join(
-        resolutions.filter_callouts(keep["contradictions"], resolved)
-    )
 
-    combined_summary = keep_summary or merge_summary
-    # The merge keeps only one prose Summary; when both entities had one, the losing
-    # entity's account is dropped and the survivor's Summary now describes only half
-    # the merged record until someone re-synthesizes it (#313). Signal that to the CLI.
-    summary_dropped = bool(keep_summary and merge_summary)
+    # One AI-written summary survives: the keeper's, else the merged record's. Either was written
+    # before the merge, and the note says so until the next synthesis replaces it (#313, D280).
+    summary_dropped = bool(keep_synth and merge_synth)
+    chosen = keep_synth or merge_synth
+    if chosen:
+        keep["synthesis"] = {**chosen, "stale": "merge"}
 
     # Carry over the losing note's journalist annotations too, if the writer left any
     # beyond the boilerplate placeholder — those are the one thing nothing else recovers.
@@ -264,11 +294,15 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
             + merge_notes_body + "\n"
         )
 
-    note_content = build_entity_note(
-        keep, notes_section, documents_reg, combined_summary, combined_analysis, combined_contradictions
-    )
-    keep_note_file.parent.mkdir(parents=True, exist_ok=True)
-    keep_note_file.write_text(note_content, encoding="utf-8")
+    # Facts in older extractions still name the merged id; the note finds them by following the
+    # merge log (`entity_facts.resolve`), so the render sees the log as it will be once written.
+    from watchdog.pipeline import entity_facts
+    preview = merge_log.load(vault_path)
+    preview["merges"] = list(preview["merges"]) + [log_entry]
+    index = entity_facts.FactIndex(vault_path, entities_reg, documents_reg, merges=preview)
+    written = entity_notes.write_entities(
+        vault_path, [keep_id, *stats["touched_entities"]], entities_reg, documents_reg,
+        index=index, notes={keep_id: notes_section})
 
     stub_content = _frontmatter({
         "id":                merge_id,
@@ -284,29 +318,10 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     merge_note_file.parent.mkdir(parents=True, exist_ok=True)
     merge_note_file.write_text(stub_content, encoding="utf-8")
 
-    # A third entity's own Relationships section renders its roles list, so a role that
-    # got remapped onto keep_id needs that entity's note regenerated too — every other
-    # section (Analysis/Contradictions/Notes/Summary) is read back untouched.
-    other_notes: dict[str, tuple[str, str]] = {}
-    for eid in stats["touched_entities"]:
-        entry = entities_reg[eid]
-        note_file = vault_path / f"{entry['note_path']}.md"
-        content = build_entity_note(
-            entry,
-            _extract_notes_section(note_file),
-            documents_reg,
-            _extract_summary(note_file),
-            _extract_analysis(note_file),
-            _extract_contradictions(note_file),
-        )
-        note_file.parent.mkdir(parents=True, exist_ok=True)
-        note_file.write_text(content, encoding="utf-8")
-        other_notes[entry["note_path"]] = (entry["name"], content)
-
     _write_json_atomic(entities_path, entities_reg)
     _update_manifest(vault_path, entities_reg)
     stats["timeline_records_remapped"] = _remap_timeline_ndjson(vault_path, keep_id, merge_id)
-    cmd_rebuild_timeline(vault_path, quiet=True)
+    rebuild_timeline(vault_path, quiet=True)
 
     existing_registry = (
         _read_json_or(registry_path, {}, catch=(json.JSONDecodeError,))
@@ -322,9 +337,12 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     # entity id, so they need no remap.
     stats["resolutions_remapped"] = resolutions.remap_entity(vault_path, merge_id, keep_id)
 
-    all_notes = {keep_note_path: (keep["name"], note_content),
-                 merge_note_path: (merge_name, stub_content),
-                 **other_notes}
+    log_data = merge_log.load(vault_path)
+    merge_log.mark_candidate_merged(log_data, keep_id, merge_id)
+    merge_log.record(vault_path, [log_entry], data=log_data)
+
+    all_notes = {p_: (n_, c_) for p_, n_, c_ in written}
+    all_notes[merge_note_path] = (merge_name, stub_content)
     for note_path, (name, content) in all_notes.items():
         try:
             from watchdog.pipeline.embed import add_note
@@ -348,13 +366,20 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str) -> dict:
     }
 
 
-def run(vault_path: Path, keep_id: str, merge_id: str) -> dict:
+def run(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict | None = None) -> dict:
     """`_run_unlocked` under the registry lock every registry writer takes (D258). It can run
-    from a Claude Code session or a second terminal while `watchdog bark` commits, and an
+    from a Claude Code session or a second terminal while post-processing (`bark`) commits, and an
     unlocked read-modify-write here could write back a stale `entities.json` over that commit."""
+    from watchdog.pipeline import history
     from watchdog.pipeline.write_vault import _registry_lock
     registry_dir = Path(vault_path) / ".watchdog" / "registry"
     if not registry_dir.is_dir():
-        return _run_unlocked(vault_path, keep_id, merge_id)
+        return _run_unlocked(vault_path, keep_id, merge_id, log_entry)
     with _registry_lock(registry_dir):
-        return _run_unlocked(vault_path, keep_id, merge_id)
+        ents = _read_json_or(registry_dir / "entities.json", {})
+        cause = {"kind": "merge", "keep": (ents.get(keep_id) or {}).get("name") or keep_id,
+                 "merged": (ents.get(merge_id) or {}).get("name") or merge_id,
+                 "by": "reporter" if log_entry is None else (log_entry.get("decided_by") or "rule")}
+        # A version of the vault's history (D286); inside a processing run it is the run's.
+        with history.recording(vault_path, cause):
+            return _run_unlocked(vault_path, keep_id, merge_id, log_entry)

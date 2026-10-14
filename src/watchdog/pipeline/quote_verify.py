@@ -12,6 +12,7 @@ import unicodedata
 
 _WS_RE = re.compile(r"\s+")
 _HYPHEN_BREAK_RE = re.compile(r"-\s*\n\s*")
+_TIMESTAMP_LEAD_RE = re.compile(r"^\[\d{1,2}:\d{2}:\d{2}\]\s*")
 _NON_WORD_RE = re.compile(r"[^\w\s]", re.UNICODE)
 _WORD_CHAR_RE = re.compile(r"\w", re.UNICODE)
 _SPACE_CHAR_RE = re.compile(r"\s", re.UNICODE)
@@ -255,18 +256,6 @@ def verify_quote(page_texts: dict[int, str], page: int | None, quote: str) -> di
     return {"verified": False}
 
 
-def _annotate(obj: dict, page_texts: dict[int, str]) -> None:
-    quote = (obj.get("quote") or "").strip()
-    if not quote:
-        return
-    result = verify_quote(page_texts, obj.get("page"), quote)
-    if result.get("verified") is False:
-        obj["quote_verified"] = False
-    elif result.get("found_page") is not None:
-        obj["quote_verified"] = True
-        obj["quote_found_page"] = result["found_page"]
-
-
 def _sentence_boundary_end(text: str, i: int) -> bool:
     """True if `text[i]` (one of `.!?`) ends a sentence: followed by whitespace or
     end-of-text, and the next non-whitespace character is an uppercase letter or end-of-text.
@@ -397,6 +386,8 @@ def _expand_sentence(text: str, a: int, b: int) -> str:
     end = _sentence_end(text, b)
     quote = _HYPHEN_BREAK_RE.sub("", text[start:end])
     quote = _WS_RE.sub(" ", quote).strip()
+    # A transcript line opens with its `[hh:mm:ss]` (D273): a place in the recording, not words.
+    quote = _TIMESTAMP_LEAD_RE.sub("", quote)
     return _cap(quote)
 
 
@@ -551,9 +542,8 @@ def _document_occurrence_count(page_texts: dict[int, str], locator: str) -> int:
 
 
 def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
-    """Resolve every ``document.key_facts[].quote_locator`` into a full ``quote`` (#529), and
-    verify any legacy ``quote`` (a pre-#529 extraction re-run through post-flight with no
-    locator). Mutates ``extraction`` in place; returns a WARN line only for an outcome that
+    """Resolve every ``document.key_facts[].quote_locator`` into a full ``quote`` (#529).
+    Mutates ``extraction`` in place; returns a WARN line only for an outcome that
     actually needs a reader's attention — a locator that couldn't be resolved at all, or a page
     citation left uncorrected because it's ambiguous. A page-spanning match, an ambiguous-but-
     resolved match (used the first occurrence), and a confidently auto-corrected page citation
@@ -567,50 +557,41 @@ def resolve_quotes(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     warnings: list[str] = []
     for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
         locator = (fact.get("quote_locator") or "").strip()
-        if locator:
-            result = resolve_quote(page_texts, fact.get("page"), locator)
-            if "quote" in result:
-                fact["quote"] = result["quote"]
-            if result.get("found_page") is not None:
-                fact["quote_found_page"] = result["found_page"]
-            if result.get("spans_pages"):
-                fact["quote_spans_pages"] = list(result["spans_pages"])
-
-            if result.get("verified") is False:
-                fact["quote_verified"] = False
-                warnings.append(
-                    f"document.key_facts[{i}].quote_locator not found on page {fact.get('page')} "
-                    f"(or adjacent pages) — flagged as unverified: {locator!r}"
-                )
-            elif result.get("spans_pages"):
-                pass  # resolved fine (joined two pages) — nothing for a reader to act on
-            elif result.get("ambiguous"):
-                pass  # resolved fine (used the first of several matches) — no reader action
-            elif result.get("found_page") is not None:
-                # A single match within the ±1 window — but not on the page the model cited
-                # (#560). Trusting `fact["page"]` to it needs more than "unique among the three
-                # pages resolve_quote checked": confirm it's unique across the WHOLE document
-                # before correcting the citation a reporter will actually see, rather than just
-                # the quote text resolve_quote already resolves regardless.
-                if _document_occurrence_count(page_texts, locator) == 1:
-                    fact["page"] = result["found_page"]  # confidently auto-corrected, no warning
-                else:
-                    warnings.append(
-                        f"document.key_facts[{i}].quote_locator was cited to page "
-                        f"{fact.get('page')} but only found on page {result['found_page']} — "
-                        f"the fact's page citation may be off by one, but the phrase also "
-                        f"recurs elsewhere in the document, so it was not auto-corrected: "
-                        f"{locator!r}"
-                    )
+        if not locator:
             continue
+        result = resolve_quote(page_texts, fact.get("page"), locator)
+        if "quote" in result:
+            fact["quote"] = result["quote"]
+        if result.get("found_page") is not None:
+            fact["quote_found_page"] = result["found_page"]
+        if result.get("spans_pages"):
+            fact["quote_spans_pages"] = list(result["spans_pages"])
 
-        quote = (fact.get("quote") or "").strip()
-        if quote:
-            _annotate(fact, page_texts)
-            if fact.get("quote_verified") is False:
+        if result.get("verified") is False:
+            fact["quote_verified"] = False
+            warnings.append(
+                f"document.key_facts[{i}].quote_locator not found on page {fact.get('page')} "
+                f"(or adjacent pages) — flagged as unverified: {locator!r}"
+            )
+        elif result.get("spans_pages"):
+            pass  # resolved fine (joined two pages) — nothing for a reader to act on
+        elif result.get("ambiguous"):
+            pass  # resolved fine (used the first of several matches) — no reader action
+        elif result.get("found_page") is not None:
+            # A single match within the ±1 window — but not on the page the model cited
+            # (#560). Trusting `fact["page"]` to it needs more than "unique among the three
+            # pages resolve_quote checked": confirm it's unique across the WHOLE document
+            # before correcting the citation a reporter will actually see, rather than just
+            # the quote text resolve_quote already resolves regardless.
+            if _document_occurrence_count(page_texts, locator) == 1:
+                fact["page"] = result["found_page"]  # confidently auto-corrected, no warning
+            else:
                 warnings.append(
-                    f"document.key_facts[{i}].quote not found on page {fact.get('page')} "
-                    f"(or adjacent pages) — flagged as unverified: {quote!r}"
+                    f"document.key_facts[{i}].quote_locator was cited to page "
+                    f"{fact.get('page')} but only found on page {result['found_page']} — "
+                    f"the fact's page citation may be off by one, but the phrase also "
+                    f"recurs elsewhere in the document, so it was not auto-corrected: "
+                    f"{locator!r}"
                 )
 
     return warnings

@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-# Note: "watchdog" is taken on PyPI (filesystem events library).
-# Package name is "watchdog-intel"; the CLI command is still "watchdog".
+# The engine the desktop app bundles and installs; it is not published on its own. ("watchdog" is
+# taken on PyPI by a filesystem-events library, hence "watchdog-intel".)
 name = "watchdog-intel"
 version = "1.0.3"
 description = "Investigative journalism document intelligence — drop records, find connections"
@@ -28,7 +28,6 @@ dependencies = [
     "pypdf>=4.0",
     "pyyaml>=6.0",
     "fastembed>=0.4",
-    "argcomplete>=3.0",
     "jsonschema>=4.0",
     "anthropic>=0.40",
     "httpx>=0.27",
@@ -36,7 +35,7 @@ dependencies = [
     # corporate TLS-inspecting proxy whose root CA the OS already trusts
     # doesn't fail cert verification on outbound OpenAI-compatible calls.
     "truststore>=0.9",
-    "claude-agent-sdk>=0.1",
+    "claude-agent-sdk>=0.2.164",   # Ask Claude sessions: `tools`, `settings`, `strict_mcp_config`, the in-process server (D299, D304)
     "nh3>=0.2",
     "ocrmac; sys_platform == 'darwin'",
     # Previously only transitive dependencies of docling; declared explicitly (#369) since
@@ -56,16 +55,18 @@ dependencies = [
     # fastembed above, so this adds ~5MB of packages plus a one-time ~1.1GB model download, not
     # the standalone PyTorch pull it looked like when it shipped as an optional extra.
     "gliner>=0.2",
+    # Local transcription of audio and video (D273). faster-whisper runs Whisper on CTranslate2;
+    # PyAV decodes with the FFmpeg libraries its wheels carry, so no system ffmpeg is needed.
+    # Wheels exist for macOS arm64/x64, Windows x64 and Linux x64; onnxruntime and tokenizers
+    # (which faster-whisper also needs) are already here through docling, fastembed and gliner.
+    "faster-whisper>=1.1",
+    "av>=12",
 ]
 
 [project.optional-dependencies]
-asr = ["docling[asr]"]          # Audio/video transcription — requires ffmpeg
 tesseract = ["tesserocr"]       # Faster Tesseract OCR; requires system Tesseract headers
-web = ["playwright>=1.49"]      # Rendered web capture for `watchdog research`/`fetch` — requires `playwright install chromium`
-dev = ["pytest>=8.0", "numpy>=1.24", "ruff>=0.15"]
-
-[project.scripts]
-watchdog = "watchdog.cli:main"
+web = ["playwright>=1.49"]      # Rendered web capture for web research — requires `playwright install chromium`
+dev = ["pytest>=8.0", "pytest-xdist>=3.5", "numpy>=1.24", "ruff>=0.15"]
 
 [project.urls]
 Homepage   = "https://github.com/tomcardoso/watchdog"
@@ -78,6 +79,9 @@ packages = ["src/watchdog"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# `slow` tests need a real downloaded model; run them with `pytest -m slow`.
+markers = ["slow: needs a downloaded local model; deselected by default"]
+addopts = "-m 'not slow'"
 
 [tool.ruff]
 target-version = "py310"
@@ -89,11 +93,4 @@ line-length = 100
 # (E501) and import sorting (I) are intentionally not enforced — this project does
 # not adopt an autoformatter or import reordering here, only correctness lint.
 select = ["E4", "E7", "E9", "F"]
-
-[tool.ruff.lint.per-file-ignores]
-# cli.py deliberately re-imports a wide surface (registry/vault/setup helpers)
-# purely so tests can reach them via `watchdog.cli.<name>` for monkeypatching —
-# the same rationale as the `# noqa` on `import sys` at the top of that file.
-# These are intentional re-exports, not dead imports, so F401 is exempt here.
-"src/watchdog/cli.py" = ["F401"]
 

@@ -1,4 +1,11 @@
 import functools
+import os
+
+# The desktop app runs Watchdog with folder-access enforcement on (see watchdog/access.py). Installing
+# the hook at import covers every Python process that runs Watchdog code, child processes included.
+if os.environ.get("WATCHDOG_ENFORCE_ACCESS") == "1":
+    from watchdog import access as _access
+    _access.install()
 
 
 @functools.lru_cache(maxsize=1)

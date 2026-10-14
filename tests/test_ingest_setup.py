@@ -29,7 +29,7 @@ def _write_usage_file(vault: Path, ts: str, input_tokens: int, cost_usd,
                       est_input_tokens: int | None = None, calls: list | None = None,
                       cache_read_tokens: int = 0, cache_write_tokens: int = 0,
                       output_tokens: int = 0) -> None:
-    reg = vault / ".watchdog" / "registry"
+    reg = vault / ".watchdog" / "registry" / "usage"
     reg.mkdir(parents=True, exist_ok=True)
     totals = {"input_tokens": input_tokens, "output_tokens": output_tokens,
               "cache_read_tokens": cache_read_tokens, "cache_write_tokens": cache_write_tokens,
@@ -46,7 +46,7 @@ def test_empty_queue_returns_total_zero(tmp_path):
     result = run(vault)
     assert result["total"] == 0
     assert result["lock_acquired"] is False
-    assert not (vault / ".watchdog" / "ingest-state.json").exists()
+    assert not (vault / ".watchdog" / "processing-state.json").exists()
 
 
 def test_force_lock_acquires_lock_despite_empty_queue(tmp_path):
@@ -56,17 +56,17 @@ def test_force_lock_acquires_lock_despite_empty_queue(tmp_path):
     result = run(vault, force_lock=True)
     assert result["total"] == 0
     assert result["lock_acquired"] is True
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     assert lock_file.exists()
 
 
 def test_force_lock_still_blocked_by_a_fresh_existing_lock(tmp_path):
     vault = _make_vault(tmp_path)
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text(f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
     result = run(vault, force_lock=True)
     assert "error" in result
-    assert "already running" in result["error"]
+    assert "already being added" in result["error"]
 
 
 def test_queued_files_acquires_lock_and_writes_state(tmp_path):
@@ -82,13 +82,13 @@ def test_queued_files_acquires_lock_and_writes_state(tmp_path):
     assert "batch_start" in result
     assert "started_at" in result
 
-    state_file = vault / ".watchdog" / "ingest-state.json"
+    state_file = vault / ".watchdog" / "processing-state.json"
     assert state_file.exists()
     assert json.loads(state_file.read_text()) == result
 
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     assert lock_file.exists()
-    assert "pid: cli" in lock_file.read_text()
+    assert "label: processing" in lock_file.read_text()
 
 
 def test_queue_file_paths_are_vault_relative(tmp_path):
@@ -147,13 +147,13 @@ def test_queue_files_filename_falls_back_to_sha256(tmp_path):
 
 def test_fresh_lock_blocks_ingest(tmp_path):
     vault = _make_vault(tmp_path)
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text(f"pid: cli\nstarted_at: {datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}\n")
 
     result = run(vault)
 
     assert "error" in result
-    assert "already running" in result["error"]
+    assert "already being added" in result["error"]
 
 
 def test_stale_lock_is_replaced(tmp_path):
@@ -163,27 +163,27 @@ def test_stale_lock_is_replaced(tmp_path):
     stale_ts = datetime.fromtimestamp(
         time.time() - STALE_SECONDS - 60, tz=timezone.utc
     ).strftime("%Y-%m-%dT%H:%M:%SZ")
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text(f"pid: old\nstarted_at: {stale_ts}\n")
 
     result = run(vault)
 
     assert result["lock_acquired"] is True
-    assert "pid: cli" in lock_file.read_text()
+    assert "label: processing" in lock_file.read_text()
 
 
 def test_malformed_lock_is_refused_not_deleted(tmp_path):
     """A lock with no parseable started_at is of unknown age. The old check-then-unlink deleted
-    it regardless and proceeded; now ingest refuses and leaves it for `watchdog unlock` (#257)."""
+    it regardless and proceeded; now ingest refuses and leaves it to be cleared from the app (#257)."""
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
-    lock_file = vault / ".watchdog" / "registry" / ".ingest-lock"
+    lock_file = vault / ".watchdog" / "registry" / ".processing-lock"
     lock_file.write_text("pid: mystery\n")   # no started_at line
 
     result = run(vault)
 
     assert "error" in result
-    assert "already running" in result["error"]
+    assert "already being added" in result["error"]
     assert lock_file.read_text() == "pid: mystery\n"   # preserved, not clobbered
 
 
@@ -194,7 +194,7 @@ def test_extractor_model_written_to_state(tmp_path):
     result = run(vault, extractor_model="haiku")
 
     assert result["extractor_model"] == "haiku"
-    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
+    state = json.loads((vault / ".watchdog" / "processing-state.json").read_text())
     assert state["extractor_model"] == "haiku"
 
 
@@ -211,11 +211,11 @@ def test_finalizer_model_written_to_state(tmp_path):
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
 
-    result = run(vault, finalizer_model="opus")
+    result = run(vault, finalizer_model="sonnet-5.5")
 
-    assert result["finalizer_model"] == "opus"
-    state = json.loads((vault / ".watchdog" / "ingest-state.json").read_text())
-    assert state["finalizer_model"] == "opus"
+    assert result["finalizer_model"] == "sonnet-5.5"
+    state = json.loads((vault / ".watchdog" / "processing-state.json").read_text())
+    assert state["finalizer_model"] == "sonnet-5.5"
 
 
 def test_finalizer_model_defaults_to_the_shared_default(tmp_path):
@@ -278,7 +278,7 @@ def test_queue_files_include_est_tokens(tmp_path):
 
 def test_empty_queue_cleans_up_stale_state_file(tmp_path):
     vault = _make_vault(tmp_path)
-    state_file = vault / ".watchdog" / "ingest-state.json"
+    state_file = vault / ".watchdog" / "processing-state.json"
     state_file.write_text('{"stale": true}')
 
     result = run(vault)
@@ -537,7 +537,7 @@ def test_real_input_tokens_sums_cache_fields_only_for_anthropic(tmp_path):
 def test_model_tokenizer_calibration_no_history_returns_none(tmp_path):
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) is None
 
 
 def test_model_tokenizer_calibration_below_min_records_returns_none(tmp_path):
@@ -546,12 +546,12 @@ def test_model_tokenizer_calibration_below_min_records_returns_none(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [_record(model_id, None, "extract", 1000, 1300),
              _record(model_id, None, "extract-section", 500, 650)]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) is None
 
 
 def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
@@ -561,7 +561,7 @@ def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [
         _record(model_id, None, "extract", 1000, 1300),
         _record(model_id, None, "extract-section", 2000, 2600),
@@ -570,7 +570,7 @@ def test_model_tokenizer_calibration_pools_matching_records(tmp_path):
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
     # sum(actual)/sum(estimated) = (1300+2600+650) / (1000+2000+500) = 4550/3500 = 1.3
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) == pytest.approx(1.3)
 
 
 def test_model_tokenizer_calibration_skips_pre_617_records(tmp_path):
@@ -583,14 +583,14 @@ def test_model_tokenizer_calibration_skips_pre_617_records(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     legacy = [{"model": model_id, "backend": None, "task": "extract",
                "est_input_tokens": est, "input_tokens": act,
                "cache_read_tokens": 0, "cache_write_tokens": 0}
               for est, act in ((1000, 1300), (2000, 2600), (500, 650))]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=legacy)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) is None
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) is None
 
 
 def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_path):
@@ -599,7 +599,7 @@ def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_p
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [
         _record(model_id, None, "extract", 1000, 1300),
         _record(model_id, None, "extract-section", 2000, 2600),
@@ -610,7 +610,7 @@ def test_model_tokenizer_calibration_ignores_non_matching_model_or_backend(tmp_p
     ]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) == pytest.approx(1.3)
 
 
 def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
@@ -620,7 +620,7 @@ def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     calls = [
         _record(model_id, None, "extract", 1000, 1300),
         _record(model_id, None, "extract-section", 2000, 2600),
@@ -629,7 +629,7 @@ def test_model_tokenizer_calibration_ignores_non_extract_tasks(tmp_path):
     ]
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None) == pytest.approx(1.3)
 
 
 def test_model_tokenizer_calibration_stops_at_max_records(tmp_path):
@@ -638,14 +638,14 @@ def test_model_tokenizer_calibration_stops_at_max_records(tmp_path):
     from watchdog.model_catalog import resolve_model_id
     from watchdog.pipeline.ingest_setup import _model_tokenizer_calibration
     vault = _make_vault(tmp_path)
-    model_id = resolve_model_id("sonnet-5")
+    model_id = resolve_model_id("sonnet-5.5")
     # 4 identical 1.3-ratio records, then a 5th wildly different one — with max_records=4 the
     # 5th must never be counted.
     calls = [_record(model_id, None, "extract", 1000, 1300) for _ in range(4)]
     calls.append(_record(model_id, None, "extract", 1000, 100000))
     _write_usage_file(vault, "20260101T000000Z", input_tokens=0, cost_usd=None, calls=calls)
 
-    assert _model_tokenizer_calibration(vault, "sonnet-5", None, max_records=4) == pytest.approx(1.3)
+    assert _model_tokenizer_calibration(vault, "sonnet-5.5", None, max_records=4) == pytest.approx(1.3)
 
 
 # ── finalize --estimate (#417) ──────────────────────────────────────────────────
@@ -803,8 +803,8 @@ def test_cost_estimate_all_models_ignores_runs_with_no_output_tokens(tmp_path, m
 def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path, monkeypatch):
     # Every catalogued model's measured tokenizer_ratio (#574, remeasured #617) is applied to its
     # projected input AND output tokens, so each is priced against its own real token count for
-    # the same text. The correction runs both directions: Sonnet 5's 1.28 prices it up, Sonnet
-    # 4.6's 0.93 prices it down, and only a model with no declared ratio is projected as-is.
+    # the same text. The correction runs both directions: Sonnet 5.5's 1.28 prices it up, Gemini's
+    # 0.91 prices it down, and only a model with no declared ratio is projected as-is.
     from watchdog.model_catalog import all_models
     _flat_prices(monkeypatch)
     vault = _make_vault(tmp_path)
@@ -821,9 +821,9 @@ def test_cost_estimate_all_models_scales_by_each_models_tokenizer_ratio(tmp_path
         scaled_out = scaled_in * 0.5   # output_ratio (500/1000), applied after scaling
         return scaled_in * m["input"] + scaled_out * m["output"]
 
-    assert by_id["claude-sonnet-5"] == pytest.approx(projected("claude-sonnet-5", 1.28))
-    assert by_id["claude-sonnet-4-6"] == pytest.approx(projected("claude-sonnet-4-6", 0.93))
-    assert by_id["gemini-3.7-flash"] == pytest.approx(projected("gemini-3.7-flash", 0.91))
+    assert by_id["claude-sonnet-5-5"] == pytest.approx(projected("claude-sonnet-5-5", 1.28))
+    assert by_id["claude-haiku-5-5"] == pytest.approx(projected("claude-haiku-5-5", 1.21))
+    assert by_id["gemini-3.8-flash"] == pytest.approx(projected("gemini-3.8-flash", 0.91))
     assert by_id["gpt-6-luna"] == pytest.approx(projected("gpt-6-luna", 0.80))
     assert by_id["deepseek-flash"] == pytest.approx(projected("deepseek-flash", 0.81))
 
@@ -846,9 +846,9 @@ def test_cost_estimate_all_models_prices_a_scheduled_model_at_the_current_rate(t
     assert peak["deepseek-flash"]["cost"] == pytest.approx(
         2 * off_peak["deepseek-flash"]["cost"])
     assert peak["deepseek-flash"]["price_multiplier"] == 2.0
-    assert peak["claude-sonnet-4-6"]["cost"] == pytest.approx(
-        off_peak["claude-sonnet-4-6"]["cost"])          # a flat-priced model never moves
-    assert peak["claude-sonnet-4-6"]["price_multiplier"] == 1.0
+    assert peak["claude-sonnet-5-5"]["cost"] == pytest.approx(
+        off_peak["claude-sonnet-5-5"]["cost"])          # a flat-priced model never moves
+    assert peak["claude-sonnet-5-5"]["price_multiplier"] == 1.0
 
 
 def test_finalize_cost_estimate_all_models_no_standalone_history_returns_empty(tmp_path):

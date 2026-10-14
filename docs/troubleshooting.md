@@ -1,207 +1,195 @@
 # Troubleshooting
 
-When something goes wrong, find your symptom below and follow the fix. Every command here runs in the terminal. If your problem isn't listed, see [Getting help](#getting-help) at the bottom.
+When something goes wrong, find your symptom below and follow the fix. Everything here is done in the Watchdog window. If your problem is not listed, see [Getting help](#getting-help) at the bottom.
 
-## watchdog: command not found
+## Watchdog could not start its engine
 
-The install didn't add `watchdog` to your path (the list of places your terminal looks for programs). Fix it with:
+Watchdog is built on a program it installs for itself, called the engine. If it does not start, the app shows **Watchdog could not start its engine**, with **What happened** to expand for details.
 
-```bash
-pipx ensurepath
-```
+1. Choose **Try again**.
+2. If it fails again, choose **Repair the engine**. This reinstalls the engine. Your investigations, settings and downloaded models are not touched.
 
-If you installed with uv instead of pipx, the equivalent is:
+You can also repair from inside the app: **Settings → Setup → Repair or reinstall the engine**.
 
-```bash
-uv tool update-shell
-```
+## The engine installation stops or fails
 
-Then close and reopen your terminal.
+Setup, or a repair, shows **The installation did not finish** with the reason. The usual cause is the connection: a VPN, a firewall or a flaky network can block the downloads. Another is running out of disk space; setup needs about 7 GB free, and the engine's own update after an app update about 1 GB.
 
-## "Watchdog isn't set up yet"
+Choose **Try again**. Whatever was already downloaded is kept, and installation resumes where it stopped. **Start over** begins from scratch. **Show details** displays the installer's log, which is worth copying into an issue if the problem persists.
 
-Watchdog is installed but hasn't been through first-time setup. Run:
+If setup finishes with **Some optional pieces could not be downloaded**, Watchdog still works. It fetches each missing piece the first time it is needed. To try again now, open **Settings → Setup** and choose **Download missing models**.
 
-```bash
-watchdog setup
-```
+If the message says the app cannot install the engine because the installer files are missing, download the app again from the [releases page](https://github.com/tomcardoso/watchdog/releases/tag/app-beta).
 
-## qpdf, Ghostscript, or Tesseract missing during setup
+## Add documents is turned off, or "Watchdog is still setting up"
 
-Setup refuses to continue until its required tools are installed. Install the missing tool for your platform — the exact commands are in [Step 4 of the install guide](install.md#step-4-install-the-prerequisites) — then run setup again:
+Right after Watchdog is installed or updated, it finishes downloading its document and search libraries and its local models in the background. Until that is done, adding documents is turned off and says "Watchdog is still setting up". Everything else works. The **Finishing setup…** bar at the bottom of the sidebar shows how far along it is; the full download is about 4.5 GB, so on a slow connection it can take a while.
 
-```bash
-watchdog setup
-```
+- **The bar is still moving.** Wait for it to finish. You can keep working in the meantime.
+- **The bar says "Setup did not finish".** The download stopped, usually because the connection dropped. Choose **Retry**. Whatever was already downloaded is kept. If it keeps failing, open **Settings → Setup**, choose **Show details** and look at the last lines of the log; the causes are the same as in [The engine installation stops or fails](#the-engine-installation-stops-or-fails).
+- **You quit Watchdog part-way.** Nothing is lost. Setup continues by itself the next time Watchdog opens.
+- **Search shows only exact matches.** Searching by meaning needs the search models, which arrive with the rest of setup. Results ranked by meaning return when it finishes.
 
-## A file landed in _INCOMING/_FAILED/
+## macOS or Windows will not open the app
 
-The file couldn't be processed during `watchdog chew`. It sits in `_INCOMING/_FAILED/` alongside an explanation of what went wrong. Common causes:
+On the first launch, your computer may say it cannot verify the developer of Watchdog. Follow the steps in [the install guide](install.md#if-your-computer-says-it-cannot-verify-the-app): on a Mac, **System Settings → Privacy & Security → Open Anyway**; on Windows, **More info → Run anyway**.
+
+## "Allow Watchdog to work in this investigation"
+
+Watchdog only changes files in folders you have allowed. When you open an investigation in a folder that is not on the list, the app shows **Allow Watchdog to work in this investigation** instead of the investigation's screens. This happens after you move an investigation to a different folder outside the app, or remove access to the folder that holds it.
+
+Choose **Allow access…** and confirm. If you would rather not, choose **All investigations**; nothing is changed.
+
+## Watchdog needs permission to use a folder
+
+When you choose a folder for investigations in setup or in **New investigation**, Watchdog asks permission to work in it. If you decline, it says it needs your permission and asks you to choose another folder or allow this one. A move or an export to a folder you have not allowed asks in the same way.
+
+To see or change what is allowed, open **Settings → Folder access**. **Allow a folder…** adds one, and the trash button on a row removes it. Removing access deletes nothing; investigations inside that folder ask for access again the next time they are opened. See [Folder access](app.md#folder-access).
+
+## Claude is not signed in
+
+Document reading, **Ask Claude** and **Web research** each need a way to reach a model. If a run says no model sign-in is set up, or **Ask Claude** says Claude may not be signed in, open **Settings → Models & keys** and sign in again, or paste an API key. The sign-in opens in your browser and the app waits for you to finish; if the browser did not open, the app shows a link to the sign-in page.
+
+**Ask Claude** and **Web research** always use Claude, even if the document-reading step is set to another provider, so they need a Claude sign-in either way. The app's sign-in check is approximate, so a question may still work; if one fails to start, this is the usual reason.
+
+## The provider rejected the key, or the account is out of credit
+
+If a run stops with "the provider refused the credentials or account", every document is still queued; nothing was set aside as failed. The model provider turned the request down: the API key is wrong, revoked, or lacks access to the model, or the account has run out of credit or quota. The message includes the provider's own explanation.
+
+Check the key in **Settings → Models & keys**, or top up the account on the provider's site, then add the documents again. The run picks up what is still queued.
+
+## "The key this investigation bills isn't on this computer"
+
+The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](app.md#billing).
+
+## macOS asks whether Watchdog may use its "Safe Storage" in your Keychain
+
+Watchdog encrypts your API keys with a key kept in your login Keychain, named "Watchdog Safe Storage". macOS lets the app that created that item read it without asking. It asks when a differently signed copy of the app tries: a test build, a copy built from source, or a release signed by a different developer. Choose **Always Allow** if you trust the copy you are running; choose **Deny** and Watchdog can't read your stored keys, so anything that needs one stops without sending anything. Updates to Watchdog's engine never cause this prompt; only the app itself reads the Keychain.
+
+If you denied it by mistake, open Keychain Access, find "Watchdog Safe Storage", add Watchdog under **Access Control**, then restart Watchdog.
+
+## "Watchdog couldn't read the key from this computer's secure storage"
+
+The key was encrypted under another user account or on another computer, or the system's secure storage was reset (on Linux, the keyring may not be running or unlocked). **Settings → Models & keys** marks such keys "can't be read". Replace each one with the key itself, or delete it. On Linux, check that your keyring is unlocked, then restart Watchdog.
+
+## A file landed in incoming/failed/
+
+The file could not be read when Watchdog converted it to text. It sits in `incoming/failed/` alongside an explanation of what went wrong. On the **Documents** screen, the strip above the list shows failed files. Common causes:
 
 - **Password-protected PDF** — remove the password and try again.
 - **Corrupted file** — try re-downloading or re-exporting it.
 - **Unsupported format** — check the [supported file types](vault.md#supported-file-types).
 
-To retry, fix the problem, move the file from `_INCOMING/_FAILED/` back into `_INCOMING/` (in your file manager, or with `mv`), then run:
+To retry, fix the problem, move the file from `incoming/failed/` back into `incoming/` (in your file manager; **File → Show in Folder** opens the investigation's folder), then choose **Add documents** again.
 
-```bash
-watchdog chew
-```
+## A recording failed or came out wrong
 
-## A file landed in _INCOMING/_SKIPPED/
+Recordings are transcribed on your computer during pre-processing. What goes wrong, and what to do:
+
+- **"The transcription model could not be downloaded."** The first recording you add downloads the speech-recognition model (1.5 GB by default), and the connection failed. Check the connection, then add the file again, or download the model from **Settings → Setup** with **Download now** first.
+- **"This video has no sound track."** The file has pictures but no audio, so there is nothing to transcribe. If it should have sound, export it again from wherever it came from.
+- **"This file could not be read as audio or video."** The file is damaged, or is not the format its name says. Try opening it in another player; if that also fails, get a fresh copy.
+- **It takes a long time.** Transcription runs on your computer and is the slowest step for a long recording: with the default model, an hour of audio took 20 to 35 minutes on a four-core test computer. Recordings are transcribed one at a time, and the run shows how far it has got ("Transcribing hearing.mp4, 12:05 of 1:02:05"). A smaller model in [Settings](configuration.md#transcription) is faster but makes more mistakes.
+- **The transcript is in the wrong language, or is nonsense.** Language detection listens to the start of the recording, and music, silence or a greeting in another language can mislead it. Set **Transcription language** in [Settings](configuration.md#transcription), then add the recording again.
+- **Names or figures are wrong.** Speech recognition mishears uncommon names and numbers; this is the normal failure, not a fault. Click the timestamp beside the passage to hear it, and correct the fact in your own notes. A larger model makes fewer of these mistakes.
+- **The player says the format can't be played.** The transcript is still there. Some formats (`.avi`, and some `.mkv` files) cannot be played inside Watchdog; use **Open original** to play the recording in another app.
+
+## A file landed in incoming/skipped/
 
 Two things send a file here, and neither is an error:
 
-- **It's an exact duplicate.** Watchdog fingerprints every document by its content, so a file that is byte-identical to one already ingested — even under a different name — is set aside rather than processed twice. Nothing to do.
-- **No text was found.** Chewing found nothing readable in the file, even after OCR. Open the original and check it's legible; a very poor scan can produce no text at all.
+- **It is an exact duplicate.** Watchdog fingerprints every document by its content, so a file that is byte-identical to one already added, even under a different name, is set aside rather than processed twice. Nothing to do.
+- **No text was found.** Watchdog found nothing readable in the file, even after OCR. Open the original and check it is legible; a very poor scan can produce no text at all. For a recording, it means no speech was heard: check that it plays with sound.
 
-## A document failed during ingest
+## A document failed during a run
 
-A document whose extraction fails is logged to `.watchdog/registry/ingest.log` and set aside in `.watchdog/queue/_failed/` — the rest of the batch still completes. To retry, run these from inside the vault directory:
+A document whose extraction fails is logged and set aside, and the rest of the batch still completes. On the **Documents** screen, the strip above the list shows the failed documents with two buttons. **Retry** puts them back and runs them again. **Requeue** moves them back into the queue without running them. The Overview also shows failed documents with a **Retry** button, and **Activity → Maintenance → Requeue failed documents** does the same as Requeue.
 
-```bash
-watchdog requeue
-watchdog dig
-```
-
-`watchdog requeue` moves everything in `queue/_failed/` back into the queue.
-
-You don't have to remember to check: a bare `watchdog dig` with nothing new to read notices a document waiting in `queue/_failed/` and offers to requeue and retry it right there, instead of just reporting an empty queue. `watchdog dig --estimate` mentions it too, without moving anything (an estimate never changes what's on disk). The same quarantine notice appears if a document needs attention when `watchdog bark`'s wrap-up (described below) finishes or is interrupted.
-
-## The provider rejected the key, or the account is out of credit
-
-If a run stops with "the provider refused the credentials or account", every document is still queued — nothing was set aside in `queue/_failed/`. The model provider turned the request down: the API key is wrong, revoked, or lacks access to the model, or the account has run out of credit or quota. The message includes the provider's own explanation.
-
-Check the key with `watchdog settings auth`, or top up the account on the provider's site, then run `watchdog dig` again. A run that stops this way exits with code `1`, not `2`, because re-running it unchanged would fail the same way.
+The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab.
 
 ## Hitting rate limits
 
-A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can burn through that budget even when `extract_concurrency` looks conservative, since one document slot's token cost can differ from another's by an order of magnitude.
+A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can use up that budget even when the number of documents at once looks modest, since one document's token cost can differ from another's by an order of magnitude.
 
-`watchdog dig` already holds new documents back on its own once it's close to your provider's real limit, discovered automatically from the provider's own responses — this works on the claude-api, OpenAI, DeepSeek, Gemini, local, and OpenRouter routes with nothing to configure, and often avoids a rate limit stop entirely. **Claude subscription auth is the one exception**: it never reports this number, so on that path this automatic backing-off never engages, and lowering concurrency (below) is still the fix.
+Watchdog already holds new documents back on its own once it is close to your provider's real limit, discovered automatically from the provider's own responses. This works with the Claude API, OpenAI, DeepSeek, Gemini, local and OpenRouter routes, with nothing to configure. **Claude subscription sign-in is the one exception**: it never reports this number, so on that route the automatic backing-off does not engage, and lowering concurrency is the fix.
 
-Two levers help when a rate limit stops a run anyway:
+Two things help when a rate limit stops a run:
 
-Lower how many documents are extracted at once (the default is 20):
+- **Lower how many documents are read at once.** In **Add documents**, open **Options** and lower **Documents at once** for that run. To change it permanently, change the concurrency setting in **Settings**; see [Configuration](configuration.md) for `extract_concurrency` and its defaults.
+- **Wait out the limit.** In **Options**, switch on **Wait out rate limits**. Instead of stopping, the run sleeps until the limit resets and resumes by itself, repeating until the queue is done. This suits an overnight run.
 
-```bash
-watchdog dig --concurrency 2
-```
+Without it, the run stops cleanly on a rate limit. Nothing is lost: every document already processed is saved, so adding documents again picks up only what is still queued.
 
-Or set it permanently:
+On Claude subscription sign-in you can also set a manual token budget. Check the Claude Console's rate-limits page for your account's tokens-per-minute figure, and see `extract_token_budget` in [Configuration](configuration.md).
 
-```bash
-watchdog settings extract_concurrency 2
-```
+## A step routed to a local model fails immediately
 
-On Claude subscription auth specifically, you can also set a manual token budget — check the Claude Console's rate-limits page for your account's tokens-per-minute figure:
+A message that the local backend needs a base URL means the address of your model server has not been set. Open **Settings → Models & keys**, choose the local provider, and enter the server's address (for example `http://localhost:11434/v1`).
 
-```bash
-watchdog settings extract_token_budget 40000
-```
+A connection error (refused, timed out) means the server at that address is not running, is not reachable from this computer, or the port is wrong. Check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM and so on) is actually up and listening before trying again. Most local runners need no API key; if yours does, add one in **Models & keys**. See [Configuration](configuration.md#local-and-self-hosted-models).
 
-When a rate limit stops a run, the notice reports the tokens-per-minute this run was actually sustaining, plus (when the provider sends it) how many tokens it had left before the stop — real numbers to size a lower `extract_concurrency` against, instead of guessing.
+## A run was interrupted after extraction
 
-For an unattended run — overnight, say — add `--wait`. Instead of stopping when it hits a limit, dig sleeps until the limit resets and resumes on its own, repeating until the whole queue is done:
+A run has two stages: reading each document with a model (the slow, paid part), then writing everything to the investigation in one pass and producing the briefing. If the second stage never got a chance to run — no briefing appeared, entity summaries look unfinished, or a message said nothing was written yet — the batch can be completed without re-reading anything.
 
-```bash
-watchdog dig --wait
-```
+The Overview shows **A batch is waiting to be finished** with a **Finish** button. Choose it, or add documents again, and the app finishes the batch. **Activity → Maintenance → Post-processing** runs only this wrap-up step. It is safe to run more than once: if it hits a rate limit part-way, nothing is written at all, and you run it again once the limit resets. Nothing in an unfinished batch is ever discarded.
 
-Without `--wait`, dig stops cleanly on a rate limit. Nothing is lost: every document processed so far is saved to a durable working file, so re-running `watchdog dig` picks up only what's still queued.
+## The computer went to sleep during a run
 
-## A stage routed to `local` fails immediately
+While a run is going, Watchdog asks the computer not to sleep, because a sleep partway through a call stops whatever was in flight. This uses the system's own facilities on a Mac and on Linux systems that have systemd. On other Linux systems and on Windows, there is no equivalent to fall back to, so a run there is not protected against sleep; keep the computer awake until it finishes. If a run is cut off, add the documents again and it resumes.
 
-`the local backend needs a base URL` means `local_base_url` isn't set yet — point it at your model server:
+## Documents can't be added because a run is in progress
 
-```bash
-watchdog settings local_base_url http://localhost:11434/v1
-```
+While documents are being added, Watchdog keeps a small lock file in the investigation so that a second run cannot start on the same files. There is nothing to release by hand: the lock clears itself.
 
-A connection error (refused, timed out) means the server named in `local_base_url` isn't running, isn't reachable from this machine, or the port is wrong — check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM, ...) is actually up and listening on that address before retrying. Most local runners don't need an API key at all; if yours does (some gateways in front of a local model do), add one with `watchdog settings auth`. See [Configuration](configuration.md#local-and-self-hosted-models).
+- **Documents are being added.** A run on this computer is working. The **Jobs** tab in **Activity** shows it if the app started it. You can add more documents once it ends, or stop it there.
+- **A run stopped before it finished.** If a run ends without finishing (the app or the computer shut down, or the run crashed), the next time the app looks at the investigation it sees that the run is gone, removes its lock at once and says so in one line on the **Overview** and in the strip above the **Documents** list. Documents the run had finished are kept. Add documents again to finish the rest.
+- **Being added on another computer.** The investigation's folder is shared, for instance through a sync service, and a run on another computer holds it. Watchdog cannot see that computer's programs, so it goes by time instead: a run updates its lock every two minutes, and a lock that has not been updated for 15 minutes is treated as left behind and cleared. If the other computer was shut down mid-run, this computer can add documents about 15 minutes later. Don't run on two computers at once: a sync service can deliver one computer's changes after the other has written its own.
 
-## Ingest interrupted after extraction
+## A note was deleted or edited by mistake
 
-Ingest has two stages: `watchdog dig` reads each document (the slow, paid part); `watchdog bark` then writes everything to your vault in one pass and produces the briefing. If `bark` never got a chance to run — no briefing appeared, entity summaries look unfinished, or you saw a message that nothing was written yet — the batch can be completed without re-reading anything:
+Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History](app.md#history).
 
-```bash
-watchdog bark
-```
+## A merge joined two different people or companies
 
-This runs just the wrap-up: it writes the documents to the vault, reconciles duplicate entities, and produces the briefing. It is safe to run more than once — if the wrap-up itself hits a rate limit partway through (for example while reconciling entities), nothing is written to your vault at all, and you simply run `watchdog bark` again once the limit resets. It picks up from the saved working files each time. Re-running `watchdog dig` or `watchdog add` also notices an unfinished batch: `dig` leaves it for `bark`, and `add` finishes it — see the [command reference](commands.md). Nothing in an unfinished batch is ever discarded.
+Open **Review → Merges**, find the merge under **Recent merges**, and choose **Undo merge**. If the button is unavailable, the reason is shown beside it; see [Merges](investigating.md#merges).
 
-## Ingest prevents the machine from sleeping during a run
+## Updates fail
 
-`watchdog dig`, `watchdog bark` (and the deprecated `watchdog ingest`) prevent the machine from sleeping for as long as they're running — a sleep partway through a call kills whatever was in flight outright, unlike a network blip a retry can absorb. This covers both extraction (`dig`) and post-ingest (`bark`'s entity reconciliation, synthesis, timeline, briefing). On macOS this uses the system's own `caffeinate` utility; on Linux, `systemd-inhibit` (present wherever systemd is, which is most mainstream distros). Neither needs setup, and both release the machine the moment the run ends or is interrupted. On a Linux system without systemd, or on Windows, there's no equivalent to fall back to, so a run there is not protected against the machine sleeping.
+If the **Update available** button shows **The update could not be downloaded. Try again in a moment**, check your connection and choose it again. If **Restart to update** says Watchdog could not restart into the update, quit Watchdog completely and open it again to finish updating.
 
-## A lock is stuck
+**Check for Updates…** (the Watchdog menu on a Mac, the **Help** menu on Windows and Linux) says "Watchdog could not check for updates" when it cannot reach GitHub. Try again later, and check for a VPN or firewall.
 
-If a chew or ingest was interrupted, a lock file can be left behind that blocks the next run. Remove it with:
+If updating keeps failing, download the newest installer from the [releases page](https://github.com/tomcardoso/watchdog/releases/tag/app-beta) and install it over the old one; your investigations and settings are kept. An update that has installed but whose engine did not follow shows **Updating the Watchdog engine** on the next start. If that fails, use **Try again** or **Repair the engine**, as above.
 
-```bash
-watchdog unlock <name>
-```
+## Skills look outdated after an update
 
-A running chew, `dig` or `bark` refreshes its lock every five minutes, however long it runs, so a lock only ages once the run that held it has stopped. If the lock is recent (under 30 minutes old), Watchdog warns you that the operation may still be running. Once you're sure it isn't, force the removal:
+The record skills — the document-type knowledge — update with the app. But each investigation also has its own copy of Claude's setup (the commands and instructions Claude uses in that investigation), and that copy keeps its old version. Open **Activity → Maintenance** and choose **Refresh Claude setup** for the investigation. It rewrites the shortcut commands, Watchdog's part of Claude's instructions and Claude's settings for that investigation. Anything you added to the instructions after Watchdog's part is kept; changes made to Claude's settings file are replaced.
 
-```bash
-watchdog unlock <name> --force
-```
+## An investigation moved or is missing
 
-You can omit the name when running from inside the vault directory.
+If you reorganized your files and Watchdog can no longer find an investigation, the **Investigations** list marks it and says what is wrong. Open its **⋯** menu and choose **Move to another folder…**, then pick the folder that now holds it, which points Watchdog at the new location. If the investigation's folder exists but Watchdog does not list it at all, choose **Add existing folder…** on the Investigations screen. **Settings → Check vaults** runs a health check on every investigation and lists any whose folder is missing or broken.
 
-## Skills look outdated after an upgrade
-
-When you upgrade Watchdog (`pipx upgrade watchdog-intel`, or `uv tool upgrade watchdog-intel` if you installed with uv), the record skills — the document-type knowledge — update automatically, because they are read straight from the package. But each vault's Claude Code command skills (the `/watchdog-*` commands) are copied into the vault and keep their old versions. Refresh them from inside the vault:
-
-```bash
-cd ~/Investigations/your-investigation
-watchdog settings refresh-skills
-```
-
-The same command also updates the vault's Claude Code settings, its session instructions (`.claude/CLAUDE.md`) and its dashboard and graph views to match the new version. If the session instructions predate the current format, the old copy is saved as `.claude/CLAUDE.md.before-refresh`.
-
-## A vault moved or is missing
-
-If you've reorganized your files and Watchdog can no longer find a vault, start with a health check of every registered investigation:
-
-```bash
-watchdog settings doctor
-```
-
-It lists any vault whose folder is missing or broken and suggests the fix. To point the registry at a vault's new location — or to have Watchdog move the folder for you if you haven't moved it yet:
-
-```bash
-watchdog projects move <name> /new/path/to/parent-folder
-```
-
-If a vault folder exists on disk but Watchdog doesn't know about it at all, register it:
-
-```bash
-watchdog projects register /path/to/the/vault-folder
-```
+When you point Watchdog at a different folder, it asks permission to work there; see [Folder access](app.md#folder-access).
 
 ## Obsidian says "Vault not found"
 
-You ran `watchdog open <name>` and Obsidian popped up a "Vault not found" error. This happens because Obsidian only reads its list of vaults when it starts up, so a vault created while Obsidian was already running is invisible to it until you restart.
+You chose **Open in Obsidian** and Obsidian showed a "Vault not found" error. Obsidian only reads its list of vaults when it starts, so an investigation created while Obsidian was already running is invisible to it until you restart it.
 
-Quit Obsidian completely (not just close the window — use **Quit** so no Obsidian process is left running), then run the command again:
-
-```bash
-watchdog open <name>
-```
-
-Newer versions of Watchdog detect this situation and tell you to restart Obsidian instead of showing the confusing error.
+Quit Obsidian completely (use **Quit**, not just close the window), then choose **Open in Obsidian** again.
 
 ## Getting help
 
-If something isn't working, open an issue at [github.com/tomcardoso/watchdog/issues](https://github.com/tomcardoso/watchdog/issues). Include:
+The app keeps a log of what it does. Open **Help → Show Log File** to find it; it is worth attaching when you report a problem. The full output of any run is under **Activity**.
 
-- What you typed or did
+If something is not working, open an issue at [github.com/tomcardoso/watchdog/issues](https://github.com/tomcardoso/watchdog/issues) (**Help → Report an Issue** opens the page). Include:
+
+- What you did
 - What you expected to happen
 - What actually happened — copy and paste any error messages
-- Your operating system and version
+- Your operating system and version, and the Watchdog version (shown at the bottom of the sidebar and under **Settings → About**)
+- The log file, if you can share it. Check it first: it can contain file names and paths from your investigations.
 
 ## Where next
 
-The [command reference](commands.md) documents every command and flag mentioned here. For settings such as concurrency and models, see [Configuration](configuration.md).
+[The desktop app](app.md) describes every screen. For settings such as concurrency and models, see [Configuration](configuration.md).

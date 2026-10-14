@@ -66,7 +66,7 @@ This skill is loaded by Watchdog when the document type is a decision, order, or
 
 ### Privacy and information
 
-- **Orders ignored** — privacy and access-to-information orders issued by commissioners are sometimes ignored, requiring the complainant to go to court for enforcement. Note the order and any compliance deadline; if the entity digest already carries a prior order against the same respondent, record that as a pattern, otherwise log a lead to check whether earlier orders went unenforced.
+- **Orders ignored** — privacy and access-to-information orders issued by commissioners are sometimes ignored, requiring the complainant to go to court for enforcement. Note the order and any compliance deadline. Where the decision itself refers to earlier orders against the same respondent, record them as stated — that is the pattern; otherwise log a lead to check whether earlier orders against this respondent went unenforced.
 - **Findings of systemic failure** — a commissioner finding that an organization had no breach response plan, inadequate data retention policies, or systemic privacy failures.
 - **Third-party disclosure** — access-to-information decisions where a third party (usually a company) objected to the disclosure of records about its activities and lost.
 

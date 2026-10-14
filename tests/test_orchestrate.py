@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from watchdog import model_client, telemetry_db
-from watchdog.cmd import auth as auth_module
+from watchdog import auth as auth_module
 from watchdog.pipeline import batch_extract, orchestrate, schemas, timeline
 
 from tests.test_write_vault import make_extraction, make_vault
@@ -25,18 +25,18 @@ def _queue_doc(vault, sha="abc123", filename="test-doc.pdf", text="Acme Corp fil
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / f"{sha}.json").write_text(json.dumps({
-        "sha256": sha, "filename": filename, "source_path": f"_INCOMING/{filename}",
+        "sha256": sha, "filename": filename, "source_path": f"incoming/{filename}",
         "page_count": page_count, "pages": [{"page": 1, "markdown": text}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "sidecar": sidecar,
     }))
-    (vault / "_INCOMING" / filename).write_text("dummy source bytes")
+    (vault / "incoming" / filename).write_text("dummy source bytes")
 
 
 def _extraction(sha="abc123", filename="test-doc.pdf", *, valid=True):
     ext = {
         "document": {
-            "sha256": sha, "filename": filename, "original_path": f"_INCOMING/{filename}",
+            "sha256": sha, "filename": filename, "original_path": f"incoming/{filename}",
             "title": "Acme Annual Report", "document_type": "Annual Report",
             "date_of_document": "2024-01-15", "page_count": 1, "source": None, "obtained": None,
             "near_duplicate_of": None, "summary": "Acme's annual report.",
@@ -77,29 +77,23 @@ def test_postflight_quote_warning_prints_after_this_documents_ok_line(tmp_path, 
     vault = make_vault(tmp_path)
     _queue_doc(vault, text="Acme Corp filed an annual report.")
     ext = _extraction()
-    ext["document"]["key_facts"][0]["quote"] = "this exact sentence never appears in the document"
+    ext["document"]["key_facts"][0]["quote_locator"] = "this exact sentence never appears in the document"
     _mock(monkeypatch, extraction=ext)
 
     asyncio.run(orchestrate.run(vault))
 
     out = capsys.readouterr().out
     ok_index = out.index("OK")
-    warn_index = out.index("quote not found")
+    warn_index = out.index("quote_locator not found")
     assert ok_index < warn_index
 
 
 def test_live_region_stays_open_through_finalize(tmp_path, monkeypatch):
-    """The live region (and its pinned "Elapsed" row) used to close the instant extraction's
-    gather finished — before finalize (reconcile/commit/synthesize/briefing) even started, so a
-    long post-processing step went silent with nothing to show it wasn't a stall (live-run
-    regression). It must stay open until finalize is done, and close cleanly afterward."""
-    from watchdog.terminal import LiveRegion as _RealLiveRegion
+    """The run's progress lines stay open until finalize (reconcile/commit/synthesize/briefing)
+    is done, so a long post-processing step keeps reporting, and close cleanly afterward."""
     vault = make_vault(tmp_path)
     _queue_doc(vault)
     _mock(monkeypatch, extraction=_extraction())
-    # Force the live region on even though pytest's captured stdout isn't a real TTY — the
-    # timer task and board teardown are gated on `_board.enabled`.
-    monkeypatch.setattr(orchestrate, "LiveRegion", lambda: _RealLiveRegion(enabled=True))
 
     board_during_finalize = []
     real_finalize = orchestrate.finalize
@@ -126,14 +120,14 @@ def test_ingest_log_records_start_before_ok(tmp_path, monkeypatch):
 
     asyncio.run(orchestrate.run(vault))
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "START test-doc.pdf" in log
     assert log.index("START test-doc.pdf") < log.index("OK test-doc.pdf")
 
 
 def test_call_model_logs_pruned_keys_to_ingest_log(tmp_path, monkeypatch):
     """#412/D124: when `model_client.acomplete_json` reports pruned keys and a vault is
-    passed, `_call_model` writes a WARN line to ingest.log naming them."""
+    passed, `_call_model` writes a WARN line to processing.log naming them."""
     vault = make_vault(tmp_path)
 
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -146,7 +140,7 @@ def test_call_model_logs_pruned_keys_to_ingest_log(tmp_path, monkeypatch):
     asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
                                         filename="doc.pdf", vault=vault))
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert ("WARN doc.pdf: pruned unexpected JSON key(s) from model output: "
            "extra_field, entities[0].roles[0].date") in log
 
@@ -172,7 +166,7 @@ def test_call_model_records_failed_usage_and_reraises(tmp_path, monkeypatch):
         raise model_client.ModelError(
             "task 't' failed JSON validation after 2 attempt(s) on claude-api: bad json",
             usage={"input_tokens": 20}, cost_usd=0.05, attempts=2,
-            model="claude-sonnet-4-6", backend="claude-api", auth_mode="api-key")
+            model="claude-sonnet-5-5", backend="claude-api", auth_mode="api-key")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     orchestrate._run.usage = []
@@ -298,7 +292,7 @@ def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
 
 def test_call_model_telemetry_db_failure_logged_not_raised(tmp_path, monkeypatch):
     """#611: a telemetry write failure (locked db, disk full) must not break the ingest call
-    it's observing — `_record_usage` catches it and logs a WARN to the vault's own ingest.log,
+    it's observing — `_record_usage` catches it and logs a WARN to the vault's own processing.log,
     same posture as every other side channel `_call_model`/`_record_usage` already has."""
     from watchdog import telemetry_db as telemetry_db_mod
 
@@ -319,7 +313,7 @@ def test_call_model_telemetry_db_failure_logged_not_raised(tmp_path, monkeypatch
         r = asyncio.run(orchestrate._call_model(task="extract", prompt="p", schema=schemas.EXTRACTION,
                                                 vault=vault))
         assert r.parsed == {"name": "Acme"}   # the call itself still succeeded
-        log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+        log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
         assert "WARN telemetry_db write failed for task=extract" in log
     finally:
         orchestrate._end_usage_run(vault)
@@ -395,7 +389,7 @@ def test_compact_result_carries_est_input_tokens_when_given():
 
 def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
     """#342: on backends that echo the internal id rather than the display name for a new
-    entity, the briefing and hot.md must still show the display name — resolved deterministically
+    entity, the briefing must still show the display name — resolved deterministically
     against the registry manifest for this batch, rather than trusting the model."""
     vault = make_vault(tmp_path)
     (vault / ".watchdog" / "registry" / "manifest.json").write_text(json.dumps({
@@ -412,8 +406,8 @@ def test_write_briefing_resolves_entity_ids_to_display_names(tmp_path):
     slug_path = orchestrate._write_briefing(vault, b, [], [], [])
 
     briefing_text = (vault / slug_path).read_text(encoding="utf-8")
-    hot_text = (vault / "hot.md").read_text(encoding="utf-8")
-    for text in (briefing_text, hot_text):
+    assert not (vault / "hot.md").exists()                # retired (D285)
+    for text in (briefing_text,):
         assert "Andrew Hanrahan" in text
         assert "Financial Services Regulatory Authority" in text
         assert "andrew-hanrahan" not in text
@@ -455,6 +449,64 @@ def test_write_briefing_handles_missing_manifest(tmp_path):
     slug_path = orchestrate._write_briefing(vault, b, [], [], [])   # must not raise
 
     assert "acme-corp" in (vault / slug_path).read_text(encoding="utf-8")
+
+
+def _briefing_vault(tmp_path):
+    """A vault with one committed document and two stored facts, the second disputed."""
+    from watchdog.pipeline import verification
+    vault = make_vault(tmp_path)
+    sha = "b" * 64
+    facts = [{"fact": "The City paid $4,350,000.", "page": 4, "basis": "inferred"},
+             {"fact": "The appraisal said $1,420,000.", "page": 2, "date": "2021-12-10"}]
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / f"{sha}.json").write_text(json.dumps({
+        "document": {"sha256": sha, "key_facts": facts}, "entities": []}))
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
+        sha: {"title": "Register", "filename": "reg.pdf", "document_note": "documents/reg"}}))
+    ids = verification.fact_ids(sha, facts)
+    verification.mark(vault, ids[1], "disputed", by="R")
+    return vault, sha, ids
+
+
+def test_briefing_is_given_citable_facts_with_page_flags_and_marks(tmp_path):
+    """D283: the briefing sees each fact with a short ref, its page, its warnings and the
+    reporter's mark (Disputed included, labelled), and the ref map goes back to the D271 ids."""
+    vault, sha, ids = _briefing_vault(tmp_path)
+    rows, refs = orchestrate._briefing_cited_facts(
+        vault, [{"sha256": sha, "filename": "reg.pdf", "key_facts": [{"fact": "x"}]},
+                {"sha256": "z" * 64, "filename": "gone.pdf", "key_facts": [{"fact": "kept"}]}])
+    lines = rows[0]["key_facts"]
+    assert sorted(refs.values()) == sorted(ids)
+    ref = {v: k for k, v in refs.items()}
+    assert lines[0] == f"[{ref[ids[0]]}] The City paid $4,350,000. (p. 4) [inferred]"
+    assert lines[1] == f"[{ref[ids[1]]}] (2021-12-10) The appraisal said $1,420,000. (p. 2) [disputed by the reporter]"
+    assert rows[1]["key_facts"] == [{"fact": "kept"}]          # no stored extraction: unchanged
+
+
+def test_write_briefing_links_its_citations_and_stores_the_ref_map(tmp_path):
+    from watchdog.pipeline import citations
+    vault, sha, ids = _briefing_vault(tmp_path)
+    refs = {"f:aaaa": ids[0], "f:bbbb": ids[1], "f:cccc": "fact:1:" + sha[:12] + ":0000000000"}
+    b = {"investigation_status": "The price outran the appraisal [f:aaaa][f:bbbb].",
+         "what_was_ingested": ["reg.pdf - Payment register"],
+         "anomalies": ["Paid four times the appraisal [f:aaaa]. Unsupported [f:cccc]. Invented [f:dddd]."],
+         "open_questions": ["Who gained? An uncited question."]}
+    slug_path = orchestrate._write_briefing(vault, b, [], [], [], fact_refs=refs)
+    text = (vault / slug_path).read_text(encoding="utf-8")
+    paid = f"[[documents/reg#^{citations.block_id(ids[0])}|p. 4]]"
+    disputed = f"[[documents/reg#^{citations.block_id(ids[1])}|p. 2, disputed]]"
+    assert f"- Paid four times the appraisal ({paid}). Unsupported. Invented.\n" in text
+    assert "[f:" not in text
+    # What hot.md carried now stays in the briefing (D285), and the status in its sidecar too.
+    assert not (vault / "hot.md").exists()
+    assert (f"## Where things stand\n\nThe price outran the appraisal ({paid}; {disputed}).\n"
+            in text)
+    assert "## Open questions\n\n- Who gained? An uncited question.\n" in text
+    side = json.loads((vault / ".watchdog" / "briefings" /
+                       (Path(slug_path).stem + ".json")).read_text(encoding="utf-8"))
+    assert side["fact_refs"] == refs and side["briefing"] == slug_path
+    assert side["status"] == f"The price outran the appraisal ({paid}; {disputed})."
+    assert side["citations"] == {"cited": 5, "linked": 3, "unknown": 1, "missing": 1, "disputed": 1}
 
 
 def test_select_kept_keeps_survivors_in_original_order():
@@ -566,14 +618,14 @@ def test_apply_request_dedup_falls_back_to_nothing_on_bad_input(tmp_path):
 
 def test_stamp_document_overwrites_model_identity():
     """Identity fields are stamped from Python, overriding whatever the model emitted."""
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
+    pf = {"filename": "real.pdf", "original_path": "incoming/real.pdf",
           "page_count": 7, "pages": [{}]}
     ext = {"document": {"sha256": "WRONGSHA", "filename": "wrong.pdf", "page_count": 999}}
     orchestrate._stamp_document(ext, sha="realsha", pf=pf, skill_label="court-documents")
     d = ext["document"]
     assert d["sha256"] == "realsha"
     assert d["filename"] == "real.pdf"
-    assert d["original_path"] == "_INCOMING/real.pdf"
+    assert d["original_path"] == "incoming/real.pdf"
     assert d["page_count"] == 7
     assert d["record_skill"] == "court-documents"
 
@@ -684,7 +736,7 @@ def test_sidecar_skill_unknown_name_warns_and_falls_back(capsys):
 
 
 def test_stamp_document_applies_sidecar_provenance():
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf", "page_count": 1,
+    pf = {"filename": "real.pdf", "original_path": "incoming/real.pdf", "page_count": 1,
           "pages": [{}], "sidecar": "source: FOI A-2026-001\nobtained: 2026-06-05\n"}
     ext = {"document": {}}   # model emitted no source/obtained
     orchestrate._stamp_document(ext, sha="s", pf=pf, skill_label="foi-responses")
@@ -714,10 +766,10 @@ def test_orchestrator_extracts_and_writes_vault(tmp_path, monkeypatch):
     assert r["status"] == "ok" and r["entity_count"] == 1
     assert r["new_entities"] == ["acme-corp"] and r["document_type"] == "Annual Report"
 
-    # post-ingest ran: briefing + hot.md + log.md + timeline written
+    # post-ingest ran: briefing + log.md + timeline written; hot.md never (D285)
     assert "post_ingest" in summary
     assert list((vault / "briefings").glob("*.md"))
-    assert (vault / "hot.md").exists()
+    assert not (vault / "hot.md").exists()
     assert "— Ingest" in (vault / "log.md").read_text()
     assert (vault / "timeline.md").exists()
 
@@ -783,7 +835,7 @@ def test_cross_document_contradiction_caught_and_fed_to_briefing(tmp_path, monke
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
-                         "original_path": f"_INCOMING/{filename}",
+                         "original_path": f"incoming/{filename}",
                          "title": filename, "document_type": "Filing",
                          "date_of_document": "2024-01-15", "page_count": 1,
                          "source": None, "obtained": None, "near_duplicate_of": None,
@@ -857,7 +909,7 @@ def test_reconcile_failure_leaves_batch_finalizable(tmp_path, monkeypatch):
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
-                         "original_path": f"_INCOMING/{filename}",
+                         "original_path": f"incoming/{filename}",
                          "title": filename, "document_type": "Filing",
                          "date_of_document": "2024-01-15", "page_count": 1,
                          "source": None, "obtained": None, "near_duplicate_of": None,
@@ -935,7 +987,7 @@ def test_orchestrator_reports_failed_on_postflight_rejection(tmp_path, monkeypat
     # abort cleanup: queue file moved to _failed/ (preserved, not auto-retried), failure logged
     assert not (vault / ".watchdog" / "queue" / "abc123.json").exists()
     assert (vault / ".watchdog" / "queue" / "_failed" / "abc123.json").exists()
-    assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "FAILED" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
 
 
 def test_simple_extract_repairs_empty_key_facts_on_substantive_document(tmp_path, monkeypatch):
@@ -986,7 +1038,7 @@ def test_simple_extract_fails_loudly_when_repair_still_empty(tmp_path, monkeypat
     assert summary["failed"] == 1 and summary["extracted"] == 0
     assert summary["results"][0]["status"] == "failed"
     assert "key_facts is empty" in summary["results"][0]["reason"]
-    assert "FAILED" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "FAILED" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
 
 
 def test_orchestrator_empty_queue(tmp_path):
@@ -1013,10 +1065,10 @@ def test_orchestrator_threads_configured_models(tmp_path, monkeypatch):
                                         backend="b", auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, extract_model="opus", post_model="haiku", classify_model="haiku"))
+    asyncio.run(orchestrate.run(vault, extract_model="sonnet-5.5", post_model="haiku", classify_model="haiku"))
     by_task = dict(seen)
     assert by_task["classify"] == "haiku"
-    assert by_task["extract"] == "opus"
+    assert by_task["extract"] == "sonnet-5.5"
     assert by_task["briefing"] == "haiku"
 
 
@@ -1083,7 +1135,7 @@ def test_reconcile_pre_commit_stage_override_routes_reconcile_call(tmp_path, mon
     monkeypatch.setattr(orchestrate.reconcile, "build_bundle",
                         lambda vault, shas: {"entities": [{"id": "e1"}], "pairs": [{"a": "e1", "b": "e2"}]})
     monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
-                        lambda vault, shas, parsed, bundle, warn:
+                        lambda vault, shas, parsed, bundle, warn, **kw:
                         {"merged": [], "remap": {}, "contradictions": []})
 
     seen = []
@@ -1097,9 +1149,9 @@ def test_reconcile_pre_commit_stage_override_routes_reconcile_call(tmp_path, mon
 
     asyncio.run(orchestrate._reconcile_pre_commit(
         vault, ["sha1"], "haiku", None, None,
-        finalizer_overrides={"reconciliation_model": "opus", "reconciliation_backend": "claude-api"}))
+        finalizer_overrides={"reconciliation_model": "sonnet-5.5", "reconciliation_backend": "claude-api"}))
 
-    assert seen == [("reconcile", "opus", "claude-api")]
+    assert seen == [("reconcile", "sonnet-5.5", "claude-api")]
 
 
 def test_reconcile_pre_commit_falls_back_to_post_model_when_unoverridden(tmp_path, monkeypatch):
@@ -1109,7 +1161,7 @@ def test_reconcile_pre_commit_falls_back_to_post_model_when_unoverridden(tmp_pat
     monkeypatch.setattr(orchestrate.reconcile, "build_bundle",
                         lambda vault, shas: {"entities": [{"id": "e1"}], "pairs": [{"a": "e1", "b": "e2"}]})
     monkeypatch.setattr(orchestrate.reconcile, "apply_merges",
-                        lambda vault, shas, parsed, bundle, warn:
+                        lambda vault, shas, parsed, bundle, warn, **kw:
                         {"merged": [], "remap": {}, "contradictions": []})
 
     seen = []
@@ -1141,7 +1193,7 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
     monkeypatch.setattr(orchestrate.synthesis_bundle, "build_bundle",
                         lambda vault, shas: {"entities": [{"id": "e1", "name": "E1"}]})
     monkeypatch.setattr(orchestrate.synthesis_bundle, "apply_bundle",
-                        lambda res_path, vault: {"applied": ["e1"]})
+                        lambda res_path, vault, meta=None: {"applied": ["e1"]})
 
     seen = []
 
@@ -1157,7 +1209,7 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
     overrides = {
-        "synthesis_model": "opus", "synthesis_backend": "claude-api",
+        "synthesis_model": "sonnet-5.5", "synthesis_backend": "claude-api",
         "timeline_model": "gpt-5-mini", "timeline_backend": "openai",
         "briefing_model": "gemini-2.5-flash", "briefing_backend": "gemini",
     }
@@ -1165,7 +1217,7 @@ def test_post_ingest_stage_overrides_route_synthesis_timeline_briefing(tmp_path,
                                          finalizer_overrides=overrides))
 
     by_task = {t: (m, b) for t, m, b in seen}
-    assert by_task["entity-synthesis"] == ("opus", "claude-api")
+    assert by_task["entity-synthesis"] == ("sonnet-5.5", "claude-api")
     assert by_task["timeline-dedup"] == ("gpt-5-mini", "openai")
     assert by_task["briefing"] == ("gemini-2.5-flash", "gemini")
 
@@ -1267,10 +1319,10 @@ def test_post_ingest_stage_override_routes_request_dedup_call(tmp_path, monkeypa
         "sha1", "doc.pdf", {"document": {"key_facts": []}, "entities": []}, {}, 0.0, {})]
     asyncio.run(orchestrate._post_ingest(
         vault, results, None, "haiku",
-        finalizer_overrides={"request_dedup_model": "opus", "request_dedup_backend": "claude-api"}))
+        finalizer_overrides={"request_dedup_model": "sonnet-5.5", "request_dedup_backend": "claude-api"}))
 
     by_task = {t: (m, b) for t, m, b in seen}
-    assert by_task["request-dedup"] == ("opus", "claude-api")
+    assert by_task["request-dedup"] == ("sonnet-5.5", "claude-api")
 
 
 def test_orchestrator_updates_graph_colours(tmp_path, monkeypatch):
@@ -1294,11 +1346,11 @@ def test_classifier_sees_only_first_n_pages(tmp_path, monkeypatch):
     qdir.mkdir(parents=True, exist_ok=True)
     pages = [{"page": i, "markdown": f"distinctword{i}"} for i in (1, 2, 3)]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 3, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1326,12 +1378,12 @@ def test_classifier_sees_the_sidecar(tmp_path, monkeypatch):
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 1, "pages": [{"page": 1, "markdown": "opaque table"}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "sidecar": "source: https://example.gov/lobby-registry\nnotes: sidecarhint\n",
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1360,13 +1412,13 @@ def test_extractor_sees_file_metadata_and_processing_facts(tmp_path, monkeypatch
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 1, "pages": [{"page": 1, "markdown": "Acme Corp filed an annual report."}],
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
         "metadata": {"ocr_used": True, "source_type": "docling"},
         "file_metadata": {"author": "Jane Doe", "producer": "Acrobat Distiller"},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     seen = {}
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
@@ -1397,11 +1449,11 @@ def test_whole_doc_failure_falls_back_to_sectioning(tmp_path, monkeypatch):
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     calls = {"extract": 0, "section": 0}
     sec_first = {
@@ -1455,11 +1507,11 @@ def test_sectioned_repairs_missing_morgue_entity_id_with_no_entities_to_fall_bac
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first_broken = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1516,11 +1568,11 @@ def test_sectioned_repair_gives_up_after_one_attempt(tmp_path, monkeypatch):
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first_broken = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1568,11 +1620,11 @@ def test_sectioned_extraction_falls_back_when_morgue_entity_id_missing(tmp_path,
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1625,11 +1677,11 @@ def test_sectioned_does_not_repair_unrelated_postflight_errors(tmp_path, monkeyp
     pages = [{"page": 1, "markdown": "Acme part one " * 50},
              {"page": 2, "markdown": "Acme part two " * 50}]
     (qdir / "abc123.json").write_text(json.dumps({
-        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": "abc123", "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
 
     sec_first_bad_fact = {
         "document": {"sha256": "abc123", "filename": "test-doc.pdf", "title": "Acme AR",
@@ -1740,7 +1792,7 @@ def _checkpoint_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf", n=3):
                          "pages_path": f".watchdog/tmp/section_{sha}_{i:02d}.md"})
     plan = {"sectioned": True, "page_count": n, "sections": sections}
     pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
-         "page_count": n, "original_path": f"_INCOMING/{filename}"}
+         "page_count": n, "original_path": f"incoming/{filename}"}
     return plan, pf
 
 
@@ -1816,7 +1868,7 @@ def test_extract_sectioned_writes_a_checkpoint_per_section(tmp_path, monkeypatch
 
 
 def test_extract_sectioned_logs_a_section_line_before_each_model_call(tmp_path, monkeypatch):
-    """#556: ingest.log used to go straight from a section's HARVEST line to the next
+    """#556: processing.log used to go straight from a section's HARVEST line to the next
     section's, so the model call's multi-minute latency read as though the (sub-second)
     harvest caused it. A SECTION line, logged right before the call, attributes the gap to
     the call that actually owns it — one per section, each preceded by that section's own
@@ -1837,7 +1889,7 @@ def test_extract_sectioned_logs_a_section_line_before_each_model_call(tmp_path, 
         orchestrate._extract_sectioned(vault, "abc123", pf, "SKILL", plan, "sonnet", "annual-report"))
 
     assert ok, errors
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "SECTION test-doc.pdf [part 1 of 2]: extracting…" in log
     assert "SECTION test-doc.pdf [part 2 of 2]: extracting…" in log
     # each section's HARVEST line lands before that section's SECTION line, not after
@@ -1932,7 +1984,7 @@ def _resplit_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
          "pages_path": f".watchdog/tmp/section_{sha}_02.md"},
     ]}
     pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
-         "page_count": 5, "original_path": f"_INCOMING/{filename}"}
+         "page_count": 5, "original_path": f"incoming/{filename}"}
     return plan, pf
 
 
@@ -2312,11 +2364,11 @@ def test_ingest_retry_resumes_sectioned_extraction_after_a_crash(tmp_path, monke
     qdir = vault / ".watchdog" / "queue"
     qdir.mkdir(parents=True, exist_ok=True)
     (qdir / f"{sha}.json").write_text(json.dumps({
-        "sha256": sha, "filename": "test-doc.pdf", "source_path": "_INCOMING/test-doc.pdf",
+        "sha256": sha, "filename": "test-doc.pdf", "source_path": "incoming/test-doc.pdf",
         "page_count": 2, "pages": pages,
         "near_dup": {"near_duplicates": [], "top_similarity": 0.0},
     }))
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     monkeypatch.setattr(orchestrate.section, "_config_get", lambda k, d: d)
 
     sec1 = {
@@ -2499,7 +2551,8 @@ def test_nudge_skill_pin_fires_when_batch_is_homogeneous(capsys):
         {"status": "ok", "record_skill": "general-records"},
         {"status": "ok", "record_skill": "general-records"},
     ])
-    assert "watchdog dig --skill general-records" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "general-records" in out and "choosing that record skill" in out
 
 
 def test_nudge_skill_pin_silent_when_mixed_or_single_or_failed(capsys):
@@ -2556,7 +2609,7 @@ def test_usage_telemetry_persisted_after_ingest(tmp_path, monkeypatch):
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
-            parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
+            parsed=parsed, text="", model="claude-sonnet-5-5", backend="claude-api",
             auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20},
             latency_s=2.5)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
@@ -2717,7 +2770,7 @@ def test_record_usage_carries_agent_sdk_harness_timing():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-agent-sdk",
+            "extract", model="claude-sonnet-5-5", backend="claude-agent-sdk",
             usage={"input_tokens": 100, "output_tokens": 20,
                   "duration_api_ms": 12345, "num_turns": 3},
             cost_usd=0.01, latency_s=60.0)
@@ -2736,7 +2789,7 @@ def test_record_usage_omits_harness_timing_keys_for_other_backends():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20},
             cost_usd=0.01, latency_s=1.0)
         assert len(orchestrate._run.usage) == 1
@@ -2755,7 +2808,7 @@ def test_record_usage_reads_cache_read_tokens_from_openai_usage_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract-section", model="gpt-5.4-mini", backend="openai",
+            "extract-section", model="gpt-6-luna", backend="openai",
             usage={"prompt_tokens": 20000, "completion_tokens": 5000,
                   "prompt_tokens_details": {"cached_tokens": 5900}},
             cost_usd=0.01, latency_s=1.0)
@@ -2786,7 +2839,7 @@ def test_record_usage_still_reads_anthropic_cache_write_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20,
                   "cache_creation_input_tokens": 7700},
             cost_usd=0.01, latency_s=1.0)
@@ -2812,11 +2865,11 @@ def test_record_usage_reads_cache_read_tokens_from_deepseek_usage_shape():
 
 def test_record_usage_includes_pruned_keys_when_present():
     """#412/D124: pruned key paths ride along on the usage record so schema drift stays
-    visible in `watchdog usage`, not just ingest.log."""
+    visible in `watchdog usage`, not just processing.log."""
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01,
             pruned=["extra_field"])
         assert orchestrate._run.usage[0]["pruned"] == ["extra_field"]
@@ -2828,7 +2881,7 @@ def test_record_usage_omits_pruned_key_when_absent():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
         assert "pruned" not in orchestrate._run.usage[0]
     finally:
@@ -2841,7 +2894,7 @@ def test_record_usage_includes_rate_limit_when_present():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="gpt-5.4-mini", backend="openai",
+            "extract", model="gpt-6-luna", backend="openai",
             usage={"prompt_tokens": 100, "completion_tokens": 20}, cost_usd=0.01,
             rate_limit={"limit_tokens": 150000, "remaining_tokens": 149800, "reset_tokens": "6m0s"})
         assert orchestrate._run.usage[0]["rate_limit"] == {
@@ -2854,7 +2907,7 @@ def test_record_usage_omits_rate_limit_key_when_absent():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
         assert "rate_limit" not in orchestrate._run.usage[0]
     finally:
@@ -2868,7 +2921,7 @@ def test_record_usage_includes_reasoning_tokens_from_openai_usage_shape():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract-section", model="gpt-5.4-mini", backend="openai",
+            "extract-section", model="gpt-6-luna", backend="openai",
             usage={"prompt_tokens": 21058, "completion_tokens": 48000,
                   "completion_tokens_details": {"reasoning_tokens": 48000}},
             cost_usd=0.01, latency_s=1.0)
@@ -2884,7 +2937,7 @@ def test_record_usage_omits_reasoning_tokens_key_for_anthropic_shaped_usage():
     orchestrate._run.usage = []
     try:
         orchestrate._record_usage(
-            "extract", model="claude-sonnet-4-6", backend="claude-api",
+            "extract", model="claude-sonnet-5-5", backend="claude-api",
             usage={"input_tokens": 100, "output_tokens": 20}, cost_usd=0.01)
         assert "reasoning_tokens" not in orchestrate._run.usage[0]
     finally:
@@ -3195,7 +3248,7 @@ def test_log_md_ingest_entry_includes_usage_line(tmp_path, monkeypatch):
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
         }.get(task, {"entity_syntheses": []} if task == "entity-synthesis" else {"groups": []})
         return model_client.ModelResult(
-            parsed=parsed, text="", model="claude-sonnet-4-6", backend="claude-api",
+            parsed=parsed, text="", model="claude-sonnet-5-5", backend="claude-api",
             auth_mode="api-key", cost_usd=0.01, usage={"input_tokens": 100, "output_tokens": 20})
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
@@ -3213,7 +3266,8 @@ def test_latest_usage_none_before_any_ingest(tmp_path):
 
 def test_latest_usage_returns_the_most_recent_run(tmp_path):
     vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "registry"
+    reg = vault / ".watchdog" / "registry" / "usage"
+    reg.mkdir(parents=True, exist_ok=True)
     (reg / "usage-20260101T000000Z.json").write_text(
         json.dumps({"calls": [], "totals": {"input_tokens": 1, "output_tokens": 1,
                                             "cache_read_tokens": 0, "cache_write_tokens": 0,
@@ -3224,21 +3278,6 @@ def test_latest_usage_returns_the_most_recent_run(tmp_path):
                                             "cost_usd": 0.05}}))
     totals = orchestrate.latest_usage(vault)
     assert totals["input_tokens"] == 999
-
-
-def test_usage_files_merges_new_subfolder_with_legacy_flat_location(tmp_path):
-    """#319: usage-<ts>.json moved from the flat Registry dir into a `usage/` subfolder, but a
-    vault ingested before that move still has real history sitting in the old flat location —
-    `usage_files` (and everything built on it) must keep seeing both, in chronological order."""
-    vault = make_vault(tmp_path)
-    reg = vault / ".watchdog" / "registry"
-    (reg / "usage-20260101T000000Z.json").write_text("{}")   # legacy (pre-move) location
-    usage_dir = reg / "usage"
-    usage_dir.mkdir(parents=True)
-    (usage_dir / "usage-20260102T000000Z.json").write_text("{}")   # current (post-move) location
-
-    files = orchestrate.usage_files(vault)
-    assert [f.name for f in files] == ["usage-20260101T000000Z.json", "usage-20260102T000000Z.json"]
 
 
 def test_latest_usage_prefers_new_subfolder_over_legacy_when_newer(tmp_path):
@@ -3389,10 +3428,8 @@ def test_rate_limit_message_reflects_wait_flag(tmp_path, monkeypatch, capsys):
     assert "Re-run" not in out
 
 
-def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsys):
-    """The extraction rate-limit stop notice names `run`'s `resume_hint` — the surface that
-    launched the run — not a hardcoded `watchdog dig`, so a guided bare-`watchdog` walk points
-    back at `watchdog`, not `dig` (#441, D138)."""
+def test_rate_limit_stop_says_to_add_documents_again(tmp_path, monkeypatch, capsys):
+    """The extraction rate-limit stop notice tells the reporter how to continue."""
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="aaa111", filename="one.pdf")
 
@@ -3403,11 +3440,10 @@ def test_rate_limit_resume_message_uses_resume_hint(tmp_path, monkeypatch, capsy
         raise model_client.RateLimitError("session limit")
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 
-    asyncio.run(orchestrate.run(vault, concurrency=1, resume_hint="watchdog"))
+    asyncio.run(orchestrate.run(vault, concurrency=1))
     out = capsys.readouterr().out
-    assert "Re-run" in out
-    assert "once it resets to continue" in out
-    assert "watchdog dig" not in out
+    assert "Add documents again once it resets to continue" in out
+    assert "watchdog" not in out.lower().replace("watchdog/", "")
 
 
 def test_rate_limit_stop_reports_observed_rate_and_provider_headers(tmp_path, monkeypatch, capsys):
@@ -3618,7 +3654,7 @@ def test_post_ingest_skip_briefing_makes_no_briefing_call(tmp_path, monkeypatch)
     assert out.get("briefing_error") is None
     assert out.get("briefing_skipped") is True
     assert not (vault / "briefings").exists()   # no briefing file written
-    assert not (vault / "hot.md").exists()      # hot.md is only written by _write_briefing
+    assert not (vault / "hot.md").exists()      # retired (D285)
 
 
 def test_post_ingest_leaves_collision_untouched_when_dedup_fails(tmp_path, monkeypatch):
@@ -3799,7 +3835,7 @@ def test_finalize_after_skip_finalize_consumes_staged_inputs(tmp_path, monkeypat
     def _ext(sha, filename, fact):
         return {
             "document": {"sha256": sha, "filename": filename,
-                         "original_path": f"_INCOMING/{filename}",
+                         "original_path": f"incoming/{filename}",
                          "title": filename, "document_type": "Filing",
                          "date_of_document": "2024-01-15", "page_count": 1,
                          "source": None, "obtained": None, "near_duplicate_of": None,
@@ -3889,9 +3925,8 @@ def test_pending_finalization_uses_registry_appears_in_gate(tmp_path):
     assert result["entities"] == 1   # only acme-corp crosses appears_in >= 2
 
 
-def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
-    """wipe_pending=False (the merge choice) keeps a prior batch's post-ingest inputs;
-    the default clears them."""
+def test_ingest_setup_keeps_a_pending_batch(tmp_path):
+    """A new run keeps a prior batch's post-ingest inputs, so the two finalize together."""
     from watchdog.pipeline import ingest_setup
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="new1", filename="new.pdf")          # a queued doc → total > 0
@@ -3899,63 +3934,20 @@ def test_ingest_setup_wipe_pending_controls_cleanup(tmp_path):
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / "result_old.json").write_text("{}")
     (tmp / "notes_old.md").write_text("obs")
-    lock = vault / ".watchdog" / "registry" / ".ingest-lock"
-
-    # merge: inputs preserved so this run finalizes together with the pending batch
-    ingest_setup.run(vault, wipe_pending=False)
+    ingest_setup.run(vault)
     assert (tmp / "result_old.json").exists() and (tmp / "notes_old.md").exists()
-
-    # default: inputs wiped for a fresh batch
-    lock.unlink(missing_ok=True)                               # release the lock from the prior call
-    ingest_setup.run(vault, wipe_pending=True)
-    assert not (tmp / "result_old.json").exists() and not (tmp / "notes_old.md").exists()
-
-
-def test_ingest_setup_discard_snapshots_before_wiping(tmp_path):
-    """#270: the discard choice (wipe_pending=True with leftover residue from a prior
-    unfinalized batch) is irreversible — back up result_*.json and notes_*.md before
-    deleting them."""
-    from watchdog.pipeline import ingest_setup
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="new1", filename="new.pdf")
-    tmp = vault / ".watchdog" / "tmp"
-    tmp.mkdir(parents=True, exist_ok=True)
-    (tmp / "result_old.json").write_text('{"old": true}')
-    (tmp / "notes_old.md").write_text("scratchpad notes")
-
-    state = ingest_setup.run(vault, wipe_pending=True)
-
-    assert state["backup_dir"] is not None
-    backup_dir = Path(state["backup_dir"])
-    assert (backup_dir / ".watchdog" / "tmp" / "result_old.json").read_text() == '{"old": true}'
-    assert (backup_dir / ".watchdog" / "tmp" / "notes_old.md").read_text() == "scratchpad notes"
-    # And the originals are still gone — the backup doesn't block the wipe.
-    assert not (tmp / "result_old.json").exists()
-
-
-def test_ingest_setup_ordinary_run_leaves_no_backup(tmp_path):
-    """A routine ingest with nothing left over from a prior unfinalized batch is a
-    no-op for the wipe step, so it must not leave an empty backup directory behind."""
-    from watchdog.pipeline import ingest_setup
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="new1", filename="new.pdf")
-
-    state = ingest_setup.run(vault, wipe_pending=True)
-
-    assert state["backup_dir"] is None
     assert not (vault / ".watchdog" / "backups").exists()
 
 
 def test_requeue_moves_failed_back(tmp_path, monkeypatch):
-    """watchdog requeue moves quarantined queue files back into the active queue."""
-    from watchdog.cmd.ingest import cmd_requeue
+    """The requeue operation moves quarantined queue files back into the active queue."""
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.ingest import requeue
     vault = make_vault(tmp_path)
     failed = vault / ".watchdog" / "queue" / "_failed"
     failed.mkdir(parents=True, exist_ok=True)
     (failed / "ddd444.json").write_text("{}")
-    monkeypatch.chdir(vault)
-
-    cmd_requeue(None)
+    assert requeue(CollectingReporter(), vault) == {"requeued": 1}
 
     assert (vault / ".watchdog" / "queue" / "ddd444.json").exists()
     assert not (failed / "ddd444.json").exists()
@@ -4086,7 +4078,7 @@ def _sectioned_plan_and_pf(vault, sha="abc123", filename="test-doc.pdf"):
          "pages_path": f".watchdog/tmp/section_{sha}_01.md"},
     ]}
     pf = {"filename": filename, "existing_entities": [], "known_document_types": [],
-          "page_count": 1, "original_path": f"_INCOMING/{filename}"}
+          "page_count": 1, "original_path": f"incoming/{filename}"}
     return plan, pf
 
 
@@ -4248,24 +4240,20 @@ def test_run_batch_needs_no_pinned_skill(tmp_path, monkeypatch):
     assert out == {"results": [], "batch_pending": False}
 
 
-def test_batch_skill_prefers_per_sha_map_then_legacy_then_run_pin(tmp_path):
-    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), falling
-    back to the pre-D144 single `skill_label` so a batch submitted by an older version is still
-    collectable after an upgrade — a batch can sit in flight for up to 24h."""
+def test_batch_skill_prefers_per_sha_map_then_run_pin(tmp_path):
+    """`_batch_skill` resolves a collected document's skill from the per-sha map (D144), else
+    this run's own pin."""
     skill = tmp_path / "pinned.md"
     skill.write_text("RUN-PIN SKILL", encoding="utf-8")
 
     # per-sha map wins
-    state = {"skills": {"sha1": "bankruptcy"}, "skill_label": "financial-statements"}
+    state = {"skills": {"sha1": "bankruptcy"}}
     assert orchestrate._batch_skill(state, "sha1", str(skill))[1] == "bankruptcy"
-    # legacy single label, for a sha the map doesn't name
-    assert orchestrate._batch_skill(state, "sha2", str(skill))[1] == "financial-statements"
     # neither: fall back to this run's own pin
     assert orchestrate._batch_skill({}, "sha3", str(skill)) == ("RUN-PIN SKILL", "pinned")
-    # a label that no longer resolves to a skill file (a pre-D144 path stem, or a user-local
-    # skill deleted while the batch was in flight) also falls back rather than failing a batch
-    # that has already been paid for
-    assert orchestrate._batch_skill({"skill_label": "no-such-skill"}, "sha5", str(skill))[1] == "pinned"
+    # a label that no longer resolves to a skill file (a user-local skill deleted while the
+    # batch was in flight) also falls back rather than failing a batch already paid for
+    assert orchestrate._batch_skill({"skills": {"sha5": "no-such-skill"}}, "sha5", str(skill))[1] == "pinned"
     # nothing usable at all is a clear error, not a silently wrong skill
     with pytest.raises(model_client.ModelError, match="no usable skill"):
         orchestrate._batch_skill({}, "sha4", None)
@@ -4405,7 +4393,7 @@ def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatc
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "gpt-5.6-luna",
-            "skill_label": "financial-statements", "effort": None, "backend": "openai-batch"}
+            "skills": {}, "effort": None, "backend": "openai-batch"}
     batch_extract.write_state(vault, state)
 
     seen_backends = []
@@ -4427,29 +4415,6 @@ def test_resume_batch_threads_backend_to_status_and_collect(tmp_path, monkeypatc
 
     assert out["batch_pending"] is False
     assert seen_backends == [("status", "openai-batch"), ("collect", "openai-batch")]
-
-
-def test_resume_batch_defaults_missing_backend_to_claude_batch(tmp_path, monkeypatch):
-    """State persisted before #530 (no `backend` field at all) must still resume against
-    Anthropic — an in-flight batch across an upgrade shouldn't strand."""
-    vault = make_vault(tmp_path)
-    _queue_doc(vault, sha="sha1", filename="a.pdf")
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None}   # no "backend" key
-    batch_extract.write_state(vault, state)
-
-    seen_backends = []
-
-    async def fake_status(batch_id, api_key, backend=None):
-        seen_backends.append(backend)
-        return {"processing_status": "in_progress", "request_counts": {}}
-    monkeypatch.setattr(orchestrate.batch_extract, "status", fake_status)
-
-    skill_file = tmp_path / "pinned.md"
-    skill_file.write_text("SKILL")
-    asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
-
-    assert seen_backends == ["claude-batch"]
 
 
 def test_submit_batch_splits_sectioned_and_whole_doc(tmp_path, monkeypatch):
@@ -4526,8 +4491,8 @@ def test_submit_batch_skips_already_extracted_and_preflight_errors(tmp_path, mon
 
 def test_resume_batch_reports_progress_when_not_ended(tmp_path, monkeypatch, capsys):
     vault = make_vault(tmp_path)
-    state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-4-6",
-            "skill_label": "s", "effort": None}
+    state = {"batch_id": "b1", "shas": ["a", "b"], "model": "claude-sonnet-5-5",
+            "skills": {}, "effort": None, "backend": "claude-batch"}
 
     async def fake_status(batch_id, api_key, backend=None):
         return {"processing_status": "in_progress", "request_counts": {"processing": 1, "succeeded": 1}}
@@ -4542,8 +4507,8 @@ def test_resume_batch_collects_and_clears_state_when_ended(tmp_path, monkeypatch
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     # Pre-D144 state shape (one run-wide `skill_label`, no per-sha map) — still collectable.
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None}
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
+            "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key, backend=None):
@@ -4581,8 +4546,8 @@ def test_fmt_span_is_none_when_either_timestamp_is_missing():
 def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
-    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-4-6",
-            "skill_label": "financial-statements", "effort": None,
+    state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
+            "skills": {}, "effort": None, "backend": "claude-batch",
             "submitted_at": "2026-07-29T02:54:46Z"}
     batch_extract.write_state(vault, state)
 
@@ -4600,7 +4565,7 @@ def test_resume_batch_logs_lifecycle_line_to_ingest_log(tmp_path, monkeypatch):
     skill_file.write_text("SKILL")
     asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk-x"))
 
-    log = (vault / ".watchdog" / "registry" / "ingest.log").read_text(encoding="utf-8")
+    log = (vault / ".watchdog" / "registry" / "processing.log").read_text(encoding="utf-8")
     assert "BATCH b1" in log
     assert "submitted 2026-07-29T02:54:46Z" in log
     assert "ended 2026-07-29T03:36:02Z (processed 41m16s)" in log
@@ -4623,7 +4588,7 @@ def test_finish_batch_item_records_batch_lifecycle_when_batch_meta_given(tmp_pat
     try:
         asyncio.run(orchestrate._finish_batch_item(
             vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
-            model="claude-sonnet-4-6", batch_meta=batch_meta))
+            model="claude-sonnet-5-5", batch_meta=batch_meta))
         calls = [c for c in orchestrate._run.usage if c["task"] == "extract"]
         assert calls[0]["batch_id"] == "b1"
         assert calls[0]["batch_submitted_at"] == "2026-07-29T02:54:46Z"
@@ -4689,13 +4654,13 @@ def test_finish_batch_item_records_usage_for_the_batch_call_itself(tmp_path):
     try:
         result = asyncio.run(orchestrate._finish_batch_item(
             vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
-            model="claude-sonnet-4-6"))
+            model="claude-sonnet-5-5"))
         assert result["status"] == "ok"
         calls = [c for c in orchestrate._run.usage if c["task"] == "extract"]
         assert len(calls) == 1
         assert calls[0].pop("end_ts") > 0   # completion timestamp stamped at record time
         assert calls[0] == {
-            "task": "extract", "model": "claude-sonnet-4-6", "backend": "claude-batch",
+            "task": "extract", "model": "claude-sonnet-5-5", "backend": "claude-batch",
             "input_tokens": 500, "output_tokens": 80, "cache_read_tokens": 0, "cache_write_tokens": 0,
             "cost_usd": 0.015, "attempts": 1, "latency_s": 0.0, "effort": None, "auth_mode": "api-key",
             "filename": "a.pdf", "detail": "pages 1–1",
@@ -4721,20 +4686,20 @@ def test_finish_batch_item_stamps_extraction_provenance(tmp_path):
            "usage": None, "cost_usd": 0.015, "error": None}
     result = asyncio.run(orchestrate._finish_batch_item(
         vault, "sha1", item, "SKILL BODY", "annual-report", None, "sk-x",
-        model="claude-sonnet-4-6", effort="medium"))
+        model="claude-sonnet-5-5", effort="medium"))
 
     assert result["status"] == "ok"
     staged = json.loads((vault / ".watchdog" / "extracted" / "sha1.json").read_text())
     doc = staged["document"]
     assert doc["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
-    assert doc["extract_model"] == "claude-sonnet-4-6"
+    assert doc["extract_model"] == "claude-sonnet-5-5"
     assert doc["extract_effort"] == "medium"
 
     orchestrate._commit_extracted(vault, "sha1")
     docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
     entry = docs["sha1"]
     assert entry["record_skill_hash"] == hashlib.sha256(b"SKILL BODY").hexdigest()[:12]
-    assert entry["extract_model"] == "claude-sonnet-4-6"
+    assert entry["extract_model"] == "claude-sonnet-5-5"
     assert entry["extract_effort"] == "medium"
 
 
@@ -4761,8 +4726,8 @@ def test_run_resumes_pending_batch_even_with_empty_queue(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     skill_file = tmp_path / "pinned.md"
     skill_file.write_text("SKILL")
-    batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-4-6",
-                                      "skill_label": "s", "effort": None})
+    batch_extract.write_state(vault, {"batch_id": "b1", "shas": [], "model": "claude-sonnet-5-5",
+                                      "skills": {}, "effort": None, "backend": "claude-batch"})
     monkeypatch.setattr(auth_module, "resolve_auth", lambda: {"mode": "api-key", "key": "sk-x"})
 
     submit_calls = []
@@ -4930,7 +4895,7 @@ def _stage_extracted(vault, tmp_path, sha, filename, overrides=None):
     `tmp_path` just needs to be a scratch dir distinct per call (make_extraction always writes
     to `<tmp_path>/extraction.json`)."""
     overrides = dict(overrides or {})
-    doc_overrides = {"sha256": sha, "filename": filename, "original_path": f"_INCOMING/{filename}"}
+    doc_overrides = {"sha256": sha, "filename": filename, "original_path": f"incoming/{filename}"}
     doc_overrides.update(overrides.pop("document", {}))
     overrides["document"] = doc_overrides
     (tmp_path).mkdir(parents=True, exist_ok=True)
@@ -4957,8 +4922,8 @@ def test_parallel_slug_variants_reconciled(tmp_path):
     """Two docs coining different slugs for the same entity must collapse to one, folded before
     either commits (sha-a < sha-b, so sha-a's slug is the one that survives, per D126)."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # First-sorted-sha wins the slug; the other coins a near-duplicate id + name variant.
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
@@ -4979,8 +4944,8 @@ def test_parallel_slug_variants_reconciled(tmp_path):
 def test_reconcile_remaps_role_target_in_same_document(tmp_path):
     """A role pointing at a reconciled entity in the same extraction is remapped too."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # Doc A establishes the canonical company slug.
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
@@ -5016,8 +4981,8 @@ def test_reconcile_remaps_role_target_in_same_document(tmp_path):
 def test_reconcile_matches_against_existing_alias(tmp_path):
     """A new slug matching an existing entity's *alias* (not its name) reconciles."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # Doc A establishes the entity with an alias.
     _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
@@ -5041,8 +5006,8 @@ def test_reconcile_matches_against_existing_alias(tmp_path):
 def test_reconcile_does_not_merge_across_types(tmp_path):
     """Same normalized name but different entity types must stay separate."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # A Person and a Company that normalize to the same key.
     _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
@@ -5064,8 +5029,8 @@ def test_drifting_type_synonyms_reconcile_to_one_entity(tmp_path):
     a single id/folder instead of forking — both collapse to the ``organization`` bucket, so
     the reconciliation key matches where free-text types used to miss."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     # Doc A: the bank labelled a plain "Company".
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
@@ -5092,8 +5057,8 @@ def test_batch_fold_collapses_staged_duplicates_before_commit(tmp_path):
     earliest-sha document's — in the staged JSON on disk *before* `_batch_exact_fold` returns,
     i.e. before either has been committed to the vault."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
                    "ernst-and-young-inc", "Ernst & Young Inc.")
@@ -5119,8 +5084,8 @@ def test_batch_fold_remaps_morgue_entity_id_and_key_facts_entities(tmp_path):
     to `entities[].id`, or doc-b ends up filed at `morgue/ernst-young-inc/...` even though that
     entity's note now lives under the winning id."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "doc-a.pdf").write_text("dummy")
-    (vault / "_INCOMING" / "doc-b.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-a.pdf").write_text("dummy")
+    (vault / "incoming" / "doc-b.pdf").write_text("dummy")
 
     _stage_company(vault, tmp_path / "a", "sha-a", "doc-a.pdf",
                    "ernst-and-young-inc", "Ernst & Young Inc.")
@@ -5264,7 +5229,7 @@ def test_verifier_effort_is_configurable(tmp_path, monkeypatch):
     _queue_doc(vault)
     config = tmp_path / "config.json"
     config.write_text(json.dumps({"verifier_effort": "medium"}))
-    monkeypatch.setattr("watchdog.config.CONFIG_FILE", config)
+    monkeypatch.setattr("watchdog.config.HOME", config.parent)
     calls = _verify_mock(monkeypatch, extraction=_extraction(), missing_facts=[])
 
     asyncio.run(orchestrate.run(vault, verify=True))
@@ -5289,7 +5254,7 @@ def test_a_failed_verification_leaves_the_document_extracted_and_intact(tmp_path
 
     assert summary["extracted"] == 1 and summary["failed"] == 0
     assert [f["fact"] for f in _staged(vault)["document"]["key_facts"]] == ["Filed in 2024"]
-    assert "verification pass failed" in (vault / ".watchdog" / "registry" / "ingest.log").read_text()
+    assert "verification pass failed" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
 
 
 def test_a_rate_limit_during_verification_stops_the_run(tmp_path, monkeypatch):
@@ -5480,8 +5445,8 @@ def test_staged_extraction_without_results_still_finalizes(tmp_path, monkeypatch
     for p in (vault / ".watchdog" / "tmp").glob("result_*.json"):
         p.unlink()
     assert orchestrate.has_pending_finalization(vault)
-    ingest_setup.run(vault, wipe_pending=False)
-    (vault / ".watchdog" / "registry" / ".ingest-lock").unlink(missing_ok=True)
+    ingest_setup.run(vault)
+    (vault / ".watchdog" / "registry" / ".processing-lock").unlink(missing_ok=True)
     summary = asyncio.run(orchestrate.run(vault))
     assert summary["extracted"] == 0 and "post_ingest" in summary
     docs = json.loads((vault / ".watchdog" / "registry" / "documents.json").read_text())
@@ -5514,7 +5479,7 @@ def test_provider_auth_error_stops_the_run_without_quarantining(tmp_path, monkey
     assert summary["auth_error"] == "invalid x-api-key"
     assert summary["failed"] == 0 and summary["quarantined"] == 0
     assert len(list((vault / ".watchdog" / "queue").glob("*.json"))) == 2
-    from watchdog.cmd.ingest import exit_code_for
+    from watchdog.ops.ingest import exit_code_for
     assert exit_code_for(summary) == 1
 
 
@@ -5680,7 +5645,7 @@ def test_resume_batch_stops_cleanly_on_an_auth_failure(tmp_path, monkeypatch):
     vault = make_vault(tmp_path)
     _queue_doc(vault, sha="sha1", filename="a.pdf")
     state = {"batch_id": "b1", "shas": ["sha1"], "model": "claude-sonnet-5-5",
-             "skill_label": "financial-statements", "effort": None, "backend": "claude-batch"}
+             "skills": {}, "effort": None, "backend": "claude-batch"}
     batch_extract.write_state(vault, state)
 
     async def fake_status(batch_id, api_key, backend=None):
@@ -5701,3 +5666,57 @@ def test_resume_batch_stops_cleanly_on_an_auth_failure(tmp_path, monkeypatch):
     out = asyncio.run(orchestrate._resume_batch(vault, state, str(skill_file), None, "sk"))
     assert out["batch_pending"] is True and "credit balance" in out["auth_error"]
     assert batch_extract.read_state(vault) is not None       # kept for a later run
+
+
+@pytest.mark.parametrize("withhold", [False, True])
+def test_withhold_brief_keeps_context_md_out_of_extraction_only(tmp_path, monkeypatch, withhold):
+    """D278: a benchmark arm can extract without the investigation brief to measure its effect.
+    Off by default, so `context.md` reaches extraction as before; on, it reaches no extraction
+    prompt, while finalize still reads the brief itself (the briefing keeps it)."""
+    vault = make_vault(tmp_path)
+    (vault / "context.md").write_text("# Context\n\nI WANT TO UNDERSTAND THE PIER CONTRACT.\n")
+    _queue_doc(vault)
+    prompts_by_task: dict[str, list[str]] = {}
+    ext = _extraction()
+
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        prompts_by_task.setdefault(task, []).append(_flat(prompt) if isinstance(prompt, list) else prompt)
+        parsed = {"classify": {"skill": "general-records.md"}, "extract": ext,
+                  "entity-synthesis": {"entity_syntheses": []}, "timeline-dedup": {"groups": []},
+                  "briefing": {"investigation_status": "Early days.",
+                               "what_was_ingested": ["test-doc.pdf — Annual Report"],
+                               "new_entities": ["Acme Corp"]}}.get(task, ext)
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
+                                        auth_mode="subscription", cost_usd=0.01)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+    asyncio.run(orchestrate.run(vault, withhold_brief=withhold))
+
+    marker = "I WANT TO UNDERSTAND THE PIER CONTRACT"
+    assert prompts_by_task["extract"]
+    assert any(marker in p for p in prompts_by_task["extract"]) is not withhold
+    assert any(marker in p for p in prompts_by_task["briefing"])
+
+
+def test_two_runs_ending_in_the_same_second_keep_both_usage_records(tmp_path, monkeypatch):
+    """Usage files are named to the second; a run ending in the same second as the last one
+    used to overwrite its record. The second run now takes the next free second."""
+    import datetime as _dt
+    from watchdog.pipeline import orchestrate
+
+    frozen = _dt.datetime(2026, 10, 13, 17, 51, 40, 250000, tzinfo=_dt.timezone.utc)
+
+    class _Frozen(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(orchestrate.datetime, "datetime", _Frozen)
+    vault = make_vault(tmp_path)
+    rec = {"input_tokens": 10, "output_tokens": 5, "cache_read_tokens": 0, "cache_write_tokens": 0,
+           "cost_usd": 1.0, "latency_s": 0.1}
+    a = orchestrate._write_usage(vault, [{**rec, "task": "extract"}])
+    b = orchestrate._write_usage(vault, [{**rec, "task": "briefing"}])
+    assert a.endswith("usage-20261013T175140Z.json") and b.endswith("usage-20261013T175141Z.json")
+    runs = orchestrate.usage_files(vault)
+    assert [json.loads(p.read_text())["calls"][0]["task"] for p in runs] == ["extract", "briefing"]

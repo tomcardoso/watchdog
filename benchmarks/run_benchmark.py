@@ -1,20 +1,20 @@
 """Automated benchmark runner (#361 / #215 / #466) — replaces BENCHMARKING.md's hand-run protocol.
 
-Not a pytest module (no ``test_`` prefix). Run via the pipx dev venv, from the repo root:
+Not a pytest module (no ``test_`` prefix). A developer tool: run it with the Python of a
+development install (see CLAUDE.md, Testing), from the repo root:
 
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/run_benchmark.py \
+    python benchmarks/run_benchmark.py \
         [--config benchmarks/benchmark.yaml] [--estimate-only] \
         [--stages extractor,finalizer,classifier,classifier-sweep] \
         [--arms sonnet-med-sdk,sonnet-med-api]
 
 `sdk-check` is a fifth stage (not in the default --stages list — request it explicitly): the
-backend A/B's subscription-mode follow-up, run on its own once `watchdog auth` is switched to
-subscription. See `sdk_check:` in benchmark.yaml.
+backend A/B's subscription-mode follow-up, run on its own once Claude is switched to the
+subscription (Settings → Models & keys). See `sdk_check:` in benchmark.yaml.
 
-Drives the real `watchdog` CLI functions in-process (`cmd_extract`, `cmd_finalize`, the same
-cost-estimate/usage-file library calls `dig --estimate`/`watchdog usage` use) rather than
-shelling out or reimplementing ingest/finalize logic — the same idiom `tests/test_cli.py`
-already uses to exercise these functions directly.
+Drives the app's own operations in-process (`ops.ingest.process` and `finish` with a
+`RunOptions` per arm, the same cost-estimate and usage-file functions the app reads) rather than
+reimplementing processing or post-processing.
 
 Every real (non-`--estimate-only`) run needs your explicit go-ahead — this tool computes and
 prints the full cost preview for every arm up front and asks ONE confirmation for the whole
@@ -37,7 +37,6 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from types import SimpleNamespace
 
 import yaml
 
@@ -46,16 +45,71 @@ HERE = Path(__file__).resolve().parent
 
 # ─── config ──────────────────────────────────────────────────────────────────────────────────
 
+def expand_repeats(stage_key: str, stage: dict) -> None:
+    """Expand `repeats: N` (on an arm, or in the stage's `defaults:`) into N identical arms, in
+    place (D278). One run of an arm is one sample: archived runs of a single configuration have
+    differed by up to 3x (FINDINGS, #581), so a comparison between two arms means little without
+    the spread within each. Each copy gets the id `<id>-r<k>`, its own vault, and `repeat_of: <id>`,
+    which `--arms <id>` selects as a group and the report uses to compute the spread. N = 1 (the
+    default) leaves the arm exactly as written, so archived arm ids keep their meaning."""
+    default_n = (stage.get("defaults") or {}).get("repeats", 1)
+    expanded = []
+    for arm in stage.get("arms") or []:
+        n = arm.get("repeats", default_n)
+        if not isinstance(n, int) or isinstance(n, bool) or n < 1:
+            sys.exit(f"Error: {stage_key} arm '{arm.get('id')}' has repeats: {n!r} — "
+                     f"it must be a whole number of at least 1")
+        base = {k: v for k, v in arm.items() if k != "repeats"}
+        if n == 1:
+            expanded.append(base)
+            continue
+        expanded += [{**base, "id": f"{arm.get('id')}-r{k}", "repeat_of": arm.get("id")}
+                     for k in range(1, n + 1)]
+    stage["arms"] = expanded
+
+
 def load_config(path: Path) -> dict:
     """Load and validate the arm matrix. Unknown top-level keys are tolerated (forward-compat
     with sections added later, e.g. a CI-trigger section) — only the shape of sections this
-    tool actually understands is checked."""
+    tool actually understands is checked. `repeats:` is expanded here (`expand_repeats`), so
+    everything downstream sees one arm per run."""
     try:
         config = yaml.safe_load(path.read_text(encoding="utf-8"))
     except OSError as e:
         sys.exit(f"Error: can't read config {path}: {e}")
     except yaml.YAMLError as e:
         sys.exit(f"Error: invalid YAML in {path}: {e}")
+
+    for stage_key in ("extractor_sweep", "finalizer_sweep"):
+        if config.get(stage_key):
+            expand_repeats(stage_key, config[stage_key])
+
+    # `brief:` on an extractor arm (D278): a path (relative to this config file) to a brief that
+    # becomes the arm vault's context.md, or `false` to withhold context.md from extraction.
+    # Absent means the vault's own context.md, which benchmark vaults never have. The sweep's
+    # `defaults:` may set it for every arm (D310); it is copied onto each arm that sets none here,
+    # rather than merged at run time like the other defaults, so the report records it per arm.
+    # The finalizer sweep's `base:` extraction takes one too, and the finalizer arms copied from
+    # that vault then post-process with the brief, as a real investigation does.
+    extractor = config.get("extractor_sweep") or {}
+    default_brief = (extractor.get("defaults") or {}).get("brief")
+    briefed = []
+    for arm in extractor.get("arms") or []:
+        if default_brief is not None:
+            arm.setdefault("brief", default_brief)
+        briefed.append((f"extractor_sweep arm '{arm.get('id')}'", arm))
+    if (config.get("finalizer_sweep") or {}).get("base"):
+        briefed.append(("finalizer_sweep base", config["finalizer_sweep"]["base"]))
+    for where, arm in briefed:
+        brief = arm.get("brief")
+        if brief is None or brief is False:
+            continue
+        if not isinstance(brief, str):
+            sys.exit(f"Error: {where} has brief: {brief!r} — use a path to a brief file, or false")
+        brief_path = (path.parent / brief).resolve()
+        if not brief_path.is_file():
+            sys.exit(f"Error: {where} names a brief that does not exist: {brief_path}")
+        arm["brief"] = str(brief_path)
 
     for stage_key, arms_key in (("extractor_sweep", "arms"), ("finalizer_sweep", "arms")):
         stage = config.get(stage_key)
@@ -151,12 +205,10 @@ def vault_root(config: dict, config_dir: Path, cli_override: Path | None) -> Pat
 
 def _quiet(fn, *args, **kwargs):
     """Runs `fn` with stdout captured, for the noisy-but-harmless calls this driver makes into
-    the real CLI plumbing (`cmd_new`'s vault-created banner, `_run_preprocess`'s chew progress) —
-    reusing the actual functions is what keeps a benchmark vault's layout genuinely identical to
-    a real one, but their terminal output is meant for an interactive human, not a cost-preview
-    run. On any exception the captured buffer is printed before re-raising, so a real failure is
-    never hidden behind a suppressed happy path. Deliberately not a `--quiet` flag on the
-    production CLI itself — this is benchmark-harness-only cosmetics."""
+    the real operations (pre-processing's per-file lines, a run's log) — reusing the actual
+    functions is what keeps a benchmark vault genuinely identical to a real one, but their output
+    is the app's job log, not a cost-preview run's. On any exception the captured buffer is
+    printed before re-raising, so a real failure is never hidden behind a suppressed happy path."""
     buf = io.StringIO()
     try:
         with contextlib.redirect_stdout(buf):
@@ -167,30 +219,30 @@ def _quiet(fn, *args, **kwargs):
 
 
 def _deregister_benchmark_vault(slug: str) -> None:
-    """`cmd_new` registers the vault it creates in TWO places (real `watchdog new` behaviour) —
-    `~/.watchdog/projects.json` (this function) and Obsidian's own `obsidian.json`, the vault
-    switcher (see `_deregister_obsidian_vault` below). Reusing `cmd_new`, rather than hand-rolling
+    """`ops.projects.create` registers the vault it creates in TWO places, as a new investigation
+    in the app is — `~/.watchdog/projects.json` (this function) and Obsidian's own
+    `obsidian.json` (see `_deregister_obsidian_vault` below). Reusing it, rather than hand-rolling
     the vault layout, is what keeps a benchmark vault authentic — but both registrations assume
-    every vault `cmd_new` creates is a real, permanent investigation, which a benchmark fixture is
-    not, so both have to be undone. This one: remove only the slug just created, never touching
+    every vault it creates is a real, permanent investigation, which a benchmark fixture is not,
+    so both have to be undone. This one: remove only the slug just created, never touching
     any other entry."""
-    from watchdog.cmd.base import load_projects, save_projects
-    projects = load_projects()
-    if slug in projects:
-        del projects[slug]
-        save_projects(projects)
+    from watchdog import projects
+    listed = projects.load()
+    if slug in listed:
+        del listed[slug]
+        projects.save(listed)
 
 
 def _deregister_obsidian_vault(vault_path: Path) -> None:
-    """The Obsidian-side half of undoing `cmd_new`'s registration (see
+    """The Obsidian-side half of undoing `create`'s registration (see
     `_deregister_benchmark_vault` above for why both exist). Obsidian's `vaults` dict is keyed by
     an opaque random id, not the vault's path, so matching has to be on the `path` field inside
-    each entry, not the key. Mirrors `_register_obsidian_vault`'s own error posture exactly — a
+    each entry, not the key. Mirrors `obsidian.register`'s own error posture exactly — a
     missing, unreadable, or malformed `obsidian.json`, or Obsidian not being installed at all,
     must never fail a benchmark run, so any failure here is swallowed the same way."""
     import json
-    from watchdog.cmd.vault import _obsidian_config_path
-    cfg = _obsidian_config_path()
+    from watchdog import obsidian
+    cfg = obsidian.config_path()
     try:
         if not cfg.exists():
             return
@@ -211,16 +263,12 @@ def corpus_documents(corpus_dir: Path) -> list[Path]:
     return sorted(p for p in corpus_dir.iterdir() if p.suffix.lower() == ".pdf")
 
 
-def _new_vault_args(name: str, root: Path) -> SimpleNamespace:
-    return SimpleNamespace(name=name, name_flag=None, description="", dir=str(root))
-
-
 def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, root: Path) -> Path:
     """Create-and-chew a master vault once, reuse it on every later run. `with_sidecars=False`
     (the classifier master) drops each `.yml` sidecar so classification actually runs — a pinned
     sidecar skips it entirely (D120)."""
-    from watchdog.cmd import vault as vault_cmd
-    from watchdog.cmd.ingest import _run_preprocess
+    from watchdog.ops import ingest
+    from watchdog.ops import projects as projects_op
 
     vault = root / name
     queue_dir = vault / ".watchdog" / "queue"
@@ -229,11 +277,11 @@ def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, roo
 
     if not vault.exists():
         print(f"  Setting up master vault {name}…")
-        _quiet(vault_cmd.cmd_new, _new_vault_args(name, root))
+        _quiet(projects_op.create, name, parent=root)
         _deregister_benchmark_vault(name)
         _deregister_obsidian_vault(vault)
 
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     for doc in docs:
         shutil.copy2(doc, incoming / doc.name)
         if with_sidecars:
@@ -241,13 +289,11 @@ def ensure_master_vault(name: str, docs: list[Path], *, with_sidecars: bool, roo
             if sidecar.exists():
                 shutil.copy2(sidecar, incoming / sidecar.name)
 
-    # _run_preprocess, not cmd_chew: cmd_chew unconditionally offers (and, with skip_warning set,
-    # silently runs) a full ingest right after chewing via _offer_ingest — exactly the auto-ingest
-    # side effect this driver must avoid, since every arm needs control over its own model knobs.
+    # Pre-processing only: every arm controls its own model knobs for what follows.
     n = len(docs)
     label = f"{n} document{'s' if n != 1 else ''}"
     print(f"  Chewing {label}…")
-    _quiet(_run_preprocess, vault, confirm=False, show_ingest_hint=False)
+    _quiet(ingest.preprocess, vault)
     print(f"  ✓ {label} ready")
     return vault
 
@@ -288,8 +334,7 @@ def _seed_if_absent(vault: Path, seed, reseed: dict) -> None:
     `reset_vaults` deliberately runs *after* the go-ahead — deleting a vault is a real action and
     must not precede consent. Those two orderings together left a hole: a stale vault was
     skipped here (it already existed), deleted by the reset, and then never re-created, so its
-    arm ran against a path that was gone and died in `_in_vault`'s chdir with a bare
-    FileNotFoundError. Recording the seed closure is what lets the reset restore each one.
+    arm ran against a path that was gone and died with a bare FileNotFoundError. Recording the seed closure is what lets the reset restore each one.
 
     This is not an edge case: `--estimate-only` runs the same plan phase, so it seeds every arm
     vault it previews. The documented workflow — estimate first, then re-run for real — therefore
@@ -304,7 +349,7 @@ def _stale_reason(vault: Path) -> str | None:
     """Why `vault` isn't safe to start a fresh arm run against, or None if it's fresh (either
     absent, or present but untouched). Checked up front for every arm targeted by this run,
     rather than only being discovered deep inside that arm's own turn — `seed_arm_vault`'s
-    reseed-refusal, or `cmd_extract`'s two-phase pending-finalization gate — potentially after
+    reseed-refusal, or processing's two-phase pending-finalization gate — potentially after
     other arms have already spent real money (#494)."""
     if not vault.exists():
         return None
@@ -367,7 +412,7 @@ class ArmResult:
     skipped: bool = False          # true only for classifier-sweep with an empty corpus
     cancelled: bool = False        # ctrl+c during this arm — the whole run stops after it
     error: str | None = None
-    # Per-document failures inside an otherwise-successful call (cmd_extract/cmd_finalize catch
+    # Per-document failures inside an otherwise-successful call (processing and post-processing catch
     # these internally and return normally — `ok` alone would miss them entirely, silently, once
     # the terse runner stops printing the underlying pipeline's own per-document error lines).
     # Written to errors.log by bench_report.write_run, not the terminal.
@@ -389,16 +434,19 @@ class ArmResult:
     wait_count: int = 0
     documents_done: int | None = None
     documents_total: int | None = None
+    # The base arm id when this result is one run of a repeated arm (`repeats:`, D278) — the
+    # report groups on it to show the spread across runs.
+    repeat_of: str | None = None
 
 
 def _resolve(model_str: str | None, default: str):
-    from watchdog.cmd.ingest import _resolve_stage
-    return _resolve_stage(model_str, None, default=default)
+    from watchdog.ops.ingest import resolve_stage
+    return resolve_stage(model_str, None, default=default)
 
 
 def _effective_backend(backend: str | None) -> str:
-    from watchdog.cmd.auth import resolve_auth
-    from watchdog.cmd.ingest import _effective_extract_backend
+    from watchdog.auth import resolve_auth
+    from watchdog.ops.ingest import _effective_extract_backend
     auth_mode = resolve_auth()["mode"] if backend is None else None
     return _effective_extract_backend(backend, auth_mode)
 
@@ -413,7 +461,7 @@ def arm_backend(model_str: str, *, default: str) -> str:
 
 
 def _auth_mode() -> str:
-    from watchdog.cmd.auth import resolve_auth
+    from watchdog.auth import resolve_auth
     return resolve_auth().get("mode", "none")
 
 
@@ -478,23 +526,8 @@ def _latest_usage(vault: Path) -> tuple[dict | None, str | None]:
         return None, usage_run_id
 
 
-@contextlib.contextmanager
-def _in_vault(vault: Path):
-    """`cmd_extract`/`cmd_finalize` (via `cmd_ingest`) resolve their vault from the current
-    working directory only — `ingest.py`'s `vault = Path(".").resolve()` takes no explicit path
-    argument, unlike the cost-estimate/chew functions this driver calls elsewhere. This is the
-    one place that gap gets bridged, so every real-execution call site targets the right vault
-    regardless of where `run_benchmark.py` itself was invoked from."""
-    prev = Path.cwd()
-    os.chdir(vault)
-    try:
-        yield
-    finally:
-        os.chdir(prev)
-
-
 def _doc_errors(summary: dict | None) -> list[str]:
-    """Per-document failures from a cmd_extract summary — caught and tallied internally
+    """Per-document failures from a processing summary — caught and tallied internally
     (`_guarded`'s except Exception), never raised, so `ok=True` at the ArmResult level says
     nothing about whether every document actually succeeded."""
     if not summary:
@@ -505,9 +538,9 @@ def _doc_errors(summary: dict | None) -> list[str]:
 
 def _queue_doc_count(vault: Path) -> int:
     """The corpus size an extractor arm is about to run, counted from `.watchdog/queue/*.json`
-    *before* `cmd_extract` is called (#559). Arm vaults are seeded fresh from a chewed master and
+    *before* processing starts (#559). Arm vaults are seeded fresh from a chewed master and
     never reused (`_stale_reason`), so this is exactly the corpus size — but only if read before
-    extraction starts: `cmd_extract` moves/consumes queue files as it goes, so counting afterward
+    extraction starts: processing moves/consumes queue files as it goes, so counting afterward
     would read a completed run as 0 documents. Top-level `*.json` only (not `_failed/`), matching
     how a fresh arm vault's queue is actually laid out."""
     queue = vault / ".watchdog" / "queue"
@@ -517,8 +550,8 @@ def _queue_doc_count(vault: Path) -> int:
 def _extraction_outcome(summary: dict | None, documents_total: int) -> dict:
     """The ArmResult kwargs that tell a rate-limited or otherwise-partial arm from a clean
     completion (#559) — `orchestrate._extract` already computes `rate_limited`/`stop_message`
-    (a session-wide provider rate limit, not a per-document failure), and `cmd_ingest`'s
-    bounded-wait loop adds `wait_count`. Shared by every caller of `cmd_extract` in this module so
+    (a session-wide provider rate limit, not a per-document failure), and processing's
+    bounded-wait loop adds `wait_count`. Shared by every arm runner in this module so
     none of them keep the old cancelled-only blind spot that let a rate limit print as a plain
     Ctrl-C with no errors.log entry and get scored as if every document had been tried."""
     summary = summary or {}
@@ -539,32 +572,35 @@ def _extraction_outcome(summary: dict | None, documents_total: int) -> dict:
 
 
 def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
-    from watchdog.cmd import ingest as ing
     from watchdog.model_client import BATCH_BACKENDS
+    from watchdog.ops import ingest as ing
     documents_total = _queue_doc_count(vault)
     # `verify` (#535) is an explicit True/False per arm, never None: an arm must not inherit the
     # verification pass from whatever `verify_extraction` the machine running the sweep happens
     # to have configured — an arm's spend and its recall both change with it.
     #
-    # `wait=True` + a bounded `max_rate_limit_waits` (#559): the diagnosis behind this issue found
-    # every arm on this corpus runs close to the account's TPM limit (see benchmark.yaml's
-    # `extractor_sweep.defaults` comment), so a rate limit mid-arm is a real possibility, not an
-    # edge case worth leaving to stop the arm cold. Bounded (default 2 waits) rather than
-    # unbounded so a sweep that keeps getting limited still terminates and reports a partial arm
-    # instead of stalling the whole run. A batch backend already refuses `--wait` outright
-    # (`cmd_ingest`'s own guard, since a batch's results come back hours later in a separate
-    # process with nothing to wait *for* here) — skip it rather than let that guard sys.exit
-    # the arm.
+    # `wait=True` + a bounded `max_rate_limit_waits` (#559): every arm on this corpus runs close
+    # to the account's TPM limit (see benchmark.yaml's `extractor_sweep.defaults` comment), so a
+    # rate limit mid-arm is a real possibility. Bounded (default 2 waits) so a sweep that keeps
+    # getting limited still terminates and reports a partial arm instead of stalling the run. A
+    # batch backend refuses to wait (its results come back hours later in a separate run), so
+    # it isn't asked to.
     backend = arm_backend(arm["extractor_model"], default="sonnet")
-    ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
-                        extractor_effort=arm.get("extractor_effort"), estimate=False,
-                        force=False, skip_warning=True, wait=backend not in BATCH_BACKENDS,
-                        max_rate_limit_waits=arm.get("max_rate_limit_waits", 2),
-                        concurrency=arm.get("concurrency"), no_finalize=True,
-                        verify=bool(arm.get("verify", False)), benchmark_arm_id=arm["id"])
+    opts = ing.RunOptions(extractor_model=arm["extractor_model"],
+                          extractor_effort=arm.get("extractor_effort"), skip_warning=True,
+                          wait=backend not in BATCH_BACKENDS,
+                          max_rate_limit_waits=arm.get("max_rate_limit_waits", 2),
+                          concurrency=arm.get("concurrency"),
+                          verify=bool(arm.get("verify", False)), benchmark_arm_id=arm["id"],
+                          # `brief: false` (D278) extracts without the vault's context.md.
+                          withhold_brief=arm.get("brief") is False)
+    if isinstance(arm.get("brief"), str):
+        # A brief file (resolved by load_config) becomes this arm's context.md, the same file a
+        # user's brief lives in, so extraction reads it exactly as it would in use.
+        (vault / "context.md").write_text(Path(arm["brief"]).read_text(encoding="utf-8"),
+                                          encoding="utf-8")
     try:
-        with _in_vault(vault):
-            summary = _quiet(ing.cmd_extract, ns, non_interactive=True)
+        summary = _quiet(ing.process, vault, opts, finalize=False)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=False, error=str(e))
     usage, usage_run_id = _latest_usage(vault)
@@ -574,13 +610,11 @@ def run_extractor_arm(arm: dict, vault: Path) -> ArmResult:
 
 
 def run_finalizer_arm(arm: dict, vault: Path) -> ArmResult:
-    from watchdog.cmd import ingest as ing
-    ns = SimpleNamespace(finalizer_model=arm["finalizer_model"],
-                        finalizer_effort=arm.get("finalizer_effort"), estimate=False,
-                        skip_briefing=False, benchmark_arm_id=arm["id"])
+    from watchdog.ops import ingest as ing
+    opts = ing.RunOptions(finalizer_model=arm["finalizer_model"],
+                          finalizer_effort=arm.get("finalizer_effort"), benchmark_arm_id=arm["id"])
     try:
-        with _in_vault(vault):
-            out = _quiet(ing.cmd_finalize, ns)
+        out = _quiet(ing.finish, vault, opts)
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="finalizer", vault=vault, ok=False, error=str(e))
     # A finalize failure (rate limit, reconciliation error) is also caught and returned rather
@@ -610,22 +644,18 @@ def _classify_results(vault: Path, expected: dict[str, str]) -> dict:
 
 
 def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> ArmResult:
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     documents_total = _queue_doc_count(vault)
-    ex_ns = SimpleNamespace(command="dig", extractor_model=arm["extractor_model"],
-                            extractor_effort=None, estimate=False, force=False,
-                            skip_warning=True, wait=False, no_finalize=True, verify=False,
-                            benchmark_arm_id=arm["id"])
+    ex_opts = ing.RunOptions(extractor_model=arm["extractor_model"], skip_warning=True,
+                             verify=False, benchmark_arm_id=arm["id"])
     try:
-        with _in_vault(vault):
-            ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
-            outcome = _extraction_outcome(ex_summary, documents_total)
-            if outcome["cancelled"] or outcome["rate_limited"]:
-                return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
-                                 doc_errors=_doc_errors(ex_summary), **outcome)
-            fn_ns = SimpleNamespace(finalizer_model=arm["finalizer_model"], finalizer_effort=None,
-                                    estimate=False, skip_briefing=True, benchmark_arm_id=arm["id"])
-            _quiet(ing.cmd_finalize, fn_ns)
+        ex_summary = _quiet(ing.process, vault, ex_opts, finalize=False)
+        outcome = _extraction_outcome(ex_summary, documents_total)
+        if outcome["cancelled"] or outcome["rate_limited"]:
+            return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
+                             doc_errors=_doc_errors(ex_summary), **outcome)
+        _quiet(ing.finish, vault, ing.RunOptions(finalizer_model=arm["finalizer_model"],
+                                                 skip_briefing=True, benchmark_arm_id=arm["id"]))
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=False, error=str(e))
     return ArmResult(arm_id=arm["id"], stage="classifier", vault=vault, ok=True,
@@ -634,22 +664,19 @@ def run_classifier_smoke(arm: dict, vault: Path, expected: dict[str, str]) -> Ar
 
 
 def run_classifier_sweep_arm(arm: dict, vault: Path, fixed: dict, expected: dict[str, str]) -> ArmResult:
-    from watchdog.cmd import ingest as ing
+    from watchdog.ops import ingest as ing
     documents_total = _queue_doc_count(vault)
-    ex_ns = SimpleNamespace(command="dig", extractor_model=fixed["extractor_model"],
-                            classifier_model=arm["classifier_model"], extractor_effort=None,
-                            estimate=False, force=False, skip_warning=True, wait=False,
-                            no_finalize=True, verify=False, benchmark_arm_id=arm["id"])
+    ex_opts = ing.RunOptions(extractor_model=fixed["extractor_model"],
+                             classifier_model=arm["classifier_model"], skip_warning=True,
+                             verify=False, benchmark_arm_id=arm["id"])
     try:
-        with _in_vault(vault):
-            ex_summary = _quiet(ing.cmd_extract, ex_ns, non_interactive=True)
-            outcome = _extraction_outcome(ex_summary, documents_total)
-            if outcome["cancelled"] or outcome["rate_limited"]:
-                return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
-                                 doc_errors=_doc_errors(ex_summary), **outcome)
-            fn_ns = SimpleNamespace(finalizer_model=fixed["finalizer_model"], finalizer_effort=None,
-                                    estimate=False, skip_briefing=True, benchmark_arm_id=arm["id"])
-            _quiet(ing.cmd_finalize, fn_ns)
+        ex_summary = _quiet(ing.process, vault, ex_opts, finalize=False)
+        outcome = _extraction_outcome(ex_summary, documents_total)
+        if outcome["cancelled"] or outcome["rate_limited"]:
+            return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=True,
+                             doc_errors=_doc_errors(ex_summary), **outcome)
+        _quiet(ing.finish, vault, ing.RunOptions(finalizer_model=fixed["finalizer_model"],
+                                                 skip_briefing=True, benchmark_arm_id=arm["id"]))
     except SystemExit as e:
         return ArmResult(arm_id=arm["id"], stage="classifier-sweep", vault=vault, ok=False,
                          error=str(e))
@@ -709,7 +736,6 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool,
 
     `stale` vaults are listed before the prompt: confirming the run also resets them, and a
     recursive delete should never be a surprise consequence of agreeing to a cost."""
-    from watchdog import interactive
     total_low = total_high = 0.0
     any_priced = any_projected = False
     if stale:
@@ -747,7 +773,15 @@ def confirm_run(previews: list[tuple[str, dict, dict]], *, estimate_only: bool,
         print("  TOTAL: no dollar estimate for any arm")
     if estimate_only:
         return False
-    return interactive.confirm(f"\nRun {len(previews)} arm(s)?", default=False)
+    return _ask(f"\nRun {len(previews)} arm(s)? [y/N] ")
+
+
+def _ask(prompt: str) -> bool:
+    """A yes/no question at the terminal; anything but y/yes (or no terminal) is no."""
+    try:
+        return input(prompt).strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
 
 
 def _arm_idx(i: int, total: int) -> str:
@@ -838,13 +872,17 @@ def main(argv: list[str] | None = None) -> int:
                                      "sdk_check")
                  for a in (config.get(key) or {}).get("arms", [])}
         known |= {(config.get("classifier_smoke") or {}).get("arm", {}).get("id")} - {None}
+        # A repeated arm's base id selects every one of its runs (`--arms sonnet-5.5-med`).
+        known |= {a["repeat_of"] for key in ("extractor_sweep", "finalizer_sweep")
+                  for a in (config.get(key) or {}).get("arms", []) if a.get("repeat_of")}
         unknown = wanted_arms - known
         if unknown:
             sys.exit(f"Error: unknown arm id(s): {', '.join(sorted(unknown))}. "
                      f"Known: {', '.join(sorted(known))}")
 
     def _selected(arm: dict) -> bool:
-        return wanted_arms is None or arm.get("id") in wanted_arms
+        return (wanted_arms is None or arm.get("id") in wanted_arms
+                or arm.get("repeat_of") in wanted_arms)
 
     # Every target vault must be fresh before this run spends a cent — refuse the whole run
     # rather than discover mid-sweep, after earlier arms already ran, that a later arm's vault
@@ -950,7 +988,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Not in the default --stages list (see the module docstring) — this is the backend A/B's
     # subscription-mode follow-up (extractor_sweep's sonnet-med-sdk/sonnet-med-api comment), run
-    # on its own once you've switched `watchdog auth` to subscription. Its own small corpus, own
+    # on its own once Claude is switched to the subscription (Settings → Models & keys). Its own small corpus, own
     # master vault, own prefix — kept fully separate from the main extractor sweep's vaults.
     if "sdk-check" in stages and config.get("sdk_check"):
         sweep = config["sdk_check"]
@@ -989,7 +1027,7 @@ def main(argv: list[str] | None = None) -> int:
             if v in removed:
                 restore()
 
-    from watchdog.cmd.ingest import _caffeinate
+    from watchdog.ops.ingest import _caffeinate
     from watchdog import fixture_capture
     # Stamped now, not at report time: a sweep runs for tens of minutes and the working
     # tree can change under it, so this records the code the run actually started against.
@@ -1029,6 +1067,7 @@ def main(argv: list[str] | None = None) -> int:
                     # summary below — its two-document corpus doesn't match either one.
                     result = run_extractor_arm(ctx["arm"], ctx["vault"])
                     result.stage = "sdk-check"
+                result.repeat_of = ctx["arm"].get("repeat_of")
                 results.append(result)
                 print(_arm_line(i, total, label, result, time.monotonic() - start))
                 if result.cancelled:

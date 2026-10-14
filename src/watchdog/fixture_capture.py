@@ -3,7 +3,7 @@ malformed JSON, schema drift, pagination continuation — for issue #352's curat
 
 Inert by default: nothing is captured until `enable()` is called, which only
 `benchmarks/run_benchmark.py` does, only around a confirmed real (non-estimate-only) run against
-the public `corpus-v1` benchmark corpus. A real `watchdog ingest`/`dig` run against a live
+the public `corpus-v1` benchmark corpus. A real a processing run/`dig` run against a live
 investigation vault never calls `enable()` — this module has no scrubbing step, so it must never
 see real document content. `capture()` is a no-op whenever capture isn't enabled, so calling it
 unconditionally from `model_client.py` costs nothing in production.

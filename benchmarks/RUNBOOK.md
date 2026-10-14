@@ -24,10 +24,11 @@ comparable.
 |---|---|
 | How do models compare on extraction? | a provider group, or the whole `extractor_sweep` |
 | Does effort change anything for one model? | that model's `-low` / `-med` / `-high` ladder |
-| Agent SDK vs API vs batch? | `sonnet-med-sdk,sonnet-med-api` then `batch-sonnet-med` |
-| Is the verification pass worth shipping? | one verify/noverify pair |
+| Agent SDK vs API vs batch? | a backend pair you add (BENCHMARKING.md, "Pin the Claude backend") |
+| Is the verification pass worth shipping? | a verify/noverify pair you add (BENCHMARKING.md, Step 8) |
 
-The paired comparisons are run **on their own**, never inside a full sweep.
+The shipped matrix carries neither pair since D310. Paired comparisons are run **on their own**,
+never inside a full sweep.
 
 ## 2. Preflight
 
@@ -97,7 +98,7 @@ qualitative pass below; the two slices have disagreed on the winner before.
 because the judgments are opinions and the prompt is what constrains them.
 
 ```
-benchmarks/bench packets --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low \
+benchmarks/bench packets --arms sonnet-5.5-med-r1,sonnet-5.5-high,gpt-6-luna-med-r1 \
     --out benchmarks/<date>-judge-qualitative-<what>
 ```
 
@@ -189,7 +190,7 @@ mode is triviality and restatement, which no recall scorer can see (D172).
 
 ```
 benchmarks/bench precision build benchmarks/runs/<run-id> \
-    --arm gpt-mini-low-verify --out <out-dir>
+    --arm gpt-6-luna-low-verify --out <out-dir>
 # judge grades each added fact grounded_material / grounded_trivial / unsupported, then:
 benchmarks/bench precision aggregate <out-dir>
 ```

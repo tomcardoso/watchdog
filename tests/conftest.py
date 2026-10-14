@@ -16,7 +16,7 @@ def reset_pipeline_config_caches():
 @pytest.fixture(autouse=True)
 def isolate_telemetry_db(tmp_path, monkeypatch):
     """Redirect the global telemetry store (#611) into `tmp_path` for every test, independent of
-    `test_cli.py`'s `wdg_home` fixture — any test that exercises `_record_usage`/`orchestrate.run`/
+    the `wdg_home` fixtures — any test that exercises `_record_usage`/`orchestrate.run`/
     `orchestrate.finalize` against a real vault would otherwise write to the developer's actual
     `~/.watchdog/telemetry.db`, which `wdg_home` alone doesn't cover for test files (e.g.
     `test_orchestrate.py`) that build their own vault without going through it."""
@@ -30,8 +30,57 @@ def isolate_telemetry_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def outside_a_claude_code_session(monkeypatch):
-    """Tests run as a person at a terminal. Claude Code marks its own shells with CLAUDECODE=1,
-    and `watchdog search` confines itself when it sees that, so a developer running the suite
-    from a session would otherwise get different results than CI."""
-    monkeypatch.delenv("CLAUDECODE", raising=False)
+def no_investigation_key_scope():
+    """A run sets the process's key-choice scope to its vault (#690, D290); clear it around every
+    test so one test's vault never decides which key another test's lookups resolve."""
+    from watchdog import auth
+    auth.use_investigation(None)
+    yield
+    auth.use_investigation(None)
+
+
+@pytest.fixture(autouse=True)
+def no_app_provided_keys(monkeypatch):
+    """Keys the app hands a process live in `watchdog.keystore`'s memory (D295); clear them around
+    every test, and never let a test read its keys from the suite's own stdin."""
+    from watchdog import keystore
+    monkeypatch.delenv(keystore.SECRETS_ENV, raising=False)
+    keystore.forget()
+    yield
+    keystore.forget()
+
+
+@pytest.fixture
+def catalog_entry(monkeypatch):
+    """Add a synthetic model to the catalog for one test, for behaviour no current model has (D310
+    removed the last Claude model with thinking off by default, and the last OpenAI model from
+    before explicit cache breakpoints). Call it with the entry's fields, as `model_catalog.yaml`
+    spells them; it returns the id."""
+    from watchdog import model_catalog as cat
+
+    def add(**entry):
+        mid = entry["id"]
+        monkeypatch.setitem(cat._MODELS, mid, entry)
+        for alias in cat._tier_aliases(entry):
+            monkeypatch.setitem(cat._MODEL_IDS, alias, mid)
+        if entry["provider"] == "anthropic":
+            monkeypatch.setitem(cat._PRICING, mid, (float(entry["input"]), float(entry["output"]),
+                                                    float(entry["cache_write"]),
+                                                    float(entry["cache_read"])))
+        else:
+            monkeypatch.setitem(cat._OPENAI_PRICING, mid, (
+                float(entry["input"]), float(entry["output"]), float(entry["cached_input"]),
+                float(entry.get("cache_write", 0.0))))
+        return mid
+    return add
+
+
+@pytest.fixture
+def thinking_off_claude(catalog_entry):
+    """A Claude model that ships with thinking off (`thinking: true`), shaped like Sonnet 4.6 was:
+    the case `catalog_needs_thinking_param` exists for (D206)."""
+    return catalog_entry(id="claude-test-thinking-off", name="Claude Test", provider="anthropic",
+                         tier="test-thinking-off", input=3.0e-6, output=15.0e-6,
+                         cache_write=3.75e-6, cache_read=0.30e-6, context_window=200_000,
+                         max_output_tokens=128_000, effort_levels=["low", "medium", "high", "max"],
+                         thinking=True)

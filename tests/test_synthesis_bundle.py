@@ -31,7 +31,7 @@ def _write_registry(vault: Path, reg: dict) -> None:
 
 def test_build_bundle_empty_shas_is_empty(tmp_path):
     vault = make_vault(tmp_path)
-    assert build_bundle(vault, []) == {"entities": []}
+    assert build_bundle(vault, []) == {"entities": [], "meta": {}}
 
 
 def test_build_bundle_skips_single_mention(tmp_path):
@@ -47,10 +47,15 @@ def test_build_bundle_skips_single_mention(tmp_path):
     assert build_bundle(vault, ["sha-a"])["entities"] == []
 
 
-def test_build_bundle_selects_multi_mention_with_fragments_and_prose(tmp_path):
+def test_build_bundle_gives_the_facts_with_ids_not_the_old_prose(tmp_path):
+    """D280: the model sees the entity's facts from every document, each with a short id that
+    maps back to its D271 id, and never the note's earlier prose."""
+    from watchdog.pipeline import verification
     vault = make_vault(tmp_path)
     _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf")
-    _stage_extracted(vault, tmp_path / "b", "sha-b", "doc-b.pdf")
+    _stage_extracted(vault, tmp_path / "b", "sha-b", "doc-b.pdf", overrides={"document": {
+        "key_facts": [{"fact": "Resigned as director.", "page": 4, "date": "2023-02-01",
+                       "basis": "inferred", "entities": ["alice-smith"]}]}})
     _write_registry(vault, {
         "alice-smith": {"id": "alice-smith", "name": "Alice Smith", "type": "Person",
                         "note_path": "entities/person/alice-smith",
@@ -60,14 +65,53 @@ def test_build_bundle_selects_multi_mention_with_fragments_and_prose(tmp_path):
     note.parent.mkdir(parents=True, exist_ok=True)
     note.write_text("# Alice Smith\n\n## Summary\n\nCarried summary.\n", encoding="utf-8")
 
-    bundle = build_bundle(vault, ["sha-a", "sha-b"])
-    ids = {e["entity_id"] for e in bundle["entities"]}
-    assert "alice-smith" in ids
-
+    bundle = build_bundle(vault, ["sha-b"])
     alice = next(e for e in bundle["entities"] if e["entity_id"] == "alice-smith")
-    assert alice["fragments"].count("### ") == 2      # one block per document
-    assert alice["current_summary"]                   # carried prose included
-    assert alice["note_path"] == "entities/person/alice-smith"
+    text = json.dumps(alice)
+    assert "Carried summary." not in text
+    assert alice["documents"] == 2 and alice["selection"] == "All of the entity's facts are shown."
+    lines = alice["facts"]
+    assert len(lines) == 4                                 # three from doc A, one from doc B
+    line = next(ln for ln in lines if "Resigned" in ln)
+    assert line.startswith("[f:") and "(2023-02-01) Resigned as director." in line
+    assert "[inferred; new]" in line and "p. 4" in line
+    refs = bundle["meta"]["alice-smith"]["fact_refs"]
+    ref = line[1:line.index("]")]
+    sha_b_ids = verification.fact_ids("sha-b", [{"fact": "Resigned as director.", "page": 4}])
+    assert refs[ref] == sha_b_ids[0]
+
+
+def test_build_bundle_labels_disputed_facts_and_caps_large_entities(tmp_path, monkeypatch):
+    from watchdog.pipeline import synthesis_bundle, verification
+    vault = make_vault(tmp_path)
+    facts = [{"fact": f"Fact number {i}.", "page": 1, "date": f"20{10 + i:02d}-01-01",
+              "entities": ["alice-smith"]} for i in range(12)]
+    _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={"document": {"key_facts": facts}})
+    _stage_extracted(vault, tmp_path / "b", "sha-b", "doc-b.pdf", overrides={"document": {
+        "key_facts": [{"fact": "Batch fact.", "page": 2, "entities": ["alice-smith"]}]}})
+    _write_registry(vault, {
+        "alice-smith": {"id": "alice-smith", "name": "Alice Smith", "type": "Person",
+                        "note_path": "entities/person/alice-smith", "appears_in": ["sha-a", "sha-b"]},
+    })
+    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps(
+        {"sha-a": {"filename": "doc-a.pdf"}, "sha-b": {"filename": "doc-b.pdf"}}))
+    disputed = verification.fact_ids("sha-a", facts)[0]
+    (vault / ".watchdog" / "registry" / "verification.json").write_text(json.dumps({
+        "schema_version": 1, "marks": {disputed: {"status": "disputed", "fact": "Fact number 0.",
+                                                   "page": 1}}}))
+    # Uncapped first: the disputed fact is shown, labelled, never withheld.
+    full = "\n".join(build_bundle(vault, ["sha-b"])["entities"][0]["facts"])
+    assert any("Fact number 0." in ln and "disputed by the reporter" in ln for ln in full.splitlines())
+    monkeypatch.setattr(synthesis_bundle, "FACT_MAX", 5)
+
+    bundle = build_bundle(vault, ["sha-b"])
+    alice = bundle["entities"][0]
+    joined = "\n".join(alice["facts"])
+    assert bundle["meta"]["alice-smith"]["disputed"] == 1
+    assert len(alice["facts"]) == 5 and "Batch fact." in joined   # this batch's fact always kept
+    assert "Fact number 11." in joined and "Fact number 1." not in joined   # then the most recent
+    assert alice["selection"].startswith("5 of the entity's 13 facts are shown")
+    assert bundle["meta"]["alice-smith"]["facts_total"] == 13
 
 
 def test_build_bundle_gates_on_project_wide_appears_in(tmp_path):
@@ -138,30 +182,6 @@ def test_build_bundle_scoped_to_batch_not_whole_corpus(tmp_path):
     assert ids == {"recurring-co"}   # old-co is recurring + staged, but not in this batch → skipped
 
 
-def test_build_bundle_fragment_carries_claim_text(tmp_path):
-    """A claim's text survives from the staged artifact into the rendered fragment block that
-    goes into the synthesis prompt (replaces the removed write_vault-level fragment-digest test,
-    now that the digest is built here instead of accumulated by write_vault)."""
-    vault = make_vault(tmp_path)
-    _write_registry(vault, {
-        "alice-smith": {"id": "alice-smith", "name": "Alice Smith", "type": "Person",
-                        "note_path": "entities/person/alice-smith",
-                        "appears_in": ["sha-a", "sha-b"]},
-    })
-    _stage_extracted(vault, tmp_path / "a", "sha-a", "doc-a.pdf", overrides={
-        "entities": [{
-            "id": "alice-smith", "name": "Alice Smith", "type": "Person", "aliases": [],
-            "summary": None,
-            "evidence_fragments": [{"claim": "A distinctive claim about Alice.", "basis": "stated"}],
-            "timeline_events": [], "roles": [],
-        }],
-    })
-
-    bundle = build_bundle(vault, ["sha-a"])
-    alice = next(e for e in bundle["entities"] if e["entity_id"] == "alice-smith")
-    assert "A distinctive claim about Alice." in alice["fragments"]
-
-
 # ── apply_bundle ──────────────────────────────────────────────────────────────
 
 def _full_extraction(tmp_path):
@@ -198,12 +218,11 @@ def test_apply_bundle_writes_prose_preserves_structured_sections(tmp_path):
 
     assert outcome["applied"] == ["alice-smith"]
     note = _note(vault)
-    assert "SYNTHESIZED summary across sources." in _extract_section(note, "Summary")
-    assert "SYNTHESIZED analysis." in _extract_section(note, "Analysis")
-    assert "Old summary." not in note and "Old finding." not in note
-    # Structured sections untouched:
+    summary = _extract_section(note, "Summary")
+    assert "SYNTHESIZED summary across sources." in summary and "SYNTHESIZED analysis." in summary
+    assert "Old finding." not in note
+    # Structured sections are rendered from data, untouched by the prose:
     assert "[!contradiction]" in _extract_section(note, "Contradictions")
-    assert "Appointed director" in _extract_section(note, "Timeline")
     assert "Acme Corp" in _extract_section(note, "Relationships")
 
 
@@ -219,8 +238,10 @@ def test_apply_bundle_skips_unknown_id_and_empty_summary(tmp_path):
 
     assert outcome["applied"] == []
     assert set(outcome["skipped"]) == {"ghost-entity", "alice-smith"}
-    # alice-smith keeps her carried-forward summary, untouched.
-    assert "Alice Smith is a director of Acme Corp." in _note(vault)
+    # Nothing was stored, so alice-smith still has no AI-written summary.
+    assert "## Summary" not in _note(vault)
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert "synthesis" not in entry
 
 
 def test_apply_bundle_writes_registry_once_for_multiple(tmp_path):
@@ -237,3 +258,25 @@ def test_apply_bundle_writes_registry_once_for_multiple(tmp_path):
     assert set(outcome["applied"]) == {"alice-smith", "acme-corp"}
     reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
     assert "alice-smith" in reg and "acme-corp" in reg
+
+
+def test_build_bundle_rewrites_a_summary_left_stale_by_a_merge_or_undo(tmp_path):
+    """D285: a summary whose note says it is out of date (written before a merge into its record,
+    or before an undo) is rewritten at the next run even when the batch does not name the entity,
+    and even when an undo left the record with one document."""
+    vault = make_vault(tmp_path)
+    stale = {"summary": "Old.", "stale": "undo"}
+    _write_registry(vault, {
+        "split-co": {"id": "split-co", "name": "Split Co", "type": "Company", "synthesis": stale,
+                     "note_path": "entities/company/split-co", "appears_in": ["sha-old"]},
+        "kept-co": {"id": "kept-co", "name": "Kept Co", "type": "Company",
+                    "synthesis": {**stale, "stale": "merge"},
+                    "note_path": "entities/company/kept-co", "appears_in": ["sha-old", "sha-x"]},
+        "quiet-co": {"id": "quiet-co", "name": "Quiet Co", "type": "Company",
+                     "synthesis": {"summary": "Fine."},
+                     "note_path": "entities/company/quiet-co", "appears_in": ["sha-old", "sha-x"]},
+    })
+    _stage_extracted(vault, tmp_path / "new", "sha-new", "new.pdf", overrides={"entities": []})
+    ids = {e["entity_id"] for e in build_bundle(vault, ["sha-new"])["entities"]}
+    assert ids == {"split-co", "kept-co"}
+    assert build_bundle(vault, [])["entities"] == []     # nothing runs without a batch

@@ -1,5 +1,6 @@
-"""Tests for `watchdog contradiction-add` — the deterministic promote command that writes a
-verified surface-found contradiction candidate into an entity note (#312)."""
+"""Tests for `pipeline.contradiction`, the deterministic promote step behind the session's
+`contradiction_add` tool (D299): it writes a verified surface-found contradiction candidate into
+an entity note (#312)."""
 
 import json
 from pathlib import Path
@@ -18,11 +19,11 @@ def _setup(tmp_path: Path) -> Path:
     """A vault with entity ``alice-smith`` and two documents (slugs ``test-doc`` /
     ``second-doc``) ingested through the real pipeline writer."""
     vault = make_vault(tmp_path)
-    (vault / "_INCOMING" / "test-doc.pdf").write_text("dummy")
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
     wv_run(make_extraction(tmp_path), vault)
     wv_run(make_extraction(tmp_path, {
         "document": {"sha256": "def456", "filename": "second-doc.pdf",
-                     "original_path": "_INCOMING/second-doc.pdf", "title": "Second Document"},
+                     "original_path": "incoming/second-doc.pdf", "title": "Second Document"},
     }), vault)
     return vault
 

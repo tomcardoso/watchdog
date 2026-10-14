@@ -1,8 +1,8 @@
 """Pipeline defaults, defined once.
 
-Every place that applies or *displays* one of these — the CLI's flag help, `watchdog configure`,
-the orchestrator's own signature defaults, `watchdog auth`'s status table — reads it from here.
-They used to be repeated as literals, and drifted: `watchdog configure` reported
+Every place that applies or *displays* one of these — Settings,
+the orchestrator's own signature defaults, Settings → Models & keys's status table — reads it from here.
+They used to be repeated as literals, and drifted: Settings reported
 `extract_concurrency = 5` while the runtime used 20.
 """
 
@@ -13,7 +13,7 @@ FINALIZER_MODEL = "haiku"
 EXTRACTOR_EFFORT = "medium"
 CLASSIFIER_EFFORT = "low"
 
-# Metered-provider default (#493, D162). `watchdog setup`/`watchdog auth` lower it to
+# Metered-provider default (#493, D162). first-run setup/Settings → Models & keys lower it to
 # SUBSCRIPTION_CONCURRENCY when ingestion stays on a Claude subscription.
 EXTRACT_CONCURRENCY = 20
 SUBSCRIPTION_CONCURRENCY = 3

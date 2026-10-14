@@ -14,11 +14,17 @@ Outputs a single JSON object to stdout:
   "metadata": {
     "ocr_used": bool,         # OCR was forced on at least one page
     "garbled_detected": bool, # at least one page's text layer read as junk
-    "source_type": "direct_text" | "docling",
+    "source_type": "direct_text" | "docling" | "transcript",
+    "media": {...},           # audio/video only: kind, duration and each page's time range
+                              # (see transcribe.process_media)
     "chunked": bool,          # true when the PDF was split for parallel processing
     "ocr_pages": [int]        # 1-indexed pages OCR'd, present only when OCR was
                               # page-scoped — i.e. some pages but not all (#605)
   },
+  "text_positions": {...},    # where each OCR'd line sits on its page, for pages read by a
+                              # full-page OCR pass and for images; absent when there are none.
+                              # Written to its own file by preprocess_batch, never queued (D289,
+                              # see text_positions.py)
   "file_metadata": dict       # embedded file properties (PDF/Office/EXIF/AV tags) — file-intrinsic
                               # claims the file makes about itself, a sibling of "metadata" above
                               # (which holds pipeline-asserted processing facts), see file_metadata.py
@@ -41,6 +47,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from watchdog import config as user_config
+from watchdog.pipeline import text_positions as _text_positions
+from watchdog.pipeline import transcribe as _transcribe
 
 # alphanumeric+space ratio below which text is considered garbled by the character-class
 # signal alone. Lowered from 0.75 (#580/#597): 0.75 was too aggressive for tables and
@@ -74,6 +82,9 @@ CHUNK_WORKERS = max(2, _perf_cpu_count() // 2)
 
 DIRECT_TEXT_SUFFIXES = {".txt", ".csv", ".md"}
 
+# Images are OCR'd whole, so their text positions are kept like a scanned PDF page's (D289).
+IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp"}
+
 DOCLING_SUFFIXES = {
     ".pdf", ".docx", ".pptx", ".xlsx",
     ".html", ".xhtml",
@@ -81,10 +92,11 @@ DOCLING_SUFFIXES = {
     ".asciidoc", ".adoc",
     ".tex",
     ".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp",
-    ".wav", ".mp3", ".m4a", ".aac", ".ogg", ".flac",
-    ".mp4", ".avi", ".mov",
     ".vtt",
 }
+
+# Audio and video are transcribed locally by pipeline/transcribe.py, not Docling (D273).
+MEDIA_SUFFIXES = _transcribe.MEDIA_SUFFIXES
 
 
 def sha256_file(path: Path) -> str:
@@ -319,26 +331,34 @@ def pdf_preprocess(src: Path) -> "Path | None":
     os.close(fd2)
     qpdf_tmp = Path(qpdf_tmp_str)
     preprocess_timeout = _config_get("preprocess_timeout", 120)
+    r = None
     try:
-        r = subprocess.run(
-            ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
-            capture_output=True,
-            timeout=preprocess_timeout,
-        )
-        if r.returncode == 0 and qpdf_tmp.exists():
-            mid = qpdf_tmp
+        # qpdf and Ghostscript are optional helpers: where one is not installed the step is
+        # skipped (the app ships without them), and no cleaned copy is offered.
+        try:
+            r = subprocess.run(
+                ["qpdf", "--decrypt", "--no-warn", str(src), str(qpdf_tmp)],
+                capture_output=True,
+                timeout=preprocess_timeout,
+            )
+            if r.returncode == 0 and qpdf_tmp.exists():
+                mid = qpdf_tmp
+        except FileNotFoundError:
+            pass
 
-        r = subprocess.run(
-            ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
-             "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
-            capture_output=True,
-            timeout=preprocess_timeout,
-        )
+        try:
+            r = subprocess.run(
+                ["gs", "-dBATCH", "-dNOPAUSE", "-dSAFER", "-sDEVICE=pdfwrite",
+                 "-dCompatibilityLevel=1.4", f"-sOutputFile={tmp}", str(mid)],
+                capture_output=True,
+                timeout=preprocess_timeout,
+            )
+        except FileNotFoundError:
+            r = None
     finally:
-        if mid != src and mid.exists():
-            mid.unlink()
+        qpdf_tmp.unlink(missing_ok=True)
 
-    if r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
+    if r is not None and r.returncode == 0 and tmp.exists() and tmp.stat().st_size > 0:
         return tmp
     if tmp.exists():
         tmp.unlink()
@@ -431,10 +451,47 @@ def build_converter(force_ocr: bool):
         do_table_structure=do_tables,
         ocr_options=ocr_opts,
         accelerator_options=AcceleratorOptions(device=AcceleratorDevice.CPU),
+        **_keep_parsed_pages(PdfPipelineOptions),
     )
     return DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
     )
+
+
+def _keep_parsed_pages(options_cls) -> dict:
+    """`generate_parsed_pages=True` where this Docling has the option: it keeps each page's text
+    cells, with their boxes, after conversion, which is where the OCR'd lines' positions are read
+    from (D289). An older Docling without it converts as before and saves no positions."""
+    fields = getattr(options_cls, "model_fields", None) or {}
+    return {"generate_parsed_pages": True} if "generate_parsed_pages" in fields else {}
+
+
+def _ocr_engine_name(converter) -> str:
+    """The configured OCR engine's kind (`auto`, `rapidocr`, `ocrmac`, `tesseract`...), recorded
+    with the positions; `auto` names the choice, not what Docling picked at run time."""
+    try:
+        from docling.datamodel.base_models import InputFormat
+        opts = converter.format_to_options[InputFormat.PDF].pipeline_options.ocr_options
+        return str(getattr(opts, "kind", None) or "unknown")
+    except Exception:
+        return "unknown"
+
+
+def build_image_converter():
+    """The converter for an image file: Docling's defaults, plus the parsed pages kept so the
+    OCR'd lines' positions can be read (D289)."""
+    from docling.document_converter import DocumentConverter
+    try:
+        from docling.document_converter import ImageFormatOption
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.datamodel.base_models import InputFormat
+        keep = _keep_parsed_pages(PdfPipelineOptions)
+        if not keep:
+            return DocumentConverter()
+        return DocumentConverter(format_options={
+            InputFormat.IMAGE: ImageFormatOption(pipeline_options=PdfPipelineOptions(**keep))})
+    except Exception:
+        return DocumentConverter()
 
 
 def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: bool) -> dict:
@@ -458,6 +515,12 @@ def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: 
         result = json.loads(r.stdout)
         if "error" in result:
             return result
+        positions = result.get("text_positions")
+        if isinstance(positions, dict) and positions.get("pages"):
+            renumbered = _text_positions.renumber(positions["pages"], page_numbers)
+            if renumbered is None:
+                return {"error": "Slice returned text positions for a page it does not have"}
+            positions["pages"] = renumbered
         # Renumber to position in the original document. A page number the slice
         # can't account for is a bug, not a page to guess at: a silently wrong
         # page number is worse than a failed file, which at least gets retried.
@@ -506,19 +569,29 @@ def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]]) -> dict
     # Any failed slice fails the whole document — a silent page gap is worse than
     # a failed file, since a failed file gets retried (#251).
     all_pages, failed = [], []
+    positions: dict[str, dict] = {}
+    engine = None
     for n, (pages, _force) in enumerate(slices):
         r = results[n]
         if "error" in r:
             failed.append(f"pages {_page_range(pages)}: {r['error']}")
             continue
         all_pages.extend(r.get("pages", []))
+        tp = r.get("text_positions")
+        if isinstance(tp, dict) and isinstance(tp.get("pages"), dict):
+            positions.update(tp["pages"])
+            engine = engine or tp.get("engine")
 
     if failed:
         return {"error": f"Chunk(s) failed: {'; '.join(failed)}"}
 
     # Sorted, not concatenated: slices are grouped by OCR verdict, so their
     # pages interleave in the original document.
-    return {"pages": sorted(all_pages, key=lambda p: p["page"])}
+    out = {"pages": sorted(all_pages, key=lambda p: p["page"])}
+    block = _text_positions.block(positions, engine or "unknown")
+    if block:
+        out["text_positions"] = block
+    return out
 
 
 def _page_range(pages: list[int]) -> str:
@@ -532,7 +605,7 @@ def _page_range(pages: list[int]) -> str:
 
 def _docling_result(path: Path, pages: list[dict], page_count: int, *,
                     ocr_used: bool, garbled: bool, ocr_pages: list[int] | None = None,
-                    chunk_count: int | None = None) -> dict:
+                    chunk_count: int | None = None, text_positions: dict | None = None) -> dict:
     metadata = {
         "ocr_used": ocr_used,
         "garbled_detected": garbled,
@@ -546,13 +619,16 @@ def _docling_result(path: Path, pages: list[dict], page_count: int, *,
     # two scanned inserts" from "OCR'd all 202 pages".
     if ocr_pages:
         metadata["ocr_pages"] = [i + 1 for i in ocr_pages]
-    return {
+    out = {
         "filename": path.name,
         "sha256": sha256_file(path),
         "page_count": page_count,
         "pages": pages,
         "metadata": metadata,
     }
+    if text_positions:
+        out["text_positions"] = text_positions
+    return out
 
 
 _PAGE_BREAK = "\n\n<!-- page-break -->\n\n"
@@ -714,6 +790,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
             garbled=bool(garbled_pages),
             ocr_pages=force_pages,
             chunk_count=len(slices),
+            text_positions=result.get("text_positions"),
         )
 
     # Small PDFs and all other formats: single Docling conversion
@@ -726,6 +803,8 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
             converter = build_converter(force_ocr)
         except Exception as e:
             return {"error": f"Failed to build converter: {e}"}
+    elif path.suffix.lower() in IMAGE_SUFFIXES:
+        converter = build_image_converter()
     else:
         converter = DocumentConverter()
 
@@ -753,8 +832,17 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
     pages = _markdown_pages(doc)
     page_count = max(p["page"] for p in pages)
 
+    # Positions only where the page's text is the OCR's (D289): a PDF converted with full-page
+    # OCR (every page of this conversion), or an image. A page that kept its own text layer is
+    # found through that layer.
+    positions = None
+    if (is_pdf and force_ocr) or path.suffix.lower() in IMAGE_SUFFIXES:
+        positions = _text_positions.block(_text_positions.from_conversion(result),
+                                          _ocr_engine_name(converter) if is_pdf else "auto")
+
     return _docling_result(path, pages, page_count,
-                           ocr_used=force_ocr, garbled=bool(garbled_pages))
+                           ocr_used=force_ocr, garbled=bool(garbled_pages),
+                           text_positions=positions)
 
 
 def main() -> None:
@@ -780,10 +868,11 @@ def main() -> None:
 
     suffix = path.suffix.lower()
 
-
-
     if suffix in DIRECT_TEXT_SUFFIXES:
         result = process_direct_text(path)
+    elif suffix in MEDIA_SUFFIXES:
+        _transcribe.os_environ_quiet()
+        result = _transcribe.process_media(path, emit=_transcribe.stderr_emitter)
     elif suffix in DOCLING_SUFFIXES:
         result = process_with_docling(path, force_ocr=args.force_ocr,
                                       detect=not args.no_force_ocr)

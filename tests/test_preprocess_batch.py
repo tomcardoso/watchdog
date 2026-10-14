@@ -6,7 +6,6 @@ import subprocess
 
 import pytest
 
-from watchdog.cmd.live import LiveRegion
 
 from watchdog.pipeline.preprocess_batch import (
     find_files,
@@ -47,8 +46,10 @@ def test_ds_store_excluded(tmp_path):
 
 
 def test_failed_subdir_excluded(tmp_path):
+    tmp_path = tmp_path / "incoming"
+    tmp_path.mkdir()
     ok = tmp_path / "ok.pdf"
-    failed_dir = tmp_path / "_FAILED"
+    failed_dir = tmp_path / "failed"
     failed_dir.mkdir()
     bad = failed_dir / "bad.pdf"
     ok.write_bytes(b"")
@@ -84,7 +85,7 @@ def test_nonexistent_path_returns_empty(tmp_path):
 
 
 def test_ingest_lock_excluded(tmp_path):
-    lock = tmp_path / ".ingest-lock"
+    lock = tmp_path / ".processing-lock"
     lock.write_bytes(b"")
     assert find_files([str(tmp_path)]) == []
 
@@ -93,23 +94,27 @@ def test_ingest_lock_excluded(tmp_path):
 # ── preprocess_one ────────────────────────────────────────────────────────────
 
 class _FakePopen:
-    """Minimal Popen mock: communicate() returns immediately."""
+    """Minimal Popen mock: the process has already exited, its output waiting in the pipes."""
     def __init__(self, stdout="", stderr=""):
-        self._stdout = stdout
-        self._stderr = stderr
+        self.stdout = io.StringIO(stdout)
+        self.stderr = io.StringIO(stderr)
         self.cmd_seen = None
 
-    def communicate(self, timeout=None):
-        return self._stdout, self._stderr
+    def poll(self):
+        return 0
 
     def kill(self): pass
     def wait(self): pass
 
 
 class _FakePopenTimeout:
-    """Popen mock that always raises TimeoutExpired from communicate()."""
-    def communicate(self, timeout=None):
-        raise subprocess.TimeoutExpired([], timeout or 0)
+    """Popen mock for a process that never exits."""
+    def __init__(self):
+        self.stdout = io.StringIO("")
+        self.stderr = io.StringIO("")
+
+    def poll(self):
+        return None
 
     def kill(self): pass
     def wait(self): pass
@@ -314,22 +319,22 @@ def test_resolve_workers_explicit_chunk_overrides_config(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("bad_value", [0, -1])
 def test_resolve_workers_rejects_non_positive_explicit_pre(tmp_path, monkeypatch, bad_value):
-    # `--chew-workers -1` (or 0) must fail with a clean CLI error, not ThreadPoolExecutor's raw
+    # A worker count of -1 (or 0) must fail with a clean error, not ThreadPoolExecutor's raw
     # "max_workers must be greater than 0" ValueError (#636).
     files = [tmp_path / "a.pdf"]
     files[0].write_bytes(b"")
     monkeypatch.setenv("HOME", str(tmp_path))
-    with pytest.raises(SystemExit, match="chew-workers"):
+    with pytest.raises(SystemExit, match="pre-processing worker count"):
         _resolve_workers(files, explicit_pre=bad_value)
 
 
 @pytest.mark.parametrize("bad_value", [0, -1])
 def test_resolve_workers_rejects_non_positive_explicit_chunk(tmp_path, monkeypatch, bad_value):
-    # `--chunk-workers -1` (or 0) must fail with a clean CLI error, not a raw ValueError (#636).
+    # A chunk worker count of -1 (or 0) must fail with a clean error, not a raw ValueError (#636).
     files = [tmp_path / "a.pdf"]
     files[0].write_bytes(b"")
     monkeypatch.setenv("HOME", str(tmp_path))
-    with pytest.raises(SystemExit, match="chunk-workers"):
+    with pytest.raises(SystemExit, match="chunk worker count"):
         _resolve_workers(files, explicit_pre=None, explicit_chunk=bad_value)
 
 
@@ -350,18 +355,18 @@ def test_resolve_workers_caps_pre_to_file_count(tmp_path, monkeypatch):
 
 def test_chew_refuses_when_a_fresh_chew_lock_exists(tmp_path):
     """Two chews on one vault (e.g. `watchdog watch` + a manual `watchdog chew`) previously both
-    ran, racing staging renames. A fresh .chew-lock now makes the second refuse."""
+    ran, racing staging renames. A fresh .preprocessing-lock now makes the second refuse."""
     import time
     vault = tmp_path / "vault"
     (vault / ".watchdog").mkdir(parents=True)
-    (vault / "_INCOMING").mkdir()
-    lock = vault / ".watchdog" / ".chew-lock"
+    (vault / "incoming").mkdir()
+    lock = vault / ".watchdog" / ".preprocessing-lock"
     fresh = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     lock.write_text(f"started_at: {fresh}\npid: 999\n")
 
     with pytest.raises(SystemExit) as exc:
         run_ingest(vault)
-    assert "already in progress" in str(exc.value)
+    assert "already being added" in str(exc.value)
     assert lock.read_text().startswith(f"started_at: {fresh}")   # incumbent untouched
 
 
@@ -438,7 +443,7 @@ def test_page_label_case_insensitive(tmp_path):
 
 def _make_vault(tmp_path):
     vault    = tmp_path / "vault"
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     queue    = vault / ".watchdog" / "queue"
     staging  = vault / ".watchdog" / "staging"
     incoming.mkdir(parents=True)
@@ -458,7 +463,7 @@ def test_empty_doc_moves_to_skipped(tmp_path, monkeypatch):
 
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
-    assert (incoming / "_SKIPPED" / "photo.jpg").exists()
+    assert (incoming / "skipped" / "photo.jpg").exists()
     assert not f.exists()
     assert list(queue.glob("*.json")) == []
 
@@ -490,7 +495,7 @@ def test_nonempty_doc_still_queued(tmp_path, monkeypatch):
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (queue / "aabbcc.json").exists()
-    assert not (incoming / "_SKIPPED").exists()
+    assert not (incoming / "skipped").exists()
 
 
 def test_summary_includes_skipped_count(tmp_path, monkeypatch, capsys):
@@ -580,8 +585,8 @@ def test_garbled_doc_still_queued(tmp_path, monkeypatch, capsys):
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
     assert (queue / "gg00.json").exists()
-    assert not (incoming / "_SKIPPED").exists()
-    assert not (incoming / "_FAILED").exists()
+    assert not (incoming / "skipped").exists()
+    assert not (incoming / "failed").exists()
 
 
 # ── sidecar handling (D121) ─────────────────────────────────────────────────────
@@ -653,7 +658,7 @@ def test_sidecar_moved_to_failed_alongside_source(tmp_path, monkeypatch):
 
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
-    assert (incoming / "_FAILED" / "broken.pdf.yml").exists()
+    assert (incoming / "failed" / "broken.pdf.yml").exists()
     assert not (incoming / "broken.pdf.yml").exists()
 
 
@@ -669,38 +674,8 @@ def test_sidecar_moved_to_skipped_alongside_source(tmp_path, monkeypatch):
 
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
 
-    assert (incoming / "_SKIPPED" / "blank.jpg.yml").exists()
+    assert (incoming / "skipped" / "blank.jpg.yml").exists()
     assert not (incoming / "blank.jpg.yml").exists()
-
-
-# ── near-dup self-match guard (#424) ────────────────────────────────────────────
-#
-# Re-chewing a committed document's own morgue original for `--force <selector>` compares its
-# text against `registry/documents.json`, which still holds that same document's own minhash —
-# without excluding it, the re-queued document would always "near-duplicate" itself at ~1.0
-# similarity, since it IS itself.
-
-def test_compute_near_dup_excludes_forced_self_match(tmp_path):
-    from watchdog.pipeline.near_dup import shingles_from_text, minhash
-    from watchdog.pipeline.preprocess_batch import _compute_near_dup
-
-    vault = tmp_path / "vault"
-    (vault / ".watchdog" / "registry").mkdir(parents=True)
-    text = ("Acme Corp filed an annual report disclosing significant revenue "
-            "for the fiscal year ending in December.")
-    mh = minhash(shingles_from_text(text))
-    (vault / ".watchdog" / "registry" / "documents.json").write_text(json.dumps({
-        "self-sha": {"filename": "alpha.pdf", "minhash": mh, "document_note": "documents/alpha"},
-    }))
-    result = {"pages": [{"markdown": text}]}
-
-    without_exclude = _compute_near_dup(result, vault)
-    assert without_exclude["top_similarity"] >= 0.85
-    assert any(m["sha256"] == "self-sha" for m in without_exclude["near_duplicates"])
-
-    with_exclude = _compute_near_dup(result, vault, exclude_sha="self-sha")
-    assert with_exclude["near_duplicates"] == []
-    assert with_exclude["top_similarity"] == 0.0
 
 
 # ── near-dup within one chew and against the queue (#696) ──────────────────────
@@ -745,12 +720,12 @@ def test_near_dup_flags_a_match_still_in_the_queue(tmp_path):
 
 
 def test_chew_flags_near_duplicates_dropped_together(tmp_path, monkeypatch):
-    """End to end: two near-identical filings dropped into one `_INCOMING/` — the later-staged one
+    """End to end: two near-identical filings dropped into one `incoming/` — the later-staged one
     names the earlier as its near-duplicate in its queue file."""
     from watchdog.pipeline import preprocess_batch as ppb
     monkeypatch.setenv("HOME", str(tmp_path))
     vault = _empty_vault(tmp_path)
-    incoming = vault / "_INCOMING"
+    incoming = vault / "incoming"
     incoming.mkdir()
     for name in ("a.pdf", "b.pdf"):
         (incoming / name).write_bytes(name.encode())
@@ -759,7 +734,7 @@ def test_chew_flags_near_duplicates_dropped_together(tmp_path, monkeypatch):
         "pages": [{"page": 1, "markdown": _FILING + (" Filed." if path.name == "b.pdf" else "")}],
         "page_count": 1, "char_count": len(_FILING), "source_path": str(path),
     })
-    ppb.run_ingest(vault, workers=1, show_ingest_hint=False)
+    ppb.run_ingest(vault, workers=1)
     queued = {json.loads(q.read_text())["filename"]: json.loads(q.read_text())["near_dup"]
               for q in (vault / ".watchdog" / "queue").glob("*.json")}
     flagged = [name for name, nd in queued.items() if nd["near_duplicates"]]
@@ -785,40 +760,43 @@ def test_near_dup_index_scores_like_minhash_similarity_past_its_initial_capacity
     assert got == want and got
 
 
-# ── live status region (#158) ───────────────────────────────────────────────────
+# ── progress lines (#158) ───────────────────────────────────────────────────────
 
-def test_tty_run_shows_inflight_row_and_progress(tmp_path, monkeypatch):
-    """On a TTY the batch draws an in-flight 'chewing…' row per file plus a progress/ETA row,
-    and the file's result scrolls above when it settles."""
+def test_a_run_prints_one_line_per_finished_file(tmp_path, monkeypatch, capsys):
     vault, incoming, queue, staging = _make_vault(tmp_path)
     f = incoming / "report.pdf"
     f.write_bytes(b"")
-
     monkeypatch.setattr(ppb, "preprocess_one", lambda path, *a, **kw: {
         "sha256": "feed01", "pages": [{"markdown": "hi"}], "char_count": 2,
         "page_count": 1, "source_path": str(path),
     })
-
-    buf = io.StringIO()
-    # Inject a TTY-enabled region over a capture buffer (the test process is not a real TTY).
-    monkeypatch.setattr(ppb, "LiveRegion", lambda *a, **kw: LiveRegion(buf, enabled=True))
-
     _run_ingest_inner(vault, incoming, queue, staging, workers=1, chunk_workers=None, files=[f])
-
-    out = buf.getvalue()
-    assert "chewing…" in out              # in-flight row appeared while the worker ran
-    assert "report.pdf" in out            # settled result line scrolled above
-    assert "1/1" in out                   # progress row rendered
-    assert "\x1b[" in out                 # cursor escapes used (TTY path, not append-only)
+    out = capsys.readouterr().out
+    assert "report.pdf" in out and "\x1b[" not in out
     assert (queue / "feed01.json").exists()
 
 
 def test_skipped_subdir_excluded_from_find_files(tmp_path):
-    incoming = tmp_path
-    (incoming / "_SKIPPED").mkdir()
-    (incoming / "_SKIPPED" / "photo.jpg").write_bytes(b"")
+    incoming = tmp_path / "incoming"
+    incoming.mkdir()
+    (incoming / "skipped").mkdir()
+    (incoming / "skipped" / "photo.jpg").write_bytes(b"")
     (incoming / "doc.pdf").write_bytes(b"")
-    result = find_files([str(tmp_path)])
+    result = find_files([str(incoming)])
     names = [f.name for f in result]
     assert "doc.pdf" in names
     assert "photo.jpg" not in names
+
+
+def test_failed_and_skipped_excluded_only_directly_under_incoming(tmp_path):
+    # A folder of the user's own that happens to be called "failed" is still read (D266); only
+    # incoming/failed and incoming/skipped are set aside. Chewing the set-aside folder itself
+    # explicitly (to retry its files) still works.
+    incoming = tmp_path / "incoming"
+    for sub in ("failed", "skipped", "mine/failed"):
+        (incoming / sub).mkdir(parents=True)
+        (incoming / sub / "x.pdf").write_bytes(b"")
+    (incoming / "ok.pdf").write_bytes(b"")
+    names = sorted(str(f.relative_to(incoming)) for f in find_files([incoming]))
+    assert names == ["mine/failed/x.pdf", "ok.pdf"]
+    assert [f.name for f in find_files([incoming / "failed"])] == ["x.pdf"]

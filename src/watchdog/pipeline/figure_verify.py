@@ -207,7 +207,7 @@ def verify_figures(extraction: dict, page_texts: dict[int, str]) -> list[str]:
     doc_values: list[tuple[Decimal, int]] = []
     for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
         # Clear any annotation from an earlier post-flight pass over the same staged extraction
-        # (`watchdog bark`) before re-deciding: a figure that resolves this time — better OCR, a
+        # (post-processing (`bark`)) before re-deciding: a figure that resolves this time — better OCR, a
         # page text that wasn't on disk before — must not keep yesterday's flag.
         fact.pop("figures_unverified", None)
         fact.pop("figures_off_page", None)

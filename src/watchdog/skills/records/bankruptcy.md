@@ -49,14 +49,14 @@ Loaded by Watchdog when the document type is a bankruptcy filing, proposal, cred
 
 - **Transactions at undervalue** — assets transferred for less than fair market value before bankruptcy. If within certain look-back periods, the trustee can reverse these.
 - **Fraudulent preferences** — paying certain creditors before others, or transferring assets to related parties, shortly before bankruptcy. Most insolvency statutes set look-back periods for these transactions.
-- **Assets missing from the sworn schedules** — the statement of affairs and bankruptcy schedules are a sworn inventory, and omitting an asset is perjury in virtually every jurisdiction. The schedule alone can't tell you what's absent — but if the entity digest or another document places property, a company holding, or a recent transfer in the bankrupt's hands that the schedules don't list, record that gap as a lead.
+- **Assets missing from the sworn schedules** — the statement of affairs and bankruptcy schedules are a sworn inventory, and omitting an asset is perjury in virtually every jurisdiction. The schedule alone can't tell you what's absent — but where another part of the same filing (a trustee's report, a creditor's claim, the debtor's own narrative) places property, a company holding, or a recent transfer in the bankrupt's hands that the schedules don't list, record that gap as a lead. Otherwise log a lead to compare the scheduled assets with property, corporate, and vehicle records for the debtor.
 - **Related party creditors near the top of the list** — a director's company claiming a large unsecured debt before other creditors.
 - **Multiple bankruptcies** — the same individual filing insolvency proceedings more than once. Successive bankruptcies may result in stricter conditions for discharge.
 
 ### Timing patterns
 
 - **Bankruptcy filed shortly after a judgment** — if the filing references a judgment debt, or a judgment date appears in the record, record it and log a lead about judgment-avoidance timing.
-- **Business bankruptcy followed closely by a new company in the same industry** — the "phoenix company" pattern, where the old company's debts are left behind while the business continues under a new name. Record the business activity and its principals, and query the entity digest for a newer same-industry company sharing those principals.
+- **Business bankruptcy followed closely by a new company in the same industry** — the "phoenix company" pattern, where the old company's debts are left behind while the business continues under a new name. Record the business activity and its principals, and any successor the document itself names (a purchaser of the assets, a company operating from the same premises); log a lead to search for a newer same-industry company sharing those principals.
 - **Assets transferred to a spouse or family member in the years before bankruptcy** — a common attempt to shield assets from creditors. If the statement of affairs or trustee's report describes such related-party transfers, record them with dates and amounts.
 
 ### Creditor list patterns
