@@ -320,6 +320,53 @@ def test_main_reseeds_a_vault_it_reset(tmp_path, monkeypatch, capsys):
     assert stale_vault in seeded
 
 
+def test_main_reseeds_a_stale_finalizer_base_before_its_arms_copy_from_it(tmp_path, monkeypatch):
+    """The finalizer base vault is copied into every finalizer arm, so a stale base that the reset
+    deletes must be rebuilt before those copies run — otherwise `shutil.copytree` dies on a path
+    that no longer exists, after the operator has already said yes to the run."""
+    cfg = tmp_path / "benchmark.yaml"
+    cfg.write_text(yaml.safe_dump({
+        "corpus": {"dir": "corpus", "sha256": "corpus/c.sha256"},
+        "keys": {"dir": "keys", "sha256": "keys/k.sha256"},
+        "master_vault": {"name": "m", "classify_name": "mc"},
+        "finalizer_sweep": {"vault_prefix": "bench-fn",
+                            "base": {"extractor_model": "haiku"},
+                            "arms": [{"id": "haiku-med", "finalizer_model": "haiku",
+                                      "finalizer_effort": "medium"}]},
+    }), encoding="utf-8")
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    root = tmp_path / ".vaults"
+    base_vault = root / "bench-fn-base"
+    (base_vault / ".watchdog" / "queue").mkdir(parents=True)
+    (base_vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
+
+    seeded: list[Path] = []
+
+    def fake_seed(master, dest):
+        seeded.append(dest)
+        (dest / ".watchdog" / "queue").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", fake_seed)
+    monkeypatch.setattr(rb, "run_extractor_arm",
+                        lambda arm, vault: rb.ArmResult(arm_id=arm["id"], stage="extractor",
+                                                        vault=vault, ok=True))
+    monkeypatch.setattr(rb, "preview_finalizer_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)   # accept
+    import bench_report
+    monkeypatch.setattr(bench_report, "write_run", lambda *a, **k: tmp_path / "run")
+
+    rb.main(["--config", str(cfg), "--stages", "finalizer"])
+
+    assert base_vault.exists(), "the reset base was never rebuilt"
+    assert base_vault in seeded
+    assert (root / "bench-fn-haiku-med").exists(), "the finalizer arm never got its vault"
+
+
 def test_main_does_not_reset_anything_on_an_estimate_only_run(tmp_path, monkeypatch):
     """`--estimate-only` is the free, always-safe path; it must stay side-effect free."""
     cfg = _matrix_config(tmp_path)
