@@ -689,7 +689,7 @@ def test_run_extractor_arm_keeps_provider_auth_error_as_the_stop_reason(monkeypa
     summary = {"cancelled": True, "rate_limited": False, "stop_message": None,
                "auth_error": "https://api.deepseek.com rejected the API key (HTTP 401)",
                "extracted": 0, "skipped": 0, "results": []}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda opts: summary))
     result = rb.run_extractor_arm({"id": "ds", "extractor_model": "deepseek:deepseek-flash"}, tmp_path)
     assert result.cancelled is True
     assert result.rate_limited is False
