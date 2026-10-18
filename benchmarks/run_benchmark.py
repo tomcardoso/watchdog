@@ -555,10 +555,16 @@ def _extraction_outcome(summary: dict | None, documents_total: int) -> dict:
     none of them keep the old cancelled-only blind spot that let a rate limit print as a plain
     Ctrl-C with no errors.log entry and get scored as if every document had been tried."""
     summary = summary or {}
+    # A provider auth error (bad key, empty balance) stops the batch the same way a rate limit
+    # does, but sets only `auth_error`, not `stop_message` — so without this the arm reads as a
+    # plain "interrupted" and its reason is lost (the DeepSeek arm in run 2026-10-13-1729).
+    auth_error = summary.get("auth_error")
+    stop_message = summary.get("stop_message") or (
+        f"provider refused the run — {auth_error}" if auth_error else None)
     return {
         "cancelled": bool(summary.get("cancelled")),
         "rate_limited": bool(summary.get("rate_limited")),
-        "stop_message": summary.get("stop_message"),
+        "stop_message": stop_message,
         "wait_count": summary.get("wait_count", 0),
         "documents_done": summary.get("extracted", 0) + summary.get("skipped", 0),
         "documents_total": documents_total,
@@ -816,6 +822,8 @@ def _arm_line(i: int, total: int, label: str, result: ArmResult, elapsed: float)
            if result.documents_total is not None else "")
     if result.rate_limited:
         return f"  {idx} {label:<28} ⚠ rate-limited{docs}  {dur}  (see errors.log)"
+    if result.cancelled and result.stop_message:
+        return f"  {idx} {label:<28} ✗ stopped{docs}  {dur}  (see errors.log)"
     if result.cancelled:
         return f"  {idx} {label:<28} interrupted{docs}"
     if not result.ok or result.doc_errors:
@@ -916,11 +924,16 @@ def main(argv: list[str] | None = None) -> int:
         base_vault = arm_vault(sweep["vault_prefix"], "base", root)
         base_master = ensure_master_vault(config["master_vault"]["name"], docs, with_sidecars=True,
                                           root=root)
-        if not base_vault.exists():
+        def _seed_base() -> None:
             seed_arm_vault(base_master, base_vault)
             base_result = run_extractor_arm({"id": "base", **sweep["base"]}, base_vault)
             if not base_result.ok:
                 sys.exit(f"Error: finalizer sweep's base extraction failed: {base_result.error}")
+
+        # Through _seed_if_absent, not a bare `if not exists`: a stale base is deleted by the reset
+        # after the go-ahead, and only a recorded seed can rebuild it. Registering it here, before
+        # the arms below, also means it is restored before any arm copies from it.
+        _seed_if_absent(base_vault, _seed_base, reseed)
         for arm in sweep["arms"]:
             if not _selected(arm):
                 continue

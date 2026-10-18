@@ -320,6 +320,53 @@ def test_main_reseeds_a_vault_it_reset(tmp_path, monkeypatch, capsys):
     assert stale_vault in seeded
 
 
+def test_main_reseeds_a_stale_finalizer_base_before_its_arms_copy_from_it(tmp_path, monkeypatch):
+    """The finalizer base vault is copied into every finalizer arm, so a stale base that the reset
+    deletes must be rebuilt before those copies run — otherwise `shutil.copytree` dies on a path
+    that no longer exists, after the operator has already said yes to the run."""
+    cfg = tmp_path / "benchmark.yaml"
+    cfg.write_text(yaml.safe_dump({
+        "corpus": {"dir": "corpus", "sha256": "corpus/c.sha256"},
+        "keys": {"dir": "keys", "sha256": "keys/k.sha256"},
+        "master_vault": {"name": "m", "classify_name": "mc"},
+        "finalizer_sweep": {"vault_prefix": "bench-fn",
+                            "base": {"extractor_model": "haiku"},
+                            "arms": [{"id": "haiku-med", "finalizer_model": "haiku",
+                                      "finalizer_effort": "medium"}]},
+    }), encoding="utf-8")
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    root = tmp_path / ".vaults"
+    base_vault = root / "bench-fn-base"
+    (base_vault / ".watchdog" / "queue").mkdir(parents=True)
+    (base_vault / ".watchdog" / "queue" / "abc.json").write_text("{}")
+
+    seeded: list[Path] = []
+
+    def fake_seed(master, dest):
+        seeded.append(dest)
+        (dest / ".watchdog" / "queue").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", fake_seed)
+    monkeypatch.setattr(rb, "run_extractor_arm",
+                        lambda arm, vault: rb.ArmResult(arm_id=arm["id"], stage="extractor",
+                                                        vault=vault, ok=True))
+    monkeypatch.setattr(rb, "preview_finalizer_arm", lambda *a, **k: {"cost_low": 0.0,
+                                                                     "cost_high": 0.0})
+    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)   # accept
+    import bench_report
+    monkeypatch.setattr(bench_report, "write_run", lambda *a, **k: tmp_path / "run")
+
+    rb.main(["--config", str(cfg), "--stages", "finalizer"])
+
+    assert base_vault.exists(), "the reset base was never rebuilt"
+    assert base_vault in seeded
+    assert (root / "bench-fn-haiku-med").exists(), "the finalizer arm never got its vault"
+
+
 def test_main_does_not_reset_anything_on_an_estimate_only_run(tmp_path, monkeypatch):
     """`--estimate-only` is the free, always-safe path; it must stay side-effect free."""
     cfg = _matrix_config(tmp_path)
@@ -561,6 +608,17 @@ def test_arm_line_cancelled():
     assert "✓" not in text and "✗" not in text
 
 
+def test_arm_line_cancelled_with_a_stop_reason_is_not_called_interrupted():
+    """A provider refusal also sets `cancelled`, but the operator did not interrupt anything:
+    the line must say the arm was stopped and point at errors.log for the reason."""
+    text = rb._arm_line(4, 16, "extractor:deepseek-flash",
+                        _arm_result(cancelled=True, stop_message="provider refused the run — 401",
+                                    documents_done=0, documents_total=6), 12.0)
+    assert "interrupted" not in text
+    assert "✗" in text and "stopped" in text
+    assert "errors.log" in text
+
+
 def test_arm_line_rate_limited_is_distinguishable_from_plain_interrupted():
     """#559: a rate limit used to print identically to a Ctrl-C (`interrupted`, no further
     detail) — the one distinction that mattered most, since a rate limit means the harness
@@ -670,6 +728,19 @@ def test_run_extractor_arm_picks_up_cancelled_from_summary(monkeypatch, tmp_path
     result = rb.run_extractor_arm({"id": "haiku", "extractor_model": "haiku"}, tmp_path)
     assert result.ok is True
     assert result.cancelled is True
+
+
+def test_run_extractor_arm_keeps_provider_auth_error_as_the_stop_reason(monkeypatch, tmp_path):
+    """A DeepSeek 401/402 stops the batch with `auth_error` and no `stop_message` — that reason
+    was dropped, so the arm read as a plain interrupt with nothing in errors.log."""
+    summary = {"cancelled": True, "rate_limited": False, "stop_message": None,
+               "auth_error": "https://api.deepseek.com rejected the API key (HTTP 401)",
+               "extracted": 0, "skipped": 0, "results": []}
+    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+    result = rb.run_extractor_arm({"id": "ds", "extractor_model": "deepseek:deepseek-flash"}, tmp_path)
+    assert result.cancelled is True
+    assert result.rate_limited is False
+    assert "HTTP 401" in result.stop_message
 
 
 def test_run_extractor_arm_captures_per_document_failures(monkeypatch, tmp_path):
@@ -822,6 +893,15 @@ def _arm_result(**kwargs):
     defaults = dict(arm_id="a", stage="extractor", vault=None, ok=True)
     defaults.update(kwargs)
     return rb.ArmResult(**defaults)
+
+
+def test_errors_log_names_the_stop_reason_for_a_refused_arm():
+    """The report must say why a stopped arm stopped, not just 'interrupted'."""
+    r = _arm_result(arm_id="ds", cancelled=True, stop_message="provider refused the run — 401",
+                    documents_done=0, documents_total=6)
+    text = br._errors_log_text([r])
+    assert "provider refused the run — 401" in text
+    assert "0/6" in text
 
 
 def test_extractor_table_renders_failed_arm():
