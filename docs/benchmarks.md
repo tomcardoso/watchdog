@@ -117,15 +117,7 @@ reproduced here so it doesn't live only in a maintainer's local, not-checked-in
 
 A few things this benchmark doesn't cover yet:
 
-- **The current models, with the brief.** Every figure above was measured on models Watchdog no
-  longer offers, and without an investigation brief, which real use always has. The next run
-  measures each provider's current models instead: Claude Haiku 5.5 and Sonnet 5.5;
-  OpenAI's GPT-6 Luna; Google's Gemini 3.8 Flash
-  and 3.5 Flash-Lite; and DeepSeek Flash and Pro, every one with the same short brief written as
-  open questions. Its numbers are not comparable with the tables above. Claude Sonnet 5.5 and
-  Haiku 5.5, GPT-6 Luna and Gemini 3.8 Flash each run at low, medium and high effort. Every setting runs once, so read a gap
-  between two settings as a lead to check, not a result: single runs of one setting have
-  differed by up to three times.
+- **The current models, with the brief: one run, and the first read.** Every table above was measured on models Watchdog no longer offers, and without an investigation brief, which real use always has. A newer run measured each provider's current models, every one with the same short brief written as open questions: Claude Haiku 5.5 and Sonnet 5.5, OpenAI's GPT-6 Luna and Google's Gemini 3.8 Flash each at low, medium and high effort, and Gemini 3.5 Flash-Lite at low. Its numbers are not comparable with the tables above. The main result: Haiku 5.5 at high effort found 74% of the main facts and 72% of the facts that matter most, the best of any setting in that run, at about US$0.0009 a page, roughly a fifth of what Sonnet 5.5 at high effort cost (67% and 65%, about US$0.0049 a page). Haiku at high was also the slowest setting, about four seconds a page. Effort mattered differently for each model: Sonnet barely moved from low to medium, Haiku jumped only at high, and GPT-6 Luna gained most of its recall by medium. Every setting ran once, so read a gap between two settings as a lead to check, not a result: single runs of one setting have differed by up to three times. Three settings (Haiku and Gemini 3.8 Flash at low, and Gemini 3.8 Flash at medium) stopped reading one 34-page document after page 16, and the scores count what they missed. The two DeepSeek models are not in this run.
 - **Classifying document types.** The current document set only spans two of Watchdog's record
   skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
   those two right, not enough to rank classifier models against each other. That needs a

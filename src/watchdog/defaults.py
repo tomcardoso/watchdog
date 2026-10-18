@@ -6,11 +6,11 @@ They used to be repeated as literals, and drifted: Settings reported
 `extract_concurrency = 5` while the runtime used 20.
 """
 
-EXTRACTOR_MODEL = "sonnet"
+EXTRACTOR_MODEL = "haiku"
 CLASSIFIER_MODEL = "haiku"
 FINALIZER_MODEL = "haiku"
 
-EXTRACTOR_EFFORT = "medium"
+EXTRACTOR_EFFORT = "high"
 CLASSIFIER_EFFORT = "low"
 
 # Metered-provider default (#493, D162). first-run setup/Settings → Models & keys lower it to

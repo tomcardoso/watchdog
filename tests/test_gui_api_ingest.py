@@ -43,8 +43,8 @@ def test_preflight_defaults_on_subscription(rich_vault, wdg_home):
     assert p["models"] == [
         {"stage": "classifier", "backend": "claude-agent-sdk", "model": "haiku", "effort": "low",
          "label": "haiku"},   # Haiku 5.5 accepts effort, so the classifier's default applies (D277)
-        {"stage": "extractor", "backend": "claude-agent-sdk", "model": "sonnet", "effort": "medium",
-         "label": "sonnet"},
+        {"stage": "extractor", "backend": "claude-agent-sdk", "model": "haiku", "effort": "high",
+         "label": "haiku"},
         {"stage": "finalizer", "backend": "claude-agent-sdk", "model": "haiku", "effort": None,
          "label": "haiku"},
     ]

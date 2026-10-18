@@ -250,7 +250,7 @@ def test_route_stages_applies_one_model_and_each_stages_default_effort():
     assert cfg["classifier_model"] == cfg["extractor_model"] == cfg["finalizer_model"] \
         == "gemini:gemini-3.8-flash"
     assert (cfg["classifier_effort"], cfg["extractor_effort"], cfg["finalizer_effort"]) \
-        == ("low", "medium", "high")
+        == ("low", "high", "high")
 
 
 def test_route_stages_to_a_model_with_no_effort_levels_leaves_effort_unset():

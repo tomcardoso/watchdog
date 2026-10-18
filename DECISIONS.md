@@ -2778,3 +2778,8 @@ Tradeoff: no provider's top model can be used for processing or for Ask Claude, 
 Owner's direction: one run per arm instead of three for the default and the cheap arms (D278), and Sonnet 5.5, Haiku 5.5, GPT-6 Luna and Gemini 3.8 Flash each at `low`, `medium` and `high` (four arms added). The matrix is now 16 extraction runs and 5 post-processing runs.
 
 Tradeoff: single runs of one setting have differed by up to three times (D278), so no gap between two arms can be told from run-to-run noise. A result that would change a default is re-run with `repeats` before it does.
+
+### D315 — The extractor defaults to Claude Haiku 5.5 at `high`
+Owner's direction, on the first run of the D314 matrix (run `2026-10-13-1702`, `benchmarks/2026-10-18-frontier-results.md`): Haiku 5.5 at `high` had the highest recall on every slice (judged 74% of facts and 72% of must_not_miss, against 67% and 65% for Sonnet 5.5 at `high`) at about a fifth of Sonnet's cost per page. `EXTRACTOR_MODEL` becomes `haiku` and `EXTRACTOR_EFFORT` becomes `high` in `defaults.py`; the effort default is global, so it now applies to whichever model a reporter routes extraction to. This goes ahead of the re-run D314 asks for before a default moves: every arm ran once, and Haiku's lead over Sonnet at `high` is small enough that its sectioned calls (3 in the run, the open question in #555) may account for part of it.
+
+Tradeoff: a run is slower (Haiku at `high` took about 4 s a page against 0.6 s for Sonnet) and every non-Claude extractor, including GPT-6 Luna and Gemini 3.8 Flash, now defaults to `high`, which costs more than `medium` on Gemini (about double) and Luna (about half again) for a smaller measured gain. Reporters on those routes who care about cost set the effort back by hand.

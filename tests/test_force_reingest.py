@@ -164,12 +164,12 @@ def test_force_threads_to_orchestrate_run_without_finalizing(run_calls):
     assert calls[0].get("force") is True and calls[0].get("skip_finalize") is True
 
 
-def test_extractor_effort_defaults_to_medium_when_unconfigured(run_calls):
+def test_extractor_effort_defaults_to_high_when_unconfigured(run_calls):
     """D140: with no run option and no `extractor_effort` setting, processing reaches
-    `orchestrate.run` with `extract_effort="medium"`, not None (which would omit the parameter)."""
+    `orchestrate.run` with `extract_effort="high"`, not None (which would omit the parameter)."""
     vault, calls = run_calls
     _process(vault)
-    assert calls[0].get("extract_effort") == "medium"
+    assert calls[0].get("extract_effort") == "high"
 
 
 def test_classifier_effort_is_low_on_the_default_haiku_classifier(run_calls):

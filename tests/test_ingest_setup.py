@@ -198,13 +198,13 @@ def test_extractor_model_written_to_state(tmp_path):
     assert state["extractor_model"] == "haiku"
 
 
-def test_extractor_model_defaults_to_sonnet(tmp_path):
+def test_extractor_model_defaults_to_haiku(tmp_path):
     vault = _make_vault(tmp_path)
     _write_queue_file(vault, "abc123")
 
     result = run(vault)
 
-    assert result["extractor_model"] == "sonnet"
+    assert result["extractor_model"] == "haiku"
 
 
 def test_finalizer_model_written_to_state(tmp_path):

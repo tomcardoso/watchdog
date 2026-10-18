@@ -78,7 +78,7 @@ def test_schema_current_default_and_display(wdg_home):
     k = keyed(call("settings.schema"))
     assert k["extract_concurrency"]["current"] == 7 and k["extract_concurrency"]["display"] == "7"
     assert k["extract_concurrency"]["default"] == 20 and k["extract_concurrency"]["is_set"] is True
-    assert k["extractor_model"]["current"] == "sonnet-5.5" and k["extractor_model"]["default"] == "sonnet"
+    assert k["extractor_model"]["current"] == "sonnet-5.5" and k["extractor_model"]["default"] == "haiku"
     assert k["garbled_threshold"]["current"] is None and k["garbled_threshold"]["display"] == "0.6"
     assert k["garbled_threshold"]["is_set"] is False
     assert k["auto_approve"]["display"] == "true"
@@ -97,7 +97,7 @@ def test_schema_has_no_ansi_and_resolves_auto_budgets(wdg_home):
     s = call("settings.schema")
     text = json.dumps(s)
     assert "\\u001b" not in text and "\x1b" not in text
-    assert re.fullmatch(r"auto \(\d+ — sonnet\)", keyed(s)["section_token_threshold"]["display"])
+    assert re.fullmatch(r"auto \(\d+ — haiku\)", keyed(s)["section_token_threshold"]["display"])
 
 
 def test_schema_help_is_dedented(wdg_home):
@@ -211,7 +211,7 @@ def test_status_unconfigured(wdg_home):
     assert s["claude"]["mode"] is None and s["claude"]["logged_in"] is False
     assert "isn't set up" in s["claude"]["reason"]
     assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "finalizer"]
-    assert s["stages"][1] == {"stage": "extractor", "config_key": "extractor_model", "value": "sonnet",
+    assert s["stages"][1] == {"stage": "extractor", "config_key": "extractor_model", "value": "haiku",
                               "provider": "anthropic", "ready": False, "billing": None}
     assert s["keys"] == []
     assert s["base_urls"] == [{"provider": "openrouter", "url": "https://openrouter.ai/api/v1"}]   # its default
