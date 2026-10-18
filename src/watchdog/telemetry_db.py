@@ -2,11 +2,11 @@
 
 The same records `orchestrate._record_usage` writes to each vault's usage files, in one SQLite
 database, so a question across vaults or models is one query. The per-vault JSON files stay
-authoritative for `watchdog usage`. A row adds the vault path and name, any benchmark arm, a hash
+authoritative for Usage. A row adds the vault path and name, any benchmark arm, a hash
 of the prompt sent, the codebase version and the run's config snapshot. Raw responses are not
 stored. A write failure never breaks a run: the caller logs it.
 
-On by default; `watchdog configure telemetry false` stops new rows, and `watchdog delete --purge`
+On by default; the `telemetry` setting stops new rows, and deleting an investigation with its folder
 removes a vault's rows. Rows hold vault paths and document filenames, so the file is as sensitive
 as the vaults it describes."""
 
@@ -16,8 +16,13 @@ import threading
 from pathlib import Path
 from watchdog import config as user_config
 
-WATCHDOG_HOME = Path.home() / ".watchdog"
-DB_PATH = WATCHDOG_HOME / "telemetry.db"
+# Set to a path to use instead of `<config.home()>/telemetry.db` (tests). None: under Watchdog's
+# own folder, decided at call time by `config.home()` like every other file kept there.
+DB_PATH: Path | None = None
+
+
+def db_path() -> Path:
+    return DB_PATH if DB_PATH is not None else user_config.home() / "telemetry.db"
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS calls (
@@ -55,12 +60,16 @@ CREATE TABLE IF NOT EXISTS calls (
     batch_id TEXT,
     batch_submitted_at TEXT,
     batch_ended_at TEXT,
-    batch_collected_at TEXT
+    batch_collected_at TEXT,
+    key_label TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_calls_run ON calls(run_id);
 CREATE INDEX IF NOT EXISTS idx_calls_task_model ON calls(task, model, effort);
 CREATE INDEX IF NOT EXISTS idx_calls_vault ON calls(vault_path);
 """
+
+
+_ADDED_COLUMNS = (("key_label", "TEXT"),)
 
 
 # One connection per process, reused across calls and closed at the end of a run (`close`). It is
@@ -78,23 +87,29 @@ def enabled() -> bool:
 
 def _connect() -> sqlite3.Connection:
     """The process's connection to `DB_PATH`, opened and given its schema on first use. WAL mode
-    lets another process (a `watchdog dig` against another vault, a benchmark arm) write at the
+    lets another process (a processing (`dig`) against another vault, a benchmark arm) write at the
     same time; the short busy timeout bounds how long a contended write can hold up the event
     loop this runs on — a write that still can't get the lock fails and is logged, never waited
     out. Caller holds `_lock`."""
     global _conn, _conn_path
-    if _conn is not None and _conn_path == DB_PATH:
+    if _conn is not None and _conn_path == db_path():
         return _conn
     _close_locked()
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=0.5, check_same_thread=False)
+    db_path().parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path(), timeout=0.5, check_same_thread=False)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=500")
     # Overwrite deleted rows' content rather than leaving it in free pages, so a purged vault's
     # filenames aren't recoverable from the file. Many builds default this off (D261).
     conn.execute("PRAGMA secure_delete=ON")
     conn.executescript(_SCHEMA)
-    _conn, _conn_path = conn, DB_PATH
+    # Columns added after a store was first created (#690: which labelled key paid).
+    have = {row[1] for row in conn.execute("PRAGMA table_info(calls)")}
+    for name, kind in _ADDED_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE calls ADD COLUMN {name} {kind}")
+    conn.commit()
+    _conn, _conn_path = conn, db_path()
     return conn
 
 
@@ -117,7 +132,7 @@ def purge_vault(vault: Path) -> int:
     """Delete every row recorded for `vault`; returns how many. A no-op when the store doesn't
     exist — purging must never create it. Waits longer for the write lock than a recorded call
     does: a purge someone asked for must not be dropped because a run elsewhere was writing."""
-    if not DB_PATH.exists():
+    if not db_path().exists():
         return 0
     n = _write("DELETE FROM calls WHERE vault_path = ?", (str(vault.resolve()),))
     # secure_delete doesn't reach frames already in the -wal file; a truncating checkpoint copies
@@ -152,7 +167,7 @@ def relocate_vault(old: Path, new: Path) -> int:
     """Point a renamed or moved vault's rows at its new path (D261), so a later `delete --purge`
     still finds them. `old` must be resolved before the folder moves. Returns rows updated; a
     no-op when the store doesn't exist."""
-    if not DB_PATH.exists():
+    if not db_path().exists():
         return 0
     return _write("UPDATE calls SET vault_path = ?, vault_name = ? WHERE vault_path = ?",
                   (str(new.resolve()), new.name, str(old)))
@@ -187,6 +202,7 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
         json.dumps(record["rate_limit"], ensure_ascii=False) if record.get("rate_limit") else None,
         record.get("batch_id"), record.get("batch_submitted_at"),
         record.get("batch_ended_at"), record.get("batch_collected_at"),
+        record.get("key_label"),
     )
     with _lock:
         conn = _connect()
@@ -198,9 +214,9 @@ def record_call(record: dict, *, vault: Path, run_id: str, benchmark_arm_id: str
                 cost_usd, latency_s, attempts, failed, end_ts,
                 reasoning_tokens, api_ms, num_turns, stop_reason, est_input_tokens,
                 prompt_hash, codebase_version, config_json, pruned_json, rate_limit_json,
-                batch_id, batch_submitted_at, batch_ended_at, batch_collected_at
+                batch_id, batch_submitted_at, batch_ended_at, batch_collected_at, key_label
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                      ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             row,
         )
         conn.commit()

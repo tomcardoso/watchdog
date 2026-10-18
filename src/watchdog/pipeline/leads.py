@@ -142,8 +142,7 @@ def _format(leads: dict, now: datetime.datetime) -> str:
     lines = [f"# Investigative leads — {now:%Y-%m-%d}\n",
              "*Deterministic whole-vault sweep of the entity registry — no model, "
              "regenerated on each ingest.*\n",
-             "*Tick a box and run `watchdog review resolve --sync` (or `watchdog review resolve <id>`) to "
-             "drop an item from future sweeps.*\n"]
+             "*Handled in Watchdog: Review → Leads. This file is a read-only summary.*\n"]
 
     if leads["unprofiled"]:
         lines.append("\n## Named but never profiled\n")
@@ -151,13 +150,13 @@ def _format(leads: dict, now: datetime.datetime) -> str:
         for u in leads["unprofiled"]:
             by = ", ".join(u["mentioned_by"])
             docs = f"{u['doc_count']} document{'s' if u['doc_count'] != 1 else ''}"
-            lines.append(f"- [ ] **{u['name']}** — named by {by} · {docs} <!--wid:{u['rid']}-->")
+            lines.append(f"- **{u['name']}** — named by {by} · {docs} <!--wid:{u['rid']}-->")
 
     if leads["isolated"]:
         lines.append("\n## Mentioned often but unconnected\n")
         lines.append("Entities recurring across documents with no extracted relationships.\n")
         for i in leads["isolated"]:
-            lines.append(f"- [ ] **{i['name']}** — appears in {i['doc_count']} documents · "
+            lines.append(f"- **{i['name']}** — appears in {i['doc_count']} documents · "
                          f"no relationships <!--wid:{i['rid']}-->")
 
     if leads["contradictions"]:
@@ -168,7 +167,7 @@ def _format(leads: dict, now: datetime.datetime) -> str:
             n = c["count"]
             lines.append(f"- {link} — {n} flagged conflict{'s' if n != 1 else ''}")
             for callout in c["callouts"]:
-                lines.append(f"  - [ ] {callout['summary']} <!--wid:{callout['rid']}-->")
+                lines.append(f"  - {callout['summary']} <!--wid:{callout['rid']}-->")
 
     if leads["inferred"]:
         lines.append("\n## Inferred facts to verify\n")
@@ -176,7 +175,7 @@ def _format(leads: dict, now: datetime.datetime) -> str:
                      "a lead to verify, not a finding.\n")
         for i in leads["inferred"]:
             link = f"[[{i['note_path']}|{i['name']}]]" if i["note_path"] else f"**{i['name']}**"
-            lines.append(f"- [ ] {link} <!--wid:{i['rid']}-->")
+            lines.append(f"- {link} <!--wid:{i['rid']}-->")
             for claim in i["claims"]:
                 lines.append(f"  - {claim}")
 

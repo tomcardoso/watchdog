@@ -4,11 +4,11 @@ Not a pytest module — a standalone benchmark tool, run in two phases against a
 extracted with `--verify`:
 
     # 1. build the judging packets (free, local)
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py build \\
+    python benchmarks/verifier_precision.py build \\
         benchmarks/.vaults/bench-ex-gpt-luna-verify --out /tmp/verifier-judge
 
     # 2. after a judge has written judgment-<doc>.json beside each packet
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/verifier_precision.py aggregate \\
+    python benchmarks/verifier_precision.py aggregate \\
         /tmp/verifier-judge
 
 **Why this exists at all.** The recall side of the verifier is already measurable — `score_arms.py`

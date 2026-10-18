@@ -14,103 +14,73 @@ master_vault:
 
 extractor_sweep:
   vault_prefix: bench-ex
-  # Grouped by provider, then model, then effort. Haiku has no effort control and DeepSeek has one
-  # only in thinking mode (D217) — asking for one anywhere else errors. Everything that can pin an
-  # effort pins it explicitly. See BENCHMARKING.md for how to run these and FINDINGS.md for what
-  # past runs measured.
+  # Each provider's current frontier models only, every arm with the investigation brief (D310).
+  # Grouped by provider, then model, then effort; every arm that can pin an effort pins one (the
+  # DeepSeek thinking-off arm can't: there is no thinking there to tune, D217). See
+  # BENCHMARKING.md for how to run these and FINDINGS.md for what past runs measured.
   #
-  # `defaults:` (#559) — every arm here runs concurrently against the whole 6-document corpus
-  # (`extract_concurrency` otherwise defaults to 20, which never binds on a 6-document run), and
-  # the diagnosis behind #559 measured `gpt-luna-low-verify` sustaining ~55.6K tokens/min per
-  # concurrent document slot with the verification pass on, ~39.4K without — so 5-way concurrency
-  # already sits at ~198-278K tokens/min depending on the arm, and the account's TPM limit is
-  # bracketed between a 236,608 tok/min peak that succeeded and a 291,841 peak that got rate-
-  # limited. `concurrency: 5` keeps every plain arm under ~200K tok/min, roughly 20% below the
-  # observed limit. `max_rate_limit_waits` bounds `--wait`'s resume loop so a rate-limited arm
-  # surfaces as a partial result within a few waits instead of stalling the sweep.
-  defaults: {concurrency: 5, max_rate_limit_waits: 2}
+  # NOT COMPARABLE WITH ARCHIVED RUNS. Every arm here extracts with `briefs/corpus-v1.md` as the
+  # vault's context.md, the way a real investigation does; no archived arm had a brief. Arm ids
+  # are named after the full model id so none collides with an archived one (`ds-flash`,
+  # `gemini-flash-lite`, …) in `score_index.py`, which picks an arm's latest clean run across
+  # runs of the same cohort and does not know about the brief.
+  #
+  # `defaults:` — `brief` applies to every arm (copied onto each by run_benchmark.load_config,
+  # so the report records it per arm). `concurrency: 5` (#559): every arm runs concurrently
+  # against the whole 6-document corpus, and the account's TPM limit was bracketed between a
+  # 236,608 tok/min peak that succeeded and a 291,841 peak that got rate-limited, so 5-way
+  # concurrency keeps a plain arm roughly 20% under it. `max_rate_limit_waits` bounds `--wait`'s
+  # resume loop so a rate-limited arm surfaces as a partial result within a few waits instead of
+  # stalling the sweep.
+  #
+  # `repeats: N` runs an arm N times, as `<id>-r1` … `-rN`, and the report shows the spread
+  # (mean, lowest–highest, standard deviation); `--arms <id>` selects all of them. One run is one
+  # sample: archived single runs of one configuration differed by up to 3x (D278). The owner chose
+  # one run per arm for this matrix (D314), so every difference between two arms is a lead, not a
+  # measurement; add `repeats` to an arm to confirm one before acting on it.
+  defaults: {concurrency: 5, max_rate_limit_waits: 2, brief: briefs/corpus-v1.md}
   arms:
-    # ── Anthropic ──
-    - {id: haiku,             extractor_model: haiku}
-    - {id: sonnet-4.6-low,    extractor_model: sonnet-4.6, extractor_effort: low}
-    - {id: sonnet-4.6-med,    extractor_model: sonnet-4.6, extractor_effort: medium}
-    - {id: sonnet-4.6-high,   extractor_model: sonnet-4.6, extractor_effort: high}
-    - {id: sonnet-5-low,      extractor_model: sonnet-5, extractor_effort: low}
-    - {id: sonnet-5-med,      extractor_model: sonnet-5, extractor_effort: medium}
-    - {id: sonnet-5-high,     extractor_model: sonnet-5, extractor_effort: high}
+    # ── Anthropic ── Sonnet 5.5 at medium is what every user runs (D236). Haiku 5.5 defaults to
+    # medium on the API, Sonnet 5.5 to high; every arm pins its level. No Opus 5.5, Fable 5.1,
+    # GPT-6 Astra or GPT-6.1 Sol arm: those models are not catalogued (D311, D312).
+    - {id: sonnet-5.5-low,        extractor_model: sonnet-5.5, extractor_effort: low}
+    - {id: sonnet-5.5-med,        extractor_model: sonnet-5.5, extractor_effort: medium}
+    - {id: sonnet-5.5-high,       extractor_model: sonnet-5.5, extractor_effort: high}
+    - {id: haiku-5.5-low,         extractor_model: haiku-5.5, extractor_effort: low}
+    - {id: haiku-5.5-med,         extractor_model: haiku-5.5, extractor_effort: medium}
+    - {id: haiku-5.5-high,        extractor_model: haiku-5.5, extractor_effort: high}
 
     # ── OpenAI ──
-    - {id: gpt-mini-low,      extractor_model: "openai:gpt-5.4-mini", extractor_effort: low}
-    - {id: gpt-mini-med,      extractor_model: "openai:gpt-5.4-mini", extractor_effort: medium}
-    - {id: gpt-mini-high,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: high}
-    - {id: gpt-luna-low,      extractor_model: "openai:gpt-5.6-luna", extractor_effort: low}
-    - {id: gpt-luna-med,      extractor_model: "openai:gpt-5.6-luna", extractor_effort: medium}
-    - {id: gpt-luna-high,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: high}
+    - {id: gpt-6-luna-low,        extractor_model: "openai:gpt-6-luna", extractor_effort: low}
+    - {id: gpt-6-luna-med,        extractor_model: "openai:gpt-6-luna", extractor_effort: medium}
+    - {id: gpt-6-luna-high,       extractor_model: "openai:gpt-6-luna", extractor_effort: high}
 
-    # ── Gemini ──
-    - {id: gemini-flash-lite, extractor_model: "gemini:gemini-3.5-flash-lite", extractor_effort: low}
-    - {id: gemini-flash-low,  extractor_model: "gemini:gemini-3.7-flash", extractor_effort: low}
-    - {id: gemini-flash-med,  extractor_model: "gemini:gemini-3.7-flash", extractor_effort: medium}
-    - {id: gemini-flash-high, extractor_model: "gemini:gemini-3.7-flash", extractor_effort: high}
+    # ── Gemini ── thinking is always on; each model takes low, medium and high. No Gemini 4
+    # Argon arm: Google's flagship is not catalogued (D313).
+    - {id: gemini-3.8-flash-low,  extractor_model: "gemini:gemini-3.8-flash", extractor_effort: low}
+    - {id: gemini-3.8-flash-med,  extractor_model: "gemini:gemini-3.8-flash", extractor_effort: medium}
+    - {id: gemini-3.8-flash-high, extractor_model: "gemini:gemini-3.8-flash", extractor_effort: high}
+    - {id: gemini-3.5-flash-lite-low, extractor_model: "gemini:gemini-3.5-flash-lite", extractor_effort: low}
 
-    # ── DeepSeek ── two knobs now, not one (D217). `-thinking` switches thinking mode on, and
-    # since 2026-08-13 the thinking ids also take an effort level. Only `low`/`high` are swept:
-    # `medium`/`xhigh` are DeepSeek's own aliases for `high` and would be duplicate runs, and `max`
-    # is left out until `low`-vs-`high` shows the knob moves anything on this corpus at all. The
-    # thinking-off arms carry no effort because there is no thinking there to tune — that is the
-    # one gap in BENCHMARKING.md's "every arm pins an explicit effort" rule, and it is a property
-    # of the provider, not an omission. `ds-*-think-high` is what the old unpinned `ds-*-think`
-    # arm actually ran (DeepSeek's default effort is `high`), so archived `-think` figures compare
-    # against those two rows — subject to the checkpoint and price caveats in FINDINGS.md.
-    - {id: ds-flash,             extractor_model: "deepseek:deepseek-flash"}
-    - {id: ds-flash-think-low,   extractor_model: "deepseek:deepseek-flash-thinking", extractor_effort: low}
-    - {id: ds-flash-think-high,  extractor_model: "deepseek:deepseek-flash-thinking", extractor_effort: high}
-    - {id: ds-pro,               extractor_model: "deepseek:deepseek-v4-pro"}
-    - {id: ds-pro-think-low,     extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: low}
-    - {id: ds-pro-think-high,    extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: high}
-
-    # ── Paired comparisons ──
-    # Each group isolates one variable and is meant to be run on its own with --arms, not as part
-    # of a full sweep. Read BENCHMARKING.md before running either — both have setup requirements.
-    #
-    # Backend A/B (#475) — needs api-key auth.
-    - {id: sonnet-med-sdk,    extractor_model: "claude-agent-sdk:sonnet", extractor_effort: medium}
-    - {id: sonnet-med-api,    extractor_model: "claude-api:sonnet",       extractor_effort: medium}
-    - {id: batch-sonnet-med,  extractor_model: "claude-batch:sonnet",     extractor_effort: medium}
-    #
-    # Verification pass A/B (#535), on the three candidate models. `concurrency: 3` on both halves
-    # of each pair (#559) — verify re-sends full-size section input and returns fast, so its
-    # tokens/minute runs ~2.7x the same model without it; matching concurrency on the noverify
-    # twin keeps the pair comparable rather than giving one side a wider rate-limit margin.
-    - {id: sonnet-4.6-med-verify,   extractor_model: sonnet-4.6, extractor_effort: medium, verify: true, concurrency: 3}
-    - {id: sonnet-4.6-med-noverify, extractor_model: sonnet-4.6, extractor_effort: medium, verify: false, concurrency: 3}
-    - {id: gpt-mini-low-verify,     extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: true, concurrency: 3}
-    - {id: gpt-mini-low-noverify,   extractor_model: "openai:gpt-5.4-mini", extractor_effort: low, verify: false, concurrency: 3}
-    - {id: gpt-luna-low-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: true, concurrency: 3}
-    - {id: gpt-luna-low-noverify,   extractor_model: "openai:gpt-5.6-luna", extractor_effort: low, verify: false, concurrency: 3}
-    #
-    # Verify-only follow-up on the med/high tiers (no noverify twin): the plain gpt-luna-med/
-    # gpt-luna-high arms above already carry a recent noverify baseline on the full corpus.
-    - {id: gpt-luna-med-verify,     extractor_model: "openai:gpt-5.6-luna", extractor_effort: medium, verify: true, concurrency: 3}
-    - {id: gpt-luna-high-verify,    extractor_model: "openai:gpt-5.6-luna", extractor_effort: high, verify: true, concurrency: 3}
+    # ── DeepSeek ── two knobs, not one (D217): `-thinking` switches thinking mode on, and only the
+    # thinking ids take an effort level. `high` is DeepSeek's own default, and `medium`/`xhigh`
+    # are its aliases for it, so a thinking arm at `high` is the provider's standard behaviour.
+    - {id: deepseek-flash,        extractor_model: "deepseek:deepseek-flash"}
+    - {id: deepseek-flash-think-high, extractor_model: "deepseek:deepseek-flash-thinking", extractor_effort: high}
+    - {id: deepseek-pro-think-high,   extractor_model: "deepseek:deepseek-v4-pro-thinking", extractor_effort: high}
 
 finalizer_sweep:
   vault_prefix: bench-fn
-  base: {extractor_model: "deepseek:deepseek-flash"}   # fixed, cheap, deterministic (#381)
+  # Fixed, cheap, deterministic extraction (#381), with the brief, so the finalizer arms copied
+  # from it post-process with a brief as a real investigation does (D310).
+  base: {extractor_model: "deepseek:deepseek-flash", brief: briefs/corpus-v1.md}
   arms:
-    - {id: haiku,             finalizer_model: haiku}
-    - {id: sonnet-high,       finalizer_model: sonnet, finalizer_effort: high}
-    - {id: sonnet-med,        finalizer_model: sonnet, finalizer_effort: medium}
-    # finalizer_effort still defaults to high and has never been benchmarked at any lower effort.
-    - {id: sonnet-low,        finalizer_model: sonnet, finalizer_effort: low}
-    - {id: ds-flash,          finalizer_model: "deepseek:deepseek-flash"}
-    - {id: ds-pro-think,      finalizer_model: "deepseek:deepseek-v4-pro-thinking"}
-    - {id: gemini-flash-lite, finalizer_model: "gemini:gemini-3.5-flash-lite"}
-    - {id: gemini-flash,      finalizer_model: "gemini:gemini-3.7-flash"}
-    # Opus dropped. OpenAI (#453 closed): the finalizer is near-constant cost per run, so one or
-    # two arms is plenty — same D98 structured-output caveat as the extractor sweep (above)
-    # applies here too.
-    - {id: gpt-mini,          finalizer_model: "openai:gpt-5.4-mini"}
+    # Haiku 5.5 is the shipped finalizer (D277).
+    - {id: haiku-5.5-med,         finalizer_model: haiku-5.5, finalizer_effort: medium}
+    - {id: sonnet-5.5-med,        finalizer_model: sonnet-5.5, finalizer_effort: medium}
+    - {id: gpt-6-luna-med,        finalizer_model: "openai:gpt-6-luna", finalizer_effort: medium}
+    - {id: gemini-3.8-flash-med,  finalizer_model: "gemini:gemini-3.8-flash", finalizer_effort: medium}
+    - {id: deepseek-flash,        finalizer_model: "deepseek:deepseek-flash"}
 
 classifier_smoke:
   vault_prefix: bench-classify
@@ -122,29 +92,18 @@ classifier_sweep:
   corpus_dir: corpora/classify    # empty for now — see corpora/classify/README.md
   fixed: {extractor_model: "deepseek:deepseek-flash", finalizer_model: "deepseek:deepseek-flash"}
   arms:
-    - {id: haiku,             classifier_model: haiku}    # shipped default
-    - {id: sonnet,            classifier_model: sonnet}
-    - {id: ds-flash,          classifier_model: "deepseek:deepseek-flash"}
-    - {id: gemini-flash-lite, classifier_model: "gemini:gemini-3.5-flash-lite"}
-  # Classifier has no effort knob (BENCHMARKING.md) — model only, no effort sweep. BLOCKED until
-  # classify-corpus/ is populated with a type-diverse document set + expected.yaml labels;
-  # run_benchmark.py detects an empty corpus_dir and skips this stage with a one-line notice, so
-  # it doesn't block the other three stages from running.
+    - {id: haiku-5.5,             classifier_model: haiku-5.5}    # the shipped default (D277)
+    - {id: gpt-6-luna,            classifier_model: "openai:gpt-6-luna"}
+    - {id: gemini-3.5-flash-lite, classifier_model: "gemini:gemini-3.5-flash-lite"}
+    - {id: deepseek-flash,        classifier_model: "deepseek:deepseek-flash"}
+  # Model only, no effort sweep: each arm runs at the shipped `classifier_effort` (low) where the
+  # model takes it. BLOCKED until classify-corpus/ is populated with a type-diverse document set +
+  # expected.yaml labels; run_benchmark.py detects an empty corpus_dir and skips this stage with a
+  # one-line notice, so it doesn't block the other stages from running.
 
-sdk_check:
-  # The third leg of the backend A/B above (extractor_sweep's sonnet-med-sdk/sonnet-med-api
-  # pair): the same claude-agent-sdk pin, run later under subscription auth instead of api-key,
-  # once the metered pair has a baseline to compare against. Not part of the default sweep —
-  # switch `watchdog auth` to subscription first, then run it on its own:
-  #     run_benchmark.py --stages sdk-check
-  # A harness/backend spot-check, not a quality re-run, so it uses a two-document subset (one
-  # short, one mid-sized — see BENCHMARKING.md) rather than the full six-document corpus, to
-  # keep it cheap on subscription session time. Excluded from the extractor-sweep recall
-  # scoring and the six-document cost summary for the same reason: its corpus doesn't match.
-  vault_prefix: bench-sdkcheck
-  corpus_dir: corpora/sdk-check
-  arms:
-    - {id: sonnet-med-sdk-sub, extractor_model: "claude-agent-sdk:sonnet", extractor_effort: medium}
-
+# No `sdk_check:` section (D310): it was the subscription leg of the claude-agent-sdk/claude-api
+# backend A/B, which this matrix no longer carries. The stage still works; add the section back
+# (see BENCHMARKING.md) to run it.
+#
 # Still deferred (see docs/benchmarks.md "Roadmap"): no CI-trigger section — GitHub Actions
 # integration slots in as a new top-level key later without reworking this schema.

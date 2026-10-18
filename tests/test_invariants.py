@@ -1,4 +1,4 @@
-"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I9), #349.
+"""Named guard tests for ARCHITECTURE.md §15's invariants (I1-I12), #349.
 
 Each test name starts with the invariant id it guards (`test_I1_...`, `test_I2_...`, etc.), so
 a failing rule shows up as a specific, named red bar instead of relying on code review to catch
@@ -35,6 +35,11 @@ Deliberately NOT guarded here, and why:
   string uses, so piped output carries no escape bytes. Its "`--json` is plain even on a real
   terminal" half is not guarded here: that would need a pseudo-terminal at import time. The
   `--json` output tests in `tests/test_cli.py` cover the payloads, without a terminal.
+- **I10** is guarded statically: no module of the desktop app's backend calls a pipeline entry
+  point that writes a vault; those run only inside operations, in the worker. That the app builds
+  no command line is `tests/test_worker.py::test_no_app_path_builds_a_watchdog_command_line`. Its
+  other half — the app keeps the gates — lives in the app's own code (gui/) and its end-to-end
+  test, not here.
 
 I2's runtime guard was confirmed to run hermetically (the direct-text preprocessing path does
 not import Docling), so both the static and runtime layers described in the issue are present.
@@ -50,6 +55,7 @@ from pathlib import Path
 from watchdog import model_client as mc
 from watchdog import skills_catalog as sc
 from watchdog.pipeline import orchestrate, preprocess, research
+from tests.keys_support import item, stored  # noqa: F401
 
 _SRC = Path(__file__).resolve().parents[1] / "src" / "watchdog"
 
@@ -62,7 +68,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field():
     own values win on all of them — sha256, filename, original_path, page_count, record_skill,
     record_skill_hash, extract_model, extract_effort, source/obtained (from the sidecar), and
     the derived morgue_document_type/morgue_entity_id."""
-    pf = {"filename": "real.pdf", "original_path": "_INCOMING/real.pdf",
+    pf = {"filename": "real.pdf", "original_path": "incoming/real.pdf",
           "page_count": 7, "pages": [{}],
           "sidecar": "source: FOI A-2026-001\nobtained: 2026-01-02\n"}
 
@@ -70,7 +76,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field():
         "document": {
             "sha256": "0" * 64,                       # model's fabricated hash
             "filename": "totally-different.pdf",
-            "original_path": "_INCOMING/elsewhere.pdf",
+            "original_path": "incoming/elsewhere.pdf",
             "page_count": 999,
             "record_skill": "wrong-skill.md",
             "record_skill_hash": "deadbeefdead",
@@ -92,7 +98,7 @@ def test_I1_stamp_document_overrides_every_model_lied_field():
     d = lied_extraction["document"]
     assert d["sha256"] == "realsha256"
     assert d["filename"] == "real.pdf"
-    assert d["original_path"] == "_INCOMING/real.pdf"
+    assert d["original_path"] == "incoming/real.pdf"
     assert d["page_count"] == 7
     assert d["record_skill"] == "court-documents.md"
     assert d["record_skill_hash"] != "deadbeefdead"
@@ -130,7 +136,7 @@ def test_I2_chew_path_imports_no_network_library_at_module_level():
     chew_files = [
         _SRC / "pipeline" / "preprocess.py",
         _SRC / "pipeline" / "preprocess_batch.py",
-        _SRC / "cmd" / "live.py",   # imported by preprocess_batch
+        _SRC / "progress.py",   # imported by preprocess_batch
     ]
     for f in chew_files:
         imports = _module_level_imports(f)
@@ -180,27 +186,28 @@ def test_I3_prompt_templates_never_appear_in_skills_catalog():
         assert f"`{name}.md`" not in index
 
 
-def test_I3_fresh_vault_copies_no_record_skills_directory(tmp_path):
+def test_I3_fresh_vault_copies_no_record_skills_directory(tmp_path, monkeypatch):
     """Creating a vault installs the per-vault Claude Code command skills (workflow slash
     commands like /watchdog-query) but must never copy the global record-skills directory
     (src/watchdog/skills/records/) onto disk anywhere under the vault — those stay
     package-resident and are read live via watchdog.skills_catalog (D21)."""
-    from watchdog.setup_cmd import install_skills
+    from watchdog.ops.projects import create
 
-    commands_dir = tmp_path / "vault" / ".claude" / "commands"
-    install_skills(commands_dir)
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    vault = create("Fresh", parent=tmp_path / "vault")
+    commands_dir = vault / ".claude" / "commands"
 
     installed = {p.name for p in commands_dir.glob("*.md")}
-    assert installed, "expected install_skills to write at least one command file"
+    assert installed, "expected a new investigation to have at least one command file"
 
     record_skill_names = {
         p.name for p in (importlib.resources.files("watchdog") / "skills" / "records").iterdir()
         if p.name.endswith(".md")
     }
     assert not (installed & record_skill_names)
-    assert not (tmp_path / "vault" / ".claude" / "commands" / "records").exists()
-    # no "records" directory should exist anywhere under the installed vault scaffold
-    assert not any(p.name == "records" for p in (tmp_path / "vault").rglob("*") if p.is_dir())
+    assert not (commands_dir / "records").exists()
+    # no "records" directory should exist anywhere under the new vault
+    assert not any(p.name == "records" for p in vault.rglob("*") if p.is_dir())
 
 
 # ── I4 — configured model and effort only; no automatic escalation ───────────
@@ -241,13 +248,13 @@ def test_I4_retry_after_invalid_json_keeps_same_model_and_effort(monkeypatch):
     assert len(efforts) == 1, f"effort changed across retry attempts: {backend.calls}"
 
 
-# ── I5 — research output re-enters via _INCOMING/, never a direct vault write ─────────
+# ── I5 — research output re-enters via incoming/, never a direct vault write ─────────
 
 def test_I5_research_deposit_never_writes_outside_incoming(tmp_path):
     """pipeline/research.py is the deterministic egress gate behind /watchdog-research — its
     model boundary is a separate, uncapturable Claude Code session (nothing to mock in-process),
     so this guards the Python side: deposit_one's only writes are the source document and its
-    .yml sidecar under _INCOMING/. Pre-seed vault notes research must never touch, run a deposit,
+    .yml sidecar under incoming/. Pre-seed vault notes research must never touch, run a deposit,
     and assert none of them changed."""
     vault = tmp_path / "vault"
     sentinels = {
@@ -267,7 +274,7 @@ def test_I5_research_deposit_never_writes_outside_incoming(tmp_path):
     path = research.deposit_one(vault, "https://example.com/doc", title="A Doc",
                                 fetcher=_fetch)
 
-    assert path.parent == vault / "_INCOMING"
+    assert path.parent == vault / "incoming"
     for rel, content in sentinels.items():
         assert (vault / rel).read_text(encoding="utf-8") == content, \
             f"{rel} was modified by a research deposit"
@@ -337,54 +344,139 @@ def test_I6_no_module_parses_xml_with_the_stdlib():
             assert not bad, f"{f.relative_to(_SRC)} imports stdlib XML: {bad}"
 
 
-# ── I9 — styling is a terminal affordance, never part of the output ──────────
+# ── I9 — output is plain text ─────────────────────────────────────────────────
 
-def test_I9_colour_is_off_whenever_stdout_is_not_a_terminal(monkeypatch):
-    """The gate every styled string goes through: colour only on a real terminal, never forced
-    on by FORCE_COLOR (which Claude Code sets for the commands it runs), always off with NO_COLOR."""
-    import io
-    import sys
-    from watchdog import terminal
-
-    class _Tty(io.StringIO):
-        def isatty(self):
-            return True
-
-    monkeypatch.delenv("NO_COLOR", raising=False)
-    monkeypatch.setenv("FORCE_COLOR", "3")
-    monkeypatch.setattr(sys, "stdout", io.StringIO())
-    assert terminal._color_enabled() is False
-    monkeypatch.setattr(sys, "stdout", _Tty())
-    assert terminal._color_enabled() is True
-    monkeypatch.setenv("NO_COLOR", "1")
-    assert terminal._color_enabled() is False
+def test_I9_no_module_writes_terminal_escape_codes():
+    """Operations report through the worker's line protocol and the app shows the lines as text,
+    so nothing in the package emits an ANSI escape sequence. The only escapes allowed are inside
+    the patterns that strip them from third-party output."""
+    import re
+    escape = re.compile(r"\\x1b|\\033|\\u001b")
+    offenders = []
+    for f in sorted(_SRC.rglob("*.py")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            if escape.search(line) and "_ANSI = re.compile" not in line:
+                offenders.append(f"{f.relative_to(_SRC)}: {line.strip()}")
+    assert not offenders, offenders
 
 
-def test_I9_the_colour_constants_follow_the_gate_at_import():
-    """The constants styled strings use are computed once, at import, so checking
-    `_color_enabled()` alone never touches them. Import the module fresh in a subprocess — once
-    with stdout piped, once on a pseudo-terminal — so nothing is reloaded in this process."""
-    import os
-    import subprocess
-    import sys
-    code = "from watchdog import terminal; print(repr(terminal._RESET + terminal._BOLD))"
+# ── I10 — the app's mutations go through library operations ───────────────────
+
+def test_I10_the_app_backend_never_calls_a_vault_writing_entry_point():
+    """The app changes a vault by running an operation in the worker (`watchdog.gui.jobs`, D298)
+    or through a small library write in-process. Calling the pipeline's writers from the backend
+    itself would skip the worker's isolation and the operation's own locks and gates. `demo*.py`
+    is exempt: it builds the fictional demo investigation by running the real pipeline, which is
+    the point of it."""
+    import re
     from pathlib import Path
-    import watchdog
-    src = str(Path(watchdog.__file__).resolve().parent.parent)     # the package under test
-    env = {**os.environ, "FORCE_COLOR": "3",
-           "PYTHONPATH": os.pathsep.join([src, os.environ.get("PYTHONPATH", "")])}
-    env.pop("NO_COLOR", None)
-    piped = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True,
-                           check=True)
-    assert piped.stdout.strip() == "''"
-    if sys.platform == "win32":
-        return
-    import pty
-    leader, follower = pty.openpty()
-    try:
-        subprocess.run([sys.executable, "-c", code], env=env, stdout=follower, check=True)
-        out = os.read(leader, 4096).decode()
-    finally:
-        os.close(leader)
-        os.close(follower)
-    assert "\\x1b[0m" in out
+    import watchdog.gui as gui
+    writers = re.compile(r"\b(?:orchestrate\.(?:run|finalize)|write_vault\.run|merge_entities\.run|"
+                         r"contradiction\.run|_commit_pending|write_entity\.run)\s*\(")
+    root = Path(gui.__file__).parent
+    offenders = [f"{p.relative_to(root)}: {m.group(0)}"
+                 for p in sorted(root.rglob("*.py")) if not p.name.startswith("demo")
+                 for m in writers.finditer(p.read_text(encoding="utf-8"))]
+    assert not offenders, offenders
+
+
+
+# ── I12: entity merges are tiered and recorded (D279) ─────────────────────────────────────────
+
+def test_I12_a_person_is_never_folded_on_a_name_alone(tmp_path):
+    """Same slug, same full name, nothing else in common: two records stay two, for the reconcile
+    model or the reporter to decide."""
+    from tests.test_identity import _commit, _person, _registry, _stage
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")])
+    _commit(vault, ["sha-a"])
+    _stage(vault, tmp_path, "sha-b", [_person("john-smith", "John Smith")])
+    _commit(vault, ["sha-b"])
+    assert sum(1 for e in _registry(vault).values() if e["name"] == "John Smith") == 2
+
+
+def test_I12_every_automatic_fold_is_recorded_in_the_merge_log(tmp_path):
+    """Every entity the fold moves onto another (an alias match here) leaves a merge-log entry
+    naming both records, the tier and the rule."""
+    import json as _json
+    from tests.test_identity import _commit, _org, _stage
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path, "sha-a", [_org("ey", "Ernst & Young LLP", ["Ernst and Young LLP"])])
+    _stage(vault, tmp_path, "sha-b", [_org("ernst-young", "Ernst and Young LLP")])
+    _commit(vault, ["sha-a", "sha-b"])
+    log = _json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())
+    entry = next(m for m in log["merges"] if m["merged"]["id"] == "ernst-young")
+    assert (entry["keep"]["id"], entry["tier"], entry["decided_by"]) == ("ey", "high", "rule")
+    assert entry["rule"] and entry["occurrences"][0]["documents"] == ["sha-b"]
+
+
+def test_I13_model_prose_is_never_an_input_and_notes_rebuild_from_facts(tmp_path):
+    """An entity's stored AI summary reaches neither synthesis nor the contradiction check, both of
+    which read the entity's facts; and its note rebuilds, facts and summary, from stored data."""
+    import json as _json
+    from watchdog.pipeline import entity_notes, reconcile, synthesis_bundle
+    from watchdog.pipeline.write_vault import run as wv_run
+    from tests.test_write_vault import make_extraction, make_vault
+    vault = make_vault(tmp_path)
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
+    wv_run(make_extraction(tmp_path), vault)
+    wv_run(make_extraction(tmp_path, {"document": {"sha256": "def456", "filename": "two.pdf"}}), vault)
+    reg = vault / ".watchdog" / "registry" / "entities.json"
+    ents = _json.loads(reg.read_text())
+    ents["alice-smith"]["synthesis"] = {"summary": "PROSE-ONLY-CLAIM about Alice.", "analysis": "",
+                                        "by": "model"}
+    reg.write_text(_json.dumps(ents))
+
+    synth = _json.dumps(synthesis_bundle.build_bundle(vault, ["def456"]))
+    assert "Smith is listed as director" in synth and "PROSE-ONLY-CLAIM" not in synth
+    ledger = _json.dumps(reconcile.build_bundle(vault, ["def456"])["entities"])
+    assert "Smith is listed as director" in ledger and "PROSE-ONLY-CLAIM" not in ledger
+
+    note = vault / "entities" / "person" / "alice-smith.md"
+    note.unlink()
+    entity_notes.rebuild(vault, index_search=False)
+    text = note.read_text()
+    assert "## Summary\n\nPROSE-ONLY-CLAIM about Alice." in text
+    assert text.index("## Summary") < text.index("## Facts")
+    assert "Smith is listed as director" in text.split("## Facts", 1)[1]
+
+
+# ── I16: a model call never bills an account the investigation did not choose (D290) ─────────
+
+def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
+    """Every path that would send the provider's key stops, naming the key; none uses the default."""
+    import asyncio
+    import pytest
+    from watchdog import model_client as mc
+    from watchdog import auth
+    from watchdog.gui import chat
+    from watchdog.gui.rpc import RpcError
+    monkeypatch.setattr("watchdog.config.HOME", tmp_path / "home")
+    for p in auth.PROVIDERS.values():
+        monkeypatch.delenv(p["env"], raising=False)
+    vault = tmp_path / "case"
+    (vault / ".watchdog").mkdir(parents=True)
+    auth.save_state({"mode": "api-key", "keys": stored(openai="sk-default-1234567890",
+                                                     anthropic="sk-ant-default-1234567890")})
+    for provider in ("openai", "anthropic"):
+        kid = auth.add_key(provider, "Globe", f"sk-{provider}-globe-1234567890")
+        auth.choose_key(vault, provider, kid)
+        auth.delete_key(provider, kid)
+    sent = []
+
+    async def backend(*a, **k):
+        sent.append(a)
+        return {"text": "{}", "usage": {}, "cost_usd": 0.0}
+    for b in ("openai", "claude-api", "claude-agent-sdk"):
+        monkeypatch.setitem(mc._ABACKENDS, b, backend)
+    auth.use_investigation(vault)
+    for b in ("openai", None, "claude-agent-sdk"):
+        with pytest.raises(mc.ModelError, match="Globe"):
+            asyncio.run(mc.acomplete_json(task="t", prompt="p", schema={"type": "object"}, backend=b))
+    with pytest.raises(auth.KeyChoiceError):
+        auth.check_run_keys(vault, ["openai", None, "openai-batch", "claude-batch"])
+    with pytest.raises(RpcError):
+        chat.ChatManager().start(vault, "ask", None, "who")
+    assert sent == []

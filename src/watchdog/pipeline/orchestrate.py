@@ -12,7 +12,6 @@ serializes the vault writes and `_reconcile_entity_ids` handles the parallel new
 
 import asyncio
 from dataclasses import dataclass, field
-import contextlib
 import datetime
 import hashlib
 import json
@@ -22,8 +21,7 @@ import sys
 import time
 from pathlib import Path
 
-from watchdog import defaults, model_client, skills_catalog, telemetry_db
-from watchdog.terminal import _BOLD, _CYAN, _DIM, _GREEN, _RESET, _YELLOW, LiveRegion
+from watchdog import defaults, model_client, progress, skills_catalog, telemetry_db
 from watchdog.pipeline import (
     abort, batch_extract, chunking, harvest, leads, merge, preflight, postflight, prompts, reconcile,
     requests, schemas, section, sidecar, synthesis_bundle, timeline, verify, watchlist,
@@ -31,6 +29,7 @@ from watchdog.pipeline import (
 from watchdog.pipeline.json_io import _read_json, _read_json_or
 from watchdog.pipeline.write_vault import _doc_slug
 from watchdog import config as user_config
+from watchdog.vault_paths import processing_log
 
 DEFAULT_CONCURRENCY = defaults.EXTRACT_CONCURRENCY
 
@@ -42,9 +41,10 @@ _ADMISSION_SAFETY_MARGIN = 0.85
 _ADMISSION_POLL_INTERVAL_S = 0.25
 _ADMISSION_MAX_WAIT_S = 300.0
 
-# Every call a standalone `watchdog bark` makes has one of these task names;
+# Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
-FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing"}
+FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
+                  "relationship-labels"}
 
 
 @dataclass
@@ -54,10 +54,7 @@ class _RunState:
     and by `run()` itself."""
     # The live status region during extraction (#151); None outside it or off a TTY, so `_say`
     # falls back to plain printing.
-    board: "LiveRegion | None" = None
-    # The command a "re-run to resume" message names (D138): `watchdog dig` for a dig run,
-    # `watchdog add` for an add run.
-    resume_hint: str = "watchdog dig"
+    board: "progress.Lines | None" = None
     # Per-call token/cost records (A2), one per model call; None outside a run, so helpers tested
     # directly don't need one.
     usage: "list[dict] | None" = None
@@ -72,6 +69,9 @@ class _RunState:
     config_snapshot: "dict | None" = None
     # Whether the run writes to the global telemetry store (the `telemetry` configure key).
     telemetry_on: bool = False
+    # The label of the key a batch run submits or collects with (#690): batch-collected items are
+    # recorded without a ModelResult to carry it.
+    batch_key_label: "str | None" = None
     # Admission control's in-flight reservations (#563): sha -> estimated tokens for a document
     # admitted but whose real usage hasn't landed yet. `run()` dispatches every document at once,
     # so each one's first `_admit` check runs before any call completes; reserving eagerly lets a
@@ -83,8 +83,7 @@ _run = _RunState()
 
 
 def _say(msg: str) -> None:
-    """Print a styled progress line to the terminal (indented per the CLI style guide).
-    Routes through the live region as a scrollback note when one is active."""
+    """Print a progress line, through the run's progress lines when they are open."""
     line = f"  {msg}"
     if _run.board is not None:
         _run.board.note(line)
@@ -93,7 +92,7 @@ def _say(msg: str) -> None:
 
 
 def _settle(sha: str, line: str) -> None:
-    """Print a document's terminal line (OK / ✗), clearing its in-flight live row if present."""
+    """Print a document's final line (OK / ✗)."""
     if _run.board is not None:
         _run.board.finish(sha, line)
     else:
@@ -107,7 +106,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   pruned: list[str] | None = None, failed: bool = False,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
-                  vault: Path | None = None, prompt_hash: str | None = None) -> None:
+                  vault: Path | None = None, prompt_hash: str | None = None,
+                  key_label: str | None = None) -> None:
     """Append one call's usage record to `_run.usage` (and the run's partial file), if a run is active.
 
     Takes explicit fields rather than a `ModelResult` so batch-collected items can be recorded too.
@@ -143,6 +143,10 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     }
     if prompt_hash is not None:
         record["prompt_hash"] = prompt_hash
+    if key_label:
+        # Which labelled key paid (#690, D290) — its label, never the key — so Usage can show
+        # cost per account.
+        record["key_label"] = key_label
     if u.get("duration_api_ms") is not None:
         record["api_ms"] = u["duration_api_ms"]
     if u.get("num_turns") is not None:
@@ -207,13 +211,13 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
                          filename=filename, detail=detail, failed=True,
                          est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                         vault=vault, prompt_hash=prompt_hash)
+                         vault=vault, prompt_hash=prompt_hash, key_label=getattr(e, "key_label", None))
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
                  est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                 vault=vault, prompt_hash=prompt_hash)
+                 vault=vault, prompt_hash=prompt_hash, key_label=getattr(r, "key_label", None))
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
@@ -293,12 +297,12 @@ async def _admit(sha: str, est_tokens: int, budget: int | None, cancelled: async
         if _recent_token_rate(_run.usage or [], now=time.time()) + reserved + est_tokens <= ceiling:
             return
         if time.monotonic() - started >= _ADMISSION_MAX_WAIT_S:
-            _say(f"{_DIM}Proceeding past the token budget after "
-                 f"{_ADMISSION_MAX_WAIT_S:.0f}s waiting for headroom.{_RESET}")
+            _say(f"Proceeding past the token budget after "
+                 f"{_ADMISSION_MAX_WAIT_S:.0f}s waiting for headroom.")
             return
         if not told:
             told = True
-            _say(f"{_DIM}Holding new documents — near the token budget, waiting for headroom…{_RESET}")
+            _say("Holding new documents — near the token budget, waiting for headroom…")
         await asyncio.sleep(_ADMISSION_POLL_INTERVAL_S)
 
 
@@ -308,9 +312,8 @@ def _usage_totals(records: list[dict]) -> dict:
         "output_tokens": sum(r["output_tokens"] for r in records),
         "cache_read_tokens": sum(r["cache_read_tokens"] for r in records),
         "cache_write_tokens": sum(r["cache_write_tokens"] for r in records),
-        # `reasoning_tokens` (#354) only appears on OpenAI reasoning-model records — `r.get(...)`
-        # with a 0 default, not `r[...]`, so older records and every non-reasoning backend still
-        # sum cleanly.
+        # `reasoning_tokens` (#354) only appears on OpenAI reasoning-model records, so every
+        # other backend's records sum with a 0 default.
         "reasoning_tokens": sum(r.get("reasoning_tokens", 0) for r in records),
         "cost_usd": round(sum(r["cost_usd"] or 0.0 for r in records), 6) if records else None,
         "latency_s": round(sum(r.get("latency_s") or 0.0 for r in records), 3),
@@ -318,16 +321,10 @@ def _usage_totals(records: list[dict]) -> dict:
 
 
 def usage_files(vault: Path) -> list[Path]:
-    """Every persisted `usage-<ts>.json` for this vault, oldest first (#319). Checks both the
-    current location (`.watchdog/registry/usage/`) and the pre-move flat location
-    (`.watchdog/registry/`) directly, so a vault ingested before that reorganization doesn't
-    lose its older history — filenames sort chronologically regardless of which directory
-    they're in, so the two sets merge correctly once combined."""
-    reg_dir = vault / ".watchdog" / "registry"
-    usage_dir = reg_dir / "usage"
-    files = list(usage_dir.glob("usage-*.json")) if usage_dir.exists() else []
-    files += list(reg_dir.glob("usage-*.json")) if reg_dir.exists() else []   # legacy location
-    return sorted(files, key=lambda p: p.name)
+    """Every persisted `usage-<ts>.json` for this vault (`.watchdog/registry/usage/`), oldest
+    first (#319): filenames sort chronologically."""
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    return sorted(usage_dir.glob("usage-*.json"), key=lambda p: p.name) if usage_dir.exists() else []
 
 
 def _write_usage_file(vault: Path, records: list[dict], ts: str,
@@ -362,8 +359,20 @@ def _write_usage(vault: Path, records: list[dict], est_input_tokens: int | None 
     model calls (e.g. an all-skipped batch)."""
     if not records:
         return None
-    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return _write_usage_file(vault, records, ts, est_input_tokens=est_input_tokens)
+    return _write_usage_file(vault, records, _free_usage_ts(vault), est_input_tokens=est_input_tokens)
+
+
+def _free_usage_ts(vault: Path) -> str:
+    """Now, to the second, as a usage file's timestamp; if a file for that second already exists
+    (two runs ending in the same second), the next second that is free, so one run's record
+    never overwrites another's and the files still sort in the order the runs ended."""
+    usage_dir = vault / ".watchdog" / "registry" / "usage"
+    when = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
+    while True:
+        ts = when.strftime("%Y%m%dT%H%M%SZ")
+        if not (usage_dir / f"usage-{ts}.json").exists():
+            return ts
+        when += datetime.timedelta(seconds=1)
 
 
 def _consolidate_orphaned_usage(vault: Path) -> None:
@@ -372,7 +381,7 @@ def _consolidate_orphaned_usage(vault: Path) -> None:
     `run()`'s own signal handling covers) into a real `usage-<ts>.json`, keyed by the partial's
     own timestamp so it sorts where that run actually happened (#407). Called once at the start
     of every top-level `run()`/standalone `finalize()`, before that call's own partial is opened,
-    so `watchdog usage` never loses a run's spend just because it didn't finish cleanly."""
+    so Usage never loses a run's spend just because it didn't finish cleanly."""
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     if not usage_dir.exists():
         return
@@ -406,6 +415,10 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     caller, both threaded no further than module-globals here since a single run/finalize call
     is the same one-run-per-process scope `_run.usage` itself already relies on."""
     _consolidate_orphaned_usage(vault)
+    # Every key lookup in this run process now honours this investigation's choice of labelled
+    # key (#690, D290); a chosen key that's gone fails the call rather than billing the default.
+    from watchdog import auth
+    auth.use_investigation(vault)
     _run.telemetry_on = telemetry_db.enabled()
     _run.usage = []
     _run.admission_reserved.clear()
@@ -447,7 +460,7 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
 
 def latest_usage(vault: Path) -> dict | None:
     """The most recent ingest run's token/cost totals (F5, #222), or None if none exist yet —
-    `watchdog status` surfaces this so a subscription user can see what a dump cost before
+    the Overview surfaces this so a subscription user can see what a dump cost before
     deciding whether to kick off another one."""
     files = usage_files(vault)
     if not files:
@@ -474,7 +487,7 @@ _GRAPH_PALETTE = [0x4C9A2A, 0xC0392B, 0x2980B9, 0x8E44AD, 0xD35400,
 
 
 def _log(vault: Path, msg: str) -> None:
-    log = vault / ".watchdog" / "registry" / "ingest.log"
+    log = processing_log(vault)
     try:
         log.parent.mkdir(parents=True, exist_ok=True)
         ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -533,8 +546,8 @@ def _candidates_checklist(text: str, *, vault: Path | None = None, sha: str | No
     paths (`_simple_extract`, `_extract_sectioned`) — the rarer batch-repair/submit paths omit
     them and get the old silent behaviour, since they have no live per-document row today."""
     if sha is not None:
-        tty = f"{_DIM}→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…{_RESET}"
-        plain = f"{_DIM}→  {filename}  harvesting candidates…{_RESET}"
+        tty = f"→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…"
+        plain = f"→  {filename}  harvesting candidates…"
         if _run.board is not None:
             _run.board.update(sha, f"  {tty}", f"  {plain}")
         else:
@@ -552,13 +565,13 @@ def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
     document types without `--skill` forcing a single pin across the whole run (D120: benchmarking
     a corpus that spans more than one skill needed this without a second `chew`/`ingest` pass per
     skill). `sidecar_text` is already filtered/allowlisted at chew time (pipeline/sidecar.py,
-    D121) — nothing here reads `_INCOMING/` again."""
+    D121) — nothing here reads `incoming/` again."""
     value = sidecar.skill_pin(sidecar_text)
     if not value:
         return None
     resolved = skills_catalog.resolve_name(value)
     if not resolved:
-        _say(f"{_YELLOW}⚠{_RESET}  {filename}: sidecar pins unknown skill "
+        _say(f"⚠  {filename}: sidecar pins unknown skill "
              f"'{value}' (a sidecar may name a catalog skill, not a file path) — classifying instead")
     return resolved
 
@@ -591,12 +604,17 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
     doc["page_count"] = pf.get("page_count") or len(pf["pages"])
     doc.update(sidecar.provenance(pf.get("sidecar")))
     # The filtered sidecar text itself (D121) — carried onto the document so write_vault can
-    # re-materialize a .yml in morgue without ever reading _INCOMING/ again.
+    # re-materialize a .yml in morgue without ever reading incoming/ again.
     doc["sidecar"] = pf.get("sidecar")
     # File-intrinsic embedded metadata (#369) — captured deterministically at chew time and
     # stamped here, same posture as sha256/filename above: a claim the file makes about itself,
     # never asked of the model.
     doc["file_metadata"] = pf.get("file_metadata") or {}
+    # A recording's time map and what transcribed it (D273), carried to the registry so the app
+    # can show "Page 3 (10:00-15:00)" and a later model can be compared with this one.
+    media = (pf.get("processing") or {}).get("media")
+    if isinstance(media, dict):
+        doc["media"] = media
     doc["near_duplicate_of"] = _near_duplicate_of(pf.get("near_dup"))
     # morgue_document_type is just the slug form of document_type — derive it deterministically
     # rather than asking the model for the same fact twice (it names the morgue folder).
@@ -610,7 +628,7 @@ def _stamp_document(extraction: dict, *, sha: str, pf: dict, skill_label: str,
 def _near_duplicate_of(near_dup: dict | None) -> str | None:
     """The closest earlier document chew's MinHash matched, as a link to its note — or its
     filename when the match is in this same batch and has no note yet. Detection only: nothing is
-    discarded, and `watchdog review duplicates` is where the user decides."""
+    discarded, and Review is where the user decides."""
     from watchdog.pipeline.write_vault import _defang
     matches = (near_dup or {}).get("near_duplicates") or []
     if not matches:
@@ -636,7 +654,9 @@ def _briefing_facts(doc: dict) -> list[dict]:
     """Project key_facts down to what the briefing needs — the fact text and, when the fact is a
     datable occurrence, its date (for chronology). Drops page/basis/entities/quote, which are
     noise for narrative briefing. This is what now supplies the briefing its figures and timeline,
-    in place of the scratchpad's hand-retyped 'Key figures'/'Chronological' sections (#150)."""
+    in place of the scratchpad's hand-retyped 'Key figures'/'Chronological' sections (#150). The
+    briefing call itself replaces these with citable lines read from the stored extractions
+    (`_briefing_cited_facts`, D283); the digest and a document with no stored extraction use them."""
     out = []
     for f in doc.get("key_facts", []):
         item = {"fact": f["fact"]}
@@ -644,6 +664,35 @@ def _briefing_facts(doc: dict) -> list[dict]:
             item["date"] = f["date"]
         out.append(item)
     return out
+
+
+def _briefing_cited_facts(vault: Path, results: list) -> tuple[list, dict]:
+    """Copies of the batch's result rows whose `key_facts` are the documents' stored facts as
+    citable lines (D283): a short ref unique across the batch, the fact, its date and page, and
+    any warning or reporter's mark (`inferred`, a figure warning, `verified`, `disputed by the
+    reporter`). Returns the rows and the map from each short ref to its D271 id, which is stored
+    with the briefing so its citations can be linked. A document with no stored extraction keeps
+    the row it had, uncitable."""
+    from watchdog.pipeline import entity_facts
+    from watchdog.pipeline.synthesis_bundle import fact_flags
+    from watchdog.pipeline.write_vault import _defang
+    index = entity_facts.FactIndex(vault)
+    per = {r["sha256"]: index.document_facts(r["sha256"]) for r in results if r.get("sha256")}
+    refs = entity_facts.short_refs([f for facts in per.values() for f in facts])
+    rows = []
+    for r in results:
+        facts = per.get(r.get("sha256"))
+        if not facts:
+            rows.append(r)
+            continue
+        lines = []
+        for f in facts:
+            line = f"[{refs[f['id']]}] " + (f"({f['date']}) " if f.get("date") else "")
+            line += _defang(f.get("fact") or "") + (f" (p. {f['page']})" if f.get("page") else "")
+            flags = fact_flags(f)
+            lines.append(line + (f" [{'; '.join(flags)}]" if flags else ""))
+        rows.append({**r, "key_facts": lines})
+    return rows, {ref: fid for fid, ref in refs.items()}
 
 
 def _compact_result(sha: str, filename: str, extraction: dict, near_dup: dict, cost: float | None,
@@ -706,8 +755,8 @@ def _append_repair_note(base, errors: list[str]):
 
 def _verifier_effort() -> str | None:
     """The reasoning effort the verification pass runs at (#535) — `low` unless a vault has
-    pinned `verifier_effort` in config. Read here rather than threaded from the CLI because
-    there is no flag for it: the pass is turned on and off by `--verify`, and its effort is an
+    pinned `verifier_effort` in config. Read here rather than threaded from the run's options:
+    the pass is turned on and off by `verify`, and its effort is an
     advanced knob in the same family as `empty_extraction_min_words` (D153). Low is the default
     for a cost reason, not a quality one — gap-finding against a supplied list is a comparison,
     and output tokens are where the pass's cost actually lives (D172)."""
@@ -734,8 +783,8 @@ async def _verify_facts(vault, sha, base, extraction, *, model, backend, filenam
     (a `BaseException`, so `except Exception` never sees it)."""
     doc = extraction.get("document", {})
     if _run.board is not None:
-        _run.board.update(sha, f"  {_DIM}→  {filename}  {detail} · verifying…{_RESET}",
-                      f"  {_DIM}→  {filename}  verifying…{_RESET}")
+        _run.board.update(sha, f"  →  {filename}  {detail} · verifying…",
+                      f"  →  {filename}  verifying…")
     prompt = prompts.build_verify_prompt(
         base, key_facts=doc.get("key_facts") or [], entities=extraction.get("entities") or [])
     try:
@@ -772,8 +821,8 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
         _candidates_checklist, text, vault=vault, sha=sha, filename=filename, flow=flow)
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
     if _run.board is not None:
-        _run.board.update(sha, f"  {_DIM}→  {filename}  {flow} · extracting…{_RESET}",
-                      f"  {_DIM}→  {filename}  extracting…{_RESET}")
+        _run.board.update(sha, f"  →  {filename}  {flow} · extracting…",
+                      f"  →  {filename}  extracting…")
     base = prompts.build_extract_prompt(
         pages_text=text,
         skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
@@ -916,8 +965,8 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
         flow=sec["label"])
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
     if _run.board is not None:
-        _run.board.update(sha, f"  {_DIM}→  {pf['filename']}  {sec['label']} · extracting…{_RESET}",
-                      f"  {_DIM}→  {pf['filename']}  extracting…{_RESET}")
+        _run.board.update(sha, f"  →  {pf['filename']}  {sec['label']} · extracting…",
+                      f"  →  {pf['filename']}  extracting…")
     base = prompts.build_section_prompt(
         pages_text=sec_text,
         skill_text=skill_text, carry_forward=carry, section_label=sec["label"],
@@ -950,7 +999,7 @@ async def _merge_sectioned(parts, pf, sha, skill_label, skill_text, model, effor
     """Merge + whole-document digest + stamping — the steps between having every section's raw
     output and being ready for post-flight. Split out so the section-1 repair retry (#505) can
     redo it without duplicating the digest/stamp calls."""
-    extraction = merge.merge_extractions(parts)
+    extraction = merge.merge_extractions(parts, sha=sha)
     scratchpad = "\n".join(p["observations"] for p in parts if p.get("observations"))
     doc = extraction.setdefault("document", {})
     page_count = pf.get("page_count") or len(pf.get("pages", []))
@@ -1010,7 +1059,7 @@ def _write_section_checkpoint(vault: Path, sha: str, sec: dict, parsed: dict, co
     this ORIGINAL section's `index`/dict, so there is still exactly one checkpoint per planned
     section and `_load_section_checkpoints`' identity check (and the `len(checkpoints)` indexing
     into `sections` it enables, #498) keeps working. `parsed` is always the first (or only)
-    result, kept so a checkpoint written before #540 still replays."""
+    result."""
     record = {"section": sec, "parsed": parsed, "cost_usd": cost_usd}
     if parts:
         record["parts"] = parts
@@ -1145,6 +1194,8 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         carry = _carry_text(entities_seen, last_parts[-1].get("observations") or "")
 
     for sec in sections[len(checkpoints):]:
+        progress.emit("doc", sha=sha, filename=pf["filename"], state="section",
+                      detail=f"{sec['index']} of {len(sections)}")
         prior = _facts_so_far(section_parts)
         try:
             r = await _extract_one_section(vault, sha, pf, skill_text, sec,
@@ -1243,7 +1294,8 @@ def _fail(vault: Path, sha: str, filename: str, reason: str) -> dict:
     # Resolve the filename (the catch-all path has only the sha) *before* abort.run moves
     # the queue file, so the ✗ line and log name the file instead of a bare sha.
     name = filename or _queued_filename(vault, sha) or sha[:7]
-    _settle(sha, f"  {_YELLOW}✗{_RESET}  {name}  {_DIM}{reason}{_RESET}")
+    _settle(sha, f"  ✗  {name}  {reason}")
+    progress.emit("doc", sha=sha, filename=name, state="failed", detail=reason)
     _log(vault, f"FAILED {name}: {reason}")
     # keep_section_checkpoints (#498): an automatic failure should still let a later retry resume
     # from whatever sections already succeeded, rather than re-paying for them from section 1.
@@ -1305,10 +1357,10 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # --force (#424): bypass both "already done" checks and pay for a fresh classify/extract
         # call even though a cached artifact (or a committed vault note) already exists — the
         # whole point of --force is to regenerate under a different model/effort/skill.
-        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
-             f"{_DIM} — note will be replaced{_RESET}")
+        _say(f"↻  {pf.get('filename')}  re-extracting{''}"
+             f" — note will be replaced")
     elif pf.get("already_extracted"):
-        _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+        _say(f"–  {pf.get('filename')}  already extracted — skipping")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
     elif pf.get("already_staged"):
@@ -1316,7 +1368,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         # classify/extract call again. The queue file must survive: the eventual commit pass
         # still needs it (write_vault._write_morgue_markdown, the corpus index). Its
         # result_<sha>.json is still on disk from that prior run, so it still feeds finalize.
-        _say(f"{_DIM}–  {pf.get('filename')}  already extracted — pending commit{_RESET}")
+        _say(f"–  {pf.get('filename')}  already extracted — pending commit")
         return {"sha256": sha, "filename": pf.get("filename"), "status": "skipped"}
 
     filename = pf["filename"]
@@ -1328,6 +1380,7 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # marks completion, and the gap between them is that document's own extraction time (the
     # log is otherwise completion-ordered, which reads misleadingly like sequential work).
     _log(vault, f"START {filename}")
+    progress.emit("doc", sha=sha, filename=filename, state="started", detail=None)
 
     # The prior-entity digest telemetry (#216) that used to print here is gone with the digest
     # itself (#381/D118): extraction no longer carries any vault context, so there is no longer a
@@ -1350,25 +1403,27 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
         vault, pf, pinned_skill, classify_model, classify_pages, classify_backend, classify_effort,
         filename=filename,
         on_classify=lambda: _step(
-            f"{_DIM}→  {filename}  {pg} · classifying…{_RESET}",
-            f"{_DIM}→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…{_RESET}"))
+            f"→  {filename}  {pg} · classifying…",
+            f"→  {filename}  classifying ({page_count} page{'s' if page_count != 1 else ''})…"))
+    progress.emit("doc", sha=sha, filename=filename, state="classified", detail=skill_label)
     if classified:
-        _step(f"{_DIM}→  {filename}  {pg} · {skill_label}{_RESET}",
-              f"{_DIM}·  {filename}  classified ·{_RESET} {_CYAN}{skill_label}{_RESET}")
+        _step(f"→  {filename}  {pg} · {skill_label}",
+              f"·  {filename}  classified · {skill_label}")
 
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
     plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
+    progress.emit("doc", sha=sha, filename=filename, state="extracting", detail=None)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
-        _step(f"{_DIM}→  {filename}  {flow} · extracting · {n_sections} sections…{_RESET}",
-              f"{_DIM}→  {filename}  extracting · {n_sections} sections…{_RESET}")
+        _step(f"→  {filename}  {flow} · extracting · {n_sections} sections…",
+              f"→  {filename}  extracting · {n_sections} sections…")
         extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
             vault, sha, pf, skill_text, plan, extract_model, skill_label, extract_effort,
             extract_backend, brief, verify_pass=verify_pass)
     else:
-        _step(f"{_DIM}→  {filename}  {flow} · extracting…{_RESET}",
-              f"{_DIM}→  {filename}  extracting…{_RESET}")
+        _step(f"→  {filename}  {flow} · extracting…",
+              f"→  {filename}  extracting…")
         extraction, scratchpad, cost, ok, errors, warnings = await _simple_extract(
             vault, sha, pf, skill_text, brief, extract_model, skill_label, extract_effort,
             extract_backend, verify_pass=verify_pass)
@@ -1382,9 +1437,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
             fb = section.run(vault, sha, force_budget=_FALLBACK_SECTION_TOKENS)
             if fb.get("sectioned") and len(fb.get("sections", [])) > 1:
                 n_sections = len(fb.get("sections", []))
-                _step(f"{_DIM}↻  {filename}  {flow} · re-extracting in {n_sections} sections…{_RESET}",
-                      f"{_DIM}↻  {filename}  whole-doc extraction rejected — "
-                      f"re-extracting in {n_sections} sections…{_RESET}")
+                _step(f"↻  {filename}  {flow} · re-extracting in {n_sections} sections…",
+                      f"↻  {filename}  whole-doc extraction rejected — "
+                      f"re-extracting in {n_sections} sections…")
                 whole_cost = cost
                 extraction, scratchpad, cost, ok, errors, warnings = await _extract_sectioned(
                     vault, sha, pf, skill_text, fb, extract_model, skill_label, extract_effort,
@@ -1420,16 +1475,18 @@ def _finish_extraction(vault: Path, sha: str, filename: str, extraction: dict, s
     n_entities = len(extraction.get("entities", []))
     page_count = pf.get("page_count") or len(pf.get("pages", []))
     type_bit = f" · {skill_label}" if skill_label else ""
-    _settle(sha, f"  {_GREEN}OK{_RESET}  {filename}  "
-            f"{_DIM}{page_count}p · {n_entities} entit{'ies' if n_entities != 1 else 'y'}{type_bit}{_RESET}  "
-            f"{_CYAN}documents/{_doc_slug(filename)}{_RESET}")
+    _settle(sha, f"  OK  {filename}  "
+            f"{page_count}p · {n_entities} entit{'ies' if n_entities != 1 else 'y'}{type_bit}  "
+            f"documents/{_doc_slug(filename)}")
     _log(vault, f"OK {filename}: {page_count}p, {n_entities} entities{type_bit}")
+    n_facts = len((extraction.get("document") or {}).get("key_facts") or [])
+    progress.emit("doc", sha=sha, filename=filename, state="done", detail=f"{n_facts} facts")
     for msg in (warnings or []):
-        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
+        _say(f"   ⚠  {msg}")
         _log(vault, f"WARN {filename}: {msg}")
     result = _compact_result(sha, filename, extraction, pf.get("near_dup", {}), round(cost, 6), {},
                              est_input_tokens=section.est_tokens_from_pages(pf.get("pages", [])))
-    # Persist the compact result so `watchdog bark` can run post-ingest from disk alone.
+    # Persist the compact result so post-processing (`bark`) can run post-ingest from disk alone.
     (vault / ".watchdog" / "tmp" / f"result_{sha}.json").write_text(
         json.dumps(result, ensure_ascii=False), encoding="utf-8")
     return result
@@ -1465,16 +1522,16 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if pf.get("error"):
         return _fail(vault, sha, "", pf["error"])
     if force and (pf.get("already_extracted") or pf.get("already_staged")):
-        _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
-             f"{_DIM} — note will be replaced{_RESET}")
+        _say(f"↻  {pf.get('filename')}  re-extracting{''}"
+             f" — note will be replaced")
     elif pf.get("already_extracted"):     # a retried collection pass after a partial rate limit
         filename = pf.get("filename")
-        _say(f"{_DIM}–  {filename}  already extracted — skipping{_RESET}")
+        _say(f"–  {filename}  already extracted — skipping")
         (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
         return {"sha256": sha, "filename": filename, "status": "skipped"}
     elif pf.get("already_staged"):        # extracted already (#403 phase 1) — nothing left to do
         filename = pf.get("filename")
-        _say(f"{_DIM}–  {filename}  already extracted — pending commit{_RESET}")
+        _say(f"–  {filename}  already extracted — pending commit")
         return {"sha256": sha, "filename": filename, "status": "skipped"}
 
     filename = pf["filename"]
@@ -1494,7 +1551,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
                       cost_usd=item.get("cost_usd"), effort=effort, auth_mode="api-key",
                       filename=filename, detail=f"pages 1–{page_count}", batch_meta=batch_meta,
                       est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                      vault=vault)
+                      vault=vault, key_label=_run.batch_key_label)
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
@@ -1536,17 +1593,13 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
 def _batch_skill(state: dict, sha: str, pinned_skill: str | None) -> tuple[str, str]:
     """The skill a batched document was submitted under, as `(skill_text, skill_label)`.
 
-    Read from the state's per-sha `skills` map (D144). Falls back to the pre-D144 state shape's
-    single run-wide `skill_label`, then to the run's own `--skill` pin, so a batch submitted by
-    an older version is still collectable after an upgrade rather than stranded — a batch can sit
-    in flight for up to 24h, which is easily long enough to span one."""
-    label = (state.get("skills") or {}).get(sha) or state.get("skill_label")
+    Read from the state's per-sha `skills` map (D144), else the run's own skill pin."""
+    label = (state.get("skills") or {}).get(sha)
     resolved = skills_catalog.resolve(label) if label else None
     if resolved:
         return Path(resolved).read_text(encoding="utf-8"), Path(resolved).stem
-    # An unresolvable label — a pre-D144 state whose `skill_label` was a file-path stem, or a
-    # user-local skill removed while the batch was in flight — falls back to this run's own pin
-    # rather than failing a batch that has already been paid for.
+    # An unresolvable label — a user-local skill removed while the batch was in flight — falls
+    # back to this run's own pin rather than failing a batch that has already been paid for.
     if pinned_skill:
         return Path(pinned_skill).read_text(encoding="utf-8"), Path(pinned_skill).stem
     raise model_client.ModelError(
@@ -1559,8 +1612,7 @@ _BATCH_TS_FMT = "%Y-%m-%dT%H:%M:%SZ"
 
 def _fmt_span(start_iso: str | None, end_iso: str | None) -> str | None:
     """Human duration between two batch-lifecycle timestamps (`_BATCH_TS_FMT` strings), or None
-    if either is missing — `ended_at` is None until a batch finishes, and older persisted state
-    (written before this) has no `submitted_at`."""
+    if either is missing (`ended_at` is None until a batch finishes)."""
     if not start_iso or not end_iso:
         return None
     secs = int((datetime.datetime.strptime(end_iso, _BATCH_TS_FMT)
@@ -1598,21 +1650,19 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
     """Check a pending batch's status; collect and write it if `ended`, otherwise report
     progress and return without touching the vault.
 
-    `state["backend"]` names which provider's batch this is (#530) — defaults to `claude-batch`
-    for state persisted before that field existed, so a batch already in flight across an
-    upgrade still resumes correctly."""
-    backend = state.get("backend", "claude-batch")
+    `state["backend"]` names which provider's batch this is (#530)."""
+    backend = state["backend"]
     st = await batch_extract.status(state["batch_id"], api_key, backend=backend)
     if st["processing_status"] != "ended":
         counts = st.get("request_counts", {})
         done = sum(v for k, v in counts.items() if k != "processing")
-        _say(f"{_YELLOW}A batch extraction is still processing{_RESET}{_DIM} "
-             f"({done}/{len(state['shas'])} finished so far) — re-run {_RESET}"
-             f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later to check again.{_RESET}")
+        _say(f"A batch extraction is still processing "
+             f"({done}/{len(state['shas'])} finished so far) — "
+             + "add documents again later to check.")
         return {"results": [], "batch_pending": True}
 
-    _say(f"{_DIM}→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
-         f"document{'s' if len(state['shas']) != 1 else ''}…{_RESET}")
+    _say(f"→  batch {state['batch_id']} finished — collecting {len(state['shas'])} "
+         f"document{'s' if len(state['shas']) != 1 else ''}…")
     collected = await batch_extract.collect(state["batch_id"], api_key, state["model"], backend=backend)
     collected_at = datetime.datetime.now(datetime.timezone.utc).strftime(_BATCH_TS_FMT)
     batch_meta = {"batch_id": state["batch_id"], "submitted_at": state.get("submitted_at"),
@@ -1633,18 +1683,17 @@ async def _resume_batch(vault: Path, state: dict, pinned_skill: str | None, brie
         # A repair-retry call (claude-api) hit a rate limit partway through collection. Leave
         # the batch state in place — already-written documents are safe (preflight's
         # already_extracted check skips them on the next pass) — so a later run finishes.
-        _say(f"{_YELLOW}Rate limit reached during batch collection{_RESET}{_DIM} — {e} "
-             f"{len(results)}/{len(state['shas'])} written; re-run {_RESET}"
-             f"{_CYAN}{_run.resume_hint}{_RESET}{_DIM} to finish once it resets.{_RESET}")
+        _say(f"Rate limit reached during batch collection — {e} "
+             f"{len(results)}/{len(state['shas'])} written; "
+             + "add documents again to finish once it resets.")
         return {"results": results, "batch_pending": True}
     except model_client.ProviderAuthError as e:
         # A repair-retry call was refused (bad key, no credit). Same as a rate limit for the
         # vault — written documents are safe, the batch state stays for a later run — but the run
         # reports it as an auth stop, which re-running won't fix until the key or balance is.
-        _say(f"{_YELLOW}The provider refused this run during batch collection{_RESET}{_DIM} — "
-             f"{e} {len(results)}/{len(state['shas'])} written. Fix the key or balance (see "
-             f"{_RESET}{_CYAN}watchdog settings auth{_RESET}{_DIM}), then re-run "
-             f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM}.{_RESET}")
+        _say(f"The provider refused this run during batch collection — "
+             f"{e} {len(results)}/{len(state['shas'])} written. "
+             + "Fix the key or balance in Settings, then add documents again.")
         return {"results": results, "batch_pending": True, "auth_error": str(e)}
 
     _log(vault, _batch_log_line(state, st, collected_at))
@@ -1660,7 +1709,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     """Split the queue into sectioned (→ synchronous single-call backend, via the normal
     `_extract_document`) and whole-document (→ one batch submission) shas, run the former, then
     submit the latter and return — submit-and-exit, not blocking-poll (a batch can take up to
-    24h; a *later* `watchdog dig` invocation collects it, see `_resume_batch`).
+    24h; a *later* processing (`dig`) invocation collects it, see `_resume_batch`).
 
     Each document resolves its **own** skill through `_resolve_skill` (D144), so a batch may mix
     document types: the skill lives inside each request's own prompt blocks, which the Batches
@@ -1678,15 +1727,15 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             results.append(_fail(vault, sha, "", pf["error"]))
             continue
         if force and (pf.get("already_extracted") or pf.get("already_staged")):
-            _say(f"{_DIM}↻{_RESET}  {pf.get('filename')}  {_YELLOW}re-extracting (--force){_RESET}"
-                 f"{_DIM} — note will be replaced{_RESET}")
+            _say(f"↻  {pf.get('filename')}  re-extracting{''}"
+                 f" — note will be replaced")
         elif pf.get("already_extracted"):
-            _say(f"{_DIM}–  {pf.get('filename')}  already extracted — skipping{_RESET}")
+            _say(f"–  {pf.get('filename')}  already extracted — skipping")
             (vault / ".watchdog" / "queue" / f"{sha}.json").unlink(missing_ok=True)
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
         elif pf.get("already_staged"):    # extracted already (#403 phase 1) — don't resubmit
-            _say(f"{_DIM}–  {pf.get('filename')}  already extracted — pending commit{_RESET}")
+            _say(f"–  {pf.get('filename')}  already extracted — pending commit")
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
         if section.run(vault, sha, model=extract_model).get("sectioned"):
@@ -1727,9 +1776,9 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
         # back to that same provider's single-call backend (#530).
         sectioned_backend = ("claude-api" if model_client.provider_for_backend(backend) == "anthropic"
                              else "openai")
-        _say(f"{_DIM}→  {len(sectioned_shas)} large document"
+        _say(f"→  {len(sectioned_shas)} large document"
              f"{'s' if len(sectioned_shas) != 1 else ''} need sectioning — not batchable, "
-             f"extracting via {sectioned_backend}{_RESET}")
+             f"extracting via {sectioned_backend}")
         sem = asyncio.Semaphore(max(1, concurrency))
 
         async def _sectioned(sha: str) -> dict:
@@ -1750,14 +1799,14 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     batch_docs.sort(key=lambda d: d["skill_label"])
     distinct = sorted({d["skill_label"] for d in batch_docs})
     labels = ", ".join(distinct) if len(distinct) <= 3 else f"{len(distinct)} skills"
-    _say(f"{_DIM}→  submitting {len(batch_docs)} document"
-         f"{'s' if len(batch_docs) != 1 else ''} as one batch ({labels})…{_RESET}")
+    _say(f"→  submitting {len(batch_docs)} document"
+         f"{'s' if len(batch_docs) != 1 else ''} as one batch ({labels})…")
     batch_id = await batch_extract.submit(vault, batch_docs, model=extract_model,
                                           effort=extract_effort, skills=skills,
                                           api_key=api_key, backend=backend)
-    _say(f"{_GREEN}Batch submitted{_RESET}  {_CYAN}{batch_id}{_RESET}{_DIM} — this can take up "
-         f"to a few hours (max 24h); re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} later "
-         f"to collect it.{_RESET}")
+    _say(f"Batch submitted  {batch_id} — this can take up "
+         f"to a few hours (max 24h); "
+         + "add documents again later to collect it.")
     return {"results": results, "batch_pending": True}
 
 
@@ -1767,8 +1816,8 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
                      classify_backend: str | None, backend: str = "claude-batch",
                      force: bool = False, classify_effort: str | None = None) -> dict:
     """Entry point for `run` when `extract_backend` is a batch-mode backend
-    (`model_client.BATCH_BACKENDS`). Defense-in-depth guard beyond `cmd_ingest`'s own check — a
-    programmatic caller that skips CLI validation still gets a clear error rather than a
+    (`model_client.BATCH_BACKENDS`). Defense-in-depth guard beyond the operation's own check — a
+    programmatic caller that skips the operation's validation still gets a clear error rather than a
     confusing downstream failure.
 
     A pinned skill is **not** required (D144): each document resolves its own skill before the
@@ -1779,18 +1828,28 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
     mode explicitly checked (the Batches API isn't available on subscription, D52) — every other
     provider in this codebase has no subscription mode at all, so it just needs its own stored
     key, the same resolution `_resolve_backend_auth` uses for a live call."""
-    from watchdog.cmd import auth
+    from watchdog import auth
     provider = model_client.provider_for_backend(backend)
+    # `run()` has already scoped key lookups to this investigation (`_begin_usage_run`), so its
+    # choice of labelled key applies here too (D290).
+    try:
+        if provider == "anthropic":
+            api_key = auth.resolve_auth().get("key")
+        else:
+            api_key = auth.get_api_key(provider)
+    except auth.KeyChoiceError as e:   # the investigation's chosen key is gone (D290)
+        raise model_client.ModelError(str(e)) from None
+    _run.batch_key_label = auth.label_for_key(provider, api_key)
     if provider == "anthropic":
-        api_key = auth.resolve_auth().get("key")
         if not api_key:
             raise model_client.ModelError(
-                "claude-batch requires api-key auth mode — switch to it with `watchdog settings auth`")
+                "claude-batch requires api-key auth mode — "
+                + "switch to it in Settings")
     else:
-        api_key = auth.get_api_key(provider)
         if not api_key:
             raise model_client.ModelError(
-                f"the {backend} backend needs an API key — run `watchdog settings auth` to add one")
+                f"the {backend} backend needs an API key — "
+                + "add one in Settings")
 
     state = batch_extract.read_state(vault)
     if state is not None:
@@ -1802,16 +1861,15 @@ async def _run_batch(vault: Path, shas: list[str], brief: str | None, extract_mo
 
 def _nudge_skill_pin(results: list) -> None:
     """If every successfully-extracted document in a run classified to the same record skill,
-    tell the user they could have skipped classification with `--skill` (A4) — a batch of one
+    tell the reporter they could have skipped classification by choosing the skill (A4) — a batch of one
     filing type is the common case this tool targets, and the flag already exists but nothing
     surfaces that a run *was* homogeneous."""
     ok_skills = [r.get("record_skill") for r in results if r.get("status") == "ok"]
     distinct = {s for s in ok_skills if s}
     if len(ok_skills) > 1 and len(distinct) == 1:
         skill = next(iter(distinct))
-        _say(f"{_DIM}All {len(ok_skills)} documents classified as {_RESET}{_CYAN}{skill}{_RESET}"
-             f"{_DIM} — next time run {_RESET}{_CYAN}watchdog dig --skill {skill}{_RESET}"
-             f"{_DIM} to skip classification.{_RESET}")
+        _say(f"All {len(ok_skills)} documents classified as {skill}. Next time, choosing that "
+             "record skill in Add documents skips classification.")
 
 
 def _lines(items: list) -> str:
@@ -1981,17 +2039,30 @@ def _fit_briefing_inputs(results: list, scratchpads: list, budget: int
 
 
 def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
-                    contradiction_flags: list, n_new_requests: int = 0) -> str:
+                    contradiction_flags: list, n_new_requests: int = 0,
+                    fact_refs: dict | None = None) -> str:
     # The prompt is given display names (`_with_entity_names`); this catches an id the model
     # picked up from a scratchpad and returned as a whole list item (#342).
+    from watchdog.pipeline import citations, entity_facts
     names = _load_entity_names(vault)
-    what_was_ingested = _resolve_names(b.get("what_was_ingested", []), names)
+    # Citations (D283): each `[f:3a9c]` the model wrote becomes a link to the fact's line in its
+    # document note, through the map of the short refs the prompt showed. One the map does not
+    # hold, or whose fact is gone, is left out and counted; uncited sentences stay as written.
+    index = entity_facts.FactIndex(vault)
+    cite_stats = citations.new_stats()
+
+    def cited(items: list) -> list:
+        return [citations.render_short(x, fact_refs or {}, index.fact, cite_stats)[0]
+                if isinstance(x, str) else x for x in items]
+
+    what_was_ingested = cited(_resolve_names(b.get("what_was_ingested", []), names))
     new_entities = _resolve_names(b.get("new_entities", []), names)
-    connections = _resolve_names(b.get("connections", []), names)
-    leads = _resolve_names(b.get("leads", []), names)
-    anomalies = _resolve_names(b.get("anomalies", []), names)
-    emerging_patterns = _resolve_names(b.get("emerging_patterns", []), names)
-    open_questions = _resolve_names(b.get("open_questions", []), names)
+    connections = cited(_resolve_names(b.get("connections", []), names))
+    leads = cited(_resolve_names(b.get("leads", []), names))
+    anomalies = cited(_resolve_names(b.get("anomalies", []), names))
+    emerging_patterns = cited(_resolve_names(b.get("emerging_patterns", []), names))
+    open_questions = cited(_resolve_names(b.get("open_questions", []), names))
+    status = cited([b.get("investigation_status", "")])[0]
 
     now = datetime.datetime.now()
     slug = now.strftime("%Y-%m-%d-%H-%M")
@@ -2004,14 +2075,21 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
 
     body = (
         f"---\ndate: {now.isoformat(timespec='seconds')}\nfiles_ingested: {len(results)}\n"
-        f"new_entities: {n_new}\n---\n\n# Ingest briefing — {slug}\n\n"
-        f"## What was ingested\n\n{_lines(what_was_ingested)}\n\n"
+        f"new_entities: {n_new}\n---\n\n# Briefing — {slug}\n\n"
+        f"## What was added\n\n{_lines(what_was_ingested)}\n\n"
         f"## New entities\n\n{_lines(new_entities)}\n\n"
         f"## Connections to existing entities\n\n{_lines(connections)}\n\n"
         f"## Leads and follow-up ideas\n\n{_lines(leads)}\n\n"
         f"## Anomalies worth a closer look\n\n"
         f"{_lines(anomalies) if anomalies else 'Nothing flagged.'}\n"
     )
+    # The patterns, open questions and one-line status the model wrote for this batch (D285).
+    if emerging_patterns:
+        body += f"\n## Emerging patterns\n\n{_lines(emerging_patterns)}\n"
+    if open_questions:
+        body += f"\n## Open questions\n\n{_lines(open_questions)}\n"
+    if status.strip():
+        body += f"\n## Where things stand\n\n{status.strip()}\n"
     if neardup_alerts:
         body += "\n## Near-duplicate alerts\n\n" + "\n".join(
             f"- {a['filename']}: {a['similarity']:.0%} similar to an existing document"
@@ -2022,18 +2100,15 @@ def _write_briefing(vault: Path, b: dict, results: list, neardup_alerts: list,
                  f"{'s' if n_new_requests != 1 else ''} — see [[requests|requests.md]]\n")
     (vault / "briefings").mkdir(exist_ok=True)
     (vault / "briefings" / f"{slug}.md").write_text(body, encoding="utf-8")
+    # The short-ref map and what the citations resolved to, kept with the briefing (D283).
+    from watchdog.pipeline.write_vault import _write_json_atomic
+    (vault / ".watchdog" / "briefings").mkdir(parents=True, exist_ok=True)
+    _write_json_atomic(vault / ".watchdog" / "briefings" / f"{slug}.json",
+                       {"version": 1, "briefing": f"briefings/{slug}.md",
+                        "status": status.strip(),
+                        "fact_refs": dict(sorted((fact_refs or {}).items())),
+                        "citations": cite_stats})
     _fts_add_note_safe(vault, f"briefings/{slug}", "briefing", f"Briefing {slug}", body)
-
-    hot_content = (
-        f"# Hot cache\n\n*Last updated: {now.strftime('%Y-%m-%d')} — "
-        f"[[briefings/{slug}|Briefing {slug}]]*\n\n"
-        f"## Investigation status\n\n{b.get('investigation_status', '')}\n\n"
-        f"## Recent additions\n\n{_lines(new_entities)}\n\n"
-        f"## Emerging patterns\n\n{_lines(emerging_patterns)}\n\n"
-        f"## Open questions\n\n{_lines(open_questions)}\n"
-    )
-    (vault / "hot.md").write_text(hot_content, encoding="utf-8")
-    _fts_add_note_safe(vault, "hot", "hot", "Hot cache", hot_content)
 
     entry = (f"\n## {now.strftime('%Y-%m-%d %H:%M')} — Ingest\n\n"
              f"- **Files:** {len(results)} processed\n- **New entities:** {n_new}\n"
@@ -2119,6 +2194,59 @@ def _apply_request_dedup(vault: Path, open_: list[dict], groups) -> int:
     return folded
 
 
+async def _relationship_labels(vault: Path, batch_shas: list[str], model: str,
+                               backend: str | None, effort: str | None) -> int:
+    """Group the wordings of each pair this batch touched (D291). Returns the number of new
+    groups. A failed call leaves its pairs unevaluated, so the next run that touches them asks
+    again; the notes and graph show every wording apart meanwhile."""
+    from watchdog.pipeline import entity_notes, relationships
+    if not batch_shas:
+        return 0
+    view = relationships.View(vault)
+    items = view.pending(batch_shas)
+    if not items:
+        return 0
+    _say(f"→  comparing relationship wordings for {len(items)} "
+         f"pair{'s' if len(items) != 1 else ''}…")
+    answers: dict[int, dict] = {}
+    model_id = None
+    for window in relationships.chunks(items):
+        try:
+            r = await _call_model(
+                task="relationship-labels", model=model, backend=backend,
+                schema=schemas.RELATIONSHIP_LABELS, effort=effort, vault=vault,
+                prompt=prompts.build_relationship_labels_prompt([items[i] for i in window],
+                                                                view.entities))
+        except model_client.CALL_FAILURES as e:
+            _log(vault, f"WARN relationship labels: {len(window)} pair(s) not compared — {e}")
+            if isinstance(e, (model_client.RateLimitError, model_client.ProviderAuthError)):
+                break
+            continue
+        model_id = r.model
+        for i in window:
+            answers[i] = {}
+        for p in r.parsed.get("pairs") or []:
+            n = p.get("pair") if isinstance(p, dict) else None
+            if isinstance(n, int) and not isinstance(n, bool) and 1 <= n <= len(window):
+                answers[window[n - 1]] = p
+    if not answers:
+        return 0
+    try:
+        res = relationships.apply(vault, items, answers, model=model_id, run=_run.run_id)
+    except OSError as e:
+        _log(vault, f"WARN relationship labels not saved: {e}")
+        return 0
+    if res["dropped"]:
+        _log(vault, f"WARN relationship labels: {res['dropped']} proposed group(s) failed the checks "
+                    "and were kept apart")
+    if res["entities"]:
+        entity_notes.refresh(vault, res["entities"])
+    if res["grouped"]:
+        n = len(res["grouped"])
+        _say(f"   grouped the wordings of {n} relationship{'s' if n != 1 else ''}")
+    return len(res["grouped"])
+
+
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None,
                        rec_result: dict | None = None, skip_briefing: bool = False,
@@ -2140,7 +2268,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     out: dict = {"synthesized": 0, "timeline_collisions": 0, "briefing": None,
                  "merged": [], "contradictions": []}
     print()
-    _say(f"{_BOLD}Post-processing{_RESET}")
+    _say("Post-processing")
 
     # 0. Contradictions — the post-commit half of reconciliation (D118, D128). Merges were applied
     # before the commit; contradictions wait until now because `contradiction.run` validates document
@@ -2148,21 +2276,33 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # may name an entity that was just folded away.
     rec_result = rec_result or {}
     out["merged"] = rec_result.get("merged", [])
+    progress.emit("stage", stage="contradictions", done=None, total=None)
     contradiction_items = rec_result.get("contradictions") or []
     if contradiction_items:
         applied_contradictions = reconcile.apply_contradictions(
             vault, contradiction_items, rec_result.get("remap") or {},
-            warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"),
+            warn=lambda m: (_say(f"   ⚠  {m}"),
                             _log(vault, f"WARN {m}")))
         out["contradictions"] = applied_contradictions
         for c in applied_contradictions:
-            _say(f"   {_YELLOW}⚠{_RESET}  {_BOLD}{c['label']}{_RESET} {_DIM}—{_RESET} "
-                 f"{c['entity_name']}  {_CYAN}{c['note_path']}{_RESET}")
+            _say(f"   ⚠  {c['label']} — "
+                 f"{c['entity_name']}  {c['note_path']}")
             _log(vault, f"CONTRADICTION {c['entity_id']}: {c['label']}")
 
-    # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     batch_shas = [r["sha256"] for r in results if r.get("status") == "ok"]
+
+    # 0b. Relationship labels (D291): for each pair of entities this batch stated a relationship
+    # on that now holds two or more wordings not yet compared, the model proposes which name the
+    # same relationship; code checks and records each group, and the notes show the canonical
+    # label. Most runs make one call, many make none.
+    progress.emit("stage", stage="relationships", done=None, total=None)
+    out["relationship_groups"] = await _relationship_labels(
+        vault, batch_shas, fo.get("relationship_model", post_model),
+        fo.get("relationship_backend", post_backend), post_effort)
+
+    # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault, batch_shas)
+    progress.emit("stage", stage="synthesis", done=0, total=len(bundle.get("entities") or []))
     if bundle.get("entities"):
         n_ents = len(bundle["entities"])
         # Split across size-bounded calls (#696): one call per run outgrew the context window —
@@ -2173,8 +2313,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         budget = chunking.prompt_budget_chars(synthesis_model, synthesis_backend, vault)
         chunks = chunking.pack(bundle["entities"], budget, max_items=_SYNTHESIS_MAX_ENTITIES)
         part = f" across {len(chunks)} calls" if len(chunks) > 1 else ""
-        _say(f"{_DIM}→  synthesizing {n_ents} multi-mention "
-             f"entit{'ies' if n_ents != 1 else 'y'}{part}…{_RESET}")
+        _say(f"→  synthesizing {n_ents} multi-mention "
+             f"entit{'ies' if n_ents != 1 else 'y'}{part}…")
         syntheses: list[dict] = []
         failed = 0
         answered = False
@@ -2192,35 +2332,38 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                 if isinstance(e, model_client.ProviderAuthError):
                     out["auth_error"] = str(e)
                 failed += len(chunk)
-                _say(f"{_YELLOW}synthesis skipped{_RESET}{_DIM} for {len(chunk)} "
-                     f"entit{'ies' if len(chunk) != 1 else 'y'} — {e}{_RESET}")
+                _say(f"synthesis skipped for {len(chunk)} "
+                     f"entit{'ies' if len(chunk) != 1 else 'y'} — {e}")
                 if isinstance(e, (model_client.RateLimitError, model_client.ProviderAuthError)):
                     failed += sum(len(c) for c in chunks[n:])
                     break   # every later chunk would hit the same limit
                 continue
             answered = True
-            syntheses.extend(r.parsed.get("entity_syntheses") or [])
+            syntheses.extend({**item, "model": r.model} for item in r.parsed.get("entity_syntheses") or []
+                             if isinstance(item, dict))
         if answered:
             res_path = vault / ".watchdog" / "tmp" / "synthesis-result.json"
             res_path.write_text(json.dumps({"entity_syntheses": syntheses}, ensure_ascii=False),
                                 encoding="utf-8")
             try:
-                out["synthesized"] = len(synthesis_bundle.apply_bundle(res_path, vault).get("applied", []))
+                out["synthesized"] = len(synthesis_bundle.apply_bundle(
+                    res_path, vault, meta=bundle.get("meta")).get("applied", []))
             except OSError as e:
                 # The registry lock timed out (Windows). Recording the error keeps this run's
-                # post-ingest inputs, so the next `watchdog bark` redoes the synthesis.
+                # post-ingest inputs, so the next post-processing (`bark`) redoes the synthesis.
                 out["error"] = f"couldn't write entity syntheses: {e}"
-                _say(f"{_YELLOW}synthesis not saved{_RESET}{_DIM} — {e}{_RESET}")
+                _say(f"synthesis not saved — {e}")
         if failed:
             _log(vault, f"WARN synthesis: {failed} of {n_ents} entities not synthesized this run")
 
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
-    _say(f"{_DIM}→  rebuilding timeline…{_RESET}")
+    progress.emit("stage", stage="timeline", done=None, total=None)
+    _say("→  rebuilding timeline…")
     cols = timeline.collisions(vault)
     out["timeline_collisions"] = len(cols)
     if cols:
-        _say(f"{_DIM}   de-duplicating {len(cols)} date{'s' if len(cols) != 1 else ''} "
-             f"shared across documents…{_RESET}")
+        _say(f"   de-duplicating {len(cols)} date{'s' if len(cols) != 1 else ''} "
+             f"shared across documents…")
     # Each colliding date is independent — its own canonical file, its own call — so they run
     # concurrently (#696): a large batch can share thousands of dates, and in sequence that was
     # hours of single calls.
@@ -2293,23 +2436,24 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         timeline.apply_precision_matches(vault, grp, matches)
 
     await asyncio.gather(*(_precision(grp) for grp in timeline.month_precision_groups(vault)))
-    n_dates, n_events = timeline.cmd_rebuild_timeline(vault, quiet=True)
-    _say(f"{_DIM}   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
-         f"{n_events} event{'s' if n_events != 1 else ''}{_RESET}")
+    n_dates, n_events = timeline.rebuild_timeline(vault, quiet=True)
+    _say(f"   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
+         f"{n_events} event{'s' if n_events != 1 else ''}")
 
-    # 3. Briefing + hot.md + log.md (model writes prose; Python writes the files).
+    # 3. Briefing + log.md (model writes prose; Python writes the files).
     ok = [r for r in results if r.get("status") == "ok"]
     ok_shas = {r["sha256"] for r in ok}   # this run's committed documents (also used by 5b below)
     if skip_briefing:
         # #410: an intentional skip, not a failure — leave `briefing`/`briefing_error` alone so
         # this doesn't trip the "post-processing didn't finish" path (that's for a briefing that
-        # was attempted and failed). hot.md and log.md's per-run entry are both written by
-        # `_write_briefing`, so neither updates this run either — only the briefing model call
+        # was attempted and failed). log.md's per-run entry is written by `_write_briefing`, so
+        # it doesn't update this run either — only the briefing model call
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
-        _say(f"{_DIM}→  briefing skipped{_RESET}{_DIM} (--skip-briefing){_RESET}")
+        _say(f"→  briefing skipped{''}")
     else:
-        _say(f"{_DIM}→  writing briefing…{_RESET}")
+        progress.emit("stage", stage="briefing", done=None, total=None)
+        _say("→  writing briefing…")
         scratchpads = [p.read_text(encoding="utf-8")
                        for p in sorted((vault / ".watchdog" / "tmp").glob("notes_*.md"))]
         # A non-zero similarity is only ever recorded for a match at or above chew's own
@@ -2337,9 +2481,10 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         budget = chunking.prompt_budget_chars(briefing_model, briefing_backend, vault)
         brief_dups, brief_flags, budget = _fit_briefing_alerts(neardup_alerts, contradiction_flags,
                                                                budget)
-        brief_results, brief_pads, condensed = _fit_briefing_inputs(ok, scratchpads, budget)
+        cited, fact_refs = _briefing_cited_facts(vault, ok)
+        brief_results, brief_pads, condensed = _fit_briefing_inputs(cited, scratchpads, budget)
         if condensed:
-            _say(f"{_DIM}   large batch — briefing input condensed ({condensed['level']}){_RESET}")
+            _say(f"   large batch — briefing input condensed ({condensed['level']})")
         try:
             r = await _call_model(
                 task="briefing", model=briefing_model, backend=briefing_backend, schema=schemas.BRIEFING,
@@ -2350,25 +2495,25 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                     condensed=condensed),
                 effort=post_effort, vault=vault)
             out["briefing"] = _write_briefing(vault, r.parsed, ok, neardup_alerts, contradiction_flags,
-                                              n_new_requests)
+                                              n_new_requests, fact_refs=fact_refs)
         except (model_client.RateLimitError, model_client.ProviderAuthError) as e:
             out["briefing_error"] = str(e)
             if isinstance(e, model_client.ProviderAuthError):
                 out["auth_error"] = str(e)
-            _say(f"{_YELLOW}briefing skipped{_RESET}{_DIM} — {e}{_RESET}")
+            _say(f"briefing skipped — {e}")
         except model_client.ModelError as e:
             # Everything else (per-doc facts, entity notes, timeline) is already on disk; only the
-            # briefing is lost, and the batch stays pending so `watchdog bark` retries it. A
+            # briefing is lost, and the batch stays pending so post-processing (`bark`) retries it. A
             # truncation is deterministic — the same input hits the same output cap (#296) — so it
             # gets the real remedy; `_fit_briefing_inputs` (#696) makes that the backstop, not the
             # expected outcome of a large batch.
             out["briefing_error"] = str(e)
             if e.truncated:
-                _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — the model's output limit was "
-                     f"exceeded (this batch is too large to summarize in one pass). Finalize it in "
-                     f"smaller batches; everything else was written.{_RESET}")
+                _say("briefing not written — the model's output limit was "
+                     "exceeded (this batch is too large to summarize in one pass). Finalize it in "
+                     "smaller batches; everything else was written.")
             else:
-                _say(f"{_YELLOW}briefing not written{_RESET}{_DIM} — {e}{_RESET}")
+                _say(f"briefing not written — {e}")
 
     # 4. Watch-word scan (deterministic, no model; #165). Scans this run's documents against
     # the vault-root watchlist.md and writes briefings/alerts-<date>.md. No-op if the list is empty.
@@ -2377,24 +2522,25 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     if alerts:
         relpath, n_terms, n_docs = alerts
         out["watchlist_alerts"] = relpath
-        _say(f"{_YELLOW}⚠{_RESET}  {_BOLD}{len(hits)}{_RESET} watch-word match"
-             f"{'es' if len(hits) != 1 else ''} {_DIM}({n_terms} term"
+        _say(f"⚠  {len(hits)} watch-word match"
+             f"{'es' if len(hits) != 1 else ''} ({n_terms} term"
              f"{'s' if n_terms != 1 else ''} in {n_docs} document"
-             f"{'s' if n_docs != 1 else ''}){_RESET} — {_CYAN}{relpath}{_RESET}")
+             f"{'s' if n_docs != 1 else ''}) — {relpath}")
 
     # 5. Lead sweep (deterministic, no model; #155). Whole-vault snapshot of entities named
     # but never profiled, recurring-but-unconnected entities, and unresolved contradictions.
+    progress.emit("stage", stage="leads", done=None, total=None)
     leads_data = leads.scan(vault)
     leads_relpath = leads.write_leads(vault, leads_data)
     if leads_relpath:
         n = leads.total(leads_data)
         out["leads"] = leads_relpath
-        # No {_YELLOW}⚠{_RESET} here (unlike the watch-word alert above) — this is a routine
+        # No ⚠ here (unlike the watch-word alert above) — this is a routine
         # pointer to a standing digest, not something wrong with this run, and styling it as a
         # warning made it look like one more thing to fix rather than a file to go read.
-        _say(f"{_BOLD}{n}{_RESET} lead{'s' if n != 1 else ''} "
-             f"{_DIM}(named-but-unprofiled, isolated, contradictions){_RESET} — "
-             f"{_CYAN}{leads_relpath}{_RESET}")
+        _say(f"{n} lead{'s' if n != 1 else ''} "
+             f"(named-but-unprofiled, isolated, contradictions) — "
+             f"{leads_relpath}")
 
     # 5b. Document-request dedup (#416, D159). Exact-string matching at record time only
     # converges identical wording — a citation of the same real document phrased differently
@@ -2427,20 +2573,21 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             n_folded = 0   # leave requests unmerged; a later run with new activity retries
         if n_folded:
             out["requests_folded"] = n_folded
-            _say(f"   {_DIM}consolidated {n_folded} duplicate document request"
-                 f"{'s' if n_folded != 1 else ''}{_RESET}")
+            _say(f"   consolidated {n_folded} duplicate document request"
+                 f"{'s' if n_folded != 1 else ''}")
 
     # 6. Document requests (deterministic Python from here — #365). Re-render requests.md from
     # the ledger write_vault populated per-document at extraction time and 5b's dedup pass just
     # folded; requests are never re-fed into any *other* model prompt.
+    progress.emit("stage", stage="requests", done=None, total=None)
     requests_relpath = requests.write_requests(vault)
     if requests_relpath:
         n = len(requests.open_requests(vault))
         out["requests"] = requests_relpath
         # Same reasoning as the leads line above — a routine pointer, not a warning.
-        _say(f"{_BOLD}{n}{_RESET} open document request"
-             f"{'s' if n != 1 else ''} {_DIM}(documents to go and get){_RESET} — "
-             f"{_CYAN}{requests_relpath}{_RESET}")
+        _say(f"{n} open document request"
+             f"{'s' if n != 1 else ''} (documents to go and get) — "
+             f"{requests_relpath}")
     return out
 
 
@@ -2461,18 +2608,26 @@ def _load_results(vault: Path) -> list:
 # runs a deterministic exact-name entity fold over every staged-but-uncommitted artifact
 # (`_batch_exact_fold`, #403 phase 2), then replays the writer (write_vault.run) over each one in
 # the same sorted order, before any post-ingest model call. It runs at the top of `finalize`, so
-# it covers all three entry paths that call it: the tail of an ingest run (`watchdog ingest`,
-# or `watchdog dig` + `watchdog bark`), a standalone `watchdog bark`, and a resumed run after a
+# it covers all three entry paths that call it: the tail of an ingest run (a processing run,
+# or processing (`dig`) + post-processing (`bark`)), a standalone post-processing (`bark`), and a resumed run after a
 # rate-limit stop.
 
 def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
-    """Fold exact-name entity duplicates across the staged batch before anything commits (D127).
+    """Fold high-confidence entity matches across the staged batch before anything commits (D127,
+    D279).
 
     Walks `shas` in sorted order over an in-memory copy of the registry, applying the same
     `_reconcile_entity_ids`/`_new_entity`/`_merge_entity` the commit uses, so later documents match
-    earlier ones without touching the registry on disk. Rewrites each staged extraction in place
-    (ids, aliases, role targets, `morgue_entity_id`, `key_facts[].entities`) so the commit replays
-    already-folded entities."""
+    earlier ones without touching the registry on disk. Each would-be fold is judged by
+    `identity.classify` with the documents' evidence: only a high-confidence match folds, and each
+    fold is staged as a merge-log entry in the artifact's `identity` block, written to
+    `registry/merges.json` when the document commits. A medium or low match is left as two records
+    (a same-slug one under a fresh slug) for the reconcile pass to route to the model or to Review.
+    Rewrites each staged extraction in place (ids, aliases, role targets, `morgue_entity_id`,
+    `key_facts[].entities`, keeping each fact's original tags in `extracted_entities`) so the
+    commit replays already-folded entities."""
+    from watchdog.pipeline import identity, merge_log
+    from watchdog.pipeline.entity_type import canonical_type
     from watchdog.pipeline.write_vault import (
         NameIndex, _merge_entity, _new_entity, _reconcile_entity_ids,
     )
@@ -2487,12 +2642,40 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
     extracted_dir = vault / ".watchdog" / "extracted"
     # Kept current as the fold walks the batch rather than rebuilt per document (#696).
     name_index = NameIndex(pseudo_reg)
+    evidence = identity.Evidence(vault, pseudo_reg)
+    profiles: dict[str, identity.Profile] = {}     # existing id -> what the vault says about it
     for sha in shas:
         artifact_path = extracted_dir / f"{sha}.json"
         artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
         entities = artifact.get("entities") or []
+        evidence.staged = {sha: artifact}
 
-        remap = _reconcile_entity_ids(entities, pseudo_reg, name_index)
+        def judge(entity: dict, existing_id: str, sha=sha, artifact=artifact) -> bool:
+            entry = pseudo_reg[existing_id]
+            if existing_id not in profiles:
+                profiles[existing_id] = evidence.registry_profile(existing_id, entry, exclude={sha})
+            ids = {entity["id"], entity.get("extracted_id", entity["id"])}
+            incoming = evidence.profile(entity["id"], entity["name"], entity["type"], [sha],
+                                        aliases=entity.get("aliases") or (), ids=ids)
+            verdict = identity.classify(incoming, profiles[existing_id], evidence.dismissed())
+            if not verdict or verdict["tier"] != "high":
+                return False
+            entry_log = merge_log.merge_entry(
+                keep={"id": existing_id, "name": entry["name"], "type": canonical_type(entry["type"])},
+                merged={"id": entity.get("extracted_id", entity["id"]), "name": entity["name"],
+                        "type": canonical_type(entity["type"])},
+                tier="high", decided_by="rule", rule=verdict["rule"], reason=verdict["reason"],
+                occurrence=identity.evidence_record(verdict, incoming, sha),
+                undo={"version": merge_log.UNDO_VERSION,
+                      "extracted_id": entity.get("extracted_id", entity["id"]), "documents": [sha],
+                      "changes": [c for c in [merge_log.carried_items(
+                          artifact, sha, {entity["id"], entity.get("extracted_id", entity["id"])})] if c]},
+                run=_run.run_id)
+            stage_identity_log(artifact, entry_log)
+            profiles[existing_id].absorb(incoming)
+            return True
+
+        remap = _reconcile_entity_ids(entities, pseudo_reg, name_index, judge=judge)
         if remap:
             # Staged at extraction time, so its events still name the pre-fold ids (D243).
             timeline.remap_entity_ids(vault, remap, sha=sha)
@@ -2500,7 +2683,8 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
                 artifact["morgue_entity_id"] = remap[artifact["morgue_entity_id"]]
             for fact in artifact.get("document", {}).get("key_facts", []):
                 tags = fact.get("entities")
-                if tags:
+                if tags and any(t in remap for t in tags):
+                    fact.setdefault("extracted_entities", list(tags))
                     fact["entities"] = [remap.get(t, t) for t in tags]
 
         for entity in entities:
@@ -2514,22 +2698,32 @@ def _batch_exact_fold(vault: Path, shas: list[str]) -> None:
         artifact_path.write_text(
             json.dumps(artifact, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+    evidence.staged = {}
 
 
-def _pending_commits(vault: Path, force_shas: list[str] | None = None) -> list[str]:
+def stage_identity_log(artifact: dict, entry: dict) -> None:
+    """Stage a merge-log entry on a staged extraction, written to `registry/merges.json` when the
+    document commits (I7). A re-run of the same fold stages nothing new."""
+    block = artifact.setdefault("identity", {"version": 1, "log": []})
+    log = block.setdefault("log", [])
+    sha = ((entry.get("occurrences") or [{}])[0]).get("sha")
+    for existing in log:
+        if existing.get("id") == entry["id"] and \
+                ((existing.get("occurrences") or [{}])[0]).get("sha") == sha:
+            existing.update({k: v for k, v in entry.items() if k not in ("first_at", "last_at", "occurrences")})
+            return
+    log.append(entry)
+
+
+def _pending_commits(vault: Path) -> list[str]:
     """Every sha with a durable extraction artifact (`.watchdog/extracted/<sha>.json`) that is
     not yet a key in `registry/documents.json` — sorted, so the commit pass that consumes this
-    runs in a fixed order regardless of which document happened to extract first.
-
-    `force_shas` (#424) are included even when already a key in `registry/documents.json` — a
-    `--force` re-extraction overwrote their staged artifact and needs `_commit_extracted` to
-    replay over it again, which the plain "not yet committed" filter would otherwise exclude."""
+    runs in a fixed order regardless of which document happened to extract first."""
     extracted_dir = vault / ".watchdog" / "extracted"
     if not extracted_dir.exists():
         return []
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
     committed = set(_read_json_or(documents_path, []))
-    committed -= set(force_shas or [])
     return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
 
 
@@ -2553,13 +2747,13 @@ def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
     except SystemExit as e:
         if batch is not None:
             batch.rollback()
-        _say(f"{_YELLOW}⚠{_RESET}  commit failed for {sha[:12]}…{_RESET}{_DIM} — {e}{_RESET}")
+        _say(f"⚠  commit failed for {sha[:12]}… — {e}")
         _log(vault, f"WARN commit failed for {sha}: {e}")
         return None
     except Exception as e:
         if batch is not None:
             batch.rollback()
-        _say(f"{_YELLOW}⚠{_RESET}  commit failed for {sha[:12]}…{_RESET}{_DIM} — {e}{_RESET}")
+        _say(f"⚠  commit failed for {sha[:12]}… — {e}")
         _log(vault, f"WARN commit failed for {sha}: {e}")
         return None
     if batch is not None:
@@ -2585,20 +2779,24 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     reconciliation_backend = fo.get("reconciliation_backend", post_backend)
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     rec_bundle = reconcile.build_bundle(vault, shas)
-    if not (rec_bundle["entities"] or rec_bundle["pairs"]):
+    if not (rec_bundle["entities"] or rec_bundle["pairs"] or rec_bundle.get("rule_merges")
+            or rec_bundle.get("candidates")):
         return result
     n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
     if rec_bundle.get("pairs_dropped"):
         msg = (f"reconcile: {rec_bundle['pairs_dropped']} weaker possible-duplicate pairs past the "
                f"{reconcile._MAX_PAIRS}-pair ceiling were not sent this run")
-        _say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{msg}{_RESET}")
+        _say(f"   ⚠  {msg}")
         _log(vault, f"WARN {msg}")
     # Split into as many size-bounded calls as the bundle needs (#696): one call per run could
     # outgrow the context window on a large batch, and since a failure here defers the whole batch
-    # (I7), an oversized bundle used to deadlock it — every `watchdog bark` retry sent the same
+    # (I7), an oversized bundle used to deadlock it — every post-processing (`bark`) retry sent the same
     # prompt into the same limit. A bundle that fits still goes out as exactly one call.
     budget = chunking.prompt_budget_chars(reconciliation_model, reconciliation_backend, vault)
-    chunks = reconcile.chunk_bundle(rec_bundle, budget)
+    # Nothing for the model when every pair was settled by tier and no entity can hold a
+    # contradiction — the high merges and "possible same" pairs still apply below (D279).
+    needs_model = bool(rec_bundle["entities"] or rec_bundle["pairs"])
+    chunks = reconcile.chunk_bundle(rec_bundle, budget) if needs_model else []
     answers = []
     for n, chunk in enumerate(chunks, 1):
         # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
@@ -2607,8 +2805,8 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
         kb = len(rec_prompt) / 1024
         c_pairs, c_ents = len(chunk["pairs"]), len(chunk["entities"])
         part = f" · call {n} of {len(chunks)}" if len(chunks) > 1 else ""
-        _say(f"{_DIM}→  reconciling · {c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}, "
-             f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''} · {kb:.1f} KB{part}…{_RESET}")
+        _say(f"→  reconciling · {c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}, "
+             f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''} · {kb:.1f} KB{part}…")
         try:
             r = await _call_model(
                 task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
@@ -2620,24 +2818,58 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
             result["error"] = str(e)
             if isinstance(e, model_client.ProviderAuthError):
                 result["auth_error"] = str(e)
-            _say(f"{_YELLOW}reconciliation skipped{_RESET}{_DIM} — {e}{_RESET}")
+            _say(f"reconciliation skipped — {e}")
             _log(vault, f"RECONCILE skipped: {e}")
             return result
         answers.append(r.parsed)
     if len(chunks) > 1:
-        _say(f"{_DIM}   {n_ents} entities and {n_pairs} pairs reconciled across "
-             f"{len(chunks)} calls{_RESET}")
+        _say(f"   {n_ents} entities and {n_pairs} pairs reconciled across "
+             f"{len(chunks)} calls")
 
     applied = reconcile.apply_merges(
         vault, shas, reconcile.merge_chunk_results(chunks, answers), rec_bundle,
-        warn=lambda m: (_say(f"   {_YELLOW}⚠{_RESET}  {_DIM}{m}{_RESET}"), _log(vault, f"WARN {m}")))
+        warn=lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}")),
+        model=reconciliation_model)
     result["merged"] = applied["merged"]
     result["remap"] = applied["remap"]
     result["contradictions"] = applied["contradictions"]
+
+    # A merge decided in this pass joins two claim ledgers the call above saw apart, so the
+    # survivors get one more, contradiction-only look at their whole record (D279). Their
+    # contradictions from the first call are replaced by this one's. A failure here keeps the
+    # first call's: the merges are already applied, so the batch is not deferred.
+    survivors = {m["keep_id"] for m in applied["merged"]}
+    if survivors:
+        followup = reconcile.build_bundle(vault, shas, only=survivors)
+        if followup["entities"]:
+            try:
+                extra = []
+                for chunk in reconcile.chunk_bundle(followup, budget):
+                    r = await _call_model(
+                        task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
+                        schema=schemas.RECONCILE, prompt=prompts.build_reconcile_prompt(chunk),
+                        effort=post_effort, detail=f"{len(chunk['entities'])} merged entities",
+                        vault=vault)
+                    extra += (r.parsed or {}).get("contradictions") or []
+                merged_away = set(applied["remap"])
+                result["contradictions"] = [
+                    c for c in result["contradictions"]
+                    if applied["remap"].get(c.get("entity_id"), c.get("entity_id")) not in survivors
+                    and c.get("entity_id") not in merged_away] + extra
+            except model_client.CALL_FAILURES as e:
+                _say(f"   ⚠  contradiction check on merged entities "
+                     f"skipped — {e}")
+                _log(vault, f"WARN reconcile follow-up skipped: {e}")
     for m in applied["merged"]:
-        _say(f"   {_DIM}merged{_RESET} {m['merge_name']} {_DIM}→{_RESET} "
-             f"{_BOLD}{m['keep_name']}{_RESET}  {_DIM}{m['reason']}{_RESET}")
-        _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']}: {m['reason']}")
+        _say(f"   merged {m['merge_name']} → "
+             f"{m['keep_name']}  {m['reason']}")
+        _log(vault, f"MERGED {m['merge_id']} into {m['keep_id']} "
+                    f"({m.get('tier')}, {m.get('decided_by')}): {m['reason']}")
+    n_cand = applied.get("candidates") or 0
+    result["candidates"] = n_cand
+    if n_cand:
+        _say(f"   {n_cand} possible same entit{'ies' if n_cand != 1 else 'y'} "
+             f"left for you to check in Review (not merged)")
     return result
 
 
@@ -2665,8 +2897,8 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
         _batch_exact_fold(vault, shas)
     elif not shas:
         return {"committed": 0, "written": {}}
-    _say(f"{_DIM}→  committing {len(shas)} document{'s' if len(shas) != 1 else ''} "
-         f"to the vault…{_RESET}")
+    _say(f"→  committing {len(shas)} document{'s' if len(shas) != 1 else ''} "
+         f"to the vault…")
     tmp_dir = vault / ".watchdog" / "tmp"
     written_map: dict[str, dict] = {}
     from watchdog.pipeline.write_vault import RegistryBatch
@@ -2676,7 +2908,8 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
     # a crash from undoing any document that had already finished.
     flush_every = 1 if len(shas) <= _PER_DOCUMENT_FLUSH_MAX else 50
     with RegistryBatch(vault, flush_every=flush_every) as batch:
-        for sha in shas:
+        for n, sha in enumerate(shas, 1):
+            progress.emit("stage", stage="commit", done=n - 1, total=len(shas))
             written = _commit_extracted(vault, sha, batch=batch)
             if written:
                 written_map[sha] = written
@@ -2761,32 +2994,61 @@ def pending_finalization(vault: Path) -> dict:
 
 async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, brief: str | None = None,
                    results: list | None = None, post_effort: str | None = None,
-                   post_backend: str | None = None, force_shas: list[str] | None = None,
-                   skip_briefing: bool = False, finalizer_overrides: dict | None = None,
+                   post_backend: str | None = None, skip_briefing: bool = False, finalizer_overrides: dict | None = None,
                    benchmark_arm_id: str | None = None) -> dict:
     """Resolve, commit and post-process the pending batch.
 
     Order: exact-name fold → pre-commit reconciliation → commit pass (sorted sha order) →
-    post-ingest (contradictions, entity synthesis, timeline, briefing/hot.md/log). Used at the end of
-    a run, by standalone `watchdog bark`, and to resume an interrupted finalize. Consumed inputs are
+    post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
+    a run, by post-processing on its own, and to resume an interrupted finalize. Consumed inputs are
     cleared only on a clean pass. If reconciliation fails, nothing commits and the batch stays
     pending (I7).
 
-    `force_shas` are committed documents being re-extracted; they rejoin the commit pass and are
-    overwritten. `skip_briefing` skips only the briefing call. `finalizer_overrides` routes
+    `skip_briefing` skips only the briefing call. `finalizer_overrides` routes
     individual post-ingest stages to other models. `benchmark_arm_id` tags telemetry when finalize
     runs on its own."""
+    # One version of the vault's history per run (D286), recorded after the commit and
+    # post-processing, with the documents the run added as its cause.
+    from watchdog.pipeline import history
+    shas = _pending_commits(vault)
+    with history.recording(vault, _history_cause(vault, shas)):
+        return await _finalize(vault, post_model=post_model, brief=brief, results=results,
+                               post_effort=post_effort, post_backend=post_backend,
+                               skip_briefing=skip_briefing,
+                               finalizer_overrides=finalizer_overrides,
+                               benchmark_arm_id=benchmark_arm_id)
+
+
+_HISTORY_NAMES_MAX = 200
+
+
+def _history_cause(vault: Path, shas: list[str]) -> dict:
+    """The history cause of a run: the file names of the documents it commits."""
+    names = []
+    for sha in shas[:_HISTORY_NAMES_MAX]:
+        art = _read_json_or(vault / ".watchdog" / "extracted" / f"{sha}.json", None)
+        doc = (art or {}).get("document") if isinstance(art, dict) else None
+        names.append((doc or {}).get("filename") or _queued_filename(vault, sha) or sha[:12])
+    return {"kind": "run", "documents": names, "document_count": len(shas)}
+
+
+async def _finalize(vault: Path, *, post_model: str, brief: str | None, results: list | None,
+                    post_effort: str | None, post_backend: str | None,
+                    skip_briefing: bool,
+                    finalizer_overrides: dict | None, benchmark_arm_id: str | None) -> dict:
     standalone_usage = _run.usage is None   # not nested inside `run` — this call owns the usage file
     if standalone_usage:
         config_snapshot = {"post_model": post_model, "post_effort": post_effort,
                            "finalizer_overrides": finalizer_overrides}
         _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
 
-    shas = _pending_commits(vault, force_shas=force_shas)
+    shas = _pending_commits(vault)
     _restore_missing_results(vault, shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     if shas:
+        progress.emit("stage", stage="fold", done=0, total=len(shas))
         _batch_exact_fold(vault, shas)
+        progress.emit("stage", stage="reconcile", done=None, total=None)
         rec_result = await _reconcile_pre_commit(vault, shas, post_model, post_effort, post_backend,
                                                  finalizer_overrides=finalizer_overrides)
 
@@ -2805,6 +3067,7 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
         return out
 
     commit_summary = _commit_pending(vault, shas)
+    progress.emit("stage", stage="commit", done=len(shas), total=len(shas))
     if brief is None:
         brief = _read_brief(vault)
     if results is None:
@@ -2818,6 +3081,7 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
         _clear_post_ingest_inputs(vault)
     if standalone_usage:
         out["usage_path"], out["usage"] = _end_usage_run(vault)
+    progress.emit("stage", stage="done", done=None, total=None, path=out.get("briefing"))
     return out
 
 
@@ -2833,25 +3097,26 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
               wait: bool = False,
               skip_finalize: bool = False, force: bool = False,
               skip_briefing: bool = False, finalizer_overrides: dict | None = None,
-              resume_hint: str = "watchdog dig", verify: bool = False,
+              verify: bool = False,
               extract_token_budget: int | None = None,
               benchmark_arm_id: str | None = None,
-              only_shas: list[str] | None = None) -> dict:
+              only_shas: list[str] | None = None,
+              withhold_brief: bool = False) -> dict:
     """Extract every queued document (at most `concurrency` at a time), then finalize.
 
     Per-stage `*_model`, `*_effort` and `*_backend` choose each stage's model; a non-Claude backend
     takes the provider's own model id. `pinned_skill` skips classification. `only_shas` limits the
     run to those queued documents (`dig --limit`).
 
-    - `skip_finalize`: stop after extraction, leaving the batch pending for `watchdog bark`.
-    - `force`: re-extract even when an extraction is cached; `cmd_ingest` pairs it with
-      `skip_finalize` so finalize's `force_shas` decides what committed notes are replaced.
+    - `skip_finalize`: stop after extraction, leaving the batch pending for post-processing.
+    - `force`: re-extract even when an extraction is cached.
     - `skip_briefing`, `finalizer_overrides`: passed to `finalize`.
-    - `resume_hint`: the command a resume notice names.
     - `verify`: add the verification pass (not available on batch backends).
     - `extract_token_budget`: tokens/minute ceiling for admission control; `None` uses the
       provider's reported limit.
-    - `benchmark_arm_id`: tags this run's telemetry rows."""
+    - `benchmark_arm_id`: tags this run's telemetry rows.
+    - `withhold_brief`: extract without `context.md` (D278) — a benchmark arm setting that measures
+      what the brief changes. Extraction only: finalize still reads the brief itself."""
     queue_dir = vault / ".watchdog" / "queue"
     shas = [f.stem for f in sorted(queue_dir.glob("*.json"))] if queue_dir.exists() else []
     if only_shas is not None:
@@ -2863,17 +3128,17 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         "classify_model": classify_model, "classify_pages": classify_pages,
         "classify_effort": classify_effort,
         "extract_token_budget": extract_token_budget, "verify": verify, "concurrency": concurrency,
+        "withhold_brief": withhold_brief,
     }
-    _run.resume_hint = resume_hint
+    progress.emit("stage", stage="dig", done=0, total=len(shas))
 
     # claude-batch/openai-batch (#214, #530): submit-many/poll/collect, not one-await-per-document,
     # so it's a genuinely different flow — handled entirely by _run_batch (which also covers a
     # resumed pending batch even when `shas` is empty). Both branches converge on `results` /
     # `cancelled_flag` / `rate_limit_msg` / `extra_summary` and rejoin the shared tail below.
-    timer_task = None   # only started on the non-batch path below; referenced again in the tail
     if extract_backend in model_client.BATCH_BACKENDS:
-        # Same defense-in-depth posture as `_run_batch`'s own auth guard: `cmd_ingest` already
-        # refuses this combination, but a programmatic caller that skips CLI validation (a
+        # Same defense-in-depth posture as `_run_batch`'s own auth guard: the operation already
+        # refuses this combination, but a programmatic caller that skips the operation's validation (a
         # benchmark arm pinning both) must not silently get an unverified run labelled as a
         # verified one — the whole point of the arm is that the label is true.
         if verify:
@@ -2881,7 +3146,7 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                              f"re-reads a document immediately after extracting it, and a batch's "
                              f"results arrive hours later in a separate run")
         _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
-        brief = _read_brief(vault)
+        brief = None if withhold_brief else _read_brief(vault)
         batch_out = await _run_batch(vault, shas, brief, extract_model, pinned_skill,
                                      extract_effort, concurrency, classify_model, classify_pages,
                                      classify_backend, backend=extract_backend, force=force,
@@ -2897,11 +3162,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         if not shas:
             return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
 
-        brief = _read_brief(vault)
-        # Live status region for the concurrent extraction phase (#151): one in-place row per
-        # in-flight document, finished/failed lines scrolling above. Auto-disables off a TTY,
-        # where it degrades to the previous append-only output.
-        _run.board = LiveRegion()
+        brief = None if withhold_brief else _read_brief(vault)
+        # One line per document as its state changes, through the extraction phase (#151).
+        _run.board = progress.Lines()
         _begin_usage_run(vault, benchmark_arm_id=benchmark_arm_id, config_snapshot=config_snapshot)
         # Admission control (#563): every queued document's pre-flight output is read once, up
         # front — cheap (sync, local JSON only, no model call) — and reused for two things: the
@@ -2982,7 +3245,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                     except model_client.RateLimitError as e:  # session-wide — stop, leave queued for resume
                         if not cancelled.is_set():
                             print()
-                            _say(f"{_YELLOW}Rate limit reached{_RESET}{_DIM} — {e}{_RESET}")
+                            progress.emit("doc", sha=sha, filename=_queued_filename(vault, sha) or "",
+                                          state="failed", detail="rate limit")
+                            progress.emit("message", text=f"Rate limit reached: {e}")
+                            _say(f"Rate limit reached — {e}")
                             # #563: ground the "lower extract_concurrency" advice below in the actual
                             # numbers instead of leaving it a guess — the tokens/min this run was
                             # sustaining right before the stop, and (when the provider sent them) the
@@ -2998,14 +3264,14 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                             elif limit is not None:
                                 detail_parts.append(f"provider token limit {limit:,}/min")
                             if detail_parts:
-                                _say(f"{_DIM}{'; '.join(detail_parts)} — consider a lower "
-                                     f"{_RESET}{_CYAN}extract_concurrency{_RESET}{_DIM}.{_RESET}")
+                                _say(f"{'; '.join(detail_parts)} — consider a lower "
+                                     f"extract_concurrency.")
                             if wait:
-                                _say(f"{_DIM}Stopping; finished documents are saved. "
-                                     f"Waiting to resume automatically once it resets.{_RESET}")
+                                _say("Stopping; finished documents are saved. "
+                                     "Waiting to resume automatically once it resets.")
                             else:
-                                _say(f"{_DIM}Stopping; finished documents are saved. Re-run "
-                                     f"{_RESET}{_CYAN}{_run.resume_hint}{_RESET}{_DIM} once it resets to continue.{_RESET}")
+                                _say("Stopping; finished documents are saved. "
+                                     "Add documents again once it resets to continue.")
                             _request_stop(rate_limit=str(e), resets_at=e.resets_at)
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except model_client.ProviderAuthError as e:
@@ -3013,11 +3279,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                         # stop and leave them queued rather than quarantine each one.
                         if not cancelled.is_set():
                             print()
-                            _say(f"{_YELLOW}The provider refused this run{_RESET}{_DIM} — {e}{_RESET}")
-                            _say(f"{_DIM}Stopping; finished documents are saved and the rest stay "
-                                 f"queued. Fix the key or balance (see {_RESET}{_CYAN}watchdog settings auth"
-                                 f"{_RESET}{_DIM}), then re-run {_RESET}{_CYAN}{_run.resume_hint}{_RESET}"
-                                 f"{_DIM}.{_RESET}")
+                            _say(f"The provider refused this run — {e}")
+                            _say("Stopping; finished documents are saved and the rest stay "
+                                 "queued. "
+                                 + "Fix the key or balance in Settings, then add documents again.")
                             _request_stop(auth_error=str(e))
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
@@ -3032,31 +3297,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         # are already written to the vault; unfinished ones keep their queue file for resume.
         tasks[:] = [asyncio.ensure_future(_guarded(s)) for s in shas]
 
-        async def _tick_elapsed() -> None:
-            """Keep a pinned "Elapsed MM:SS" row at the bottom of the live region while
-            extraction runs (#411) — a long pause on a dense document (minutes, not seconds,
-            #398) otherwise reads as a stall rather than normal progress."""
-            start = time.monotonic()
-            while True:
-                await asyncio.sleep(1)
-                elapsed = int(time.monotonic() - start)
-                _run.board.update("__elapsed__", f"  {_DIM}Elapsed {elapsed // 60:02d}:{elapsed % 60:02d}{_RESET}",
-                              pin=True)
-
-        # Only on a real TTY — LiveRegion.update() falls back to plain append-only printing
-        # when disabled, which would spam a new line every second into logs/CI output.
-        if _run.board.enabled:
-            # Blank clearance line above the elapsed row (#456), same pattern as chew's own
-            # pinned progress bar (preprocess_batch._SPACER_KEY) — registered once, before the
-            # timer starts, since pinned rows render in insertion order among pinned keys.
-            _run.board.update("__elapsed_spacer__", "", pin=True)
-        timer_task = asyncio.ensure_future(_tick_elapsed()) if _run.board.enabled else None
-
         def _on_interrupt() -> None:
             if cancelled.is_set():
                 return
             print()
-            _say(f"{_YELLOW}Interrupted{_RESET}{_DIM} — finishing current writes, then stopping…{_RESET}")
+            _say("Interrupted — finishing current writes, then stopping…")
             _request_stop()
 
         loop = asyncio.get_running_loop()
@@ -3066,16 +3311,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             handler_set = True
         except (NotImplementedError, RuntimeError):
             # e.g. non-main thread, or Windows' Proactor event loop, which never supports
-            # add_signal_handler. There, every Ctrl+C falls through to cmd_ingest's plain
+            # add_signal_handler. There, every Ctrl+C falls through to the worker's plain
             # `except KeyboardInterrupt` instead of this module's graceful
             # finish-current-writes path — see that handler's comment for what differs.
             pass
         try:
-            # capture_stderr (#419): a dependency running in one of these tasks' worker
-            # threads (e.g. harvest's GLiNER load) can write straight to stderr mid-extraction;
-            # left alone that corrupts the board's redraw math, duplicating in-flight rows.
-            with _run.board.capture_stderr():
-                await asyncio.gather(*tasks, return_exceptions=True)
+            await asyncio.gather(*tasks, return_exceptions=True)
         finally:
             if handler_set:
                 loop.remove_signal_handler(signal.SIGINT)
@@ -3113,22 +3354,19 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                        and has_pending_finalization(vault))
     if waiting and not cancelled_flag and skip_finalize:
         # Extract-only (#384): leave the post-ingest inputs on disk untouched — a later
-        # `watchdog bark` (possibly on a vault copy, possibly with a different
+        # post-processing (`bark`) (possibly on a vault copy, possibly with a different
         # `--finalizer-model`) consumes them. `has_pending_finalization` is already True by
         # this point (`_finish_extraction` persisted `result_*.json` per document).
         summary["finalize_skipped"] = True
     elif waiting and not cancelled_flag:
         try:
             # Finalize over the persisted per-doc results on disk (not just this run's in-memory
-            # ones) so a merged batch — a prior pending run kept via wipe_pending=False — is
-            # synthesized and briefed together with this run's documents. Wrapped in the same
-            # stderr capture as extraction (#419) — reconcile/synthesize can load the same
-            # stderr-noisy local models (e.g. GLiNER) while the live region is still open below.
-            with _run.board.capture_stderr() if _run.board is not None else contextlib.nullcontext():
-                summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
-                                                        post_effort=post_effort, post_backend=post_backend,
-                                                        skip_briefing=skip_briefing,
-                                                        finalizer_overrides=finalizer_overrides)
+            # ones) so a merged batch — a prior pending run, which a new run always keeps — is
+            # synthesized and briefed together with this run's documents.
+            summary["post_ingest"] = await finalize(vault, post_model=post_model, brief=brief,
+                                                    post_effort=post_effort, post_backend=post_backend,
+                                                    skip_briefing=skip_briefing,
+                                                    finalizer_overrides=finalizer_overrides)
             # `results` was built before finalize's commit pass ran write_vault, so each item's
             # new/updated entity split was still unknown at the time (#403 phase 1) — sync it in
             # now from what the commit pass actually did, so a caller reading `summary["results"]`
@@ -3143,20 +3381,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         except Exception as e:   # post-ingest is enrichment — never let it crash a saved batch
             summary["post_ingest_error"] = str(e)
             print()
-            _say(f"{_YELLOW}Post-processing incomplete{_RESET}{_DIM} — {e}{_RESET}")
-            _say(f"{_DIM}Your {summary['extracted']} extracted document"
-                 f"{'s are' if summary['extracted'] != 1 else ' is'} saved.{_RESET}")
-    if _run.board is not None:
-        # Close the live region now that finalize (if any) has also run — see the comment at the
-        # extraction gather's own `finally` above for why this was moved out of there.
-        if timer_task is not None:
-            timer_task.cancel()
-            try:
-                await timer_task
-            except asyncio.CancelledError:
-                pass
-        _run.board.stop()
-        _run.board = None
+            _say(f"Post-processing incomplete — {e}")
+            _say(f"Your {summary['extracted']} extracted document"
+                 f"{'s are' if summary['extracted'] != 1 else ' is'} saved.")
+    _run.board = None
     state = "rate-limited" if summary["rate_limited"] else ("cancelled" if cancelled_flag else "complete")
     _log(vault, f"INGEST {state} — {summary['extracted']} extracted, "
                 f"{summary['skipped']} skipped, {summary['failed']} failed")
@@ -3167,4 +3395,6 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
     est_input_tokens = sum(r.get("est_input_tokens") or 0 for r in results
                            if r.get("status") == "ok") or None
     summary["usage_path"], summary["usage"] = _end_usage_run(vault, est_input_tokens=est_input_tokens)
+    progress.emit("stage", stage="done", done=summary["extracted"] + summary["skipped"],
+                  total=len(shas), path=(summary.get("post_ingest") or {}).get("briefing"))
     return summary

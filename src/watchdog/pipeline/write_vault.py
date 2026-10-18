@@ -60,6 +60,7 @@ import yaml
 from watchdog.pipeline.entity_norm import normalize_entity_name
 from watchdog.pipeline.entity_type import canonical_type
 from watchdog.pipeline.json_io import _read_json_or
+from watchdog.vault_paths import incoming_dir
 
 try:
     from fcntl import flock as _flock, LOCK_EX as _LOCK_EX, LOCK_UN as _LOCK_UN
@@ -195,6 +196,7 @@ class NameIndex:
     def __init__(self, entities_reg: dict):
         self._pos: dict[str, int] = {}
         self._index: dict[tuple[str, str], str] = {}
+        self._all: dict[tuple[str, str], set[str]] = {}
         for eid, entry in entities_reg.items():
             self.add(eid, entry)
 
@@ -203,6 +205,7 @@ class NameIndex:
         etype = canonical_type(entry["type"])
         for n in [entry["name"], *entry.get("aliases", [])]:
             key = (normalize_entity_name(n), etype)
+            self._all.setdefault(key, set()).add(eid)
             current = self._index.get(key)
             if current is None or self._pos[current] > pos:
                 self._index[key] = eid
@@ -210,38 +213,91 @@ class NameIndex:
     def get(self, key: tuple[str, str]) -> str | None:
         return self._index.get(key)
 
+    def get_all(self, key: tuple[str, str]) -> list[str]:
+        """Every entity carrying this (name, type), in registry order — several records can share
+        a name now that a same-name person is no longer folded on name alone (D279)."""
+        return sorted(self._all.get(key, ()), key=lambda eid: self._pos[eid])
+
+
+def _unique_entity_id(eid: str, taken) -> str:
+    """`eid`, or `eid-2`, `eid-3`, … — the first not in `taken`."""
+    n = 2
+    while f"{eid}-{n}" in taken:
+        n += 1
+    return f"{eid}-{n}"
+
+
+def _names_only_judge(entity: dict, existing_id: str, entities_reg: dict) -> bool:
+    """`identity.classify` on names and aliases alone — the judge when no vault evidence is at
+    hand. Only a high-confidence verdict folds."""
+    from watchdog.pipeline import identity
+    entry = entities_reg[existing_id]
+    a = identity.Profile(entity["id"], entity["name"], entity["type"])
+    for alias in entity.get("aliases") or []:
+        a.add_surface(alias)
+    b = identity.Profile(existing_id, entry["name"], entry["type"])
+    for alias in entry.get("aliases") or []:
+        b.add_surface(alias)
+    verdict = identity.classify(a, b)
+    return bool(verdict and verdict["tier"] == "high")
+
 
 def _reconcile_entity_ids(incoming_entities: list[dict], entities_reg: dict,
-                          name_index: NameIndex | None = None) -> dict[str, str]:
-    """Remap incoming entities that name an existing entity under a different slug.
+                          name_index: NameIndex | None = None, judge=None) -> dict[str, str]:
+    """Fold incoming entities onto existing ones only when `judge` says the match is high
+    confidence (D279); otherwise keep them apart, so a medium or low match reaches the reconcile
+    model or the reporter instead of being merged here.
 
-    An incoming new entity whose normalized (name, canonical type) matches an existing one takes the
-    existing id, so it merges instead of duplicating (e.g. 'ernst-and-young-inc' and
-    'ernst-young-inc'). Called by `orchestrate._batch_exact_fold`, the pre-commit pass over the
-    staged batch (D127). Returns the remap (old id -> surviving id) so the caller can rewrite other
-    fields that name entity ids — `morgue_entity_id`, `document.key_facts[].entities`."""
+    Two ways an incoming entity meets an existing one: the same slug (two documents both coin
+    `john-smith`), or the same normalized (name, canonical type) under another slug, including an
+    existing alias. `judge(entity, existing_id)` decides each; it is `identity.classify` with the
+    documents' evidence when called from `orchestrate._batch_exact_fold`, and on names alone
+    otherwise. A same-slug match that is not high gets a fresh slug (`john-smith-2`) so the two
+    records stay separate. Non-person entities are judged first, so a person's roles already point
+    at reconciled ids when shared employers and addresses are compared.
+
+    Each entity that moves keeps the id it was extracted under in `extracted_id`. Returns the remap
+    (old id -> new id) so the caller can rewrite the other fields that name entity ids —
+    `morgue_entity_id`, `document.key_facts[].entities`."""
     norm_index = name_index if name_index is not None else NameIndex(entities_reg)
+    if judge is None:
+        def judge(entity, existing_id):
+            return _names_only_judge(entity, existing_id, entities_reg)
 
     remap: dict[str, str] = {}
-    for entity in incoming_entities:
+    taken = set(entities_reg) | {e["id"] for e in incoming_entities}
+    # The id each entity had when this call began: the key the caller's other fields still use.
+    start = {id(e): e["id"] for e in incoming_entities}
+
+    def _move(entity: dict, new_id: str) -> None:
+        old = entity["id"]
+        entity.setdefault("extracted_id", old)
+        entity["id"] = new_id
+        remap[start[id(entity)]] = new_id
+        for other in incoming_entities:
+            for role in other.get("roles", []):
+                if role.get("target_id") == old:
+                    role["target_id"] = new_id
+
+    ordered = sorted(incoming_entities, key=lambda e: canonical_type(e.get("type", "")) == "person")
+    for entity in ordered:
         if entity["id"] in entities_reg:
-            continue
+            if judge(entity, entity["id"]):
+                continue
+            new_id = _unique_entity_id(entity["id"], taken)
+            taken.add(new_id)
+            _move(entity, new_id)
         key = (normalize_entity_name(entity["name"]), canonical_type(entity["type"]))
-        existing_id = norm_index.get(key)
-        if existing_id and existing_id != entity["id"]:
-            remap[entity["id"]] = existing_id
-            entity["id"] = existing_id
-            # Preserve the variant spelling so the entity stays findable next time.
-            entity.setdefault("aliases", []).append(entity["name"])
+        for existing_id in norm_index.get_all(key):
+            if existing_id == entity["id"] or existing_id not in entities_reg:
+                continue
+            if judge(entity, existing_id):
+                _move(entity, existing_id)
+                # Preserve the variant spelling so the entity stays findable next time.
+                entity.setdefault("aliases", []).append(entity["name"])
+                break
 
-    # Keep intra-document role targets pointing at the reconciled ids.
-    if remap:
-        for entity in incoming_entities:
-            for role in entity.get("roles", []):
-                if role.get("target_id") in remap:
-                    role["target_id"] = remap[role["target_id"]]
-
-    return remap
+    return {old: new for old, new in remap.items() if old != new}
 
 
 def _resolve_role_targets(incoming_entities: list[dict], entities_reg: dict) -> None:
@@ -298,53 +354,6 @@ def _extract_notes_section(note_path: Path) -> str:
     return "\n" + content[idx:] if idx != -1 else default
 
 
-def _extract_analysis(note_path: Path) -> str:
-    """Return the existing ## Analysis body, or empty string."""
-    if not note_path.exists():
-        return ""
-    return _extract_section(note_path.read_text(encoding="utf-8"), "Analysis")
-
-
-def _extract_summary(note_path: Path) -> str | None:
-    """Return the existing ## Summary body, or None if absent."""
-    if not note_path.exists():
-        return None
-    text = _extract_section(note_path.read_text(encoding="utf-8"), "Summary")
-    return text or None
-
-
-def _extract_contradictions(note_path: Path) -> str:
-    """Return the existing ## Contradictions body, or empty string."""
-    if not note_path.exists():
-        return ""
-    return _extract_section(note_path.read_text(encoding="utf-8"), "Contradictions")
-
-
-# Header a document contributes to an entity note's ## Analysis section, e.g.
-# ``*3 May 2026, via [[documents/acme-annual-report|Acme Annual Report]]:*``. The doc-note
-# link is stable per document (1:1 with its sha via the slug), so it keys the block for
-# replace-not-append rewrites (#259).
-_ANALYSIS_HEADER_RE = re.compile(r"^\*[^\n]*?via \[\[([^\]|]+)[|\]]", re.MULTILINE)
-
-
-def _drop_analysis_entry(analysis: str, doc_note: str) -> str:
-    """Remove any prior ## Analysis block this document contributed, so re-running write_vault
-    for the same document replaces its entry instead of appending a duplicate (#259). Blocks are
-    delimited by their ``*…via [[doc_note|…]]:*`` header; everything from one header up to the
-    next is one document's contribution."""
-    if not analysis:
-        return analysis
-    matches = list(_ANALYSIS_HEADER_RE.finditer(analysis))
-    if not matches:
-        return analysis
-    kept = analysis[: matches[0].start()]  # preamble before the first header (normally empty)
-    for i, m in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(analysis)
-        if m.group(1) != doc_note:
-            kept += analysis[m.start():end]
-    return kept.strip()
-
-
 # ── Timeline helpers ──────────────────────────────────────────────────────────
 
 def _date_sort_key(date_str: str) -> str:
@@ -391,7 +400,7 @@ def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha25
 def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
     """Render an entity note's ``## Timeline`` section from its dated tagged facts, year-grouped
     and attributed to each event's source document. The *global* timeline is rendered separately
-    from the cross-document-deduped NDJSON (`timeline.cmd_rebuild_timeline`, #237)."""
+    from the cross-document-deduped NDJSON (`timeline.rebuild_timeline`, #237)."""
     if not events:
         return ""
 
@@ -422,8 +431,10 @@ def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
 
 
 @contextmanager
-def _registry_lock(registry_dir: Path):
-    """Exclusive per-vault lock so concurrent write-vault calls serialize safely.
+def _registry_lock(registry_dir: Path, name: str = ".write-lock"):
+    """Exclusive per-vault lock so concurrent write-vault calls serialize safely. `name` picks a
+    different lock file for a store only its own commands write (the verification ledger, D271),
+    so those writes don't wait on a long commit pass.
 
     Uses `fcntl.flock` on macOS/Linux (blocks indefinitely until acquired) and
     `msvcrt.locking` on Windows (locks a 1-byte region; blocks in ~1s retries, raising
@@ -431,7 +442,7 @@ def _registry_lock(registry_dir: Path):
     behavioural difference from flock, not just a different API). If neither is
     available, this is a no-op and callers rely on in-process serialization only
     (D18) — cross-process writers are not locked out."""
-    lock_path = registry_dir / ".write-lock"
+    lock_path = registry_dir / name
     with open(lock_path, "w") as fh:
         if _HAS_FLOCK:
             _flock(fh, _LOCK_EX)
@@ -446,6 +457,36 @@ def _registry_lock(registry_dir: Path):
             if _HAS_FLOCK:
                 _flock(fh, _LOCK_UN)
             elif _msvcrt is not None:
+                fh.seek(0)
+                _msvcrt.locking(fh.fileno(), _msvcrt.LK_UNLCK, 1)
+
+
+@contextmanager
+def _try_registry_lock(registry_dir: Path, name: str = ".write-lock"):
+    """`_registry_lock` without waiting: yields True holding the lock, or False at once when
+    another writer holds it (or the platform has no lock to take)."""
+    lock_path = registry_dir / name
+    with open(lock_path, "w") as fh:
+        got = False
+        try:
+            if _HAS_FLOCK:
+                from fcntl import LOCK_NB
+                _flock(fh, _LOCK_EX | LOCK_NB)
+                got = True
+            elif _msvcrt is not None:
+                fh.write(" ")
+                fh.flush()
+                fh.seek(0)
+                _msvcrt.locking(fh.fileno(), _msvcrt.LK_NBLCK, 1)
+                got = True
+        except OSError:
+            got = False
+        try:
+            yield got
+        finally:
+            if got and _HAS_FLOCK:
+                _flock(fh, _LOCK_UN)
+            elif got and _msvcrt is not None:
                 fh.seek(0)
                 _msvcrt.locking(fh.fileno(), _msvcrt.LK_UNLCK, 1)
 
@@ -475,6 +516,11 @@ class RegistryBatch:
         self._after_flush: list = []
         self._lock = None
         self._undo: tuple | None = None
+        self._merge_log: list[dict] = []     # merge-log entries of the documents written so far
+        self._merge_log_mark = 0
+        self._note_ids: set[str] = set()     # entities whose notes the next flush renders (D280)
+        self._overrides: dict[str, dict] = {}
+        self._pending_notes: tuple | None = None
 
     def __enter__(self) -> "RegistryBatch":
         self.registry_dir.mkdir(parents=True, exist_ok=True)
@@ -496,6 +542,7 @@ class RegistryBatch:
         them either. Only the entries a write can touch are copied: the document's own entities,
         the targets its roles point at (`_add_reverse_role`), and its own documents entry."""
         missing = object()
+        self._merge_log_mark = len(self._merge_log)
         self._undo = (
             {eid: deepcopy(self.entities[eid]) if eid in self.entities else missing
              for eid in entity_ids},
@@ -509,6 +556,8 @@ class RegistryBatch:
         if self._undo is None:
             return
         entities, doc_sha256, document, missing = self._undo
+        del self._merge_log[self._merge_log_mark:]
+        self._pending_notes = None
         for eid, entry in entities.items():
             if entry is missing:
                 self.entities.pop(eid, None)
@@ -524,16 +573,59 @@ class RegistryBatch:
         """Record one document written; flush once `flush_every` have accumulated. `after_flush`
         runs once that document's registry entries are on disk."""
         self._undo = None
+        if self._pending_notes is not None:
+            ids, sha, extraction = self._pending_notes
+            self._note_ids |= ids
+            self._overrides[sha] = extraction
+            self._pending_notes = None
         self._pending += 1
         if after_flush is not None:
             self._after_flush.append(after_flush)
         if self._pending >= self.flush_every:
             self.flush()
 
+    def notes_for(self, entity_ids: set[str], doc_sha256: str, extraction: dict) -> None:
+        """Queue the notes one document's write touched, rendered at the flush that commits it."""
+        self._pending_notes = (set(entity_ids), doc_sha256, extraction)
+
+    def render_notes(self) -> list[tuple[str, str, str]]:
+        """Render every queued entity note from the batch's in-memory registries (D280)."""
+        from watchdog.pipeline import entity_facts, entity_notes
+        stale_ids, stale_docs = entity_notes.split_stale(entity_notes.take_stale(self.vault_path))
+        self._note_ids |= {e for e in stale_ids if e in self.entities}
+        if stale_docs:      # document notes a reporter's mark relabelled while this pass held the lock
+            entity_notes.write_queued_documents(self.vault_path, stale_docs, self.entities,
+                                                self.documents, embed=False)
+        if not self._note_ids:
+            return []
+        index = entity_facts.FactIndex(self.vault_path, self.entities, self.documents,
+                                       overrides=self._overrides)
+        written = entity_notes.write_entities(self.vault_path, self._note_ids, self.entities,
+                                              self.documents, index=index)
+        self._note_ids, self._overrides = set(), {}
+        return written
+
+    def log_merges(self, entries: list[dict]) -> None:
+        """Queue a document's merge-log entries (D279) for the flush that commits it."""
+        self._merge_log.extend(entries)
+
     def flush(self) -> None:
         if not self._pending:
             return
+        # Before the registries: a crash in between leaves entries for documents a replay commits
+        # again, and `merge_log.record` is idempotent, so the log never misses a committed merge.
+        written = self.render_notes()
+        logged = bool(self._merge_log)
+        if logged:
+            from watchdog.pipeline import merge_log
+            merge_log.record(self.vault_path, self._merge_log, render_note=False)
+            self._merge_log = []
         _persist_registries(self.vault_path, self.entities, self.documents)
+        if logged:
+            merge_log.render(self.vault_path)     # after the registries, so it names the documents
+        if written:
+            from watchdog.pipeline import entity_notes
+            entity_notes.index_notes(self.vault_path, written)
         self._pending = 0
         callbacks, self._after_flush = self._after_flush, []
         for callback in callbacks:
@@ -731,7 +823,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
     """Write the Docling per-page markdown next to the original in the morgue (#140).
 
     Best-effort: the page markdown lives in the chew-time queue descriptor, which is present during
-    ingest but gone on a re-run from disk (`watchdog bark`); skip silently if unavailable.
+    ingest but gone on a re-run from disk (post-processing (`bark`)); skip silently if unavailable.
     Pages are joined with `<!-- PAGE N -->` markers so the file is both greppable and page-aligned.
     """
     queue_file = vault_path / ".watchdog" / "queue" / f"{sha256}.json"
@@ -748,7 +840,7 @@ def _write_morgue_markdown(vault_path: Path, sha256: str, morgue_dir: Path, stem
 
 
 def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dict],
-                            morgue_path: str = "", filename_shared: bool = False) -> None:
+                            morgue_path: str = "") -> None:
     """Embed this document's source passages into the semantic index, with a contextual
     prefix built from what extraction produced — the document's title, type, and the
     entities it names. The prefix anchors a passage that lacks the document's who/what,
@@ -771,8 +863,7 @@ def _index_corpus_passages(vault_path: Path, doc: dict, entity_entries: list[dic
     if names:
         context += " Mentions: " + ", ".join(names) + "."
     from watchdog.pipeline.embed import add_document
-    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256,
-                 drop_legacy=not filename_shared)
+    add_document(vault_path, doc["filename"], pages, context=context, sha256=sha256)
     from watchdog.pipeline.fulltext import add_document as fts_add_document
     fts_add_document(vault_path, doc["filename"], sha256, pages, morgue_path=morgue_path)
 
@@ -911,14 +1002,26 @@ def build_entity_note(
     return fm + body + notes_section
 
 
-def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str | None = None) -> str:
+# The label a fact the reporter disputes carries on its line in a note (D285), as in entity notes.
+DISPUTED_LABEL = " · ✗ disputed"
+
+
+def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str | None = None,
+                         rec: dict | None = None, old: str | None = None,
+                         sha: str | None = None, marks: dict | None = None) -> str:
+    """A document note from its extraction. `rec` (the registry entry) supplies the ingestion date,
+    so a rebuild gives the same note; `old` (the note on disk) supplies the journalist's Notes,
+    which are carried over unchanged (D280). With the document's `sha`, each fact line ends in its
+    block id (`^f-<hash>`), the target of every fact citation (D283), and, given the verification
+    ledger's `marks`, a fact the reporter disputes is labelled "disputed" (D285)."""
+    ingested = ((rec or {}).get("ingested_at") or "")[:10] or _today()
     fm = _frontmatter({
         "title":            doc.get("title", doc["filename"]),
         "type":             "Document",
         "document_type":    doc.get("document_type"),
         "file":             doc["filename"],
         "date_of_document": doc.get("date_of_document"),
-        "date_ingested":    _today(),
+        "date_ingested":    ingested,
         "source":           doc.get("source"),
         "obtained":         doc.get("obtained"),
         "entities_mentioned": [
@@ -944,11 +1047,24 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
     key_facts = doc.get("key_facts", [])
     if key_facts:
         body += "\n## Key facts\n\n"
-        for kf in key_facts:
+        ids: list[str | None] = [None] * len(key_facts)
+        disputed: set[int] = set()
+        if sha:
+            from watchdog.pipeline.citations import block_id
+            from watchdog.pipeline.verification import attach, fact_ids
+            kept = [i for i, kf in enumerate(key_facts)
+                    if isinstance(kf, dict) and (kf.get("fact") or "").strip()]
+            for i, fid in zip(kept, fact_ids(sha, [key_facts[i] for i in kept])):
+                ids[i] = f" ^{block_id(fid)}"
+                if (attach((marks or {}).get(fid), key_facts[i]) or {}).get("status") == "disputed":
+                    disputed.add(i)
+        for i, (kf, bid) in enumerate(zip(key_facts, ids)):
             pg = _page_link(morgue_path or "", kf.get("page"))
             page = f" ({pg})" if pg else ""
             basis_note = " *(inferred)*" if kf.get("basis") == "inferred" else ""
-            body += f"- {_defang(kf['fact'])}{page}{basis_note}{_figure_verification_note(kf)}\n"
+            label = DISPUTED_LABEL if i in disputed else ""
+            body += (f"- {_defang(kf['fact'])}{page}{basis_note}{_figure_verification_note(kf)}"
+                     f"{label}{bid or ''}\n")
             quote = _defang((kf.get("quote") or "").strip())
             if quote:
                 body += f"  > {quote}{_quote_verification_note(kf)}\n"
@@ -958,7 +1074,12 @@ def _build_document_note(doc: dict, entity_entries: list[dict], morgue_path: str
         for e in entity_entries:
             body += f"- [[entities/{_type_dir(e['type'])}/{e['id']}|{_defang(e['name'])}]]\n"
 
-    body += "\n## Notes\n\n<!-- Reserved for journalist annotations — never overwritten by ingestion. -->\n"
+    from watchdog.pipeline.entity_notes import _NOTES_RE
+    m = _NOTES_RE.search(old or "")
+    if m:
+        body += "\n" + old[m.start():]
+    else:
+        body += "\n## Notes\n\n<!-- Reserved for journalist annotations — never overwritten by ingestion. -->\n"
 
     return fm + body
 
@@ -970,10 +1091,17 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     """Commit one staged extraction to the vault. With `batch` (#696), the registries are read
     from and left in the batch's memory — persisting them is the batch's flush, not this call's —
     and the batch already holds the registry lock."""
-    extraction = json.loads(extraction_path.read_text(encoding="utf-8"))
+    raw = extraction_path.read_text(encoding="utf-8")
+    extraction = json.loads(raw)
     doc = extraction.get("document")
     if not doc:
         sys.exit(f"Error: extraction JSON missing required 'document' key ({extraction_path.name})")
+    # The stored extraction is the record every entity note is rendered from (D280), so a document
+    # committed from anywhere else is kept there too, as committed.
+    stored = vault_path / ".watchdog" / "extracted" / f"{doc.get('sha256')}.json"
+    if doc.get("sha256") and extraction_path.resolve() != stored.resolve():
+        stored.parent.mkdir(parents=True, exist_ok=True)
+        stored.write_text(raw, encoding="utf-8")
     incoming_entities = extraction.get("entities", [])
     # Collapse each entity's model-invented type onto the closed vocabulary (#335) before it
     # becomes load-bearing — the stored registry type, the `entities/<type>/` folder, the note
@@ -990,7 +1118,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     with (nullcontext() if batch is not None else _registry_lock(registry_dir)):
         entities_path  = registry_dir / "entities.json"
         documents_path = registry_dir / "documents.json"
-        log_path       = registry_dir / "ingest.log"
+        log_path       = registry_dir / "processing.log"   # vault_paths.processing_log (D276)
 
         if batch is not None:
             entities_reg, documents_reg = batch.entities, batch.documents
@@ -1071,7 +1199,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "sha256":           doc_sha256,
             "filename":         doc["filename"],
             "title":            doc_title,
-            "original_path":    doc.get("original_path", f"_INCOMING/{doc['filename']}"),
+            "original_path":    doc.get("original_path", f"incoming/{doc['filename']}"),
             "document_note":    f"documents/{slug}",
             "ingested_at":      _now_iso(),
             "page_count":       doc.get("page_count"),
@@ -1087,6 +1215,8 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             "minhash":          sig,
             "morgue_path":      morgue_relative,
         }
+        if isinstance(doc.get("media"), dict):
+            documents_reg[doc_sha256]["media"] = doc["media"]   # audio/video only (D273)
 
         # ── 2b. Record document requests ──────────────────────────────────────
         #
@@ -1099,68 +1229,25 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
             document_note=documents_reg[doc_sha256]["document_note"],
         )
 
-        # ── 3. Write entity notes ─────────────────────────────────────────────
+        # ── 3. Entity notes ───────────────────────────────────────────────────
         #
-        # Steps 3–4 write the vault notes (the human-facing artifacts); the derived search
-        # indexes are deferred to step 6, *after* the registries persist, since they are
-        # rebuilt-from-source data that a re-run regenerates (#259). The notes themselves are
-        # idempotent per document: the ## Analysis block is keyed by this document (doc-note
-        # link) and replaced, not appended, so a repair retry converges instead of doubling
-        # claims.
-
-        incoming_by_id = {e["id"]: e for e in incoming_entities}
+        # An entity note is a view of stored data (D280): its Facts section is rendered from every
+        # stored extraction that tags the entity, so it is rebuilt whole, never appended to. In a
+        # batch the notes of every entity a flush covers are rendered once, at that flush, before
+        # the registries persist; alone, they are rendered here. Either way a repair retry
+        # converges, since the render reads only data.
 
         # (note_path, kind, title, content) tuples replayed into the embed + FTS indexes
         # after the commit point.
         note_index_jobs: list[tuple[str, str, str, str]] = []
-
-        for eid in modified:
-            entry = entities_reg[eid]
-            note_path = _assert_in_vault(
-                vault_path / f"{entry['note_path']}.md", vault_path, "entity note_path"
-            )
-            note_path.parent.mkdir(parents=True, exist_ok=True)
-
-            notes_section = _extract_notes_section(note_path)
-
-            incoming = incoming_by_id.get(eid, {})
-            # Extraction no longer emits a per-entity summary (#140). A recurring entity
-            # (appears_in >= 2) gets a model-synthesized summary in post-ingest; a single-document
-            # entity is a deterministic stub with no Summary section (its facts live in ## Analysis).
-            # So the only summary at write time is a carried one from a prior synthesis.
-            new_summary = incoming.get("summary") or _extract_summary(note_path)
-
-            doc_note = documents_reg[doc_sha256]["document_note"]
-            # Replace-not-append: drop any block this document contributed on a prior (crashed)
-            # attempt before adding it back, so a repair retry doesn't duplicate the entry (#259).
-            existing_analysis = _drop_analysis_entry(_extract_analysis(note_path), doc_note)
-            new_analysis_text = _render_evidence_fragments(
-                incoming.get("evidence_fragments") or [],
-                documents_reg[doc_sha256]["morgue_path"],
-            )
-            if new_analysis_text:
-                entry_line = f"*{_today()}, via [[{doc_note}|{_defang(doc_title)}]]:*\n{new_analysis_text}"
-                accumulated = (
-                    existing_analysis.rstrip() + "\n\n" + entry_line
-                ).lstrip() if existing_analysis else entry_line
-            else:
-                accumulated = existing_analysis
-
-            # The registry entry is the contradiction ledger (#282); the note body is a
-            # filtered render of it. Fold in any note-only callouts too (self-healing
-            # backfill for pre-#282 vaults, or a stray hand-edit) before filtering (#288).
-            all_callouts = resolutions.dedup_callouts(
-                list(entry.get("contradictions") or [])
-                + resolutions.split_callouts(_extract_contradictions(note_path))
-            )
-            entry["contradictions"] = all_callouts
-            contradictions = "\n\n".join(resolutions.filter_callouts(all_callouts, resolved_ids))
-
-            note_content = build_entity_note(
-                entry, notes_section, documents_reg, new_summary, accumulated, contradictions
-            )
-            note_path.write_text(note_content, encoding="utf-8")
-            note_index_jobs.append((entry["note_path"], "entity", entry["name"], note_content))
+        if batch is None:
+            from watchdog.pipeline import entity_facts, entity_notes
+            index = entity_facts.FactIndex(vault_path, entities_reg, documents_reg,
+                                           overrides={doc_sha256: extraction})
+            for np_, name, content in entity_notes.write_entities(
+                    vault_path, modified, entities_reg, documents_reg, index=index,
+                    resolved=resolved_ids):
+                note_index_jobs.append((np_, "entity", name, content))
 
         # ── 4. Write document note ────────────────────────────────────────────
 
@@ -1169,7 +1256,11 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         )
         doc_note_path.parent.mkdir(parents=True, exist_ok=True)
         entity_entries_for_note = [entities_reg[e["id"]] for e in incoming_entities if e["id"] in entities_reg]
-        doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative)
+        old_doc_note = doc_note_path.read_text(encoding="utf-8") if doc_note_path.exists() else None
+        from watchdog.pipeline.verification import marks as _ledger_marks
+        doc_note_content = _build_document_note(doc, entity_entries_for_note, morgue_relative,
+                                                rec=documents_reg[doc_sha256], old=old_doc_note,
+                                                sha=doc_sha256, marks=_ledger_marks(vault_path))
         doc_note_path.write_text(doc_note_content, encoding="utf-8")
         note_index_jobs.append((f"documents/{slug}", "document", doc_title, doc_note_content))
 
@@ -1177,8 +1268,18 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         #
         # Inside a RegistryBatch (#696) this is the batch's flush, every `flush_every` documents.
 
+        identity_log = (extraction.get("identity") or {}).get("log") or []
         if batch is None:
+            if identity_log:
+                from watchdog.pipeline import merge_log
+                merge_log.record(vault_path, identity_log, render_note=False)
             _persist_registries(vault_path, entities_reg, documents_reg)
+            if identity_log:
+                merge_log.render(vault_path)
+        elif identity_log:
+            batch.log_merges(identity_log)
+        if batch is not None:
+            batch.notes_for(modified, doc_sha256, extraction)
 
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(
@@ -1209,17 +1310,15 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # Index the source passages (corpus stream) with a contextual prefix — now that
         # extraction has supplied the title, type, and entities the prefix needs (D43).
         try:
-            filename_shared = any(e.get("filename") == doc["filename"]
-                                  for s, e in documents_reg.items() if s != doc_sha256)
             _index_corpus_passages(vault_path, doc, entity_entries_for_note,
-                                   morgue_path=morgue_relative, filename_shared=filename_shared)
+                                   morgue_path=morgue_relative)
         except Exception as e:
             print(f"  Warning: corpus index update failed for {doc['filename']}: {e}", file=sys.stderr)
 
     # The global timeline is no longer rebuilt per document (#237): it is rendered
     # exclusively from the cross-document-deduped canonical NDJSON, which only exists after
     # `_post_ingest` runs the dedup pass at the end of a batch. A standalone write-vault
-    # therefore leaves timeline.md to the next ingest run or explicit `watchdog timeline`.
+    # therefore leaves timeline.md to the next ingest run or explicit the timeline rebuild.
 
     # ── 7. Move source file to morgue ─────────────────────────────────────────
 
@@ -1228,7 +1327,7 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
     )
     morgue_dir.mkdir(parents=True, exist_ok=True)
 
-    source = vault_path / doc.get("original_path", f"_INCOMING/{doc['filename']}")
+    source = vault_path / doc.get("original_path", f"incoming/{doc['filename']}")
     if source.exists():
         morgue_name = Path(morgue_relative).name
         shutil.move(str(source), str(morgue_dir / morgue_name))
@@ -1242,9 +1341,9 @@ def run(extraction_path: Path, vault_path: Path, neardup_file: Path | None = Non
         # the vault — extraction now indexes this substrate rather than restating it (#140).
         _write_morgue_markdown(vault_path, doc_sha256, morgue_dir, Path(morgue_name).stem)
 
-        incoming_dir = vault_path / "_INCOMING"
+        incoming_root = incoming_dir(vault_path)
         parent = source.parent
-        while parent != incoming_dir and parent.is_relative_to(incoming_dir):
+        while parent != incoming_root and parent.is_relative_to(incoming_root):
             try:
                 parent.rmdir()
                 parent = parent.parent

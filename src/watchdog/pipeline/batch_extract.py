@@ -5,7 +5,7 @@ an hour, up to 24). `orchestrate._run_batch` is the only caller; this module kno
 lifecycle (submit, status, collect) and never the vault. Two providers sit behind `backend`:
 Anthropic's Message Batches (`claude-batch`) and OpenAI's Batch API (`openai-batch`, JSONL over
 httpx). State is one `.watchdog/registry/batch-pending.json` per vault, recording which backend
-submitted it so a later `watchdog dig` resumes against the right provider."""
+submitted it so a later processing (`dig`) resumes against the right provider."""
 
 import datetime
 import json

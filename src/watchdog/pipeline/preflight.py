@@ -39,7 +39,7 @@ def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
 
     # Check if already committed to the vault; collect the document types already used in this
     # vault so the extractor can reuse one rather than coining a near-duplicate (keeps the type
-    # vocabulary — and the `watchdog status` tally — consistent).
+    # vocabulary — and the the Overview tally — consistent).
     if registry is None:
         registry = registry_context(vault)
     already_extracted = sha256 in registry["shas"]
@@ -72,6 +72,6 @@ def run(vault: Path, sha256: str, registry: dict | None = None) -> dict:
         "file_metadata": queue.get("file_metadata", {}),
         "processing": queue.get("metadata", {}),
         # Already filtered/allowlisted at chew time (pipeline/sidecar.py) — raw text or None,
-        # never read from _INCOMING again past this point (D121).
+        # never read from incoming again past this point (D121).
         "sidecar": queue.get("sidecar"),
     }

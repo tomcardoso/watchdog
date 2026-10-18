@@ -9,7 +9,7 @@ appends the schema; these builders supply the task-specific instructions + data 
 
 The prompt templates are deliberately **separate** from the record skills in
 ``watchdog/skills/records/`` — ``skills_catalog`` never scans this directory, so editing a
-prompt here does not touch the classifier index or ``watchdog show-skills``.
+prompt here does not touch the classifier index or `the skills list`.
 """
 
 import importlib.resources
@@ -127,6 +127,12 @@ def _file_metadata_block(file_metadata: dict, processing: dict) -> str:
     )
 
 
+def _is_transcript(processing: dict | None) -> bool:
+    """True for a machine transcript of a recording (D273): the only documents that get the
+    transcript note, so every other document's prompt is byte-for-byte unchanged."""
+    return (processing or {}).get("source_type") == "transcript"
+
+
 def _wants_scaffold(model: str | None) -> bool:
     """Whether the extraction prompt should carry the explicit step-by-step scaffold (#570) —
     true for a model with no private reasoning channel to work the problem in instead. Resolved
@@ -160,6 +166,8 @@ def build_extract_prompt(*, pages_text: str, skill_text: str, sidecar: str | Non
     volatile = [_known_types_block(known_document_types)]
     if sidecar:
         volatile.append(f"\nSIDECAR (provenance + notes — context for your extraction):\n{sidecar}")
+    if _is_transcript(processing):
+        volatile.append(f"\n{_text('transcript_note')}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
     if candidates:
@@ -217,6 +225,8 @@ def build_section_prompt(*, pages_text: str, skill_text: str, carry_forward: str
     if carry_forward:
         volatile.append(f"\nCARRY-FORWARD (entities/observations from earlier sections — reuse these "
                         f"ids):\n{carry_forward}")
+    if _is_transcript(processing):
+        volatile.append(f"\n{_text('transcript_note')}")
     if file_metadata:
         volatile.append(_file_metadata_block(file_metadata, processing))
     if candidates:
@@ -281,18 +291,21 @@ def build_reconcile_prompt(bundle: dict) -> str:
       candidate_pairs` blocks the field down to pairs that are plausibly the same thing (same
       canonical type, one name a token-subset of the other, identical in tokens — a word-order or
       stopword variant — or a high token overlap); the model only confirms or rejects each, and
-      answers by pair index, so it cannot invent an id.
-      Exact normalized-name duplicates never reach here — `write_vault._reconcile_entity_ids`
-      already merged those deterministically, in-lock, at write time.
-    * **ENTITIES** — the contradiction question. Each recurring entity's full source-attributed
-      claim ledger (its note's `## Analysis`, which carries a `[[documents/<slug>|<title>]]`
-      block per document), plus its roles and any contradictions already recorded.
+      answers by pair index, so it cannot invent an id. Only medium-confidence pairs reach here
+      (D279): `reconcile.build_bundle` merges high-confidence ones in code and leaves low ones for
+      the reporter. A same-name pair is flagged `same_name` and carries each side's facts.
+    * **ENTITIES** — the contradiction question. Each recurring entity's facts from the stored
+      extractions (D280), split into this batch's `new_facts` and the earlier `stored_facts`, each
+      group filed under a `[[documents/<slug>|<title>]]` heading, each fact with its short id, page,
+      warnings and source passage; plus its roles and any contradictions already recorded. Never a
+      note's prose.
     """
     return (
         f"{_text('reconcile')}\n\n"
         f"CANDIDATE PAIRS (possible duplicate entities — confirm or reject each):\n"
         f"{json.dumps(bundle.get('pairs', []), ensure_ascii=False)}\n\n"
-        f"ENTITIES (each with the claims recorded about it, by source document):\n"
+        f"ENTITIES (each with the facts recorded about it: this batch's new facts and the stored "
+        f"facts from earlier documents, by source document):\n"
         f"{json.dumps(bundle.get('entities', []), ensure_ascii=False)}"
     )
 
@@ -354,3 +367,10 @@ def build_request_dedup_prompt(open_requests: list[dict]) -> str:
         + (f" — likely source: {r['likely_source']}" if r.get("likely_source") else "")
         for i, r in enumerate(open_requests))
     return f"{_render('request_dedup')}\n\nOpen document requests:\n{listed}"
+
+
+def build_relationship_labels_prompt(items: list[dict], entities: dict) -> str:
+    # Relationship labels (D291): each ordered pair with its numbered wordings and document counts.
+    # Ids, keys and sources stay in Python; the model answers with numbers only.
+    from watchdog.pipeline import relationships
+    return f"{_render('relationship_labels')}\n\nPairs:\n\n{relationships.prompt_items(items, entities)}"

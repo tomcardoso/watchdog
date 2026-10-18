@@ -134,7 +134,7 @@ def test_section_document_tolerates_explicit_null_on_title_type_and_summary():
 def test_section_requires_document_key_facts():
     """#496: gemini-flash under extractor_effort=low reliably omitted document.key_facts from
     every section of every sectioned document — silently, with no schema-validation error, no
-    postflight warning, and a clean OK in ingest.log, because SECTION's inline `document`
+    postflight warning, and a clean OK in processing.log, because SECTION's inline `document`
     sub-schema had no `required` list at all. `document` itself was also optional at the top
     level, so a section could dodge the inner requirement by skipping the whole object. Both a
     missing `document` key and a `document` present but missing `key_facts` must now fail

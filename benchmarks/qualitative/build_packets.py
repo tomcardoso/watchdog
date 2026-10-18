@@ -6,7 +6,7 @@ writes a packet file containing those items plus each arm's extracted content, b
 as X/Y/Z with a per-document random mapping. The mapping is written to a judge-only file
 (mapping.json) that is NOT given to the judges.
 
-    build_packets.py --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low
+    build_packets.py --arms sonnet-5.5-med-r1,sonnet-5.5-high,gpt-6-luna-med-r1
 
 Arms are ids from benchmark.yaml's extractor_sweep; their vaults are resolved the same way
 run_benchmark.py resolves them. See RUNBOOK.md step 6 for the full procedure.
@@ -27,7 +27,7 @@ import yaml
 # the point of keeping the protocol tracked is that the next pass runs the identical procedure,
 # and a pass whose arm list lives in a Python literal drifts every time someone re-points it.
 #
-#     build_packets.py --arms sonnet-4.6-high,sonnet-4.6-med,gpt-mini-low [--out DIR]
+#     build_packets.py --arms sonnet-5.5-med-r1,sonnet-5.5-high,gpt-6-luna-med-r1 [--out DIR]
 #
 # Vault paths are resolved the same way run_benchmark.py resolves them (benchmark.yaml's
 # vault_root + the sweep's vault_prefix), so the arms named here are the arm ids from that file.

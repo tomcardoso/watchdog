@@ -548,38 +548,6 @@ def test_resolve_quotes_skips_facts_without_a_locator_or_quote():
     assert "quote" not in extraction["document"]["key_facts"][0]
 
 
-def test_resolve_quotes_legacy_quote_still_flags_unverified_and_warns():
-    """A pre-#529 staged extraction, re-run through post-flight with no `quote_locator`, is
-    still verified the old way."""
-    extraction = {"document": {"key_facts": [
-        {"fact": "Revenue rose.", "page": 3, "quote": "This text is nowhere on the page."},
-    ]}, "entities": []}
-    warnings = resolve_quotes(extraction, {3: "Totally unrelated page content."})
-    assert extraction["document"]["key_facts"][0]["quote_verified"] is False
-    assert len(warnings) == 1
-    assert "key_facts[0]" in warnings[0]
-
-
-def test_resolve_quotes_legacy_quote_leaves_exact_match_unannotated():
-    extraction = {"document": {"key_facts": [
-        {"fact": "Revenue rose.", "page": 3, "quote": "Revenue rose sharply."},
-    ]}, "entities": []}
-    warnings = resolve_quotes(extraction, {3: "Revenue rose sharply."})
-    assert "quote_verified" not in extraction["document"]["key_facts"][0]
-    assert warnings == []
-
-
-def test_resolve_quotes_legacy_quote_skips_verification_when_no_page_text_available():
-    """A `watchdog finalize` re-run has no chew-time queue descriptor on disk — with no
-    page text at all, quotes are left unannotated rather than flagged unverified (#267)."""
-    extraction = {"document": {"key_facts": [
-        {"fact": "x", "page": 3, "quote": "anything"},
-    ]}, "entities": []}
-    warnings = resolve_quotes(extraction, {})
-    assert "quote_verified" not in extraction["document"]["key_facts"][0]
-    assert warnings == []
-
-
 def test_resolve_quotes_does_not_truncate_the_quote_shown_in_the_warning():
     """The warning used to hard-truncate the quote to 80 chars with no ellipsis (#456/#460) —
     on a quote over that length, the truncated preview can cut off before the part that
@@ -588,7 +556,7 @@ def test_resolve_quotes_does_not_truncate_the_quote_shown_in_the_warning():
                   "million, compared to $186.8 million recognized as subject to compromise.")
     assert len(long_quote) > 80
     extraction = {"document": {"key_facts": [
-        {"fact": "x", "page": 3, "quote": long_quote},
+        {"fact": "x", "page": 3, "quote_locator": long_quote},
     ]}, "entities": []}
     warnings = resolve_quotes(extraction, {3: "Totally unrelated page content."})
     assert len(warnings) == 1

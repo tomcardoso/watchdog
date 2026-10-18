@@ -1,0 +1,248 @@
+/* Long-form reading: entity notes, briefings, document summaries. Serif body for reading,
+   the UI face for headings and lists of facts. */
+
+.md {
+  font-family: var(--font-read);
+  font-size: var(--fs-read);
+  line-height: 1.62;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0 0 0.85em;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  font-family: var(--font-ui);
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+}
+.md h1 {
+  font-size: 26px;
+  margin: 0.2em 0 0.6em;
+}
+.md h2 {
+  font-size: 19px;
+  margin: 1.6em 0 0.55em;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.md h3 {
+  font-size: 16px;
+  margin: 1.3em 0 0.4em;
+}
+.md h4 {
+  font-size: 14px;
+  margin: 1.1em 0 0.3em;
+  color: var(--text-2);
+}
+.md ul,
+.md ol {
+  margin: 0 0 0.9em;
+  padding-left: 1.35em;
+}
+.md li {
+  margin: 0.28em 0;
+}
+.md li::marker {
+  color: var(--text-3);
+}
+.md li > ul,
+.md li > ol {
+  margin: 0.2em 0 0.3em;
+}
+.md strong {
+  font-weight: 650;
+}
+.md em {
+  font-style: italic;
+}
+.md code {
+  font-size: 0.82em;
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+.md pre {
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  overflow: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.md pre code {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.md hr {
+  border: none;
+  height: 1px;
+  background: var(--border);
+  margin: 1.6em 0;
+}
+.md blockquote {
+  margin: 0 0 1em;
+  padding: 2px 0 2px 16px;
+  border-left: 3px solid var(--border-strong);
+  color: var(--text-2);
+}
+.md input[type='checkbox'] {
+  accent-color: var(--accent);
+  margin-right: 6px;
+  transform: translateY(1px);
+}
+.md li:has(> input[type='checkbox']) {
+  list-style: none;
+  margin-left: -1.3em;
+}
+
+/* Wikilinks and page citations */
+.md a.wikilink {
+  color: var(--accent-text);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  transition: border-color var(--dur), background var(--dur);
+}
+.md a.wikilink:hover {
+  border-bottom-color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 3px;
+}
+.md a.wikilink.cite {
+  font-family: var(--font-ui);
+  font-size: 0.74em;
+  font-weight: 600;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--surface-sunken);
+  color: var(--text-2);
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.md a.wikilink.cite:hover {
+  border-color: var(--accent);
+  color: var(--accent-text);
+  background: var(--accent-soft);
+}
+
+/* Tables */
+.md-table-wrap {
+  overflow: auto;
+  margin: 0 0 1em;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.md table {
+  border-collapse: collapse;
+  width: 100%;
+  font-family: var(--font-ui);
+  font-size: 13px;
+}
+.md th,
+.md td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+.md th {
+  background: var(--surface-2);
+  font-weight: 620;
+}
+.md tr:last-child td {
+  border-bottom: none;
+}
+
+/* Obsidian callouts */
+.md blockquote.md-callout {
+  border-left: none;
+  padding: 11px 14px 11px 40px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  position: relative;
+  font-size: 0.95em;
+}
+.md blockquote.md-callout::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 14px;
+  width: 16px;
+  height: 16px;
+  background: currentColor;
+  -webkit-mask: var(--callout-icon) center / contain no-repeat;
+  color: var(--text-3);
+}
+.md blockquote.md-callout > p:first-child {
+  font-family: var(--font-ui);
+  font-weight: 620;
+  font-size: 14px;
+}
+.md blockquote.md-callout-contradiction {
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 28%, transparent);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E");
+}
+.md blockquote.md-callout-contradiction::before {
+  color: var(--danger);
+}
+.md blockquote.md-callout-warning,
+.md blockquote.md-callout-caution {
+  background: var(--warning-soft);
+  border-color: color-mix(in srgb, var(--warning) 28%, transparent);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 8v4'/%3E%3Cpath d='M12 16h.01'/%3E%3C/svg%3E");
+}
+.md blockquote.md-callout-warning::before,
+.md blockquote.md-callout-caution::before {
+  color: var(--warning);
+}
+.md blockquote.md-callout-note,
+.md blockquote.md-callout-info,
+.md blockquote.md-callout-tip {
+  background: var(--info-soft);
+  border-color: color-mix(in srgb, var(--info) 24%, transparent);
+  --callout-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='10'/%3E%3Cpath d='M12 16v-4'/%3E%3Cpath d='M12 8h.01'/%3E%3C/svg%3E");
+}
+.md blockquote.md-callout-note::before,
+.md blockquote.md-callout-info::before,
+.md blockquote.md-callout-tip::before {
+  color: var(--info);
+}
+
+.md-compact {
+  font-size: 15px;
+  line-height: 1.55;
+}
+.md-compact h2 {
+  font-size: 16px;
+  border: none;
+  margin-top: 1.1em;
+  padding: 0;
+}
+
+.md-section {
+  margin-bottom: 28px;
+}
+.md-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 680;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}

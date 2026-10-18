@@ -858,6 +858,20 @@ recovers — and on this run's numbers, spending it doesn't clearly pay for itse
 `medium` is the one tier where a case for turning it on could be made, and even there this is
 one run of each arm, not a settled number.
 
+### First frontier matrix (D310): Haiku 5.5 at `high` is the recall ceiling, and effort buys different things on each model (2026-10-18, run `2026-10-13-1702`, commit `07de6ccac`)
+
+Thirteen extractor arms on the current catalogue — Sonnet 5.5, Haiku 5.5, GPT-6 Luna and Gemini 3.8 Flash at `low`/`medium`/`high`, plus Gemini 3.5 Flash-Lite at `low` — each run **once** (D314), each briefed with `briefs/corpus-v1.md`. Both slices are reported: numeric sub-item recall (about a third of the key items) and the qualitative judge pass over all 377 (five blinded passes of three arms, Opus judges, hand-checked on the first document). Full tables in `benchmarks/2026-10-18-frontier-results.md`.
+
+**What the run showed.** `haiku-5.5-high` has the highest recall on every slice (qualitative 74% facts / 72% must_not_miss) at $0.0009 a page, about a fifth of `sonnet-5.5-high` (67% / 65%, $0.0049), but it is the slowest arm (4.1 s/page) and the only one that sectioned a document, so the open sectioning confound (#555) could be moving both its speed and its recall. The effort ladders differ by model: Sonnet 5.5 is nearly flat from `low` to `medium` and steps up only at `high`; Haiku 5.5 has the steepest ladder (30% → 39% → 74%); GPT-6 Luna gains most at `medium` and little at `high`; Gemini 3.8 Flash's numeric slice is flat or falling with effort while its judged slice rises, so the numeric slice alone would pick the wrong tier. At `medium`, GPT-6 Luna matches or beats Sonnet 5.5 on facts at about a twentieth of the cost, and Sonnet 5.5 leads on must_not_miss.
+
+**What it does not show.** Every gap above is one run against one run. Before moving a default on any of it, re-run the two arms with `repeats: 3` and act only if their ranges do not overlap; the first candidate is `haiku-5.5-medium` against `haiku-5.5-high`.
+
+**A skim, not a failure.** Three arms (`haiku-5.5-low`, `gemini-3.8-flash-low`, `gemini-3.8-flash-med`) extracted all six documents but cited nothing past page 16 of the 34-page First Report of the Monitor: the coverage check flagged pages 17–34, with normal output sizes and no call errors, and `run.json`/`REPORT.md` do not surface it. The scorers charge those misses to the arms. Both totals are reported (whole corpus, and without that document); excluding it moves any arm by up to 5 points and leaves the order of the qualitative facts column unchanged apart from ties.
+
+**Judge stability.** Pass (e) re-rated `sonnet-5.5-med` and `haiku-5.5-med` beside `gemini-3.5-flash-lite-low`. Both moved by at most one point from their first rating. `gemini-3.5-flash-lite-low` scores 49% on the numeric slice and 17% on the judged slice; its facts carry no page anchors, and the likelier reading (not tested) is that it states figures without their claims.
+
+**Caveats.** Single runs. One brief for every arm. **Not comparable with any archived row in this file or `docs/benchmarks.md`:** every archived arm extracted with no brief and on models since removed. Gemini 3.8 Flash costs are at the promotional price through 2026-12-31 (half the later price). The three DeepSeek arms failed on a network problem and are not in this entry; the finalizer stage has not run. Nothing in this entry changed a default, prompt or catalogue value.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's

@@ -1,14 +1,13 @@
 """Tests for the deterministic watch-word scan (#165), the whole-vault retro-scan command
-`watchdog watchlist` (#220), and the internal `watchdog watchlist-add` command
-`/watchdog-context` shells out to for proposed seed terms (#229)."""
+`watchdog watchlist` (#220), and the term appends `/watchdog-context` makes through the session's
+`watchlist_add` tool (#229, D299)."""
 
-import argparse
 import json
 from pathlib import Path
 
-import pytest
 
-from watchdog.cmd.watchlist import cmd_watchlist, cmd_watchlist_add
+from watchdog.ops import CollectingReporter
+from watchdog.ops.maintenance import watchlist_check
 from watchdog.pipeline import watchlist
 
 
@@ -201,12 +200,12 @@ def test_resolved_term_drops_from_scan(tmp_path):
     assert {h["term"] for h in hits} == {"Beta"}
 
 
-def test_format_run_renders_checkbox_with_wid(tmp_path):
+def test_format_run_renders_plain_items_with_wid(tmp_path):
     import datetime
     vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
     hits = watchlist.scan(vault, _results())
     run = watchlist._format_run(hits, datetime.datetime(2025, 1, 1))
-    assert "- [ ] **" in run
+    assert "- **" in run and "[ ]" not in run
     assert "<!--wid:alert:abc123:" in run
 
 
@@ -249,7 +248,7 @@ def test_write_alerts_no_hits_returns_none(tmp_path):
     assert not (vault / "briefings" / f"alerts-{today}.md").exists()
 
 
-# ── cmd_watchlist: whole-vault retro-scan (#220) ────────────────────────
+# ── the watchlist-check operation: whole-vault retro-scan (#220) ────────────────────────
 
 def _build_multi_doc_vault(tmp_path: Path, *, watchlist_text=None, docs=()) -> Path:
     """A vault with `watchlist.md` and an arbitrary number of already-ingested documents
@@ -275,11 +274,13 @@ def _build_multi_doc_vault(tmp_path: Path, *, watchlist_text=None, docs=()) -> P
     return vault
 
 
-def _args(project=None):
-    return argparse.Namespace(project=project)
+def _check(vault):
+    rep = CollectingReporter()
+    result = watchlist_check(rep, vault)
+    return result, rep.text
 
 
-def test_cmd_watchlist_sweeps_whole_vault(tmp_path, monkeypatch, capsys):
+def test_watchlist_check_sweeps_whole_vault(tmp_path):
     import datetime
     docs = [
         {"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
@@ -288,66 +289,54 @@ def test_cmd_watchlist_sweeps_whole_vault(tmp_path, monkeypatch, capsys):
          "pages": [(1, "Nothing relevant."), (2, "Another mention of Acme Corp here.")]},
     ]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Acme Corp\n", docs=docs)
-    monkeypatch.chdir(vault)
 
-    cmd_watchlist(_args())
+    result, out = _check(vault)
 
     today = datetime.date.today().strftime("%Y-%m-%d")
     relpath = f"briefings/alerts-{today}.md"
     content = (vault / relpath).read_text(encoding="utf-8")
     assert "Watch-word alerts" in content
     assert "one.pdf" in content and "two.pdf" in content
-
-    out = capsys.readouterr().out
-    assert "2 matches" in out
-    assert "2 documents" in out
-    assert relpath in out
+    assert result == {"documents": 2, "hits": 2, "file": relpath}
+    assert "2 matches" in out and "2 documents" in out and "Review" in out
 
 
-def test_cmd_watchlist_no_documents(tmp_path, monkeypatch, capsys):
+def test_watchlist_check_no_documents(tmp_path):
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Acme\n", docs=[])
-    monkeypatch.chdir(vault)
-    cmd_watchlist(_args())
-    out = capsys.readouterr().out
-    assert "No documents ingested yet" in out
+    _result, out = _check(vault)
+    assert "No documents have been added yet" in out
     assert not (vault / "briefings").exists()
 
 
-def test_cmd_watchlist_no_watchlist(tmp_path, monkeypatch, capsys):
+def test_watchlist_check_no_watchlist(tmp_path):
     docs = [{"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
              "pages": [(1, "Some text.")]}]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text=None, docs=docs)
-    monkeypatch.chdir(vault)
-    cmd_watchlist(_args())
-    out = capsys.readouterr().out
-    assert "nothing to scan for" in out
+    _result, out = _check(vault)
+    assert "watch list is empty" in out
     assert not (vault / "briefings").exists()
 
 
-def test_cmd_watchlist_no_matches(tmp_path, monkeypatch, capsys):
+def test_watchlist_check_no_matches(tmp_path):
     docs = [{"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
              "pages": [(1, "Nothing to see here.")]}]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Nonexistent\n", docs=docs)
-    monkeypatch.chdir(vault)
-    cmd_watchlist(_args())
-    out = capsys.readouterr().out
+    _result, out = _check(vault)
     assert "no matches" in out
     assert not (vault / "briefings").exists()
 
 
-def test_cmd_watchlist_appends_to_existing_run_alert(tmp_path, monkeypatch):
+def test_watchlist_check_appends_to_existing_run_alert(tmp_path):
     """A retro-scan run after the per-run scan already wrote today's alert file appends a
     second dated section rather than overwriting (write_alerts' existing append behavior)."""
     docs = [{"sha": "sha1", "filename": "one.pdf", "morgue_path": "morgue/a/one.pdf",
              "pages": [(1, "Acme Corp mentioned.")]}]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text="Acme Corp\n", docs=docs)
-    monkeypatch.chdir(vault)
-
-    # simulate the per-run scan already having written today's file
+        # simulate the per-run scan already having written today's file
     hits = watchlist.scan(vault, [{"sha256": "sha1", "status": "ok"}])
     relpath = watchlist.write_alerts(vault, hits)[0]
 
-    cmd_watchlist(_args())
+    _check(vault)
 
     content = (vault / relpath).read_text(encoding="utf-8")
     assert content.count("# Watch-word alerts") == 1
@@ -355,35 +344,35 @@ def test_cmd_watchlist_appends_to_existing_run_alert(tmp_path, monkeypatch):
     assert len(run_headers) == 2
 
 
-# ── cmd_watchlist_add (#229) ───────────────────────────────────────────────────
+# ── editing (the app's editor, D294) ─────────────────────────────────────────
 
-def _add_args(*terms):
-    return argparse.Namespace(terms=list(terms))
-
-
-def test_cmd_watchlist_add_requires_running_inside_a_vault(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)   # no .watchdog/ here
-    with pytest.raises(SystemExit):
-        cmd_watchlist_add(_add_args("Some Term"))
+def test_remove_term_keeps_comments_blank_lines_and_other_terms(tmp_path):
+    (tmp_path / "watchlist.md").write_text("# My list\n\nAcme\n  acme corp \n/Roe\\s+Bob/\n", encoding="utf-8")
+    assert watchlist.remove_term(tmp_path, "ACME CORP") is True
+    assert (tmp_path / "watchlist.md").read_text(encoding="utf-8") == "# My list\n\nAcme\n/Roe\\s+Bob/\n"
+    assert watchlist.remove_term(tmp_path, "# My list") is False        # a comment is not a term
+    assert watchlist.remove_term(tmp_path, "nobody") is False
 
 
-def test_cmd_watchlist_add_appends_and_reports_json(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, watchlist_text="Existing Term\n")
-    monkeypatch.chdir(vault)
+def test_check_term_round_trip_with_add_terms(tmp_path):
+    (tmp_path / "watchlist.md").write_text("# header\nAcme\n", encoding="utf-8")
+    for bad in ("", "acme", "# x", "/(/"):
+        try:
+            watchlist.check_term(tmp_path, bad)
+        except ValueError:
+            continue
+        raise AssertionError(bad)
+    assert watchlist.add_terms(tmp_path, [watchlist.check_term(tmp_path, " Beta Co ")]) == ["Beta Co"]
+    assert watchlist.remove_term(tmp_path, "Beta Co")
+    assert (tmp_path / "watchlist.md").read_text(encoding="utf-8") == "# header\nAcme\n"
 
-    cmd_watchlist_add(_add_args("New Person", "Existing Term", "Another Co"))
 
-    out = json.loads(capsys.readouterr().out)
-    assert out == {"added": ["New Person", "Another Co"], "skipped": 1}
-    assert [t["term"] for t in watchlist.load_terms(vault)] == [
-        "Existing Term", "New Person", "Another Co"]
-
-
-def test_cmd_watchlist_add_all_duplicates_reports_zero_added(tmp_path, monkeypatch, capsys):
-    vault = _build_vault(tmp_path, watchlist_text="Acme Corp\n")
-    monkeypatch.chdir(vault)
-
-    cmd_watchlist_add(_add_args("acme corp"))
-
-    out = json.loads(capsys.readouterr().out)
-    assert out == {"added": [], "skipped": 1}
+def test_review_reads_alerts_written_without_checkboxes(tmp_path):
+    from watchdog.review import open_items
+    vault = _build_vault(tmp_path, watchlist_text="Acme\n", pages=[(1, "Acme here.")])
+    hits = watchlist.scan(vault, _results())
+    relpath, _, _ = watchlist.write_alerts(vault, hits)
+    body = (vault / relpath).read_text(encoding="utf-8")
+    assert "[ ]" not in body and "Handled in Watchdog: Review → Alerts" in body
+    items = open_items(vault, ("alerts",))
+    assert len(items) == 1 and items[0]["term"] == "Acme" and items[0]["rid"].startswith("alert:")

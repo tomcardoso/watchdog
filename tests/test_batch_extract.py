@@ -188,38 +188,40 @@ def test_submit_passes_resolved_effort(tmp_path, monkeypatch):
     assert fake.create_calls[0][0]["params"]["output_config"]["effort"] == "medium"
 
 
-def test_submit_omits_effort_when_high_ie_default(tmp_path, monkeypatch):
+def test_submit_sends_effort_high_explicitly(tmp_path, monkeypatch):
+    # D310: `high` is no longer omitted as "the default" — Haiku 5.5 defaults to medium.
     vault = make_vault(tmp_path)
     fake = FakeBatches()
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
-    asyncio.run(be.submit(vault, docs, model="sonnet", effort="high",
+    asyncio.run(be.submit(vault, docs, model="haiku", effort="high",
                           skills={"sha1": "s"}, api_key="sk-x"))
-    assert "effort" not in fake.create_calls[0][0]["params"]["output_config"]
+    assert fake.create_calls[0][0]["params"]["output_config"]["effort"] == "high"
 
 
-def test_submit_sends_thinking_for_a_model_that_defaults_off(tmp_path, monkeypatch):
-    """#643: `claude-sonnet-4-6` ships thinking off by default (catalog `thinking: true`) — the
+def test_submit_sends_thinking_for_a_model_that_defaults_off(tmp_path, monkeypatch,
+                                                             thinking_off_claude):
+    """#643: a model that ships thinking off by default (catalog `thinking: true`) — the
     live and agent-sdk paths already send it explicitly (#635, D206); this batch path was the one
     Claude-calling caller left off that gate, so a batch extraction never actually reasoned."""
     vault = make_vault(tmp_path)
     fake = FakeBatches()
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
-    asyncio.run(be.submit(vault, docs, model="sonnet-4.6", effort=None,
+    asyncio.run(be.submit(vault, docs, model="test-thinking-off", effort=None,
                           skills={"sha1": "s"}, api_key="sk-x"))
     assert fake.create_calls[0][0]["params"]["thinking"] == model_client._THINKING_ADAPTIVE
 
 
 def test_submit_omits_thinking_for_a_model_that_defaults_on(tmp_path, monkeypatch):
-    """`sonnet-5` ships thinking on by default (no catalog `thinking` flag) — sending the param
+    """`sonnet` ships thinking on by default (no catalog `thinking` flag) — sending the param
     explicitly is unnecessary and, unlike the live path, has no continuation call here to worry
     about conflicting with; the gate should still say no."""
     vault = make_vault(tmp_path)
     fake = FakeBatches()
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
     docs = [{"sha": "sha1", "prompt": [{"type": "text", "text": "p"}]}]
-    asyncio.run(be.submit(vault, docs, model="sonnet-5", effort=None,
+    asyncio.run(be.submit(vault, docs, model="sonnet", effort=None,
                           skills={"sha1": "s"}, api_key="sk-x"))
     assert "thinking" not in fake.create_calls[0][0]["params"]
 
@@ -259,7 +261,7 @@ def test_collect_maps_succeeded_results_by_sha(monkeypatch):
     fake = FakeBatches(results=results)
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
 
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert set(out) == {"sha1", "sha2"}
     assert out["sha1"]["ok"] is True
     assert out["sha1"]["parsed"]["morgue_entity_id"] == "acme-corp"
@@ -271,15 +273,15 @@ def test_collect_prices_at_half_the_standard_rate(monkeypatch):
     results = [_succeeded("sha1", VALID_EXTRACTION, input_tokens=1_000_000, output_tokens=0)]
     fake = FakeBatches(results=results)
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
-    assert out["sha1"]["cost_usd"] == pytest.approx(1.5)   # $3/MTok input, batch halves it
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
+    assert out["sha1"]["cost_usd"] == pytest.approx(1.0)   # $2/MTok input, batch halves it
 
 
 @pytest.mark.parametrize("rtype", ["canceled", "expired"])
 def test_collect_reports_non_succeeded_results(monkeypatch, rtype):
     fake = FakeBatches(results=[_not_succeeded("sha1", rtype)])
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert out["sha1"]["ok"] is False
     assert rtype in out["sha1"]["error"]
 
@@ -291,7 +293,7 @@ def test_collect_surfaces_the_real_reason_for_an_errored_result(monkeypatch):
     signal a live call's ModelError would have kept."""
     fake = FakeBatches(results=[_errored("sha1", "invalid_request_error", "prompt too long")])
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert out["sha1"]["ok"] is False
     assert "invalid_request_error" in out["sha1"]["error"]
     assert "prompt too long" in out["sha1"]["error"]
@@ -301,7 +303,7 @@ def test_collect_includes_stop_reason_in_usage(monkeypatch):
     results = [_succeeded("sha1", VALID_EXTRACTION, stop_reason="max_tokens")]
     fake = FakeBatches(results=results)
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert out["sha1"]["usage"]["stop_reason"] == "max_tokens"
 
 
@@ -322,7 +324,7 @@ def test_collect_surfaces_anthropic_reasoning_tokens(monkeypatch):
     results = [_Obj(custom_id="sha1", result=_Obj(type="succeeded", message=message))]
     fake = FakeBatches(results=results)
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert out["sha1"]["usage"]["completion_tokens_details"]["reasoning_tokens"] == 1200
 
 
@@ -335,7 +337,7 @@ def test_collect_flags_unparseable_text_without_crashing(monkeypatch):
                                   cache_creation_input_tokens=0, cache_read_input_tokens=0)))),
     ])
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert out["sha1"]["ok"] is False
     assert out["sha1"]["parsed"] is None
 
@@ -345,7 +347,7 @@ def test_collect_flags_schema_invalid_json_without_crashing(monkeypatch):
     del bad["morgue_entity_id"]   # required by EXTRACTION
     fake = FakeBatches(results=[_succeeded("sha1", bad)])
     monkeypatch.setattr(be, "_client", lambda api_key: FakeClient(fake))
-    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-4-6"))
+    out = asyncio.run(be.collect("batch_abc", "sk-x", "claude-sonnet-5-5"))
     assert out["sha1"]["ok"] is False
     assert out["sha1"]["parsed"] is not None   # kept for the caller's repair-retry context
     assert out["sha1"]["error"]
@@ -621,9 +623,9 @@ def test_openai_collect_prices_at_half_the_standard_rate(monkeypatch):
         file_contents={"file-out-1": output_line})
     monkeypatch.setattr(httpx, "AsyncClient", lambda *a, **k: fake)
 
-    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-5.4", backend="openai-batch"))
-    # gpt-5.4: $2.50/1M input, halved by the batch discount.
-    assert out["sha1"]["cost_usd"] == pytest.approx(1.25)
+    out = asyncio.run(be.collect("batch_oai_1", "sk-oai", "gpt-6-luna", backend="openai-batch"))
+    # gpt-6-luna: $0.10/1M input, halved by the batch discount.
+    assert out["sha1"]["cost_usd"] == pytest.approx(0.05)
 
 
 def test_openai_collect_surfaces_error_file_reason(monkeypatch):

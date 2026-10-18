@@ -57,7 +57,7 @@ def _raw_extraction(sha: str, filename: str, entity_id: str, entity_name: str) -
     an evidence fragment onto the entity and the committed note gets an Analysis ledger)."""
     return {
         "document": {
-            "sha256": sha, "filename": filename, "original_path": f"_INCOMING/{filename}",
+            "sha256": sha, "filename": filename, "original_path": f"incoming/{filename}",
             "title": f"{entity_name} filing", "document_type": "Filing",
             "date_of_document": "2024-03-01", "page_count": 1, "source": None, "obtained": None,
             "near_duplicate_of": None, "summary": f"A filing about {entity_name}.",

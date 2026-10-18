@@ -7,7 +7,7 @@ the cost of a single huge context grows with its size. This splits a document
 into overlapping sections of roughly `section_token_budget` estimated tokens
 each. The orchestrator extracts the sections in reading order, carrying a
 running scratchpad forward, then merges the per-section results with
-`watchdog merge-sections`.
+`merge.merge_extractions`.
 
 The trigger is **estimated tokens**, not page count: page count is a poor proxy
 because density varies several-fold (a table-heavy financial page is far denser

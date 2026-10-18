@@ -55,11 +55,15 @@ def add_terms(vault: Path, terms: list[str]) -> list[str]:
     """Append new terms to ``watchlist.md``, skipping any already present — case-insensitively,
     against the same parsed term text ``load_terms`` matches on (so a candidate already covered
     by an existing ``/regex/`` line's literal text is still caught as a duplicate). Creates the
-    file if it doesn't exist yet (normally already created by ``watchdog new``). Existing lines,
+    file if it doesn't exist yet (normally already created by `creating an investigation`). Existing lines,
     including ``#`` comments, are untouched — this only ever appends.
 
     Returns the terms actually added, in order (#229 — `/watchdog-context` proposing seed terms).
+    Raises ValueError, adding nothing, when a term isn't a single line.
     """
+    from watchdog.pipeline.inline_text import require_single_line
+    for term in terms:
+        require_single_line(term, "A watch-list term")   # one term per line, nothing more (D304)
     existing_lower = {t["term"].lower() for t in load_terms(vault)}
     to_add: list[str] = []
     for term in terms:
@@ -77,6 +81,49 @@ def add_terms(vault: Path, terms: list[str]) -> list[str]:
         prefix += "\n"
     path.write_text(prefix + "\n".join(to_add) + "\n", encoding="utf-8")
     return to_add
+
+
+def check_term(vault: Path, term: str) -> str:
+    """The term as it would be stored, or ``ValueError`` saying why it can't be: blank, more than
+    one line, starting with ``#`` (a comment to ``load_terms``), an invalid ``/regex/``, or already
+    on the list (compared case-insensitively, as ``add_terms`` does). Used by the app's editor,
+    which refuses these rather than silently skipping them."""
+    term = (term or "").strip()
+    if not term:
+        raise ValueError("Type a name or term to add.")
+    if "\n" in term or "\r" in term:
+        raise ValueError("A term is a single line. Add each one separately.")
+    if term.startswith("#"):
+        raise ValueError("A term can't start with #, which marks a comment in the file.")
+    if len(term) >= 2 and term.startswith("/") and term.endswith("/"):
+        try:
+            re.compile(term[1:-1], re.IGNORECASE)
+        except re.error:
+            raise ValueError("That pattern isn't a valid regular expression.") from None
+    if term.lower() in {t["term"].lower() for t in load_terms(vault)}:
+        raise ValueError("That term is already on the list.")
+    return term
+
+
+def remove_term(vault: Path, term: str) -> bool:
+    """Drop every line of ``watchlist.md`` whose text is ``term`` (case-insensitive), leaving
+    comments, blank lines and the other terms exactly as they were. Returns whether a line was
+    removed."""
+    path = vault / "watchlist.md"
+    if not path.exists():
+        return False
+    want = term.strip().lower()
+    text = path.read_text(encoding="utf-8", errors="replace")
+    kept, removed = [], False
+    for raw in text.splitlines(keepends=True):
+        line = raw.strip()
+        if line and not line.startswith("#") and line.lower() == want:
+            removed = True
+            continue
+        kept.append(raw)
+    if removed:
+        path.write_text("".join(kept), encoding="utf-8")
+    return removed
 
 
 def _load_json(path: Path) -> dict:
@@ -191,7 +238,7 @@ def _format_run(hits: list[dict], now: datetime.datetime) -> str:
             count = f" ({len(dhits)} matches)" if len(dhits) > 1 else ""
             rid = dhits[0].get("rid")
             wid = f" <!--wid:{rid}-->" if rid else ""
-            lines.append(f"- [ ] **{link}**{ent_txt}{count}{wid}")
+            lines.append(f"- **{link}**{ent_txt}{count}{wid}")
             shown: list[int | None] = []
             for h in dhits:
                 if h["page"] in shown:
@@ -225,7 +272,6 @@ def write_alerts(vault: Path, hits: list[dict]) -> tuple[str, int, int] | None:
         path.write_text(
             f"# Watch-word alerts — {now:%Y-%m-%d}\n\n"
             f"*Deterministic scan of newly-ingested documents against `watchlist.md`.*\n"
-            f"*Tick a box and run `watchdog review resolve --sync` to stop re-reporting a term "
-            f"for a document.*\n" + run,
+            f"*Handled in Watchdog: Review → Alerts. This file is a read-only summary.*\n" + run,
             encoding="utf-8")
     return relpath, len({h["term"] for h in hits}), len({h["filename"] for h in hits})

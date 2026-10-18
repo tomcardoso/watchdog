@@ -1,6 +1,6 @@
 # Benchmarks
 
-Watchdog's ingest pipeline calls a model three times per document — once to classify it, once to
+Watchdog's processing pipeline calls a model three times per document — once to classify it, once to
 extract its facts, once to write up what changed. The model and effort level each stage uses by
 default isn't a guess. It's chosen by running the same fixed set of real documents through every
 candidate combination and checking what came back against a frozen answer key. This page has
@@ -13,8 +13,8 @@ public record — is processed once under each model/effort combination being co
 is scored against an answer key drafted from the source documents themselves. The comparison is
 *relative*: it tells you whether a cheaper model holds onto most of a more expensive one's
 recall, not an absolute accuracy number you could quote on its own. The tooling behind this
-(`benchmarks/run_benchmark.py`) is maintainer-only — it isn't part of the `watchdog` command a
-working investigator runs day to day.
+(`benchmarks/run_benchmark.py`) is maintainer-only — it isn't part of the app a working
+investigator uses day to day.
 
 ## What to expect
 
@@ -64,7 +64,7 @@ only of this corpus.
 
 Judging takes a person or a model reading closely, so only a handful of arms get it at a time. A
 much wider sweep exists underneath the table above: every Claude, OpenAI, Gemini, and DeepSeek
-model and effort tier this project tracks, scored the fast, mechanical way instead — checking
+model and effort tier this project tracked at the time, scored the fast, mechanical way instead — checking
 whether a fact's own numeric anchor (a dollar figure, a date, a percentage) shows up in the
 extraction, rather than reading the extraction's prose. That check only reaches about a third of
 what a document needs captured, so treat rank here as a rough first cut, not a verdict — the
@@ -117,11 +117,12 @@ reproduced here so it doesn't live only in a maintainer's local, not-checked-in
 
 A few things this benchmark doesn't cover yet:
 
+- **The current models, with the brief: one run, and the first read.** Every table above was measured on models Watchdog no longer offers, and without an investigation brief, which real use always has. A newer run measured each provider's current models, every one with the same short brief written as open questions: Claude Haiku 5.5 and Sonnet 5.5, OpenAI's GPT-6 Luna and Google's Gemini 3.8 Flash each at low, medium and high effort, and Gemini 3.5 Flash-Lite at low. Its numbers are not comparable with the tables above. The main result: Haiku 5.5 at high effort found 74% of the main facts and 72% of the facts that matter most, the best of any setting in that run, at about US$0.0009 a page, roughly a fifth of what Sonnet 5.5 at high effort cost (67% and 65%, about US$0.0049 a page). Haiku at high was also the slowest setting, about four seconds a page. Effort mattered differently for each model: Sonnet barely moved from low to medium, Haiku jumped only at high, and GPT-6 Luna gained most of its recall by medium. Every setting ran once, so read a gap between two settings as a lead to check, not a result: single runs of one setting have differed by up to three times. Three settings (Haiku and Gemini 3.8 Flash at low, and Gemini 3.8 Flash at medium) stopped reading one 34-page document after page 16, and the scores count what they missed. The two DeepSeek models are not in this run.
 - **Classifying document types.** The current document set only spans two of Watchdog's record
   skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
   those two right, not enough to rank classifier models against each other. That needs a
   type-diverse set (a corporate filing, a real-estate document, a government report, a news
-  clipping, and so on); see `benchmarks/classify-corpus/README.md` for what's needed to build it.
+  clipping, and so on); see `benchmarks/corpora/classify/README.md` for what's needed to build it.
 - **Judging the other effort levels.** [The wider sweep](#the-wider-sweep) above already has
   numeric-check figures for most models' lower, cheaper tiers — what's still missing is a judge
   pass confirming those figures rank the same way the top table's do.
@@ -132,8 +133,8 @@ A few things this benchmark doesn't cover yet:
   - **Medium** — a real, sizeable recall gain for 50% more cost; a case worth making.
   - **High** — the gain narrows to nearly nothing, since the model already catches most of it.
 
-  The pass stays off by default — this is one run of each arm, not a settled number
-  (`benchmarks/FINDINGS.md`, 2026-09-03).
+  The pass stays off by default — this is one run of each arm, on models since retired, not a
+  settled number (`benchmarks/FINDINGS.md`, 2026-09-03).
 - **Running this automatically.** Right now a maintainer runs the benchmark by hand when a new
   model or effort combination is worth checking. Wiring it into a scheduled or on-demand GitHub
   Actions run is a reasonable next step, once it's clear how often that's actually useful.

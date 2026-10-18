@@ -1,8 +1,7 @@
 """Single source of truth for every model Watchdog knows about — ids, pricing, context
 windows, and OpenAI reasoning capability — loaded from model_catalog.yaml. No
-watchdog-internal imports: both model_client.py and cmd/base.py depend on this without
-risking an import cycle (model_client.py already imports watchdog.cmd.auth, which
-imports watchdog.cmd.base).
+watchdog-internal imports: both model_client.py and settings.py depend on this without
+risking an import cycle.
 """
 
 import importlib.resources
@@ -31,21 +30,9 @@ def _tier_aliases(entry: dict) -> list[str]:
 
 _MODEL_IDS = {alias: m["id"] for m in _CATALOG["models"] for alias in _tier_aliases(m)}
 
-# Retired provider ids that still work on the wire and are answered by a catalogued model — a
-# model's `legacy_ids` in the YAML (D250). Without this, a config naming the old id would read as
-# an uncatalogued model and lose its pricing, price windows and effort levels.
-_LEGACY_IDS = {legacy.lower(): m["id"] for m in _CATALOG["models"] for legacy in m.get("legacy_ids", [])}
-
-
-def canonical_id(model_id: str) -> str:
-    """The catalogued id a model id resolves to: a legacy id maps to the model that now answers
-    it, anything else is returned unchanged (not lowercased — callers' own matching is)."""
-    return _LEGACY_IDS.get(model_id.lower(), model_id)
-
-
 def _entry(model_id: str) -> dict | None:
-    """The catalog entry for a model id, following a legacy id to its current model."""
-    return _MODELS.get(canonical_id(model_id).lower())
+    """The catalog entry for a model id."""
+    return _MODELS.get(model_id.lower())
 
 # DeepSeek V4 collapsed thinking/non-thinking into a single model id switched by a request param,
 # and Watchdog keeps the choice inside the model token — `deepseek-flash` (non-thinking) vs
@@ -88,13 +75,13 @@ _REASONING_FALLBACK = [(row[0], bool(row[1])) for row in _CATALOG["reasoning_fal
 
 
 def resolve_model_id(model: str) -> str:
-    """Tier name (haiku/sonnet/opus) -> API model id, or a raw id returned as-is."""
+    """Tier name (haiku/sonnet) -> API model id, or a raw id returned as-is."""
     return _MODEL_IDS.get(model, model)
 
 
 def display_name(model_id: str) -> str:
-    """Pretty display form of a model id, for the CLI/usage logging — e.g. 'gpt-5.6-terra' ->
-    'GPT-5.6 Terra'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
+    """Pretty display form of a model id, for display and usage logging — e.g. 'gpt-6-luna' ->
+    'GPT-6 Luna'. Falls back to the raw id itself for anything uncatalogued (a local/OpenRouter
     model, or an old id no longer in the catalog) rather than raising or guessing."""
     entry = _entry(model_id)
     return entry["name"] if entry and "name" in entry else model_id
@@ -169,7 +156,9 @@ def catalog_needs_thinking_param(model_id: str) -> bool:
 # Claude tiers that ship extended thinking on by default (no `thinking` catalog flag needed —
 # see that field's own comment in model_catalog.yaml). Kept private: catalog_has_reasoning is
 # the only thing that should need this list.
-_THINKING_BY_DEFAULT_TIERS = {"sonnet-5", "sonnet-5.5", "opus-5", "opus-5.5"}
+# Every Claude model catalogued today; Haiku 5.5 was missing until D310, so its extractions got the
+# scaffold meant for a model with no channel.
+_THINKING_BY_DEFAULT_TIERS = {"haiku-5.5", "sonnet-5.5"}
 
 
 def catalog_has_reasoning(model_id: str) -> bool:
@@ -185,8 +174,9 @@ def catalog_has_reasoning(model_id: str) -> bool:
     entry = _entry(bare)
     if not entry:
         return False
-    if deepseek_thinking and entry.get("provider") == "deepseek":
-        return True
+    if deepseek_thinking:
+        # The marker is DeepSeek's grammar alone: on any other provider the id is not a real one.
+        return entry.get("provider") == "deepseek"
     if entry.get("reasoning") or entry.get("thinking"):
         return True
     tier = entry.get("tier")
@@ -210,19 +200,18 @@ def catalog_cache_breakpoints(model_id: str) -> bool:
 def catalog_effort_levels(model_id: str) -> set[str] | None:
     """Explicit set of `effort` levels a known catalog model id accepts (#518), or None if
     uncatalogued. Source of truth for effort capability across every provider — real per-model
-    coverage (e.g. Claude Sonnet 4.6 takes `max` but not `xhigh`), not a per-provider flag. A
-    catalogued model with no `effort_levels` field (Claude Haiku, DeepSeek) has none at all,
-    which `entry.get(..., [])` already expresses without a special case."""
+    coverage (e.g. Gemini stops at `high`), not a per-provider flag. A catalogued model with no
+    `effort_levels` field has none at all, which `entry.get(..., [])` already expresses without
+    a special case."""
     entry = _entry(model_id)
     return set(entry.get("effort_levels", [])) if entry else None
 
 
 def catalog_tokenizer_ratio(model_id: str) -> float | None:
     """Explicit tokenizer-ratio multiplier for a known catalog model id (#574), or None if
-    uncatalogued or the model doesn't declare one — the vast majority, which behave exactly as
-    the chars/4 `est_tokens` heuristic (`pipeline/section.py`) already assumes. Only Claude 4.7+
-    models (Opus 4.8, Sonnet 5) currently declare a value; see `model_catalog.yaml`'s
-    `tokenizer_ratio` field comment for the source and rationale. Callers wanting a safe default
+    uncatalogued or the model doesn't declare one, which behaves exactly as
+    the chars/4 `est_tokens` heuristic (`pipeline/section.py`) already assumes. See
+    `model_catalog.yaml`'s `tokenizer_ratio` field comment for the source and rationale. Callers wanting a safe default
     for "no declared ratio" should treat None as 1.0 (`model_client.tokenizer_ratio` does this)."""
     entry = _entry(model_id)
     return float(entry["tokenizer_ratio"]) if entry and "tokenizer_ratio" in entry else None
@@ -282,7 +271,7 @@ def price_multiplier(model_id: str, at: datetime | None = None) -> float:
     be one of them; the weekday is the UTC calendar day the moment falls on, which is also how the
     window's hours are read (a midnight-wrapping window would be checked on the day it is entered
     on the clock, not the day it began — none declares both `days` and a wrap today)."""
-    windows = _PRICE_PERIODS.get(canonical_id(model_id).lower())
+    windows = _PRICE_PERIODS.get(model_id.lower())
     if not windows:
         return 1.0
     moment = at or datetime.now(timezone.utc)

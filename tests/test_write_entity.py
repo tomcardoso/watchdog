@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pytest
 
-from watchdog.pipeline.write_entity import run
+from watchdog.pipeline.write_entity import apply
+
+
+def run(path: Path, vault: Path) -> dict:
+    return apply(vault, json.loads(path.read_text()))
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -89,10 +93,13 @@ def test_timeline_replaced_not_accumulated(tmp_path):
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    # Old event should be gone — replaced, not accumulated
+    # Old event should be gone — replaced, not accumulated. The session's events live in the
+    # registry (the app's entity timeline); the note lists facts, not a Timeline section (D280).
     assert "Old event from prior ingest" not in content
-    assert "Transferred shares with no equity received" in content
-    assert "Listed as director in annual report" in content
+    assert "## Timeline" not in content
+    events = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]["timeline_events"]
+    assert {e["event"] for e in events} == {"Transferred shares with no equity received",
+                                            "Listed as director in annual report"}
 
 
 def test_timeline_events_replaced_in_registry(tmp_path):
@@ -110,28 +117,17 @@ def test_timeline_events_replaced_in_registry(tmp_path):
     assert not any("Old event" in e["event"] for e in events)
 
 
-def test_timeline_sorted_in_note(tmp_path):
+def test_session_summary_is_stored_with_who_wrote_it(tmp_path):
     vault = make_vault(tmp_path)
     run(make_extraction(tmp_path), vault)
 
     content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    pos_2015 = content.find("Transferred shares")
-    pos_2019 = content.find("Listed as director")
-    assert pos_2015 < pos_2019
+    assert "\n## Summary\n" in content and "Written in a Claude session" not in content
+    entry = json.loads((vault / ".watchdog/registry/entities.json").read_text())["alice-smith"]
+    assert entry["synthesis"]["by"] == "session"
 
 
 # ── Preserved sections ────────────────────────────────────────────────────────
-
-def test_analysis_preserved(tmp_path):
-    vault = make_vault(tmp_path)
-    run(make_extraction(tmp_path), vault)
-
-    content = (vault / "entities" / "person" / "alice-smith.md").read_text()
-    assert "Prior analysis." in content
-
-
-
-# ── Global timeline rebuild ───────────────────────────────────────────────────
 
 def _seed_canonical(vault: Path, date: str, rec: dict) -> None:
     td = vault / ".watchdog" / "timeline"
@@ -166,10 +162,10 @@ def test_global_timeline_resolves_entity_and_document_links(tmp_path):
 
 # ── Error cases ───────────────────────────────────────────────────────────────
 
-def test_unknown_entity_id_exits(tmp_path):
+def test_unknown_entity_id_is_refused(tmp_path):
     vault = make_vault(tmp_path)
     extraction = make_extraction(tmp_path, entity_id="nobody-here")
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValueError, match="nobody-here"):
         run(extraction, vault)
 
 
@@ -206,20 +202,3 @@ def test_malformed_events_dropped_and_unparseable_dates_cleared(tmp_path):
     assert [e["event"] for e in events].count("Undated meeting") == 1
     assert len(events) == 3
     assert next(e for e in events if e["event"] == "Undated meeting")["date"] == ""
-
-
-def test_scratch_file_under_tmp_removed_after_apply(tmp_path):
-    vault = make_vault(tmp_path)
-    tmp_dir = vault / ".watchdog" / "tmp"
-    tmp_dir.mkdir(parents=True)
-    scratch = tmp_dir / "entity-refresh-alice-smith.json"
-    scratch.write_text(make_extraction(tmp_path).read_text())
-    run(scratch, vault)
-    assert not scratch.exists()
-
-
-def test_extraction_outside_tmp_left_in_place(tmp_path):
-    vault = make_vault(tmp_path)
-    path = make_extraction(tmp_path)
-    run(path, vault)
-    assert path.exists()

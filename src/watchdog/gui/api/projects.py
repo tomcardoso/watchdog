@@ -1,0 +1,184 @@
+"""`projects.*` — the registered investigations and their health, read from `projects.json` and
+each vault's own registries. Mutations (new, rename, archive, …) run operations through
+`action.run`, so nothing here writes."""
+
+from __future__ import annotations
+
+import json
+import os
+from collections import Counter
+from pathlib import Path
+
+from watchdog.gui import vaultio
+from watchdog.gui.rpc import RpcError, method
+from watchdog.vault_paths import processing_log
+
+_HEALTH = {"folder not found": "missing", "not a watchdog vault": "not_a_vault"}
+_LOG_DEFAULT_LINES = 500
+_LOG_MAX_LINES = 20000
+
+
+def _find(slug: str) -> tuple[str, dict]:
+    """The registry entry listed under exactly `slug` (as `projects.find` resolves it): never a
+    prefix, so a stale slug can't reach another investigation."""
+    projects = vaultio.registered_projects()
+    if isinstance(slug, str) and slug in projects:
+        return slug, projects[slug]
+    raise RpcError("That investigation isn't registered.", code="not_found")
+
+
+def project_dict(slug: str, info: dict) -> dict:
+    """The app's `Project`: registry fields, a health verdict and cheap counts."""
+    from watchdog.projects import check_health, load_registry
+    from watchdog.vault import count_awaiting_post, count_awaiting_processing, count_failed, count_incoming
+
+    vault = Path(info.get("path") or "")
+    health = check_health({"path": str(vault)})
+    health = _HEALTH.get(health, health) if health else None
+    reg = None
+    if health is None:
+        try:
+            reg = load_registry(vault)
+        except (json.JSONDecodeError, OSError):
+            health = "registry_corrupt"
+    live = health in (None, "registry_corrupt")
+    reg = reg if isinstance(reg, dict) else {}
+    return {
+        "slug": slug,
+        "name": info.get("name") or slug,
+        "description": info.get("description") or None,
+        "path": str(vault),
+        "archived": bool(info.get("archived")),
+        # The app's sample investigation (D303), built with prepared answers for learning.
+        "sample": bool(info.get("sample")),
+        "created": info.get("created_at") or None,
+        "health": health,
+        # Whether the user has allowed Watchdog to work in this folder (watchdog/access.py);
+        # always true when the app isn't enforcing access.
+        "access": _access_granted(vault),
+        "stats": {
+            "documents": int(reg.get("document_count") or 0),
+            "entities": int(reg.get("entity_count") or 0),
+            "last_ingest": reg.get("last_updated") or None,
+            "incoming": count_incoming(vault) if live else 0,
+            "awaiting": (count_awaiting_processing(vault) + count_awaiting_post(vault)) if live else 0,
+            "failed": count_failed(vault) if live else 0,
+            # The version history's size on disk (D288), from a small cache the store keeps.
+            "history_bytes": _history_bytes(vault) if live else None,
+        },
+    }
+
+
+def _history_bytes(vault: Path) -> int | None:
+    from watchdog.pipeline import history
+    try:
+        return history.history_bytes(vault)
+    except OSError:
+        return None
+
+
+@method("projects.list")
+def list_projects(all: bool = False) -> list[dict]:
+    projects = vaultio.registered_projects()
+    rows = [project_dict(slug, info) for slug, info in projects.items()
+            if isinstance(info, dict) and (all or not info.get("archived"))]
+    rows.sort(key=lambda p: p["name"].lower())
+    return rows
+
+
+@method("projects.get")
+def get(slug: str) -> dict:
+    slug, info = _find(slug)
+    return project_dict(slug, info)
+
+
+@method("projects.forPath")
+def for_path(path: str) -> dict | None:
+    if not isinstance(path, str) or not path.strip():
+        return None
+    target = os.path.realpath(Path(path).expanduser())
+    for slug, info in vaultio.registered_projects().items():
+        try:
+            if os.path.realpath(info["path"]) == target:
+                return project_dict(slug, info)
+        except (KeyError, TypeError, OSError):
+            continue
+    return None
+
+
+@method("projects.status")
+def status(slug: str) -> dict:
+    from watchdog.projects import vault_size as _vault_size
+    from watchdog.pipeline import orchestrate
+
+    slug, info = _find(slug)
+    project = project_dict(slug, info)
+    vault = Path(project["path"])
+    by_type: Counter = Counter()
+    documents_by_type: Counter = Counter()
+    locks = {"chew": None, "ingest": None}
+    stopped_run = None
+    pending = None
+    size = 0
+    if project["health"] in (None, "registry_corrupt"):
+        for ent in vaultio.load_entities(vault).values():
+            if isinstance(ent, dict) and ent.get("type"):
+                by_type[vaultio.entity_type(ent["type"])] += 1
+        for doc in vaultio.load_documents(vault).values():
+            if isinstance(doc, dict) and doc.get("document_type"):
+                documents_by_type[doc["document_type"]] += 1
+        from watchdog.gui.runlocks import run_locks
+        rl = run_locks(vault)
+        locks, stopped_run = rl["locks"], rl["stopped_run"]
+        if orchestrate.has_pending_finalization(vault):
+            pending = orchestrate.pending_finalization(vault)
+        size = _vault_size(vault)
+    return {
+        "project": project,
+        "by_type": dict(by_type.most_common()),
+        "documents_by_type": dict(documents_by_type.most_common()),
+        "locks": locks,
+        "stopped_run": stopped_run,
+        "pending_finalization": pending,
+        "size_bytes": size,
+    }
+
+
+@method("projects.log")
+def log(slug: str, lines: int | None = None) -> dict:
+    slug, info = _find(slug)
+    path = processing_log(Path(info.get("path") or ""))
+    text = vaultio.read_text(path)
+    out = [ln.rstrip("\r") for ln in text.splitlines()]
+    n = _LOG_DEFAULT_LINES if lines is None else max(0, min(int(lines), _LOG_MAX_LINES))
+    return {"lines": out[-n:] if n else []}
+
+
+@method("projects.doctor")
+def doctor() -> dict:
+    """Listed investigations whose folder is gone or whose registry summary is damaged."""
+    from watchdog.projects import doctor_findings
+
+    missing, corrupt = doctor_findings(vaultio.registered_projects())
+    issues = []
+    for slug, info, problem in missing:
+        issues.append({
+            "kind": "missing", "slug": slug, "name": info["name"], "path": info["path"],
+            "problem": f"{problem.capitalize()}: {info['path']}",
+            "suggestion": ("Use Move to point Watchdog at the folder's new location, or Remove "
+                           "to take it off the list."),
+        })
+    for slug, info in corrupt:
+        reg_path = Path(info["path"]) / ".watchdog" / "registry" / "registry.json"
+        issues.append({
+            "kind": "corrupt_registry", "slug": slug, "name": info["name"], "path": info["path"],
+            "problem": f"Registry file is corrupt: {reg_path}",
+            "suggestion": ("It's a regenerated summary cache — delete it and it will rebuild on "
+                           "the next processing or post-processing run."),
+        })
+    return {"issues": issues}
+
+
+def _access_granted(vault) -> bool:
+    from watchdog import access
+    return not access.enforced() or access.is_granted(vault)

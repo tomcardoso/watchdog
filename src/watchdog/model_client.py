@@ -11,7 +11,7 @@ Backends:
 
   - **openai / deepseek / gemini** — OpenAI-compatible Chat Completions backends (any service
     speaking that wire format, selected by base URL). Each uses its own provider API key
-    (stored via `watchdog auth`), independent of the Claude auth mode (#125).
+    (stored via Settings → Models & keys), independent of the Claude auth mode (#125).
 
 Routing: subscription auth can only use claude-agent-sdk; api-key auth defaults to
 claude-api (cheaper) and may use either. A per-task policy or an explicit `backend=`
@@ -38,9 +38,8 @@ from functools import lru_cache, partial
 from pathlib import Path
 
 from watchdog import fixture_capture
-from watchdog.cmd import auth
+from watchdog import auth
 from watchdog.model_catalog import (
-    _MODEL_IDS,  # noqa: F401 — re-exported for cmd/setup.py's interactive picker
     _OPENAI_PRICING,
     _PRICING,
     catalog_cache_breakpoints,
@@ -54,7 +53,6 @@ from watchdog.model_catalog import (
     fallback_context_window,
     fallback_is_reasoning,
     _split_deepseek_thinking,
-    canonical_id,
     fallback_max_output_tokens,
     price_multiplier,
     resolve_model_id,
@@ -101,8 +99,8 @@ def long_context_input_cap(model: str | None, backend: str | None = None) -> int
     honest, since it prices every model at one flat rate. Returns None for an uncatalogued id: we
     can't know a self-hosted or OpenRouter model's rate card, and inventing a boundary would shrink
     its sections for no reason. Unlike `_output_envelope` there is no family-fallback table —
-    pricing tiers vary within a family (gpt-5.4-mini shares gpt-5.4's tokenizer but not its window,
-    and so never approaches the boundary), so a substring guess would be an over-claim."""
+    pricing tiers vary within a family (Haiku 5.5 is the only Claude model with one), so a
+    substring guess would be an over-claim."""
     threshold = catalog_long_context_threshold(resolve_model_id(model or DEFAULT_TIER))
     return int(threshold * (1 - _LONG_CONTEXT_HEADROOM)) if threshold else None
 
@@ -125,8 +123,8 @@ _THINKING_ADAPTIVE = {"type": "adaptive", "display": "summarized"}
 # Reasoning-effort levels for the per-stage `effort` knob (D36) — an abstract intent the
 # pipeline passes down. `model_catalog.yaml`'s `effort_levels` is the single source of truth for
 # which of these a given model actually accepts (#518, D161) — real per-model coverage, not a
-# per-provider flag: it varies within a provider (Claude Sonnet 4.6 takes `max` but not `xhigh`)
-# as much as across providers. `_resolve_effort` below rejects an unsupported request loudly
+# per-provider flag: it varies across providers (Gemini stops at `high`) and has varied within
+# one. `_resolve_effort` below rejects an unsupported request loudly
 # rather than silently dropping it or sending a request the API would reject.
 _EFFORT_LEVELS = ("low", "medium", "high", "xhigh", "max")
 # OpenAI-provider model capabilities (#170). A *reasoning* model accepts `reasoning_effort` and
@@ -145,7 +143,7 @@ def _openai_is_reasoning(model_id: str) -> bool:
 
 def _effort_levels(provider: str, model_id: str) -> set[str]:
     """Which effort levels `provider`/`model_id` actually accepts. The catalog is authoritative
-    for a known id; an uncatalogued id (a raw id typed past the CLI's tier validation, or a
+    for a known id; an uncatalogued id (a raw id typed in Settings, or a
     local/OpenRouter model with no catalog entry at all, #380) falls back to a conservative,
     provider-wide default rather than guessing per-model capability we don't have."""
     if provider == "deepseek":
@@ -167,7 +165,7 @@ def _effort_levels(provider: str, model_id: str) -> set[str]:
         return {"low", "medium", "high"} if _openai_is_reasoning(model_id) else set()
     if provider == "gemini":
         return {"low", "medium", "high"}   # every current Gemini model, catalogued or not
-    return set()   # anthropic (unreachable uncatalogued via the CLI), deepseek, local, openrouter
+    return set()   # anthropic (rarely uncatalogued), deepseek, local, openrouter
 
 
 def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | None:
@@ -176,20 +174,22 @@ def _resolve_effort(provider: str, model_id: str, effort: str | None) -> str | N
     `model_catalog.yaml`'s `effort_levels` (via `_effort_levels` above) is the single source of
     truth for whether `provider`/`model_id` accepts `effort` at all (#518, D161) — a request for
     an unsupported level fails loud with a clear error rather than being silently dropped or sent
-    as a request the API would reject."""
+    as a request the API would reject.
+
+    A requested level is always sent, `high` on Claude included (D310): `high` used to be omitted
+    as "the model's own default" (D36), but Haiku 5.5 and Opus 5.5 default to `medium`, so a `high`
+    request there ran at `medium`."""
     if not effort:
         return None
     if effort not in _effort_levels(provider, model_id):
         raise ModelError(f"effort '{effort}' is not supported for '{model_id}' on provider '{provider}'")
-    if provider == "anthropic" and effort == "high":
-        return None   # ≡ the model's own default (D36) — omit the param rather than send it
     return effort
 
 
 def effort_supported(backend: str | None, model: str | None, effort: str) -> bool:
     """Whether `effort` is a level `backend`/`model` actually accepts (#518) — for a caller that
     wants to check support *before* calling, rather than let `acomplete_json` raise. Exists for
-    exactly one case: `cmd/ingest.py` applies `medium` as `extractor_effort`'s implicit default
+    exactly one case: `ops/ingest.py` applies `medium` as `extractor_effort`'s implicit default
     (D26) only when the resolved extractor model supports it, so routing extraction to a model
     with no effort control (e.g. Haiku) doesn't turn a setting the user never touched into a hard
     failure — an *explicit* `--extractor-effort`/`finalizer_effort` request still goes straight to
@@ -210,7 +210,7 @@ _DEFAULT_CONTEXT_WINDOW = 128_000
 # A self-hosted model's id (#380) is whatever the operator named it in their runner — it carries
 # no vendor namespace to match against the catalog/fallback, and guessing from `_DEFAULT_CONTEXT_WINDOW`
 # would be optimistic for the small/quantized models local runners typically serve. `local_context_window`
-# (a `watchdog configure` key) lets an operator state their model's real window; absent that, this
+# (a Settings key) lets an operator state their model's real window; absent that, this
 # conservative default keeps sectioning aggressive rather than risking an overrun on an unknown model.
 _LOCAL_DEFAULT_CONTEXT_WINDOW = 8_000
 
@@ -223,8 +223,8 @@ def _configured_local_context_window() -> int | None:
 def context_window(model: str | None, backend: str | None = None) -> int:
     """Token context window for a stage's model, for provider-aware sectioning (#321).
 
-    `model` may be a tier name (haiku/sonnet/opus), a raw provider id (`deepseek-flash`,
-    `gpt-5-mini`), or None for the default tier — resolved first, then looked up in the model
+    `model` may be a tier name (haiku/sonnet), a raw provider id (`deepseek-flash`,
+    `gpt-6-luna`), or None for the default tier — resolved first, then looked up in the model
     catalog, then the substring fallback table. Unlisted ids fall back to a conservative default
     rather than raising, so a new or misspelled id degrades to safe (small-chunk) sectioning
     instead of an overrun.
@@ -271,8 +271,10 @@ class ModelError(RuntimeError):
 
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
-                auth_mode: str | None = None, truncated: bool = False, starved: bool = False):
+                auth_mode: str | None = None, truncated: bool = False, starved: bool = False,
+                key_label: str | None = None):
         super().__init__(message)
+        self.key_label = key_label
         self.usage = usage
         self.cost_usd = cost_usd
         self.attempts = attempts
@@ -346,6 +348,24 @@ _AUTH_HINTS = ("invalid api key", "authentication_error", "invalid x-api-key", "
                "oauth token has expired")
 
 
+def _scrub(text: str, api_key: str | None) -> str:
+    """`text` with the key that was sent masked out. A provider's error body is kept in the
+    message for its reason, and the message reaches job logs, failure records and the app; a
+    proxy or self-hosted server that echoes the Authorization header back must not carry the key
+    with it (D295)."""
+    if not api_key or not text or api_key not in text:
+        return text
+    from watchdog.auth import mask
+    return text.replace(api_key, mask(api_key))
+
+
+def _scrubbed(e: Exception, api_key: str | None) -> Exception:
+    """`e` with the key masked out of its message, for errors raised past this module."""
+    if api_key and any(isinstance(a, str) and api_key in a for a in e.args):
+        e.args = tuple(_scrub(a, api_key) if isinstance(a, str) else a for a in e.args)
+    return e
+
+
 def _looks_like_auth_failure(api_status, *texts: str) -> bool:
     """True for a 401/403, a billing refusal, or CLI text reporting a bad or missing login."""
     if api_status in (401, 403):
@@ -367,6 +387,7 @@ class ModelResult:
     attempts: int = 1
     pruned: list[str] | None = None
     rate_limit: dict | None = None
+    key_label: str | None = None    # the labelled key that paid (#690), never the key itself
 
 
 # ── JSON handling ─────────────────────────────────────────────────────────────
@@ -641,7 +662,7 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
     # unnoticed precisely because behaviour was correct; only the bill showed it. See D145.
     if _agent_supports_tools():
         opts["tools"] = []
-    if effort:                  # only set when overriding the model default (D36)
+    if effort:                  # only set when a level was asked for (D36, D310)
         opts["effort"] = effort
     if catalog_needs_thinking_param(model) and _agent_supports_thinking():
         opts["thinking"] = _THINKING_ADAPTIVE
@@ -701,18 +722,18 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         if rejected:
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         if _looks_like_billing(str(e), err_text):
-            raise ProviderAuthError(f"Claude Code account can't pay for this call: {err_text or e}") from e
+            raise ProviderAuthError(f"Claude account can't pay for this call: {err_text or e}") from e
         if _looks_like_rate_limit(api_status, notice, str(e), err_text):
             raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at) from e
         if _looks_like_auth_failure(api_status, str(e), err_text):
-            raise ProviderAuthError(f"Claude Code could not authenticate: {err_text or e}") from e
+            raise ProviderAuthError(f"Claude could not authenticate: {err_text or e}") from e
         raise
     if not rejected and is_error and _looks_like_billing(out["text"]):
-        raise ProviderAuthError(f"Claude Code account can't pay for this call: {out['text']}")
+        raise ProviderAuthError(f"Claude account can't pay for this call: {out['text']}")
     if rejected or (is_error and _looks_like_rate_limit(api_status, notice, out["text"])):
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
     if is_error and _looks_like_auth_failure(api_status, out["text"]):
-        raise ProviderAuthError(f"Claude Code could not authenticate: {out['text']}")
+        raise ProviderAuthError(f"Claude could not authenticate: {out['text']}")
     return out
 
 
@@ -920,7 +941,7 @@ def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
     Folding the gap into `completion_tokens` is what makes `_openai_cost` charge for them, and
     recording it under `completion_tokens_details.reasoning_tokens` matches OpenAI's shape — where
     reasoning is a *subset* of `completion_tokens`, not a sibling of it — so `_record_usage`, the
-    `watchdog usage` reasoning note, and `acomplete_json`'s truncation diagnostic all read it with
+    Usage reasoning note, and `acomplete_json`'s truncation diagnostic all read it with
     no provider-specific branch. Returns `usage` untouched when there's no gap or the provider
     already reported a reasoning count."""
     if not usage:
@@ -940,7 +961,7 @@ def _fold_in_hidden_reasoning(usage: dict | None) -> dict | None:
 
 def _fold_in_anthropic_thinking(usage_dict: dict) -> dict:
     """Break Claude's thinking-token count out into `completion_tokens_details.reasoning_tokens`
-    — the OpenAI-shaped key `orchestrate.py`, `cmd/usage.py`, and `telemetry_db.py` already read
+    — the OpenAI-shaped key `orchestrate.py`, `usage.py`, and `telemetry_db.py` already read
     with no provider-specific branch (same target shape `_fold_in_hidden_reasoning` above
     produces for Gemini). The anthropic SDK's `Usage` reports thinking tokens under a
     *different* key, `output_tokens_details.thinking_tokens` — since #635 started sending
@@ -978,7 +999,7 @@ def _openai_cost(model_id: str, usage: dict | None) -> float | None:
     prices flat, and 2.0 for a DeepSeek call landing in one of its peak windows. It multiplies the
     finished cost rather than each rate because the multiplier applies to every column equally,
     which is how DeepSeek states it and the only shape `price_periods` allows."""
-    rates = _OPENAI_PRICING.get(canonical_id(model_id))
+    rates = _OPENAI_PRICING.get(model_id)
     if not rates or not usage:
         return None
     inp, outp, cached_rate, write_rate = rates
@@ -1144,7 +1165,7 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     if resp.status_code >= 400:
         # The provider's own JSON error body is the only place the real reason lives ("invalid
         # model", "context length exceeded", "insufficient_quota") — keep it in the message.
-        detail = (resp.text or "").strip()[:500]
+        detail = _scrub((resp.text or "").strip(), api_key)[:500]
         if resp.status_code in (401, 403):
             raise ProviderAuthError(f"{base_url} rejected the API key (HTTP {resp.status_code}): {detail}")
         if resp.status_code == 402 or _looks_like_billing(detail):
@@ -1187,14 +1208,14 @@ class _BackendMeta:
 
 
 # backend name → its registration metadata. `local`/`openrouter` (#380) are OpenAI-compatible too,
-# but their base URL is user-supplied (`watchdog configure local_base_url`/`openrouter_base_url`,
-# or `watchdog auth`) rather than one of the fixed URLs above — `dynamic_base_url` marks them so
+# but their base URL is user-supplied (the `local_base_url` setting/`openrouter_base_url`,
+# or Settings → Models & keys) rather than one of the fixed URLs above — `dynamic_base_url` marks them so
 # `acomplete_json` partial-applies the resolved URL per call instead of at import time.
 _BACKEND_META: dict[str, _BackendMeta] = {
     "claude-api":       _BackendMeta(provider="anthropic", supports_continuation=True,
                                       enforces_max_tokens=True),
     "claude-agent-sdk": _BackendMeta(provider="anthropic"),
-    # claude-batch/openai-batch are real, selectable backends (CLI validation, auth resolution)
+    # claude-batch/openai-batch are real, selectable backends (settings validation, auth resolution)
     # but are never dispatched through the single-call acomplete_json path — each provider's
     # Batch API is submit-many/poll/collect, handled entirely by orchestrate._run_batch +
     # pipeline.batch_extract (#214, #530). `batch_only` exists only to turn a misrouted call (e.g.
@@ -1212,9 +1233,9 @@ _BACKEND_META: dict[str, _BackendMeta] = {
     "openrouter": _BackendMeta(provider="openrouter", dynamic_base_url=True, enforces_max_tokens=True),
 }
 
-# Selectable backend names (public — the CLI validates a stage's `backend:model` against this).
+# Selectable backend names (public — Settings validates a stage's `backend:model` against this).
 BACKENDS = tuple(_BACKEND_META)
-# Backends that take a Claude tier name (haiku/sonnet/opus); the rest take a raw provider id.
+# Backends that take a Claude tier name (haiku/sonnet); the rest take a raw provider id.
 CLAUDE_BACKENDS = tuple(name for name, m in _BACKEND_META.items() if m.provider == "anthropic")
 # Batch-mode-only backends (submit-many/poll/collect, valid only as extractor_model) — one per
 # provider that offers a Batch API (#214, #530).
@@ -1263,9 +1284,12 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
     provider = meta.provider if chosen else "anthropic"
 
     if provider == "anthropic":
-        resolved = auth.resolve_auth()
+        try:
+            resolved = auth.resolve_auth()
+        except auth.KeyChoiceError as e:   # the investigation's chosen key is gone (D290)
+            raise ModelError(str(e)) from None
         if resolved["mode"] == "none":
-            raise ModelError(resolved.get("reason", "no auth configured — run `watchdog setup`"))
+            raise ModelError(resolved.get("reason", "no auth configured" + " — set it up in Settings"))
         auth_mode = resolved["mode"]
         api_key = resolved.get("key")           # None in subscription mode
         if chosen is None:
@@ -1273,7 +1297,8 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         if chosen == "claude-api" and not api_key:
             raise ModelError(
                 "the claude-api backend needs an API key, but auth mode is "
-                f"'{auth_mode}' — run `watchdog settings auth` to switch to api-key mode, or use the claude-agent-sdk backend")
+                f"'{auth_mode}' — "
+                + "switch to api-key mode in Settings, or use the claude-agent-sdk backend")
         return chosen, provider, api_key, auth_mode, None
 
     base_url = None
@@ -1281,12 +1306,16 @@ def _resolve_backend_auth(requested: str | None) -> tuple[str, str, str | None, 
         base_url = auth.get_base_url(provider)
         if not base_url:
             raise ModelError(
-                f"the {chosen} backend needs a base URL — run "
-                f"`watchdog settings {provider}_base_url <url>` (e.g. http://localhost:11434/v1)")
+                f"the {chosen} backend needs a base URL — "
+                + "set it in Settings (e.g. http://localhost:11434/v1)")
 
-    api_key = auth.get_api_key(provider)
+    try:
+        api_key = auth.get_api_key(provider)
+    except auth.KeyChoiceError as e:       # never fall back to another account (D290)
+        raise ModelError(str(e)) from None
     if auth.provider_requires_key(provider) and not api_key:
-        raise ModelError(f"the {chosen} backend needs an API key — run `watchdog settings auth` to add one")
+        raise ModelError(f"the {chosen} backend needs an API key — "
+                         + "add one in Settings")
     return chosen, provider, api_key, "api-key", base_url
 
 
@@ -1391,7 +1420,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     `prompt` is normally a string; a caller may instead pass a list of Anthropic content
     blocks with a `cache_control` breakpoint (A1) to make part of the prompt cache-eligible —
     only `claude-api` uses it natively, other backends flatten it to text (`_flatten_prompt`).
-    `model` may be a tier name (haiku/sonnet/opus) or a raw model id; omit it for the
+    `model` may be a tier name (haiku/sonnet) or a raw model id; omit it for the
     per-task default. `backend` forces a backend ('claude-api', 'claude-agent-sdk',
     'openai', 'deepseek', 'local', 'openrouter'); omit it to route by auth mode. `effort`
     (`low`/`medium`/`high`) is an abstract reasoning-depth intent — each provider maps it to its
@@ -1399,6 +1428,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     on the **same** model (up to `max_retries` extra attempts) — never escalating — then raises.
     """
     chosen, provider, api_key, auth_mode, base_url = _resolve_backend_auth(backend)
+    key_label = auth.label_for_key(provider, api_key)
     backend_fn = _ABACKENDS[chosen]
     if _BACKEND_META[chosen].dynamic_base_url:
         backend_fn = partial(backend_fn, base_url=base_url)
@@ -1423,10 +1453,10 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         try:
             out = await _complete_with_pagination(backend_fn, chosen, prompt, model_id, schema,
                                                   api_key, max_tokens, effort_arg, task)
-        except (RateLimitError, ModelError, ProviderAuthError):
-            raise
+        except (RateLimitError, ModelError, ProviderAuthError) as e:
+            raise _scrubbed(e, api_key)
         except Exception as e:                  # any backend/transport failure → typed error
-            raise ModelError(f"{chosen} backend error: {e}") from e
+            raise ModelError(_scrub(f"{chosen} backend error: {e}", api_key)) from e
         if out.get("cost_usd"):
             total_cost += out["cost_usd"]
         # Accumulate usage across every attempt (not just the one that ends up succeeding) so a
@@ -1494,7 +1524,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                     auth_mode=auth_mode, usage=agg_usage,
                     cost_usd=round(total_cost, 6) or None,
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
-                    pruned=pruned_all or None, rate_limit=last_rate_limit,
+                    pruned=pruned_all or None, rate_limit=last_rate_limit, key_label=key_label,
                 )
             last_err = "; ".join(errors[:3])
             if len(errors) > 3:
@@ -1507,5 +1537,5 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         f"on {chosen}: {last_err}",
         usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
         model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated,
-        starved=was_starved)
+        starved=was_starved, key_label=key_label)
 

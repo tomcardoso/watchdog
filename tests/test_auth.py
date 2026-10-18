@@ -1,4 +1,5 @@
-"""Tests for `watchdog auth` — the interactive wizard, key storage, env precedence."""
+"""Key storage and resolution (`watchdog.auth`): environment precedence, auth modes, Claude Code
+login detection, provider readiness and the status Settings shows."""
 
 import json
 import os
@@ -6,26 +7,28 @@ import stat
 
 import pytest
 
-from watchdog.cmd import auth, base
+from watchdog import auth, config
 
 
 @pytest.fixture
 def home(tmp_path, monkeypatch):
-    """Redirect WATCHDOG_HOME/CONFIG_FILE, clear the real env key, assume Claude Code logged out."""
-    monkeypatch.setattr(base, "WATCHDOG_HOME", tmp_path)
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
+    """Watchdog's folder in tmp_path, the real env key cleared, Claude Code logged out."""
+    monkeypatch.setattr(config, "HOME", tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     monkeypatch.setattr(auth, "claude_code_logged_in", lambda: False)
     return tmp_path
 
 
-def _tty(monkeypatch, value: bool) -> None:
-    monkeypatch.setattr(auth.sys.stdin, "isatty", lambda: value)
+def _save(mode, **keys):
+    """Store `mode` and one default key per provider, as Settings does."""
+    state = {"mode": mode, "keys": {}}
+    for provider, key in keys.items():
+        auth.store_default_key(state, provider, key)
+    auth.save_state(state)
 
 
-def _answers(monkeypatch, *values):
-    it = iter(values)
-    monkeypatch.setattr("builtins.input", lambda *a: next(it))
+def _config(home, **values):
+    (home / "config.json").write_text(json.dumps(values))
 
 
 # ── key storage ───────────────────────────────────────────────────────────────
@@ -35,36 +38,36 @@ def test_get_api_key_unset(home):
 
 
 def test_env_var_takes_precedence(home, monkeypatch):
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-stored"}})
+    _save("api-key", anthropic="sk-ant-stored")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fromenv")
     assert auth.get_api_key("anthropic") == "sk-ant-fromenv"
 
 
 def test_openai_env_var_precedence(home, monkeypatch):
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-stored"}})
+    _save("api-key", openai="sk-stored")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-fromenv")
     assert auth.get_api_key("openai") == "sk-fromenv"
 
 
 def test_deepseek_is_a_known_provider(home):
-    assert "deepseek" in auth._PROVIDERS
-    assert auth._PROVIDERS["deepseek"]["env"] == "DEEPSEEK_API_KEY"
+    assert "deepseek" in auth.PROVIDERS
+    assert auth.PROVIDERS["deepseek"]["env"] == "DEEPSEEK_API_KEY"
 
 
 def test_gemini_is_a_known_provider(home):
-    assert "gemini" in auth._PROVIDERS
-    assert auth._PROVIDERS["gemini"]["env"] == "GEMINI_API_KEY"
+    assert "gemini" in auth.PROVIDERS
+    assert auth.PROVIDERS["gemini"]["env"] == "GEMINI_API_KEY"
 
 
 def test_credentials_file_is_0600(home):
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-test-1234567890"}})
-    assert stat.S_IMODE(os.stat(auth._credentials_path()).st_mode) == 0o600
+    _save("api-key", anthropic="sk-ant-test-1234567890")
+    assert stat.S_IMODE(os.stat(auth.credentials_path()).st_mode) == 0o600
 
 
 # ── masking ───────────────────────────────────────────────────────────────────
 
 def test_mask_hides_middle():
-    masked = auth._mask("sk-ant-api03-abcdefghij1234")
+    masked = auth.mask("sk-ant-api03-abcdefghij1234")
     assert "abcdefghij" not in masked
     assert masked.startswith("sk-ant-api")
     assert masked.endswith("1234")
@@ -73,7 +76,7 @@ def test_mask_hides_middle():
 # ── resolve_auth ────────────────────────────────────────────────────────────────
 
 def test_default_mode_is_unconfigured(home):
-    assert auth._load_state()["mode"] is None
+    assert auth.load_state()["mode"] is None
 
 
 def test_resolve_unconfigured_is_none(home):
@@ -81,17 +84,17 @@ def test_resolve_unconfigured_is_none(home):
 
 
 def test_resolve_subscription_ignores_key(home):
-    auth._save_state({"mode": "subscription", "keys": {"anthropic": "sk-ant-k"}})
+    _save("subscription", anthropic="sk-ant-k")
     assert auth.resolve_auth() == {"mode": "subscription"}
 
 
 def test_resolve_api_key_with_key(home):
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-k"}})
+    _save("api-key", anthropic="sk-ant-k")
     assert auth.resolve_auth() == {"mode": "api-key", "key": "sk-ant-k"}
 
 
 def test_resolve_api_key_without_key_is_none(home):
-    auth._save_state({"mode": "api-key", "keys": {}})
+    auth.save_state({"mode": "api-key", "keys": {}})
     assert auth.resolve_auth()["mode"] == "none"
 
 
@@ -121,505 +124,65 @@ def test_logged_in_false_when_neither_present(tmp_path, monkeypatch):
     assert auth.claude_code_logged_in() is False
 
 
-# ── setup picker (`watchdog setup`) ───────────────────────────────────────────
-
-def test_setup_picks_subscription(home, monkeypatch):
-    # mode=subscription (1); ingestion→Claude (1); no extra provider keys (Done=6).
-    _answers(monkeypatch, "1", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    assert auth._load_state()["mode"] == "subscription"
-
-
-def test_setup_picks_api_key_and_stores(home, monkeypatch):
-    # mode=api-key (2); ingestion→Claude (1); no extra provider keys (Done=6).
-    _answers(monkeypatch, "2", "1", "6")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    auth.setup_auth_interactive(interactive=True)
-    state = auth._load_state()
-    assert state["mode"] == "api-key"
-    assert state["keys"]["anthropic"] == "sk-ant-setupkey-123456"
-
-
-def test_setup_noninteractive_leaves_unconfigured(home):
-    auth.setup_auth_interactive(interactive=False)
-    assert auth._load_state()["mode"] is None
-
-
-def test_setup_offers_extra_provider_keys(home, monkeypatch):
-    # mode=api-key (2); ingestion→Claude (1) to keep the ingestion-routing model picker out of
-    # scope for this test; add an OpenAI key (1 — first remaining provider), then stop (Done=5).
-    _answers(monkeypatch, "2", "1", "1", "5")
-    keys = iter(["sk-ant-setupkey-123456", "sk-openai-setup-123456"])
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: next(keys))
-    auth.setup_auth_interactive(interactive=True)
-    state = auth._load_state()
-    assert state["mode"] == "api-key"
-    assert state["keys"]["openai"] == "sk-openai-setup-123456"
-    assert "deepseek" not in state["keys"]       # never picked
-
-
-def test_setup_subscription_ingestion_to_claude_stores_no_extra_keys(home, monkeypatch):
-    # mode=subscription (1); ingestion→Claude (1); no extra provider keys (Done=6).
-    _answers(monkeypatch, "1", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    state = auth._load_state()
-    assert state["mode"] == "subscription"
-    assert state["keys"] == {}
-
-
-def test_setup_subscription_ingestion_to_claude_tunes_concurrency(home, monkeypatch, capsys):
-    # Picking Claude for ingestion (issue #400) while on subscription auth auto-tunes
-    # extract_concurrency down from the built-in default of 5, since concurrent extractions on
-    # that path share one Claude Code session's rate limit.
-    _answers(monkeypatch, "1", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert config["extract_concurrency"] == 3
-    assert "Detected Claude subscription auth" in capsys.readouterr().out
-
-
-def test_setup_subscription_ingestion_to_claude_leaves_custom_concurrency(home, monkeypatch):
-    # A concurrency value the user already set (via `watchdog configure`, or a prior
-    # auto-tune) is a deliberate choice — the auto-tune must not silently overwrite it.
-    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
-    _answers(monkeypatch, "1", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert config["extract_concurrency"] == 8
-
-
-def test_setup_subscription_routes_ingestion_to_metered_provider(home, tmp_path, monkeypatch):
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # mode=subscription (1); ingestion→Gemini (4 — Claude, OpenAI, DeepSeek, then Gemini), pick
-    # the first listed model (1) — applied to all three ingest stages; no extra keys (Done=5).
-    _answers(monkeypatch, "1", "4", "1", "5")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-test-key-123456")
-    auth.setup_auth_interactive(interactive=True)
-
-    state = auth._load_state()
-    assert state["mode"] == "subscription"
-    assert state["keys"]["gemini"] == "gm-test-key-123456"
-
-    config = json.loads((tmp_path / "config.json").read_text())
-    assert config["classifier_model"].startswith("gemini:")
-    assert config["extractor_model"].startswith("gemini:")
-    assert config["finalizer_model"].startswith("gemini:")
-    # One pick, applied to every stage — not three independent choices.
-    assert config["classifier_model"] == config["extractor_model"] == config["finalizer_model"]
-    # Every Gemini model accepts low/medium/high unconditionally, so the schema-default effort
-    # for each stage gets applied too — not the Luna-tuned combo, the generic per-task shape.
-    assert config["classifier_effort"] == "low"
-    assert config["extractor_effort"] == "medium"
-    assert config["finalizer_effort"] == "high"
-    # Ingestion didn't stay on Claude, so nothing tunes concurrency.
-    assert "extract_concurrency" not in config
-
-
-def test_setup_metered_deepseek_leaves_effort_unset(home, tmp_path, monkeypatch):
-    """DeepSeek's base (non-thinking) ids accept no effort level at all — applying one would
-    make the very next ingest call error. The picker only offers base ids, so effort must stay
-    unset for a DeepSeek pick, unlike Gemini/OpenAI."""
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # mode=subscription (1); ingestion→DeepSeek (3 — Claude, OpenAI, then DeepSeek), pick the
-    # first listed model (1); no extra keys (Done=5).
-    _answers(monkeypatch, "1", "3", "1", "5")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "ds-test-key-123456")
-    auth.setup_auth_interactive(interactive=True)
-
-    config = json.loads((tmp_path / "config.json").read_text())
-    assert config["classifier_model"].startswith("deepseek:")
-    assert config["extractor_model"].startswith("deepseek:")
-    assert config["finalizer_model"].startswith("deepseek:")
-    assert "classifier_effort" not in config
-    assert "extractor_effort" not in config
-    assert "finalizer_effort" not in config
-
-
-def test_setup_api_key_does_not_tune_concurrency(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    # mode=api-key (2); ingestion→Claude (1); no extra provider keys (Done=6).
-    _answers(monkeypatch, "2", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
-    assert "extract_concurrency" not in config
-
-
-def test_setup_api_key_restores_stale_subscription_tune(home, monkeypatch, capsys):
-    # #493 follow-up — re-running `watchdog setup`, picking api-key this time, and keeping
-    # ingestion on Claude (still metered under api-key mode) must not leave a stale auto-tuned
-    # extract_concurrency=3 from a prior subscription run capping it.
-    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 3}))
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    _answers(monkeypatch, "2", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert "extract_concurrency" not in config
-    assert "reset to the metered default" in capsys.readouterr().out
-
-
-def test_setup_ingestion_provider_list_is_flat_and_claude_neutral(home, monkeypatch, capsys):
-    # #690 design pass: Claude is one item in the same flat ingestion-provider list as every
-    # other provider on one screen, not a default the rest are offered as an escape hatch from.
-    _answers(monkeypatch, "1", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    out = capsys.readouterr().out
-    assert "Ingestion provider?" in out
-    for label in ("Claude", "OpenAI", "DeepSeek", "Google Gemini", "Local / self-hosted", "OpenRouter"):
-        assert label in out
-
-
-def test_setup_ingestion_to_claude_under_api_key_has_no_subscription_note(home, monkeypatch, capsys):
-    # The token/session-limit note is specific to the Claude-for-ingestion + subscription-auth
-    # combination — it shouldn't appear when Claude's access mode is already metered.
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-setupkey-123456")
-    _answers(monkeypatch, "2", "1", "6")
-    auth.setup_auth_interactive(interactive=True)
-    out = capsys.readouterr().out
-    assert "Ingestion set to Claude, via your api-key login." in out
-    assert "burn through session limits" not in out
-
-
-# ── `watchdog auth` (bare) — status + interactive wizard ─────────────────────
-
-def test_bare_auth_unconfigured_points_to_setup(home, monkeypatch, capsys):
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "Not configured" in out
-    assert "watchdog setup" in out
-
-
-def test_bare_auth_noninteractive_just_prints_status(home, monkeypatch, capsys):
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "subscription" in out
-    assert "Change something" not in out
-
-
-# The service picker leads with a "Done — nothing to change" row, so a provider's number is its
-# index in _PROVIDERS + 2 (+1 to make it 1-based, +1 for the Done row).
-def _provider_choice(name: str) -> str:
-    return str(list(auth._PROVIDERS).index(name) + 2)
-
-
-def test_bare_auth_interactive_done_row_changes_nothing(home, monkeypatch):
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, "1")          # "Done — nothing to change" is the first row
-    auth.cmd_auth(object())
-    assert auth._load_state()["mode"] == "subscription"
-
-
-def test_bare_auth_interactive_switch_to_api_key(home, monkeypatch):
-    # Anthropic -> mode 2 (api-key) -> paste key
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "2")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
-    auth.cmd_auth(object())
-    state = auth._load_state()
-    assert state["mode"] == "api-key"
-    assert state["keys"]["anthropic"] == "sk-ant-wizard-123456"
-
-
-def test_bare_auth_interactive_switch_to_subscription(home, monkeypatch):
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "1")
-    auth.cmd_auth(object())
-    assert auth._load_state()["mode"] == "subscription"
-
-
-def test_bare_auth_interactive_switch_to_subscription_tunes_concurrency(home, monkeypatch, capsys):
-    # #493 — a later mode switch via `watchdog auth` needs the same auto-tune (#400) that
-    # `watchdog setup` applies, since in practice mode switches happen through `watchdog auth`
-    # far more often than through the initial setup wizard.
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "1")
-    auth.cmd_auth(object())
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert config["extract_concurrency"] == 3
-    assert "Detected Claude subscription auth" in capsys.readouterr().out
-
-
-def test_bare_auth_interactive_switch_to_subscription_leaves_custom_concurrency(home, monkeypatch):
-    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "1")
-    auth.cmd_auth(object())
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert config["extract_concurrency"] == 8
-
-
-def test_bare_auth_interactive_switch_to_subscription_skips_tune_when_extraction_routed_elsewhere(home, monkeypatch):
-    # Extraction already routed to another provider (#325) — nothing on the subscription
-    # session would be throttled, so the auto-tune shouldn't fire.
-    base.CONFIG_FILE.write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-old"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "1")
-    auth.cmd_auth(object())
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert "extract_concurrency" not in config
-
-
-def test_bare_auth_interactive_switch_to_api_key_does_not_tune_concurrency(home, monkeypatch):
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "2")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
-    auth.cmd_auth(object())
-    config = json.loads(base.CONFIG_FILE.read_text()) if base.CONFIG_FILE.exists() else {}
-    assert "extract_concurrency" not in config
-
-
-def test_bare_auth_interactive_switch_to_api_key_restores_stale_subscription_tune(home, monkeypatch, capsys):
-    # #493 follow-up — a still-active auto-tuned extract_concurrency=3 must not silently cap a
-    # metered key forever once the user switches off subscription auth via `watchdog auth`.
-    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 3}))
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "2")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
-    auth.cmd_auth(object())
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert "extract_concurrency" not in config
-    assert "reset to the metered default" in capsys.readouterr().out
-
-
-def test_bare_auth_interactive_switch_to_api_key_leaves_non_auto_tuned_concurrency(home, monkeypatch):
-    # A value the user set deliberately (anything other than the exact auto-tuned 3) is left
-    # alone — the restore can't tell a deliberate choice from a stale tune, so it only ever
-    # touches the one value it knows it wrote itself.
-    base.CONFIG_FILE.write_text(json.dumps({"extract_concurrency": 8}))
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("anthropic"), "2")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-ant-wizard-123456")
-    auth.cmd_auth(object())
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert config["extract_concurrency"] == 8
-
-
-def test_bare_auth_interactive_store_openai_key(home, monkeypatch):
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("openai"))
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-abc1234567")
-    auth.cmd_auth(object())
-    assert auth.get_api_key("openai") == "sk-openai-abc1234567"
-    assert auth.get_api_key("anthropic") is None    # untouched
-
-
-def test_bare_auth_interactive_replace_existing_key(home, monkeypatch):
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("openai"), "1")       # 1 = Replace
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-openai-new1234567")
-    auth.cmd_auth(object())
-    assert auth.get_api_key("openai") == "sk-openai-new1234567"
-
-
-def test_bare_auth_interactive_delete_existing_key(home, monkeypatch):
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("openai"), "2")       # 2 = Delete
-    auth.cmd_auth(object())
-    assert auth.get_api_key("openai") is None
-
-
-def test_bare_auth_interactive_cancel_leaves_existing_key(home, monkeypatch):
-    auth._save_state({"mode": "api-key", "keys": {"openai": "sk-openai-old1234567"}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("openai"), "3")       # 3 = Cancel
-    auth.cmd_auth(object())
-    assert auth.get_api_key("openai") == "sk-openai-old1234567"
-
-
-def test_bare_auth_invalid_provider_choice_changes_nothing(home, monkeypatch):
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, "99")
-    auth.cmd_auth(object())
-    assert auth._load_state()["mode"] == "subscription"
-
-
-def test_bare_auth_empty_key_entry_does_not_store(home, monkeypatch):
-    _tty(monkeypatch, True)
-    _answers(monkeypatch, _provider_choice("openai"))
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "   ")
-    auth.cmd_auth(object())
-    assert auth.get_api_key("openai") is None
-
-
 # ── status: every stored key is listed, labelled in-use / unused ──────────────
 
-def test_status_lists_a_routed_key_as_in_use(home, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
-    auth._save_state({"mode": "subscription", "keys": {"gemini": "gm-routed-key-123456"}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    # The masked value of a key already in active use must appear — it used to be omitted
-    # entirely, because only keys with no stage routed to them were listed.
-    assert auth._mask("gm-routed-key-123456") in out
-    assert "in use" in out
+def _key_row(provider):
+    return next(k for k in auth.status_data()["keys"] if k["provider"] == provider)
 
 
-def test_status_lists_an_unrouted_key_as_unused(home, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # Every stage explicitly routed to Claude — the pipeline default is openai:gpt-5.6-luna, so
-    # without this the stored openai key would actually be in use, not unrouted.
-    (tmp_path / "config.json").write_text(json.dumps(
-        {"classifier_model": "haiku", "extractor_model": "sonnet", "finalizer_model": "haiku"}))
-    auth._save_state({"mode": "subscription", "keys": {"openai": "sk-openai-idle1234567"}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert auth._mask("sk-openai-idle1234567") in out
-    assert "unused" in out
+def test_status_lists_a_routed_key_as_in_use(home):
+    _config(home, extractor_model="gemini:gemini-2.5-flash")
+    _save("subscription", gemini="gm-routed-key-123456")
+    row = _key_row("gemini")
+    assert row["masked"] == auth.mask("gm-routed-key-123456") and row["status"] == "in use"
 
 
-def test_status_flags_a_stored_anthropic_key_as_inactive_on_subscription(home, monkeypatch, capsys):
-    # Switching Claude access back to subscription leaves a previously-stored Anthropic key on
-    # disk (resolve_auth() just won't return it) — the status view used to say nothing about it,
-    # which read as the key having been deleted.
-    auth._save_state({"mode": "subscription", "keys": {"anthropic": "sk-ant-still-here123"}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert auth._mask("sk-ant-still-here123") in out
-    assert "inactive" in out
+def test_status_lists_an_unrouted_key_as_unused(home):
+    _config(home, classifier_model="haiku", extractor_model="sonnet", finalizer_model="haiku")
+    _save("subscription", openai="sk-openai-idle1234567")
+    assert _key_row("openai")["status"] == "unused"
 
 
-def test_status_says_nothing_about_anthropic_key_when_none_stored(home, monkeypatch, capsys):
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "inactive" not in out
+def test_status_flags_a_stored_anthropic_key_as_inactive_on_subscription(home):
+    _save("subscription", anthropic="sk-ant-still-here123")
+    assert _key_row("anthropic")["status"].startswith("inactive")
 
 
-def test_status_lists_anthropic_key_under_providers_as_in_use(home, tmp_path, monkeypatch, capsys):
-    # Providers is meant to be the definitive list of stored keys — Anthropic used to be
-    # filtered out of it unconditionally, which contradicted that claim.
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # At least one stage routed to Claude — the pipeline default is openai:gpt-5.6-luna, so
-    # without this the stored anthropic key would be inactive, not in use.
-    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}))
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-api-key-123456"}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "Providers" in out
-    assert auth._mask("sk-ant-api-key-123456") in out
-    assert "in use" in out
+def test_status_lists_no_anthropic_key_when_none_stored(home):
+    _save("subscription")
+    assert not [k for k in auth.status_data()["keys"] if k["provider"] == "anthropic"]
 
 
-def test_status_claude_code_heading_has_no_ingestion_subtitle(home, monkeypatch, capsys):
-    # The old "— interactive commands, and ingestion by default" subtitle overstated this
-    # command's scope: `watchdog auth` only ever configures ingestion, never the separate
-    # interactive Claude Code session (which manages its own login).
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "interactive commands" not in out
+def test_status_lists_anthropic_key_as_in_use(home):
+    _config(home, extractor_model="sonnet")
+    _save("api-key", anthropic="sk-ant-api-key-123456")
+    assert _key_row("anthropic")["status"] == "in use"
 
 
-# ── status: an Anthropic-routed ingestion stage names its billing mode ────────
-
-def test_status_ingestion_row_names_anthropic_mode(home, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    # The pipeline default is openai:gpt-5.6-luna — route a stage to Claude explicitly so there's
-    # an anthropic-routed row to name a billing mode on.
-    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}))
-    auth._save_state({"mode": "api-key", "keys": {"anthropic": "sk-ant-anything-123456"}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "anthropic · api-key" in out
+def test_status_stages_name_each_provider(home):
+    _config(home, extractor_model="gemini:gemini-2.5-flash", classifier_model="haiku")
+    _save("api-key", gemini="gm-key-123456")
+    stages = {s["stage"]: s for s in auth.status_data()["stages"]}
+    assert stages["extractor"]["provider"] == "gemini" and stages["extractor"]["ready"]
+    assert stages["classifier"]["provider"] == "anthropic" and not stages["classifier"]["ready"]
 
 
-def test_status_ingestion_row_names_anthropic_subscription_mode(home, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "sonnet"}))
-    auth._save_state({"mode": "subscription", "keys": {}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "anthropic · subscription" in out
+# ── the subscription concurrency tune (#400, #493) ──────────────────────────────
+
+def test_tune_sets_concurrency_once_and_leaves_a_chosen_value(home):
+    assert auth.tune_concurrency_for_subscription() is True
+    assert json.loads((home / "config.json").read_text())["extract_concurrency"] == auth.SUBSCRIPTION_CONCURRENCY
+    _config(home, extract_concurrency=8)
+    assert auth.tune_concurrency_for_subscription() is False
+    assert json.loads((home / "config.json").read_text())["extract_concurrency"] == 8
 
 
-def test_status_ingestion_row_omits_mode_for_non_anthropic_provider(home, tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    (tmp_path / "config.json").write_text(json.dumps({"extractor_model": "gemini:gemini-2.5-flash"}))
-    auth._save_state({"mode": "api-key", "keys": {"gemini": "gm-key-123456"}})
-    _tty(monkeypatch, False)
-    auth.cmd_auth(object())
-    out = capsys.readouterr().out
-    assert "(gemini)" in out
-    assert "gemini ·" not in out
-
-
-# ── ensure_provider_key: picking a model must not leave a stage keyless ───────
-
-def test_ensure_provider_key_prompts_and_stores_for_new_provider(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-fresh-key-123456")
-    auth.ensure_provider_key("gemini:gemini-2.5-flash")
-    assert auth.get_api_key("gemini") == "gm-fresh-key-123456"
-
-
-def test_ensure_provider_key_noop_for_claude_tier(home, monkeypatch):
-    def _boom(*a, **k):
-        raise AssertionError("must not prompt for a key when the model is a Claude tier")
-    monkeypatch.setattr(auth, "getpass", _boom)
-    auth.ensure_provider_key("sonnet")
-    assert auth._load_state()["keys"] == {}
-
-
-def test_ensure_provider_key_noop_when_key_already_stored(home, monkeypatch):
-    auth._save_state({"mode": "subscription", "keys": {"openai": "sk-openai-existing123"}})
-
-    def _boom(*a, **k):
-        raise AssertionError("must not re-prompt when a key is already stored")
-    monkeypatch.setattr(auth, "getpass", _boom)
-    auth.ensure_provider_key("openai:gpt-5-mini")
-    assert auth.get_api_key("openai") == "sk-openai-existing123"
-
-
-def test_ensure_provider_key_noop_when_key_in_environment(home, monkeypatch):
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-deepseek-fromenv12")
-
-    def _boom(*a, **k):
-        raise AssertionError("must not prompt when the provider's env var is set")
-    monkeypatch.setattr(auth, "getpass", _boom)
-    auth.ensure_provider_key("deepseek:deepseek-chat")
-    assert auth._load_state()["keys"] == {}      # nothing written to disk
-
-
-def test_ensure_provider_key_declined_leaves_no_key(home, monkeypatch):
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "")
-    auth.ensure_provider_key("gemini:gemini-2.5-flash")
-    assert auth.get_api_key("gemini") is None
-
-
-def test_configure_model_key_prompts_for_the_providers_key(home, tmp_path, monkeypatch):
-    """The gap this closes: routing a stage to a provider you have no key for used to succeed
-    silently and only blow up mid-ingest."""
-    from watchdog.cmd import setup as setup_cmd
-
-    monkeypatch.setattr(base, "CONFIG_FILE", tmp_path / "config.json")
-    monkeypatch.setattr(setup_cmd, "_pick_model_interactive", lambda *a, **k: "gemini:gemini-2.5-flash")
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "gm-configure-key-123")
-
-    config: dict = {}
-    setup_cmd._edit_key_interactive(config, "extractor_model")
-
-    assert config["extractor_model"] == "gemini:gemini-2.5-flash"
-    assert auth.get_api_key("gemini") == "gm-configure-key-123"
+def test_restore_clears_only_the_tuned_value(home):
+    _config(home, extract_concurrency=auth.SUBSCRIPTION_CONCURRENCY)
+    assert auth.restore_concurrency_from_subscription() is True
+    assert "extract_concurrency" not in json.loads((home / "config.json").read_text())
+    _config(home, extract_concurrency=8)
+    assert auth.restore_concurrency_from_subscription() is False
 
 
 # ── local / self-hosted + OpenRouter (#380) ──────────────────────────────────
@@ -639,72 +202,28 @@ def test_get_base_url_openrouter_has_a_default(home):
 
 
 def test_get_base_url_reads_configured_value(home, tmp_path):
-    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://localhost:11434/v1/"}))
+    (home / "config.json").write_text(json.dumps({"local_base_url": "http://localhost:11434/v1/"}))
     # trailing slash is stripped so it composes cleanly with the appended request path
     assert auth.get_base_url("local") == "http://localhost:11434/v1"
 
 
 def test_get_base_url_env_var_wins_over_configured(home, monkeypatch):
-    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://configured:1234/v1"}))
+    (home / "config.json").write_text(json.dumps({"local_base_url": "http://configured:1234/v1"}))
     monkeypatch.setenv("LOCAL_BASE_URL", "http://from-env:5678/v1")
     assert auth.get_base_url("local") == "http://from-env:5678/v1"
 
 
 def test_provider_ready_local_needs_only_base_url(home):
     assert auth.provider_ready("local") is False       # nothing configured yet
-    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://localhost:11434/v1"}))
+    (home / "config.json").write_text(json.dumps({"local_base_url": "http://localhost:11434/v1"}))
     assert auth.provider_ready("local") is True         # no key needed
 
 
 def test_provider_ready_openrouter_needs_a_key_too(home):
     # openrouter has a default base URL, but still needs a key
     assert auth.provider_ready("openrouter") is False
-    auth._save_state({"mode": "api-key", "keys": {"openrouter": "sk-or-test-123456"}})
+    _save("api-key", openrouter="sk-or-test-123456")
     assert auth.provider_ready("openrouter") is True
-
-
-def test_prompt_and_store_base_url(home, monkeypatch):
-    monkeypatch.setattr("builtins.input", lambda *a: "http://localhost:11434/v1")
-    assert auth.prompt_and_store_base_url("local") is True
-    config = json.loads(base.CONFIG_FILE.read_text())
-    assert config["local_base_url"] == "http://localhost:11434/v1"
-
-
-def test_prompt_and_store_base_url_blank_is_skipped(home, monkeypatch):
-    monkeypatch.setattr("builtins.input", lambda *a: "")
-    assert auth.prompt_and_store_base_url("local") is False
-    assert auth.get_base_url("local") is None
-
-
-def test_ensure_provider_key_prompts_for_local_base_url_not_a_key(home, monkeypatch):
-    """Picking a `local:...` model should prompt for the base URL, and never ask for a key —
-    most self-hosted runners don't check for one."""
-    monkeypatch.setattr("builtins.input", lambda *a: "http://localhost:11434/v1")
-
-    def _boom(*a, **k):
-        raise AssertionError("must not prompt for a key when the provider doesn't require one")
-    monkeypatch.setattr(auth, "getpass", _boom)
-
-    auth.ensure_provider_key("local:llama-3.3-70b")
-    assert auth.get_base_url("local") == "http://localhost:11434/v1"
-    assert auth.get_api_key("local") is None
-
-
-def test_ensure_provider_key_noop_when_local_already_ready(home, monkeypatch):
-    base.CONFIG_FILE.write_text(json.dumps({"local_base_url": "http://localhost:11434/v1"}))
-
-    def _boom(*a, **k):
-        raise AssertionError("must not re-prompt once the provider is already ready")
-    monkeypatch.setattr("builtins.input", _boom)
-    monkeypatch.setattr(auth, "getpass", _boom)
-    auth.ensure_provider_key("local:llama-3.3-70b")
-
-
-def test_ensure_provider_key_prompts_for_openrouter_key(home, monkeypatch):
-    """OpenRouter has a default base URL, so only the key needs prompting."""
-    monkeypatch.setattr(auth, "getpass", lambda *a, **k: "sk-or-test-123456")
-    auth.ensure_provider_key("openrouter:anthropic/claude-3.5-sonnet")
-    assert auth.get_api_key("openrouter") == "sk-or-test-123456"
 
 
 def test_write_private_json_creates_owner_only_file(tmp_path):
@@ -721,3 +240,23 @@ def test_write_private_json_creates_owner_only_file(tmp_path):
     assert json.loads(path.read_text())["keys"]["anthropic"] == "sk"
     if sys.platform != "win32":
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+# ── routing every stage to one provider's model (first-run setup) ────────────────────────────
+
+def test_route_stages_applies_one_model_and_each_stages_default_effort():
+    cfg = {}
+    auth.route_stages_to_model(cfg, "gemini", "gemini:gemini-3.8-flash")
+    assert cfg["classifier_model"] == cfg["extractor_model"] == cfg["finalizer_model"] \
+        == "gemini:gemini-3.8-flash"
+    assert (cfg["classifier_effort"], cfg["extractor_effort"], cfg["finalizer_effort"]) \
+        == ("low", "high", "high")
+
+
+def test_route_stages_to_a_model_with_no_effort_levels_leaves_effort_unset():
+    """DeepSeek's base (non-thinking) ids accept no effort level; applying one would make the
+    next call fail."""
+    cfg = {}
+    auth.route_stages_to_model(cfg, "deepseek", "deepseek:deepseek-flash")
+    assert cfg["extractor_model"] == "deepseek:deepseek-flash"
+    assert not {"classifier_effort", "extractor_effort", "finalizer_effort"} & set(cfg)

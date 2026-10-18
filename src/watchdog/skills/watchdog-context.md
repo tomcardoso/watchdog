@@ -1,10 +1,12 @@
 ---
-description: Seed context.md from _CONTEXT/ background material and a structured interview; proposes watchlist candidates
+description: Seed context.md from context/ background material and a structured interview; proposes watchlist candidates
 ---
 
 # /watchdog-context — Seed context.md from prior stories and reporter notes
 
-Read background material in `_CONTEXT/`, conduct a short structured interview, and write a polished `context.md` that tells every other Watchdog skill what this investigation is about.
+Read background material in `context/`, conduct a short structured interview, and write a polished `context.md` that tells every other Watchdog skill what this investigation is about.
+
+`context.md` is sent to the AI model with every document Watchdog processes, so it should orient the reading, not steer it. Write it as open questions ("I want to understand…", "I want to explore…"), never as a thesis or a conclusion the documents are expected to confirm.
 
 Run this once when starting a new investigation, or again any time your understanding of the story has shifted significantly.
 
@@ -16,13 +18,15 @@ Before reading any files, display this warning and wait for explicit confirmatio
 
 > ⚠️ **Privacy warning**
 >
-> Everything in `_CONTEXT/` will be read by an AI. **Do not include:**
+> Everything in `context/` will be read by an AI. **Do not include:**
 > - Source names or contact details
 > - Confidential communications or unpublished tips
 > - Leaked or legally sensitive documents
 > - Any information that could identify a confidential source
 >
 > Published stories, your own research notes, and publicly available background are fine.
+>
+> The `context.md` written from this session is sent to the AI model with every document you add, so the same rule applies to it.
 >
 > Type **yes** to continue, or stop now and remove any sensitive files first.
 
@@ -32,11 +36,11 @@ If the response is anything other than an explicit confirmation, stop immediatel
 
 ## 1. Discover and chew files
 
-List the files in `_CONTEXT/` with the Glob tool (pattern `_CONTEXT/**/*`), ignoring hidden files.
+List the files in `context/` with the Glob tool (pattern `context/**/*`), ignoring hidden files.
 
 If the folder is empty or missing, skip to step 3 — you'll work from the interview alone.
 
-Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never run `watchdog chew` on these files: chew is an ingest step that moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `_CONTEXT/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
+Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never add these files as documents: pre-processing moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
 
 ---
 
@@ -44,7 +48,7 @@ Read each file with the Read tool, which handles plain text, Markdown, PDFs and 
 
 After reading all files, build an internal picture of:
 
-- **The story** — what pattern, wrongdoing, or question does the prior coverage establish or suggest?
+- **The story** — what question does the prior coverage raise, and what has it established?
 - **Known entities** — people, companies, addresses, or institutions already named as relevant
 - **Established facts** — what has already been reported or confirmed?
 - **Open questions** — what did prior coverage raise but not answer?
@@ -65,9 +69,9 @@ Ask the following questions in a **single batch** — do not ask them one at a t
 - "I see references to [document type] — do you have those records, or are they something you're still looking for?"
 
 **Generic questions to include if not covered by material:**
-- What is the central question or wrongdoing you're investigating?
+- What is the central question you want to answer?
 - Who are the 2–3 most important entities (people or companies) in this story?
-- What would a definitive finding look like — what would you need to prove?
+- What would you need to see in the records to answer it, one way or the other?
 - Are there any angles you've already ruled out or dead ends to avoid?
 - What documents or records are you most actively looking for?
 
@@ -84,8 +88,9 @@ Write a draft using the structure below. Populate every section from the synthes
 
 ## What I'm investigating
 
-{One to three paragraphs. What is the story? What pattern, question, or wrongdoing is being pursued?
-What has prior coverage established, and what remains unproven?}
+{One to three paragraphs, written as open questions: "I want to understand…", "I want to explore…".
+What does the reporter want to find out, and what has prior coverage left unanswered? Do not state
+suspected wrongdoing as fact or as the expected answer.}
 
 ## Key questions I'm trying to answer
 
@@ -95,9 +100,9 @@ What has prior coverage established, and what remains unproven?}
 
 ## Entities I already know are relevant
 
-{For each entity: name, type, and one sentence on why they matter.}
+{For each entity: name, type, and one sentence on what the reporter wants to learn about it.}
 
-- **{Name}** ({type}) — {why relevant}
+- **{Name}** ({type}) — {what to learn about it}
 - ...
 
 ## Documents I'm expecting or looking for
@@ -107,8 +112,8 @@ What has prior coverage established, and what remains unproven?}
 
 ## What prior coverage established
 
-{Brief summary of what has already been reported and confirmed. Cite specific stories or sources
-if the reporter provided them. This section prevents re-investigating things already in print.}
+{Brief summary of what has already been published, attributed to the story or source that published it
+("The Ledger reported in May 2022 that…"). This section prevents re-investigating things already in print.}
 
 ## What I don't yet understand
 
@@ -158,18 +163,18 @@ Write the approved draft to `context.md` at the vault root. This overwrites any 
 
 If any watchlist candidates were approved (in full or in part), add them:
 
-```bash
-watchdog watchlist-add "<term one>" "<term two>" ...
-```
+call the `mcp__watchdog__watchlist_add` tool with `terms` set to the approved terms (for example
+`["<term one>", "<term two>"]`).
 
-This appends to `watchlist.md` deterministically — skipping any term already there
-(case-insensitive) and leaving existing terms and comments untouched. The command prints
-`{"added": [...], "skipped": N}`; use it to report what actually landed. Skip this step
+It appends to `watchlist.md` deterministically — skipping any term already there
+(case-insensitive) and leaving existing terms and comments untouched. It returns
+`{"added": [...], "skipped": N}`; use it to report what actually landed. Never edit `watchlist.md`
+yourself. Skip this step
 entirely if there were no candidates, or the reporter approved none of them.
 
 Print:
 ```
-context.md written. N watchlist term(s) added. Drop records into _INCOMING/, then run `watchdog chew` and `watchdog dig` to begin processing.
+context.md written. N watchlist term(s) added. Add documents in the Watchdog app (or drop them into incoming/ and add them from the app) to begin processing.
 ```
 (Omit the watchlist clause if none were added.)
 
@@ -182,9 +187,10 @@ Skipped — context.md not written.
 
 ## Guidelines
 
-- **Never create entity notes or registry entries** — `_CONTEXT/` files are background, not evidence. Nothing from this skill touches `.watchdog/registry/`.
-- **Don't cite `_CONTEXT/` files as sources** — they are the reporter's prior knowledge, not the vault's evidence base.
+- **Never create entity notes or registry entries** — `context/` files are background, not evidence. Nothing from this skill touches `.watchdog/registry/`.
+- **Don't cite `context/` files as sources** — they are the reporter's prior knowledge, not the vault's evidence base.
 - **Questions must be specific** — generic questions produce generic answers. Generate questions from what you actually read.
+- **Inquisitive, not conclusive** — the draft orients the AI model that reads every document, so phrase it as what the reporter wants to understand or explore. If the reporter states a suspicion ("the councillor hid her conflict"), write the question it raises ("Did the councillor disclose any connection to the company, and to whom?"). Never present an allegation as established, even when the reporter is confident of it.
 - **Respect skipped questions** — if the reporter doesn't answer, make a reasonable inference or leave a placeholder. Don't repeat the question.
-- **Watchlist candidates must be specific, not generic** — a proper name, a company, a street address, a case or filing number. Skip roles, categories, or anything broad enough to false-positive constantly (e.g. "the mayor's office," "the bank") — a bad watchlist term is worse than none, since every future ingest will flag it. When in doubt, leave it out rather than pad the list to hit a target count.
+- **Watchlist candidates must be specific, not generic** — a proper name, a company, a street address, a case or filing number. Skip roles, categories, or anything broad enough to false-positive constantly (e.g. "the mayor's office," "the bank") — a bad watchlist term is worse than none, since every future processing run will flag it. When in doubt, leave it out rather than pad the list to hit a target count.
 - **Prefer the shortest distinctive form of a name over its full legal form** — matching is literal (word-boundary or regex; see `pipeline/watchlist.py`), not fuzzy, so a term only catches documents that render the name exactly that way. Legal suffixes and full registered forms ("Ltd.", "Inc.", "Partners", "LLC", "Holdings") vary across documents even when the underlying entity doesn't. For "Furniture Direct Partners Ltd.," propose "Furniture Direct" rather than the full name — unless the shorter form is itself generic enough to false-positive (weigh this against the bullet above).

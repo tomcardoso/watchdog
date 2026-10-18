@@ -486,11 +486,3 @@ def test_documents_sharing_a_filename_keep_separate_passages(vault):
     embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "beta text"}], sha256="b" * 64)
     _, meta = embed_mod._load_all(vault)
     assert sorted(m["text"] for m in meta) == ["alpha text", "beta text"]
-
-
-def test_drop_legacy_removes_only_the_filename_keyed_file(vault):
-    embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "old"}])          # legacy key
-    embed_mod.add_document(vault, "Order.pdf", [{"page": 1, "markdown": "new"}], sha256="c" * 64,
-                           drop_legacy=True)
-    _, meta = embed_mod._load_all(vault)
-    assert [m["text"] for m in meta] == ["new"]

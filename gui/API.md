@@ -1,0 +1,513 @@
+# Backend API — the contract between the app and `watchdog.gui.server`
+
+The Electron app talks to a Python process (`python -m watchdog.gui.server`) over stdin/stdout,
+one JSON object per line. This page lists every method and event. The TypeScript mirror of these
+shapes lives in `gui/src/shared/api.ts`; keep the two in step.
+
+## Conventions
+
+- **Request** `{"id": 7, "method": "vault.summary", "params": {...}}` → **response**
+  `{"id": 7, "result": ...}` or `{"id": 7, "error": {"message", "code", "data"}}`.
+- **Events** `{"event": "job.log", "data": {...}}` arrive unsolicited.
+- `vault` params are **absolute paths** to a vault folder. The server checks the folder is a
+  Watchdog vault (`vault_paths.is_vault`) and raises `RpcError(code="not_a_vault")` otherwise.
+- Paths inside a vault are **vault-relative POSIX strings** (`documents/alpha`,
+  `entities/person/jane-doe.md`). Note paths may omit `.md`, as wikilinks do.
+- Timestamps are ISO-8601 strings. Counts are integers. Missing optional data is `null`, never an
+  absent key.
+- **Reads** run in-process. **Mutations** are operations (`watchdog.ops`, D298): library functions
+  with typed parameters, each run in a worker process (`python -m watchdog.worker`) through
+  `jobs.start` (long ones, followed in the job dock) or `action.run` (quick ones), so a crash or a
+  hung model call never takes the server down. A few small writes run in-process through their
+  library functions (resolutions, settings, auth keys, the `## Notes` section of a note, version
+  history's restore, removal and clear; D286, D288, I10).
+- **Folder access (D268).** When the app starts the server with `WATCHDOG_ENFORCE_ACCESS=1`, any
+  call naming a vault outside the folders in `~/.watchdog/access.json`, and any `jobs.start` or
+  `action.run` there, fails with `RpcError(code="not_granted", data={"path"})`. The server only
+  reads that file (`access.list`); grants are made by the main process (`window.watchdog.access`).
+- **Engine setup (D272).** While the app's engine is still installing its background phase, the
+  main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
+  then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
+  `requeue`) or `index` (`reindex`, `merge-entities`, `undo-merge`, `rebuild-notes`,
+  `recheck-contradictions`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
+  meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
+- Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
+  code is converted to an error with its message (leading `Error:` stripped).
+
+---
+
+## app
+
+| Method | Params | Result |
+|---|---|---|
+| `app.ping` | — | `{ok: true}` |
+| `app.info` | — | `{version, python, python_version, platform, watchdog_home, config_file, setup_complete, projects_dir, claude_code: {installed, logged_in}, obsidian_installed, engine_ready}` |
+| `engine.ready` | — | `{ready}`: false while the engine's background phase is unfinished (D272) |
+| `engine.setReady` | — | `{ready: true}`. Called by the main process when the background phase finishes: clears `WATCHDOG_ENGINE_PENDING` for the server and the jobs it starts, and drops the import caches so the new packages load |
+
+## access
+
+| Method | Params | Result |
+|---|---|---|
+| `access.list` | — | `{enforced: bool, file, folders: [{path, label, granted}]}` — read-only |
+
+## projects
+
+```
+Project = {
+  slug, name, description|null, path, archived: bool, created|null,
+  sample: bool,   // the sample investigation built for learning Watchdog (D303)
+  health: null | "missing" | "not_a_vault" | "registry_corrupt",   // _check_project_health
+  stats: { documents, entities, last_ingest|null, incoming, awaiting, failed,
+           history_bytes|null },   // the version history's size on disk, from a cache (D288); null with none
+  access: bool   // false when folder access is enforced and the vault isn't in an allowed folder
+}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `projects.list` | `{all?: bool}` | `Project[]` (archived only when `all`) |
+| `projects.get` | `{slug}` | `Project` — the exact slug only, never a prefix (a stale slug must not reach another investigation); error `not_found` |
+| `projects.forPath` | `{path}` | `Project \| null` — the registered project at that folder |
+| `projects.status` | `{slug}` | `{project: Project, by_type: {[entityType]: n}, documents_by_type: {[docType]: n}, locks: {chew: RunLock\|null, ingest: RunLock\|null}, stopped_run: string\|null, pending_finalization: {...}\|null, size_bytes}` — `RunLock` is `{where: "here"\|"elsewhere"\|"unknown", host, started_at}`. Reading it clears a lock whose run has died (`locks.clear_abandoned`, I10), so a lock reported here is a run in progress (D293) |
+| `projects.log` | `{slug, lines?: int}` | `{lines: string[]}` — the last `lines` (default 500) of `.watchdog/registry/processing.log` |
+| `projects.doctor` | — | `{issues: [{kind: "missing"\|"corrupt_registry", slug, name, path, problem, suggestion}]}` |
+
+Mutations go through `action.run` as the `projects-new`, `projects-register`, `projects-rename`,
+`projects-describe`, `projects-move`, `projects-archive` and `projects-delete` operations (see
+[operations](#operations)), e.g. `{op: "projects-new", params: {name: "Shell Co", description: "…",
+dir: "/x"}}`; each returns `{slug, name, path}` (delete: `{slug, removed}`). The app re-reads
+`projects.list` afterwards.
+
+### The sample investigation and its tour (D303)
+
+| Method | Params | Result |
+|---|---|---|
+| `sample.status` | `{dir?}` | `{slug\|null, path, listed, exists, archived}` — where the sample is (the listed investigation marked `sample`), or where `sample-create` would build it (`dir`, else the investigations folder); `exists` is true when a folder carrying the sample's marker (`.watchdog/sample.json`) is at `path` |
+| `sample.tour` | `{vault}` | `TourTargets`: what each tour step opens, read from the sample's registries — `{sample, briefings, scanned: {sha, filename, title, page, find}, entity: {id, name, fact}, contradiction: {rid, title}, duplicate: {rid, title}, lead: {rid, title}, search, incoming: string[], runs}`; `not_found` naming whatever is missing |
+| `sample.questions` | `{vault}` | `SampleQuestion[]` — `{id, question, blurb, writes}`: the questions with a prepared Ask Claude conversation (D309); `not_sample` outside the sample |
+| `sample.conversation` | `{vault, id}` | `{session, events: SamplePlayback[], waiting: string\|null}` — a prepared conversation, built from the sample's registries when asked: each event is `{after_ms, event, data}`, `event` one of `chat.message`, `chat.delta`, `chat.status`, `chat.permission` and `data` that event's payload, so the chat screen plays it as a live session's stream. `waiting` is the permission request it stops at. No model, client or network; `not_found` when the sample lacks a fact the answer cites (rebuild it) |
+| `sample.conversationAnswer` | `{vault, id, request_id, allow}` | `{events}` — the rest of a conversation after its permission card. Allowed, the change is made in the sample through the same session tool a live session calls (`watchlist_add`), with its folder-access check and version history |
+
+The sample is built by the `sample-create` job (see [operations](#operations)). Ask Claude itself (`chat.start`, `chat.resume`) is refused in the sample (D307); the prepared conversations above stand in for it.
+
+## vault — reading an investigation
+
+```
+Summary = {               // overview.summary(), made JSON-safe
+  name, path,
+  briefing: {path, name, date}|null,
+  headline|null,         // the latest briefing's status line, Markdown with fact links, from its sidecar (D285)
+  contradictions, leads, near_duplicates, possible_same, alerts, // waiting on you
+  incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
+  failed, research_urls, context_unseeded: bool,               // in progress
+  has_work: bool,                                              // overview.has_work()
+  totals: {documents, entities, pages, events},
+  verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
+  recent_documents: DocumentRow[],   // newest 8 by ingested_at
+  top_entities: EntityRow[]          // 8 with the most documents
+}
+
+DocumentRow = {
+  sha, filename, title|null, document_type|null, date_of_document|null,
+  page_count|null, record_skill|null, ingested_at|null,
+  near_duplicate_of|null,            // display text of the matched document
+  media_kind: "audio"|"video"|null, duration_seconds|null,   // recordings (D273)
+  note: "documents/<slug>"|null,     // registry document_note
+  original: "morgue/…/file.pdf"|null,// registry morgue_path, vault-relative
+  fulltext: "morgue/…/file.md"|null, // the full-text sibling, when present
+  ext: "pdf"|"docx"|…,               // from filename, lowercase, no dot
+  entity_count, source|null, obtained|null, summary|null
+}
+
+EntityRow = {
+  id, name, type,                    // type is one of the six (entity_type.ENTITY_TYPES) or "other"
+  aliases: string[], doc_count, role_count, contradiction_count,
+  first_seen|null, last_updated|null, note: "entities/<type>/<id>"|null,
+  has_summary: bool, summary|null    // first paragraph of ## Summary
+}                                    // role_count: relationships per counterpart, direction and wording (D291); EntityDetail's counts canonical groups
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `vault.summary` | `{vault}` | `Summary` |
+| `vault.documents` | `{vault}` | `DocumentRow[]` |
+| `vault.document` | `{vault, sha}` | `DocumentDetail` (below) |
+| `vault.textPositions` | `{vault, sha, pages?: int[]}` | `{unit: "line"\|null, engine\|null, pages: int[], boxes: {"<page>": {width, height, lines: [[left, top, right, bottom, text]]}}}` — the saved positions of OCR'd lines (D289) from `.watchdog/text-positions/<sha>.json`: `pages` lists every page that has them, `boxes` holds only the requested pages (at most 50 per call; none without `pages`). Coordinates are in the page's own units (PDF points, image pixels), origin top left; scale by the drawn size over `width`/`height`. Everything empty for a document without the file. Errors: `bad_params` (`pages` not a list of integers), `not_found` |
+| `vault.entities` | `{vault}` | `EntityRow[]` |
+| `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
+| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View` |
+| `vault.relationshipSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping's wordings apart again (`relationships.split`, D291): recorded in `registry/relationships.json` and the vault's history, the two entities' notes refreshed; later runs never regroup those wordings. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
+| `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
+| `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
+| `vault.saveNotes` | `{vault, path, text}` | `{ok: true}` (existing `entities/…`/`documents/…` notes and saved pages in `queries/…`/`wiki/…` only, else `forbidden`; an empty `text` keeps the placeholder comment) — replaces only the body of the file's `## Notes` section (journalist annotations; neither the pipeline nor the skills write there). An entity or document note save takes the registry lock the commit pass holds, waiting up to 3 s, then fails with `busy` (the app retries). Recorded as a version of the file's history (D286, D288) |
+| `vault.resolveLink` | `{vault, target}` | `{path\|null, kind: "document"\|"entity"\|"briefing"\|"query"\|"wiki"\|"note"\|"original"\|"fulltext"\|"missing", sha\|null, page\|null}` — what a wikilink target points at (bare names resolve like Obsidian: entity id/name/alias, document slug/title/filename, top-level note) (`documents/x`, `entities/person/y`, `morgue/…/f.pdf#page=3`) |
+| `vault.citations` | `{vault, links: string[]}` | `{[link]: {target, block, status: "found"\|"not_found", fact: {id, sha, fact, page\|null, title\|null, note\|null, date\|null, basis\|null, mark: "verified"\|"disputed"\|"unverifiable"\|null, passage\|null, passage_page\|null}\|null, disputed?}}` — what each fact citation names (D283). A link is `<note>#^f-<id>` as written in `[[<note>#^f-<id>\|…]]`; others are ignored; at most 500. Read-only. The Markdown renderer calls it for every page it shows; a `not_found` citation is shown as "source not found", never as a link |
+| `vault.checkCitations` | `{vault}` | `{checked, citations, found, not_found, disputed, unresolved_short, pages: [{path, items, citations, found, not_found, disputed, unresolved_short}]}` — every fact citation in `queries/`, `wiki/` and `briefings/` (Maintenance → Check citations; the function a session's `check_citations` tool calls). Changes nothing |
+| `vault.pipeline` | `{vault}` | `PipelineState` (below) |
+| `vault.briefings` | `{vault}` | `[{path, name, kind: "briefing"\|"leads"\|"alerts"\|"research", date, title}]`, newest first |
+| `vault.notes` | `{vault}` | `[{path, kind: "query"\|"wiki", title, modified}]` — pages Claude sessions saved in `queries/` and `wiki/`, most recently modified first |
+| `vault.readFile` | `{vault, path}` | `{text, exists}` — only for the journalist-owned files: `context.md`, `watchlist.md`, `requests.md`, `log.md`, `timeline.md`, `index.md`, and anything under `briefings/`, `queries/`, `wiki/` (not `hot.md`, retired in D285) |
+| `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
+| `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
+| `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
+| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
+| `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
+
+```
+DocumentDetail = DocumentRow & {
+  frontmatter: object, body: string,            // the document note
+  facts: [{id, fact, page|null, basis: "stated"|"inferred", date|null, quote|null,
+           entities: [{id, name, type}], figure_note|null, quote_note|null, added_by|null,
+           passage|null, passage_page|null, passage_method: "quote"|"matched"|"unlocated"|null,
+           passage_score|null, mark: FactMark|null}],   // id: the derived fact id (D271); passage*: the source passage found in post-flight (D270), passage_method null when the document predates passages; mark: the reporter's current mark, only if it still matches the fact's words and page   // quote_note: quote-verification warning; facts fall back to the note's `## Key facts` bullets when no staged extraction exists
+ 
+  entities: [{id, name, type, role|null}],
+  pages: [{page, text}],                        // morgue full text split on <!-- PAGE n -->
+  file_metadata: object, sidecar: object|null, metadata: object|null,
+  extract_model|null, extract_effort|null, record_skill_hash|null,
+  duplicates: [{sha, filename, note}],          // documents this one nearly duplicates, both ways
+  positions_pages: int[],                       // pages with saved OCR line positions (D289), fetched with vault.textPositions
+  media: null | {kind: "audio"|"video", duration_seconds|null, page_seconds|null,   // recordings only (D273):
+          pages: [{page, start, end}], language|null, model|null}   // page n is start..end seconds; unknown fields ignored
+}
+
+EntityDetail = EntityRow & {
+  frontmatter: object, body: string,            // the entity note
+  sections: {summary|null, analysis|null, contradictions|null, timeline|null,
+             relationships|null, notes|null},   // raw markdown per ## section; summary also reads the older "## Summary (AI-written)" heading
+  documents: DocumentRow[],                     // appears_in, resolved
+  relationships: [{role, target_id, target_name|null, target_type|null, direction: "out"|"in",
+                   docs: string[], group|null, wordings: [{text, sources: [{sha, page}]}],
+                   sources: [{sha, page, wording}]}],   // one row per counterpart, direction and meaning (D291); role is the canonical label
+  contradictions: [{rid, summary, text, resolved: bool}],
+  timeline: TimelineEvent[],
+  facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail
+  synthesis: {summary, analysis|null, by: "model"|"session"|"carried", model|null, made_at|null,
+              facts_total|null, facts_shown|null, stale: "merge"|"undo"|null,
+              stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)
+              summary_md, analysis_md|null,     // with citations rendered as fact links (D283); show these
+              citations: {cited, linked, unknown, missing, disputed}} | null,   // the entity summary, from the registry; who wrote it is metadata, not shown (D284); unknown fields ignored
+}
+
+TimelineEvent = {
+  date, precision: "day"|"month"|"year"|null, text,
+  entities: [{id, name, type}], sha|null, filename|null, page|null, note|null,
+  disputed: bool         // the reporter disputes the fact behind the event; show the label (D285)
+}
+
+PipelineState = {
+  incoming:  [{name, path, size, modified, sidecar: bool}],   // incoming/, excluding failed/skipped
+  chew_failed: [{name, path, size}],                          // incoming/failed/
+  skipped:   [{name, path, size, reason|null}],               // incoming/skipped/
+  queued:    [{sha, filename, page_count|null, est_tokens|null, staged: bool}],  // chewed; staged = extracted awaiting bark
+  failed:    [{sha, filename, reason|null}],                  // queue/_failed/
+  pending_finalization: {docs, entities}|null,
+  locks: {chew: RunLock|null, ingest: RunLock|null},         // D293: a lock whose run died is cleared first
+  stopped_run: string|null,                                   // one line when a run here stopped before it finished
+  research_urls: int,
+  batch_pending: object|null                                  // batch_extract.read_state
+}
+```
+
+## verify — the verification ledger (D271)
+
+```
+FactMark = {status: "verified"|"disputed"|"unverifiable", note|null, by|null, at|null}   // at: ISO 8601 with offset
+VerificationSummary = {facts, verified, disputed, unverifiable, unmarked, unlocated, orphaned, read_only: bool}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `verify.mark` | `{vault, id, status: "verified"\|"disputed"\|"unverifiable"\|null, note?}` | `FactMark & {id}` — sets the mark on one current fact, or clears it when `status` is null or empty (the history is kept). `by` is the `reporter_name` setting, else the computer account's name. `note` is trimmed and capped at 2,000 characters. Calls `pipeline/verification.mark` (I10); it takes the ledger's own lock and regenerates `verification.md`. Errors: `bad_params` (not a fact id), `not_found` (no current fact has that id, for example after the document was processed again), `bad_value` (unknown status), `ledger_too_new` (the ledger was written by a newer Watchdog and is read-only) |
+| `verify.facts` | `{vault}` | `{summary: VerificationSummary, facts: LedgerFact[], orphaned: OrphanMark[], reporter}` — every current fact, sorted by document title then reading order, with `{id, fact, page\|null, basis, sha, filename, title, passage_method\|null, passage_page\|null, mark: FactMark\|null}`; `orphaned` lists current marks whose fact's words or page have since changed, each `FactMark & {id, fact, page, sha256, filename}` with the fact as it read when marked; `reporter` is the name `verify.mark` would record |
+
+A fact's `id` is `fact:<scheme>:<12 characters of the document's SHA-256>:<10-character hash>`, with `:2`, `:3` on exact duplicates within one document. It stays the same while the fact's words and page do; see D271.
+
+## history — version history of generated and app-edited files (D286)
+
+Tracked files are Markdown outside `morgue/`, `incoming/`, `context/` and
+hidden folders, plus `.watchdog/registry/{entities,documents,merges,verification,resolutions,requests}.json`.
+`path` is vault-relative; a note path may omit `.md`. An untracked path fails with `not_tracked`; a
+version the file does not have, `not_found`; a store written by a newer Watchdog refuses writes
+with `history_too_new`.
+
+```
+HistoryVersion = {version, at, cause: {kind: "run"|"merge"|"undo_merge"|"mark"|"rebuild"|"notes"|"edit"|"review"|"session"|"restore"|"cleared"|"found", first?, incomplete?, …},
+                  label,          // the plain-language line to show ("Documents added: a.pdf and 2 more")
+                  files,          // how many files the version changed
+                  removed}        // how many of its changes were removed from the history (D288)
+DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins", s}]}   // one segment = a whole added or removed line; several = words inside a changed line
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `history.file` | `{vault, path}` | `{path, tracked, restore: "page"\|"notes"\|"none", exists, too_new, versions: (HistoryVersion & {deleted, current, latest, removed_before})[]}` newest first; `latest` is the file's newest version (never removable), `removed_before` how many of its versions just before this one were removed. Records the file first if it changed since its last version (a session's page, an Obsidian edit), unless a run holds the vault |
+| `history.read` | `{vault, path, version}` | `{path, version, exists, text}` |
+| `history.diff` | `{vault, path, version, against?: "previous"\|"current"}` | `{path, before: {version\|null, exists}, after: {version\|null, exists}, removed_between, hunks: [{old_start, new_start, lines: DiffLine[]}], added, removed, truncated, identical}` — three lines of context; at most 4,000 lines shown (`truncated`), the counts always complete; `removed_between` counts versions removed between the two compared (0 against `current`) |
+| `history.restore` | `{vault, path, version}` | `{path, part: "page"\|"notes", version}` — `page` (`context.md`, `watchlist.md`, `briefings/`, `queries/`, `wiki/`) writes the version back whole; `notes` (`entities/`, `documents/`) puts back only its `## Notes` section; anything else fails with `cannot_restore`, as does a version recording a deletion. Recorded as a new version, cause `restore` ("Restored by you") |
+| `history.versions` | `{vault, limit?: 100, before?}` | `{versions: (HistoryVersion & {changes: [{path, deleted}]})[], total, more, too_new}` newest first; `before` pages back |
+| `history.stats` | `{vault}` | `{versions, files, objects, bytes, since\|null, too_new}` |
+| `history.remove` | `{vault, version, path?, older?: false, dry_run?: false}` | `{removed: [{path, version}], kept_current: [path], purged, shared: [{path, version}], freed_bytes, dry_run}` — D288. With `path`: that file's version (with `older`, also every earlier one); the file's newest version fails with `cannot_remove`. Without: every file's entry in `version` except files whose newest version it is (`kept_current`). Rewrites the log without them under the store lock and deletes every stored blob no remaining version names (`purged`; `shared` lists removed versions whose text another version still holds). Irreversible: the app confirms first, from a `dry_run`. `busy` while a run holds the vault; `not_found` for an unknown version |
+| `history.clear` | `{vault}` | `{removed_versions, freed_bytes, versions, bytes}` — deletes every past version and records the current files as the first version of a new history (cause `cleared`). Irreversible: the app confirms first. Refused with `busy` while a run holds the vault |
+
+## ingest — before a pipeline run
+
+| Method | Params | Result |
+|---|---|---|
+| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290) |
+| `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null}` |
+
+```
+RunOptions = {                       // ops.ingest.RunOptions; unset = configured default
+  extractor_model?, classifier_model?, finalizer_model?,
+  finalizer_reconciliation_model?, finalizer_synthesis_model?,
+  finalizer_timeline_model?, finalizer_briefing_model?,
+  extractor_effort?, classifier_effort?, finalizer_effort?,
+  concurrency?, classify_pages?, skill?, limit?, verify?: bool|null,
+  force?: bool, wait?: bool, skip_briefing?: bool, chew_workers?, chunk_workers?
+}
+
+Preflight = {
+  documents_to_send: int,            // needs_extraction(scan_queue) — what the warning counts
+  incoming: int, queued: int, staged: int, failed: int,
+  pending_finalization: {docs, entities}|null,
+  auth: {mode: "subscription"|"api-key"|"none"|null, ok: bool, reason|null},
+  models: [{stage: "classifier"|"extractor"|"finalizer"|"finalizer:<stage>", backend, model, effort|null, label}],
+  auto_approve: {enabled: bool, approve: bool, blocker|null},  // ingest._auto_approve_verdict
+  warning_text: string,              // the public-records warning, plain text, no ANSI
+  ack_required: bool,                // false: every stage on a model server on this computer (D306)
+  ack_note: string|null,             // the line shown instead of the acknowledgement then
+  sample: {unprepared: [filename], refusal}|null,  // the sample investigation (D307): prepared answers
+  billing: [Billing]                 // which named key pays, per provider the run sends a key to
+}
+
+// D290. A key's name, never the key. `missing`: the investigation chose a key this computer
+// lacks; the run stops before any call, and `message` says which and where to fix it.
+Billing = {provider, provider_label, label|null, source: "env"|"chosen"|"default"|"none",
+           missing: bool, message|null, several: bool}
+LabelledKey = {id, label, masked, default: bool, users?: [investigation name]}
+InvestigationKeys = {claude_mode, providers: [{provider, provider_label, keys: [LabelledKey],
+  chosen: {id, label}|null, resolved_label|null, source, missing, message|null,
+  env: bool, used: bool}]}           // `used`: a configured stage (or Ask Claude) uses it
+KeyCost = {label|null, cost_usd, calls}   // usage.cost_by_key, most expensive first
+```
+
+`RunOptions` is passed as an operation's parameters as it is: the server drops a shared run option
+the operation doesn't take (`limit` on `bark`, say) and refuses any other unknown key.
+
+## operations
+
+Every change the app makes is one operation (`watchdog.ops`, D298), named by `op` with its
+parameters as `params`. `jobs.ops` lists them with their schema; the TypeScript mirror is
+`OpParams` in `api.ts`. Parameters are checked against the schema before anything starts: an
+unknown operation or key, a missing required one or a value of the wrong type is `bad_params`;
+`null` or `""` means "not set". "In vault" operations run in the investigation named by `vault`
+(required); the others ignore it.
+
+| Operation | In vault | Params | Result | Engine |
+|---|---|---|---|---|
+| `add` | yes | `RunOptions & {paths?, retry?, skip_warning?}` | run summary (`extracted`, `failed`, `results`, `post_ingest`…) | add |
+| `chew` | yes | `{paths?, chew_workers?, chunk_workers?}` | `{queued}` — pre-processing only; never continues into processing | add |
+| `dig` | yes | extractor options, `{limit?, force?, skip_warning?}` | run summary | add |
+| `bark` | yes | finalizer options, `{skip_briefing?}` | post-processing summary | add |
+| `requeue` | yes | — | `{requeued}` | add |
+| `watch` | yes | — | runs until stopped | add |
+| `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
+| `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
+| `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
+| `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
+| `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
+| `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
+| `rebuild-timeline` | yes | — | `{dates, events}` | |
+| `lead-sweep` | yes | — | counts per lead kind | |
+| `watchlist-check` | yes | — | `{documents, hits, file?}` | |
+| `export` | yes | `{format?: "csv"\|"cypher", output?}` | `{format, output}` | |
+| `refresh-claude-setup` | yes | — | `{updated}` | |
+| `research-fetch` | yes | `{file?}` | `{}` | |
+| `fetch-links` | yes | `{targets}` | `{}` | |
+| `download-model` | no | `{model}` | `{model}` (D273) | |
+| `sample-create` | no | `{dir?, rebuild?}` | `{slug, name, path}` — builds the sample investigation with prepared model answers (no model call, no key, no network), refused when it exists unless `rebuild`, which deletes only the sample first (D303) | |
+| `projects-new` / `-register` / `-rename` / `-describe` / `-move` / `-archive` / `-delete` | no | see [projects](#projects) | `{slug, name, path}` | |
+
+Only `add`, `dig`, `bark` and `recheck-contradictions` call a model, so only they are handed the
+investigation's keys (D295). `add` and `dig` without `skip_warning` decline the public-records
+gate and send nothing: the app shows the acknowledgement first and passes `skip_warning: true`
+once it is given.
+
+## jobs — operations in a worker process
+
+A job runs `python -m watchdog.worker` with the investigation as its working folder (none for an
+operation outside one), `NO_COLOR=1`, `WATCHDOG_APP=1` and `WATCHDOG_PROGRESS=1`. Its stdin is one
+JSON line, `{"op", "params"}`, then, for an operation that calls a model, one line of keys
+(`WATCHDOG_SECRETS=stdin`, D295), then end of input, so nothing it runs can wait on a prompt. The
+worker writes plain log lines and structured progress lines (see `watchdog/progress.py`), which the
+server turns into `job.progress` events, and last of all a `result` line that becomes the job's
+`result`. It exits 0, 2 (stopped partway; running it again resumes), 1 (failed; the reason is the
+last line on stderr), 64 (a request it could not read) or 130.
+
+| Method | Params | Result |
+|---|---|---|
+| `jobs.ops` | — | `{[op]: OpSpec}` — `OpSpec = {params: {[name]: {type, required, default, nullable}}, vault, engine, kind}` |
+| `jobs.start` | `{vault\|null, op, params?, label, kind?}` | `Job` |
+| `jobs.cancel` | `{id}` | `{ok}` — SIGINT (Ctrl+C), so the pipeline's graceful stop runs and finished documents are kept; a second cancel kills |
+| `jobs.list` | — | `Job[]` (running and the last 50 finished) |
+| `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
+| `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge": the `undo-merge` operation, refused up front when the merge can't be split (D280). Errors: `cannot_undo` with the reason, `not_found` |
+| `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): the `recheck-contradictions` operation (D287), after the checks it would make. Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
+| `action.run` | `{vault\|null, op, params?, timeout?: seconds}` | `{code, result, log, error\|null}` — a quick operation run to completion (rename, requeue…); `error` is the reason it gave when `code` isn't 0 |
+
+```
+Job = { id, label, kind, vault|null, op, params, result|null, state: "running"|"done"|"failed"|"cancelled",
+ProgressState = { stage|null, done|null, total|null, current|null, note?: string|null, docs: {[sha]: {filename, state, detail|null}} }
+// stage "model" is a one-time model download (current = "Downloading the transcription model (486 MB)", done/total in MB);
+// note is a transient detail beside the stage ("Transcribing hearing.mp4, 12:05 of 1:02:05").
+LogLine = { t, stream: "out"|"err", text }
+ProgressState = { stage|null, done|null, total|null, current|null, docs: {[sha]: {filename, state, detail|null}} }
+```
+
+Events: `job.started {job}`, `job.log {id, lines: LogLine[]}` (batched ≤ 10/s),
+`job.progress {id, progress: ProgressState, event}`, `job.finished {job}`.
+
+## contradictions
+
+```
+RecheckEstimate = {
+  scope: "entities"|"all",
+  entities: [{id, name, facts, documents, calls}],            // what would be checked
+  skipped: [{id, name, reason: "too_few_facts"|"too_large"|"not_found", facts?, calls?}],
+  calls, facts,                         // model calls and facts in total
+  est_tokens, real_tokens|null,         // chars/4 of the prompts; scaled by the model's tokenizer ratio
+  cost_low|null, cost_high|null,        // USD at list price; null on a subscription, a local or an unpriced model
+  subscription: bool, price_multiplier, // a time-of-day rate in force now (D217)
+  model: {model, backend|null, effort|null, label, name},     // the configured reconciliation (finalizer) model
+  auth: {mode, ok, reason|null}, busy: bool, engine_ready: bool, max_entity_calls
+}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287), plus `billing: Billing[]` (D290) and `sample: bool` (D307: prepared answers, $0). The app shows it and asks before `jobs.recheckContradictions` |
+
+## search
+
+| Method | Params | Result |
+|---|---|---|
+| `search.query` | `{vault, query, top?: 5, threshold?: number\|null, rerank?: true}` | `{query, index_empty: bool, exact_error\|null, semantic_error\|null, semantic_pending: bool, exact: [...], passages: [...], notes: [...]}` — `search.build_json`'s shape, each item enriched with `sha`, `note`, `original` where resolvable |
+| `search.batch` | `{vault\|null, terms: string[], everywhere?: bool}` | `{terms: [{term, checked: bool, hits: [{vault_name?, kind, title, note, page, text, path, sha}]}]}` — entity matches are hits with `kind: "entity"`; `top?` limits hits per term |
+| `search.everywhere` | `{query, top?}` | `{vaults: [{slug, name, path, entity_hits: [...], exact: [...], error\|null}], skipped: [{slug, reason}]}` |
+| `search.status` | `{vault}` | `{total, documents, notes, passages, fulltext: {corpus, notes, total}}` — `embed.index_stats` (`documents` = indexed document files) |
+
+## review
+
+```
+ReviewItem = {kind: "contradictions"|"leads"|"alerts"|"duplicates"|"merges", rid, title, detail: string[], note|null,
+              pair?: SamePair}                     // pair only on "merges" items
+SamePair   = {tier: "high"|"medium"|"low", rule, model_declined: bool,
+              evidence: {surface, identifier: {scheme, value}|null, shared: [{relationship, target_id, target_name}]},
+              a: SameSide, b: SameSide}
+SameSide   = {id, name, type, aliases, documents: sha[], doc_count, note|null,
+              facts: [{id, sha, fact, page, document, date, disputed: bool}], roles: [{relationship, target}]}
+MergeLogEntry = {id, keep: {id, name, type, exists, note|null}, merged: {id, name, type},
+                 tier: "high"|"medium"|"low"|"manual", decided_by: "rule"|"model"|"reporter", rule|null,
+                 reason, model|null, reporter|null, same_name: bool, at, first_at,
+                 identifier|null, shared: [...], documents: [{sha, title}], document_count,
+                 facts: [{id, fact, page, sha, title, disputed: bool}], undo_available: bool,
+                 undo_reason: string|null,            // why it cannot be undone now, in plain words (D280)
+                 undone: {at, by, split_id}|null}
+```
+
+A `merges` item is a "possible same" pair from `.watchdog/registry/merges.json` (D279). Resolving
+its rid (`same:<hash>`) is the reporter's "Not the same": the pair is never merged automatically
+afterwards. Merging it is the existing `merge-entities` job (I10), which closes the item.
+
+| Method | Params | Result |
+|---|---|---|
+| `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `review.open_items` |
+| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
+| `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
+| `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
+| `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
+| `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watch-list-hit items for the term |
+| `review.watchlistAdd` | `{vault, term}` | `{added}` — refuses a blank, multi-line, `#`-leading, invalid `/regex/` or duplicate term (`bad_params`); appends to `watchlist.md`, recorded as a version of the file's history |
+| `review.watchlistRemove` | `{vault, term}` | `{removed}` — drops the matching line only, keeping comments and other terms; `not_found` if absent; recorded in history |
+| `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |
+| `review.mergePreview` | `{vault, keep, merge}` | `{keep: EntityRow, merge: EntityRow, both_have_summary: bool, type_mismatch: bool}` |
+
+`merge-entities` (after the app's own confirmation), `add-contradiction`, `watchlist-check` and
+`lead-sweep` are operations (see [operations](#operations)).
+
+## settings, auth, skills
+
+| Method | Params | Result |
+|---|---|---|
+| `settings.schema` | — | `{sections: [{title, blurb, keys: SettingKey[]}]}` |
+| `settings.set` | `{key, value: string}` | `{key, value, display}` — validated by `settings.coerce`; a bad value raises `RpcError` (code `bad_value`) with its message. An empty value clears a text/model key to its default. A secret's `value` is `null` and its `display` masked |
+| `settings.models` | — | `{models: [{value, label, id, provider, backend (null for Claude tiers), input_per_mtok\|null, output_per_mtok\|null, context_window\|null, efforts: string[], notes\|null}], efforts: string[]}` — for model pickers |
+| `auth.status` | — | `{claude: {mode, logged_in, reason\|null, env_key_set, key_masked\|null, key_source, key_label\|null}, stages: [{stage, config_key, value, provider, ready, billing\|null}], keys: [{provider, masked, in_use: "in use"\|"unused"\|"inactive", detail, source: "stored"\|"env"}], base_urls: [{provider, url}], providers: [{provider, label, env, requires_key, base_url_setting\|null, base_url\|null, ready}], key_sets: {[provider]: [LabelledKey]}, storage: {store: "encrypted"\|"plaintext"\|"unknown", backend\|null, reason: "unavailable"\|"basic_text"\|null, encrypted, plaintext, locked}}` — `keys` describes each provider's default key; `key_sets` lists every stored key (D290), each `LabelledKey` with `encrypted` and `locked` (stored encrypted but not readable here). `storage` says where keys are kept (D295). `claude.key_label` names the default Anthropic key when there are several |
+| `auth.setAnthropicMode` | `{mode: "subscription"\|"api-key", key?, key_enc?}` | `auth.status` result plus `warning\|null` (as do `setKey`, `deleteKey`, `setBaseUrl`) |
+| `auth.setKey` | `{provider, key, id?, key_enc?}` | `auth.status` result — without `id`, replaces the default key's secret (a provider with none gets one named "Default"); with `id`, that key's secret, keeping its name |
+| `auth.deleteKey` | `{provider, id?}` | `auth.status` result — with `id`, that one key (the next becomes default if it was); without, every stored key for the provider |
+| `auth.addKey` | `{provider, label, key, make_default?: false, key_enc?}` | `auth.status` result plus `id` — another named key (D290); the provider's first key becomes its default. `bad_params` for an empty, over-long (40), non-plain or duplicate name |
+| `secrets.provide` | `{store: "encrypted"\|"plaintext", keys: {[blob data]: key}, backend?, reason?, unreadable?}` | `{ok, keys}` — **main process only** (the bridge refuses it from the window): the keys it decrypted, sent once each time the backend starts, before the window can call anything (D295). Kept in memory only |
+| `auth.renameKey` | `{provider, id, label}` | `auth.status` result — same name rules |
+| `auth.setDefaultKey` | `{provider, id}` | `auth.status` result |
+| `auth.investigationKeys` | `{vault}` | `InvestigationKeys` — per provider, this computer's keys (masked), the investigation's choice and which key will pay |
+| `auth.chooseKey` | `{vault, provider, id: string\|null}` | `InvestigationKeys` — records the investigation's key for `provider` in its `.watchdog/settings.json` (id and name, never the key); `null` returns it to the default (D290) |
+| `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result — an empty `url` removes it |
+| `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
+| `skills.read` | `{name}` | `{name, text}` |
+| `setup.check` | — | `{deps: [{label, ok, hint\|null, required: false}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` — no dependency blocks the app |
+| `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null, transcription: bool, transcription_model, transcription_size_mb}` — what is on disk, no network |
+| `setup.downloadModel` | `{model: "transcription"}` | `Job` — downloads an on-demand model ahead of time (D273) as a job running the `download-model` operation; progress is the `model` stage |
+| `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes the first settings; an existing config file is the "set up" signal |
+| `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
+
+**Keys (D295).** `key_enc` is never sent by the renderer: the main process adds it to `auth.setAnthropicMode`, `auth.setKey` and `auth.addKey` when this computer has secure storage (and discards one the window sends). It is the key encrypted with Electron `safeStorage`, `{enc: "safeStorage:v1", data: base64}`, and is all the backend writes; the plain `key` is used only for the prefix warning, the masked display and this process's memory. With secure storage available, a key method without `key_enc` is refused (`bad_params`). A method that needs a key the backend can't read answers `key_missing`. Jobs receive their investigation's keys on stdin (`WATCHDOG_SECRETS=stdin`), never in their environment or arguments.
+
+```
+SettingKey = {key, short, help, is_set: bool, default, current (null for secrets), display, kind: "bool"|"int"|"float"|"choice"|"model"|"effort"|"path"|"text"|"secret", choices: string[]|null}   // default can be computed when read: for `reporter_name` it is the computer account's name
+```
+
+## usage
+
+| Method | Params | Result |
+|---|---|---|
+| `usage.runs` | `{vault}` | `{runs: [{ts, file, calls, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, latency_s, backends, subscription: bool, stages: {[stage]: cost_usd}, by_key: [KeyCost], kind: "run"\|"ask"\|"research", title: string\|null}], corpus: {documents, pages}\|null}` newest first. Each Ask Claude or Web research session is its own row (`kind` `ask` or `research`, `title` the chat's title, stage `ask` or `research`, one call per turn; D296) |
+| `usage.run` | `{vault, ts?}` | `{ts, kind, title, stages: [{stage, model, backend, calls: [...], totals, wall_seconds\|null, peak_concurrency, batch_note\|null}], totals, subscription_note\|null, by_key: [KeyCost], corpus, cost_per_page\|null}` — each call row carries `key_label\|null` (latest processing run when `ts` omitted, else the latest session; `ts` is the timestamp in `usage-<ts>.json`, matched as a substring, a session's being `<started>-<id>`; error `no_runs` when none exist) |
+
+## research
+
+| Method | Params | Result |
+|---|---|---|
+| `research.status` | `{vault}` | `{queued: [{url, title\|null, source_type\|null, relevance\|null}], wayback_configured: bool}` |
+
+Downloading runs as a job: the `research-fetch` operation for the queue, `fetch-links` (`{targets}`) for links.
+
+## chat — Claude Code sessions inside the app
+
+Ask Claude, setting the investigation's context, and web research run as a session through the
+Claude Agent SDK in the vault's folder, so the vault's `.claude/CLAUDE.md` and `/watchdog-*`
+commands load; its settings, tools and hooks come from the app (`chat.start` below).
+
+| Method | Params | Result |
+|---|---|---|
+| `chat.start` | `{vault, mode: "ask"\|"context"\|"research", model?: "sonnet"\|"opus"\|"haiku"\|null, prompt?: string}` | `{session}` — first prompt built by `chat.first_prompt` (the query skill for a question, `/watchdog-context`, `/watchdog-research <q>`). The session gets Watchdog's tools from the in-process MCP server `watchdog` (`mcp__watchdog__*`; the four read-only ones pre-approved, the four that write asked through `chat.permission`), the primer in its system prompt, an allowlist of Claude Code's built-in tools with no shell, the app's own settings with hooks off, and no MCP server but Watchdog's (D299, D304); a `chat.permission` request is never for `Bash`. In API-key mode the session runs on the investigation's chosen Anthropic key, passed as `ANTHROPIC_API_KEY` (D290); `key_missing` when that key is not on this computer (also from `chat.resume`) |
+| `chat.send` | `{session, text}` | `{ok}` |
+| `chat.interrupt` | `{session}` | `{ok}` |
+| `chat.close` | `{session}` | `{ok, research_queued: int}` |
+| `chat.permission` | `{session, request_id, allow: bool, for_conversation?: bool}` | `{ok}` — `for_conversation` ("Allow for this conversation") stops asking for what the request's `scope` covers: a Watchdog tool that writes, for every entity; a built-in tool within one folder, site or command. It lasts while the session is open in this backend, is never saved with the chat, and is ignored for a `once_only` request (D304, D308) |
+| `chat.list` | `{vault}` | `[{session, mode, title, started, updated, model}]` saved transcripts, newest first |
+| `chat.get` | `{session}` | `{session, mode, title, messages: ChatMessage[]}` |
+| `chat.resume` | `{session}` | `{session}` — reopen a saved session (SDK `resume`), after the same folder checks as `chat.start` (`not_a_vault`, `not_granted`) |
+| `chat.delete` | `{session}` | `{ok}` |
+
+```
+ChatMessage = {id, role: "user"|"assistant"|"tool"|"system", text, tool?: {name, input, result|null, is_error}, ts}
+```
+
+Events: `chat.delta {session, message_id, text}` (streamed assistant text), `chat.message
+{session, message: ChatMessage}`, `chat.permission {session, request_id, tool, input,
+description, title, scope, once_only, note}` (`description` says what the call will do in plain words; `title` names a
+Watchdog tool in plain words; `scope` is what "Allow for this conversation" would cover, or null for the whole tool; `once_only` is true when the card offers only "Allow once" (`contradiction_add`); `note` is the card's sentence on what "for this conversation" covers, or why it is asked every time, and, for a call that changes a file, that version history keeps the change), `chat.status {session, state: "thinking"|"idle"|"closed"|"error", detail|null,
+cost_usd|null}`.

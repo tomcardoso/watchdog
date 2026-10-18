@@ -4,11 +4,11 @@ Not a pytest module — a standalone benchmark tool, same posture as score_arms.
 vaults (or archived `artifacts/<arm>` directories) of N identical arms, it scores the union of
 the first 1, 2, ... N of them and prints the `must_not_miss` recall curve:
 
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/union_recall.py \
+    python benchmarks/union_recall.py \
         benchmarks/runs/<run>/artifacts/bench-sc-luna-low-r*
 
 (Add `PYTHONPATH=<checkout>/src` if you are running from a worktree and want *its* copy of
-`pipeline/verify`'s dedup thresholds rather than the pipx-installed package's.)
+`pipeline/verify`'s dedup thresholds rather than an installed copy's.)
 
 The curve is the measurement. A steep rise means each sample misses independently and union-of-N
 is a real recall lever; a flat curve means the misses are correlated — the same salience

@@ -4,8 +4,7 @@ from pathlib import Path
 
 from watchdog.pipeline.timeline import (
     stage_timeline_events,
-    cmd_timeline_collisions,
-    cmd_rebuild_timeline,
+    rebuild_timeline,
     collisions,
     month_precision_groups,
     apply_precision_matches,
@@ -137,13 +136,12 @@ def test_stage_then_collisions_promotes_and_rebuild_renders(tmp_path, capsys):
         {"fact": "Appointed director", "date": "2020-03-15", "entities": ["alice"]},
     ], sha="doc1xxxxxxx"))
 
-    cmd_timeline_collisions(vault)
-    assert capsys.readouterr().out.strip() == "[]"  # no canonical existed → promotion, no collision
+    assert collisions(vault) == []  # no canonical existed → promotion, no collision
 
     td = vault / ".watchdog" / "timeline"
     assert (td / "2020-03-15.ndjson").exists()  # canonical created from the raw file
 
-    cmd_rebuild_timeline(vault)
+    rebuild_timeline(vault)
     timeline_md = (vault / "timeline.md").read_text(encoding="utf-8")
     assert "## 2020" in timeline_md                # year-grouped heading
     assert "15 Mar 2020" in timeline_md            # human-rendered date
@@ -248,7 +246,7 @@ def test_rebuild_attributes_document_and_entities(tmp_path):
          "page": 2, "entity_ids": ["alice"], "basis": "stated"},
     ])
 
-    cmd_rebuild_timeline(vault)
+    rebuild_timeline(vault)
     md = (vault / "timeline.md").read_text(encoding="utf-8")
     assert "## 2020" in md
     assert "[[entities/person/alice-smith|Alice Smith]]" in md
@@ -272,7 +270,7 @@ def test_rebuild_renders_multiple_entity_links(tmp_path):
          "entity_ids": ["alice", "acme"], "basis": "stated"},
     ])
 
-    cmd_rebuild_timeline(vault)
+    rebuild_timeline(vault)
     md = (vault / "timeline.md").read_text(encoding="utf-8")
     assert "[[entities/person/alice|Alice]], [[entities/company/acme|Acme Corp]]" in md
 
@@ -287,7 +285,7 @@ def test_rebuild_falls_back_to_bare_id_when_entity_missing(tmp_path):
          "entity_ids": ["ghost"], "basis": "stated"},
     ])
 
-    cmd_rebuild_timeline(vault)
+    rebuild_timeline(vault)
     md = (vault / "timeline.md").read_text(encoding="utf-8")
     assert "— ghost —" in md
     assert "Something happened" in md
@@ -299,13 +297,13 @@ def test_rebuild_marks_inferred_events(tmp_path):
     _seed_canonical(vault, "2021", [
         {"date": "2021", "event": "Likely resigned", "source_sha256": "s", "basis": "inferred"},
     ])
-    cmd_rebuild_timeline(vault)
+    rebuild_timeline(vault)
     assert "*(inferred)*" in (vault / "timeline.md").read_text(encoding="utf-8")
 
 
 def test_rebuild_empty_carries_generated_warning(tmp_path):
     vault = _vault(tmp_path)
-    cmd_rebuild_timeline(vault)
+    rebuild_timeline(vault)
     timeline_md = (vault / "timeline.md").read_text(encoding="utf-8")
     assert "*No events yet.*" in timeline_md
     assert "Do not edit by hand" in timeline_md
@@ -325,10 +323,9 @@ def test_stage_collision_reported_when_canonical_exists(tmp_path, capsys):
         {"fact": "New event", "date": "2020-03-15", "entities": ["bob"]},
     ], sha="newdoc12345"))
 
-    cmd_timeline_collisions(vault)
-    collisions = json.loads(capsys.readouterr().out)
-    assert len(collisions) == 1
-    assert collisions[0]["date"] == "2020-03-15"
+    found = collisions(vault)
+    assert len(found) == 1
+    assert found[0]["date"] == "2020-03-15"
 
 
 # ── cross-precision reconciliation (#239) ───────────────────────────────────
@@ -455,12 +452,12 @@ def _full_vault(tmp_path: Path) -> Path:
     reg = vault / ".watchdog" / "registry"
     reg.mkdir(parents=True)
     (vault / ".watchdog" / "tmp").mkdir()
-    (vault / "_INCOMING").mkdir()
+    (vault / "incoming").mkdir()
     (vault / "documents").mkdir()
     (reg / "entities.json").write_text("{}\n")
     (reg / "documents.json").write_text("{}\n")
     (reg / "registry.json").write_text(json.dumps({"document_count": 0, "entity_count": 0}) + "\n")
-    (reg / "ingest.log").write_text("")
+    (reg / "processing.log").write_text("")
     return vault
 
 
@@ -472,7 +469,7 @@ def test_postflight_stages_timeline_files(tmp_path):
         "document": {
             "sha256": "post123abc",
             "filename": "doc.pdf",
-            "original_path": "_INCOMING/doc.pdf",
+            "original_path": "incoming/doc.pdf",
             "title": "Doc",
             "document_type": "Report",
             "date_of_document": "2024-01-15",
@@ -516,7 +513,7 @@ def test_a_failed_dedup_does_not_hide_the_other_documents_events(tmp_path):
     _register(vault, a, b)
     collisions(vault)                       # promotes one; the other raw is left for dedup
     # …and the dedup call fails, so nothing else happens before the rebuild.
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     md = (vault / "timeline.md").read_text()
     assert "Contract signed" in md and "Board approved the loan" in md
 
@@ -528,7 +525,7 @@ def test_uncommitted_documents_stay_out_of_timeline_md(tmp_path):
     stage_timeline_events(vault, _extraction([{"fact": "Not yet committed", "date": "2021-03-04"}], sha=staged))
     _register(vault, a)
     collisions(vault)
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     md = (vault / "timeline.md").read_text()
     assert "Not yet committed" not in md
 
@@ -541,7 +538,7 @@ def test_a_promoted_event_is_not_repeated_from_its_raw(tmp_path):
     td = vault / ".watchdog" / "timeline"
     raw = next(td.glob("*_*.ndjson"))
     (td / "2021-03-04.ndjson").write_text(raw.read_text())     # canonical and raw both present
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     assert (vault / "timeline.md").read_text().count("Contract signed") == 1
 
 
@@ -562,7 +559,7 @@ def test_a_staged_re_extraction_of_a_committed_document_stays_out_of_timeline_md
     tmp = vault / ".watchdog" / "tmp"
     tmp.mkdir(parents=True, exist_ok=True)
     (tmp / f"result_{a}.json").write_text("{}")
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     md = (vault / "timeline.md").read_text()
     assert "Contract signed" in md and "Contract was signed" not in md
 
@@ -585,6 +582,6 @@ def test_a_queued_force_that_has_not_run_does_not_hide_a_documents_events(tmp_pa
         os.utime(tmp / f"result_{s}.json", (1_000_000, 1_000_000))
     for s in (a, b):
         (queue / f"{s}.json").write_text("{}")
-    cmd_rebuild_timeline(vault, quiet=True)
+    rebuild_timeline(vault, quiet=True)
     md = (vault / "timeline.md").read_text()
     assert "Contract signed" in md and "Board approved the loan" in md

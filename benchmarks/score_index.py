@@ -2,7 +2,7 @@
 Easy to miss, Cost/page, Speed/page, Reliability — sourced from kept `benchmarks/runs/*/run.json`
 files.
 
-    ~/.local/pipx/venvs/watchdog-intel/bin/python benchmarks/score_index.py \\
+    python benchmarks/score_index.py \\
         [run_dir ...] [--out benchmarks/index] [--sort-by must_not_miss] \\
         [--judged SUMMARY.json ...]
 
@@ -50,7 +50,7 @@ logic can be re-run against every kept run without spending anything, same as `#
 
 **Speed is real wall-clock, not summed per-call latency, and it stays in `--sort-by`'s choices.**
 `bench_report._usage_totals`'s `wall_clock_s` (`max(end) - min(start)` across an arm's calls,
-imported from `watchdog.cmd.usage._wall_span`) is what `speed_per_page_s` divides by pages —
+imported from `watchdog.usage.wall_span`) is what `speed_per_page_s` divides by pages —
 summed latency overstates real elapsed time for any arm whose documents extracted concurrently,
 which every `extractor_sweep` arm does. Falls back to the older, summed `latency_s` only for a
 run from before `end_ts` was recorded. The issue's blocker 4 asked for speed to be excluded from
