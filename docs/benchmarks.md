@@ -18,6 +18,8 @@ investigator uses day to day.
 
 ## What to expect
 
+The two tables in this section were measured on earlier models, several of which Watchdog no longer offers (Claude Sonnet 4.6 and Haiku 4.5, GPT-5.4, Gemini 3.7). They show how the comparison works and how the earlier models ranked; the first item under [Roadmap](#roadmap) describes the newer run behind today's defaults.
+
 None of the numbers below need to reach 100% for Watchdog to be useful. Its job is to surface facts, entities, and connections for a journalist to check against the source — not to hand over a courtroom-ready read on the first pass. A cheap model that reliably catches most of what's on a page is doing real work, and that's what these numbers are actually comparing: which cheap option catches the most for the price, not who clears some accuracy bar first. It also means the recommendation these numbers lead to isn't fixed — cheap models keep improving, and it will move as the benchmark catches up to new ones.
 
 Recall below is the *judged* kind: a person or a model checks each extraction against the
