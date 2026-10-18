@@ -705,10 +705,10 @@ def build(target: Path, *, verbose: bool = False, sample: bool = False,
         with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
             step("Adding the first four documents")
             _stage_chewed(vault, batch_one)
-            asyncio.run(orchestrate.run(vault, extract_model="sonnet"))
+            asyncio.run(orchestrate.run(vault, extract_model="haiku"))
             step("Adding the other ten documents")
             _stage_chewed(vault, batch_two)
-            asyncio.run(orchestrate.run(vault, extract_model="sonnet", skip_finalize=True))
+            asyncio.run(orchestrate.run(vault, extract_model="haiku", skip_finalize=True))
             step("Post-processing: entities, contradictions, the timeline and the briefing")
             asyncio.run(orchestrate.finalize(vault))
     finally:

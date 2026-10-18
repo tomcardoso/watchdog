@@ -77,7 +77,7 @@ The Add documents dialog takes you through four steps.
 
 Large documents can take several minutes each to extract, so a long pause on one document is normal. You can choose **Hide** to close the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends the run cleanly, and adding the documents again picks up where it left off. **Activity** lists every run with its full output.
 
-By default Watchdog uses Haiku (Claude's fast, inexpensive tier) for classification, extraction and the wrap-up steps, with extraction set to think hard (the `high` effort level), so nothing beyond your Claude sign-in is needed. Benchmark testing against real court-and-financial filings found OpenAI's GPT-5.6 Luna the stronger choice for extraction (see [Benchmarks](benchmarks.md)); using it needs its own OpenAI key, which is why it is a recommendation rather than the default. The [configuration guide](configuration.md) covers changing models, tuning how much reasoning each stage spends, and controlling cost.
+By default Watchdog uses Haiku (Claude's fast, inexpensive tier) for classification, extraction and the wrap-up steps, with extraction set to think hard (the `high` effort level), so nothing beyond your Claude sign-in is needed. In benchmark testing against real court-and-financial filings, Haiku with extraction at `high` found more than any other setting measured (see [Benchmarks](benchmarks.md)). Any step can be routed to another provider's model with that provider's own key. The [configuration guide](configuration.md) covers changing models, tuning how much reasoning each stage spends, and controlling cost.
 
 Three features run alongside every run; each is covered in the [investigating guide](investigating.md):
 

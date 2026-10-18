@@ -645,8 +645,9 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
   the finalizer split into reconciliation, synthesis, timeline and briefing overrides (D137).
   Efforts: `classifier_effort` (low), `extractor_effort` (high, D140, D315), `finalizer_effort` (unset:
   no effort is sent), `verifier_effort` (low); the classifier and extractor defaults apply only where
-  the model supports them. Defaults are in `watchdog/defaults.py`; per-run options override. GPT-5.6
-  Luna is the documented recommendation for extraction (D221, D222).
+  the model supports them. Defaults are in `watchdog/defaults.py`; per-run options override. Haiku 5.5
+  at `high` is the extractor default (D315), superseding GPT-5.6 Luna as the documented
+  recommendation (D221, D222).
 - **Effort and thinking (D36, D161, D206, D310).** A requested effort is checked against the
   catalogue's per-model `effort_levels` and mapped to each provider's control, always sent as
   asked (no level is treated as a model's default); an unsupported level fails loudly. Models
