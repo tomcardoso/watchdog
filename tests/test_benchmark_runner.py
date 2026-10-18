@@ -356,7 +356,7 @@ def test_main_reseeds_a_stale_finalizer_base_before_its_arms_copy_from_it(tmp_pa
                                                         vault=vault, ok=True))
     monkeypatch.setattr(rb, "preview_finalizer_arm", lambda *a, **k: {"cost_low": 0.0,
                                                                      "cost_high": 0.0})
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)   # accept
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)   # accept
     import bench_report
     monkeypatch.setattr(bench_report, "write_run", lambda *a, **k: tmp_path / "run")
 
