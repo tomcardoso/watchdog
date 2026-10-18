@@ -315,14 +315,16 @@ def watch(rep, vault: Path) -> None:
     require_vault(vault)
     name = projects.name_for(vault)
     incoming = incoming_dir(vault)
-    rep.log(f"{name}: watching incoming/. Use Stop in Activity to stop.")
-    # Files already waiting are pre-processed on the first stable poll, like any new arrival.
-    known: set = set()
-    waiting = len(find_files([incoming]))
-    if waiting:
-        rep.log(f"{waiting} file{'s' if waiting != 1 else ''} already in incoming/; reading them first.")
-    pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
+    # Everything after the first log line is inside the try: that line tells the reporter they can
+    # stop, so a stop arriving before the loop starts must still end cleanly.
     try:
+        rep.log(f"{name}: watching incoming/. Use Stop in Activity to stop.")
+        # Files already waiting are pre-processed on the first stable poll, like any new arrival.
+        known: set = set()
+        waiting = len(find_files([incoming]))
+        if waiting:
+            rep.log(f"{waiting} file{'s' if waiting != 1 else ''} already in incoming/; reading them first.")
+        pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
         while True:
             time.sleep(3)
             current: set = set(find_files([incoming]))
