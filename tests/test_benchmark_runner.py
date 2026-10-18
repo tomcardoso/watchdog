@@ -356,7 +356,7 @@ def test_main_reseeds_a_stale_finalizer_base_before_its_arms_copy_from_it(tmp_pa
                                                         vault=vault, ok=True))
     monkeypatch.setattr(rb, "preview_finalizer_arm", lambda *a, **k: {"cost_low": 0.0,
                                                                      "cost_high": 0.0})
-    monkeypatch.setattr(wd_interactive, "confirm", lambda *a, **k: True)   # accept
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)   # accept
     import bench_report
     monkeypatch.setattr(bench_report, "write_run", lambda *a, **k: tmp_path / "run")
 
@@ -736,7 +736,7 @@ def test_run_extractor_arm_keeps_provider_auth_error_as_the_stop_reason(monkeypa
     summary = {"cancelled": True, "rate_limited": False, "stop_message": None,
                "auth_error": "https://api.deepseek.com rejected the API key (HTTP 401)",
                "extracted": 0, "skipped": 0, "results": []}
-    monkeypatch.setattr(wd_ingest, "cmd_extract", lambda ns, **kw: summary)
+    monkeypatch.setattr(wd_ingest, "process", _ext(lambda ns, **kw: summary))
     result = rb.run_extractor_arm({"id": "ds", "extractor_model": "deepseek:deepseek-flash"}, tmp_path)
     assert result.cancelled is True
     assert result.rate_limited is False
