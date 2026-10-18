@@ -20,7 +20,7 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 
 ## Releasing the app
 
-1. Make sure the commit you release is pushed (on `electron`, for now).
+1. Make sure the commit you release is on `main` and pushed.
 2. Tag it and push the tag: `git tag app-v0.2.0-beta.1 && git push origin app-v0.2.0-beta.1`.
    Use a higher beta number each time (`-beta.2`, `-beta.3`); the updater only offers a version
    higher than the one installed.

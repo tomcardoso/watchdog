@@ -371,8 +371,8 @@ If you are adding a large dump, say 200 pages or more, a batch-mode Extractor mo
 
 Two batch backends are available, one per provider:
 
-- `claude-batch:sonnet` (or any Claude tier) uses Anthropic's Message Batches API. It requires Claude to be in API-key mode, because batching is not available on a Claude subscription.
-- `openai-batch:gpt-5.6-luna` (or any OpenAI model) uses OpenAI's Batch API. OpenAI has no subscription mode in Watchdog at all, so this just needs a stored OpenAI key.
+- `claude-batch:haiku` (or any Claude tier) uses Anthropic's Message Batches API. It requires Claude to be in API-key mode, because batching is not available on a Claude subscription.
+- `openai-batch:gpt-6-luna` (or any OpenAI model) uses OpenAI's Batch API. OpenAI has no subscription mode in Watchdog at all, so this just needs a stored OpenAI key.
 
 Each needs only that provider's own key: an `openai-batch` extractor needs no Anthropic key, and the other way round.
 
@@ -388,11 +388,11 @@ Classification itself is not batched: it stays one quick call per document, at t
 This is also the recipe for keeping a Claude subscription's session limits for interactive work only, spending none on bulk extraction:
 
 1. In **Settings → Models & keys**, switch **How Claude is billed** to API key.
-2. In **Settings → Models**, set Classifier model to `claude-api:haiku`, Extractor model to `claude-batch:sonnet` and Finalizer model to `claude-api:haiku`.
+2. In **Settings → Models**, set Classifier model to `claude-api:haiku`, Extractor model to `claude-batch:haiku` and Finalizer model to `claude-api:haiku`.
 3. Under **Activity → Maintenance**, choose **Run processing…** on the Processing card. It submits the batch and ends.
 4. Later, run Processing again to collect the batch once it is ready.
 
-The same recipe works with `openai-batch:gpt-5.6-luna` in place of `claude-batch:sonnet`, for a corpus already routed to OpenAI. Step 1 is not needed, since OpenAI has no subscription mode to switch from.
+The same recipe works with `openai-batch:gpt-6-luna` in place of `claude-batch:haiku`, for a corpus already routed to OpenAI. Step 1 is not needed, since OpenAI has no subscription mode to switch from.
 
 ## Controlling cost
 
