@@ -459,7 +459,9 @@
   left: 18px;
   bottom: 16px;
   max-width: calc(100% - 36px);
-  z-index: 40;
+  /* Above a dialog's blurred scrim (100), so a job a dialog started stays readable while it runs;
+     below the command palette (120) and the tour (140). */
+  z-index: 110;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
