@@ -127,11 +127,11 @@ Watchdog downloads the queued sources into `incoming/` when the journalist choos
 
 ## 6. Hand off
 
-**Do not run `chew`, `dig` or `bark` yourself, and do not download the sources.** End the session and tell the journalist:
+**Do not add documents to the pipeline yourself, and do not download the sources.** End the session and tell the journalist:
 
 > Queued <N> sources. Download them into `incoming/` from the Web research screen, then add them to fold them in — and start a fresh Ask Claude session to investigate. The research memo is at `briefings/research-<date>.md`.
 
-This keeps the human in the loop and matches the fire-and-forget processing workflow: the queued sources become knowledge only when the journalist runs the download and the pipeline.
+This keeps the human in the loop and matches the fire-and-forget processing workflow: the queued sources become knowledge only when the journalist downloads them and adds them.
 
 ---
 

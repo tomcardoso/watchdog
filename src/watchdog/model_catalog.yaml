@@ -1,5 +1,5 @@
-# Every model Watchdog can call, by exact id. `name` is the pretty display form printed by the
-# CLI/usage logging (falls back to the raw id if a model or an old, no-longer-catalogued id has
+# Every model Watchdog can call, by exact id. `name` is the pretty display form printed in usage
+# logging (falls back to the raw id if a model or an old, no-longer-catalogued id has
 # none — see model_catalog.py's display_name). `tier` (Claude only) is the short name(s) that
 # model settings accept in place of the raw id — a scalar for a model with one name, or a list of
 # aliases when it has more than one (Sonnet 5.5's `[sonnet, sonnet-5.5]`: bare `sonnet` is the

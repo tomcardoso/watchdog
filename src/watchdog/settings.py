@@ -349,26 +349,23 @@ SETTINGS = {
             "  classification is going wrong on ambiguous documents.\n"
             "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: haiku. Recommended alternative: openai:gpt-5.6-luna (with classifier_effort\n"
-            "  low), the strongest classifier in benchmark testing against real filings — see\n"
-            "  docs/benchmarks.md. Not the shipped default because it needs its own OpenAI key\n"
-            "  even on a plain Claude subscription."
+            "  Default: haiku. openai:gpt-6-luna is a cheaper alternative (with classifier_effort\n"
+            "  low) but needs its own OpenAI key even on a plain Claude subscription."
         ),
         "type": "string",
         "default": defaults.CLASSIFIER_MODEL,
     },
     "extractor_model": {
-        "short": "Model for document extraction (default: sonnet)",
+        "short": "Model for document extraction (default: haiku)",
         "help": (
             "Model used to extract each document during processing.\n"
-            "  Haiku is cheaper and faster for large batches of straightforward documents;\n"
-            "  Sonnet handles complex or ambiguous documents better.\n"
+            "  Haiku (the default, at high effort) found the most in the latest benchmark run\n"
+            "  and costs the least of the Claude tiers; Sonnet is faster per document.\n"
             "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: sonnet. Recommended alternative: openai:gpt-5.6-luna (with extractor_effort\n"
-            "  high), which beat Sonnet at low effort outright in benchmark testing against real\n"
-            "  filings — see docs/benchmarks.md. Not the shipped default because it needs its own\n"
-            "  OpenAI key even on a plain Claude subscription.\n"
+            "  Default: haiku. A cheaper alternative is openai:gpt-6-luna (with extractor_effort\n"
+            "  medium), which finds less; it needs its own OpenAI key even on a plain Claude\n"
+            "  subscription. See docs/benchmarks.md.\n"
             "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-flash-thinking)\n"
             "  to enable it."
         ),
@@ -386,9 +383,8 @@ SETTINGS = {
             "  duplicate entities slip through, or if contradictions are being missed.\n"
             "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: haiku. openai:gpt-5.6-luna is a reasonable alternative alongside\n"
-            "  extractor_model's — this stage has no dedicated benchmark of its own yet, so\n"
-            "  treat it as an extrapolation, not a measured recommendation."
+            "  Default: haiku. This stage has no dedicated benchmark of its own yet, so any\n"
+            "  other model is an extrapolation, not a measured recommendation."
         ),
         "type": "string",
         "default": defaults.FINALIZER_MODEL,
@@ -445,21 +441,19 @@ SETTINGS = {
         "default": None,
     },
     "extractor_effort": {
-        "short": "Reasoning effort for document extraction (default: medium)",
+        "short": "Reasoning effort for document extraction (default: high)",
         "help": (
             "How hard the extractor model thinks. Thinking tokens bill as output, so a lower\n"
             "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
-            "  'medium' is the default: benchmark testing found it ties 'high' on recall while\n"
-            "  cutting extraction output/cost substantially — for Sonnet, the shipped default\n"
-            "  model. If you switch extractor_model to the benchmark-recommended\n"
-            "  openai:gpt-5.6-luna (see docs/benchmarks.md), use 'high' instead — Luna's own\n"
-            "  effort-vs-recall curve climbs with effort, unlike Sonnet's. Left unset, this\n"
-            "  default is skipped automatically for an extractor that has no 'medium' level\n"
-            "  (DeepSeek, either mode) — but setting it explicitly on a model that doesn't\n"
+            "  'high' is the default: in the latest benchmark run Haiku 5.5, the default model,\n"
+            "  found far more at 'high' than at 'medium' (see docs/benchmarks.md), though it\n"
+            "  costs more output and runs slower; lower it if cost matters more than recall.\n"
+            "  Left unset, this default is skipped automatically for an extractor that has no\n"
+            "  'high' level — but setting it explicitly on a model that doesn't\n"
             "  support that exact level errors rather than silently doing something else.\n"
             "  'xhigh'/'max' need a model that supports them: every current Claude and OpenAI\n"
             "  model does; Gemini stops at 'high'; DeepSeek takes 'max' but not 'xhigh'.\n"
-            "  Valid values: low, medium, high, xhigh, max. Default: medium."
+            "  Valid values: low, medium, high, xhigh, max. Default: high."
         ),
         "type": "enum",
         "default": defaults.EXTRACTOR_EFFORT,
@@ -473,7 +467,7 @@ SETTINGS = {
             "  fewer tokens. Left unset, nothing is sent regardless of model — safe on Haiku, the\n"
             "  finalizer default. Setting it explicitly on a model that doesn't support that exact\n"
             "  level errors rather than silently doing something else. 'xhigh'/'max' need a model\n"
-            "  that supports them specifically — OpenAI reasoning models (e.g. GPT-5.6) support\n"
+            "  that supports them specifically — OpenAI reasoning models (e.g. GPT-6) support\n"
             "  both, as does every current Claude model; Gemini takes neither.\n"
             "  Valid values: low, medium, high, xhigh, max. Default: not set."
         ),
@@ -488,7 +482,7 @@ SETTINGS = {
             "  'low' is the default: classification is a quick lookup against a short excerpt,\n"
             "  not a task reasoning helps with. Applied only when the resolved model actually\n"
             "  supports it, same as extractor_effort/finalizer_effort, so an unconfigured\n"
-            "  pipeline never fails on a model with no effort control at all (e.g. Haiku 4.5).\n"
+            "  pipeline never fails on a model with no effort control at all.\n"
             "  Setting it explicitly on a model that doesn't support that exact level errors\n"
             "  rather than silently doing something else.\n"
             "  Valid values: low, medium, high, xhigh, max. Default: low."
