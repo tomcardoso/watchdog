@@ -365,7 +365,7 @@ SETTINGS = {
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: haiku. A cheaper alternative is openai:gpt-6-luna (with extractor_effort\n"
             "  medium), which finds less; it needs its own OpenAI key even on a plain Claude\n"
-            "  subscription. See docs/benchmarks.md.\n"
+            "  subscription. See docs/models-and-cost.md.\n"
             "  DeepSeek thinking mode is off by default; append -thinking (deepseek:deepseek-flash-thinking)\n"
             "  to enable it."
         ),
@@ -446,7 +446,7 @@ SETTINGS = {
             "How hard the extractor model thinks. Thinking tokens bill as output, so a lower\n"
             "  effort spends fewer tokens per document — the main cost lever for an extraction run.\n"
             "  'high' is the default: in the latest benchmark run Haiku 5.5, the default model,\n"
-            "  found far more at 'high' than at 'medium' (see docs/benchmarks.md), though it\n"
+            "  found far more at 'high' than at 'medium' (see docs/models-and-cost.md), though it\n"
             "  costs more output and runs slower; lower it if cost matters more than recall.\n"
             "  Left unset, this default is skipped automatically for an extractor that has no\n"
             "  'high' level — but setting it explicitly on a model that doesn't\n"

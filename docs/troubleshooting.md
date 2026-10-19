@@ -44,7 +44,7 @@ Choose **Allow access…** and confirm. If you would rather not, choose **All in
 
 When you choose a folder for investigations in setup or in **New investigation**, Watchdog asks permission to work in it. If you decline, it says it needs your permission and asks you to choose another folder or allow this one. A move or an export to a folder you have not allowed asks in the same way.
 
-To see or change what is allowed, open **Settings → Folder access**. **Allow a folder…** adds one, and the trash button on a row removes it. Removing access deletes nothing; investigations inside that folder ask for access again the next time they are opened. See [Folder access](app.md#folder-access).
+To see or change what is allowed, open **Settings → Folder access**. **Allow a folder…** adds one, and the trash button on a row removes it. Removing access deletes nothing; investigations inside that folder ask for access again the next time they are opened. See [Folder access](using-watchdog.md#folder-access).
 
 ## Claude is not signed in
 
@@ -60,7 +60,7 @@ Check the key in **Settings → Models & keys**, or top up the account on the pr
 
 ## "The key this investigation bills isn't on this computer"
 
-The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](app.md#billing).
+The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](models-and-cost.md#billing).
 
 ## macOS asks whether Watchdog may use its "Safe Storage" in your Keychain
 
@@ -78,7 +78,7 @@ The file could not be read when Watchdog converted it to text. It sits in `incom
 
 - **Password-protected PDF** — remove the password and try again.
 - **Corrupted file** — try re-downloading or re-exporting it.
-- **Unsupported format** — check the [supported file types](vault.md#supported-file-types).
+- **Unsupported format** — check the [supported file types](using-watchdog.md#supported-file-types).
 
 To retry, fix the problem, move the file from `incoming/failed/` back into `incoming/` (in your file manager; **File → Show in Folder** opens the investigation's folder), then choose **Add documents** again.
 
@@ -89,8 +89,8 @@ Recordings are transcribed on your computer during pre-processing. What goes wro
 - **"The transcription model could not be downloaded."** The first recording you add downloads the speech-recognition model (1.5 GB by default), and the connection failed. Check the connection, then add the file again, or download the model from **Settings → Setup** with **Download now** first.
 - **"This video has no sound track."** The file has pictures but no audio, so there is nothing to transcribe. If it should have sound, export it again from wherever it came from.
 - **"This file could not be read as audio or video."** The file is damaged, or is not the format its name says. Try opening it in another player; if that also fails, get a fresh copy.
-- **It takes a long time.** Transcription runs on your computer and is the slowest step for a long recording: with the default model, an hour of audio took 20 to 35 minutes on a four-core test computer. Recordings are transcribed one at a time, and the run shows how far it has got ("Transcribing hearing.mp4, 12:05 of 1:02:05"). A smaller model in [Settings](configuration.md#transcription) is faster but makes more mistakes.
-- **The transcript is in the wrong language, or is nonsense.** Language detection listens to the start of the recording, and music, silence or a greeting in another language can mislead it. Set **Transcription language** in [Settings](configuration.md#transcription), then add the recording again.
+- **It takes a long time.** Transcription runs on your computer and is the slowest step for a long recording: with the default model, an hour of audio took 20 to 35 minutes on a four-core test computer. Recordings are transcribed one at a time, and the run shows how far it has got ("Transcribing hearing.mp4, 12:05 of 1:02:05"). A smaller model in [Settings](models-and-cost.md#transcription) is faster but makes more mistakes.
+- **The transcript is in the wrong language, or is nonsense.** Language detection listens to the start of the recording, and music, silence or a greeting in another language can mislead it. Set **Transcription language** in [Settings](models-and-cost.md#transcription), then add the recording again.
 - **Names or figures are wrong.** Speech recognition mishears uncommon names and numbers; this is the normal failure, not a fault. Click the timestamp beside the passage to hear it, and correct the fact in your own notes. A larger model makes fewer of these mistakes.
 - **The player says the format can't be played.** The transcript is still there. Some formats (`.avi`, and some `.mkv` files) cannot be played inside Watchdog; use **Open original** to play the recording in another app.
 
@@ -115,7 +115,7 @@ Watchdog already holds new documents back on its own once it is close to your pr
 
 Two things help when a rate limit stops a run:
 
-- **Lower how many documents are read at once.** In **Add documents**, open **Options** and lower **Documents at once** for that run. To change it for every run, set **Extraction concurrency** under **Settings → Processing**; see [Processing](configuration.md#processing) for its defaults.
+- **Lower how many documents are read at once.** In **Add documents**, open **Options** and lower **Documents at once** for that run. To change it for every run, set **Extraction concurrency** under **Settings → Processing**; see [Processing](models-and-cost.md#processing) for its defaults.
 - **Wait out the limit.** In **Options**, switch on **Wait out rate limits**. Instead of stopping, the run sleeps until the limit resets and resumes by itself, repeating until the queue is done. This suits an overnight run.
 
 Without it, the run stops cleanly on a rate limit. Nothing is lost: every document already processed is saved, so adding documents again picks up only what is still queued.
@@ -124,7 +124,7 @@ Without it, the run stops cleanly on a rate limit. Nothing is lost: every docume
 
 A message that the local backend needs a base URL means the address of your model server has not been set. Open **Settings → Models & keys**, choose the local provider, and enter the server's address (for example `http://localhost:11434/v1`).
 
-A connection error (refused, timed out) means the server at that address is not running, is not reachable from this computer, or the port is wrong. Check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM and so on) is actually up and listening before trying again. Most local runners need no API key; if yours does, add one in **Models & keys**. See [Configuration](configuration.md#local-and-self-hosted-models).
+A connection error (refused, timed out) means the server at that address is not running, is not reachable from this computer, or the port is wrong. Check that your runner (Ollama, LM Studio, llama.cpp's server, vLLM and so on) is actually up and listening before trying again. Most local runners need no API key; if yours does, add one in **Models & keys**. See [Local and self-hosted models](models-and-cost.md#local-and-self-hosted-models).
 
 ## A run was interrupted after extraction
 
@@ -146,11 +146,11 @@ While documents are being added, Watchdog keeps a small lock file in the investi
 
 ## A note was deleted or edited by mistake
 
-Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History](app.md#history).
+Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History and your notes](using-watchdog.md#history-and-your-notes).
 
 ## A merge joined two different people or companies
 
-Open **Review → Merges**, find the merge under **Recent merges**, and choose **Undo merge**. If the button is unavailable, the reason is shown beside it; see [Merges](investigating.md#merges).
+Open **Review → Merges**, find the merge under **Recent merges**, and choose **Undo merge**. If the button is unavailable, the reason is shown beside it; see [Merges](using-watchdog.md#merges).
 
 ## Updates fail
 
@@ -168,7 +168,7 @@ The record skills — the document-type knowledge — update with the app. But e
 
 If you reorganized your files and Watchdog can no longer find an investigation, the **Investigations** list marks it and says what is wrong. Open its **⋯** menu and choose **Move to another folder…**, then pick the folder that now holds it, which points Watchdog at the new location. If the investigation's folder exists but Watchdog does not list it at all, choose **Add existing folder…** on the Investigations screen. **Settings → Check vaults** runs a health check on every investigation and lists any whose folder is missing or broken.
 
-When you point Watchdog at a different folder, it asks permission to work there; see [Folder access](app.md#folder-access).
+When you point Watchdog at a different folder, it asks permission to work there; see [Folder access](using-watchdog.md#folder-access).
 
 ## Obsidian says "Vault not found"
 
@@ -190,4 +190,4 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 
 ## Where next
 
-[The desktop app](app.md) describes every screen. For settings such as concurrency and models, see [Configuration](configuration.md).
+[Using Watchdog](using-watchdog.md) describes every screen. For settings such as concurrency and models, see [Models, cost and settings](models-and-cost.md).

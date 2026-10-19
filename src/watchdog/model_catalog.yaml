@@ -335,7 +335,7 @@ models:
     tokenizer_ratio: 0.80     # copied from the GPT-5.x value (#617), unconfirmed for GPT-6 (D249)
     long_context_threshold: 272_000   # 2x input and cache / 1.5x output above this, whole request
   # GPT-5.6 Luna — kept, though GPT-6 Luna supersedes it at half the price, because the Settings
-  # help and docs/configuration.md recommend it as the alternative extractor and classifier on the
+  # help and docs/models-and-cost.md recommend it as the alternative extractor and classifier on the
   # strength of archived benchmark figures measured on it (D249, D310). It is still on OpenAI's
   # pricing page and is not deprecated. Remove it once that recommendation is re-measured.
   - id: gpt-5.6-luna

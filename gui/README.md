@@ -4,7 +4,7 @@ An Electron app over Watchdog's Python engine (`src/watchdog/`). It offers a doc
 library with page thumbnails, a PDF viewer beside the extracted facts, an entity browser, a
 network graph, a visual timeline, a review queue, and a chat with Claude inside the app.
 
-User documentation is in [docs/app.md](../docs/app.md). This page is for developers.
+User documentation is in [docs/](../docs/), starting with [Using Watchdog](../docs/using-watchdog.md). This page is for developers.
 
 ## How it fits together
 

@@ -23,8 +23,8 @@ Never use it with confidential source communications, leaked or unpublished mate
 - **Extracts entities, not just text.** People, companies, addresses, relationships and dates become linked notes, with a page-level citation on every fact.
 - **Builds a timeline.** Date-bound events from every document are assembled into one chronological view of the investigation.
 - **Surfaces what you might miss.** Shared addresses, overlapping directors, an entity that keeps turning up, a new document that contradicts an old one. Contradictions are flagged — they are often stories in themselves.
-- **Applies specialist knowledge.** Built-in guides for dozens of document types teach it what an experienced investigative journalist looks for in corporate filings, court records, land registries and more.
-- **Leaves you in charge.** The vault is plain files you own and annotate. Facts the AI inferred rather than read are marked as such, and everything links back to the source page for verification.
+- **Applies specialist knowledge.** Built-in guides for 33 document types teach it what an experienced investigative journalist looks for in corporate filings, court records, land registries and more.
+- **Leaves you in charge.** Every investigation is a folder of plain files you own and annotate. Facts the AI inferred rather than read are marked as such, and everything links back to the source page for verification.
 
 ## How it works
 
@@ -59,13 +59,13 @@ For a closer look at what happens to a single document — the OCR pipeline, the
 
 ## What you need
 
-- A Mac, Windows or Linux computer, an internet connection, and about 7 GB of free disk space for the one-time setup (about 5 GB of it is the models that run on your computer)
-- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key. Asking questions of your investigation always runs on Claude. The document-reading steps can be pointed at a different provider instead — OpenAI, Gemini, DeepSeek, or a model on your own computer — see [Configuration](https://github.com/tomcardoso/watchdog/blob/main/docs/configuration.md#model-backends)
+- A Mac, Windows or Linux computer, an internet connection, and about 7 GB of free disk space for the one-time setup (most of it for the libraries and models that run on your computer)
+- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key. Asking questions of your investigation always runs on Claude. The document-reading steps can be pointed at a different provider instead — OpenAI, Gemini, DeepSeek, or a model on your own computer — see [Models and cost](https://github.com/tomcardoso/watchdog/blob/main/docs/models-and-cost.md#other-providers)
 - Optional: [Obsidian](https://obsidian.md), free, if you want to browse the files outside the app
 
 A Claude Pro subscription (US$20/month) is enough for most journalism work. You do not need a terminal, Python or Claude Code installed first; Watchdog sets up what it needs.
 
-Watchdog benchmarks its own model and effort defaults against real court and financial filings rather than picking one on reputation alone — see [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) for the full results.
+Watchdog benchmarks its own model and effort defaults against real court and financial filings rather than picking one on reputation alone — see [How the defaults were chosen](https://github.com/tomcardoso/watchdog/blob/main/docs/models-and-cost.md#how-the-defaults-were-chosen).
 
 ## Installation
 
@@ -81,7 +81,7 @@ Open it and install as you would any app. The first time Watchdog opens, it walk
 ## Quick start
 
 1. Open Watchdog and finish the first-run setup.
-2. Choose **New investigation…** from the File menu (or from the Investigations screen), and give it a name.
+2. Choose **File → New Investigation…** (or **New investigation** on the Investigations screen), and give it a name.
 3. Drag your documents onto the window, or choose **Add documents**.
 4. Confirm that the documents are public records, then watch them being read.
 5. Open the briefing, browse the **Documents**, **Entities**, **Timeline** and **Network** screens, and choose **Ask Claude** to ask a question.
@@ -93,25 +93,21 @@ For a full first-investigation walkthrough, see [Getting started](https://github
 | Guide | What it covers |
 |-------|----------------|
 | [Install](https://github.com/tomcardoso/watchdog/blob/main/docs/install.md) | Downloading, installing and setting up the app; updating and uninstalling |
-| [Methodology](https://github.com/tomcardoso/watchdog/blob/main/docs/methodology.md) | What actually happens to your documents, and why, in plain English |
-| [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md) | Your first investigation, start to finish |
-| [Investigating](https://github.com/tomcardoso/watchdog/blob/main/docs/investigating.md) | Day-to-day work: questions, search, leads, web research |
-| [Configuration](https://github.com/tomcardoso/watchdog/blob/main/docs/configuration.md) | Every setting, model choices, controlling cost |
-| [Benchmarks](https://github.com/tomcardoso/watchdog/blob/main/docs/benchmarks.md) | How model/effort defaults are measured, and what to expect in time and cost |
-| [The vault](https://github.com/tomcardoso/watchdog/blob/main/docs/vault.md) | What Watchdog builds on disk and how to read it |
-| [Domain skills](https://github.com/tomcardoso/watchdog/blob/main/docs/skills.md) | The built-in document-type expertise |
+| [Getting started](https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md) | The sample investigation, then your first investigation, start to finish |
+| [Using Watchdog](https://github.com/tomcardoso/watchdog/blob/main/docs/using-watchdog.md) | Day-to-day work: adding documents, checking facts, Review, search, Ask Claude, your files |
+| [How it works](https://github.com/tomcardoso/watchdog/blob/main/docs/how-it-works.md) | What happens to your documents, and why, in plain English; the record skills |
+| [Models, cost and settings](https://github.com/tomcardoso/watchdog/blob/main/docs/models-and-cost.md) | Claude and other providers, what a run costs, how the defaults were chosen, every setting |
 | [Troubleshooting](https://github.com/tomcardoso/watchdog/blob/main/docs/troubleshooting.md) | When something goes wrong |
-| [The desktop app](https://github.com/tomcardoso/watchdog/blob/main/docs/app.md) | What each screen does |
 
 ## A note on AI and mistakes
 
-Watchdog uses AI to read documents, and AI makes mistakes — it can misread a name or draw a wrong inference. Every fact it records links to the source document and page. Facts the model flags as inferred rather than read are marked *(inferred)* — leads to verify, not findings — but the flag is the model's own hint, and an unmarked fact can still be wrong or be its reasoning. Treat the vault as a structured first read, not a finished product, and follow the link before you publish anything.
+Watchdog uses AI to read documents, and AI makes mistakes — it can misread a name or draw a wrong inference. Every fact it records links to the source document and page. Facts the model flags as inferred rather than read are marked *(inferred)* — leads to verify, not findings — but the flag is the model's own hint, and an unmarked fact can still be wrong or be its reasoning. Treat what Watchdog builds as a structured first read, not a finished product, and follow the link before you publish anything.
 
 ## Contributing
 
 Three areas where help is most welcome:
 
-- **Domain skills** — if you know a document type deeply, the extraction guides are plain markdown, no code required. Start from [the template](src/watchdog/skills/records/_template.md).
+- **Record skills** — if you know a document type deeply, the extraction guides are plain Markdown, no code required. Start from [the template](src/watchdog/skills/records/_template.md).
 - **Pipeline fixes** — bug reports with a sample document (redacted if needed) are especially useful.
 - **Documentation** — corrections, clarifications and translations, particularly to the install guide.
 

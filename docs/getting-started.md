@@ -20,7 +20,7 @@ Two files are left waiting in the sample's incoming folder, a change order and t
 
 The sample only processes its own example files. If you add a document of your own to it, Watchdog stops before anything is sent and says so; create your own investigation for your documents. **Re-check contradictions** works in the sample with prepared answers.
 
-**Ask Claude** never reaches Claude in the sample. Instead it offers four questions with conversations prepared in advance, so you can see what a session does without spending anything on a made-up case. Choose one and the conversation plays as if live: Claude searches the documents and reads the notes (each step appears as a row you can open), then answers with a citation for each claim. Choose a citation to open the document at the fact it cites. One question asks Claude to add a name to the watch list, so you can see the card Claude shows before it changes anything; choose **Allow once** and the name really is added to the sample's watch list. A label says the conversations are prepared, and you cannot type your own question there. In your own investigations, Ask Claude answers any question, using your Claude account; see [Ask Claude](app.md#ask-claude-and-web-research).
+**Ask Claude** never reaches Claude in the sample. Instead it offers four questions with conversations prepared in advance, so you can see what a session does without spending anything on a made-up case. Choose one and the conversation plays as if live: Claude searches the documents and reads the notes (each step appears as a row you can open), then answers with a citation for each claim. Choose a citation to open the document at the fact it cites. One question asks Claude to add a name to the watch list, so you can see the card Claude shows before it changes anything; choose **Allow once** and the name really is added to the sample's watch list. A label says the conversations are prepared, and you cannot type your own question there. In your own investigations, Ask Claude answers any question, using your Claude account; see [Ask Claude](using-watchdog.md#ask-claude).
 
 You can change anything in the sample. To start it afresh, choose **Rebuild the sample…** from its **⋯** menu on the Investigations screen; that replaces only the sample. Delete it like any other investigation when you no longer need it.
 
@@ -32,9 +32,9 @@ The dialog asks for three things:
 
 - **Name.** Use one that will still make sense in six months.
 - **One-line description.** Optional, and you can change it later from the Overview. It is the first thing Watchdog knows about your investigation, which is useful when you have several open at once.
-- **Where to keep it.** The default is the investigations folder you chose in setup. If you pick a different folder, Watchdog asks permission to work there; see [Folder access](app.md#folder-access).
+- **Where to keep it.** The default is the investigations folder you chose in setup. If you pick a different folder, Watchdog asks permission to work there; see [Folder access](using-watchdog.md#folder-access).
 
-Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up its structure, including the `incoming/` and `context/` folders, the starting notes (`log.md`, `context.md`, `index.md`), and the settings for Claude. The [vault guide](vault.md) explains every folder and file.
+Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up its structure, including the `incoming/` and `context/` folders, the starting notes (`log.md`, `context.md`, `index.md`), and the settings for Claude. [Your files and Obsidian](using-watchdog.md#your-files-and-obsidian) explains what is in it.
 
 The investigation opens on its **Overview**. It is empty until you add documents.
 
@@ -58,11 +58,11 @@ You can add documents three ways:
 - **Choose Add documents.** The button is at the top right, and also under **File → Add Documents…**. On an empty investigation, the Overview shows **Choose files…** and **Choose a folder…** buttons that do the same.
 - **Put files in the `incoming/` folder** inside the investigation, using your file manager. Watchdog lists anything waiting there on the Overview and in the Add documents dialog.
 
-Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, presentations, images, web pages, plain text, and audio and video recordings, which it transcribes on your computer; see the [supported file types](vault.md#supported-file-types) for the full list.
+Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, presentations, images, web pages, plain text, and audio and video recordings, which it transcribes on your computer; see [Supported file types](using-watchdog.md#supported-file-types) for the full list.
 
 **Rename files before adding them.** Watchdog uses the filename when labelling documents. `shell-co-annual-report-2023.pdf` is useful; `scan0042.pdf` is not.
 
-**Add a sidecar file for provenance.** To record where a document came from, put a small `.yml` file with the same base name next to it, as in `shell-co-annual-report-2023.pdf` and `shell-co-annual-report-2023.yml`. It can contain a `source`, the date `obtained`, and `notes`. The [vault guide](vault.md#sidecar-files) covers the format in full.
+**Add a sidecar file for provenance.** To record where a document came from, put a small `.yml` file with the same base name next to it, as in `shell-co-annual-report-2023.pdf` and `shell-co-annual-report-2023.yml`. It can contain a `source`, the date `obtained`, and `notes`; see [Sidecar files](using-watchdog.md#sidecar-files).
 
 **Duplicates are handled automatically.** A document that is byte-identical to one already added, even under a new name, is set aside in `incoming/skipped/` rather than processed twice. A separate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them.
 
@@ -72,20 +72,12 @@ The Add documents dialog takes you through four steps.
 
 1. **Choose.** Pick files or folders. The dialog also shows anything already waiting. **Estimate cost** shows what the run is likely to cost before you commit, and **Options** lets you change the models and other settings for this run only. The defaults are fine for a first run.
 2. **Reading documents.** Watchdog copies the files into `incoming/` (your originals stay where they are) and converts them to text on your computer, using OCR for scans and transcribing recordings. The first recording you add also downloads the transcription model, once. Nothing is sent anywhere during this step.
-3. **Before anything is sent.** This is the public-records confirmation. It shows the exact number of documents about to be sent and which model will receive them. Nothing goes until you choose **Acknowledge and add**. If you set Watchdog to skip this pause for runs that use only your Claude subscription, you see a short notice instead; see [Auto-approve](configuration.md#auto-approve). If every step runs on a model server on this computer, there is nothing to confirm and this step is skipped; see [Local and self-hosted models](configuration.md#local-and-self-hosted-models).
+3. **Before anything is sent.** This is the public-records confirmation. It shows the exact number of documents about to be sent and which model will receive them. Nothing goes until you choose **Acknowledge and add**. If you set Watchdog to skip this pause for runs that use only your Claude subscription, you see a short notice instead; see [Auto-approve](models-and-cost.md#auto-approve). If every step runs on a model server on this computer, there is nothing to confirm and this step is skipped; see [Local and self-hosted models](models-and-cost.md#local-and-self-hosted-models).
 4. **Adding.** Watchdog extracts entities, facts and timeline events from each document, writes everything to the investigation, and produces a **briefing**.
 
 Large documents can take several minutes each to extract, so a long pause on one document is normal. On a Claude subscription, a large first batch can reach your plan's usage limit, which stops the run; nothing finished is lost, and [Hitting rate limits](troubleshooting.md#hitting-rate-limits) explains what to do. You can choose **Hide** to close the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends the run cleanly, and adding the documents again picks up where it left off. **Activity** lists every run with its full output.
 
-By default Watchdog uses Haiku (Claude's fast, inexpensive tier) for classification, extraction and the wrap-up steps, with extraction set to think hard (the `high` effort level), so nothing beyond your Claude sign-in is needed. In benchmark testing against real court-and-financial filings, Haiku with extraction at `high` found more than any other setting measured (see [Benchmarks](benchmarks.md)). Any step can be routed to another provider's model with that provider's own key. The [configuration guide](configuration.md) covers changing models, tuning how much reasoning each stage spends, and controlling cost.
-
-Three features run alongside every run; each is covered in the [investigating guide](investigating.md):
-
-- **Watch list.** If you have listed terms in the watch list (a name, company, address or phrase) Watchdog scans every newly added document for them and records matches as watch-list alerts. See [the watchlist](investigating.md#the-watchlist).
-- **Leads.** At the end of each run, Watchdog sweeps the entity graph for things worth chasing — an entity named repeatedly but never profiled, for instance — and records them as leads. See [leads](investigating.md#leads).
-- **Resolving.** Once you have dealt with a lead or a hit, you can mark it handled so it stops reappearing, which turns those lists into a shrinking to-do list. See [resolving items](investigating.md#resolving-items).
-
-For a plain-English account of what each stage does to your documents, and what the AI model does and does not see, read [Methodology](methodology.md).
+By default every step runs on Claude Haiku, Claude's fast, inexpensive model, so nothing beyond your Claude sign-in is needed. [Models and cost](models-and-cost.md) covers choosing other models and providers, and what a run costs. [How it works](how-it-works.md) explains what each stage does to your documents, and what the AI model does and does not see.
 
 ## Read the briefing
 
@@ -103,13 +95,11 @@ The sidebar lists the screens for the open investigation.
 - **Network** draws entities and their relationships as a graph. Entities that appear in many documents, or connect to many others, stand out.
 - **Search** finds exact words, passages ranked by meaning, and notes. Press Ctrl+K (⌘K on a Mac) anywhere to jump to something by name.
 
-If the same person or company shows up twice under different names, see [duplicate entities](investigating.md#duplicate-entities) for the fix. [The desktop app](app.md) explains every screen.
-
-If you prefer to browse the files themselves, **File → Show in Folder** opens the investigation's folder, and **File → Open in Obsidian** opens it in [Obsidian](https://obsidian.md). The vault guide explains the [folders and notes](vault.md), including the `dashboard.base` file, a set of live tables that Obsidian displays.
+If the same person or company shows up twice under different names, see [Duplicate entities](using-watchdog.md#duplicate-entities). [Using Watchdog](using-watchdog.md) explains every screen.
 
 ## Review what needs a decision
 
-Choose **Review** to work through contradictions, leads, watch-list alerts, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview.
+Choose **Review** to work through contradictions, leads, watch-list alerts, possible duplicates, possible same entities and document requests, one tab each. A count beside Review in the sidebar shows how many items are waiting. Mark an item handled and it stops appearing in briefings and on the Overview. Leads (names and threads worth chasing) and watch-list alerts are refreshed after every run.
 
 ## Ask Claude
 
@@ -117,8 +107,8 @@ Choose **Ask Claude** and type a question, such as "Who are the directors of She
 
 Start a new conversation for a new line of inquiry rather than reusing one that has run long. At the start of each conversation, Claude is given a short account of where the whole investigation stands, which Watchdog builds from its records, so it knows the state of things without re-reading everything, and a fresh conversation has the most working room for your questions.
 
-Before Claude changes the investigation's records, Watchdog shows what it is about to do and asks you first; see [Ask Claude](app.md#ask-claude-and-web-research).
+Before Claude changes the investigation's records, Watchdog shows what it is about to do and asks you first; see [Ask Claude](using-watchdog.md#ask-claude).
 
 ## Where next
 
-The [investigating guide](investigating.md) covers everything you do from here — asking questions, searching, finding connections, researching on the web, and running the investigation day to day. [The desktop app](app.md) describes each screen, and [Troubleshooting](troubleshooting.md) covers what to do if a run does not go as expected.
+[Using Watchdog](using-watchdog.md) covers everything you do from here: checking facts, working through Review, searching, asking questions, researching on the web, and managing investigations. [Troubleshooting](troubleshooting.md) covers what to do if a run does not go as expected.
