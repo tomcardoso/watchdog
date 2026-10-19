@@ -83,7 +83,7 @@ ENGINE_NOT_READY = ("Watchdog is still setting up. You can add documents when it
 
 def engine_ready() -> bool:
     """False while the app's engine is still installing its phase-2 libraries and models. A
-    Python the app did not install (a development checkout, pipx) is always ready."""
+    Python the app did not install (a development checkout) is always ready."""
     return os.environ.get(PENDING_ENV) != "1"
 
 

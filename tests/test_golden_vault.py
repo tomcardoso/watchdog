@@ -9,7 +9,7 @@ sensitive to any real change in what gets written.
 
 The manifest is committed alongside this test. Regenerate it deliberately, never reflexively:
 
-    REGENERATE_GOLDEN=1 PYTHONPATH=src ~/.local/pipx/venvs/watchdog-intel/bin/pytest \
+    REGENERATE_GOLDEN=1 PYTHONPATH=src .venv/bin/pytest \
         tests/test_golden_vault.py
 
 A diff here during the #403 work means the refactor changed observable output, which phase 1

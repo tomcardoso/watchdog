@@ -210,7 +210,7 @@ def _own_start() -> str | None:
     return _OWN_START[1]
 
 
-def lock_contents(label: str = "cli") -> str:
+def lock_contents(label: str) -> str:
     """The text of a new lock held by this process."""
     lines = [f"pid: {os.getpid()}"]
     start = _own_start()
