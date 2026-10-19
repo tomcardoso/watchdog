@@ -53,7 +53,7 @@ Watchdog benchmarks its own model and effort defaults against real court and fin
 
 ## Installation
 
-Download the installer for your computer from the [latest release](https://github.com/tomcardoso/watchdog/releases/tag/app-beta):
+Download the installer for your computer from the [latest release](https://github.com/tomcardoso/watchdog/releases/tag/app-stable):
 
 - **Mac, Apple silicon:** `Watchdog-<version>-arm64.dmg`
 - **Mac, Intel:** `Watchdog-<version>-x64.dmg`
