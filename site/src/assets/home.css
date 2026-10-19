@@ -276,6 +276,7 @@
   scrollbar-width: none;
 }
 .tour-tabs::-webkit-scrollbar { display: none; }
+@media (max-width: 760px) { .tour-tabs { justify-content: flex-start; width: auto; } }
 .tour-tabs button {
   position: relative;
   flex: none;
@@ -445,7 +446,8 @@
 .story .note { margin-top: 40px; color: #76767f; }
 @media (max-width: 860px) {
   .clash { grid-template-columns: 1fr; gap: 0; }
-  .clash-mid { height: 70px; transform: rotate(90deg); width: 70px; margin: 0 auto; }
+  .clash-mid { height: 64px; }
+  .clash-mid svg { display: none; }
   .trail { grid-template-columns: 1fr 1fr; row-gap: 36px; }
   .trail::before { display: none; }
 }

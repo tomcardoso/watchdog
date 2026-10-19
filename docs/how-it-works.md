@@ -16,9 +16,9 @@ Every document goes through three stages, in order. **Add documents** runs all t
 
 Before anything can be read, it has to become text a computer can search. This stage runs entirely on your computer, and costs nothing.
 
-If a PDF already has selectable text, Watchdog reads it directly. If it does not (a scanned court filing, a photographed ledger, a fax), Watchdog runs optical character recognition, or OCR: the same idea as a scanner turning a photo of a page into text you can copy, just automated. It decides page by page, so a 200-page filing with two scanned exhibits gets OCR on those two pages only. The tool doing this is Docling, an open-source document reader that also recognizes tables and page layout, so a financial statement's rows and columns come through as structured text rather than a jumble. Watchdog keeps where each line of OCR'd text sits on the page, so the app can highlight a word on the scan itself; the scan is never altered.
+If a PDF already has selectable text, Watchdog reads it directly. If it does not (a scanned court filing, a photographed ledger, a fax), Watchdog runs optical character recognition, or OCR: the same idea as a scanner turning a photo of a page into text you can copy, just automated. It decides page by page, so a 200-page filing with two scanned exhibits gets OCR on those two pages only. The tool doing this is [Docling](https://github.com/docling-project/docling), an open-source document reader that also recognizes tables and page layout, so a financial statement's rows and columns come through as structured text rather than a jumble. Watchdog keeps where each line of OCR'd text sits on the page, so the app can highlight a word on the scan itself; the scan is never altered.
 
-An audio or video recording is transcribed instead, by Whisper, an open-source speech-recognition model, running on your computer: the recording is not uploaded anywhere. Speech recognition is good but not faithful. It cannot tell who is speaking, and it mishears names and numbers it has not met before, so the next stage is told it is reading a machine transcript.
+An audio or video recording is transcribed instead, by [Whisper](https://github.com/openai/whisper), an open-source speech-recognition model from OpenAI, running on your computer through [faster-whisper](https://github.com/SYSTRAN/faster-whisper): the recording is not uploaded anywhere. Speech recognition is good but not faithful. It cannot tell who is speaking, and it mishears names and numbers it has not met before, so the next stage is told it is reading a machine transcript.
 
 Pre-processing also fingerprints every document, so a file you (or a colleague) already added is set aside rather than processed twice, and a looser check flags documents that are similar but not identical, such as a redlined revision of a contract.
 
@@ -30,9 +30,9 @@ This is where an AI model reads each document and takes notes, the way a reporte
 
 **Then it reads the whole document and writes down what matters.** For each material fact (a dollar figure, a date, an allegation, a change of ownership) it records the fact, the page it came from and, when the exact wording matters, a short quotation. It also lists every person, company and place named. This is deliberately close to how a journalist reads primary sources: not summarizing in the abstract, but pulling out the concrete, checkable claims.
 
-A model reading quickly can skim past a figure in a footnote or a table row. As a backup, a small model on your computer, GLiNER, scans each page for the shapes of names, dollar figures, dates and case numbers, and hands the model a checklist of what it found.
+A model reading quickly can skim past a figure in a footnote or a table row. As a backup, a small model on your computer, [GLiNER](https://github.com/urchade/GLiNER), scans each page for the shapes of names, dollar figures, dates and case numbers, and hands the model a checklist of what it found.
 
-The model is asked to mark any fact it **inferred** (reasoned to, rather than read) and Watchdog shows that mark beside the fact. The mark is the model's own hint, not a check, so always follow a fact back to its source before you rely on it. [Checking facts](using-watchdog.md#checking-facts) explains how.
+The model is asked to mark any fact it **inferred** (reasoned to, rather than read) and Watchdog shows that mark beside the fact. The mark is only the model's own hint, so always follow a fact back to its source before you rely on it. [Checking facts](using-watchdog.md#checking-facts) explains how.
 
 ### How a passage is found
 
@@ -66,7 +66,7 @@ The parts that need judgement go to an AI model:
 
 ## Search
 
-Two more small models run on your computer and support Search. The **embedding model** turns every passage and note into a numeric fingerprint of its meaning, which is what lets a search for "offshore trust" find a passage about a "shell arrangement". The **reranker** re-orders what search turns up, putting the most relevant results on top. Neither reads anything into what a document means; both just help you find things.
+Two more small models run on your computer and support Search. The **embedding model** ([bge-small-en-v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) by default, run through [fastembed](https://github.com/qdrant/fastembed)) turns every passage and note into a numeric fingerprint of its meaning, which is what lets a search for "offshore trust" find a passage about a "shell arrangement". The **reranker** ([bge-reranker-base](https://huggingface.co/BAAI/bge-reranker-base)) re-orders what search turns up, putting the most relevant results on top. Neither reads anything into what a document means; both just help you find things.
 
 ## Record skills
 

@@ -2,6 +2,8 @@
 
 **Document intelligence for journalists — drop records in, find connections.**
 
+**[Website and documentation →](https://tomcardoso.github.io/watchdog/)**
+
 [![Latest version](https://img.shields.io/github/v/release/tomcardoso/watchdog?label=version)](https://github.com/tomcardoso/watchdog/releases/latest)
 [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
 

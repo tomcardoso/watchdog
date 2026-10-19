@@ -70,7 +70,17 @@ There is no command line (D300): the app starts Python through module entry poin
   cost, the benchmark summary behind the defaults, and the Settings reference (every tab and field)
 - `docs/troubleshooting.md` — failure modes and fixes
 
-Keep it to these six pages: a new topic goes into the page it belongs to, not a new one. Internals a
+Keep it to these six pages: a new topic goes into the page it belongs to, not a new one. A new page
+must also be added to `PAGES` in `site/build.mjs`, or the website build fails.
+
+The same pages are the website (https://tomcardoso.github.io/watchdog/, D317): `site/build.mjs`
+renders `docs/` and `site/src/index.html` (the landing page) into `site/dist`, and
+`.github/workflows/pages.yml` publishes it on every push to main that touches `docs/` or `site/`.
+Preview with `cd site && npm ci && npm run dev`. Link a tool or service the first time a page
+names it. Screenshots live in `docs/images/`, in a light and a `-dark` version; `npm run
+screenshots` in `gui/` (after `npm run build`, with `WATCHDOG_PYTHON` set, under `xvfb-run` on
+Linux) captures them all again from the sample investigation. The landing page's network is the
+sample's own (`site/src/data/graph.json`, from `site/scripts/sample-graph.py`). Internals a
 reporter never needs (registry files, hidden folders' contents, tuning rationale) belong in
 `ARCHITECTURE.md`, `DECISIONS.md` or `benchmarks/`, not in `docs/`.
 
@@ -94,7 +104,7 @@ python3 -m venv .venv
 
 Tests use `tmp_path` and `monkeypatch` to move Watchdog's own folder away from the real home directory: patch `watchdog.config.HOME`, the one place `~/.watchdog` is decided (settings, the list of investigations, credentials, chats). See the `wdg_home` fixture in `tests/gui_support.py` for the pattern.
 
-CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml` and `app-release.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
+CI (`.github/workflows/ci.yml`) runs on pull requests to `main`, not on plain pushes — open a PR to get a CI run. Third-party actions in `ci.yml`, `app-release.yml` and `pages.yml` are pinned to commit SHAs with the version in a trailing comment; bump both together.
 
 ## Linting
 

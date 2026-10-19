@@ -14,6 +14,8 @@ If you would like to see what a finished investigation looks like before adding 
 
 To open it, choose **Get started** or **Explore a sample investigation** at the end of setup, **Sample investigation** on the Investigations screen, or **Help → Take the Tour**. The first time, Watchdog builds it on your computer, which takes under a minute. It uses prepared answers instead of an AI model, so it costs nothing and needs no sign-in, key or internet connection. Its runs show $0 under **Activity → Usage**.
 
+![The Investigations screen, with the Port Calder sample investigation listed and its counts.](images/app-projects.png)
+
 The tour then opens one screen at a time and points at a real finding: the briefing, a scanned page you can search, an entity's facts and their sources, a fact you can mark as checked, a contradiction, a near-duplicate, a lead, Search, the timeline and network, what a run costs, adding documents and Ask Claude. Use **Next** and **Back** to move through it, or **Skip tour** to close it. It remembers where you stopped, and **Help → Take the Tour** starts it again from the beginning.
 
 Two files are left waiting in the sample's incoming folder, a change order and the notes of a site meeting. When the tour reaches **Adding documents**, choose **Read documents** to add them and watch a run from start to finish: Watchdog reads the files on your computer, extracts their facts and writes a new briefing, which points to a new contradiction. Prepared answers stand in for the AI model here too, so the run costs nothing, sends nothing anywhere and does not ask you to confirm that the files are public records.
@@ -82,6 +84,8 @@ By default every step runs on Claude Haiku, Claude's fast, inexpensive model, so
 ## Read the briefing
 
 When the run finishes, the **Overview** shows the headline from the latest briefing, with a button to read the whole thing. The briefing summarizes what was found, how it connects to entities already in the investigation, and anything worth following up. Read it carefully: the connections section is often where the story is.
+
+![The Overview of the sample investigation: counts of documents, entities and checked facts, a paragraph on where things stand, the latest briefing and what is waiting on you.](images/app-overview.png)
 
 The Overview also shows what is waiting on you (contradictions, leads, possible duplicates, possible same entities and watch-list alerts) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
 

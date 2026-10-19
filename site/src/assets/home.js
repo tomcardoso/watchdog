@@ -153,10 +153,16 @@
       colours = { edge: v('--border-strong'), text: v('--text'), text2: v('--text-2'), surface: v('--surface'), hl: v('--marker') }
       for (const t of Object.keys(TYPES)) colours[t] = v(`--${t}`)
     }
+    // The pull to the centre follows the box's shape, so a tall phone-sized box gets a tall graph.
+    let gx = 0.004, gy = 0.007, settled = false
     const resize = () => {
       dpr = Math.min(2, devicePixelRatio || 1)
       W = stage.clientWidth
       H = stage.clientHeight
+      const ratio = H / Math.max(1, W)
+      gx = ratio > 1.2 ? 0.004 * ratio * 1.7 : 0.004
+      gy = ratio > 1.2 ? 0.0035 : 0.007
+      if (!settled && W) { for (let i = 0; i < 420; i++) step(); settled = true }
       canvas.width = W * dpr
       canvas.height = H * dpr
       draw()
@@ -176,7 +182,7 @@
           let dx = b.x - a.x, dy = b.y - a.y
           let d2 = dx * dx + dy * dy || 0.01
           if (d2 > 160000) continue
-          const f = (2600 / d2) * alpha
+          const f = ((2200 + 70 * (a.r + b.r)) / d2) * alpha
           const d = Math.sqrt(d2)
           dx /= d; dy /= d
           a.vx -= dx * f; a.vy -= dy * f
@@ -192,20 +198,19 @@
         l.t.vx -= dx * f; l.t.vy -= dy * f
       }
       for (const a of nodes) {
-        a.vx -= a.x * 0.004 * alpha
-        a.vy -= a.y * 0.007 * alpha
+        a.vx -= a.x * gx * alpha
+        a.vy -= a.y * gy * alpha
         if (a === drag) { a.vx = a.vy = 0; continue }
         a.vx *= 0.82; a.vy *= 0.82
         a.x += a.vx; a.y += a.vy
       }
       alpha = Math.max(0.02, alpha * 0.992)
     }
-    for (let i = 0; i < 420; i++) step()
 
     const fit = () => {
       let maxX = 1, maxY = 1
       for (const a of nodes) { maxX = Math.max(maxX, Math.abs(a.x) + a.r + 70); maxY = Math.max(maxY, Math.abs(a.y) + a.r + 24) }
-      scale = Math.min(1.35, (W / 2) / maxX, (H / 2) / maxY)
+      scale = Math.min(1.35, (W / 2) / maxX, (H / 2 - 26) / maxY)
     }
     const toScreen = (a) => [W / 2 + a.x * scale, H / 2 + a.y * scale]
 
@@ -236,12 +241,20 @@
       ctx.font = '500 12px "Inter Variable", system-ui, sans-serif'
       ctx.textAlign = 'center'
       ctx.textBaseline = 'top'
-      for (const a of nodes) {
-        const show = near ? near.has(a) : a.docs >= 6
+      // Labels for the most-named entities first; one that would overlap a label already drawn
+      // is left out (hover shows it).
+      const placed = []
+      const order = [...nodes].sort((p, q) => (p === hover ? -1 : q === hover ? 1 : q.docs - p.docs))
+      for (const a of order) {
+        const show = near ? near.has(a) : a.docs >= (W < 600 ? 7 : 4)
         if (!show) continue
         const [x, y] = toScreen(a)
         const r = a.r * Math.max(0.8, scale)
         const label = a.name.length > 30 ? a.name.slice(0, 29) + '…' : a.name
+        const w = ctx.measureText(label).width
+        const box = [x - w / 2 - 3, y + r + 3, x + w / 2 + 3, y + r + 19]
+        if (a !== hover && placed.some((b) => box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1])) continue
+        placed.push(box)
         ctx.globalAlpha = 1
         ctx.lineWidth = 4
         ctx.strokeStyle = colours.surface

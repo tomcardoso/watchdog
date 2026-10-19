@@ -8,8 +8,8 @@ The defaults are sensible, and most people only ever change a few of these.
 
 Watchdog is built around Claude and uses it by default. **Settings → Models & keys → How Claude is billed** chooses how Watchdog reaches it:
 
-- **Subscription.** Your Claude Pro or Max plan, signed in through your browser. It is not metered. A Pro plan (US$20 a month) is enough for most journalism work.
-- **API key.** A key from the Anthropic Console, billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
+- **Subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered. A Pro plan (US$20 a month) is enough for most journalism work.
+- **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
 
 A subscription has one usage limit, shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. If you add hundreds of documents at a time, a Max plan raises the limit, and an API key avoids it altogether: on a key, the default model costs roughly US$1 per 1,000 pages. Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can also let a Pro or Max plan continue past its limit at API rates.
 
@@ -45,26 +45,26 @@ Any step except Ask Claude and Web research can run on another provider, with th
 | `sonnet` | Claude Sonnet 5.5: US$2 in and US$10 out per million tokens. |
 | `haiku-5.5` / `sonnet-5.5` | The same models pinned by name, in case the bare tier ever moves. |
 | `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's high-volume model: US$0.10 in, US$0.50 out. `openai:gpt-5.6-luna` is the previous generation. |
-| `gemini:gemini-3.8-flash` | Gemini 3.8 Flash: US$0.75 in and US$3.75 out until 31 December 2026, then double. `gemini:gemini-3.5-flash-lite` is Google's cheapest tier. |
+| `gemini:gemini-3.8-flash` | Gemini 3.8 Flash: US$0.75 in and US$3.75 out until 31 December 2026, then double ([Google's prices](https://ai.google.dev/gemini-api/docs/pricing)). `gemini:gemini-3.5-flash-lite` is Google's cheapest tier. |
 | `deepseek:deepseek-flash` | DeepSeek V4.1 Flash. `deepseek:deepseek-v4-pro` is DeepSeek V4 Pro. Append `-thinking` to either for thinking mode. Rates double during DeepSeek's peak hours (below). |
-| `openrouter:<vendor>/<model>` | [OpenRouter](https://openrouter.ai): one key that routes to many hosted models, named as OpenRouter lists them. |
+| `openrouter:<vendor>/<model>` | [OpenRouter](https://openrouter.ai): one key that routes to many hosted models, named as [OpenRouter lists them](https://openrouter.ai/models). |
 | `local:<model>` | A model on your own computer or network; see [Local and self-hosted models](#local-and-self-hosted-models). |
 
 Each provider's flagship models are left out: they are built for harder work than any step here, and cost up to five times as much as Sonnet. Other providers' models have been measured only on Watchdog's small test set, so the defaults stay on Claude and nothing goes elsewhere unless you choose it.
 
 Effort levels vary by model. Every current Claude and OpenAI model takes all five (`low` to `max`); Gemini takes `low`, `medium` and `high`; DeepSeek takes `low`, `high` and `max`, and only in thinking mode. Asking a model for a level it does not support fails with a clear error, rather than quietly running at another.
 
-**DeepSeek charges by the clock.** Every rate doubles during its peak hours, 01:00 to 04:00 and 06:00 to 10:00 UTC (21:00 to 00:00 and 02:00 to 06:00 Eastern), Monday to Friday. A daytime run in North America is off-peak; an overnight weekday batch may not be. Watchdog prices each call at the rate in force when it is made.
+**DeepSeek charges by the clock.** Every rate doubles during its [peak hours](https://api-docs.deepseek.com/quick_start/pricing), 01:00 to 04:00 and 06:00 to 10:00 UTC (21:00 to 00:00 and 02:00 to 06:00 Eastern), Monday to Friday. A daytime run in North America is off-peak; an overnight weekday batch may not be. Watchdog prices each call at the rate in force when it is made.
 
 ## Local and self-hosted models
 
-Cost is one reason to run a step on a model on your own computer or network, and not the interesting one. The real reason is text that cannot leave the building. Every provider above, Claude included, sends document text to somebody else's server; a local model, on hardware you control, is the one configuration where it never does.
+A model on your own computer or network costs nothing per page, but the main reason to use one is text that cannot leave the building. Every provider above, Claude included, sends document text to somebody else's server; a local model, on hardware you control, is the one configuration where it never does.
 
-`local` works with any server that speaks the OpenAI-compatible format: Ollama, LM Studio, llama.cpp's server, vLLM and others. Set **Local model URL** (for example `http://localhost:11434/v1`, Ollama's default), choose a model such as `local:llama-3.3-70b` for a step, and set **Local context window** to the model's real figure, since Watchdog cannot work it out (left unset, it assumes a conservative 8,000 tokens). Most local servers need no key.
+`local` works with any server that speaks the OpenAI-compatible format: [Ollama](https://ollama.com), [LM Studio](https://lmstudio.ai), [llama.cpp](https://github.com/ggml-org/llama.cpp)'s server, [vLLM](https://github.com/vllm-project/vllm) and others. Set **Local model URL** (for example `http://localhost:11434/v1`, Ollama's default), choose a model such as `local:llama-3.3-70b` for a step, and set **Local context window** to the model's real figure, since Watchdog cannot work it out (left unset, it assumes a conservative 8,000 tokens). Most local servers need no key.
 
 When every step of a run uses `local` and the address is on this computer (`localhost`, `127.0.0.1`), Watchdog skips the public-records pause, since nothing goes to anyone else's server. A server at any other address, even on your own network, is another computer, so the pause still appears. Watchdog cannot see what your server does with the text.
 
-**The honest caveat:** the pipeline demands strictly structured answers, which is the hardest thing to get reliably from a small local model, and the failure is easy to miss: not a crash, but a quietly thinner extraction. Local models have not been through Watchdog's benchmark. Try the classifier and finishing steps locally first, and be sceptical of a local extractor on dense legal or financial material. Usage shows a local call's cost as $0, with a note that it spent time instead.
+**A caveat:** the pipeline demands strictly structured answers, which is the hardest thing to get reliably from a small local model. When it goes wrong, the run doesn't crash; the extraction just comes back thinner, which is easy to miss. Local models have not been through Watchdog's benchmark. Try the classifier and finishing steps locally first, and be sceptical of a local extractor on dense legal or financial material. Usage shows a local call's cost as $0, with a note that it spent time instead.
 
 ## Your keys
 
@@ -131,7 +131,7 @@ For one batch only, the **Options** in the Add documents dialog override the pro
 
 | Field | Default | What it controls |
 |---|---|---|
-| OCR engine | `auto` | `auto` uses Apple Vision on a Mac and Tesseract elsewhere; `easyocr` and `rapidocr` need no system install but are less accurate on forms. |
+| OCR engine | `auto` | `auto` uses [Apple Vision](https://developer.apple.com/documentation/vision) on a Mac and [Tesseract](https://github.com/tesseract-ocr/tesseract) elsewhere; [`easyocr`](https://github.com/JaidedAI/EasyOCR) and [`rapidocr`](https://github.com/RapidAI/RapidOCR) need no system install but are less accurate on forms. |
 | OCR languages | *(auto-detect)* | Languages for Apple Vision, as codes such as `en-US,fr-FR`. Set it only if detection does poorly. |
 | Garbled-text threshold | `0.6` | One of three signals Watchdog uses to decide a PDF page's text layer is unreadable and needs OCR; at least two must agree, so dense but readable tables are not sent through OCR. |
 
@@ -207,7 +207,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 
 | Field | Default | What it controls |
 |---|---|---|
-| Save to the Wayback Machine | off | Also submits every source from Web research or **Fetch Links** to the Internet Archive, and records the snapshot's address, giving you a citable copy if the original changes. Best-effort; it never blocks a download. |
+| Save to the Wayback Machine | off | Also submits every source from Web research or **Fetch Links** to the Internet Archive's [Wayback Machine](https://web.archive.org), and records the snapshot's address, giving you a citable copy if the original changes. Best-effort; it never blocks a download. |
 | Wayback access key / secret key | *(unset)* | A free pair from [archive.org/account/s3.php](https://archive.org/account/s3.php). |
 
 ### Verification

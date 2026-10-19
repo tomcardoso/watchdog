@@ -56,7 +56,7 @@
   --shadow-md: 0 2px 6px rgba(10, 10, 15, 0.06), 0 8px 24px rgba(10, 10, 15, 0.06);
   --shadow-lg: 0 24px 64px rgba(10, 10, 15, 0.16), 0 4px 12px rgba(10, 10, 15, 0.06);
   --paper: #ffffff;
-  --header-bg: rgba(244, 244, 245, 0.78);
+  --header-bg: rgba(244, 244, 245, 0.9);
 }
 
 /* Dark: the system's choice unless the reader picked light, or the reader's explicit choice. */
@@ -101,7 +101,7 @@
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
     --shadow-lg: 0 24px 72px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.35);
     --paper: #f2f2f3;
-    --header-bg: rgba(17, 17, 19, 0.75);
+    --header-bg: rgba(17, 17, 19, 0.88);
   }
 }
 :root[data-theme='dark'] {
@@ -144,7 +144,7 @@
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.25);
   --shadow-lg: 0 24px 72px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.35);
   --paper: #f2f2f3;
-  --header-bg: rgba(17, 17, 19, 0.75);
+  --header-bg: rgba(17, 17, 19, 0.88);
 }
 
 /* Screenshots come in both themes; show the one that matches. */
@@ -208,9 +208,9 @@ kbd {
   border-radius: 2px;
 }
 .wordmark-mark { font-style: italic; font-weight: 600; }
-:root[data-theme='dark'] .wordmark-text { background-image: linear-gradient(100deg, transparent 2%, rgba(250, 204, 21, 0.55) 3%, rgba(250, 204, 21, 0.55) 97%, transparent 98%); }
+:root[data-theme='dark'] .wordmark-text { color: #141416; background-size: 100% 70%; background-position: 0 70%; }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .wordmark-text { background-image: linear-gradient(100deg, transparent 2%, rgba(250, 204, 21, 0.55) 3%, rgba(250, 204, 21, 0.55) 97%, transparent 98%); }
+  :root:not([data-theme='light']) .wordmark-text { color: #141416; background-size: 100% 70%; background-position: 0 70%; }
 }
 
 /* ── Header ───────────────────────────────────────────────────────────────────────────────── */

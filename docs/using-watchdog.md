@@ -18,6 +18,8 @@ A typical loop, once the first batch is in: add documents, read the briefing, wo
 
 Drop files or folders onto the window, choose **Add documents** (top right, or **File → Add Documents…**), or put files in the investigation's `incoming/` folder with your file manager. The dialog takes you through four steps:
 
+![The Add documents dialog, on its first step: files to add, the files already waiting in the investigation, and Estimate cost.](images/app-add.png)
+
 1. **Choose.** Pick files or folders. The dialog also shows anything already waiting in `incoming/`, and offers to retry documents that failed before. **Options** holds every setting for this run only: models, effort, **Documents at once**, **Record skill**, **Second-read check**, **Wait out rate limits** and the rest. **Estimate cost** shows what the run is likely to cost, and **Compare all models** shows the estimate for each model.
 2. **Reading documents.** The files are copied into `incoming/` (the originals stay where they are) and converted to text on your computer, with OCR (optical character recognition) for scanned pages. Recordings are transcribed here, one at a time; the first one also downloads the transcription model, once. Nothing is sent anywhere during this step.
 3. **Before sending documents to a model.** Files that could not be read are listed first, and a file the investigation already has is set aside in `incoming/skipped/`. Then the public-records warning, with the number of documents, which model receives them and, if you keep more than one key, which key pays. Nothing is sent until you choose **Acknowledge and add**. With [Auto-approve](models-and-cost.md#auto-approve) on and every step on your Claude subscription, this step is a short notice instead; when every step runs on a model server on this computer, it is skipped.
@@ -70,6 +72,8 @@ skill: corporate-filings
 
 **Documents** shows every document as a grid of first-page thumbnails or a sortable list. A strip above it shows files not yet in the investigation (waiting, failed or set aside), with **Retry** (put failed documents back and run them again) and **Requeue** (put them back without running them).
 
+![A scanned document open in Watchdog: the page on the left, the facts taken from it on the right, each with its date, page and source passage.](images/app-document.png)
+
 Open a document to read it: the original on the left, with page navigation and zoom, and the facts taken from it on the right. Each fact's page number scrolls the original to that page. Other tabs show the summary, the entities it names, its full extracted text, its details (including metadata embedded in the file, such as author and creation date, which is a lead, not a fact) and [your notes](#history-and-your-notes).
 
 <a id="finding-words-in-a-document"></a>**Find in document** sits above the original in every kind of viewer; press ⌘F (Ctrl+F) to jump to it. It ignores capitals, accents, the style of quotation marks, dashes and line-break hyphens, so "Renee" finds "Renée". On a scanned page, find highlights the match on the scan itself, and you can select and copy its text; the highlight's position within a line is an estimate. When find turns up nothing, **Search the extracted text instead** opens the Text tab.
@@ -110,6 +114,8 @@ A fact you mark Disputed is never hidden. Wherever it appears (the document, the
 
 **Review** is where everything Watchdog flagged waits for you, one tab each, with a count beside Review in the sidebar. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
 
+![The Review screen on its Contradictions tab, each contradiction with both claims and the documents they come from.](images/app-review.png)
+
 ### Contradictions
 
 When a document disagrees with something already in the investigation, the item appears here with both claims and their sources, and on the entity's page. Two official records that disagree can be the story. **Ask Claude** on an item opens a conversation pointed at it. If you spot a conflict Watchdog missed, choose **Record a contradiction…** from the entity's **⋯** menu.
@@ -142,6 +148,8 @@ Documents your documents refer to but you do not have: the transcript a hearing 
 
 **Entities** lists every person, organization, public body, place, asset and proceeding, with the number of documents each appears in. Search by name or alias, sort, and filter by type, by contradictions or to **Single-source** entities, named in only one document, which is where a duplicate usually shows up.
 
+![An entity's page: its type, aliases and counts, a summary with page citations, its facts and its relationships.](images/app-entity.png)
+
 An entity's page shows everything the documents say about it:
 
 - **Facts** from every document, in the order things happened (or by document), each with its page, any warning and the same marking buttons and keys as the document reader.
@@ -156,7 +164,11 @@ Sometimes one person or company ends up as two entities, usually because a name 
 
 **Timeline** lays out every dated event by year and month, each linked to its page. Filter it by entity, type, years or a word. An event whose fact you disputed stays, labelled **disputed**.
 
+![The Timeline: a bar chart of events by year, then each dated event with its entities and the page it came from.](images/app-timeline.png)
+
 **Network** draws the entities as a graph: each dot an entity, sized by how many documents name it and coloured by type, with one line between two related entities. Hover over a dot to see its connections, click for details, double-click to open it. Click a line for every relationship between the two, with the documents and pages that state it. When documents describe one relationship in different words ("lawyer for", "counsel for"), it is listed once with each document's own words shown as "As written" (see [how wordings are grouped](how-it-works.md#relationship-wordings)); **Show wordings separately** undoes a grouping you disagree with. A slider sets the minimum number of documents for an entity to be drawn.
+
+![The Network screen: entities as coloured dots by type, joined by lines where documents state a relationship.](images/app-network.png)
 
 ## Search
 
@@ -176,6 +188,8 @@ Sentences without a citation are expected: a model connecting facts or summing u
 
 **Ask Claude** is a conversation with Claude about the investigation, using only its documents and citing the page for each claim. Each conversation starts with a short account of where the whole investigation stands, which Watchdog builds from its records, so Claude knows the state of things without re-reading everything. Start a new conversation for each new line of inquiry. **Briefings → Current state** shows that account, and **What Claude is given** shows exactly what Claude receives.
 
+![An Ask Claude conversation: a question, the searches Claude ran, and an answer with a page citation for each claim.](images/app-ask.png)
+
 The documents Claude reads are treated as untrusted, since any of them could contain text written to steer it. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, cannot run programs on your computer, and changes no file except its own pages. Before it changes the investigation's records (an entity's summary, a contradiction, the watch list, the timeline) or fetches a web page, the app shows what it is about to do and asks. **Allow once** allows that one action; **Allow for this conversation** stops asking for that kind of change until you close the chat. Every change Claude makes is recorded in [history](#history-and-your-notes). Adding documents, merging entities and marking items handled stay with you.
 
 Start from a question in plain language or one of the shortcuts:
@@ -193,7 +207,7 @@ A selector chooses the Claude model for new conversations: Sonnet, the default, 
 
 When a question needs more than the investigation's documents, **Web research** can look it up. Enter a question, or leave the box blank for Claude to propose one from the investigation's gaps. Claude proposes a mission, confirms how wide to cast the net (quick, standard or deep), researches in rounds, checking in with you, and writes a memo to Briefings.
 
-Web research never writes to the investigation. It queues the sources it keeps, each with its address, a reliability tag and why it matters, and nothing is downloaded until you choose **Download**. The sources then go through the same reading and extraction as any document, so a blog post is never confused with a primary record. Queued sources survive an interrupted session. With the optional capture browser installed (see [Install](install.md#optional-full-page-snapshots)), pages are saved as full snapshots; [Web archiving](models-and-cost.md#web-archiving) can also save each source to the Wayback Machine.
+Web research never writes to the investigation. It queues the sources it keeps, each with its address, a reliability tag and why it matters, and nothing is downloaded until you choose **Download**. The sources then go through the same reading and extraction as any document, so a blog post is never confused with a primary record. Queued sources survive an interrupted session. With the optional capture browser installed (see [Install](install.md#optional-full-page-snapshots)), pages are saved as full snapshots; [Web archiving](models-and-cost.md#web-archiving) can also save each source to the [Wayback Machine](https://web.archive.org).
 
 ## Briefings
 
@@ -211,6 +225,8 @@ If an earlier version holds something that should not be kept, such as a source'
 
 **Activity** lists everything the app has run, with its full output; **Stop** ends a run cleanly so it can be resumed. While something runs, a card in the corner of the window shows its progress. **Usage** shows tokens, cost and timing for each run and each Ask Claude conversation; on a subscription, the figures are what the work would cost at published rates, marked as not billed.
 
+![The Usage tab under Activity: tokens, cost and time for each run.](images/app-usage.png)
+
 **Maintenance** runs each step of adding documents on its own, plus repairs. Each card says what it does, and anything that sends text to a model shows the public-records warning first.
 
 | Card | What it does |
@@ -226,7 +242,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Rebuild the timeline** | Regenerates the timeline from the records. |
 | **Rebuild notes** | Rewrites every entity and document note from the records, keeping your notes. No model call. |
 | **Rebuild the search index** | Rebuilds search from what is on disk, after changing the search model or merging entities. |
-| **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as Neo4j or Gephi. |
+| **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude after you update Watchdog. |
 
 ## Managing investigations
@@ -247,7 +263,7 @@ Each investigation is an ordinary folder of Markdown files (plain text with ligh
 - `incoming/` holds files waiting to be read, with `failed/` and `skipped/` for files that could not be read or were set aside.
 - Hidden folders (`.watchdog/`, `.claude/`, `.obsidian/`) hold Watchdog's internal records, Claude's instructions and Obsidian's settings. Do not edit them by hand.
 
-[Obsidian](https://obsidian.md), a free note-taking app, opens an investigation as a vault: **Open in Obsidian** on an investigation, document, entity or note opens it there. Every citation in a note links to the page of the original file, and `dashboard.base` shows live tables of the most-mentioned entities, recent documents and single-source entities. You do not need Obsidian to use Watchdog.
+[Obsidian](https://obsidian.md), a free note-taking app, opens an investigation as a vault: **Open in Obsidian** on an investigation, document, entity or note opens it there. Every citation in a note links to the page of the original file, and `dashboard.base` shows live tables ([Obsidian Bases](https://help.obsidian.md/bases)) of the most-mentioned entities, recent documents and single-source entities. You do not need Obsidian to use Watchdog.
 
 ### Folder access
 
