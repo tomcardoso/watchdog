@@ -1,0 +1,394 @@
+{{HEAD}}
+<body class="home">
+{{HEADER}}
+<main id="main">
+
+<!-- ── Hero ─────────────────────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-bg" aria-hidden="true"></div>
+  <div class="wrap hero-grid">
+    <div class="hero-head">
+      <p class="eyebrow reveal"><span class="eyebrow-dot"></span>Free and open source · Version {{VERSION}}</p>
+      <h1 class="hero-title reveal">Read every page.<br><span class="hl"><span class="hl-ink">Find every connection.</span></span></h1>
+    </div>
+    <div class="hero-copy">
+      <p class="hero-lead reveal">Watchdog is a desktop app for journalists who work with public records. Drop in court filings, corporate registries, land titles and freedom-of-information releases. It reads every page, pulls out the people, companies, addresses and relationships, and ties every fact to the page it came from.</p>
+      <div class="hero-cta reveal">
+        <a class="btn btn-primary download-primary" href="#download" data-mac="{{MAC_ARM}}" data-windows="{{WINDOWS}}" data-linux="{{LINUX}}">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span class="download-label">Download Watchdog</span>
+        </a>
+        <a class="btn btn-secondary" href="#tour">Take the tour</a>
+      </div>
+      <p class="hero-meta reveal"><span class="download-note">For Mac, Windows and Linux.</span> Works with a Claude subscription or an API key.</p>
+      <ul class="proof reveal">
+        <li><b>Every fact cited</b> to the document and page it came from</li>
+        <li><b>Reads on your computer</b>: conversion, OCR and transcription stay local</li>
+        <li><b>Plain files you own</b>, readable without the app</li>
+        <li><b>Free and open source</b> under the MIT licence</li>
+      </ul>
+    </div>
+
+    <div class="hero-visual" aria-hidden="true">
+      <div class="paper">
+        <div class="paper-head">
+          <span class="paper-org">Port Calder Land Registry Office</span>
+          <span class="paper-title">Parcel Register</span>
+          <span class="paper-sub">PIN 40318-0147 · 14 Dockside Road</span>
+        </div>
+        <div class="paper-body">
+          <span class="ln w90"></span><span class="ln w70"></span>
+          <p class="pass" data-i="0">Instrument PC-418802, registered April 22, 2021, transferred the property from the Estate of Albert Kessler to 7714882 Holdings Ltd. for stated consideration of $1,150,000.</p>
+          <span class="ln w95"></span><span class="ln w60"></span>
+          <p class="pass" data-i="1">Instrument PC-418803, registered April 22, 2021, is a charge of $800,000 in favour of First Maritime Credit Union against the property.</p>
+          <span class="ln w85"></span><span class="ln w92"></span><span class="ln w40"></span>
+          <p class="pass" data-i="2">Instrument PC-447119, registered February 28, 2022, transferred the property from 7714882 Holdings Ltd. to the City of Port Calder for stated consideration of $4,350,000.</p>
+          <span class="ln w75"></span>
+        </div>
+        <span class="paper-page">Page 1 of 2</span>
+      </div>
+      <div class="facts">
+        <div class="fact" data-i="0">
+          <div class="fact-top"><span class="fact-date">Apr 22, 2021</span><span class="cite">p. 1</span></div>
+          <p>The Estate of Albert Kessler transferred 14 Dockside Road to 7714882 Holdings Ltd. for $1,150,000.</p>
+          <div class="chips"><span class="chip organization">Estate of Albert Kessler</span><span class="chip organization">7714882 Holdings Ltd.</span><span class="chip place">14 Dockside Road</span></div>
+        </div>
+        <div class="fact" data-i="1">
+          <div class="fact-top"><span class="fact-date">Apr 22, 2021</span><span class="cite">p. 1</span></div>
+          <p>7714882 Holdings Ltd. granted First Maritime Credit Union an $800,000 charge against the property.</p>
+          <div class="chips"><span class="chip organization">First Maritime Credit Union</span><span class="chip place">14 Dockside Road</span></div>
+        </div>
+        <div class="fact" data-i="2">
+          <div class="fact-top"><span class="fact-date">Feb 28, 2022</span><span class="cite">p. 1</span></div>
+          <p>7714882 Holdings Ltd. transferred 14 Dockside Road to the City of Port Calder for $4,350,000.</p>
+          <div class="chips"><span class="chip public-body">City of Port Calder</span><span class="chip organization">7714882 Holdings Ltd.</span></div>
+        </div>
+        <div class="flag">
+          <svg viewBox="0 0 20 20"><path d="M10 3 2.5 16.5h15L10 3Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M10 8.5v3.5M10 14.4v.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <span><b>Contradiction.</b> Council approved $3,900,000 for the same purchase.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</section>
+
+<!-- ── Tour ─────────────────────────────────────────────────────────────────────────────── -->
+<section class="section tour" id="tour">
+  <div class="wrap">
+    <header class="section-head reveal">
+      <p class="kicker">A look inside</p>
+      <h2>Inside the app.</h2>
+      <p>These screens are from the sample investigation that comes with the app: a made-up case about a city's land deal and a contract awarded without a tender. Every person, company and document in it is invented.</p>
+    </header>
+
+    <div class="tour-tabs reveal" role="tablist" aria-label="Screens of the app">
+      <button role="tab" aria-selected="true" data-shot="overview">Overview</button>
+      <button role="tab" aria-selected="false" data-shot="document">Documents</button>
+      <button role="tab" aria-selected="false" data-shot="entity">Entities</button>
+      <button role="tab" aria-selected="false" data-shot="review">Review</button>
+      <button role="tab" aria-selected="false" data-shot="timeline">Timeline</button>
+      <button role="tab" aria-selected="false" data-shot="network">Network</button>
+      <button role="tab" aria-selected="false" data-shot="ask">Ask Claude</button>
+    </div>
+
+    <div class="tour-stage reveal">
+      <div class="window">
+        <div class="window-bar"><span></span><span></span><span></span><em>Watchdog — Port Calder Waterfront (sample)</em></div>
+        <div class="window-screens">
+          <figure class="screen active" data-shot="overview"><img class="only-light" src="images/app-overview.png" width="1440" height="900" alt="The Overview: counts of documents and checked facts, an account of where things stand, the latest briefing and what is waiting on you."><img class="only-dark" src="images/app-overview-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+          <figure class="screen" data-shot="document"><img class="only-light" src="images/app-document.png" width="1440" height="900" alt="A scanned document beside the facts taken from it, each with its source passage." loading="lazy"><img class="only-dark" src="images/app-document-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+          <figure class="screen" data-shot="entity"><img class="only-light" src="images/app-entity.png" width="1440" height="900" alt="An entity's page: a cited summary, its facts and its relationships." loading="lazy"><img class="only-dark" src="images/app-entity-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+          <figure class="screen" data-shot="review"><img class="only-light" src="images/app-review.png" width="1440" height="900" alt="Review: contradictions between documents, with both sources cited." loading="lazy"><img class="only-dark" src="images/app-review-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+          <figure class="screen" data-shot="timeline"><img class="only-light" src="images/app-timeline.png" width="1440" height="900" alt="The timeline of dated events, each linked to its page." loading="lazy"><img class="only-dark" src="images/app-timeline-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+          <figure class="screen" data-shot="network"><img class="only-light" src="images/app-network.png" width="1440" height="900" alt="The network of people, companies and places." loading="lazy"><img class="only-dark" src="images/app-network-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+          <figure class="screen" data-shot="ask"><img class="only-light" src="images/app-ask.png" width="1440" height="900" alt="Ask Claude answering a question with a page citation for each claim." loading="lazy"><img class="only-dark" src="images/app-ask-dark.png" width="1440" height="900" alt="" loading="lazy"></figure>
+        </div>
+      </div>
+      <div class="tour-captions">
+        <p class="caption active" data-shot="overview"><b>Overview.</b> Where the investigation stands in one paragraph, the latest briefing, and what is waiting on you. <a href="using-watchdog.html#finding-your-way-around">Finding your way around</a></p>
+        <p class="caption" data-shot="document"><b>Documents.</b> The original beside the facts taken from it. Every fact names its page and shows the passage it rests on, even on a scan. <a href="using-watchdog.html#checking-facts">Checking facts</a></p>
+        <p class="caption" data-shot="entity"><b>Entities.</b> Everything the documents say about a person or company, with a summary that cites its sources. <a href="using-watchdog.html#entities">Entities</a></p>
+        <p class="caption" data-shot="review"><b>Review.</b> Contradictions, leads, near-duplicates and documents to request, each with both sources. <a href="using-watchdog.html#review">Review</a></p>
+        <p class="caption" data-shot="timeline"><b>Timeline.</b> Every dated event across every document, in order, linked to its page. <a href="using-watchdog.html#timeline-and-network">Timeline and Network</a></p>
+        <p class="caption" data-shot="network"><b>Network.</b> Who connects to whom, and through which documents. <a href="using-watchdog.html#timeline-and-network">Timeline and Network</a></p>
+        <p class="caption" data-shot="ask"><b>Ask Claude.</b> Questions in plain language, answered from your documents only, with a page citation for each claim. <a href="using-watchdog.html#ask-claude">Ask Claude</a></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How it works ─────────────────────────────────────────────────────────────────────── -->
+<section class="section how" id="how">
+  <div class="wrap">
+    <header class="section-head reveal">
+      <p class="kicker">How it works</p>
+      <h2>What happens when you add a document.</h2>
+      <p>Every document goes through three stages. The first runs entirely on your computer. The second sends the document's text to the AI model you chose. The third combines both, and code checks every citation the model writes.</p>
+    </header>
+    <ol class="stages">
+      <li class="stage reveal">
+        <span class="stage-num">1</span>
+        <span class="where local">On your computer</span>
+        <h3>Pre-processing</h3>
+        <p>Each file becomes searchable text. <a href="https://github.com/docling-project/docling">Docling</a> reads layout and tables; scanned pages are recognized page by page; recordings are transcribed by <a href="https://github.com/openai/whisper">Whisper</a>. Nothing is sent anywhere.</p>
+      </li>
+      <li class="stage reveal">
+        <span class="stage-num">2</span>
+        <span class="where cloud">The AI model you choose</span>
+        <h3>Processing</h3>
+        <p>A model identifies the type of record, then reads the whole document with an expert guide for that type, noting each fact with its page. A small local model, <a href="https://github.com/urchade/GLiNER">GLiNER</a>, hands it a checklist of names and figures so little is skimmed past.</p>
+      </li>
+      <li class="stage reveal">
+        <span class="stage-num">3</span>
+        <span class="where both">Both</span>
+        <h3>Post-processing</h3>
+        <p>Facts gather onto one note per person, company and place. A model matches names, flags contradictions and writes the briefing; code checks that every citation points at a real fact.</p>
+      </li>
+    </ol>
+    <p class="section-more reveal"><a class="more" href="how-it-works.html">Read how it works, in plain English <span aria-hidden="true">→</span></a></p>
+  </div>
+</section>
+
+<!-- ── The story ────────────────────────────────────────────────────────────────────────── -->
+<section class="section story" id="story">
+  <div class="wrap">
+    <header class="section-head reveal">
+      <p class="kicker">Contradictions</p>
+      <h2>Two official records. Two different prices.</h2>
+      <p>Watchdog compares each new document with what the investigation already holds and flags any disagreement, citing both sources. Working out which record is right is still your job.</p>
+    </header>
+
+    <div class="clash reveal">
+      <article class="clip">
+        <p class="clip-src">Minutes of the Regular Meeting of Council · February 8, 2022 · <span class="cite">p. 2</span></p>
+        <p class="clip-text">The report recommends that the City acquire the property at 14 Dockside Road (Lot 14, Plan DP-2217) from 7714882 Holdings Ltd. for <mark class="clip-hl">$3,900,000</mark>, being the amount supported by an independent appraisal commissioned by the City.</p>
+      </article>
+      <div class="clash-mid" aria-hidden="true">
+        <svg viewBox="0 0 120 40" preserveAspectRatio="none"><path d="M0 20 H120" /></svg>
+        <span class="clash-badge">≠</span>
+      </div>
+      <article class="clip">
+        <p class="clip-src">Parcel Register · PIN 40318-0147 · <span class="cite">p. 1</span></p>
+        <p class="clip-text">Instrument PC-447119, registered February 28, 2022, transferred the property from 7714882 Holdings Ltd. to the City of Port Calder for stated consideration of <mark class="clip-hl">$4,350,000</mark>.</p>
+      </article>
+    </div>
+
+    <ol class="trail reveal" aria-label="The property's record, in order">
+      <li><time>Apr 22, 2021</time><b>$1,150,000</b><span>A numbered company buys 14 Dockside Road from an estate.</span></li>
+      <li><time>Jan 15, 2022</time><b>Resigns</b><span>Its director, Marcus Teague, resigns.</span></li>
+      <li><time>Feb 8, 2022</time><b>$3,900,000</b><span>Council votes 8 to 3 to buy the lot.</span></li>
+      <li><time>Feb 28, 2022</time><b>$4,350,000</b><span>The sale is registered, signed by Teague as director.</span></li>
+    </ol>
+    <p class="note reveal">From the sample investigation. Port Calder, its people and its records are invented.</p>
+  </div>
+</section>
+
+<!-- ── Network ──────────────────────────────────────────────────────────────────────────── -->
+<section class="section net" id="network">
+  <div class="wrap net-grid">
+    <header class="section-head reveal">
+      <p class="kicker">Connections</p>
+      <h2>See who connects to whom.</h2>
+      <p>Every relationship a document states, between every person, company, public body, place, asset and proceeding, drawn as one network. Shared addresses, overlapping directors and a name that keeps turning up stand out.</p>
+      <ul class="legend">
+        <li><span class="dot person"></span>People</li>
+        <li><span class="dot organization"></span>Organizations</li>
+        <li><span class="dot public-body"></span>Public bodies</li>
+        <li><span class="dot place"></span>Places</li>
+        <li><span class="dot asset"></span>Assets</li>
+        <li><span class="dot proceeding"></span>Proceedings</li>
+      </ul>
+      <p class="note">The sample investigation's real network. Hover over a dot to see its connections, and drag it to rearrange.</p>
+    </header>
+    <div class="net-stage reveal">
+      <canvas class="net-canvas" aria-label="An interactive network of the sample investigation's entities" role="img"></canvas>
+      <div class="net-tip" hidden></div>
+      <div class="net-count" aria-hidden="true"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Verify ───────────────────────────────────────────────────────────────────────────── -->
+<section class="section verify" id="verify">
+  <div class="wrap verify-grid">
+    <header class="section-head reveal">
+      <p class="kicker">Checking facts</p>
+      <h2>Every fact comes with its source.</h2>
+      <p>AI makes mistakes, so Watchdog shows its working. Each fact carries its page and the passage it rests on, facts the model inferred are marked, and code checks every number against the page. Then you record your own check.</p>
+      <ul class="ticks">
+        <li>Source passages, found by plain code, not AI</li>
+        <li>Figures that aren't on the cited page are flagged</li>
+        <li>Your checks travel with the fact, everywhere it appears</li>
+      </ul>
+      <p><a class="more" href="using-watchdog.html#checking-facts">How checking facts works <span aria-hidden="true">→</span></a></p>
+    </header>
+    <div class="fact-demo reveal">
+      <div class="fact-card" data-state="">
+        <div class="fact-top"><span class="fact-date">Feb 8, 2022</span><span class="cite">p. 2</span><span class="stamp" aria-live="polite"></span></div>
+        <p class="fact-text">Report CR-2022-011 recommended buying 14 Dockside Road from 7714882 Holdings Ltd. for $3,900,000, described as the amount supported by an independent appraisal commissioned by the City.</p>
+        <blockquote class="fact-pass"><span>Matched passage, p. 2</span>Council received Report CR-2022-011 from Leonard Pike, Director of Procurement and Real Property. The report recommends that the City acquire the property at 14 Dockside Road from 7714882 Holdings Ltd. for $3,900,000, being the amount supported by an independent appraisal commissioned by the City.</blockquote>
+        <div class="chips"><span class="chip person">Leonard Pike</span><span class="chip public-body">City of Port Calder</span><span class="chip place">14 Dockside Road</span></div>
+        <div class="marks" role="group" aria-label="Mark this fact">
+          <button type="button" data-mark="verified"><svg viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>Verified</button>
+          <button type="button" data-mark="disputed"><svg viewBox="0 0 16 16"><path d="m4.5 4.5 7 7m0-7-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Disputed</button>
+          <button type="button" data-mark="unverifiable"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M6.6 6.4a1.5 1.5 0 1 1 2 1.4c-.4.2-.6.5-.6.9v.4M8 11v.1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Can't verify</button>
+        </div>
+      </div>
+      <p class="fact-hint">Try it: mark the fact.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Skills ───────────────────────────────────────────────────────────────────────────── -->
+<section class="section skills" id="skills">
+  <div class="wrap">
+    <header class="section-head center reveal">
+      <p class="kicker">Record skills</p>
+      <h2>Guides for 33 kinds of record.</h2>
+      <p>Each guide tells the model what an experienced investigative reporter looks for in that kind of record, such as a related-party transfer in a creditor list, or a director who changed three weeks before a contract award. They're plain text files, and you can write your own.</p>
+    </header>
+  </div>
+  <div class="marquee" aria-label="The 33 record types">
+    <div class="marquee-row">
+      <span>Corporate filings</span><span>Financial statements</span><span>Regulatory filings</span><span>Bankruptcy</span><span>Insurance filings</span><span>Tax documents</span><span>Court documents</span><span>Criminal proceedings</span><span>Administrative tribunals</span><span>Labour arbitration</span><span>Immigration and refugee</span>
+    </div>
+    <div class="marquee-row reverse">
+      <span>Healthcare licensing</span><span>Professional licensing</span><span>Legislation</span><span>Government contracts</span><span>Audit reports</span><span>Government reports</span><span>FOI responses</span><span>Legislature transcripts</span><span>Lobbying records</span><span>Election filings</span><span>Municipal records</span>
+    </div>
+    <div class="marquee-row">
+      <span>Police records</span><span>Corrections records</span><span>Environmental filings</span><span>Real estate</span><span>Vehicle registrations</span><span>Academic research</span><span>Aircraft logs</span><span>DNS and WHOIS</span><span>News clippings</span><span>Audio and video</span><span>Websites</span>
+    </div>
+  </div>
+  <div class="wrap"><p class="section-more center reveal"><a class="more" href="how-it-works.html#record-skills">See the full catalogue <span aria-hidden="true">→</span></a></p></div>
+</section>
+
+<!-- ── Models ───────────────────────────────────────────────────────────────────────────── -->
+<section class="section models" id="models">
+  <div class="wrap models-grid">
+    <header class="section-head reveal">
+      <p class="kicker">Models and cost</p>
+      <h2>Tested on real filings.</h2>
+      <p>Watchdog runs on <a href="https://www.anthropic.com/claude">Claude</a> by default, with your subscription or an API key. Any reading step can use OpenAI, Google Gemini, DeepSeek, OpenRouter or a model on your own computer instead. The defaults come from running real public filings through each model and scoring what each one found against an answer key.</p>
+      <p><a class="more" href="models-and-cost.html">Models, cost and settings <span aria-hidden="true">→</span></a></p>
+    </header>
+    <figure class="bench reveal">
+      <figcaption><b>Share of the main facts each setting found</b><span>Six court and financial filings, 209 pages; one run each, October 2026</span></figcaption>
+      <ol class="bars">
+        <li style="--v:74"><span class="bar-label">Claude Haiku 5.5, high <em>default</em></span><span class="bar"><i></i></span><span class="bar-val">74%</span><span class="bar-cost">$0.0009 a page</span></li>
+        <li style="--v:67"><span class="bar-label">Claude Sonnet 5.5, high</span><span class="bar"><i></i></span><span class="bar-val">67%</span><span class="bar-cost">$0.0049 a page</span></li>
+        <li style="--v:55"><span class="bar-label">GPT-6 Luna, high</span><span class="bar"><i></i></span><span class="bar-val">55%</span><span class="bar-cost">$0.0003 a page</span></li>
+        <li style="--v:52"><span class="bar-label">GPT-6 Luna, medium</span><span class="bar"><i></i></span><span class="bar-val">52%</span><span class="bar-cost">$0.0002 a page</span></li>
+        <li style="--v:45"><span class="bar-label">Claude Sonnet 5.5, medium</span><span class="bar"><i></i></span><span class="bar-val">45%</span><span class="bar-cost">$0.0035 a page</span></li>
+        <li style="--v:41"><span class="bar-label">Gemini 3.8 Flash, high</span><span class="bar"><i></i></span><span class="bar-val">41%</span><span class="bar-cost">$0.0028 a page</span></li>
+        <li style="--v:39"><span class="bar-label">Claude Haiku 5.5, medium</span><span class="bar"><i></i></span><span class="bar-val">39%</span><span class="bar-cost">$0.0003 a page</span></li>
+      </ol>
+      <p class="bench-note">Costs are on a metered API key; a Claude subscription isn't billed per page. Each setting ran once, so read a gap as a lead, not a result.</p>
+    </figure>
+  </div>
+</section>
+
+<!-- ── Public records ───────────────────────────────────────────────────────────────────── -->
+<section class="section records" id="public-records">
+  <div class="wrap">
+    <div class="records-panel reveal">
+      <header>
+        <p class="kicker">Public records only</p>
+        <h2>What stays on your computer, and what doesn't.</h2>
+        <p>The originals never leave your computer. But the text of each document goes to the AI model you choose, and that can't be taken back. So Watchdog is only for documents that are public, or presumptively public, and it asks you to confirm that before it sends anything.</p>
+      </header>
+      <div class="records-cols">
+        <div>
+          <h3><span class="where local">Stays on your computer</span></h3>
+          <ul><li>Your original files</li><li>Conversion, OCR and transcription</li><li>The search index</li><li>Your notes and your checks of each fact</li><li>The investigation's folder of plain files</li></ul>
+        </div>
+        <div>
+          <h3><span class="where cloud">Goes to the model you choose</span></h3>
+          <ul><li>Each document's extracted text</li><li>Your investigation's brief</li><li>Facts, names and short quotations, for the write-up</li><li>Your questions to Claude</li></ul>
+        </div>
+      </div>
+      <p class="records-never">Never use it for confidential source communications, leaked or unpublished material, private correspondence, or anything that could identify a source. With a model on your own computer, nothing leaves it at all; see <a href="models-and-cost.html#local-and-self-hosted-models">local models</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── Download ─────────────────────────────────────────────────────────────────────────── -->
+<section class="section download" id="download">
+  <div class="wrap">
+    <header class="section-head center reveal">
+      <p class="kicker">Download</p>
+      <h2>Get Watchdog {{VERSION}}.</h2>
+      <p>Free, for Mac, Windows and Linux. The first time it opens, it sets itself up; you don't need a terminal or anything installed beforehand.</p>
+    </header>
+    <div class="platforms reveal">
+      <a class="platform" data-os="mac" href="{{MAC_ARM}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.6s-2.5-1-2.5-3.8ZM14.1 5.8c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3Z"/></svg>
+        <span class="platform-name">Mac with Apple silicon</span>
+        <span class="platform-file">Watchdog-{{VERSION}}-arm64.dmg</span>
+      </a>
+      <a class="platform" data-os="mac-intel" href="{{MAC_INTEL}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9-.7 0-1.8-.8-3-.8-1.5 0-3 .9-3.8 2.3-1.6 2.8-.4 7 1.2 9.3.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2.1-1.1 2.8-2.3.9-1.3 1.3-2.6 1.3-2.6s-2.5-1-2.5-3.8ZM14.1 5.8c.6-.8 1.1-1.9 1-3-.9 0-2.1.6-2.7 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.7-1.3Z"/></svg>
+        <span class="platform-name">Mac with Intel</span>
+        <span class="platform-file">Watchdog-{{VERSION}}-x64.dmg</span>
+      </a>
+      <a class="platform" data-os="windows" href="{{WINDOWS}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 5.4 10.4 4.4v7H3Zm8.3-1.1L21 3v8.4h-9.7ZM3 12.5h7.4v7.1L3 18.6Zm8.3 0H21V21l-9.7-1.3Z"/></svg>
+        <span class="platform-name">Windows</span>
+        <span class="platform-file">Watchdog-Setup-{{VERSION}}.exe</span>
+      </a>
+      <a class="platform" data-os="linux" href="{{LINUX}}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5c-2 0-3.3 1.7-3.3 4 0 1.2.3 2 .1 2.8-.3 1.1-1.9 2.6-2.8 4.4-.8 1.6-.9 3.2-.4 4.2-.7.5-1.3 1.2-1 1.9.4.9 2.1.6 3.4 1.2 1.2.6 2.3.6 2.9-.2.9.1 1.8.1 2.6 0 .6.8 1.7.8 2.9.2 1.3-.6 3-.3 3.4-1.2.3-.7-.3-1.4-1-1.9.5-1 .4-2.6-.4-4.2-.9-1.8-2.5-3.3-2.8-4.4-.2-.8.1-1.6.1-2.8 0-2.3-1.3-4-3.3-4Zm-1.3 3.4c.4 0 .7.5.7 1.1 0 .5-.3 1-.7 1-.4 0-.7-.5-.7-1 0-.6.3-1.1.7-1.1Zm2.6 0c.4 0 .7.5.7 1.1 0 .5-.3 1-.7 1-.4 0-.7-.5-.7-1 0-.6.3-1.1.7-1.1ZM12 8.6c.8 0 1.9.5 1.9.9 0 .3-1.1.9-1.9.9s-1.9-.6-1.9-.9c0-.4 1.1-.9 1.9-.9Z"/></svg>
+        <span class="platform-name">Linux</span>
+        <span class="platform-file">Watchdog-{{VERSION}}.AppImage</span>
+      </a>
+    </div>
+    <ol class="steps reveal">
+      <li><b>Install it</b><span>Open the file and install it like any other app. <a href="install.html#if-your-computer-says-it-cannot-verify-the-app">If your computer warns you</a></span></li>
+      <li><b>Set it up</b><span>Watchdog downloads what it needs and connects to Claude. You'll need about 7 GB of space. <a href="install.html#step-3-first-run-setup">First-run setup</a></span></li>
+      <li><b>Try the sample</b><span>A made-up investigation with a guided tour. It costs nothing and needs no sign-in. <a href="getting-started.html#try-the-sample-investigation">Getting started</a></span></li>
+    </ol>
+    <p class="section-more center reveal">All files and earlier versions are on <a href="{{RELEASE_PAGE}}">the release page</a>. Installed copies update themselves.</p>
+  </div>
+</section>
+
+<!-- ── Questions ────────────────────────────────────────────────────────────────────────── -->
+<section class="section faq" id="faq">
+  <div class="wrap faq-grid">
+    <header class="section-head reveal">
+      <p class="kicker">Questions</p>
+      <h2>Before you start.</h2>
+      <p>Anything else is in the <a href="getting-started.html">documentation</a>, or ask on <a href="{{REPO}}/issues">GitHub</a>.</p>
+    </header>
+    <div class="faq-list reveal">
+      <details>
+        <summary>What does it cost?</summary>
+        <p>The app is free and open source. What you pay for is the AI model. A Claude Pro subscription (US$20 a month) is enough for most journalism work; on a metered API key, the default model costs roughly US$1 per 1,000 pages. <a href="models-and-cost.html#controlling-cost">Controlling cost</a></p>
+      </details>
+      <details>
+        <summary>Can I use it on leaked or confidential documents?</summary>
+        <p>No. The text of each document is sent to a cloud AI model, so Watchdog is only for records that are public or presumptively public. The one exception is a model running on your own computer, where nothing leaves it. <a href="models-and-cost.html#local-and-self-hosted-models">Local models</a></p>
+      </details>
+      <details>
+        <summary>Does it replace reading the documents?</summary>
+        <p>No. It's a structured first read: it tells you where to look and keeps track of what you've checked. Every fact links to its page; follow the link before you publish anything. <a href="using-watchdog.html#checking-facts">Checking facts</a></p>
+      </details>
+      <details>
+        <summary>What kinds of files can it read?</summary>
+        <p>PDFs (scanned or not), Word, Excel and PowerPoint files, images, web pages, plain text, and audio and video, which it transcribes on your computer. A 500-page PDF is no problem. <a href="using-watchdog.html#supported-file-types">Supported file types</a></p>
+      </details>
+      <details>
+        <summary>Where does my work live?</summary>
+        <p>In an ordinary folder of Markdown files on your computer, one per investigation. You own it, and it stays readable without the app; it also opens in <a href="https://obsidian.md">Obsidian</a>. <a href="using-watchdog.html#your-files-and-obsidian">Your files</a></p>
+      </details>
+      <details>
+        <summary>Do I need Claude?</summary>
+        <p>For asking questions of your investigation, yes: Ask Claude and Web research run on Claude. Reading the documents can run on OpenAI, Google Gemini, DeepSeek, OpenRouter or a local model instead. <a href="models-and-cost.html#other-providers">Other providers</a></p>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+{{FOOTER}}
+</body>
+</html>

@@ -1,0 +1,714 @@
+{
+ "nodes": [
+  {
+   "id": "city-of-port-calder",
+   "name": "City of Port Calder",
+   "type": "public-body",
+   "docs": 11
+  },
+  {
+   "id": "robert-delacroix",
+   "name": "Robert Delacroix",
+   "type": "person",
+   "docs": 5
+  },
+  {
+   "id": "northgate-civil-works",
+   "name": "Northgate Civil Works Ltd.",
+   "type": "organization",
+   "docs": 8
+  },
+  {
+   "id": "port-calder-city-council",
+   "name": "Port Calder City Council",
+   "type": "public-body",
+   "docs": 8
+  },
+  {
+   "id": "pier-9",
+   "name": "Pier 9",
+   "type": "place",
+   "docs": 10
+  },
+  {
+   "id": "harbourfront-lands",
+   "name": "Harbourfront Lands",
+   "type": "place",
+   "docs": 5
+  },
+  {
+   "id": "ministry-of-municipal-affairs",
+   "name": "Provincial Ministry of Municipal Affairs",
+   "type": "public-body",
+   "docs": 3
+  },
+  {
+   "id": "port-calder-harbour-authority",
+   "name": "Port Calder Harbour Authority",
+   "type": "public-body",
+   "docs": 5
+  },
+  {
+   "id": "leonard-pike",
+   "name": "Leonard Pike",
+   "type": "person",
+   "docs": 8
+  },
+  {
+   "id": "meridian-shoreline-developments",
+   "name": "Meridian Shoreline Developments Inc.",
+   "type": "organization",
+   "docs": 4
+  },
+  {
+   "id": "410-wharf-street",
+   "name": "410 Wharf Street",
+   "type": "place",
+   "docs": 3
+  },
+  {
+   "id": "calder-harbour",
+   "name": "Calder Harbour",
+   "type": "place",
+   "docs": 2
+  },
+  {
+   "id": "performance-bond-pb-88213",
+   "name": "Performance Bond PB-88213",
+   "type": "asset",
+   "docs": 1
+  },
+  {
+   "id": "tideway-marine-services",
+   "name": "Tideway Marine Services Ltd.",
+   "type": "organization",
+   "docs": 3
+  },
+  {
+   "id": "dredge-calder-princess",
+   "name": "Dredge Calder Princess",
+   "type": "asset",
+   "docs": 2
+  },
+  {
+   "id": "harbourline-engineering",
+   "name": "Harbourline Engineering Inc.",
+   "type": "organization",
+   "docs": 2
+  },
+  {
+   "id": "anita-sandhu",
+   "name": "Anita Sandhu",
+   "type": "person",
+   "docs": 7
+  },
+  {
+   "id": "colleen-brandt",
+   "name": "Colleen Brandt",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "tomasz-wieczorek",
+   "name": "Tomasz Wieczorek",
+   "type": "person",
+   "docs": 2
+  },
+  {
+   "id": "7714882-holdings-ltd",
+   "name": "7714882 Holdings Ltd.",
+   "type": "organization",
+   "docs": 6
+  },
+  {
+   "id": "lot-14-dockside-road",
+   "name": "14 Dockside Road",
+   "type": "place",
+   "docs": 6
+  },
+  {
+   "id": "macaskill-rowe-appraisals",
+   "name": "Macaskill & Rowe Appraisals Ltd.",
+   "type": "organization",
+   "docs": 3
+  },
+  {
+   "id": "owen-macaskill",
+   "name": "Owen Macaskill",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "kessler-estate",
+   "name": "Estate of Albert Kessler",
+   "type": "organization",
+   "docs": 1
+  },
+  {
+   "id": "first-maritime-credit-union",
+   "name": "First Maritime Credit Union",
+   "type": "organization",
+   "docs": 1
+  },
+  {
+   "id": "charge-pc-418803",
+   "name": "Charge PC-418803",
+   "type": "asset",
+   "docs": 1
+  },
+  {
+   "id": "marcus-teague",
+   "name": "Marcus Teague",
+   "type": "person",
+   "docs": 4
+  },
+  {
+   "id": "planning-and-procurement-committee",
+   "name": "Planning and Procurement Committee",
+   "type": "public-body",
+   "docs": 4
+  },
+  {
+   "id": "dana-whitcombe",
+   "name": "Dana Whitcombe",
+   "type": "person",
+   "docs": 5
+  },
+  {
+   "id": "helen-okafor-reyes",
+   "name": "Helen Okafor-Reyes",
+   "type": "person",
+   "docs": 2
+  },
+  {
+   "id": "strathmore-public-affairs",
+   "name": "Strathmore Public Affairs Inc.",
+   "type": "organization",
+   "docs": 2
+  },
+  {
+   "id": "tomasz-wieczorek-2",
+   "name": "Tomasz Wieczorek",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "88-gull-lane",
+   "name": "88 Gull Lane",
+   "type": "place",
+   "docs": 1
+  },
+  {
+   "id": "meridianshoreline-example",
+   "name": "meridianshoreline.example",
+   "type": "asset",
+   "docs": 1
+  },
+  {
+   "id": "blackwater-capital-partners",
+   "name": "Blackwater Capital Partners LP",
+   "type": "organization",
+   "docs": 1
+  },
+  {
+   "id": "grace-liu",
+   "name": "Grace Liu",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "elaine-fortier",
+   "name": "Elaine Fortier",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "office-of-the-integrity-commissioner",
+   "name": "Office of the Integrity Commissioner",
+   "type": "public-body",
+   "docs": 2
+  },
+  {
+   "id": "integrity-commissioner-inquiry-ic-2022-07",
+   "name": "Integrity Commissioner Inquiry IC-2022-07",
+   "type": "proceeding",
+   "docs": 3
+  },
+  {
+   "id": "calder-citizens-for-open-government",
+   "name": "Calder Citizens for Open Government",
+   "type": "organization",
+   "docs": 2
+  },
+  {
+   "id": "marisol-fernandes",
+   "name": "Marisol Fernandes",
+   "type": "person",
+   "docs": 2
+  },
+  {
+   "id": "office-of-the-city-auditor",
+   "name": "Office of the City Auditor",
+   "type": "public-body",
+   "docs": 1
+  },
+  {
+   "id": "priya-raman",
+   "name": "Priya Raman",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "city-auditor-procurement-review-2023",
+   "name": "City Auditor Procurement Review (Pier 9)",
+   "type": "proceeding",
+   "docs": 1
+  },
+  {
+   "id": "port-calder-superior-court",
+   "name": "Port Calder Superior Court",
+   "type": "public-body",
+   "docs": 1
+  },
+  {
+   "id": "ingrid-halvorsen",
+   "name": "Ingrid Halvorsen",
+   "type": "person",
+   "docs": 1
+  },
+  {
+   "id": "citizens-v-city-judicial-review",
+   "name": "Calder Citizens for Open Government v. City of Port Calder",
+   "type": "proceeding",
+   "docs": 1
+  },
+  {
+   "id": "samir-haddad",
+   "name": "Samir Haddad",
+   "type": "person",
+   "docs": 1
+  }
+ ],
+ "links": [
+  {
+   "source": "city-of-port-calder",
+   "target": "northgate-civil-works",
+   "labels": [
+    "Awarded contract to",
+    "Paid"
+   ]
+  },
+  {
+   "source": "city-of-port-calder",
+   "target": "7714882-holdings-ltd",
+   "labels": [
+    "Paid"
+   ]
+  },
+  {
+   "source": "city-of-port-calder",
+   "target": "tideway-marine-services",
+   "labels": [
+    "Paid"
+   ]
+  },
+  {
+   "source": "city-of-port-calder",
+   "target": "lot-14-dockside-road",
+   "labels": [
+    "Owner of"
+   ]
+  },
+  {
+   "source": "city-of-port-calder",
+   "target": "citizens-v-city-judicial-review",
+   "labels": [
+    "Respondent in"
+   ]
+  },
+  {
+   "source": "robert-delacroix",
+   "target": "city-of-port-calder",
+   "labels": [
+    "Mayor of"
+   ]
+  },
+  {
+   "source": "northgate-civil-works",
+   "target": "meridian-shoreline-developments",
+   "labels": [
+    "Subsidiary of",
+    "Affiliate of"
+   ]
+  },
+  {
+   "source": "northgate-civil-works",
+   "target": "410-wharf-street",
+   "labels": [
+    "Located at"
+   ]
+  },
+  {
+   "source": "northgate-civil-works",
+   "target": "performance-bond-pb-88213",
+   "labels": [
+    "Principal on"
+   ]
+  },
+  {
+   "source": "northgate-civil-works",
+   "target": "citizens-v-city-judicial-review",
+   "labels": [
+    "Intervenor in"
+   ]
+  },
+  {
+   "source": "port-calder-city-council",
+   "target": "northgate-civil-works",
+   "labels": [
+    "Awarded contract to"
+   ]
+  },
+  {
+   "source": "ministry-of-municipal-affairs",
+   "target": "pier-9",
+   "labels": [
+    "Funder of"
+   ]
+  },
+  {
+   "source": "port-calder-harbour-authority",
+   "target": "calder-harbour",
+   "labels": [
+    "Operates"
+   ]
+  },
+  {
+   "source": "port-calder-harbour-authority",
+   "target": "harbourfront-lands",
+   "labels": [
+    "Declared surplus"
+   ]
+  },
+  {
+   "source": "port-calder-harbour-authority",
+   "target": "pier-9",
+   "labels": [
+    "Funder of"
+   ]
+  },
+  {
+   "source": "leonard-pike",
+   "target": "city-of-port-calder",
+   "labels": [
+    "Director of Procurement and Real Property at"
+   ]
+  },
+  {
+   "source": "meridian-shoreline-developments",
+   "target": "northgate-civil-works",
+   "labels": [
+    "Guarantor of"
+   ]
+  },
+  {
+   "source": "meridian-shoreline-developments",
+   "target": "410-wharf-street",
+   "labels": [
+    "Located at"
+   ]
+  },
+  {
+   "source": "tideway-marine-services",
+   "target": "northgate-civil-works",
+   "labels": [
+    "Subcontractor to"
+   ]
+  },
+  {
+   "source": "tideway-marine-services",
+   "target": "dredge-calder-princess",
+   "labels": [
+    "Operator of",
+    "Owner of"
+   ]
+  },
+  {
+   "source": "harbourline-engineering",
+   "target": "city-of-port-calder",
+   "labels": [
+    "Contract administrator for"
+   ]
+  },
+  {
+   "source": "anita-sandhu",
+   "target": "city-of-port-calder",
+   "labels": [
+    "City Clerk of"
+   ]
+  },
+  {
+   "source": "colleen-brandt",
+   "target": "northgate-civil-works",
+   "labels": [
+    "President of"
+   ]
+  },
+  {
+   "source": "tomasz-wieczorek",
+   "target": "meridian-shoreline-developments",
+   "labels": [
+    "Chief Executive Officer of"
+   ]
+  },
+  {
+   "source": "7714882-holdings-ltd",
+   "target": "lot-14-dockside-road",
+   "labels": [
+    "Owner of",
+    "Vendor of"
+   ]
+  },
+  {
+   "source": "7714882-holdings-ltd",
+   "target": "410-wharf-street",
+   "labels": [
+    "Registered office at"
+   ]
+  },
+  {
+   "source": "7714882-holdings-ltd",
+   "target": "88-gull-lane",
+   "labels": [
+    "Registered office at"
+   ]
+  },
+  {
+   "source": "macaskill-rowe-appraisals",
+   "target": "lot-14-dockside-road",
+   "labels": [
+    "Appraised"
+   ]
+  },
+  {
+   "source": "owen-macaskill",
+   "target": "macaskill-rowe-appraisals",
+   "labels": [
+    "Appraiser at"
+   ]
+  },
+  {
+   "source": "kessler-estate",
+   "target": "lot-14-dockside-road",
+   "labels": [
+    "Seller of"
+   ]
+  },
+  {
+   "source": "first-maritime-credit-union",
+   "target": "7714882-holdings-ltd",
+   "labels": [
+    "Lender to"
+   ]
+  },
+  {
+   "source": "first-maritime-credit-union",
+   "target": "charge-pc-418803",
+   "labels": [
+    "Holder of"
+   ]
+  },
+  {
+   "source": "marcus-teague",
+   "target": "7714882-holdings-ltd",
+   "labels": [
+    "Signed transfer for",
+    "Director of",
+    "President of"
+   ]
+  },
+  {
+   "source": "marcus-teague",
+   "target": "dana-whitcombe",
+   "labels": [
+    "Brother-in-law of"
+   ]
+  },
+  {
+   "source": "planning-and-procurement-committee",
+   "target": "port-calder-city-council",
+   "labels": [
+    "Committee of"
+   ]
+  },
+  {
+   "source": "dana-whitcombe",
+   "target": "planning-and-procurement-committee",
+   "labels": [
+    "Chair of"
+   ]
+  },
+  {
+   "source": "dana-whitcombe",
+   "target": "integrity-commissioner-inquiry-ic-2022-07",
+   "labels": [
+    "Respondent in"
+   ]
+  },
+  {
+   "source": "dana-whitcombe",
+   "target": "marcus-teague",
+   "labels": [
+    "Sister-in-law of"
+   ]
+  },
+  {
+   "source": "helen-okafor-reyes",
+   "target": "meridian-shoreline-developments",
+   "labels": [
+    "Lobbyist for"
+   ]
+  },
+  {
+   "source": "helen-okafor-reyes",
+   "target": "strathmore-public-affairs",
+   "labels": [
+    "Partner at",
+    "Senior Partner at"
+   ]
+  },
+  {
+   "source": "helen-okafor-reyes",
+   "target": "dana-whitcombe",
+   "labels": [
+    "Lobbied"
+   ]
+  },
+  {
+   "source": "helen-okafor-reyes",
+   "target": "leonard-pike",
+   "labels": [
+    "Lobbied"
+   ]
+  },
+  {
+   "source": "strathmore-public-affairs",
+   "target": "meridian-shoreline-developments",
+   "labels": [
+    "Lobbyist for"
+   ]
+  },
+  {
+   "source": "tomasz-wieczorek-2",
+   "target": "7714882-holdings-ltd",
+   "labels": [
+    "Director of"
+   ]
+  },
+  {
+   "source": "meridianshoreline-example",
+   "target": "meridian-shoreline-developments",
+   "labels": [
+    "Website of"
+   ]
+  },
+  {
+   "source": "blackwater-capital-partners",
+   "target": "meridian-shoreline-developments",
+   "labels": [
+    "Investor in"
+   ]
+  },
+  {
+   "source": "grace-liu",
+   "target": "port-calder-harbour-authority",
+   "labels": [
+    "Chief Executive Officer of"
+   ]
+  },
+  {
+   "source": "elaine-fortier",
+   "target": "office-of-the-integrity-commissioner",
+   "labels": [
+    "Integrity Commissioner at"
+   ]
+  },
+  {
+   "source": "elaine-fortier",
+   "target": "integrity-commissioner-inquiry-ic-2022-07",
+   "labels": [
+    "Presides over"
+   ]
+  },
+  {
+   "source": "office-of-the-integrity-commissioner",
+   "target": "integrity-commissioner-inquiry-ic-2022-07",
+   "labels": [
+    "Opened"
+   ]
+  },
+  {
+   "source": "calder-citizens-for-open-government",
+   "target": "integrity-commissioner-inquiry-ic-2022-07",
+   "labels": [
+    "Complainant in"
+   ]
+  },
+  {
+   "source": "calder-citizens-for-open-government",
+   "target": "citizens-v-city-judicial-review",
+   "labels": [
+    "Applicant in"
+   ]
+  },
+  {
+   "source": "marisol-fernandes",
+   "target": "calder-citizens-for-open-government",
+   "labels": [
+    "Counsel for"
+   ]
+  },
+  {
+   "source": "office-of-the-city-auditor",
+   "target": "city-auditor-procurement-review-2023",
+   "labels": [
+    "Conducted"
+   ]
+  },
+  {
+   "source": "priya-raman",
+   "target": "city-of-port-calder",
+   "labels": [
+    "City Auditor of"
+   ]
+  },
+  {
+   "source": "priya-raman",
+   "target": "city-auditor-procurement-review-2023",
+   "labels": [
+    "Led"
+   ]
+  },
+  {
+   "source": "port-calder-superior-court",
+   "target": "citizens-v-city-judicial-review",
+   "labels": [
+    "Heard"
+   ]
+  },
+  {
+   "source": "ingrid-halvorsen",
+   "target": "citizens-v-city-judicial-review",
+   "labels": [
+    "Judge in"
+   ]
+  },
+  {
+   "source": "samir-haddad",
+   "target": "calder-citizens-for-open-government",
+   "labels": [
+    "Chair of"
+   ]
+  }
+ ]
+}
