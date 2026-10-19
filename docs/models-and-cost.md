@@ -52,7 +52,7 @@ Any step except Ask Claude and Web research can run on another provider, with th
 
 Each provider's flagship models are left out: they are built for harder work than any step here, and cost up to five times as much as Sonnet. Other providers' models have been measured only on Watchdog's small test set, so the defaults stay on Claude and nothing goes elsewhere unless you choose it.
 
-Effort levels vary by model. Every current Claude and OpenAI model takes all five (`low` to `max`); Gemini takes `low`, `medium` and `high`; DeepSeek takes `low`, `high` and `max`, and only in thinking mode. Asking a model for a level it does not support fails with a clear error, rather than quietly running at another.
+Effort levels vary by model. Every current Claude and OpenAI model takes all five, from `low` to `max`. Gemini takes `low`, `medium` and `high`. DeepSeek takes `low`, `high` and `max`, and only in thinking mode. If you ask a model for a level it doesn't support, the run stops with an error instead of quietly using another level.
 
 **DeepSeek charges by the clock.** Every rate doubles during its [peak hours](https://api-docs.deepseek.com/quick_start/pricing), 01:00 to 04:00 and 06:00 to 10:00 UTC (21:00 to 00:00 and 02:00 to 06:00 Eastern), Monday to Friday. A daytime run in North America is off-peak; an overnight weekday batch may not be. Watchdog prices each call at the rate in force when it is made.
 
@@ -230,5 +230,5 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 - **Record skills.** Every skill, to read, and the folder for your own; see [Record skills](how-it-works.md#record-skills).
 - **Appearance.** Light, dark or system theme, and details of the engine the app runs.
 - **Check vaults.** Checks every investigation's folder.
-- **Setup.** The state of the engine, local models and optional tools. **Repair or reinstall the engine** reinstalls it without touching your investigations, settings or models; **Download missing models** fetches any that failed; **Download now** fetches the transcription model ahead of time.
+- **Setup.** The state of the engine, local models and optional tools. **Repair or reinstall the engine** reinstalls it without touching your investigations, settings or models. **Download missing models** fetches any that failed to download, and **Download now** fetches the transcription model ahead of time.
 - **About.** The app's version and the engine's, the one to give when reporting a problem.

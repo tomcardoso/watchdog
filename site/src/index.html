@@ -23,7 +23,7 @@
       <p class="hero-meta reveal"><span class="download-note">For Mac, Windows and Linux.</span> Works with a Claude subscription or an API key.</p>
       <ul class="proof reveal">
         <li><b>Every fact cited</b> to the document and page it came from</li>
-        <li><b>Reads on your computer</b>: conversion, OCR and transcription stay local</li>
+        <li><b>Reads on your computer</b>: conversion, OCR and transcription never leave it</li>
         <li><b>Plain files you own</b>, readable without the app</li>
         <li><b>Free and open source</b> under the MIT licence</li>
       </ul>
@@ -77,9 +77,9 @@
 <section class="section tour" id="tour">
   <div class="wrap">
     <header class="section-head reveal">
-      <p class="kicker">A look inside</p>
-      <h2>Inside the app.</h2>
-      <p>These screens are from the sample investigation that comes with the app: a made-up case about a city's land deal and a contract awarded without a tender. Every person, company and document in it is invented.</p>
+      <p class="kicker">The app</p>
+      <h2>Fourteen documents, one investigation.</h2>
+      <p>Every screen below comes from the sample investigation that ships with the app: 14 records about a city land deal and a contract awarded without a tender. The people, companies and documents are invented.</p>
     </header>
 
     <div class="tour-tabs reveal" role="tablist" aria-label="Screens of the app">
@@ -109,7 +109,7 @@
         <p class="caption active" data-shot="overview"><b>Overview.</b> Where the investigation stands in one paragraph, the latest briefing, and what is waiting on you. <a href="using-watchdog.html#finding-your-way-around">Finding your way around</a></p>
         <p class="caption" data-shot="document"><b>Documents.</b> The original beside the facts taken from it. Every fact names its page and shows the passage it rests on, even on a scan. <a href="using-watchdog.html#checking-facts">Checking facts</a></p>
         <p class="caption" data-shot="entity"><b>Entities.</b> Everything the documents say about a person or company, with a summary that cites its sources. <a href="using-watchdog.html#entities">Entities</a></p>
-        <p class="caption" data-shot="review"><b>Review.</b> Contradictions, leads, near-duplicates and documents to request, each with both sources. <a href="using-watchdog.html#review">Review</a></p>
+        <p class="caption" data-shot="review"><b>Review.</b> Contradictions, with both sources side by side, plus leads, near-duplicate documents and records worth requesting. <a href="using-watchdog.html#review">Review</a></p>
         <p class="caption" data-shot="timeline"><b>Timeline.</b> Every dated event across every document, in order, linked to its page. <a href="using-watchdog.html#timeline-and-network">Timeline and Network</a></p>
         <p class="caption" data-shot="network"><b>Network.</b> Who connects to whom, and through which documents. <a href="using-watchdog.html#timeline-and-network">Timeline and Network</a></p>
         <p class="caption" data-shot="ask"><b>Ask Claude.</b> Questions in plain language, answered from your documents only, with a page citation for each claim. <a href="using-watchdog.html#ask-claude">Ask Claude</a></p>
@@ -131,22 +131,22 @@
         <span class="stage-num">1</span>
         <span class="where local">On your computer</span>
         <h3>Pre-processing</h3>
-        <p>Each file becomes searchable text. <a href="https://github.com/docling-project/docling">Docling</a> reads layout and tables; scanned pages are recognized page by page; recordings are transcribed by <a href="https://github.com/openai/whisper">Whisper</a>. Nothing is sent anywhere.</p>
+        <p>Each file is turned into text you can search. <a href="https://github.com/docling-project/docling">Docling</a> reads the layout and tables, scanned pages go through OCR one at a time, and <a href="https://github.com/openai/whisper">Whisper</a> transcribes recordings. Nothing is sent anywhere.</p>
       </li>
       <li class="stage reveal">
         <span class="stage-num">2</span>
         <span class="where cloud">The AI model you choose</span>
         <h3>Processing</h3>
-        <p>A model identifies the type of record, then reads the whole document with an expert guide for that type, noting each fact with its page. A small local model, <a href="https://github.com/urchade/GLiNER">GLiNER</a>, hands it a checklist of names and figures so little is skimmed past.</p>
+        <p>A model works out what kind of record it is, then reads the whole document with a guide for that kind, noting each fact and its page. A small model on your computer, <a href="https://github.com/urchade/GLiNER">GLiNER</a>, first lists the names and figures on each page, so one buried in a table is less likely to be missed.</p>
       </li>
       <li class="stage reveal">
         <span class="stage-num">3</span>
         <span class="where both">Both</span>
         <h3>Post-processing</h3>
-        <p>Facts gather onto one note per person, company and place. A model matches names, flags contradictions and writes the briefing; code checks that every citation points at a real fact.</p>
+        <p>Watchdog gathers every fact about each person, company and place into one note. A model decides which names refer to the same entity, flags contradictions and writes a briefing. Code then checks that every citation points at a real fact.</p>
       </li>
     </ol>
-    <p class="section-more reveal"><a class="more" href="how-it-works.html">Read how it works, in plain English <span aria-hidden="true">→</span></a></p>
+    <p class="section-more reveal"><a class="more" href="how-it-works.html">The full explanation, in plain English <span aria-hidden="true">→</span></a></p>
   </div>
 </section>
 
@@ -176,9 +176,9 @@
 
     <ol class="trail reveal" aria-label="The property's record, in order">
       <li><time>Apr 22, 2021</time><b>$1,150,000</b><span>A numbered company buys 14 Dockside Road from an estate.</span></li>
-      <li><time>Jan 15, 2022</time><b>Resigns</b><span>Its director, Marcus Teague, resigns.</span></li>
+      <li><time>Jan 15, 2022</time><b>Director quits</b><span>Marcus Teague resigns as the company's director.</span></li>
       <li><time>Feb 8, 2022</time><b>$3,900,000</b><span>Council votes 8 to 3 to buy the lot.</span></li>
-      <li><time>Feb 28, 2022</time><b>$4,350,000</b><span>The sale is registered, signed by Teague as director.</span></li>
+      <li><time>Feb 28, 2022</time><b>$4,350,000</b><span>The sale closes. Teague signs for the company as its director.</span></li>
     </ol>
     <p class="note reveal">From the sample investigation. Port Calder, its people and its records are invented.</p>
   </div>
@@ -190,7 +190,7 @@
     <header class="section-head reveal">
       <p class="kicker">Connections</p>
       <h2>See who connects to whom.</h2>
-      <p>Every relationship a document states, between every person, company, public body, place, asset and proceeding, drawn as one network. Shared addresses, overlapping directors and a name that keeps turning up stand out.</p>
+      <p>Watchdog draws every relationship the documents state as a single network of people, companies, public bodies, places, assets and legal proceedings. Shared addresses, overlapping directors and names that keep turning up are easy to spot.</p>
       <ul class="legend">
         <li><span class="dot person"></span>People</li>
         <li><span class="dot organization"></span>Organizations</li>
@@ -199,7 +199,7 @@
         <li><span class="dot asset"></span>Assets</li>
         <li><span class="dot proceeding"></span>Proceedings</li>
       </ul>
-      <p class="note">The sample investigation's real network. Hover over a dot to see its connections, and drag it to rearrange.</p>
+      <p class="note">This is the sample investigation's actual network. Hover over a dot to see its connections; drag it to move it.</p>
     </header>
     <div class="net-stage reveal">
       <canvas class="net-canvas" aria-label="An interactive network of the sample investigation's entities" role="img"></canvas>
@@ -215,11 +215,11 @@
     <header class="section-head reveal">
       <p class="kicker">Checking facts</p>
       <h2>Every fact comes with its source.</h2>
-      <p>AI makes mistakes, so Watchdog shows its working. Each fact carries its page and the passage it rests on, facts the model inferred are marked, and code checks every number against the page. Then you record your own check.</p>
+      <p>AI makes mistakes, so Watchdog shows its work. Each fact carries its page and the passage it rests on. Facts the model inferred rather than read are marked, and code checks every number against the page. Then you record your own check.</p>
       <ul class="ticks">
-        <li>Source passages, found by plain code, not AI</li>
-        <li>Figures that aren't on the cited page are flagged</li>
-        <li>Your checks travel with the fact, everywhere it appears</li>
+        <li>Source passages are found by ordinary code, not AI</li>
+        <li>Figures that don't appear on the cited page are flagged</li>
+        <li>Your checks follow the fact wherever it appears</li>
       </ul>
       <p><a class="more" href="using-watchdog.html#checking-facts">How checking facts works <span aria-hidden="true">→</span></a></p>
     </header>
@@ -246,7 +246,7 @@
     <header class="section-head center reveal">
       <p class="kicker">Record skills</p>
       <h2>Guides for 33 kinds of record.</h2>
-      <p>Each guide tells the model what an experienced investigative reporter looks for in that kind of record, such as a related-party transfer in a creditor list, or a director who changed three weeks before a contract award. They're plain text files, and you can write your own.</p>
+      <p>Each guide tells the model what an experienced investigative reporter looks for in that kind of record: a related-party transfer buried in a creditor list, say, or a director who changed three weeks before a contract was awarded. The guides are plain text, and you can write your own.</p>
     </header>
   </div>
   <div class="marquee" aria-label="The 33 record types">
@@ -295,7 +295,7 @@
       <header>
         <p class="kicker">Public records only</p>
         <h2>What stays on your computer, and what doesn't.</h2>
-        <p>The originals never leave your computer. But the text of each document goes to the AI model you choose, and that can't be taken back. So Watchdog is only for documents that are public, or presumptively public, and it asks you to confirm that before it sends anything.</p>
+        <p>Your original files never leave your computer. The text of each document does go to the AI model you choose, and that can't be taken back. That's why Watchdog is only for documents that are public, or presumptively public, and why it asks you to confirm that before it sends anything.</p>
       </header>
       <div class="records-cols">
         <div>
@@ -318,7 +318,7 @@
     <header class="section-head center reveal">
       <p class="kicker">Download</p>
       <h2>Get Watchdog {{VERSION}}.</h2>
-      <p>Free, for Mac, Windows and Linux. The first time it opens, it sets itself up; you don't need a terminal or anything installed beforehand.</p>
+      <p>It's free and runs on Mac, Windows and Linux. The first time it opens, it sets itself up. You don't need a terminal or anything else installed first.</p>
     </header>
     <div class="platforms reveal">
       <a class="platform" data-os="mac" href="{{MAC_ARM}}">
@@ -362,7 +362,7 @@
     <div class="faq-list reveal">
       <details>
         <summary>What does it cost?</summary>
-        <p>The app is free and open source. What you pay for is the AI model. A Claude Pro subscription (US$20 a month) is enough for most journalism work; on a metered API key, the default model costs roughly US$1 per 1,000 pages. <a href="models-and-cost.html#controlling-cost">Controlling cost</a></p>
+        <p>The app is free and open source. You pay for the AI model. A Claude Pro subscription (US$20 a month) is enough for most journalism work. On a metered API key, the default model costs roughly US$1 per 1,000 pages. <a href="models-and-cost.html#controlling-cost">Controlling cost</a></p>
       </details>
       <details>
         <summary>Can I use it on leaked or confidential documents?</summary>
@@ -370,15 +370,15 @@
       </details>
       <details>
         <summary>Does it replace reading the documents?</summary>
-        <p>No. It's a structured first read: it tells you where to look and keeps track of what you've checked. Every fact links to its page; follow the link before you publish anything. <a href="using-watchdog.html#checking-facts">Checking facts</a></p>
+        <p>No. Think of it as a structured first read: it tells you where to look and keeps track of what you've checked. Every fact links to its page. Follow the link before you publish anything. <a href="using-watchdog.html#checking-facts">Checking facts</a></p>
       </details>
       <details>
         <summary>What kinds of files can it read?</summary>
-        <p>PDFs (scanned or not), Word, Excel and PowerPoint files, images, web pages, plain text, and audio and video, which it transcribes on your computer. A 500-page PDF is no problem. <a href="using-watchdog.html#supported-file-types">Supported file types</a></p>
+        <p>PDFs (scanned or not), Word, Excel and PowerPoint files, images, web pages, plain text, and audio and video, which it transcribes on your computer. It handles PDFs of several hundred pages. <a href="using-watchdog.html#supported-file-types">Supported file types</a></p>
       </details>
       <details>
         <summary>Where does my work live?</summary>
-        <p>In an ordinary folder of Markdown files on your computer, one per investigation. You own it, and it stays readable without the app; it also opens in <a href="https://obsidian.md">Obsidian</a>. <a href="using-watchdog.html#your-files-and-obsidian">Your files</a></p>
+        <p>In an ordinary folder of Markdown files on your computer, one per investigation. You own it, and it stays readable without the app. It also opens in <a href="https://obsidian.md">Obsidian</a>. <a href="using-watchdog.html#your-files-and-obsidian">Your files</a></p>
       </details>
       <details>
         <summary>Do I need Claude?</summary>

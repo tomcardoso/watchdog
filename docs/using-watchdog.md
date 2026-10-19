@@ -124,7 +124,14 @@ When a document disagrees with something already in the investigation, the item 
 
 ### Leads
 
-At the end of every run, plain code (no AI) sweeps the entities and lists: entities named as a relationship target but never profiled; entities that recur across documents with no relationships; unresolved contradictions; and inferred facts or figure notes to verify. **Run full lead sweep** refreshes the list.
+At the end of every run, ordinary code (no AI) sweeps the entities and lists four kinds of lead:
+
+- an entity named as a relationship target that has no documents of its own: a company someone directs, say, that you have no records on;
+- an entity that turns up in several documents but has no relationships;
+- an unresolved contradiction;
+- a fact the model inferred, or a figure that wasn't on its cited page.
+
+**Run full lead sweep** refreshes the list.
 
 ### Duplicates
 
