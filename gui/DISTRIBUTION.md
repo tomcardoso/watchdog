@@ -18,6 +18,10 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
   from the same commit, whatever `pyproject.toml`'s version says. The Python package is not
   published on its own: it is the engine the app bundles (#729).
 
+  The app's beta line ended at `app-v0.1.0-beta.6`; releases continue the Python package's stable
+  line from `app-v1.0.4`. A build follows the channel it was released on, so a copy installed from a
+  beta is never offered a stable release: it needs one manual download of the stable installer.
+
 ## Releasing the app
 
 1. Make sure the commit you release is on `main` and pushed.
