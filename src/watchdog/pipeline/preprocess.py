@@ -797,7 +797,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
     try:
         from docling.document_converter import DocumentConverter
     except ImportError:
-        return {"error": "Docling is not installed. Run: pip install docling"}
+        return {"error": "Docling is not installed. Open Settings → Setup and choose Repair or reinstall the engine."}
     if is_pdf:
         try:
             converter = build_converter(force_ocr)

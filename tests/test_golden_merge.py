@@ -27,7 +27,7 @@ at all. The regeneration touched only two hashes (`briefings/`, `log.md`): the d
 those files report went from 0 to 2, which is what a real two-document ingest records. The merge
 write-surface above was unchanged. Regenerate deliberately, never reflexively:
 
-    REGENERATE_GOLDEN=1 PYTHONPATH=src ~/.local/pipx/venvs/watchdog-intel/bin/pytest \
+    REGENERATE_GOLDEN=1 PYTHONPATH=src .venv/bin/pytest \
         tests/test_golden_merge.py
 """
 

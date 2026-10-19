@@ -13,8 +13,8 @@ makes (route interception, not just the top-level URL), so rendering a page can'
 probe of internal network space via an `<img>`, stylesheet, or `fetch()` call the page itself
 issues.
 
-Playwright is an optional dependency (`pip install watchdog-intel[web]`, plus a one-time `playwright
-install chromium`): `render_available()` and `try_render()` let `research.py` degrade to the plain,
+Playwright is an optional dependency (the `web` extra in `pyproject.toml`, plus a one-time
+`playwright install chromium`; the app's managed engine does not install it): `render_available()` and `try_render()` let `research.py` degrade to the plain,
 nh3-sanitized fetch when Playwright isn't installed, the Chromium binary is missing, or a render
 fails for any reason — a broken or absent browser never blocks a deposit, it only yields a
 less-faithful capture."""
