@@ -58,7 +58,7 @@ You can add documents three ways:
 - **Choose Add documents.** The button is at the top right, and also under **File → Add Documents…**. On an empty investigation, the Overview shows **Choose files…** and **Choose a folder…** buttons that do the same.
 - **Put files in the `incoming/` folder** inside the investigation, using your file manager. Watchdog lists anything waiting there on the Overview and in the Add documents dialog.
 
-Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, images, web pages and plain text; see the [supported file types](vault.md#supported-file-types) for the full list.
+Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, presentations, images, web pages, plain text, and audio and video recordings, which it transcribes on your computer; see the [supported file types](vault.md#supported-file-types) for the full list.
 
 **Rename files before adding them.** Watchdog uses the filename when labelling documents. `shell-co-annual-report-2023.pdf` is useful; `scan0042.pdf` is not.
 
@@ -71,11 +71,11 @@ Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, images, we
 The Add documents dialog takes you through four steps.
 
 1. **Choose.** Pick files or folders. The dialog also shows anything already waiting. **Estimate cost** shows what the run is likely to cost before you commit, and **Options** lets you change the models and other settings for this run only. The defaults are fine for a first run.
-2. **Reading documents.** Watchdog copies the files into `incoming/` (your originals stay where they are) and converts them to text on your computer, using OCR for scans. Nothing is sent anywhere during this step.
+2. **Reading documents.** Watchdog copies the files into `incoming/` (your originals stay where they are) and converts them to text on your computer, using OCR for scans and transcribing recordings. The first recording you add also downloads the transcription model, once. Nothing is sent anywhere during this step.
 3. **Before anything is sent.** This is the public-records confirmation. It shows the exact number of documents about to be sent and which model will receive them. Nothing goes until you choose **Acknowledge and add**. If you set Watchdog to skip this pause for runs that use only your Claude subscription, you see a short notice instead; see [Auto-approve](configuration.md#auto-approve). If every step runs on a model server on this computer, there is nothing to confirm and this step is skipped; see [Local and self-hosted models](configuration.md#local-and-self-hosted-models).
 4. **Adding.** Watchdog extracts entities, facts and timeline events from each document, writes everything to the investigation, and produces a **briefing**.
 
-Large documents can take several minutes each to extract, so a long pause on one document is normal. You can choose **Hide** to close the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends the run cleanly, and adding the documents again picks up where it left off. **Activity** lists every run with its full output.
+Large documents can take several minutes each to extract, so a long pause on one document is normal. On a Claude subscription, a large first batch can reach your plan's usage limit, which stops the run; nothing finished is lost, and [Hitting rate limits](troubleshooting.md#hitting-rate-limits) explains what to do. You can choose **Hide** to close the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends the run cleanly, and adding the documents again picks up where it left off. **Activity** lists every run with its full output.
 
 By default Watchdog uses Haiku (Claude's fast, inexpensive tier) for classification, extraction and the wrap-up steps, with extraction set to think hard (the `high` effort level), so nothing beyond your Claude sign-in is needed. In benchmark testing against real court-and-financial filings, Haiku with extraction at `high` found more than any other setting measured (see [Benchmarks](benchmarks.md)). Any step can be routed to another provider's model with that provider's own key. The [configuration guide](configuration.md) covers changing models, tuning how much reasoning each stage spends, and controlling cost.
 

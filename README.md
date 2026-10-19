@@ -2,11 +2,14 @@
 
 **Document intelligence for journalists — drop records in, find connections.**
 
+[![Latest version](https://img.shields.io/github/v/release/tomcardoso/watchdog?label=version)](https://github.com/tomcardoso/watchdog/releases/latest)
 [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
 
 Watchdog is a desktop app for journalists who accumulate large sets of public records — court filings, corporate records, freedom-of-information responses, land registries and so on. You drop documents into an investigation, Watchdog reads every page, pulls out every person, company, address and relationship it finds, and builds them into a linked investigation you can search and question in plain English. Every extracted fact cites the document and page it came from.
 
-Each investigation is a folder of ordinary Markdown files on your computer, which you can also open in [Obsidian](https://obsidian.md), a free note-taking app. The information-extraction work is carried by an LLM (be that Claude, ChatGPT, Gemini, DeepSeek, etc.). The questions are answered by Claude, inside the app.
+Each investigation is a folder of ordinary Markdown files on your computer, which you can also open in [Obsidian](https://obsidian.md), a free note-taking app. The information-extraction work is done by a large language model: Claude by default, or one from OpenAI, Google, DeepSeek or another provider you choose. The questions are answered by Claude, inside the app.
+
+![The Overview of an investigation in Watchdog: counts of documents, entities and checked facts, a one-paragraph account of where things stand, the latest briefing, and what is waiting on you.](docs/images/app-overview.png)
 
 ## Public records only
 
@@ -39,6 +42,19 @@ your investigation  linked notes you can browse in the app or in Obsidian;
 
 When Watchdog has processed your documents, you read the briefing, explore the people, companies and connections, and ask questions such as "Who are the directors of Shell Co Ltd?" — with every answer cited back to a page.
 
+## A look inside
+
+These are from the sample investigation that comes with the app, a made-up case about a city's land deal and an untendered contract. Every person and company in it is invented.
+
+| | |
+|---|---|
+| ![A scanned document beside the facts taken from it](docs/images/app-document.png) | ![An entity's page with its summary, facts and relationships](docs/images/app-entity.png) |
+| **Documents.** The original beside the facts taken from it, each fact tied to its page and the passage it rests on. | **Entities.** Everything the documents say about a person or company, with a cited summary and its relationships. |
+| ![Contradictions between documents in the Review screen](docs/images/app-review.png) | ![Ask Claude answering a question with page citations](docs/images/app-ask.png) |
+| **Review.** Contradictions, leads and possible duplicates, with both sources cited. | **Ask Claude.** Questions answered from the documents, with a page citation for each claim. |
+| ![The timeline of dated events](docs/images/app-timeline.png) | ![The network of entities and relationships](docs/images/app-network.png) |
+| **Timeline.** Every dated event across the investigation, linked to its page. | **Network.** How the people, companies and places connect. |
+
 For a closer look at what happens to a single document — the OCR pipeline, the information extraction process, the final summarization step — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
 
 ## What you need
@@ -53,7 +69,7 @@ Watchdog benchmarks its own model and effort defaults against real court and fin
 
 ## Installation
 
-Download the installer for your computer from the [latest release](https://github.com/tomcardoso/watchdog/releases/tag/app-stable):
+Download the installer for your computer from the [latest release](https://github.com/tomcardoso/watchdog/releases/latest):
 
 - **Mac, Apple silicon:** `Watchdog-<version>-arm64.dmg`
 - **Mac, Intel:** `Watchdog-<version>-x64.dmg`

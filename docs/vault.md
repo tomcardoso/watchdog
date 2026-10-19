@@ -21,6 +21,8 @@ my-investigation/
 ├── morgue/                 ← original files after processing, each beside its full extracted text
 ├── .watchdog/              ← internal state: processing queue, staging area,
 │                             registries, OCR text positions, version history — do not edit
+├── .claude/                ← Claude's instructions and shortcuts for Ask Claude here
+├── .obsidian/              ← Obsidian's settings for this vault
 ├── entities/
 │   ├── person/             ← people
 │   ├── organization/       ← companies, banks, unions, funds, non-profits
@@ -29,7 +31,7 @@ my-investigation/
 │   ├── asset/              ← vehicles, accounts, domains, shares
 │   └── proceeding/         ← lawsuits, insolvencies, inquiries
 ├── documents/              ← one note per added document
-├── briefings/              ← briefings, leads, and watch-word alerts
+├── briefings/              ← briefings, lead sweeps, watch-list alerts, research memos
 ├── wiki/                   ← investigation thread pages (matured angles)
 ├── queries/                ← saved answers to questions you have asked
 ├── .fulltext/              ← full-text search index
@@ -61,11 +63,13 @@ my-investigation/
 
 <a id="the-history-store"></a>**`.watchdog/history/`** holds the earlier versions of the investigation's notes, briefings, pages and records, which the app shows under **History** (see [History](app.md#history)). It covers every Markdown file outside `morgue/`, `incoming/`, `context/` and the hidden folders, and the registry files that hold the investigation's data. Original documents, extracted text, search indexes and caches are not part of it. Each distinct version of a file is stored once, compressed; a log records each version with its time and cause. On a 500-document investigation it grows by about a megabyte a run; the investigations list in the app shows each one's size. Text you delete from a file stays here until you remove the versions that hold it (see [Removing a version](app.md#removing-a-version)) or clear the history under **Settings → Version history**; deleting the folder by hand does the same, and Watchdog starts a new history the next time it writes.
 
+**`.claude/`** holds what an Ask Claude conversation is given in this investigation: Watchdog's instructions for Claude (`CLAUDE.md`), the shortcut commands such as `/watchdog-query`, and Claude's settings. After you update Watchdog, **Refresh Claude setup** under **Activity → Maintenance** rewrites them; anything you add below the end marker in `CLAUDE.md` is kept. **`.obsidian/`** holds Obsidian's settings for the vault, such as the colour of each entity type in its graph view; Watchdog writes it when it creates the investigation.
+
 **`entities/`** holds one note per extracted entity, filed by type. Watchdog sorts every entity into one of six fixed classes: **person** (people), **organization** (companies, banks, unions, funds, non-profits), **public-body** (governments, regulators, courts, agencies), **place** (addresses, properties, locations), **asset** (vehicles, accounts, domains, shares), and **proceeding** (lawsuits, insolvencies, inquiries). Fixing the list to these six keeps the same real-world entity from being split across near-duplicate folders when the model describes it differently in two documents. These notes are the heart of the vault; their structure is described [below](#entity-notes).
 
 **`documents/`** holds one note per added document: what it is, what was extracted from it, and a link to the original in the morgue. A fact you have marked Disputed ends in **✗ disputed** there; it is never removed.
 
-**`briefings/`** collects the reports Watchdog writes after each run: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); and watch-word alerts (`alerts-<date>.md`) when a watchlist term appears. The leads, alerts and `requests.md` are read-only summaries for reading in Obsidian or asking Claude about: they have no checkboxes, and you handle their items in Review (Leads, Alerts, Requests). Each item carries its id in a hidden `<!--wid:…-->` comment, which Watchdog uses to match it with the Review queue. [Investigating](investigating.md) explains how to work with each.
+**`briefings/`** collects the reports Watchdog writes after each run: a briefing of new entities, connections, and anomalies; a leads file (`leads-<date>.md`); watch-list alerts (`alerts-<date>.md`) when a watch-list term appears; and research memos from Web research. The leads, alerts and `requests.md` are read-only summaries for reading in Obsidian or asking Claude about: they have no checkboxes, and you handle their items in Review (Leads, Alerts, Requests). Each item carries its id in a hidden `<!--wid:…-->` comment, which Watchdog uses to match it with the Review queue. [Investigating](investigating.md) explains how to work with each.
 
 **`wiki/`** holds investigation thread pages — angles that have matured beyond a single question, created in **Ask Claude** with `/watchdog-wiki`.
 
@@ -183,8 +187,6 @@ Most formats above carry metadata about themselves, separate from anything writt
 Two of those fields repay a second look. A company name shared across documents that are supposedly unrelated points to a shared template, and therefore a shared drafter — the same kind of thread as two companies sharing a registered agent. And a long, weighty report with only a few minutes of editing time was assembled from something else, not written.
 
 Treat this metadata as a lead, not a fact. It is trivially easy to forge, and often says nothing about who actually authored a document: a scanner's software name is not the scan's author, and a template's creation date is inherited by every document built from it. Watchdog does one thing with it automatically — if a document's embedded creation date falls a year or more after the date the document itself claims to be from, and the document was not OCR'd, Watchdog flags the mismatch as a warning during processing. A "2019 agreement" whose file was created in 2023 is worth asking about.
-
-
 
 ### Sidecar files
 

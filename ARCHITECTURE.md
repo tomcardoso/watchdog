@@ -843,10 +843,10 @@ See D45–D48.
   file without an answer is refused before any call, and Ask Claude is refused. `sample.tour`
   reads the sample's registries for what each tour step opens. The tour itself is renderer-only (`gui/src/renderer/src/tour/`): steps are a route plus a
   CSS selector to ring, kept in local storage per viewer; it adds no pipeline behaviour.
-- **Release and updates (D269, D297).** `electron-builder.config.cjs` and `app-release.yml`
-  build signed (when configured) installers from an `app-v*` tag; `gui/src/main/updater.ts` offers
-  updates from the channel's rolling GitHub release (`app-beta` or `app-stable`) as a generic feed
-  (D297). See `gui/DISTRIBUTION.md`.
+- **Release and updates (D269, D297, D316).** `electron-builder.config.cjs` and `app-release.yml`
+  build signed (when configured) installers from a `v<semver>` tag; `gui/src/main/updater.ts` offers
+  updates through a generic feed baked into the build: the repository's latest release for a stable
+  build, the rolling `app-beta` pre-release for a beta (D316). See `gui/DISTRIBUTION.md`.
 
 ---
 

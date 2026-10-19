@@ -19,7 +19,7 @@ Watchdog does not need to be doing anything else while you work. If you would ra
 
 **Review** is where everything Watchdog flagged for a person waits. It has one tab for each kind of item, with a count on each, plus a tab for what you have already handled and one for your watch list. Open items move through the same few steps: read the item, open its note if you need more detail, then mark it handled, or keep it open and move on.
 
-Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. **Handled**, at the top right of Review, lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
+**Mark handled** removes an item from the queue, from the Overview and from future briefings. It is not deleted. **Handled**, at the top right of Review, lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
 
 ### Contradictions
 
@@ -201,7 +201,7 @@ AI-written text can also contain sentences with no citation: a model connecting 
 
 ## Ask Claude
 
-**Ask Claude** is a conversation with Claude Code about the investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, cannot change any file other than its own pages, and asks you before it changes the investigation's records. See [Ask Claude](app.md#ask-claude-and-web-research) for what each answer allows.
+**Ask Claude** is a conversation with Claude about the investigation. The documents it reads are treated as untrusted, since any of them could contain text written to steer Claude. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, cannot change any file other than its own pages, and asks you before it changes the investigation's records. See [Ask Claude](app.md#ask-claude-and-web-research) for what each answer allows.
 
 Claude works with a fixed set of tools. It reads the investigation's files and writes its own pages (saved answers in `queries/`, thread pages in `wiki/`, reports in `briefings/` and `context.md`). For everything else it uses Watchdog's own tools, which run inside the app and only on this investigation, and ask you first when they change something: searching the documents, listing leads, checking a page's citations before saving it, rebuilding the timeline, refreshing an entity's summary, adding names to the watch list, and recording a contradiction you have confirmed. Each change Claude makes this way appears in the file's history as "Written in an Ask Claude session". Claude cannot run programs on your computer, and it cannot add documents, merge entities or mark items handled: those stay with you, in the app.
 

@@ -4,35 +4,42 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 
 ## Releases
 
-- **The app**: a tag `app-v<semver>` runs `.github/workflows/app-release.yml`. `app-v0.2.0-beta.1`
-  is a beta, `app-v0.2.0` a stable release. It tests the Python package, builds the app on macOS
-  (Apple silicon and Intel), Windows and Linux with the tag's version, and publishes two GitHub
-  releases:
-  1. the versioned one, `app-v0.2.0-beta.1`, a pre-release for a beta, which keeps that version's
-     files for good;
-  2. the channel's rolling release, `app-beta` (or `app-stable`), whose files are replaced by each
-     release on that channel. This is the page to send testers, and the feed installed copies read
-     for updates.
+- **The app**: a tag `v<semver>` runs `.github/workflows/app-release.yml`. `v1.0.5` is a stable
+  release, `v1.1.0-beta.1` a beta. It tests the Python package, builds the app on macOS (Apple
+  silicon and Intel), Windows and Linux with the tag's version, and publishes:
+  1. a stable release as the repository's **latest release**, titled "Watchdog 1.0.5". It is the
+     page to send people (https://github.com/tomcardoso/watchdog/releases/latest) and the feed
+     installed stable copies read for updates;
+  2. a beta as a pre-release, titled "Watchdog 1.1.0-beta.1", whose files are also copied to the
+     rolling pre-release `app-beta`, replacing the previous beta's. Beta builds read `app-beta`.
 
-  Neither is marked as the repository's latest release. The app carries the Python engine built
-  from the same commit, whatever `pyproject.toml`'s version says. The Python package is not
-  published on its own: it is the engine the app bundles (#729).
+  The app carries the Python engine built from the same commit. The Python package is not
+  published on its own: it is the engine the app bundles (#729). A stable tag must match
+  `pyproject.toml`'s version, so the app and engine versions in Settings → About agree; the
+  workflow stops before building otherwise. Releases up to 1.0.4 used `app-v*` tags (D297); the
+  older `v0.1.0a*` and `v1.0.0`–`v1.0.3` tags are the Python package's.
 
-  The app's beta line ended at `app-v0.1.0-beta.6`; releases continue the Python package's stable
-  line from `app-v1.0.4`. A build follows the channel it was released on, so a copy installed from a
-  beta is never offered a stable release: it needs one manual download of the stable installer.
+  A build follows the channel it was released on, so a copy installed from a beta is never offered
+  a stable release: it needs one manual download of the stable installer.
+
+  **The `app-stable` release.** Copies of 1.0.4 read updates from a rolling release, `app-stable`.
+  While it exists, each stable release replaces its files, so those copies update to the new
+  version, after which they read the latest release like any other. The workflow never recreates
+  it: once nobody runs 1.0.4, delete the release (and its tag) and the step skips itself.
 
 ## Releasing the app
 
-1. Make sure the commit you release is on `main` and pushed.
-2. Tag it and push the tag: `git tag app-v0.2.0-beta.1 && git push origin app-v0.2.0-beta.1`.
-   Use a higher beta number each time (`-beta.2`, `-beta.3`); the updater only offers a version
-   higher than the one installed.
+1. Bump `version` in `pyproject.toml` to the new version (for a stable release), merge it to
+   `main`, and make sure the commit you release is pushed.
+2. Tag it and push the tag: `git tag v1.0.5 && git push origin v1.0.5`. For a beta, use
+   `v1.1.0-beta.1`, with a higher beta number each time (`-beta.2`, `-beta.3`); the updater only
+   offers a version higher than the one installed.
 3. Watch the run under Actions → App release (about 30 minutes; macOS notarization is the slow
-   step). Release notes list the merged pull requests since the previous `app-v` tag.
-4. Send people https://github.com/tomcardoso/watchdog/releases/tag/app-stable (testers on the beta
-   line: `.../app-beta`). A copy installed from there offers every later release on its channel
-   under Help → Check for Updates, and on its own shortly after launch.
+   step). Release notes list the merged pull requests since the previous release's tag.
+4. Send people https://github.com/tomcardoso/watchdog/releases/latest (testers on the beta line:
+   https://github.com/tomcardoso/watchdog/releases/tag/app-beta). A copy installed from there
+   offers every later release on its channel under Check for Updates, and on its own shortly after
+   launch.
 
 `gui/package.json`'s version is set by CI from the tag; it doesn't need bumping by hand.
 
@@ -65,13 +72,13 @@ needs a signed macOS build to install updates.
 
 ## Updates
 
-`src/main/updater.ts` uses electron-updater with a generic feed: the channel's rolling release,
-`https://github.com/tomcardoso/watchdog/releases/download/app-beta/` (set in
-`electron-builder.config.cjs` from `WATCHDOG_RELEASE_CHANNEL`, `beta` unless `stable`, and baked
-into the build's `app-update.yml`). Not the GitHub provider: this repository's releases also carry
-the Python package's `v1.x` tags, which that provider would read as app versions. It checks ten
+`src/main/updater.ts` uses electron-updater with a generic feed, set in
+`electron-builder.config.cjs` from `WATCHDOG_RELEASE_CHANNEL` (`beta` unless `stable`) and baked
+into the build's `app-update.yml`: `https://github.com/tomcardoso/watchdog/releases/latest/download/`
+for a stable build, which GitHub redirects to the latest release's files, and
+`https://github.com/tomcardoso/watchdog/releases/download/app-beta/` for a beta. It checks ten
 seconds after launch and never downloads without being asked; the top bar shows the offer, the
-download and "Restart to update". Help → Check for Updates… runs the same check and reports the
+download and "Restart to update". Check for Updates… (the Watchdog menu on a Mac, Help elsewhere) runs the same check and reports the
 result. In development (or with `WATCHDOG_SIMULATE_UPDATES=1`) the whole flow is simulated, so the
 interface can be tried without a release.
 

@@ -29,17 +29,24 @@ module.exports = {
     { from: 'resources/python-wheel', to: 'python-wheel', filter: ['*.whl'] }
   ],
   asarUnpack: ['out/renderer/assets/*.mjs'],
-  // The in-app updater (src/main/updater.ts) reads one rolling GitHub release per channel,
-  // `app-beta` (or `app-stable`), whose files each app release replaces (.github/workflows/
-  // app-release.yml). A generic feed rather than the GitHub provider, because this repository's
-  // releases also carry the Python package's `v1.0.x` tags, which the GitHub provider would take
-  // for app versions. The channel is baked into the build: a beta build only ever sees betas.
+  // The in-app updater (src/main/updater.ts) reads a generic feed (.github/workflows/
+  // app-release.yml): a stable build, the repository's latest release, through GitHub's
+  // `releases/latest/download/` redirect (electron-updater follows it, for the latest*.yml and
+  // the installer alike); a beta build, the rolling `app-beta` release, whose files each beta
+  // replaces. The channel is a URL baked into the build (D297, D316): a beta build only ever sees
+  // betas. Copies of 1.0.4
+  // read the old rolling `app-stable` release, which stable releases keep current while it exists.
   //
   // detectUpdateChannel is off because the channel is the release URL: left on, a pre-release
   // version such as 0.1.0-beta.1 makes electron-builder write beta-mac.yml instead of
   // latest-mac.yml, and expect it, which the workflow's file list does not collect.
   detectUpdateChannel: false,
-  publish: { provider: 'generic', url: `https://github.com/tomcardoso/watchdog/releases/download/app-${channel}` },
+  publish: {
+    provider: 'generic',
+    url: channel === 'stable'
+      ? 'https://github.com/tomcardoso/watchdog/releases/latest/download'
+      : 'https://github.com/tomcardoso/watchdog/releases/download/app-beta'
+  },
   mac: {
     category: 'public.app-category.productivity',
     // The .zip is what the updater downloads on macOS; the .dmg is for first installs.
