@@ -1,11 +1,11 @@
 name: App release
 
-# The desktop app's releases. Push a tag `app-v<semver>`:
-#   app-v0.2.0-beta.1   a beta: installers on a pre-release, and the `app-beta` channel updated
-#   app-v0.2.0          a stable release: the same, on the `app-stable` channel
-# Each build's in-app updater reads its channel's rolling release
-# (`app-beta` or `app-stable`, see gui/electron-builder.config.cjs), whose files this workflow
-# replaces, so testers on a beta are offered the next beta. See gui/DISTRIBUTION.md.
+# The desktop app's releases. Push a tag `v<semver>`:
+#   v1.0.5           a stable release, published as the repository's latest release
+#   v1.1.0-beta.1    a beta: a pre-release, and the rolling `app-beta` release updated
+# A stable build's in-app updater reads the latest release (`releases/latest/download/`); a beta
+# build reads `app-beta`, whose files this workflow replaces, so testers on a beta are offered the
+# next beta (see gui/electron-builder.config.cjs). See gui/DISTRIBUTION.md.
 #
 # Run by hand (Actions → App release → Run workflow) on a branch, it is a test build: every
 # platform is built and signed as for a release, the installers are kept as the run's artifacts,
@@ -13,7 +13,7 @@ name: App release
 
 on:
   push:
-    tags: ['app-v*']
+    tags: ['v*']
   workflow_dispatch:
 
 jobs:
@@ -23,6 +23,9 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       channel: ${{ steps.v.outputs.channel }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: github.ref_type == 'tag'
+
       - id: v
         shell: bash
         run: |
@@ -32,13 +35,20 @@ jobs:
             echo "channel=beta" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          VERSION="${GITHUB_REF_NAME#app-v}"
+          VERSION="${GITHUB_REF_NAME#v}"
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc)\.[0-9]+)?$ ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME is not app-v<major>.<minor>.<patch>[-beta.<n>]"
+            echo "::error::Tag $GITHUB_REF_NAME is not v<major>.<minor>.<patch>[-beta.<n>]"
             exit 1
           fi
           CHANNEL=stable
           [[ "$VERSION" == *-* ]] && CHANNEL=beta
+          # Settings → About shows the engine's version from pyproject.toml beside the app's, so a
+          # stable release carries one number in both.
+          PROJECT=$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml)
+          if [ "$CHANNEL" = stable ] && [ "$PROJECT" != "$VERSION" ]; then
+            echo "::error::pyproject.toml's version is $PROJECT; bump it to $VERSION before tagging $GITHUB_REF_NAME"
+            exit 1
+          fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
 
@@ -187,8 +197,9 @@ jobs:
 
       - name: Write the release notes
         run: |
-          # Changes since the previous app release, never since a Python `v*` tag.
-          PREV=$(git tag --list 'app-v*' --sort=-v:refname | grep -vx "$TAG" | head -1 || true)
+          # Changes since the previous app release. App releases were tagged `app-v*` up to 1.0.4;
+          # the older `v*` tags are the Python package's, so the newest tag by date is the one.
+          PREV=$(git tag --list 'v*' 'app-v*' --sort=-creatordate | grep -vx "$TAG" | head -1 || true)
           ARGS=(-f tag_name="$TAG")
           [ -n "$PREV" ] && ARGS+=(-f previous_tag_name="$PREV")
           gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" --method POST "${ARGS[@]}" --jq '.body' \
@@ -197,7 +208,7 @@ jobs:
           {
             echo "Watchdog desktop app $VERSION ($CHANNEL)."
             echo
-            echo "Download the installer for your computer below: the .dmg for a Mac (arm64 for Apple silicon, x64 for Intel), the Setup .exe for Windows, the .AppImage for Linux. An installed copy offers later $CHANNEL releases itself, under Help → Check for Updates."
+            echo "Download the installer for your computer below: the .dmg for a Mac (arm64 for Apple silicon, x64 for Intel), the Setup .exe for Windows, the .AppImage for Linux. An installed copy offers later $CHANNEL releases itself, under Check for Updates (in the Watchdog menu on a Mac, the Help menu on Windows and Linux)."
             if [ "$CHANNEL" = beta ]; then
               echo
               if [ "$WINDOWS_SIGNED" = true ]; then
@@ -212,18 +223,31 @@ jobs:
 
       - name: Publish the versioned release
         run: |
-          FLAGS="--latest=false"
-          [ "$CHANNEL" = beta ] && FLAGS="$FLAGS --prerelease"
+          # A stable release becomes the repository's latest, which installed stable copies read for
+          # updates; a beta never does. It is created as a draft and published only once every file
+          # is on it, so an app checking in between never finds a latest release without its files.
+          LATEST="--latest"
+          [ "$CHANNEL" = beta ] && LATEST="--latest=false"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --notes-file notes.md
           else
-            gh release create "$TAG" --title "Watchdog app $VERSION" --notes-file notes.md $FLAGS
+            FLAGS="--draft"
+            [ "$CHANNEL" = beta ] && FLAGS="$FLAGS --prerelease"
+            gh release create "$TAG" --title "Watchdog $VERSION" --notes-file notes.md $FLAGS
           fi
           find app/ -type f -print0 | xargs -0 gh release upload --clobber "$TAG"
+          gh release edit "$TAG" --draft=false $LATEST
 
-      - name: Update the channel the installed apps read
+      - name: Update the rolling release
         run: |
+          # Betas update `app-beta`, the feed beta builds read. Copies of 1.0.4 read `app-stable`,
+          # so a stable release keeps it current while it exists, and never creates it: deleting
+          # that release once every copy has updated past 1.0.4 ends this step for stable releases.
           ROLLING="app-$CHANNEL"
+          if [ "$CHANNEL" = stable ] && ! gh release view "$ROLLING" >/dev/null 2>&1; then
+            echo "No $ROLLING release; nothing to update."
+            exit 0
+          fi
           if ! gh release view "$ROLLING" >/dev/null 2>&1; then
             FLAGS="--latest=false"
             [ "$CHANNEL" = beta ] && FLAGS="$FLAGS --prerelease"
@@ -238,4 +262,4 @@ jobs:
             echo "$NEW" | grep -qxF "$NAME" || gh release delete-asset "$ROLLING" "$NAME" -y
           done
           { echo "Always the newest $CHANNEL of the Watchdog app: now $VERSION. This page's files are replaced by each $CHANNEL release, and installed copies check here for updates; [$TAG](https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG) keeps this version's files for good."; echo; tail -n +2 notes.md; } > rolling.md
-          gh release edit "$ROLLING" --notes-file rolling.md
+          gh release edit "$ROLLING" --notes-file rolling.md --latest=false

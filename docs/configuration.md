@@ -235,7 +235,7 @@ Because it lists the documents in every one of your investigations, treat the fi
 
 How Watchdog signs in to Claude and to each model provider.
 
-**Claude Code** is required for Ask Claude and Web research, and it is the default for adding documents. A badge shows whether you are signed in. **How Claude is billed** chooses between two modes:
+**Claude** is required for Ask Claude and Web research, and it is the default for adding documents. A badge shows whether you are signed in. **How Claude is billed** chooses between two modes:
 
 - **Subscription.** Uses your Claude subscription, which is not metered. A Pro plan (US$20 a month) is enough for most journalism work. If you add hundreds of documents at a time, a Max plan gives higher session limits.
 - **API key.** Bills per token to your Anthropic account. Paste the key when asked.
@@ -316,7 +316,7 @@ The installed version, and links to the project's page, the issue tracker and th
 - **Use a different OCR engine.** Settings → OCR → OCR engine.
 - **Move new investigations to an external drive.** Settings → Vaults → Investigations folder, then choose the folder.
 - **Speed up a batch of text-only documents.** Settings → Pre-processing → turn off Table structure.
-- **Use Haiku for extraction** (faster and cheaper). Settings → Models → Extractor model.
+- **Use Sonnet for extraction** (faster per page and about five times the cost; it found less than Haiku in the benchmark). Settings → Models → Extractor model → `sonnet`.
 - **Spend fewer thinking tokens on extraction.** Settings → Models → Extractor effort → `low`.
 - **Hit model rate limits.** Settings → Processing → lower Extraction concurrency.
 - **Keep classification on your own computer.** Settings → Models → set Local model URL, then choose a `local:` model as the Classifier model. See [Local and self-hosted models](#local-and-self-hosted-models).
@@ -334,7 +334,7 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 | `sonnet` | Claude, via your billing mode (subscription or API key). Currently resolves to Claude Sonnet 5.5: US$2 in and US$10 out per million tokens. |
 | `sonnet-5.5` | Claude Sonnet 5.5, explicitly, pinned by name in case the bare default ever moves. |
 | `claude-api:haiku` / `claude-agent-sdk:sonnet` | Claude, forcing a specific backend. |
-| `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's high-volume model, cheaper than GPT-5.6 Luna (US$0.10 against $0.20 per million input tokens, $0.50 against $1.20 for output). The benchmark figures below were measured on GPT-5.6 Luna, not this model. |
+| `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's high-volume model, cheaper than GPT-5.6 Luna (US$0.10 against $0.20 per million input tokens, $0.50 against $1.20 for output). The figures under [Controlling cost](#controlling-cost) were measured on this model. |
 | `openai:gpt-5.6-luna` | GPT-5.6 Luna, the previous generation. |
 | `deepseek:deepseek-flash` | DeepSeek V4.1 Flash, non-thinking (append `-thinking` to enable thinking mode). Rates double during DeepSeek's peak hours; see [Controlling cost](#controlling-cost). |
 | `deepseek:deepseek-v4-pro` | DeepSeek V4 Pro, non-thinking (append `-thinking` to enable thinking mode). Same peak-hour pricing as Flash. |
@@ -345,7 +345,7 @@ Watchdog is designed around Claude and uses it by default, with no setup beyond 
 
 To point a step at a provider, open **Settings → Models**, open that step's model picker, and choose a model, or type a `backend:model` value into its search box and press Enter. If you pick a model from a provider you have no key for yet, add the key under **Settings → Models & keys → Provider keys**; the Processing stages table there shows whether each step is ready. First-run setup walks through the same choices: first how Claude itself signs in (required regardless of what processing uses, because Ask Claude always runs on Claude), then, independently, which provider handles processing. For one batch only, use the model pickers in the Options of the **Add documents** dialog.
 
-Each step is independent: you can keep extraction on Claude Sonnet while routing the cheaper classification or finishing steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask.
+Each step is independent: you can keep extraction on Claude while routing the cheaper classification or finishing steps to another provider. One honest caveat: non-Claude backends are unproven on dense legal and financial extraction, so the defaults stay on Claude and nothing routes elsewhere unless you ask.
 
 The effort fields are model-specific. Setting one on a step routed to a model that does not support that level (Gemini stops at `high`, for example) fails with an error rather than running silently at a different effort than you asked for; see [Controlling cost](#controlling-cost). DeepSeek thinking mode is off by default and enabled by appending `-thinking` to the model name (for example `deepseek:deepseek-flash-thinking`). Extraction is schema-bound structured output, so non-thinking is the cheaper, more predictable default, with thinking available for judgement-heavy cases. Thinking mode also changes the extraction prompt: a model that can reason privately gets a short instruction to do so, while one that cannot is walked through the same steps in its visible answer. DeepSeek's effort control works only in thinking mode, and takes `low`, `high` or `max`. Asking for effort on a non-thinking DeepSeek model fails, because there is no thinking for it to tune, and `medium` and `xhigh` fail too, since DeepSeek treats both as another name for `high`. Gemini has no equivalent thinking toggle: thinking is always on, and the effort fields set how much (`low`, `medium` or `high`).
 

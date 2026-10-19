@@ -139,7 +139,7 @@ Constants and choices that were fitted against a *specific* benchmark run and ar
 
 ## Releasing the app
 
-Push a tag `app-v<semver>` (`app-v0.2.0-beta.1` for a beta) on the commit to release: `.github/workflows/app-release.yml` builds and signs the installers and publishes them. Testers download from the rolling `app-beta` release, which installed copies also read for updates. Details in `gui/DISTRIBUTION.md`.
+Bump `pyproject.toml`'s version, then push a tag `v<semver>` (`v1.0.5`; `v1.1.0-beta.1` for a beta) on that commit: `.github/workflows/app-release.yml` builds and signs the installers and publishes them. A stable release becomes the repository's latest release, which installed copies read for updates; betas go to the rolling `app-beta` pre-release. Details in `gui/DISTRIBUTION.md`.
 
 ---
 

@@ -2,11 +2,12 @@
 
 **Document intelligence for journalists — drop records in, find connections.**
 
+[![Latest version](https://img.shields.io/github/v/release/tomcardoso/watchdog?label=version)](https://github.com/tomcardoso/watchdog/releases/latest)
 [![CI](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/tomcardoso/watchdog/actions/workflows/ci.yml)
 
 Watchdog is a desktop app for journalists who accumulate large sets of public records — court filings, corporate records, freedom-of-information responses, land registries and so on. You drop documents into an investigation, Watchdog reads every page, pulls out every person, company, address and relationship it finds, and builds them into a linked investigation you can search and question in plain English. Every extracted fact cites the document and page it came from.
 
-Each investigation is a folder of ordinary Markdown files on your computer, which you can also open in [Obsidian](https://obsidian.md), a free note-taking app. The information-extraction work is carried by an LLM (be that Claude, ChatGPT, Gemini, DeepSeek, etc.). The questions are answered by Claude, inside the app.
+Each investigation is a folder of ordinary Markdown files on your computer, which you can also open in [Obsidian](https://obsidian.md), a free note-taking app. The information-extraction work is done by a large language model: Claude by default, or one from OpenAI, Google, DeepSeek or another provider you choose. The questions are answered by Claude, inside the app.
 
 ## Public records only
 
@@ -53,7 +54,7 @@ Watchdog benchmarks its own model and effort defaults against real court and fin
 
 ## Installation
 
-Download the installer for your computer from the [latest release](https://github.com/tomcardoso/watchdog/releases/tag/app-stable):
+Download the installer for your computer from the [latest release](https://github.com/tomcardoso/watchdog/releases/latest):
 
 - **Mac, Apple silicon:** `Watchdog-<version>-arm64.dmg`
 - **Mac, Intel:** `Watchdog-<version>-x64.dmg`
