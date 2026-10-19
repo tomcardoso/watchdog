@@ -118,7 +118,7 @@ The tabs:
 - **Appearance.** Theme, and which Python the app is using.
 - **Check vaults.** A health check on every investigation's folder.
 - **Setup.** The state of the engine, local models and helper tools; see [Setup](#setup).
-- **About.** The app's version (the number Help → Check for Updates compares, and the one to give when reporting a problem), the version of the engine it carries, and project links.
+- **About.** The app's version (the number **Check for Updates…** compares, and the one to give when reporting a problem), the version of the engine it carries, and project links.
 
 ## History
 

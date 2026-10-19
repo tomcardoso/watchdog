@@ -109,18 +109,16 @@ The full output of any run, including the reason a document failed, is under **A
 
 ## Hitting rate limits
 
-A rate limit is a cap on how much work the AI provider lets you do in a window of time — specifically, tokens per minute, not documents per minute. A handful of large documents extracted at once can use up that budget even when the number of documents at once looks modest, since one document's token cost can differ from another's by an order of magnitude.
+A rate limit is a cap on how much work the AI provider lets you do in a window of time. On a metered API key it is counted in tokens per minute, not documents, so a handful of large documents extracted at once can use it up even when the number of documents looks modest: one document can cost ten times the tokens of another. On a Claude subscription it is your plan's usage limit, which is shared with the rest of your Claude use.
 
 Watchdog already holds new documents back on its own once it is close to your provider's real limit, discovered automatically from the provider's own responses. This works with the Claude API, OpenAI, DeepSeek, Gemini, local and OpenRouter routes, with nothing to configure. **Claude subscription sign-in is the one exception**: it never reports this number, so on that route the automatic backing-off does not engage, and lowering concurrency is the fix.
 
 Two things help when a rate limit stops a run:
 
-- **Lower how many documents are read at once.** In **Add documents**, open **Options** and lower **Documents at once** for that run. To change it permanently, change the concurrency setting in **Settings**; see [Configuration](configuration.md) for `extract_concurrency` and its defaults.
+- **Lower how many documents are read at once.** In **Add documents**, open **Options** and lower **Documents at once** for that run. To change it for every run, set **Extraction concurrency** under **Settings → Processing**; see [Processing](configuration.md#processing) for its defaults.
 - **Wait out the limit.** In **Options**, switch on **Wait out rate limits**. Instead of stopping, the run sleeps until the limit resets and resumes by itself, repeating until the queue is done. This suits an overnight run.
 
 Without it, the run stops cleanly on a rate limit. Nothing is lost: every document already processed is saved, so adding documents again picks up only what is still queued.
-
-On Claude subscription sign-in you can also set a manual token budget. Check the Claude Console's rate-limits page for your account's tokens-per-minute figure, and see `extract_token_budget` in [Configuration](configuration.md).
 
 ## A step routed to a local model fails immediately
 

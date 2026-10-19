@@ -1,37 +1,113 @@
 # Benchmarks
 
-Watchdog's processing pipeline calls a model three times per document — once to classify it, once to
-extract its facts, once to write up what changed. The model and effort level each stage uses by
+Watchdog uses an AI model at three points: once to classify each document, once to extract its
+facts, and once per batch to write up what changed. The model and effort level each step uses by
 default isn't a guess. It's chosen by running the same fixed set of real documents through every
 candidate combination and checking what came back against a frozen answer key. This page has
-those results in plain terms: what to expect in time and cost, and what's still unmeasured.
+those results in plain terms: what each model found, what it cost, how long it took, and what is
+still unmeasured.
 
 ## How the measurement works
 
 A small, frozen set of real documents — six filings from a university's insolvency proceeding,
-public record — is processed once under each model/effort combination being compared. Each run
-is scored against an answer key drafted from the source documents themselves. The comparison is
-*relative*: it tells you whether a cheaper model holds onto most of a more expensive one's
-recall, not an absolute accuracy number you could quote on its own. The tooling behind this
-(`benchmarks/run_benchmark.py`) is maintainer-only — it isn't part of the app a working
-investigator uses day to day.
+209 pages in all, public record — is processed once under each model and effort combination being
+compared. Each run is scored against an answer key drafted from the source documents themselves.
+The comparison is *relative*: it tells you whether a cheaper model holds onto most of a more
+expensive one's recall (the share of the key's facts it found), not an absolute accuracy number
+you could quote on its own. The tooling behind this (`benchmarks/run_benchmark.py`) is
+maintainer-only; it isn't part of the app.
 
-## What to expect
+None of the numbers on this page need to reach 100% for Watchdog to be useful. Its job is to
+surface facts, entities and connections for a journalist to check against the source, not to hand
+over a courtroom-ready read on the first pass. A cheap model that reliably catches most of what's
+on a page is doing real work, and that is what these numbers compare: which option catches the
+most for the price. The answer moves as models improve, so the defaults move with it.
 
-The two tables in this section were measured on earlier models, several of which Watchdog no longer offers (Claude Sonnet 4.6 and Haiku 4.5, GPT-5.4, Gemini 3.7). They show how the comparison works and how the earlier models ranked; the first item under [Roadmap](#roadmap) describes the newer run behind today's defaults.
+The answer key has two kinds of item:
 
-None of the numbers below need to reach 100% for Watchdog to be useful. Its job is to surface facts, entities, and connections for a journalist to check against the source — not to hand over a courtroom-ready read on the first pass. A cheap model that reliably catches most of what's on a page is doing real work, and that's what these numbers are actually comparing: which cheap option catches the most for the price, not who clears some accuracy bar first. It also means the recommendation these numbers lead to isn't fixed — cheap models keep improving, and it will move as the benchmark catches up to new ones.
+- **Main facts** are a document's material content.
+- **Must not miss** are the items where a miss would be a failure at the level of the story, not
+  just a thinner note: often a clause in standard-form wording or a line under a table, the kind
+  of detail a routine read loses first.
 
-Recall below is the *judged* kind: a person or a model checks each extraction against the
-source document (RUNBOOK.md step 6), rather than just checking whether a figure happens to
-match. That mechanical, figure-matching check is faster and free, but it misses roughly
-two-thirds of what a document actually needs captured — enough that it's ranked a genuinely
-better model below a worse one before (see [the wider sweep](#the-wider-sweep) below). "Main
-facts" is a document's material content. "Easy to miss" is deliberately the buried, easy-to-skip
-detail a routine read tends to lose first — a clause in standard-form wording, a line under a
-table.
+Each item is scored one of two ways:
 
-| Model | Main facts | Easy to miss | Cost per page |
+- **Judged.** A model reads each extraction against the answer key and decides whether the item
+  was captured. In the latest run the judge was Claude Opus, which was not one of the models
+  being tested, and it saw the extractions without knowing which model wrote them. This is the
+  score the tables use unless they say otherwise.
+- **Numeric.** Code checks whether an item's figure (a dollar amount, a date, a percentage)
+  appears in the extraction. It is free and instant, but only about a third of the key's items have
+  a figure to check, and a model that states figures without the claim around them scores well on
+  it. It has ranked a better model below a worse one before, so no ranking here rests on it alone.
+
+## Today's models
+
+This run, in October 2026, is the one behind the current defaults. Each provider's current model
+read the six documents at low, medium and high effort, every one with the same short
+investigation brief written as open questions, as real use always has one. Claude Haiku 5.5 and
+Sonnet 5.5, OpenAI's GPT-6 Luna and Google's Gemini 3.8 Flash ran at all three levels, and Gemini
+3.5 Flash-Lite at low. The DeepSeek models did not complete, so DeepSeek is not in it.
+
+| Model and effort | Main facts | Must not miss | Cost per page | Time per page |
+|---|---|---|---|---|
+| Claude Haiku 5.5, high | 74% | 72% | $0.0009 | 4.1 s |
+| Claude Sonnet 5.5, high | 67% | 65% | $0.0049 | 0.6 s |
+| GPT-6 Luna, high | 55% | 44% | $0.0003 | 1.0 s |
+| GPT-6 Luna, medium | 52% | 43% | $0.0002 | 0.5 s |
+| Claude Sonnet 5.5, medium | 45% | 47% | $0.0035 | 0.4 s |
+| Claude Sonnet 5.5, low | 43% | 38% | $0.0036 | 0.4 s |
+| GPT-6 Luna, low | 41% | 33% | $0.0002 | 0.4 s |
+| Gemini 3.8 Flash, high | 41% | 44% | $0.0028\* | 1.2 s |
+| Claude Haiku 5.5, medium | 39% | 39% | $0.0003 | 0.5 s |
+| Gemini 3.8 Flash, medium† | 32% | 39% | $0.0014\* | 0.5 s |
+| Claude Haiku 5.5, low† | 30% | 32% | $0.0002 | 0.3 s |
+| Gemini 3.8 Flash, low† | 27% | 33% | $0.0014\* | 0.4 s |
+| Gemini 3.5 Flash-Lite, low‡ | 17% | 17% | $0.0011 | 0.7 s |
+
+\* At Google's promotional price, which ends on 31 December 2026. From then on, Gemini 3.8 Flash
+costs twice as much: about $0.0055 a page at high effort, more than Sonnet 5.5.
+† Stopped citing one 34-page document after page 16. The scores count what these settings missed
+there.
+‡ Judged in a separate pass from the others.
+
+Costs are what each setting would cost on a metered API key, at list prices. On a Claude
+subscription the Claude rows are not billed per page, but they count against the subscription's
+usage limits.
+
+What the run shows:
+
+- **Haiku 5.5 at high effort found the most**, on every measure, at about a fifth of Sonnet 5.5's
+  cost a page. It was also the slowest setting by far, about four seconds a page against 0.6 for
+  Sonnet. That is why extraction defaults to Haiku at `high`; Sonnet 5.5 at `high` is the choice
+  when speed matters more than recall.
+- **Effort matters differently for each model.** Haiku barely moved from low to medium and jumped
+  at high. Sonnet was close to flat from low to medium and also gained most at high. GPT-6 Luna
+  gained most of its recall by medium, and adds little at high for twice the time. Gemini 3.8
+  Flash rose with effort, but doubles its cost from medium to high.
+- **GPT-6 Luna is the cheapest setting that holds up.** At medium it found more of the main facts
+  than Haiku or Sonnet at medium, for about a twentieth of Sonnet's cost a page, though it found
+  less than either at high. It needs its own OpenAI key.
+- **The two scores can disagree.** Gemini 3.5 Flash-Lite found 49% of the main facts' figures on
+  the numeric check, among the best in the run, but 17% when judged: it tends to state figures
+  without the claim around them.
+
+**Read every gap as a lead, not a result.** Each setting ran once, and single runs of one setting
+have differed by up to three times. Before the default is treated as settled, Haiku 5.5 at
+medium and high and Sonnet 5.5 at high will each be run three times, to confirm the gaps between
+them hold. [Controlling cost](configuration.md#controlling-cost) turns these
+results into settings.
+
+## Earlier results
+
+The two tables below were measured in August and September 2026, on models Watchdog no longer
+offers (Claude Sonnet 4.6, Sonnet 5 and Haiku 4.5, GPT-5.4, Gemini 3.7, the first DeepSeek V4
+releases), and without an investigation brief. Their numbers are not comparable with the run
+above. They are kept as the record of how the earlier defaults were chosen.
+
+### Judged
+
+| Model | Main facts | Must not miss | Cost per page |
 |---|---|---|---|
 | Claude Sonnet 4.6, high effort | 81% | 78% | $0.047 |
 | DeepSeek V4 Pro (thinking), high effort | 71% | 64% | $0.002 |
@@ -42,38 +118,20 @@ table.
 | Claude Sonnet 4.6, low effort | 56% | 49% | $0.006 |
 | Gemini 3.7 Flash, high effort | 39% | 46% | $0.002 |
 
-Sonnet at high effort recovers the most, and costs the most by a wide margin — on a page-for-page
-basis it runs from roughly 8 times (Sonnet at low effort) to roughly 155 times (DeepSeek V4 Flash)
-what the other rows here cost.
+Sonnet 4.6 at high effort found the most and cost the most by a wide margin, from about 8 times
+(Sonnet at low effort) to about 155 times (DeepSeek V4 Flash) what the other rows cost a page.
+Turning Sonnet's effort down lost more than switching models did. Gemini 3.7 Flash scored near the
+middle of the field on the numeric check and last when judged, an early example of the two scores
+disagreeing.
 
-Turning Sonnet's own effort down loses more than switching models does: every row above Sonnet at
-low effort both outrecalls it and costs less. DeepSeek V4 Flash is the standout on value — recall
-close to the strongest non-Sonnet rows at a small fraction of any other row's price.
+### The wider sweep
 
-Gemini's row is worth a second look before reading too much into it: on a faster, cruder check
-this same configuration scored close to the middle of the field, and only the slower check
-surfaced how far it actually trails here — a reminder that a model's rank can depend on which
-check produced it.
+Judging every setting was too slow at the time, so a wider sweep of every model and effort level
+then tracked was scored with the numeric check only. Treat its order as a rough first cut: this
+table ranked GPT-5.6 Luna at high effort below Sonnet 4.6 at low effort, and the judged table above
+found the reverse.
 
-This isn't the full field — every model here is at one particular effort level, checked the slow
-and reliable way. This table alone isn't a ranking to act on by itself; it's what the check has
-actually found for each configuration measured, no more. [Controlling cost](configuration.md#controlling-cost)
-is where these findings turn into an actual pick. `benchmarks/FINDINGS.md` has the fuller
-narrative behind it: all six documents, the hand-checks that verify the judge, and what's true
-only of this corpus.
-
-## The wider sweep
-
-Judging takes a person or a model reading closely, so only a handful of arms get it at a time. A
-much wider sweep exists underneath the table above: every Claude, OpenAI, Gemini, and DeepSeek
-model and effort tier this project tracked at the time, scored the fast, mechanical way instead — checking
-whether a fact's own numeric anchor (a dollar figure, a date, a percentage) shows up in the
-extraction, rather than reading the extraction's prose. That check only reaches about a third of
-what a document needs captured, so treat rank here as a rough first cut, not a verdict — the
-table above exists because this one ranked `gpt-luna-high` below `sonnet-4.6-low` on this same
-corpus, and a full judge read found `gpt-luna-high` actually won.
-
-| Model | Main facts (numeric) | Easy to miss (numeric) | Cost (full 209-page corpus) |
+| Model | Main facts (numeric) | Must not miss (numeric) | Cost (whole 209-page set) |
 |---|---|---|---|
 | Claude Sonnet 4.6, high effort | 84% | 93% | $9.710 |
 | DeepSeek V4 Pro (thinking), high effort | 70% | 68% | $0.414 |
@@ -86,8 +144,8 @@ corpus, and a full judge read found `gpt-luna-high` actually won.
 | DeepSeek V4 Pro | 58% | 59% | $0.212 |
 | GPT-5.6 Luna, high effort | 55% | 74% | $0.150 |
 | DeepSeek V4 Pro (thinking), low effort | 52% | 50% | $0.303 |
-| Claude Sonnet 5, high effort* | 49% | 62% | $1.398 |
-| Claude Sonnet 5, medium effort* | 47% | 49% | $1.026 |
+| Claude Sonnet 5, high effort\* | 49% | 62% | $1.398 |
+| Claude Sonnet 5, medium effort\* | 47% | 49% | $1.026 |
 | Gemini 3.7 Flash, high effort | 47% | 55% | $0.456 |
 | Claude Sonnet 5, low effort | 45% | 46% | $0.888 |
 | GPT-5.4 Mini, low effort | 43% | 46% | $0.305 |
@@ -102,53 +160,37 @@ corpus, and a full judge read found `gpt-luna-high` actually won.
 | GPT-5.4 Nano, low effort | 32% | 42% | $0.090 |
 | Gemini 3.5 Flash Lite | 18% | 22% | $0.105 |
 
-\*This run's own telemetry for these two rows was contaminated by a second, concurrent run
-writing into the same shared results — the recall figures are real, but the cost figures are
-pulled from that other run instead. Treat Sonnet 5's ranking here as the least settled row in
-this table until a clean re-run confirms it.
+\*The cost figures for these two rows came from a second run that was writing to the same results
+at the same time; the recall figures are their own.
 
-From this same run: `sonnet-4.6-high` is the clear leader on the numeric check too, but it's also
-the priciest row by a wide margin. Three rows cluster well below it at a fraction of the cost —
-`ds-pro-think-high`, `sonnet-4.6-low`, and `ds-flash` — with `ds-flash` holding onto 81% of
-`sonnet-4.6-high`'s recall for about 1/135th the price. None of this settles a production
-default on its own; it's `benchmarks/FINDINGS.md`'s 2026-08-31 sweep (run `2026-08-31-1645`),
-reproduced here so it doesn't live only in a maintainer's local, not-checked-in
-`benchmarks/index/index.md`.
+## Not measured yet
 
-## Roadmap
-
-A few things this benchmark doesn't cover yet:
-
-- **The current models, with the brief: one run, and the first read.** Every table above was measured on models Watchdog no longer offers, and without an investigation brief, which real use always has. A newer run measured each provider's current models, every one with the same short brief written as open questions: Claude Haiku 5.5 and Sonnet 5.5, OpenAI's GPT-6 Luna and Google's Gemini 3.8 Flash each at low, medium and high effort, and Gemini 3.5 Flash-Lite at low. Its numbers are not comparable with the tables above. The main result: Haiku 5.5 at high effort found 74% of the main facts and 72% of the facts that matter most, the best of any setting in that run, at about US$0.0009 a page, roughly a fifth of what Sonnet 5.5 at high effort cost (67% and 65%, about US$0.0049 a page). Haiku at high was also the slowest setting, about four seconds a page. Effort mattered differently for each model: Sonnet barely moved from low to medium, Haiku jumped only at high, and GPT-6 Luna gained most of its recall by medium. Every setting ran once, so read a gap between two settings as a lead to check, not a result: single runs of one setting have differed by up to three times. Three settings (Haiku and Gemini 3.8 Flash at low, and Gemini 3.8 Flash at medium) stopped reading one 34-page document after page 16, and the scores count what they missed. The two DeepSeek models are not in this run.
-- **Classifying document types.** The current document set only spans two of Watchdog's record
-  skills (bankruptcy filings and financial statements) — enough to confirm the classifier gets
-  those two right, not enough to rank classifier models against each other. That needs a
-  type-diverse set (a corporate filing, a real-estate document, a government report, a news
-  clipping, and so on); see `benchmarks/corpora/classify/README.md` for what's needed to build it.
-- **Judging the other effort levels.** [The wider sweep](#the-wider-sweep) above already has
-  numeric-check figures for most models' lower, cheaper tiers — what's still missing is a judge
-  pass confirming those figures rank the same way the top table's do.
+- **Repeat runs.** Every figure in [Today's models](#todays-models) is one run. The repeat of the
+  settings closest to the default comes first.
+- **DeepSeek's current models.** Both failed to complete in the latest run, so the newest DeepSeek
+  figures are the earlier ones above, on models since replaced.
+- **The finishing step.** The run above measured extraction only. Which model writes the best
+  summaries, catches the most contradictions and merges entities most accurately has not been
+  compared; Haiku 5.5 is the default there by judgement, not measurement.
+- **Classifying document types.** The six documents span only two record skills (bankruptcy
+  filings and financial statements), enough to confirm the classifier gets those two right, not
+  enough to rank classifier models against each other. That needs a set of documents of many
+  types; see `benchmarks/corpora/classify/README.md`.
 - **Whether the verification pass earns its keep.** The optional second read
-  (`verify_extraction`, see [Configuration](configuration.md#the-verification-pass)) reliably adds
-  facts, but effort changes whether those facts are worth the extra cost:
-  - **Low** — no recall gain worth 2x the cost; the added facts were mostly restatements.
-  - **Medium** — a real, sizeable recall gain for 50% more cost; a case worth making.
-  - **High** — the gain narrows to nearly nothing, since the model already catches most of it.
-
-  The pass stays off by default — this is one run of each arm, on models since retired, not a
-  settled number (`benchmarks/FINDINGS.md`, 2026-09-03).
-- **Running this automatically.** Right now a maintainer runs the benchmark by hand when a new
-  model or effort combination is worth checking. Wiring it into a scheduled or on-demand GitHub
-  Actions run is a reasonable next step, once it's clear how often that's actually useful.
+  ([Verify extraction](configuration.md#the-verification-pass)) reliably adds facts. On the earlier
+  models, at low effort it added mostly restatements for twice the cost, at medium it gave a real
+  gain for 50% more, and at high the gain nearly vanished. That was one run of each, on models
+  since removed, so the pass stays off by default.
+- **Local models.** A model on your own computer has not been run through the benchmark at all;
+  see [Local and self-hosted models](configuration.md#local-and-self-hosted-models).
 
 ## Further reading
 
+These are in the project's code repository:
+
+- `benchmarks/2026-10-18-frontier-results.md` — the full results of the run in
+  [Today's models](#todays-models), with every score's counts and the run's caveats.
 - `benchmarks/FINDINGS.md` — the running narrative: what each round of measurement found, and
   what it implied for a default.
-- `benchmarks/BENCHMARKING.md` — the full protocol `run_benchmark.py` automates, kept as
-  reference and as a manual fallback.
-- `benchmarks/RUNBOOK.md` — the step-by-step procedure a maintainer follows to run a benchmark
-  pass and turn it into an index like [the wider sweep](#the-wider-sweep) above.
-- `benchmarks/index/index.md` — every arm measured so far, judged and not-yet-judged alike, kept
-  current; regenerated by a maintainer and not checked into the repository. The wider-sweep table
-  above is a dated snapshot of it, not a live view.
+- `benchmarks/BENCHMARKING.md` — the full protocol `run_benchmark.py` automates.
+- `benchmarks/RUNBOOK.md` — the step-by-step procedure a maintainer follows to run a benchmark.

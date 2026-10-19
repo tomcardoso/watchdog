@@ -19,7 +19,7 @@ Watchdog does not need to be doing anything else while you work. If you would ra
 
 **Review** is where everything Watchdog flagged for a person waits. It has one tab for each kind of item, with a count on each, plus a tab for what you have already handled and one for your watch list. Open items move through the same few steps: read the item, open its note if you need more detail, then mark it handled, or keep it open and move on.
 
-Marking an item **Mark handled** removes it from the queue, from the Overview and from future briefings. It is not deleted. **Handled**, at the top right of Review, lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
+**Mark handled** removes an item from the queue, from the Overview and from future briefings. It is not deleted. **Handled**, at the top right of Review, lists everything you have handled, newest first, and **Bring back** returns one to its queue. The keyboard works throughout: J and K move between items, H marks one handled, O opens its note, S keeps it open and moves on, X selects it (for handling several at once), and U undoes the last action.
 
 ### Contradictions
 

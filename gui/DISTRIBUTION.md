@@ -78,7 +78,7 @@ into the build's `app-update.yml`: `https://github.com/tomcardoso/watchdog/relea
 for a stable build, which GitHub redirects to the latest release's files, and
 `https://github.com/tomcardoso/watchdog/releases/download/app-beta/` for a beta. It checks ten
 seconds after launch and never downloads without being asked; the top bar shows the offer, the
-download and "Restart to update". Help → Check for Updates… runs the same check and reports the
+download and "Restart to update". Check for Updates… (the Watchdog menu on a Mac, Help elsewhere) runs the same check and reports the
 result. In development (or with `WATCHDOG_SIMULATE_UPDATES=1`) the whole flow is simulated, so the
 interface can be tried without a release.
 

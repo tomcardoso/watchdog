@@ -118,12 +118,12 @@ SETTINGS = {
     "extract_token_budget": {
         "short": "Cap on tokens/min during processing, overriding auto-discovery (default: auto)",
         "help": (
-            "Processing now holds back new documents when the run's own recent tokens/min\n"
-            "  gets close to your provider's limit, discovered automatically from the provider's own\n"
-            "  responses — no lookup needed on the claude-api, OpenAI, DeepSeek, Gemini, local, and\n"
-            "  OpenRouter routes. Claude subscription auth never reports this number, so if you're on\n"
-            "  that path and still see rate limits, set a number here yourself (check the Claude\n"
-            "  Console's rate-limits page for your account's tokens-per-minute figure).\n"
+            "Processing holds back new documents when the run's own recent tokens per minute\n"
+            "  get close to your provider's limit, which it learns from the provider's own responses\n"
+            "  on the Claude API, OpenAI, DeepSeek, Gemini, local and OpenRouter routes. A Claude\n"
+            "  subscription never reports a limit, so there nothing is held back: if a run hits one,\n"
+            "  lower Extraction concurrency, or turn on Wait out rate limits in the run's options.\n"
+            "  A number here sets the cap yourself, on any route.\n"
             "  Default: auto (use whatever the provider reports, or don't hold documents back at all\n"
             "  if it reports nothing)."
         ),

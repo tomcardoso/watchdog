@@ -75,18 +75,18 @@ The first time Watchdog opens, it walks through setup. Each step has a **Continu
 
 > **Public records only.** The originals of your files never leave your computer, and document conversion runs locally. But the extracted text of each document is sent to the AI model you chose, and that cannot be taken back. Use Watchdog only on documents that are public, or presumptively public. Never use it with confidential source communications, leaked or unpublished material, private correspondence, or anything that could identify a source.
 
-## Optional: using GPT-6 Luna for extraction
+## Optional: a metered key for large batches
 
-Claude on your existing subscription is the default and needs nothing extra. It stops being enough once you are adding real volume: a subscription shares one session's rate limit (a cap on how much work the provider allows in a window of time), and a run of even a handful of documents can trip it. The run then waits out the limit rather than failing. Routing the reading step to a metered API key avoids that, and lets many documents be read at once.
+Claude on your existing subscription is the default and needs nothing extra. It stops being enough once you are adding real volume: a subscription has one usage limit, shared with the rest of your Claude use, and a run of even a handful of large documents can reach it. By default the run then stops, keeping every document it finished; **Wait out rate limits**, in the Options of the Add documents dialog, has it wait and carry on instead (see [Hitting rate limits](troubleshooting.md#hitting-rate-limits)). Routing the reading step to a metered API key (one billed per token) avoids the limit, and lets many documents be read at once.
 
-Watchdog benchmarks its own model choices against real court and financial filings; see [Benchmarks](benchmarks.md) for the numbers and the reasoning. The default for extraction is Claude Haiku 5.5 at high effort, at roughly $1 per 1,000 pages. OpenAI's GPT-6 Luna at medium effort is a cheaper alternative, about a fifth of that, that finds less. That is today's answer, not a permanent one.
+There are two easy choices. An Anthropic API key keeps the default model, Claude Haiku 5.5 at high effort, at roughly US$1 per 1,000 pages: switch **How Claude is billed** to API key under **Settings → Models & keys**. OpenAI's GPT-6 Luna at medium effort costs about a fifth of that, and found less in Watchdog's benchmark. [Controlling cost](configuration.md#controlling-cost) compares them, and [Benchmarks](benchmarks.md) has the numbers.
 
-To set it up:
+To set up GPT-6 Luna:
 
 1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys**.
 2. Add a payment method under **Settings → Billing**. OpenAI's API is pay-as-you-go with no free tier, so a card must be on file before a key can make any paid calls.
 3. Create a secret key and copy it. It is shown only once.
-4. In Watchdog, open **Settings → Models & keys**, paste the key under OpenAI, and route document reading to Luna. In the benchmark Luna found most of what it was going to find by medium effort; the effort settings are in Settings, and [Model backends](configuration.md#model-backends) and [Controlling cost](configuration.md#controlling-cost) explain them.
+4. In Watchdog, open **Settings → Models & keys** and paste the key under OpenAI. Then, under **Settings → Models**, set Extractor model to `openai:gpt-6-luna` and Extractor effort to `medium`.
 
 ## The transcription model
 
