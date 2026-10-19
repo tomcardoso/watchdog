@@ -30,9 +30,9 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
    higher than the one installed.
 3. Watch the run under Actions → App release (about 30 minutes; macOS notarization is the slow
    step). Release notes list the merged pull requests since the previous `app-v` tag.
-4. Send testers https://github.com/tomcardoso/watchdog/releases/tag/app-beta. A copy installed from
-   there offers every later beta under Help → Check for Updates, and on its own shortly after
-   launch.
+4. Send people https://github.com/tomcardoso/watchdog/releases/tag/app-stable (testers on the beta
+   line: `.../app-beta`). A copy installed from there offers every later release on its channel
+   under Help → Check for Updates, and on its own shortly after launch.
 
 `gui/package.json`'s version is set by CI from the tag; it doesn't need bumping by hand.
 
