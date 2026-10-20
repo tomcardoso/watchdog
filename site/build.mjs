@@ -177,7 +177,15 @@ const ICONS = {
   menu: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
 }
 
-const WORDMARK = `<span class="wordmark"><img class="wordmark-dog" src="images/logo.svg" alt="" width="32" height="34"><span class="wordmark-text">Watchdog</span></span>`
+// The dog is drawn inline rather than as an <img>, so that hovering it can wag its tail (site.css).
+// Each copy gets its own clip-path id, since the header and footer both carry one.
+const LOGO = readFileSync(join(DOCS, 'images', 'logo.svg'), 'utf8')
+  .replace(/<!--[\s\S]*?-->\n?/, '')
+  .replace('<svg xmlns="http://www.w3.org/2000/svg"', '<svg class="wordmark-dog" aria-hidden="true"')
+  .replace('<path d="M68 158', '<path class="wordmark-tail" d="M68 158')
+  .trim()
+const wordmark = (id) =>
+  `<span class="wordmark">${LOGO.replaceAll('wd-body', `wd-body-${id}`)}<span class="wordmark-text">Watchdog</span></span>`
 
 function head({ title, description, path, extraHead = '' }) {
   const url = SITE_URL + (path === 'index.html' ? '' : path)
@@ -213,7 +221,7 @@ function header(active) {
   return `<a class="skip" href="#main">Skip to content</a>
 <header class="site-header">
   <div class="site-header-inner">
-    <a class="brand" href="./" aria-label="Watchdog home">${WORDMARK}</a>
+    <a class="brand" href="./" aria-label="Watchdog home">${wordmark('header')}</a>
     <nav class="site-nav" aria-label="Main">
       ${link('./#tour', 'Tour', 'tour')}
       ${link('how-it-works.html', 'How it works', 'how-it-works.md')}
@@ -234,7 +242,7 @@ function footer(rel) {
   return `<footer class="site-footer">
   <div class="site-footer-inner">
     <div class="footer-brand">
-      ${WORDMARK}
+      ${wordmark('footer')}
       <p>Document intelligence for journalists. Free and open source, under the MIT licence.</p>
       <p class="footer-small">Version ${html(rel.version)}. This site sets no cookies and runs no analytics.</p>
     </div>
