@@ -207,6 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write   # to start the website's rebuild
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.version.outputs.tag }}
@@ -325,3 +326,11 @@ jobs:
           done
           { echo "Always the newest $CHANNEL of the Watchdog app: now $VERSION. This page's files are replaced by each $CHANNEL release, and installed copies check here for updates; [$TAG](https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG) keeps this version's files for good."; echo; tail -n +2 notes.md; } > rolling.md
           gh release edit "$ROLLING" --notes-file rolling.md --latest=false
+
+      - name: Rebuild the website
+        if: env.CHANNEL == 'stable'
+        run: |
+          # The website's download buttons name the latest release's files. A release published
+          # with this job's token starts no other workflow, so pages.yml's `release` trigger never
+          # fires for it; a dispatch is the one event that token can start.
+          gh workflow run pages.yml --ref main

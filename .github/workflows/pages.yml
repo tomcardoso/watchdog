@@ -2,7 +2,8 @@ name: Website
 
 # Builds the website (site/, from the landing page and docs/) and publishes it to GitHub Pages:
 # https://tomcardoso.github.io/watchdog/. It runs when docs/ or site/ change on main, when a
-# release is published (so the download buttons name the new files), and by hand. On a pull
+# release is published (so the download buttons name the new files; App release starts it by hand
+# after a stable release, since a release its own token publishes triggers nothing), and by hand. On a pull
 # request it only builds, so a broken page fails the check before it merges.
 
 on:
