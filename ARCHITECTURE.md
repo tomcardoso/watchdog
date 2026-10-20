@@ -670,6 +670,10 @@ undone entries, a survivor merged away later, a merged id now taken, or a reproc
   Sectioned documents fall back to the provider's live backend.
 - **Setup (D95, D235).** How Claude Code signs in and which provider handles ingestion are asked
   separately.
+- **Claude billing (D318).** `credentials.json`'s `mode` (subscription or api-key) is how the
+  processing steps reach Claude; `session_mode`, when set, is how the app's sessions do (Ask Claude,
+  Research, setting the context), else they follow `mode`. `auth.resolve_auth(..., session=True)`
+  reads it, and `chat.session_auth_env` passes the result to each session.
 - **Keys (D290).** `~/.watchdog/credentials.json` (0600, written atomically) holds per provider
   `{default, items: [{id, label, key}]}`, each `key` an encrypted blob from the app's main process
   where the computer has secure storage (D295, D301). `auth.resolve_key(provider, vault)` is the one resolver: the environment variable,

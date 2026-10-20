@@ -295,6 +295,19 @@ def test_agent_sdk_session_on_a_subscription_gets_no_key(home, vault):
     assert chat.session_auth_env(chat.Session(vault, "ask", None, "Ask")) == {}
 
 
+def test_agent_sdk_session_follows_its_own_billing_not_processings(home, vault):
+    """D318: the documents on a key, the questions on the subscription, and the reverse."""
+    from watchdog.gui import chat
+    auth.save_state({"mode": "api-key", "session_mode": "subscription",
+                     "keys": stored(anthropic="sk-ant-personal-111")})
+    assert chat.session_auth_env(chat.Session(vault, "ask", None, "Ask")) == {}
+    assert auth.resolve_auth("anthropic", vault)["mode"] == "api-key"
+    auth.save_state({"mode": "subscription", "session_mode": "api-key",
+                     "keys": stored(anthropic="sk-ant-personal-111")})
+    assert chat.session_auth_env(chat.Session(vault, "ask", None, "Ask")) == {"ANTHROPIC_API_KEY": "sk-ant-personal-111"}
+    assert auth.resolve_auth("anthropic", vault) == {"mode": "subscription"}
+
+
 def test_session_refuses_to_start_when_the_chosen_anthropic_key_is_missing(home, vault):
     from watchdog.gui import chat
     from watchdog.gui.rpc import RpcError

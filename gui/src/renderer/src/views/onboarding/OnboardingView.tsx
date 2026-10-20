@@ -2,13 +2,14 @@
 // answer the auto-approve question, then start. Progress is remembered (preferences 'onboarding'),
 // so closing the app part-way and reopening returns to the right step.
 
-import { ArrowLeft, Check, CheckCircle2, Compass, FolderOpen, KeyRound, ShieldCheck, Sparkles } from 'lucide-react'
+import { ArrowLeft, Check, CheckCircle2, Compass, FolderOpen, ShieldCheck, Sparkles } from 'lucide-react'
 import { ReactNode, useEffect, useMemo, useState } from 'react'
 import type { AuthStatus, BackendStatus, ModelChoice } from '@shared/api'
 import { Button, Callout, Field, Spinner, cx } from '@renderer/components/ui'
 import { LogoMark } from '@renderer/components/Logo'
 import { ModelPicker, providerName } from '@renderer/components/ModelPicker'
-import { call, errorMessage, useEvent, useRpc } from '@renderer/lib/rpc'
+import { ClaudeSignIn } from '@renderer/components/ClaudeSignIn'
+import { call, errorMessage, useRpc } from '@renderer/lib/rpc'
 import { EngineActions, EngineProgressView, ENGINE_DISK_TEXT, ENGINE_DOWNLOAD_TEXT, ENGINE_FIRST_TEXT, useEngine } from './EngineInstall'
 import './onboarding.css'
 
@@ -254,71 +255,6 @@ function FolderStep({ next, back }: { next: (dir: string) => void; back: () => v
 
 // ── d. provider ──────────────────────────────────────────────────────────────
 
-type ClaudeLogin = Awaited<ReturnType<typeof window.watchdog.claude.status>>
-/** A login that runs on a subscription. An API key signed in to Claude Code is not one. */
-const onSubscription = (s: ClaudeLogin) => s.loggedIn && (s.method === 'subscription' || s.method === 'token')
-const planName = (s: ClaudeLogin) => (s.plan ? `${s.plan.charAt(0).toUpperCase()}${s.plan.slice(1)} plan` : null)
-
-function ClaudeSignIn({ onSignedIn, label = 'Sign in with Claude' }: { onSignedIn: () => void; label?: string }) {
-  const [phase, setPhase] = useState<'idle' | 'waiting' | 'done'>('idle')
-  const [url, setUrl] = useState<string | null>(null)
-  const [error, setError] = useState('')
-  const [login, setLogin] = useState<ClaudeLogin | null>(null)
-  useEvent('claude.signin', (d) => setUrl(d.url))
-  useEffect(() => {
-    void window.watchdog.claude.status().then((s) => {
-      setLogin(s)
-      if (onSubscription(s)) {
-        setPhase('done')
-        onSignedIn()
-      }
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-  const go = async () => {
-    setError('')
-    setPhase('waiting')
-    const r = await window.watchdog.claude.signIn()
-    if (r.ok) {
-      setPhase('done')
-      onSignedIn()
-    } else {
-      setPhase('idle')
-      setError(r.message ?? 'Sign-in did not complete.')
-    }
-  }
-  if (phase === 'done') {
-    const detail = [login && planName(login), login?.email].filter(Boolean).join(', ')
-    return <div className="onb-ok"><CheckCircle2 /> Signed in to Claude{detail ? ` (${detail})` : ''}</div>
-  }
-  return (
-    <div className="col gap-12">
-      {login?.loggedIn && !onSubscription(login) && (
-        <div className="onb-note">
-          Claude on this computer is signed in with an API key, not a subscription. Sign in with your Claude account to use a subscription.
-        </div>
-      )}
-      <div className="row">
-        {phase === 'waiting' ? (
-          <>
-            <Spinner />
-            <span className="muted">Waiting for you to finish signing in in your browser…</span>
-            <Button size="sm" variant="ghost" onClick={() => void window.watchdog.claude.cancel()}>Cancel</Button>
-          </>
-        ) : (
-          <Button icon={KeyRound} onClick={() => void go()}>{label}</Button>
-        )}
-      </div>
-      {phase === 'waiting' && url && (
-        <div className="onb-note">
-          If the browser did not open, <a href={url} onClick={(e) => { e.preventDefault(); void window.watchdog.shell.openExternal(url) }}>open the sign-in page</a>.
-        </div>
-      )}
-      {error && <Callout tone="danger">{error}</Callout>}
-    </div>
-  )
-}
-
 type Choose = 'subscription' | 'api-key' | 'other'
 
 function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
@@ -333,13 +269,6 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [claudeIn, setClaudeIn] = useState(false)
-  // A Claude subscription already signed in on this computer is found on arrival and chosen for
-  // the user, who can still pick another card. An API key signed in to Claude Code is not one.
-  useEffect(() => {
-    void window.watchdog.claude.status().then((s) => {
-      if (onSubscription(s)) setChoice((c) => c ?? 'subscription')
-    })
-  }, [])
 
   const providers = (status.data?.providers ?? []).filter((p: { provider: string }) => p.provider !== 'anthropic') as { provider: string; label: string; requires_key: boolean; base_url_setting: string | null }[]
   const meta = providers.find((p) => p.provider === provider)
@@ -370,6 +299,11 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
   }
   const saveSubscription = () => wrap(async () => void (await call('auth.setAnthropicMode', { mode: 'subscription' })))
   const saveKey = () => wrap(async () => void (await call('auth.setAnthropicMode', { mode: 'api-key', key: key.trim() })))
+  // The recommended split (D318): documents on the key, Ask Claude and Research on the subscription.
+  const askOnSubscription = async () => {
+    setClaudeIn(true)
+    await call('auth.setSessionMode', { mode: 'subscription' }).catch((e) => setError(errorMessage(e)))
+  }
   const saveOther = () =>
     wrap(async () => {
       let s: AuthStatus | null = null
@@ -388,19 +322,9 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
       <h1>Connect a model</h1>
       <p className="onb-lead">Watchdog sends each document to an AI model to be read. Choose how it should sign in. You can change this later in Settings.</p>
       <div className="col gap-12" role="radiogroup" aria-label="Model provider">
-        <Choice on={choice === 'subscription'} onClick={() => pick('subscription')} title="Claude subscription" badge="No charge per run">
-          Sign in with your Claude account. Runs use your plan’s allowance, so there is no per-run charge. A Pro plan is enough for most work; very large
-          batches can reach its session limits, and a Max plan raises them.
-        </Choice>
-        {choice === 'subscription' && (
-          <div className="onb-panel">
-            <ClaudeSignIn onSignedIn={() => void saveSubscription()} />
-            {connected && <div className="onb-ok"><CheckCircle2 /> Watchdog will use your subscription.</div>}
-            {error && <Callout tone="danger">{error}</Callout>}
-          </div>
-        )}
-        <Choice on={choice === 'api-key'} onClick={() => pick('api-key')} title="Anthropic API key" badge="Billed per use">
-          Pay Anthropic for what each run uses. Create a key in the Anthropic Console, under API keys. Cost depends on the documents and the models you choose.
+        <Choice on={choice === 'api-key'} onClick={() => pick('api-key')} title="Anthropic API key" badge="Recommended">
+          Pay Anthropic for what Watchdog reads, about US$1 for every 1,000 pages with the default model, with no usage limit to run into. Create a key in the
+          Anthropic Console, under API keys.
         </Choice>
         {choice === 'api-key' && (
           <div className="onb-panel">
@@ -412,6 +336,26 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
               <Button variant="ghost" onClick={() => void window.watchdog.shell.openExternal('https://platform.claude.com/')}>Open the Console</Button>
               {connected && <span className="onb-ok"><CheckCircle2 /> Key saved</span>}
             </div>
+            {error && <Callout tone="danger">{error}</Callout>}
+            {connected && (
+              <Callout tone="info" title="Ask Claude on your subscription">
+                If you have a Claude Pro or Max plan, sign in and Ask Claude and Research will run on it, with no charge per question. Without it, they bill
+                your API key too. You can change this later in Settings.
+                <div style={{ marginTop: 8 }}>
+                  {claudeIn ? <div className="onb-ok"><CheckCircle2 /> Ask Claude will use your subscription</div> : <ClaudeSignIn label="Sign in to Claude (optional)" onSignedIn={() => void askOnSubscription()} />}
+                </div>
+              </Callout>
+            )}
+          </div>
+        )}
+        <Choice on={choice === 'subscription'} onClick={() => pick('subscription')} title="Claude subscription" badge="No charge per run">
+          Sign in with your Claude account, and everything runs on your plan’s allowance. Good for trying Watchdog and for small investigations; a large
+          batch of documents can reach your plan’s usage limit and stop.
+        </Choice>
+        {choice === 'subscription' && (
+          <div className="onb-panel">
+            <ClaudeSignIn onSignedIn={() => void saveSubscription()} />
+            {connected && <div className="onb-ok"><CheckCircle2 /> Watchdog will use your subscription.</div>}
             {error && <Callout tone="danger">{error}</Callout>}
           </div>
         )}
@@ -453,7 +397,7 @@ function ProviderStep({ next, back }: { next: () => void; back: () => void }) {
               The question-and-answer screens always use Claude. Sign in with your Claude account to use them. This is optional now and
               can be done later in Settings.
               <div style={{ marginTop: 8 }}>
-                {claudeIn ? <div className="onb-ok"><CheckCircle2 /> Signed in to Claude</div> : <ClaudeSignIn label="Sign in to Claude (optional)" onSignedIn={() => setClaudeIn(true)} />}
+                {claudeIn ? <div className="onb-ok"><CheckCircle2 /> Signed in to Claude</div> : <ClaudeSignIn label="Sign in to Claude (optional)" onSignedIn={() => void askOnSubscription()} />}
               </div>
             </Callout>
           </div>

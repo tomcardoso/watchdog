@@ -79,7 +79,7 @@ The Add documents dialog takes you through four steps.
 
 Large documents can take several minutes each to extract, so a long pause on one document is normal. On a Claude subscription, a large first batch can reach your plan's usage limit, which stops the run; nothing finished is lost, and [Hitting rate limits](troubleshooting.md#hitting-rate-limits) explains what to do. You can choose **Hide** to close the dialog; the run continues, and its progress stays visible in the corner of the window. **Stop** ends the run cleanly, and adding the documents again picks up where it left off. **Activity** lists every run with its full output.
 
-By default every step runs on Claude Haiku, Claude's fast, inexpensive model, so nothing beyond your Claude sign-in is needed. [Models and cost](models-and-cost.md) covers choosing other models and providers, and what a run costs. [How it works](how-it-works.md) explains what each stage does to your documents, and what the AI model does and does not see.
+By default every step runs on Claude Haiku, Claude's fast, inexpensive model, so nothing beyond the Anthropic key or Claude sign-in you set up is needed. [Models and cost](models-and-cost.md) covers choosing other models and providers, and what a run costs. [How it works](how-it-works.md) explains what each stage does to your documents, and what the AI model does and does not see.
 
 ## Read the briefing
 

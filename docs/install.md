@@ -10,10 +10,15 @@ The first run includes a one-time download of the libraries and models that run 
 |------|-----|-------|
 | A Mac, Windows or Linux computer | Watchdog runs on your computer, not in the cloud | n/a |
 | About 7 GB of free disk space and an internet connection | Setup downloads about 4.7 GB in all, and needs room to unpack it. Transcribing recordings takes 1.5 GB more, downloaded the first time you add one | n/a |
-| Claude access | Powers the AI that reads your documents and answers your questions | Pro/Max subscription, or an API key |
+| Claude access | Powers the AI that reads your documents and answers your questions | An Anthropic API key, billed per use; a Claude Pro or Max plan for questions, if you have one |
 | [Obsidian](https://obsidian.md) (optional) | A second way to browse an investigation's files | Free |
 
-**Claude access** is how Watchdog signs in to Claude. A [Pro subscription](https://claude.com/pricing) (US$20/month) is enough for most journalism work; if you are adding hundreds of documents at a time, Max (from US$100/month) gives you higher limits. If you have an Anthropic API key (a paid, metered way to use Claude), you can use that instead.
+**Claude access** is how Watchdog signs in to Claude. We recommend two things together:
+
+- An **Anthropic API key** for reading documents. It is a paid, metered way to use Claude, billed to your Anthropic account: about US$1 for every 1,000 pages with the default model. It has no usage limit to run into, however many documents you add.
+- Your **Claude subscription**, if you have one, for asking questions. A [Pro or Max plan](https://claude.com/pricing) covers **Ask Claude** and **Web research** with no charge per question.
+
+A subscription on its own also works, for trying Watchdog or a small investigation. Its usage limit is shared with the rest of your Claude use, though, and a large batch of documents can reach it and stop.
 
 Asking questions of your investigation always runs on Claude. The step that reads each document can use a different provider if you prefer — OpenAI, Google Gemini, DeepSeek, OpenRouter or a model running on your own computer — and you choose that during setup or later in Settings. [Models and cost](models-and-cost.md) explains the options and how they compare.
 
@@ -65,8 +70,8 @@ The first time Watchdog opens, it walks through setup. Each step has a **Continu
    While the second part runs, you can finish setup, open investigations, read, search for exact words, review and ask questions. **Adding documents waits until it has finished**: the **Add documents** button and the other ways of adding are turned off, with a note saying why. A small bar at the bottom of the sidebar, **Finishing setup…**, shows how far along it is; choose it to see each stage in **Settings → Setup**. The bar disappears when everything is in place. If you quit Watchdog or lose the connection part-way, it picks up where it stopped the next time Watchdog opens. If an optional model cannot be downloaded, Watchdog says so and fetches it the first time it is needed.
 3. **Where your investigations live.** Each investigation is a folder inside one parent folder. The default is a folder named `Investigations` in your home folder. Choose **Choose…** to pick another, then **Continue**. Watchdog changes files only in folders you have allowed, so choosing a folder here also gives Watchdog permission to create investigations in it. See [Folder access](using-watchdog.md#folder-access).
 4. **Connect a model.** Pick one:
-   - **Claude subscription.** Choose **Sign in with Claude**. Your browser opens so you can sign in to your Claude account; the app waits and continues when you finish. If the browser does not open, the app shows a link to the sign-in page. If you are already signed in to Claude on this computer with a subscription (for example through Claude Code), Watchdog finds that when this step opens, selects this option and shows the account and plan, so there is nothing to sign in to. A sign-in made with an API key does not count as a subscription; Watchdog says so and offers the sign-in button.
-   - **Anthropic API key.** Paste a key that starts with `sk-ant-` and choose **Save key**. You create keys in the [Anthropic Console](https://console.anthropic.com), under API keys; **Open the Console** takes you there. Cost depends on the documents and models you choose.
+   - **Anthropic API key** (recommended). Paste a key that starts with `sk-ant-` and choose **Save key**. You create keys in the [Anthropic Console](https://console.anthropic.com), under API keys; **Open the Console** takes you there. Once the key is saved, Watchdog offers to put **Ask Claude** and **Web research** on your Claude subscription: choose **Sign in to Claude (optional)** and sign in to your Claude account in the browser. If you are already signed in to Claude on this computer with a subscription (for example through Claude Code), Watchdog finds that and uses it without asking you to sign in. Skip it, and questions are billed to your API key too.
+   - **Claude subscription.** Choose **Sign in with Claude**. Your browser opens so you can sign in to your Claude account; the app waits and continues when you finish. If the browser does not open, the app shows a link to the sign-in page. Everything, reading documents included, then runs on your plan. A sign-in made with an API key does not count as a subscription; Watchdog says so and offers the sign-in button.
    - **Another provider.** Choose OpenAI, Google Gemini, DeepSeek, OpenRouter or a local model, then paste its key (or, for a local model, the server's address) and pick a model. The question-and-answer screens still need a Claude sign-in; this step offers one as an optional extra, and you can do it later in **Settings → Models & keys**.
 
    If you are not ready, **Set up later** skips this step, and Watchdog asks again when it needs a model.
@@ -77,7 +82,7 @@ The first time Watchdog opens, it walks through setup. Each step has a **Continu
 
 ## Adding a lot of documents
 
-A Claude subscription has one usage limit, shared with the rest of your Claude use, and a large batch can reach it. If you plan to add hundreds of documents, read [Claude: subscription or API key](models-and-cost.md#claude-subscription-or-api-key) before you start: a metered API key avoids the limit, and some providers cost less per page.
+A Claude subscription has one usage limit, shared with the rest of your Claude use, and a large batch can reach it. That is why we recommend an API key for reading documents: it avoids the limit, and some providers cost less per page still. If you set up Watchdog on a subscription alone and plan to add hundreds of documents, read [Claude: subscription or API key](models-and-cost.md#claude-subscription-or-api-key) before you start.
 
 ## The transcription model
 

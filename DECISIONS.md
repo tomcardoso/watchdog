@@ -2796,3 +2796,8 @@ The owner wanted a promotional site that is also the documentation, built automa
 
 Tradeoff: features a framework gives for free (search ranking, versioned docs) are hand-written and small here, and a new docs page must be listed in `PAGES` in `site/build.mjs`; the build fails until it is.
 
+### D318 — Ask Claude and Research can be billed apart from processing; an API key for documents is the recommendation
+
+Claude had one billing choice, subscription or API key, for everything. The owner now recommends an API key for reading documents, which has no usage limit for a large batch to reach, and the subscription for questions, which cost nothing extra on it. `credentials.json` gains `session_mode`, read by `auth.resolve_auth(..., session=True)` for the app's sessions (Ask Claude, Research, setting the context); unset, it follows `mode`, so existing installs behave as before. Settings → Models & keys shows the two choices, and first-run setup puts the API key first and offers the subscription sign-in for questions after the key is saved.
+
+Tradeoff: one Anthropic key serves both, the default or the investigation's choice (D290); a separate key for questions would need its own picker, and nobody has asked. Processing on a subscription with questions on a key is allowed but not suggested anywhere.

@@ -205,6 +205,21 @@ def _claude_reason(claude: dict) -> str | None:
     return None if claude["key_masked"] else "API-key mode is set but no key is stored."
 
 
+def _session_reason(claude: dict) -> str | None:
+    """What stops Ask Claude and Research when their billing differs from processing's (D318);
+    when they follow it, `_claude_reason` already says."""
+    if not claude["session_mode_own"] or claude["session_mode"] == claude["mode"]:
+        return None
+    if claude["session_mode"] == "subscription":
+        if not claude["logged_in"]:
+            return "Ask Claude is set to use your subscription, but Claude is not signed in."
+        if claude["env_key_set"]:
+            return ("ANTHROPIC_API_KEY is set in your environment, and Ask Claude uses it before "
+                    "the subscription login, so questions would be metered.")
+        return None
+    return None if claude["key_masked"] else "Ask Claude is set to use an API key, but no key is stored."
+
+
 def _auth_status() -> dict:
     from watchdog import auth as auth_cmd
 
@@ -228,6 +243,10 @@ def _auth_status() -> dict:
         })
     return {
         "claude": {"mode": mode, "logged_in": logged_in, "reason": _claude_reason(claude),
+                   # How Ask Claude, Research and setting the context are billed (D318), whether
+                   # that is their own choice, whether Claude is signed in, and what stops them.
+                   "session_mode": claude["session_mode"], "session_mode_own": claude["session_mode_own"],
+                   "signed_in": bool(claude["logged_in"]), "session_reason": _session_reason(claude),
                    "env_key_set": claude["env_key_set"], "key_masked": claude["key_masked"],
                    "key_source": claude["key_source"],
                    # The default Anthropic key's name, when there is more than one to tell apart.
@@ -306,6 +325,23 @@ def set_anthropic_mode(mode: str, key: str | None = None, key_enc: dict | None =
     else:
         auth_cmd.restore_concurrency_from_subscription()
     return {**_auth_status(), "warning": warning}
+
+
+@method("auth.setSessionMode")
+def set_session_mode(mode: str | None = None) -> dict:
+    """Bill Ask Claude, Research and setting the context through the subscription or an API key,
+    independently of processing (D318); None makes them follow processing again."""
+    from watchdog import auth as auth_cmd
+
+    if mode is not None and mode not in auth_cmd.SESSION_MODES:
+        raise RpcError("mode must be “subscription”, “api-key” or empty.", code="bad_params")
+    state = auth_cmd.load_state()
+    if mode is None:
+        state.pop("session_mode", None)
+    else:
+        state["session_mode"] = mode
+    auth_cmd.save_state(state)
+    return _auth_status()
 
 
 @method("auth.setKey")

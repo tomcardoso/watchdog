@@ -712,7 +712,17 @@ export interface ModelChoice {
   notes: string | null
 }
 export interface AuthStatus {
-  claude: { mode: string; logged_in: boolean; reason: string | null }
+  claude: {
+    mode: string
+    logged_in: boolean
+    reason: string | null
+    // How Ask Claude, Research and setting the context are billed (D318); `session_mode_own` when
+    // they have their own choice rather than following processing.
+    session_mode?: string | null
+    session_mode_own?: boolean
+    signed_in?: boolean
+    session_reason?: string | null
+  }
   stages: { stage: string; value: string; provider: string; ready: boolean; billing: string | null }[]
   keys: { provider: string; masked: string; in_use: string; source: 'stored' | 'env' }[]
   key_sets?: Record<string, LabelledKey[]>
@@ -915,6 +925,7 @@ export interface Methods {
   'settings.models': [Record<string, never>, { models: ModelChoice[]; efforts: string[] }]
   'auth.status': [Record<string, never>, AuthStatus]
   'auth.setAnthropicMode': [{ mode: 'subscription' | 'api-key'; key?: string }, AuthStatus]
+  'auth.setSessionMode': [{ mode: 'subscription' | 'api-key' | null }, AuthStatus]
   'auth.setKey': [{ provider: string; key: string; id?: string }, AuthStatus]
   'auth.deleteKey': [{ provider: string; id?: string }, AuthStatus]
   'auth.addKey': [{ provider: string; label: string; key: string; make_default?: boolean }, AuthStatus & { id: string; warning?: string | null }]

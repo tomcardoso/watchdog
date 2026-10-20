@@ -6,6 +6,7 @@ import type { AuthStatus, KeyStorage, LabelledKey } from '@shared/api'
 import { Badge, Button, Callout, Dropdown, ErrorNote, Segmented, Skeleton } from '@renderer/components/ui'
 import { plural } from '@renderer/lib/format'
 import { providerName } from '@renderer/components/ModelPicker'
+import { ClaudeSignIn } from '@renderer/components/ClaudeSignIn'
 import { call, errorMessage, queryClient, useRpc } from '@renderer/lib/rpc'
 import { toast } from '@renderer/lib/store'
 
@@ -217,6 +218,8 @@ export default function AuthPanel() {
   const info = useRpc('app.info', {})
   const [apiKey, setApiKey] = useState('')
   const [asking, setAsking] = useState(false)
+  const [askingSession, setAskingSession] = useState(false)
+  const [sessionKey, setSessionKey] = useState('')
   const [busy, setBusy] = useState(false)
   const setStatus = (s: AuthStatus) => {
     queryClient.setQueryData(['auth.status', {}], s)
@@ -226,6 +229,9 @@ export default function AuthPanel() {
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const s = q.data as Extended
   const mode = s.claude.mode === 'api-key' ? 'api-key' : 'subscription'
+  const sessionMode = (s.claude.session_mode ?? s.claude.mode) === 'api-key' ? 'api-key' : 'subscription'
+  const needsSignIn = (mode === 'subscription' || sessionMode === 'subscription') && !s.claude.signed_in
+  const ready = s.claude.logged_in && !s.claude.session_reason
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
 
@@ -235,6 +241,21 @@ export default function AuthPanel() {
       setStatus(await call('auth.setAnthropicMode', { mode: m, key }))
       setAsking(false)
       setApiKey('')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  // Ask Claude and Research have their own billing (D318); an API key for them is stored as the
+  // default Anthropic key, the same one processing uses on a key.
+  const switchSessionMode = async (m: 'subscription' | 'api-key', key?: string) => {
+    setBusy(true)
+    try {
+      if (key?.trim()) await call('auth.setKey', { provider: 'anthropic', key: key.trim() })
+      setStatus(await call('auth.setSessionMode', { mode: m }))
+      setAskingSession(false)
+      setSessionKey('')
     } catch (e) {
       toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
     } finally {
@@ -251,12 +272,12 @@ export default function AuthPanel() {
             <div className="card-sub">Required for Ask and Research, and the default for adding documents.</div>
           </div>
           <span className="spacer" />
-          {s.claude.logged_in ? <Badge tone="success" icon={CheckCircle2}>{mode === 'subscription' ? 'Signed in' : 'Key stored'}</Badge> : <Badge tone="warning" icon={XCircle}>{mode === 'subscription' ? 'Not signed in' : 'No key'}</Badge>}
+          {ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <Badge tone="warning" icon={XCircle}>Not ready</Badge>}
         </div>
         <div className="set-field" style={{ borderTop: 'none' }}>
           <div className="set-field-text">
-            <div className="set-field-label">How Claude is billed</div>
-            <div className="set-field-short">A subscription is not metered. An API key bills per token, to your Anthropic account.</div>
+            <div className="set-field-label">Adding documents</div>
+            <div className="set-field-short">How reading documents pays for Claude. An API key bills per token, to your Anthropic account, with no usage limit; recommended. A subscription is not metered, but a large batch can reach your plan’s limit.</div>
           </div>
           <div className="set-field-control">
             <Segmented
@@ -279,7 +300,38 @@ export default function AuthPanel() {
             {s.claude.key_masked && mode === 'api-key' && <div className="set-meta">{s.claude.key_label && <span>{s.claude.key_label}, the default key</span>}<span className="mono">{s.claude.key_masked}</span></div>}
           </div>
         </div>
+        <div className="set-field">
+          <div className="set-field-text">
+            <div className="set-field-label">Ask Claude and Research</div>
+            <div className="set-field-short">How questions and web research pay for Claude. A subscription covers them with no charge per question; recommended if you have one.</div>
+          </div>
+          <div className="set-field-control">
+            <Segmented
+              value={askingSession ? 'api-key' : sessionMode}
+              onChange={(m) => {
+                if (m === 'subscription') void switchSessionMode('subscription')
+                else if (s.claude.key_masked) void switchSessionMode('api-key')
+                else setAskingSession(true)
+              }}
+              options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api-key', label: 'API key' }]}
+            />
+            {askingSession && (
+              <div className="set-input-row">
+                <input className="input" type="password" autoFocus autoComplete="off" placeholder="Paste your Anthropic API key" value={sessionKey} onChange={(e) => setSessionKey(e.target.value)} />
+                <Button variant="primary" loading={busy} disabled={!sessionKey.trim()} onClick={() => void switchSessionMode('api-key', sessionKey)}>
+                  Use this key
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+        {needsSignIn && (
+          <div style={{ margin: '0 18px 16px' }}>
+            <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />
+          </div>
+        )}
         {s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
+        {s.claude.session_reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.session_reason}</Callout>}
         {info.data && !info.data.claude_code.installed && (
           <Callout tone="warning" title="Claude is missing from the engine" style={{ margin: '0 18px 16px' }}>
             Ask, Research and context seeding need it. It comes with the engine: repair the engine under Settings → Setup, then sign in.
@@ -326,7 +378,7 @@ export default function AuthPanel() {
           ))}
         </div>
         <div className="set-foot">
-          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. A stored Anthropic key is only used while Claude is in API-key mode. Use a key made for Watchdog, with a monthly spending limit set with the provider, so a mistake can’t run up an open-ended bill.
+          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. A stored Anthropic key is only used for what is set to API key above. Use a key made for Watchdog, with a monthly spending limit set with the provider, so a mistake can’t run up an open-ended bill.
         </div>
       </section>
 
