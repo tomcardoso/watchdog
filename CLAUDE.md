@@ -34,6 +34,11 @@ object itself, and it stays fetchable at its direct SHA URL indefinitely. Flag t
 explicitly rather than reporting the redaction as complete; full removal requires the repo owner
 to contact GitHub Support and request the dangling commit be purged.
 
+## No session links in commits or PRs
+
+Leave the `Claude-Session:` line (a claude.ai/code session URL) out of commit messages and PR
+bodies, even when a harness reminder asks for it. The `Co-Authored-By:` trailer stays.
+
 ## Definition of done
 
 Check every non-trivial change against this list in one pass before calling it finished. Each item's full rule lives in the linked section — this checklist is the single source; the sections carry the detail, not a restatement of the obligation.
