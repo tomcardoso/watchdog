@@ -66,14 +66,21 @@ jobs:
       - uses: ./.github/actions/run-tests
 
   app:
-    # Built, and signed where the secrets exist, on each platform from the same tag.
-    needs: [version, test]
+    # Built, and signed where the secrets exist, on each platform from the same tag. It runs
+    # alongside `test` rather than after it: nothing is published until `release`, which waits
+    # for both. The two Mac architectures build in separate jobs so their notarizations, each
+    # about three minutes of waiting on Apple, run at once; `release` merges their update feeds.
+    needs: [version]
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             dist: dist:mac
+            arch: arm64
+          - os: macos-latest
+            dist: dist:mac
+            arch: x64
           - os: windows-latest
             dist: dist:win
           - os: ubuntu-latest
@@ -87,6 +94,8 @@ jobs:
       HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
       HAS_AZURE_SIGNING: ${{ secrets.AZURE_PUBLISHER_NAME != '' }}
       WATCHDOG_RELEASE_CHANNEL: ${{ needs.version.outputs.channel }}
+      # The Mac architecture this job builds (electron-builder.config.cjs); empty elsewhere.
+      WATCHDOG_MAC_ARCH: ${{ matrix.arch }}
     defaults:
       run:
         working-directory: gui
@@ -151,7 +160,7 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
-          name: app-${{ runner.os }}
+          name: app-${{ runner.os }}${{ matrix.arch && format('-{0}', matrix.arch) || '' }}
           # Installers, plus the latest*.yml and .blockmap files the in-app updater reads.
           path: |
             gui/dist/*.dmg
@@ -162,9 +171,11 @@ jobs:
             gui/dist/latest*.yml
           retention-days: 5
           if-no-files-found: error
+          # The installers are compressed already; zipping them again only costs time.
+          compression-level: 0
 
   release:
-    needs: [version, app]
+    needs: [version, test, app]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
@@ -184,8 +195,25 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           pattern: app-*
-          path: app/
-          merge-multiple: true
+          path: parts/
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Gather the files and merge the Mac update feed
+        run: |
+          # Each Mac job wrote a latest-mac.yml naming only its own architecture; installed Macs
+          # read one file naming both. Every other file has a name of its own.
+          mkdir app
+          for f in parts/*/*; do
+            NAME=$(basename "$f")
+            [ "$NAME" = latest-mac.yml ] && continue
+            [ -e "app/$NAME" ] && { echo "::error::$NAME came from two builds"; exit 1; }
+            mv "$f" app/
+          done
+          pip install pyyaml
+          python scripts/merge_mac_feed.py app/latest-mac.yml parts/app-macOS-*/latest-mac.yml
 
       - name: Check the update feed is complete
         run: |

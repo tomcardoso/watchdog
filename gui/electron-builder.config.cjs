@@ -11,6 +11,12 @@ const azure = !!process.env.AZURE_PUBLISHER_NAME
 // workflow from the tag; a local build follows the beta channel.
 const channel = process.env.WATCHDOG_RELEASE_CHANNEL === 'stable' ? 'stable' : 'beta'
 
+// The Mac architectures to build. The release workflow builds each in its own job, so the two
+// notarizations run at once rather than one after the other, and sets WATCHDOG_MAC_ARCH; a local
+// build makes both. The arch has to be set here: electron-builder ignores --arm64/--x64 on the
+// command line for a target whose arch the config names.
+const macArch = process.env.WATCHDOG_MAC_ARCH ? [process.env.WATCHDOG_MAC_ARCH] : ['arm64', 'x64']
+
 /** @type {import('electron-builder').Configuration} */
 module.exports = {
   appId: 'com.github.tomcardoso.watchdog',
@@ -51,8 +57,8 @@ module.exports = {
     category: 'public.app-category.productivity',
     // The .zip is what the updater downloads on macOS; the .dmg is for first installs.
     target: [
-      { target: 'dmg', arch: ['arm64', 'x64'] },
-      { target: 'zip', arch: ['arm64', 'x64'] }
+      { target: 'dmg', arch: macArch },
+      { target: 'zip', arch: macArch }
     ],
     artifactName: 'Watchdog-${version}-${arch}.${ext}',
     hardenedRuntime: true,

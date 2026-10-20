@@ -5,8 +5,9 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 ## Releases
 
 - **The app**: a tag `v<semver>` runs `.github/workflows/app-release.yml`. `v1.0.5` is a stable
-  release, `v1.1.0-beta.1` a beta. It tests the Python package, builds the app on macOS (Apple
-  silicon and Intel), Windows and Linux with the tag's version, and publishes:
+  release, `v1.1.0-beta.1` a beta. It tests the Python package and, at the same time, builds the
+  app on macOS (Apple silicon and Intel, in separate jobs so their notarizations overlap), Windows
+  and Linux with the tag's version. Once the tests and every build pass, it publishes:
   1. a stable release as the repository's **latest release**, titled "Watchdog 1.0.5". It is the
      page to send people (https://github.com/tomcardoso/watchdog/releases/latest) and the feed
      installed stable copies read for updates;
@@ -34,8 +35,8 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 2. Tag it and push the tag: `git tag v1.0.5 && git push origin v1.0.5`. For a beta, use
    `v1.1.0-beta.1`, with a higher beta number each time (`-beta.2`, `-beta.3`); the updater only
    offers a version higher than the one installed.
-3. Watch the run under Actions → App release (about 30 minutes; macOS notarization is the slow
-   step). Release notes list the merged pull requests since the previous release's tag.
+3. Watch the run under Actions → App release (usually 10 to 15 minutes, longer when GitHub has no
+   Mac runner free; Apple's notarization is the slow step). Release notes list the merged pull requests since the previous release's tag.
 4. Send people https://github.com/tomcardoso/watchdog/releases/latest (testers on the beta line:
    https://github.com/tomcardoso/watchdog/releases/tag/app-beta). A copy installed from there
    offers every later release on its channel under Check for Updates, and on its own shortly after
