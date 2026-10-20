@@ -222,7 +222,9 @@ def test_status_unconfigured(wdg_home):
 def test_status_subscription(wdg_home):
     write_creds(wdg_home, "subscription")
     s = call("auth.status")
-    assert s["claude"] == {"mode": "subscription", "logged_in": True, "reason": None, "env_key_set": False,
+    assert s["claude"] == {"mode": "subscription", "logged_in": True, "reason": None,
+                           "session_mode": "subscription", "session_mode_own": False, "signed_in": True,
+                           "session_reason": None, "env_key_set": False,
                            "key_masked": None, "key_source": None, "key_label": None}
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
 
@@ -271,6 +273,42 @@ def test_status_inactive_anthropic_key_and_routed_providers(wdg_home, monkeypatc
 
 
 # ── auth mutations ───────────────────────────────────────────────────────────────
+
+def test_session_mode_splits_ask_claude_from_processing(wdg_home):
+    """An API key for the documents, the subscription for Ask Claude (D318)."""
+    write_creds(wdg_home, "api-key", {"anthropic": "sk-ant-abcdefghijklmnop"})
+    r = call("auth.setSessionMode", mode="subscription")
+    c = r["claude"]
+    assert c["mode"] == "api-key" and c["session_mode"] == "subscription" and c["session_mode_own"] is True
+    assert c["logged_in"] is True and c["signed_in"] is True and c["reason"] is None and c["session_reason"] is None
+    assert creds(wdg_home)["session_mode"] == "subscription"
+    assert all(x["billing"] == "api-key" for x in r["stages"])     # processing is unchanged
+    # Following processing again removes the setting.
+    r = call("auth.setSessionMode", mode=None)
+    assert r["claude"]["session_mode"] == "api-key" and r["claude"]["session_mode_own"] is False
+    assert "session_mode" not in creds(wdg_home)
+
+
+def test_session_mode_reports_what_stops_ask_claude(wdg_home, monkeypatch):
+    write_creds(wdg_home, "api-key", {"anthropic": "sk-ant-abcdefghijklmnop"})
+    monkeypatch.setattr("watchdog.auth.claude_code_logged_in", lambda: False)
+    c = call("auth.setSessionMode", mode="subscription")["claude"]
+    assert c["reason"] is None and "not signed in" in c["session_reason"]
+    write_creds(wdg_home, "subscription")
+    c = call("auth.setSessionMode", mode="api-key")["claude"]
+    assert "no key is stored" in c["session_reason"]
+
+
+def test_session_mode_on_its_own_key_keeps_the_anthropic_key_active(wdg_home):
+    write_creds(wdg_home, "subscription", {"anthropic": "sk-ant-abcdefghijklmnop"})
+    s = call("auth.setSessionMode", mode="api-key")
+    assert {k["provider"]: k for k in s["keys"]}["anthropic"]["detail"] != "inactive — subscription mode"
+    assert s["claude"]["key_masked"] == "sk-ant-abc…mnop" and s["claude"]["session_reason"] is None
+
+
+def test_session_mode_rejects_an_unknown_mode(wdg_home):
+    assert call_error("auth.setSessionMode", mode="cheap")["code"] == "bad_params"
+
 
 def test_set_anthropic_mode_subscription_tunes_concurrency(wdg_home):
     r = call("auth.setAnthropicMode", mode="subscription")

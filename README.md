@@ -64,10 +64,10 @@ For a closer look at what happens to a single document — the OCR pipeline, the
 ## What you need
 
 - A Mac, Windows or Linux computer, an internet connection, and about 7 GB of free disk space for the one-time setup (most of it for the libraries and models that run on your computer)
-- Claude access — a Claude.ai Pro or Max subscription, or an Anthropic API key. Asking questions of your investigation always runs on Claude. The document-reading steps can be pointed at a different provider instead — OpenAI, Gemini, DeepSeek, or a model on your own computer — see [Models and cost](https://github.com/tomcardoso/watchdog/blob/main/docs/models-and-cost.md#other-providers)
+- Claude access — we recommend an Anthropic API key for reading documents (roughly US$1 per 1,000 pages with the default model) and your Claude Pro or Max subscription, if you have one, for asking questions. A subscription alone works too, but a large batch can reach its usage limit. Asking questions of your investigation always runs on Claude. The document-reading steps can be pointed at a different provider instead — OpenAI, Gemini, DeepSeek, or a model on your own computer — see [Models and cost](https://github.com/tomcardoso/watchdog/blob/main/docs/models-and-cost.md#other-providers)
 - Optional: [Obsidian](https://obsidian.md), free, if you want to browse the files outside the app
 
-A Claude Pro subscription (US$20/month) is enough for most journalism work. You do not need a terminal, Python or Claude Code installed first; Watchdog sets up what it needs.
+You do not need a terminal, Python or Claude Code installed first; Watchdog sets up what it needs.
 
 Watchdog benchmarks its own model and effort defaults against real court and financial filings rather than picking one on reputation alone — see [How the defaults were chosen](https://github.com/tomcardoso/watchdog/blob/main/docs/models-and-cost.md#how-the-defaults-were-chosen).
 

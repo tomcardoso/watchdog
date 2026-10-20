@@ -50,7 +50,7 @@ To see or change what is allowed, open **Settings → Folder access**. **Allow a
 
 Document reading, **Ask Claude** and **Web research** each need a way to reach a model. If a run says no model sign-in is set up, or **Ask Claude** says Claude may not be signed in, open **Settings → Models & keys** and sign in again, or paste an API key. The sign-in opens in your browser and the app waits for you to finish; if the browser did not open, the app shows a link to the sign-in page.
 
-**Ask Claude** and **Web research** always use Claude, even if the document-reading step is set to another provider, so they need a Claude sign-in either way. The app's sign-in check is approximate, so a question may still work; if one fails to start, this is the usual reason.
+**Ask Claude** and **Web research** always use Claude, even if the document-reading step is set to another provider, so they need a Claude sign-in or key either way. They can also be billed differently from document reading: **Ask Claude and Research** in **Settings → Models & keys** shows which they use. Set to **Subscription**, they need you signed in to Claude, and the sign-in button appears there when you are not. The app's sign-in check is approximate, so a question may still work; if one fails to start, this is the usual reason.
 
 ## The provider rejected the key, or the account is out of credit
 

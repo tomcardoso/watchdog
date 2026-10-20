@@ -6,12 +6,17 @@ The defaults are sensible, and most people only ever change a few of these.
 
 ## Claude: subscription or API key
 
-Watchdog is built around Claude and uses it by default. **Settings → Models & keys → How Claude is billed** chooses how Watchdog reaches it:
+Watchdog is built around Claude and uses it by default. It can reach Claude in two ways:
 
-- **Subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered. A Pro plan (US$20 a month) is enough for most journalism work.
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
+- **Subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
-A subscription has one usage limit, shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. If you add hundreds of documents at a time, a Max plan raises the limit, and an API key avoids it altogether: on a key, the default model costs roughly US$1 per 1,000 pages. Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can also let a Pro or Max plan continue past its limit at API rates.
+**Settings → Models & keys** sets each separately, for two kinds of work:
+
+- **Adding documents**: reading, extracting and the finishing steps. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
+- **Ask Claude and Research**: questions and web research. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+
+You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit, and Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can let a Pro or Max plan continue past it at API rates.
 
 **Ask Claude** and **Web research** always run on Claude, so they need a Claude sign-in or key whatever the other steps use.
 
@@ -224,7 +229,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 
 ### App panels
 
-- **Models & keys.** How Claude is billed, each provider's keys, and the Processing stages table; see [Your keys](#your-keys).
+- **Models & keys.** How Claude is billed for adding documents and for Ask Claude and Research, each provider's keys, and the Processing stages table; see [Claude: subscription or API key](#claude-subscription-or-api-key) and [Your keys](#your-keys).
 - **Folder access.** The folders Watchdog may change; see [Folder access](using-watchdog.md#folder-access).
 - **Version history.** How much history the open investigation keeps, and **Clear history…**; see [History and your notes](using-watchdog.md#history-and-your-notes).
 - **Record skills.** Every skill, to read, and the folder for your own; see [Record skills](how-it-works.md#record-skills).

@@ -1,0 +1,3 @@
+.signin-note { margin: 0; color: var(--text-3); font-size: var(--fs-sm); line-height: 1.55; }
+.signin-ok { display: inline-flex; align-items: center; gap: 7px; color: var(--success); font-weight: 560; font-size: var(--fs-md); }
+.signin-ok svg { width: 16px; height: 16px; }

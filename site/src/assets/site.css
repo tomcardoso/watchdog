@@ -208,7 +208,6 @@ kbd {
   background: linear-gradient(100deg, transparent 2%, var(--marker) 3%, var(--marker) 97%, transparent 98%) no-repeat 0 82% / 100% 42%;
   border-radius: 2px;
 }
-.wordmark-mark { font-style: italic; font-weight: 600; }
 :root[data-theme='dark'] .wordmark-text { color: #141416; background-size: 100% 70%; background-position: 0 70%; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) .wordmark-text { color: #141416; background-size: 100% 70%; background-position: 0 70%; }

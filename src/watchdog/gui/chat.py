@@ -53,10 +53,11 @@ def make_client(options):
 def session_auth_env(session: "Session") -> dict:
     """The Anthropic key a session in API-key mode runs on: the one this investigation chose, or
     the default (D290), passed as ANTHROPIC_API_KEY. On a subscription nothing is added and
-    Claude Code uses its own login. Raises `auth.KeyChoiceError` when the chosen key isn't on
+    Claude Code uses its own login. Sessions follow their own billing choice (D318), which can
+    differ from the one processing uses. Raises `auth.KeyChoiceError` when the chosen key isn't on
     this computer, before the session starts, rather than billing another account."""
     from watchdog import auth
-    a = auth.resolve_auth("anthropic", session.vault)
+    a = auth.resolve_auth("anthropic", session.vault, session=True)
     if a.get("mode") != "api-key" or not a.get("key"):
         session.key_label = None
         return {}
@@ -439,7 +440,7 @@ def _check_session_key(vault: Path) -> None:
     if sample.is_sample_folder(vault):
         raise RpcError(sample.CHAT_REFUSAL, code="sample")
     try:
-        auth.resolve_auth("anthropic", vault)
+        auth.resolve_auth("anthropic", vault, session=True)
     except auth.KeyChoiceError as e:
         raise RpcError(str(e), code="key_missing") from None
 

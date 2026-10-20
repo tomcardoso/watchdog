@@ -5,7 +5,11 @@ Two modes for Claude (#118):
     Keychain). No metered API billing.
   - **api-key**: use a metered Anthropic API key.
 
-State lives in `~/.watchdog/credentials.json` (mode 0600): `{"mode", "keys": {provider: {"default":
+`mode` is how the processing steps reach Claude. The app's sessions (Ask Claude, Research and
+setting the context) can be billed another way, `session_mode` (D318): an API key for the
+documents and the subscription for the questions is the recommended split. Unset, it follows `mode`.
+
+State lives in `~/.watchdog/credentials.json` (mode 0600): `{"mode", "session_mode", "keys": {provider: {"default":
 <id>, "items": [{"id", "label", "key"}, ...]}}}`. A provider can hold several labelled keys, one
 of them the default (#690, D290). Each key is an encrypted blob only the app's main process can
 open (`watchdog.keystore`, D295), or plain text on a computer with no usable secure storage; this
@@ -633,15 +637,27 @@ def provider_ready(provider: str) -> bool:
     return not provider_requires_key(provider) or bool(default_key(provider))
 
 
-def resolve_auth(provider: str = "anthropic", vault: Path | None = None) -> dict:
-    """How a model backend should authenticate for this run — the resolver #118 calls.
+SESSION_MODES = ("subscription", "api-key")
+
+
+def session_mode(state: dict | None = None) -> str | None:
+    """How the app's sessions (Ask Claude, Research, setting the context) reach Claude: their own
+    `session_mode` when one is set (D318), else Claude's `mode`."""
+    state = load_state() if state is None else state
+    return state.get("session_mode") or state.get("mode")
+
+
+def resolve_auth(provider: str = "anthropic", vault: Path | None = None, *, session: bool = False) -> dict:
+    """How a model backend should authenticate for this run — the resolver #118 calls. With
+    `session`, for an app session rather than a processing step (D318).
 
     Returns one of:
       {"mode": "api-key", "key": "<key>"}   → pass the key (metered)
       {"mode": "subscription"}              → pass no key; the SDK uses Claude Code's login
       {"mode": "none", "reason": "<why>"}   → nothing configured; caller errors with guidance
     """
-    mode = load_state().get("mode")
+    state = load_state()
+    mode = session_mode(state) if session else state.get("mode")
 
     if mode is None:
         return {"mode": "none", "reason": "No model provider is set up. Sign in or add a key under Settings → Models & keys."}
@@ -672,20 +688,22 @@ INGEST_STAGES = (("classifier_model", defaults.CLASSIFIER_MODEL),
 def status_data() -> dict:
     """What Settings → Models & keys shows, as data.
 
-    `claude` is Claude Code's own access mode (`logged_in` only in subscription mode, `key_masked`
-    and `key_source` only in api-key mode). `stages` says which provider each pipeline stage is
+    `claude` is Claude's access mode for processing (`mode`) and for the app's sessions
+    (`session_mode`, D318); `logged_in` only when either is subscription, `key_masked` and
+    `key_source` only when either is api-key. `stages` says which provider each pipeline stage is
     routed to and whether it can run; `keys` lists every provider with a key available (masked —
     the key itself never leaves this function); `base_urls` the user-supplied endpoints."""
     state = load_state()
     mode = state.get("mode")
+    sessions = session_mode(state)
     meta = PROVIDERS["anthropic"]
     env_set = bool(os.environ.get(meta["env"]))
 
-    claude = {"mode": mode, "logged_in": None, "env_key_set": env_set,
-              "key_masked": None, "key_source": None}
-    if mode == "subscription":
+    claude = {"mode": mode, "session_mode": sessions, "session_mode_own": bool(state.get("session_mode")),
+              "logged_in": None, "env_key_set": env_set, "key_masked": None, "key_source": None}
+    if "subscription" in (mode, sessions):
         claude["logged_in"] = claude_code_logged_in()
-    elif mode is not None:   # api-key
+    if "api-key" in (mode, sessions):
         masked = default_masked("anthropic", state)
         if masked:
             claude["key_masked"] = masked
@@ -706,7 +724,7 @@ def status_data() -> dict:
 
     # Every provider with a key available, whether or not a stage is routed to it — the
     # definitive list of what's stored, Anthropic included (#482). A stored Anthropic key is
-    # only ever actually used while Claude Code mode above is api-key, so it's flagged inactive
+    # only ever actually used while either Claude mode above is api-key, so it's flagged inactive
     # rather than silently vanishing from the list while on subscription.
     shown_providers = {stage_provider(cfg.get(k) or d) for k, d in INGEST_STAGES}
     keys = []
@@ -714,7 +732,7 @@ def status_data() -> dict:
         masked = default_masked(p, state)
         if not masked:
             continue
-        if p == "anthropic" and mode != "api-key":
+        if p == "anthropic" and "api-key" not in (mode, sessions):
             status = f"inactive — {mode} mode" if mode else "inactive — not configured"
         else:
             status = "in use" if p in shown_providers else "unused"
