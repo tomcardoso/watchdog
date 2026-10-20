@@ -1,25 +1,30 @@
-// Renders resources/icon.png (1024×1024) from the logo, in the Highlighter palette (the values
-// mirror --brand-from/--brand-to and --marker in src/renderer/src/styles/tokens.css). electron-builder derives the .icns/.ico.
+// Renders resources/icon.png (1024×1024): the Jack Russell mark (also in src/renderer/src/components/
+// Logo.tsx, docs/images/logo.svg and site/src/favicon.svg) on a white tile. The dog is placed by eye,
+// not by its bounding box, which the tail and nose pull off centre. electron-builder derives the
+// .icns/.ico.
 import { chromium } from '@playwright/test'
 import { resolve } from 'node:path'
 
 const svg = `
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#36363c"/><stop offset="1" stop-color="#0c0c0e"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#ececef"/>
     </linearGradient>
-    <radialGradient id="sheen" cx="0.3" cy="0.15" r="0.9">
-      <stop offset="0" stop-color="#fff" stop-opacity="0.12"/><stop offset="0.6" stop-color="#fff" stop-opacity="0"/>
-    </radialGradient>
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#bg)"/>
-  <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#sheen)"/>
-  <rect x="101" y="101" width="822" height="822" rx="189" fill="none" stroke="#fff" stroke-opacity="0.1" stroke-width="3"/>
-  <g transform="translate(512 512) scale(17) translate(-16 -16)">
-    <path d="M3.5 16c3.2-6 7.6-9 12.5-9s9.3 3 12.5 9c-3.2 6-7.6 9-12.5 9s-9.3-3-12.5-9Z" fill="none" stroke="#facc15" stroke-width="2.3" stroke-linejoin="round"/>
-    <circle cx="16" cy="16" r="4.6" fill="#facc15"/>
-    <circle cx="17.6" cy="14.4" r="1.4" fill="#141416"/>
+  <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="#141416" stroke-opacity="0.12" stroke-width="3"/>
+  <g transform="translate(100 100) scale(4.12) translate(-18 -17)">
+    <path d="M68 158 C57 154 48 145 44 131 C43 126 49 124 51 129 C55 140 63 146 71 148 Z" fill="#ffffff" stroke="#141416" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M126 38 C138 36 146 42 148 48 L168 54 C174 56 174 63 168 65 L152 70 C148 76 144 80 142 86 C150 98 152 110 150 124 C148 138 148 152 148 166 L160 167 C163 169 162 173 159 173 L136 173 C134 160 134 148 132 140 C124 148 116 156 114 166 L126 167 C129 169 128 173 125 173 L84 173 C70 173 64 162 68 148 C72 130 80 116 90 104 C100 92 106 80 110 64 C112 50 116 40 126 38 Z" fill="#ffffff"/>
+    <clipPath id="body"><path d="M126 38 C138 36 146 42 148 48 L168 54 C174 56 174 63 168 65 L152 70 C148 76 144 80 142 86 C150 98 152 110 150 124 C148 138 148 152 148 166 L160 167 C163 169 162 173 159 173 L136 173 C134 160 134 148 132 140 C124 148 116 156 114 166 L126 167 C129 169 128 173 125 173 L84 173 C70 173 64 162 68 148 C72 130 80 116 90 104 C100 92 106 80 110 64 C112 50 116 40 126 38 Z"/></clipPath>
+    <g clip-path="url(#body)"><path d="M104 60 C114 44 136 36 150 46 L148 60 C138 58 128 62 118 72 Z" fill="#c98a4b"/>
+    <path d="M78 128 C88 112 104 104 116 106 C118 122 106 136 90 140 C82 138 77 134 78 128 Z" fill="#c98a4b"/></g>
+    <path d="M126 38 C138 36 146 42 148 48 L168 54 C174 56 174 63 168 65 L152 70 C148 76 144 80 142 86 C150 98 152 110 150 124 C148 138 148 152 148 166 L160 167 C163 169 162 173 159 173 L136 173 C134 160 134 148 132 140 C124 148 116 156 114 166 L126 167 C129 169 128 173 125 173 L84 173 C70 173 64 162 68 148 C72 130 80 116 90 104 C100 92 106 80 110 64 C112 50 116 40 126 38 Z" fill="none" stroke="#141416" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M114 166 C110 152 102 142 90 138" fill="none" stroke="#141416" stroke-width="3" stroke-linecap="round"/>
+    <path d="M116 44 C121 34 134 33 138 39 C134 45 129 51 122 55 Z" fill="#c98a4b" stroke="#141416" stroke-width="3.5" stroke-linejoin="round"/>
+    <circle cx="144" cy="52" r="3.8" fill="#141416"/>
+    <circle cx="169" cy="59" r="4.4" fill="#141416"/>
   </g>
 </svg>`
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {})

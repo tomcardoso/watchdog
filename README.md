@@ -1,3 +1,5 @@
+<img src="docs/images/logo.svg" alt="" width="72" align="right">
+
 # Watchdog
 
 **Document intelligence for journalists — drop records in, find connections.**

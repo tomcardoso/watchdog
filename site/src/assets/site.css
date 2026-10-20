@@ -196,6 +196,7 @@ kbd {
 
 /* The wordmark: the name, struck through with a highlighter. */
 .wordmark { display: inline-flex; align-items: center; text-decoration: none; }
+.wordmark-dog { width: 32px; height: 34px; margin: -6px 9px 0 0; flex: none; }
 .wordmark-text {
   font-family: var(--font-read);
   font-weight: 650;

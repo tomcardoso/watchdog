@@ -177,7 +177,7 @@ const ICONS = {
   menu: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
 }
 
-const WORDMARK = `<span class="wordmark"><span class="wordmark-text">Watch<span class="wordmark-mark">dog</span></span></span>`
+const WORDMARK = `<span class="wordmark"><img class="wordmark-dog" src="images/logo.svg" alt="" width="32" height="34"><span class="wordmark-text">Watch<span class="wordmark-mark">dog</span></span></span>`
 
 function head({ title, description, path, extraHead = '' }) {
   const url = SITE_URL + (path === 'index.html' ? '' : path)
