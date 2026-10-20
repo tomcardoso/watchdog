@@ -78,8 +78,8 @@
   <div class="wrap">
     <header class="section-head reveal">
       <p class="kicker">The app</p>
-      <h2>Fourteen documents, one investigation.</h2>
-      <p>Every screen below comes from the sample investigation that ships with the app: 14 records about a city land deal and a contract awarded without a tender. The people, companies and documents are invented.</p>
+      <h2>A look inside the app.</h2>
+      <p>These screens show Watchdog working on a sample investigation into a city land deal. The people, companies and documents in it are invented.</p>
     </header>
 
     <div class="tour-tabs reveal" role="tablist" aria-label="Screens of the app">
@@ -174,13 +174,7 @@
       </article>
     </div>
 
-    <ol class="trail reveal" aria-label="The property's record, in order">
-      <li><time>Apr 22, 2021</time><b>$1,150,000</b><span>A numbered company buys 14 Dockside Road from an estate.</span></li>
-      <li><time>Jan 15, 2022</time><b>Director quits</b><span>Marcus Teague resigns as the company's director.</span></li>
-      <li><time>Feb 8, 2022</time><b>$3,900,000</b><span>Council votes 8 to 3 to buy the lot.</span></li>
-      <li><time>Feb 28, 2022</time><b>$4,350,000</b><span>The sale closes. Teague signs for the company as its director.</span></li>
-    </ol>
-    <p class="note reveal">From the sample investigation. Port Calder, its people and its records are invented.</p>
+    <p class="note reveal">From a sample investigation. The city, its people and its records are invented.</p>
   </div>
 </section>
 
@@ -199,10 +193,10 @@
         <li><span class="dot asset"></span>Assets</li>
         <li><span class="dot proceeding"></span>Proceedings</li>
       </ul>
-      <p class="note">This is the sample investigation's actual network. Hover over a dot to see its connections; drag it to move it.</p>
+      <p class="note">Every investigation comes with an interactive network like this one. Hover over a dot to see its connections; drag it to move it.</p>
     </header>
     <div class="net-stage reveal">
-      <canvas class="net-canvas" aria-label="An interactive network of the sample investigation's entities" role="img"></canvas>
+      <canvas class="net-canvas" aria-label="An interactive network of the people, companies and places in a sample investigation" role="img"></canvas>
       <div class="net-tip" hidden></div>
       <div class="net-count" aria-hidden="true"></div>
     </div>
@@ -269,11 +263,11 @@
     <header class="section-head reveal">
       <p class="kicker">Models and cost</p>
       <h2>Tested on real filings.</h2>
-      <p>Watchdog runs on <a href="https://www.anthropic.com/claude">Claude</a> by default, with your subscription or an API key. Any reading step can use OpenAI, Google Gemini, DeepSeek, OpenRouter or a model on your own computer instead. The defaults come from running real public filings through each model and scoring what each one found against an answer key.</p>
+      <p>Watchdog runs on <a href="https://www.anthropic.com/claude">Claude</a> by default, with your subscription or an API key. Any reading step can use OpenAI, Google Gemini, DeepSeek, OpenRouter or a model on your own computer instead. The defaults are the settings that found the most when we tested each model on real public filings.</p>
       <p><a class="more" href="models-and-cost.html">Models, cost and settings <span aria-hidden="true">→</span></a></p>
     </header>
     <figure class="bench reveal">
-      <figcaption><b>Share of the main facts each setting found</b><span>Six court and financial filings, 209 pages; one run each, October 2026</span></figcaption>
+      <figcaption><b>How many of the important facts each model found</b><span>We listed the important facts in a set of real documents, then counted how many of them each model pulled out. 74% means it found about three in every four. Higher is better.</span></figcaption>
       <ol class="bars">
         <li style="--v:74"><span class="bar-label">Claude Haiku 5.5, high <em>default</em></span><span class="bar"><i></i></span><span class="bar-val">74%</span><span class="bar-cost">$0.0009 a page</span></li>
         <li style="--v:67"><span class="bar-label">Claude Sonnet 5.5, high</span><span class="bar"><i></i></span><span class="bar-val">67%</span><span class="bar-cost">$0.0049 a page</span></li>
@@ -283,7 +277,7 @@
         <li style="--v:41"><span class="bar-label">Gemini 3.8 Flash, high</span><span class="bar"><i></i></span><span class="bar-val">41%</span><span class="bar-cost">$0.0028 a page</span></li>
         <li style="--v:39"><span class="bar-label">Claude Haiku 5.5, medium</span><span class="bar"><i></i></span><span class="bar-val">39%</span><span class="bar-cost">$0.0003 a page</span></li>
       </ol>
-      <p class="bench-note">Costs are on a metered API key; a Claude subscription isn't billed per page. Each setting ran once, so read a gap as a lead, not a result.</p>
+      <p class="bench-note">Tested in October 2026 on six court and financial filings (209 pages), one run per model, so read a small gap as a lead, not a result. “High” and “medium” are how hard the model is asked to think. Costs are on a metered API key; a Claude subscription isn't billed per page.</p>
     </figure>
   </div>
 </section>
@@ -307,7 +301,7 @@
           <ul><li>Each document's extracted text</li><li>Your investigation's brief</li><li>Facts, names and short quotations, for the write-up</li><li>Your questions to Claude</li></ul>
         </div>
       </div>
-      <p class="records-never">Never use it for confidential source communications, leaked or unpublished material, private correspondence, or anything that could identify a source. With a model on your own computer, nothing leaves it at all; see <a href="models-and-cost.html#local-and-self-hosted-models">local models</a>.</p>
+      <p class="records-never">Never use Watchdog for confidential source communications, leaked or unpublished material, private correspondence, or anything that could identify a source. With a model on your own computer, nothing leaves it at all; see <a href="models-and-cost.html#local-and-self-hosted-models">local models</a>.</p>
     </div>
   </div>
 </section>
@@ -374,7 +368,7 @@
       </details>
       <details>
         <summary>What kinds of files can it read?</summary>
-        <p>PDFs (scanned or not), Word, Excel and PowerPoint files, images, web pages, plain text, and audio and video, which it transcribes on your computer. It handles PDFs of several hundred pages. <a href="using-watchdog.html#supported-file-types">Supported file types</a></p>
+        <p>PDFs (scanned or not), Word, Excel and PowerPoint files, images, web pages, plain text, and audio and video, which it transcribes on your computer. <a href="using-watchdog.html#supported-file-types">Supported file types</a></p>
       </details>
       <details>
         <summary>Where does my work live?</summary>
