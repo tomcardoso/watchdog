@@ -156,7 +156,7 @@ benchmarks/bench clean                                                       # w
 are reset at the start of a run. [RUNBOOK.md](RUNBOOK.md) is the step-by-step.
 
 Run `benchmarks/bench --help` for the full list. It is dev tooling for whoever is running the
-benchmark, not part of the app — see `docs/benchmarks.md` for that boundary.
+benchmark, not part of the app; `docs/models-and-cost.md` summarizes its results for users.
 
 A step-by-step guide to measuring the three ingest model stages against corpus-v1. Written to be
 followed top to bottom. Nothing here spends money until Step 3, and every run gets a free cost

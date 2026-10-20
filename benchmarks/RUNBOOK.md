@@ -223,7 +223,7 @@ last-file-wins. Every arm no `--judged` file covers lands in "measured, not yet 
 with its numeric sub-item recall shown and clearly labelled as such — RUNBOOK step 6's warning about the
 numeric slice applies here too. Runs whose corpus/keys digest or scorer/cost-model version don't
 match the reference cohort are excluded and named, never silently blended in. `index.md` is a
-hand-paste fragment for `docs/benchmarks.md`, same convention as `docs-summary.md` — never
+hand-paste fragment for the "How the defaults were chosen" section of `docs/models-and-cost.md`, same convention as `docs-summary.md` — never
 auto-inserted.
 
 ## 9. Write it down

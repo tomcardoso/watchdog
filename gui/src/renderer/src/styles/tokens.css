@@ -173,9 +173,10 @@
   --switch-knob: #ffffff;
   --switch-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 
-  /* The Watchdog mark (start-up screen and onboarding); its tile uses --brand-* above */
-  --logo-eye: var(--marker);
-  --logo-glint: #141416;
+  /* The Watchdog mark (components/Logo.tsx): the same in both themes, like the app icon */
+  --logo-ink: #141416;
+  --logo-coat: #ffffff;
+  --logo-tan: #c98a4b;
 
   /* Investigation monograms: eight muted pairs, picked per investigation by a hash of its slug */
   --mark-text: #ffffff;

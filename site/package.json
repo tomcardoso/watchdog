@@ -1,0 +1,17 @@
+{
+  "name": "watchdog-site",
+  "private": true,
+  "description": "The Watchdog website: the landing page and the docs/ pages, built into dist/ for GitHub Pages.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "serve": "node serve.mjs",
+    "dev": "node build.mjs && node serve.mjs"
+  },
+  "devDependencies": {
+    "@fontsource-variable/inter": "5.3.0",
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource-variable/source-serif-4": "5.3.1",
+    "marked": "18.0.14"
+  }
+}

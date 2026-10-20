@@ -105,5 +105,5 @@ classifier_sweep:
 # backend A/B, which this matrix no longer carries. The stage still works; add the section back
 # (see BENCHMARKING.md) to run it.
 #
-# Still deferred (see docs/benchmarks.md "Roadmap"): no CI-trigger section — GitHub Actions
+# Still deferred: no CI-trigger section — GitHub Actions
 # integration slots in as a new top-level key later without reworking this schema.

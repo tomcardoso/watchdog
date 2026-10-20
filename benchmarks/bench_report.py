@@ -333,7 +333,7 @@ def sdk_check_table_md(results: list) -> str:
 
 
 def docs_summary_md(results: list, scores: dict) -> str:
-    """Compact, journalist-safe fragment for hand-pasting into docs/benchmarks.md — never
+    """Compact, journalist-safe fragment for hand-pasting into docs/models-and-cost.md — never
     auto-inserted into that page."""
     extractor = [r for r in results if r.stage == "extractor" and r.ok]
     finalizer = [r for r in results if r.stage == "finalizer" and r.ok]

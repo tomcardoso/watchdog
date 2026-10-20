@@ -95,7 +95,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
     <div className="gate">
       <div className="gate-card">
         <div className="gate-logo">
-          <LogoMark style={{ '--logo-glint': 'var(--brand-to)' } as React.CSSProperties} />
+          <LogoMark />
         </div>
         {!failed ? (
           <>
