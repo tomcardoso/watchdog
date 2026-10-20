@@ -2801,3 +2801,10 @@ Tradeoff: features a framework gives for free (search ranking, versioned docs) a
 Claude had one billing choice, subscription or API key, for everything. The owner now recommends an API key for reading documents, which has no usage limit for a large batch to reach, and the subscription for questions, which cost nothing extra on it. `credentials.json` gains `session_mode`, read by `auth.resolve_auth(..., session=True)` for the app's sessions (Ask Claude, Research, setting the context); unset, it follows `mode`, so existing installs behave as before. Settings → Models & keys shows the two choices, and first-run setup puts the API key first and offers the subscription sign-in for questions after the key is saved.
 
 Tradeoff: one Anthropic key serves both, the default or the investigation's choice (D290); a separate key for questions would need its own picker, and nobody has asked. Processing on a subscription with questions on a key is allowed but not suggested anywhere.
+
+### D319 — A stable release can be started from the Actions tab; the workflow makes the tag
+
+Releases started only from a pushed tag, which needs git: the owner couldn't release from a phone, and a cloud session's git proxy refuses tag pushes. App release's manual run gains a **release** input: on `main` it releases `pyproject.toml`'s version, and the `release` job creates `v<version>` through the API once the tests and every build have passed, so a failed run leaves no tag or release behind. A tag made with the workflow's own token starts no other workflow, so the pushed-tag trigger doesn't fire a second run.
+
+Tradeoff: the button releases only stable versions (a beta's number isn't in `pyproject.toml`), and the tag is lightweight and points at the commit the run started on, even if `main` has moved on since.
+

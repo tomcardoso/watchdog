@@ -35,6 +35,12 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
 2. Tag it and push the tag: `git tag v1.0.5 && git push origin v1.0.5`. For a beta, use
    `v1.1.0-beta.1`, with a higher beta number each time (`-beta.2`, `-beta.3`); the updater only
    offers a version higher than the one installed.
+
+   Without git (from a phone, say), a stable release can be started instead from Actions → App
+   release → Run workflow, on `main`, with **release** ticked. It releases `pyproject.toml`'s
+   version and makes the tag itself, only after every build and test has passed (D319). It
+   refuses to run on another branch, or when that version's tag already exists. Betas still need
+   a pushed tag.
 3. Watch the run under Actions → App release (usually 10 to 15 minutes, longer when GitHub has no
    Mac runner free; Apple's notarization is the slow step). Release notes list the merged pull requests since the previous release's tag.
 4. Send people https://github.com/tomcardoso/watchdog/releases/latest (testers on the beta line:
