@@ -337,15 +337,15 @@ jobs:
 
   screenshots:
     # After a stable release, the docs' app screenshots (docs/images/app-*.png, which the website
-    # shows) are taken again from the sample investigation and offered as a pull request against
-    # main, so they never fall behind the app. It runs after the release is published, so a failed
-    # capture never holds up a release. The sample is built afresh, so its dates and the version
-    # in the sidebar differ every time: each stable release opens one pull request.
+    # shows) are taken again from the sample investigation and committed to main, and the website
+    # is rebuilt with them, so they never fall behind the app (D320). It runs after the release is
+    # published, so a failed capture never holds up a release. The sample is built afresh, so its
+    # dates and the version in the sidebar differ every time: each stable release makes one commit.
     #
-    # Needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull
-    # requests". A pull request opened with this job's token starts no other workflow, so ci.yml
-    # does not run on it; it changes only images. A test build (run by hand on a branch) takes the
-    # screenshots too and keeps them as the run's artifact instead, so the job can be tried.
+    # If main refuses the push (a branch rule that a workflow's push can't meet), the images are
+    # offered as a pull request instead, which needs Settings → Actions → General → "Allow GitHub
+    # Actions to create and approve pull requests". A test build (run by hand on a branch) takes
+    # the screenshots too and keeps them as the run's artifact instead, so the job can be tried.
     needs: [version, release]
     if: >-
       !cancelled() && (
@@ -356,6 +356,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: write   # to start the website's rebuild
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.version.outputs.tag }}
@@ -397,30 +398,40 @@ jobs:
           retention-days: 5
           if-no-files-found: error
 
-      - name: Open a pull request
+      - name: Commit them to main and rebuild the website
         if: needs.version.outputs.release == 'true'
         run: |
           if git diff --quiet -- docs/images; then
             echo "The screenshots are unchanged."
             exit 0
           fi
-          # Taken from the released commit, offered against main as it is now.
+          # Taken from the released commit, committed on top of main as it is now.
           cp docs/images/app-*.png "$RUNNER_TEMP/"
           git checkout -- docs/images
-          git fetch --depth=1 origin main
-          BRANCH="screenshots/$TAG"
-          git switch -C "$BRANCH" FETCH_HEAD
-          cp "$RUNNER_TEMP"/app-*.png docs/images/
-          if git diff --quiet -- docs/images; then
-            echo "main already has these screenshots."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/images
-          git commit -m "Docs: retake the app screenshots for $VERSION"
-          git push --force origin "$BRANCH"
+          # Twice, in case something lands on main between the fetch and the push.
+          for attempt in 1 2; do
+            git fetch --depth=1 origin main
+            git switch -C screenshots FETCH_HEAD
+            cp "$RUNNER_TEMP"/app-*.png docs/images/
+            if git diff --quiet -- docs/images; then
+              echo "main already has these screenshots."
+              exit 0
+            fi
+            git add docs/images
+            git commit -q -m "Docs: retake the app screenshots for $VERSION"
+            if git push origin HEAD:main; then
+              # A push made with this job's token starts no other workflow, so pages.yml's push
+              # trigger doesn't fire; a dispatch is the one event that token can start.
+              gh workflow run pages.yml --ref main
+              exit 0
+            fi
+          done
+          # main refused the push: offer the images as a pull request instead.
+          BRANCH="screenshots/$TAG"
+          git push --force origin "HEAD:refs/heads/$BRANCH"
           if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
             gh pr create --base main --head "$BRANCH" --title "Docs: app screenshots for $VERSION" \
-              --body "The docs' app screenshots, taken again from the sample investigation after the $TAG release by App release's \`screenshots\` job. Merging publishes them on the website. Only images change."
+              --body "The docs' app screenshots, taken again from the sample investigation after the $TAG release by App release's \`screenshots\` job. main refused the job's push, so they come as a pull request; merging publishes them on the website. Only images change."
           fi

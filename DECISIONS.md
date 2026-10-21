@@ -2808,8 +2808,8 @@ Releases started only from a pushed tag, which needs git: the owner couldn't rel
 
 Tradeoff: the button releases only stable versions (a beta's number isn't in `pyproject.toml`), and the tag is lightweight and points at the commit the run started on, even if `main` has moved on since.
 
-### D320 — A stable release retakes the docs' screenshots and offers them as a pull request
+### D320 — A stable release retakes the docs' screenshots and commits them to main
 
-The docs' app screenshots fell behind the app whenever nobody remembered to run `npm run screenshots`. App release's `screenshots` job now takes them on Linux after every stable release, from the released commit, and opens a pull request against `main`. It isn't a direct commit to `main`: an automated capture can go wrong (a screen that didn't settle, a dialog left open), and a pull request shows the images before the website does. It runs after the release is published, so a failed capture never holds one up.
+The docs' app screenshots fell behind the app whenever nobody remembered to run `npm run screenshots`. App release's `screenshots` job now takes them on Linux after every stable release, from the released commit, commits them to `main` and starts the website's rebuild (a push with the workflow's token starts no workflow itself). The owner chose a direct commit over a pull request to review: a capture that goes wrong is undone with a revert. It runs after the release is published, so a failed capture never holds one up. If `main` refuses the push, the job falls back to a pull request.
 
-Tradeoff: every stable release opens a pull request even when nothing visible changed, since the sample is built afresh (its dates) and the sidebar shows the version. The pull request is opened with the workflow's token, so no other workflow, CI included, runs on it, and the repository must allow Actions to create pull requests. The captures are Linux renderings of the Windows/Linux layout, as before.
+Tradeoff: a screen that loaded wrongly but was reachable reaches the website without anyone looking, and every stable release makes a commit even when nothing visible changed, since the sample is built afresh (its dates) and the sidebar shows the version. The captures are Linux renderings of the Windows/Linux layout, as before.
