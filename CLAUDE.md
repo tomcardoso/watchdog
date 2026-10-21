@@ -86,7 +86,7 @@ names it. Screenshots live in `docs/images/`, in a light and a `-dark` version; 
 screenshots` in `gui/` (after `npm run build`, with `WATCHDOG_PYTHON` set, under `xvfb-run` on
 Linux) captures them all again from the sample investigation; App release does this after every stable
 release and attaches them to the release, and the website shows the release's set when it is newer
-than `docs/images/`'s (D320). The landing page's network is the
+than `docs/images/`'s (D320). The README's screenshots link to the website's copies, so they follow. The landing page's network is the
 sample's own (`site/src/data/graph.json`, from `site/scripts/sample-graph.py`). Internals a
 reporter never needs (registry files, hidden folders' contents, tuning rationale) belong in
 `ARCHITECTURE.md`, `DECISIONS.md` or `benchmarks/`, not in `docs/`.

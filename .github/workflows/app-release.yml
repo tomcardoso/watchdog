@@ -339,8 +339,8 @@ jobs:
     # After a stable release, the docs' app screenshots (docs/images/app-*.png) are taken again
     # from the sample investigation, attached to the release as docs-screenshots.tar.gz, and the
     # website rebuilt, which uses them in place of docs/images/'s older copies (site/build.mjs,
-    # D320). main doesn't take this job's pushes, so nothing is committed: docs/images/ (and the
-    # README, which GitHub shows from it) changes only when someone retakes them by hand. It runs
+    # D320); the README shows the website's copies. main doesn't take this job's pushes, so nothing
+    # is committed: docs/images/ changes only when someone retakes them by hand. It runs
     # after the release is published, so a failed capture never holds up a release.
     #
     # A test build (run by hand on a branch) takes the screenshots too and keeps them as the

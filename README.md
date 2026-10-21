@@ -13,7 +13,7 @@ Watchdog is a desktop app for journalists who accumulate large sets of public re
 
 Each investigation is a folder of ordinary Markdown files on your computer, which you can also open in [Obsidian](https://obsidian.md), a free note-taking app. The information-extraction work is done by a large language model: Claude by default, or one from OpenAI, Google, DeepSeek or another provider you choose. The questions are answered by Claude, inside the app.
 
-![The Overview of an investigation in Watchdog: counts of documents, entities and checked facts, a one-paragraph account of where things stand, the latest briefing, and what is waiting on you.](docs/images/app-overview.png)
+![The Overview of an investigation in Watchdog: counts of documents, entities and checked facts, a one-paragraph account of where things stand, the latest briefing, and what is waiting on you.](https://tomcardoso.github.io/watchdog/images/app-overview.png)
 
 ## Public records only
 
@@ -52,11 +52,11 @@ These are from the sample investigation that comes with the app, a made-up case 
 
 | | |
 |---|---|
-| ![A scanned document beside the facts taken from it](docs/images/app-document.png) | ![An entity's page with its summary, facts and relationships](docs/images/app-entity.png) |
+| ![A scanned document beside the facts taken from it](https://tomcardoso.github.io/watchdog/images/app-document.png) | ![An entity's page with its summary, facts and relationships](https://tomcardoso.github.io/watchdog/images/app-entity.png) |
 | **Documents.** The original beside the facts taken from it, each fact tied to its page and the passage it rests on. | **Entities.** Everything the documents say about a person or company, with a cited summary and its relationships. |
-| ![Contradictions between documents in the Review screen](docs/images/app-review.png) | ![Ask Claude answering a question with page citations](docs/images/app-ask.png) |
+| ![Contradictions between documents in the Review screen](https://tomcardoso.github.io/watchdog/images/app-review.png) | ![Ask Claude answering a question with page citations](https://tomcardoso.github.io/watchdog/images/app-ask.png) |
 | **Review.** Contradictions, leads and possible duplicates, with both sources cited. | **Ask Claude.** Questions answered from the documents, with a page citation for each claim. |
-| ![The timeline of dated events](docs/images/app-timeline.png) | ![The network of entities and relationships](docs/images/app-network.png) |
+| ![The timeline of dated events](https://tomcardoso.github.io/watchdog/images/app-timeline.png) | ![The network of entities and relationships](https://tomcardoso.github.io/watchdog/images/app-network.png) |
 | **Timeline.** Every dated event across the investigation, linked to its page. | **Network.** How the people, companies and places connect. |
 
 For a closer look at what happens to a single document — the OCR pipeline, the information extraction process, the final summarization step — see [this illustrated walkthrough](https://claude.ai/code/artifact/d16050d6-3357-411c-9b88-26271a330435).
