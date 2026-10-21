@@ -336,15 +336,18 @@ jobs:
           gh workflow run pages.yml --ref main
 
   screenshots:
-    # After a stable release, the docs' app screenshots (docs/images/app-*.png) are taken again
-    # from the sample investigation, attached to the release as docs-screenshots.tar.gz, and the
-    # website rebuilt, which uses them in place of docs/images/'s older copies (site/build.mjs,
-    # D320); the README shows the website's copies. main doesn't take this job's pushes, so nothing
-    # is committed: docs/images/ changes only when someone retakes them by hand. It runs
-    # after the release is published, so a failed capture never holds up a release.
+    # After a stable release, the docs' app screenshots (docs/images/app-*.png, which the README
+    # and the website show) are taken again from the sample investigation and merged into main,
+    # so they never fall behind the app (D320). main's ruleset takes changes only through a pull
+    # request, with no approval or check required, so the job opens one and merges it itself. It
+    # runs after the release is published, so a failed capture never holds up a release. The
+    # sample is built afresh, so its dates and the version in the sidebar differ every time: each
+    # stable release merges one pull request.
     #
-    # A test build (run by hand on a branch) takes the screenshots too and keeps them as the
-    # run's artifact instead, so the job can be tried.
+    # Needs Settings → Actions → General → "Allow GitHub Actions to create and approve pull
+    # requests". If the merge is refused, the pull request stays open to merge by hand and the job
+    # fails, so the run shows it. A test build (run by hand on a branch) takes the screenshots too
+    # and keeps them as the run's artifact instead, so the job can be tried.
     needs: [version, release]
     if: >-
       !cancelled() && (
@@ -353,11 +356,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write  # to attach the screenshots to the release
+      contents: write
+      pull-requests: write
       actions: write   # to start the website's rebuild
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.version.outputs.tag }}
+      VERSION: ${{ needs.version.outputs.version }}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -395,11 +400,38 @@ jobs:
           retention-days: 5
           if-no-files-found: error
 
-      - name: Attach them to the release and rebuild the website
+      - name: Merge them into main and rebuild the website
         if: needs.version.outputs.release == 'true'
         run: |
-          (cd docs/images && tar -czf "$RUNNER_TEMP/docs-screenshots.tar.gz" app-*.png)
-          gh release upload --clobber "$TAG" "$RUNNER_TEMP/docs-screenshots.tar.gz"
-          # The release job started a rebuild already, for the download buttons; this one picks up
-          # the screenshots. A dispatch is the one event this job's token can start.
+          if git diff --quiet -- docs/images; then
+            echo "The screenshots are unchanged."
+            exit 0
+          fi
+          # Taken from the released commit, offered on top of main as it is now.
+          cp docs/images/app-*.png "$RUNNER_TEMP/"
+          git checkout -- docs/images
+          git fetch --depth=1 origin main
+          BRANCH="screenshots/$TAG"
+          git switch -C "$BRANCH" FETCH_HEAD
+          cp "$RUNNER_TEMP"/app-*.png docs/images/
+          if git diff --quiet -- docs/images; then
+            echo "main already has these screenshots."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images
+          git commit -q -m "Docs: retake the app screenshots for $VERSION"
+          git push --force origin "$BRANCH"
+          PR=$(gh pr list --head "$BRANCH" --state open --json url --jq '.[0].url // empty')
+          if [ -z "$PR" ]; then
+            PR=$(gh pr create --base main --head "$BRANCH" --title "Docs: app screenshots for $VERSION" \
+              --body "The docs' app screenshots, taken again from the sample investigation after the $TAG release by App release's \`screenshots\` job, which merges this pull request itself (D320). Only images change.")
+          fi
+          if ! gh pr merge "$PR" --squash --delete-branch; then
+            echo "::error::Couldn't merge $PR; it's open to merge by hand."
+            exit 1
+          fi
+          # A merge made with this job's token starts no other workflow, so pages.yml's push
+          # trigger doesn't fire; a dispatch is the one event that token can start.
           gh workflow run pages.yml --ref main

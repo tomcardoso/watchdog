@@ -7,11 +7,9 @@
 //
 // The download buttons name the latest release's files. In CI the script reads them from the
 // GitHub API (GITHUB_TOKEN raises the rate limit); offline it falls back to pyproject.toml's
-// version and the release page. The app screenshots come from the same release when it carries a
-// newer set than docs/images/ (releaseScreenshots, below).
+// version and the release page.
 
 import { Marked } from 'marked'
-import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -62,39 +60,12 @@ async function release() {
       else if (/x64\.dmg$/.test(a.name)) out.files.macIntel = a.browser_download_url
       else if (/Setup.*\.exe$/.test(a.name)) out.files.windows = a.browser_download_url
       else if (/\.AppImage$/.test(a.name)) out.files.linux = a.browser_download_url
-      else if (a.name === SCREENSHOTS_ASSET) out.screenshots = a.browser_download_url
     }
   } catch (e) {
     console.warn(`Release lookup failed (${e.message}); using ${fallbackVersion} and the release page.`)
   }
   for (const k of ['macArm', 'macIntel', 'windows', 'linux']) out.files[k] ??= latest
   return out
-}
-
-// The docs' app screenshots. App release takes them again after each stable release and attaches
-// them to it as one file (D320), since main doesn't take the workflow's pushes. They replace
-// docs/images/'s copies when the release is newer than the last commit that changed those, so a
-// set retaken by hand and committed after a release still wins. Needs the git history (pages.yml
-// checks out with fetch-depth 0): in a shallow clone every file looks as new as the last commit.
-const SCREENSHOTS_ASSET = 'docs-screenshots.tar.gz'
-async function releaseScreenshots(rel) {
-  if (!rel.screenshots || !rel.date) return
-  const log = spawnSync('git', ['log', '-1', '--format=%cI', '--', 'docs/images'], { cwd: ROOT, encoding: 'utf8' })
-  const committed = log.status === 0 ? log.stdout.trim() : ''
-  if (committed && new Date(committed) >= new Date(rel.date)) return
-  const tmp = join(HERE, SCREENSHOTS_ASSET)
-  try {
-    const res = await fetch(rel.screenshots, { signal: AbortSignal.timeout(60000) })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    writeFileSync(tmp, Buffer.from(await res.arrayBuffer()))
-    const tar = spawnSync('tar', ['-xzf', tmp, '-C', join(DIST, 'images')], { encoding: 'utf8' })
-    if (tar.status !== 0) throw new Error(`tar: ${tar.stderr.trim()}`)
-    console.log(`App screenshots from the ${rel.version} release.`)
-  } catch (e) {
-    console.warn(`Release screenshots unavailable (${e.message}); using docs/images.`)
-  } finally {
-    rmSync(tmp, { force: true })
-  }
 }
 
 // ── Markdown ───────────────────────────────────────────────────────────────────────────────
@@ -375,7 +346,6 @@ mkdirSync(join(DIST, 'assets'), { recursive: true })
 cpSync(join(SRC, 'assets'), join(DIST, 'assets'), { recursive: true })
 cpSync(join(SRC, 'favicon.svg'), join(DIST, 'favicon.svg'))
 cpSync(join(DOCS, 'images'), join(DIST, 'images'), { recursive: true })
-await releaseScreenshots(rel)
 cpSync(join(SRC, 'data'), join(DIST, 'data'), { recursive: true })
 fonts()
 
