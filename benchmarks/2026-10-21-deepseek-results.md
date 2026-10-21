@@ -105,9 +105,19 @@ succeeds.
 - **Why it is possible at all:** DeepSeek's `response_format` accepts only `text` and
   `json_object`, so Watchdog sends `json_object` with the schema in the prompt
   (`model_client._openai_response_format`); nothing on DeepSeek's side enforces the schema.
-  DeepSeek documents a beta strict mode for *tool calls* (`https://api.deepseek.com/beta`,
-  every property required, `additionalProperties: false`), which Watchdog does not use. It is a
-  possible fix, not one this run measured.
+- **DeepSeek's beta strict tool-call mode does not fix it.** Probed after the run, on
+  `deepseek-flash` without thinking: asked to fill an enum with a value outside it, a forced
+  `strict: true` tool call on `https://api.deepseek.com/beta` broke the enum 14 times in 20,
+  against 10 in 20 on the normal endpoint, so it does not constrain decoding. A nullable field,
+  which Watchdog's strict conversion (`_to_strict_schema`) produces for every optional property,
+  is accepted without error and weakens it further.
+- **What the failures actually are.** Five whole-document extractions of the Pension Order
+  through the production path (`json_object`) gave 2 valid, and five forced (non-strict) tool
+  calls gave 3; every response was valid JSON. Every failure was a key at the wrong level:
+  top-level fields (`entities`, `scratchpad`, `morgue_entity_id`, `document_requests`) placed
+  inside `document`, or `key_facts` placed outside it. Moving them back would have rescued 4 of
+  the 5, and the fifth with an empty `scratchpad`. One short document; the two sectioned
+  failures in the run were not re-checked. Not fixed, by the owner's choice.
 - **The thinking arms were reliable on this run.** `deepseek-flash-think-high` extracted every
   document whole on the first attempt (0 retries, 0 sectioned calls). `deepseek-pro-think-high`
   needed one retry (the 70-page Annual Financial Report 2020-21) and no sectioning.
