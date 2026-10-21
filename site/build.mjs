@@ -177,12 +177,14 @@ const ICONS = {
   menu: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>'
 }
 
-// The dog is drawn inline rather than as an <img>, so that hovering it can wag its tail (site.css).
-// Each copy gets its own clip-path id, since the header and footer both carry one.
-const LOGO = readFileSync(join(DOCS, 'images', 'logo.svg'), 'utf8')
-  .replace(/<!--[\s\S]*?-->\n?/, '')
+// The dog is drawn inline rather than as an <img>, so that hovering it can wag its tail (site.css),
+// and so that dark mode can give it a light edge: a copy of the tail's and body's outlines drawn
+// behind it (.wordmark-halo). Each copy gets its own clip-path id, since the header and footer both carry one.
+const LOGO_SVG = readFileSync(join(DOCS, 'images', 'logo.svg'), 'utf8').replace(/<!--[\s\S]*?-->\n?/, '')
+const [TAIL_D, BODY_D] = [...LOGO_SVG.matchAll(/<path d="([^"]+)"/g)].slice(0, 2).map((m) => m[1])
+const LOGO = LOGO_SVG
   .replace('<svg xmlns="http://www.w3.org/2000/svg"', '<svg class="wordmark-dog" aria-hidden="true"')
-  .replace('<path d="M68 158', '<path class="wordmark-tail" d="M68 158')
+  .replace('<path d="M68 158', `<path class="wordmark-halo wordmark-tail" d="${TAIL_D}"/>\n<path class="wordmark-halo" d="${BODY_D}"/>\n<path class="wordmark-tail" d="M68 158`)
   .trim()
 const wordmark = (id) =>
   `<span class="wordmark">${LOGO.replaceAll('wd-body', `wd-body-${id}`)}<span class="wordmark-text">Watchdog</span></span>`

@@ -35,6 +35,8 @@
   --accent-text: #594700;
   --marker: #facc15;
   --highlight: rgba(250, 204, 21, 0.5);
+  --wordmark-highlight: #facc15;
+  --logo-halo: transparent;
   --link: #1d1d20;
   --link-line: rgba(202, 138, 4, 0.75);
   --focus: 0 0 0 2px var(--surface), 0 0 0 4px rgba(202, 138, 4, 0.75);
@@ -80,6 +82,8 @@
     --accent-soft: rgba(250, 204, 21, 0.14);
     --accent-text: #fcd34d;
     --highlight: rgba(250, 204, 21, 0.32);
+    --wordmark-highlight: rgba(250, 204, 21, 0.55);
+    --logo-halo: #ececef;
     --link: #f4f4f5;
     --link-line: rgba(250, 204, 21, 0.6);
     --focus: 0 0 0 2px var(--bg), 0 0 0 4px rgba(250, 204, 21, 0.6);
@@ -123,6 +127,8 @@
   --accent-soft: rgba(250, 204, 21, 0.14);
   --accent-text: #fcd34d;
   --highlight: rgba(250, 204, 21, 0.32);
+  --wordmark-highlight: rgba(250, 204, 21, 0.55);
+  --logo-halo: #ececef;
   --link: #f4f4f5;
   --link-line: rgba(250, 204, 21, 0.6);
   --focus: 0 0 0 2px var(--bg), 0 0 0 4px rgba(250, 204, 21, 0.6);
@@ -214,13 +220,11 @@ kbd {
   line-height: 1;
   color: var(--text);
   padding: 0 3px;
-  background: linear-gradient(100deg, transparent 2%, var(--marker) 3%, var(--marker) 97%, transparent 98%) no-repeat 0 82% / 100% 42%;
+  background: linear-gradient(100deg, transparent 2%, var(--wordmark-highlight) 3%, var(--wordmark-highlight) 97%, transparent 98%) no-repeat 0 82% / 100% 42%;
   border-radius: 2px;
 }
-:root[data-theme='dark'] .wordmark-text { color: #141416; background-size: 100% 70%; background-position: 0 70%; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .wordmark-text { color: #141416; background-size: 100% 70%; background-position: 0 70%; }
-}
+/* In dark mode a light edge round the dog, like a sticker's, keeps its black outline off the background. */
+.wordmark-halo { fill: var(--logo-halo); stroke: var(--logo-halo); stroke-width: 14.5; stroke-linejoin: round; }
 
 /* ── Header ───────────────────────────────────────────────────────────────────────────────── */
 

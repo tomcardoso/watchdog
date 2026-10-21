@@ -50,20 +50,8 @@
   line-height: 1;
   color: var(--text);
   padding: 0 3px;
-  background: linear-gradient(100deg, transparent 2%, var(--marker) 3%, var(--marker) 97%, transparent 98%) no-repeat 0 82% / 100% 42%;
+  background: linear-gradient(100deg, transparent 2%, var(--wordmark-highlight) 3%, var(--wordmark-highlight) 97%, transparent 98%) no-repeat 0 82% / 100% 42%;
   border-radius: 2px;
-}
-:root[data-theme='dark'] .sidebar-brand-text {
-  color: var(--accent-contrast);
-  background-size: 100% 70%;
-  background-position: 0 70%;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) .sidebar-brand-text {
-    color: var(--accent-contrast);
-    background-size: 100% 70%;
-    background-position: 0 70%;
-  }
 }
 .project-switch {
   margin: 12px 10px 10px;
