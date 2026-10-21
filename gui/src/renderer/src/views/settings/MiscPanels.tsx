@@ -309,7 +309,7 @@ export function AboutPanel() {
         <div className="row wrap" style={{ gap: 8 }}>
           {link('GitHub', 'https://github.com/tomcardoso/watchdog')}
           {link('Report an issue', 'https://github.com/tomcardoso/watchdog/issues')}
-          {link('Install guide', 'https://github.com/tomcardoso/watchdog/blob/main/docs/install.md')}
+          {link('Install guide', 'https://tomcardoso.github.io/watchdog/install.html')}
         </div>
       </section>
     </div>

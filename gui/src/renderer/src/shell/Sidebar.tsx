@@ -79,7 +79,7 @@ export function Sidebar() {
       <div className="sidebar-drag">
         <span className="sidebar-brand">
           <LogoMark />
-          Watchdog
+          <span className="sidebar-brand-text">Watchdog</span>
         </span>
       </div>
       {project ? (
