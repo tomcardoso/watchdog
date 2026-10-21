@@ -8,12 +8,13 @@ const INK = 'var(--logo-ink)'
 const COAT = 'var(--logo-coat)'
 const TAN = 'var(--logo-tan)'
 
+// Hovering the mark wags its tail (.logo-tail in styles/base.css).
 // The outline is drawn heavier than in the large icon, since the mark is shown at 18–36px.
 export function LogoMark({ className, style }: { className?: string; style?: React.CSSProperties }) {
   const clip = `wd-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   return (
-    <svg viewBox="40 31 137 146" className={className} style={style} aria-hidden>
-      <path d="M68 158 C57 154 48 145 44 131 C43 126 49 124 51 129 C55 140 63 146 71 148 Z" fill={COAT} stroke={INK} strokeWidth="7" strokeLinejoin="round" />
+    <svg viewBox="40 31 137 146" className={className ? `logo-mark ${className}` : 'logo-mark'} style={style} aria-hidden>
+      <path className="logo-tail" d="M68 158 C57 154 48 145 44 131 C43 126 49 124 51 129 C55 140 63 146 71 148 Z" fill={COAT} stroke={INK} strokeWidth="7" strokeLinejoin="round" />
       <path d={BODY} fill={COAT} />
       <clipPath id={clip}>
         <path d={BODY} />

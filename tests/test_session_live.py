@@ -134,13 +134,28 @@ def test_only_watchdogs_read_tools_run_unasked(live, monkeypatch):
     assert "Pier 9" in (vault / "watchlist.md").read_text()
 
 
+# Claude Code (from the Agent SDK's 0.2.169) adds this stub to every request's tool list to keep
+# on-demand tool loading switched on. It has no input and nothing behind it: the test below checks
+# that a call to it is refused by the CLI itself and never reaches the app's permission card.
+_PLACEHOLDER = "DeferredToolPlaceholder"
+
+
+def test_the_deferred_tool_placeholder_does_nothing(live, monkeypatch):
+    home, vault = live
+    api, asked, _ = _turn(vault, [[_PLACEHOLDER, {}]], monkeypatch)
+    results = api.tool_results()
+    assert len(results) == 1 and results[0].get("is_error")
+    assert "No such tool" in str(results[0].get("content"))
+    assert asked == []
+
+
 def test_the_model_is_offered_only_the_allowlisted_tools(live, monkeypatch):
     from watchdog import session_tools
     from watchdog.gui import chat
     home, vault = live
     api, _, _ = _turn(vault, [], monkeypatch)
     offered = api.offered_tools()
-    builtin = {t for t in offered if not t.startswith("mcp__")}
+    builtin = {t for t in offered if not t.startswith("mcp__")} - {_PLACEHOLDER}
     assert builtin and builtin <= set(chat.SESSION_TOOLS)
     assert {t for t in offered if t.startswith("mcp__")} == {session_tools.tool_name(t) for t in session_tools.TOOLS}
     assert not builtin & {"Bash", "PowerShell", "Agent", "Task", "Workflow", "CronCreate", "EnterWorktree"}
