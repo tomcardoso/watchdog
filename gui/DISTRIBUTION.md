@@ -47,12 +47,20 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
    https://github.com/tomcardoso/watchdog/releases/tag/app-beta). A copy installed from there
    offers every later release on its channel under Check for Updates, and on its own shortly after
    launch.
+5. Nothing to do for the docs' screenshots. After a stable release, the run's `screenshots` job
+   takes the app screenshots again from the sample investigation, opens "Docs: app screenshots for
+   <version>" against `main` and merges it itself (D320), then rebuilds the website. `main`'s
+   ruleset requires a pull request but no approval, so the merge goes through; if it's ever
+   refused, the job fails and the pull request stays open to merge by hand. A bad capture is undone
+   by reverting that merge. It needs Settings → Actions → General → "Allow GitHub Actions to
+   create and approve pull requests".
 
 `gui/package.json`'s version is set by CI from the tag; it doesn't need bumping by hand.
 
 To check a change builds on every platform before tagging, run the workflow by hand (Actions →
 App release → Run workflow, on a branch): it builds and signs as a release does, keeps the
-installers as the run's artifacts for five days, and publishes nothing.
+installers as the run's artifacts for five days, and publishes nothing. It takes the screenshots
+too, and keeps them as the `screenshots` artifact rather than opening a pull request.
 
 ## Signing
 

@@ -2808,3 +2808,8 @@ Releases started only from a pushed tag, which needs git: the owner couldn't rel
 
 Tradeoff: the button releases only stable versions (a beta's number isn't in `pyproject.toml`), and the tag is lightweight and points at the commit the run started on, even if `main` has moved on since.
 
+### D320 — A stable release retakes the docs' screenshots and merges them itself
+
+The docs' app screenshots fell behind the app whenever nobody remembered to run `npm run screenshots`. App release's `screenshots` job now takes them on Linux after every stable release, from the released commit, opens a pull request against `main` and merges it itself, then starts the website's rebuild (a merge with the workflow's token starts no workflow itself). `main`'s ruleset blocks direct pushes but requires no approval or check on a pull request, so this needs no token or bypass, only the repository setting that lets Actions create pull requests; the owner chose it over a pull request to merge by hand. It runs after the release is published, so a failed capture never holds one up.
+
+Tradeoff: nobody looks at the images before they reach the README and the website; a screen that loaded wrongly but was reachable is published, and is undone by reverting the merge. Every stable release merges one pull request even when nothing visible changed, since the sample is built afresh (its dates) and the sidebar shows the version. If the ruleset ever starts requiring an approval or a check, the job fails and leaves the pull request open.

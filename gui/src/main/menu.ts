@@ -73,7 +73,7 @@ export function buildMenu(getWindow: () => BrowserWindow | null): void {
       submenu: [
         { label: 'Take the Tour', click: send('take-tour') },
         { type: 'separator' },
-        { label: 'Watchdog Documentation', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/tree/main/docs') },
+        { label: 'Watchdog Documentation', click: () => shell.openExternal('https://tomcardoso.github.io/watchdog/getting-started.html') },
         { label: 'Report an Issue', click: () => shell.openExternal('https://github.com/tomcardoso/watchdog/issues') },
         { label: 'Show Log File', click: () => shell.showItemInFolder(log.transports.file.getFile().path) },
         ...(isMac ? [] : [

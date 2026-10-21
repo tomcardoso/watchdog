@@ -7,6 +7,8 @@ const BODY =
 const INK = 'var(--logo-ink)'
 const COAT = 'var(--logo-coat)'
 const TAN = 'var(--logo-tan)'
+const HALO = 'var(--logo-halo)'
+const TAIL = 'M68 158 C57 154 48 145 44 131 C43 126 49 124 51 129 C55 140 63 146 71 148 Z'
 
 // Hovering the mark wags its tail (.logo-tail in styles/base.css).
 // The outline is drawn heavier than in the large icon, since the mark is shown at 18–36px.
@@ -14,7 +16,10 @@ export function LogoMark({ className, style }: { className?: string; style?: Rea
   const clip = `wd-${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   return (
     <svg viewBox="40 31 137 146" className={className ? `logo-mark ${className}` : 'logo-mark'} style={style} aria-hidden>
-      <path className="logo-tail" d="M68 158 C57 154 48 145 44 131 C43 126 49 124 51 129 C55 140 63 146 71 148 Z" fill={COAT} stroke={INK} strokeWidth="7" strokeLinejoin="round" />
+      {/* The halo: a light edge round the outline, like a sticker's, drawn only in dark mode (tokens.css) */}
+      <path className="logo-tail" d={TAIL} fill={HALO} stroke={HALO} strokeWidth="17" strokeLinejoin="round" />
+      <path d={BODY} fill={HALO} stroke={HALO} strokeWidth="17" strokeLinejoin="round" />
+      <path className="logo-tail" d={TAIL} fill={COAT} stroke={INK} strokeWidth="7" strokeLinejoin="round" />
       <path d={BODY} fill={COAT} />
       <clipPath id={clip}>
         <path d={BODY} />

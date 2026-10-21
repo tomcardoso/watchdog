@@ -25,7 +25,7 @@ const rid = (r: string) => `.rv-card[data-rid="${CSS.escape(r)}"]`
 const subject = (title: string) => title.split(' — ').slice(1).join(' — ') || title
 const fact = (id: string) => `[data-fact-id="${CSS.escape(id)}"]`
 
-export const DOCS_URL = 'https://github.com/tomcardoso/watchdog/blob/main/docs/getting-started.md'
+export const DOCS_URL = 'https://tomcardoso.github.io/watchdog/getting-started.html'
 
 export function tourSteps(open: { add: () => void; closeAdd: () => void }): TourStep[] {
   return [

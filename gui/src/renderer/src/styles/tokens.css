@@ -173,10 +173,14 @@
   --switch-knob: #ffffff;
   --switch-knob-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 
-  /* The Watchdog mark (components/Logo.tsx): the same in both themes, like the app icon */
+  /* The Watchdog mark (components/Logo.tsx): the same drawing in both themes, like the app icon.
+     In dark mode a light edge (the halo) keeps the black outline off the dark background. */
   --logo-ink: #141416;
   --logo-coat: #ffffff;
   --logo-tan: #c98a4b;
+  --logo-halo: transparent;
+  /* The highlighter stroke through the name in the sidebar (shell.css .sidebar-brand-text) */
+  --wordmark-highlight: #facc15;
 
   /* Investigation monograms: eight muted pairs, picked per investigation by a hash of its slug */
   --mark-text: #ffffff;
@@ -199,4 +203,6 @@
   --diff-del-word: rgba(239, 107, 95, 0.3);
   --paper-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.4), 0 16px 36px -10px rgba(0, 0, 0, 0.7);
   --thumb-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 16px -8px rgba(0, 0, 0, 0.6);
+  --logo-halo: #ececef;
+  --wordmark-highlight: rgba(250, 204, 21, 0.55);
 }
