@@ -872,6 +872,16 @@ Thirteen extractor arms on the current catalogue — Sonnet 5.5, Haiku 5.5, GPT-
 
 **Caveats.** Single runs. One brief for every arm. **Not comparable with any archived row in this file or `docs/benchmarks.md`:** every archived arm extracted with no brief and on models since removed. Gemini 3.8 Flash costs are at the promotional price through 2026-12-31 (half the later price). The three DeepSeek arms failed on a network problem and are not in this entry; the finalizer stage has not run. Nothing in this entry changed a default, prompt or catalogue value.
 
+### Frontier matrix, DeepSeek arms: Flash with thinking at `high` matches or beats the Haiku 5.5 default, and Flash without thinking breaks on the schema (2026-10-21, run `2026-10-21-0106`, commit `27e5cec20`, #361)
+
+The three DeepSeek arms the frontier run lost, run on their own from the same pre-processed page text (the 13 October master vault, copied in; all six staged PDFs matched `corpus-v1.sha256`), with the same brief, keys and scorer. The extraction path (prompts, schemas, model client) is unchanged since `07de6ccac`, so the numbers sit beside the frontier entry above. Both slices: numeric sub-item recall, and one blinded judge pass over all 377 items (six Opus judges, one per document, hand-checked on the first document judged). Full tables in `benchmarks/2026-10-21-deepseek-results.md`.
+
+**What the run showed.** `deepseek-flash-think-high` scores 72% / 87% numeric and 75% / 79% judged (facts / must_not_miss), against `haiku-5.5-high`'s 70% / 74% and 74% / 72%, at about the same cost per page ($0.0008 as costed, about $0.0006 off-peak, against $0.0009) and about 0.6 s/page against 4.1 s. It extracted every document in one call. `deepseek-pro-think-high` trails it by 8–28 points at four to five times the cost. Plain `deepseek-flash` lost two of six documents to JSON validation failures, and its whole-document call failed validation on five of six documents before falling back to sectioning; on the four documents it did extract, its judged recall is level with Flash thinking. DeepSeek's `response_format` takes no schema (`json_object` only), so nothing enforces Watchdog's on that provider, and its beta strict tool-call mode did not constrain output when probed afterwards (an enum broken 14 times in 20). The failures probed were valid JSON with keys at the wrong level (top-level fields inside `document`, or `key_facts` outside it); not fixed.
+
+**What it does not show.** One run per arm. Before recommending DeepSeek Flash thinking in the docs, re-run it against `haiku-5.5-high` with `repeats: 3` and act only if the ranges do not overlap.
+
+**Caveats.** An Anthropic model judged DeepSeek output against Claude's figures (the bias #361 records, in Claude's favour; the Gemini cross-check was declined), and in a different session from the frontier passes, so a few points may be judge drift. Part of the run fell in DeepSeek's peak window and was costed at double; off-peak figures use Watchdog's own peak model, not a bill. DeepSeek says `deepseek-flash` is now served by V4.1-Flash-1017, which may not be the checkpoint the catalogue names. Nothing in this entry changed a default, prompt or catalogue value.
+
 ## Corrections logged along the way
 
 - The original `bench-ex-sonnet-high`/`bench-ex-sonnet-med` vaults (run 2026-07-15, before #403's
