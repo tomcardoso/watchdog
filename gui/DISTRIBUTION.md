@@ -48,11 +48,12 @@ How the desktop app is built, signed, released and updated. Adapted from Sourcer
    offers every later release on its channel under Check for Updates, and on its own shortly after
    launch.
 5. Nothing to do for the docs' screenshots. After a stable release, the run's `screenshots` job
-   takes the app screenshots again from the sample investigation, commits them to `main` as
-   "Docs: retake the app screenshots for <version>" and rebuilds the website (D320). A bad capture
-   is undone by reverting that commit. If `main` ever refuses the workflow's push, the job opens a
-   pull request with the images instead, which needs Settings → Actions → General → "Allow GitHub
-   Actions to create and approve pull requests".
+   takes the app screenshots again from the sample investigation, attaches them to the release as
+   `docs-screenshots.tar.gz` and rebuilds the website, which shows them in place of
+   `docs/images/`'s copies (D320). `main` doesn't take the workflow's pushes, so the copies in
+   `docs/images/`, which the README shows on GitHub, change only when someone retakes them by hand
+   (`npm run screenshots` in `gui/`) and commits them; a set committed after a release is newer,
+   so the website uses it until the next release.
 
 `gui/package.json`'s version is set by CI from the tag; it doesn't need bumping by hand.
 
