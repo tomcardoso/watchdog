@@ -84,7 +84,8 @@ renders `docs/` and `site/src/index.html` (the landing page) into `site/dist`, a
 Preview with `cd site && npm ci && npm run dev`. Link a tool or service the first time a page
 names it. Screenshots live in `docs/images/`, in a light and a `-dark` version; `npm run
 screenshots` in `gui/` (after `npm run build`, with `WATCHDOG_PYTHON` set, under `xvfb-run` on
-Linux) captures them all again from the sample investigation. The landing page's network is the
+Linux) captures them all again from the sample investigation; App release does this after every stable
+release and opens a pull request with the new images (D320). The landing page's network is the
 sample's own (`site/src/data/graph.json`, from `site/scripts/sample-graph.py`). Internals a
 reporter never needs (registry files, hidden folders' contents, tuning rationale) belong in
 `ARCHITECTURE.md`, `DECISIONS.md` or `benchmarks/`, not in `docs/`.

@@ -2808,3 +2808,8 @@ Releases started only from a pushed tag, which needs git: the owner couldn't rel
 
 Tradeoff: the button releases only stable versions (a beta's number isn't in `pyproject.toml`), and the tag is lightweight and points at the commit the run started on, even if `main` has moved on since.
 
+### D320 — A stable release retakes the docs' screenshots and offers them as a pull request
+
+The docs' app screenshots fell behind the app whenever nobody remembered to run `npm run screenshots`. App release's `screenshots` job now takes them on Linux after every stable release, from the released commit, and opens a pull request against `main`. It isn't a direct commit to `main`: an automated capture can go wrong (a screen that didn't settle, a dialog left open), and a pull request shows the images before the website does. It runs after the release is published, so a failed capture never holds one up.
+
+Tradeoff: every stable release opens a pull request even when nothing visible changed, since the sample is built afresh (its dates) and the sidebar shows the version. The pull request is opened with the workflow's token, so no other workflow, CI included, runs on it, and the repository must allow Actions to create pull requests. The captures are Linux renderings of the Windows/Linux layout, as before.
