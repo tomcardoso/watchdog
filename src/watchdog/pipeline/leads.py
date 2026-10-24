@@ -79,12 +79,21 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> di
             if not tid or tid in entities_reg:
                 continue   # a profiled target (incl. every reverse role) is not a lead
             rec = unprofiled.setdefault(tid, {
-                "id": tid, "name": role.get("target_name") or tid,
-                "mentioned_by": set(), "docs": set(),
+                "id": tid, "name": tid, "mentioned_by": set(), "docs": set(), "mentions": [],
             })
-            rec["mentioned_by"].add(ent.get("name") or eid)
+            # Extraction names a role's target by id only; write_vault fills `target_name` from
+            # the target's record and falls back to the id when there is none, so a dangling
+            # target usually reads as its bare id. A real name, when any role carries one, wins.
+            if role.get("target_name") and role["target_name"] != tid:
+                rec["name"] = role["target_name"]
+            by = ent.get("name") or eid
+            rec["mentioned_by"].add(by)
             if role.get("source_sha256"):
                 rec["docs"].add(role["source_sha256"])
+            mention = {"by": by, "relationship": role.get("relationship") or "",
+                       "sha": role.get("source_sha256") or None, "page": role.get("page")}
+            if mention not in rec["mentions"]:
+                rec["mentions"].append(mention)
 
         if not roles and len(ent.get("appears_in", [])) >= _ISOLATED_MIN_DOCS:
             rid = resolutions.lead_id("isolated", eid)
@@ -113,8 +122,9 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> di
                                  "rid": rid})
 
     unprofiled_list = [
-        {"id": v["id"], "name": v["name"],
+        {"id": v["id"], "name": v["name"], "named": v["name"] != v["id"],
          "mentioned_by": sorted(v["mentioned_by"]), "doc_count": len(v["docs"]),
+         "docs": sorted(v["docs"]), "mentions": v["mentions"],
          "rid": resolutions.lead_id("unprofiled", v["id"])}
         for v in unprofiled.values()
     ]

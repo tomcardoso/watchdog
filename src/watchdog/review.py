@@ -59,12 +59,38 @@ def contradictions(found: dict) -> list[dict]:
     return out
 
 
-def _lead_items(found: dict) -> list[dict]:
+_MENTIONS_SHOWN = 5
+
+
+def _unprofiled_detail(u: dict) -> list[str]:
+    """Who names the target and how, one line per mention, so the reporter can judge the lead
+    without opening anything; then a note when the target never had a name, only an id."""
+    lines = []
+    for m in u["mentions"][:_MENTIONS_SHOWN]:
+        rel = f" — {m['relationship']} →" if m["relationship"] else " →"
+        page = f" (p. {m['page']})" if m.get("page") else ""
+        lines.append(f"{m['by']}{rel} {u['name']}{page}")
+    if len(u["mentions"]) > _MENTIONS_SHOWN:
+        lines.append(f"and {len(u['mentions']) - _MENTIONS_SHOWN} more")
+    if not u["named"]:
+        lines.append(f"Recorded only as the id “{u['id']}”: the AI model gave no name or entity "
+                     "for it. Read the document to see who or what it refers to.")
+    return lines
+
+
+def _cited(shas: list[str], docs: dict) -> list[dict]:
+    """The documents behind a lead, as Review's "Cited in" links."""
+    return [{"sha": sha, "filename": (docs.get(sha) or {}).get("filename") or sha[:12],
+             "note": (docs.get(sha) or {}).get("document_note")} for sha in shas]
+
+
+def _lead_items(found: dict, docs: dict) -> list[dict]:
     out = []
     for u in found["unprofiled"]:
-        docs = f"{u['doc_count']} document{'s' if u['doc_count'] != 1 else ''}"
-        out.append(_item("leads", u["rid"], f"{u['name']} — named but never profiled",
-                         [f"Named by {', '.join(u['mentioned_by'])} · {docs}"], None))
+        item = _item("leads", u["rid"], f"{u['name']} — named but never profiled",
+                     _unprofiled_detail(u), None)
+        item["cited"] = _cited(u["docs"], docs)
+        out.append(item)
     for i in found["isolated"]:
         out.append(_item("leads", i["rid"], f"{i['name']} — mentioned often but unconnected",
                          [f"Appears in {i['doc_count']} documents with no relationships"],
@@ -162,7 +188,7 @@ def open_items(vault: Path, kinds=KINDS) -> list[dict]:
         if kind == "contradictions":
             out += contradictions(found)
         elif kind == "leads":
-            out += _lead_items(found)
+            out += _lead_items(found, _read_json_or(vault / ".watchdog" / "registry" / "documents.json", {}))
         elif kind == "alerts":
             out += _alerts(vault, resolved)
         elif kind == "merges":

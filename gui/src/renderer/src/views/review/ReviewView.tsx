@@ -9,6 +9,7 @@ import {
   Check,
   CheckCheck,
   CheckCircle2,
+  Copy,
   FileQuestion,
   GitCompare,
   GitMerge,
@@ -415,6 +416,15 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { 
         <div className="rv-toolbar">
           <span className="faint">These lists are read when you open this tab. A full sweep rereads every entity note.</span>
           <span className="spacer" />
+          <Button
+            size="sm"
+            icon={Copy}
+            disabled={!liveItems.length}
+            tip="Copy as a table to paste into an email or a spreadsheet"
+            onClick={() => void copyLeads(selected.size ? liveItems.filter((i) => selected.has(i.rid)) : liveItems)}
+          >
+            {selected.size ? `Copy ${selected.size} selected` : 'Copy leads'}
+          </Button>
           <Button size="sm" icon={RefreshCw} loading={sweeping} onClick={() => void sweep()}>
             Run full lead sweep
           </Button>
@@ -567,7 +577,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
   const openLink = useOpenWikilink()
   const name = nameFromTitle(item.title)
   const showAsk = (kind === 'leads' || kind === 'contradictions') && !item.request
-  const cited = item.request?.cited_in ?? []
+  const cited = item.request?.cited_in ?? item.cited ?? []
   return (
     <div
       data-rid={item.rid}
@@ -588,7 +598,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
         )}
         {cited.length > 0 && (
           <div className="rv-cited">
-            <span className="faint">Cited in</span>
+            <span className="faint">{item.request ? 'Cited in' : 'Named in'}</span>
             {cited.slice(0, focused ? 12 : 3).map((c, ci) => {
               const o = c
               return (
@@ -638,7 +648,12 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
                 onClick={() =>
                   navigate({
                     view: 'ask',
-                    prompt: kind === 'contradictions' ? `Look into the contradiction recorded for ${name}: ${item.detail[0] ?? item.title}. Which documents say what, and which is more reliable?` : `What do the documents say about ${name}, and what should I verify first?`
+                    prompt:
+                      kind === 'contradictions'
+                        ? `Look into the contradiction recorded for ${name}: ${item.detail[0] ?? item.title}. Which documents say what, and which is more reliable?`
+                        : cited.length
+                          ? `${item.detail[0] ?? item.title}, according to ${cited.map((c) => c.filename).join(', ')}. Who or what is ${name} in ${cited.length === 1 ? 'that document' : 'those documents'}, and what should I verify first?`
+                          : `What do the documents say about ${name}, and what should I verify first?`
                   })
                 }
               >
@@ -650,6 +665,24 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
       </div>
     </div>
   )
+}
+
+// Leads as a table: HTML for an email or a spreadsheet, tab-separated text for anything else.
+async function copyLeads(items: QItem[]) {
+  const rows = items.map((it) => {
+    const [name, ...what] = it.title.split(' — ')
+    return [name.replace(/`/g, ''), what.join(' — '), it.detail.join('; '), (it.cited ?? []).map((c) => c.filename).join('; ')]
+  })
+  const head = ['Lead', 'Why', 'Detail', 'Documents']
+  const esc = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const html = `<table><tr>${head.map((h) => `<th>${h}</th>`).join('')}</tr>${rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</table>`
+  const text = [head, ...rows].map((r) => r.map((c) => c.replace(/[\t\n]/g, ' ')).join('\t')).join('\n')
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([text], { type: 'text/plain' }) })])
+    toast({ kind: 'success', title: `Copied ${plural(items.length, 'lead')}`, body: 'Paste into an email or a spreadsheet.' })
+  } catch (e) {
+    toast({ kind: 'error', title: 'Could not copy', body: errorMessage(e) })
+  }
 }
 
 function DuplicatePair({ item, docs }: { item: QItem; docs?: DocumentRow[] }) {

@@ -655,7 +655,7 @@ export interface EverywhereResult {
 // ── review ───────────────────────────────────────────────────────────────────
 export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
 export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
-export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string }
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[] }
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'

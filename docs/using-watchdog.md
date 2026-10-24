@@ -131,7 +131,9 @@ At the end of every run, ordinary code (no AI) sweeps the entities and lists fou
 - an unresolved contradiction;
 - a fact the model inferred, or a figure that wasn't on its cited page.
 
-**Run full lead sweep** refreshes the list.
+A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name; such a lead says so, and the document is the only way to tell who or what it means.
+
+**Copy leads** copies the open leads, or the ones you have selected, as a table to paste into an email or a spreadsheet. **Run full lead sweep** refreshes the list.
 
 ### Duplicates
 

@@ -198,6 +198,36 @@ def test_dangling_without_target_name_falls_back_to_id():
                             "source_sha256": "d1", "is_reverse": False}]}}
     data = leads.find_leads(reg)
     assert data["unprofiled"][0]["name"] == "ghost-123"
+    assert data["unprofiled"][0]["named"] is False
+
+
+def test_target_name_filled_with_its_own_id_counts_as_unnamed():
+    # write_vault fills a dangling target's name with its id; a role elsewhere that does carry a
+    # real name supplies it, whichever entity is read first.
+    reg = {"x": {"name": "X", "roles": [{"relationship": "Owner", "target_id": "a", "target_name": "a",
+                                          "source_sha256": "d1", "page": 4}]}}
+    (u,) = leads.find_leads(reg)["unprofiled"]
+    assert (u["name"], u["named"]) == ("a", False)
+    reg["y"] = {"name": "Y", "roles": [{"relationship": "Partner", "target_id": "a",
+                                         "target_name": "Anna Bianchi", "source_sha256": "d2"}]}
+    (u,) = leads.find_leads(reg)["unprofiled"]
+    assert (u["name"], u["named"]) == ("Anna Bianchi", True)
+
+
+def test_unprofiled_keeps_each_mention_and_its_documents():
+    (u,) = leads.find_leads(_registry())["unprofiled"]
+    assert u["docs"] == ["d1", "d2"]
+    assert u["mentions"] == [
+        {"by": "Alice Smith", "relationship": "Director", "sha": "d1", "page": None},
+        {"by": "Bob Jones", "relationship": "Owner", "sha": "d2", "page": None},
+    ]
+
+
+def test_a_repeated_mention_is_listed_once():
+    role = {"relationship": "Director", "target_id": "shell-co", "source_sha256": "d1", "page": 2}
+    reg = {"x": {"name": "X", "roles": [role, dict(role)]}}
+    (u,) = leads.find_leads(reg)["unprofiled"]
+    assert len(u["mentions"]) == 1 and u["doc_count"] == 1
 
 
 # ── write_leads ─────────────────────────────────────────────────────────────────
