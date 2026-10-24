@@ -106,7 +106,7 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
       title: 'A lead',
       body: () => (
         <>
-          <p>Leads are places the record points that the investigation has not followed yet: a body named but never profiled, an entity with no known connections, an inferred fact worth checking.</p>
+          <p>Leads are places the record points that the investigation has not followed yet: a body named but never profiled, an entity with no known connections, a relationship the model inferred.</p>
           <p>They are suggestions for reporting, not findings.</p>
         </>
       ),

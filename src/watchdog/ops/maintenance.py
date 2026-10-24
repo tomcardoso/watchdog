@@ -56,8 +56,8 @@ def lead_sweep(rep, vault: Path) -> dict:
                     "recurring entities with no relationships"),
             _plural(counts["contradictions"], "entity with open contradictions",
                     "entities with open contradictions"),
-            _plural(counts["inferred"], "entity with inferred facts to verify",
-                    "entities with inferred facts to verify"),
+            _plural(counts["inferred"], "entity with inferred relationships to verify",
+                    "entities with inferred relationships to verify"),
         ]) + ". Step through them in Review → Leads.")
     return counts
 

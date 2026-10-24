@@ -5,8 +5,9 @@ Four signals, read from `.watchdog/registry/entities.json`:
   * **Named but never profiled** — a relationship target with no entity record.
   * **Mentioned often but unconnected** — in `_ISOLATED_MIN_DOCS`+ documents, with no relationships.
   * **Unresolved contradictions** — entities carrying contradiction flags.
-  * **Facts to verify** — roles or events marked `basis: inferred`, or carrying a figure
-    `figure_verify` couldn't find in the source (D215).
+  * **Inferred relationships** — roles marked `basis: inferred`. An inferred fact, or one carrying
+    a figure `figure_verify` couldn't find in the source (D215), is listed in Review →
+    Verification under "Worth checking" instead (D322).
 
 `scan` returns the four lists; `write_leads` writes them to `briefings/leads-<date>.md`,
 overwriting (current state, not a log). See D40."""
@@ -31,33 +32,19 @@ def _callout_summary(callout: str) -> str:
     return first or (lines[1] if len(lines) > 1 else "contradiction")
 
 
-def _derived_figures(claim: dict) -> str:
-    """The " (figures 1,234, 5,678 not on the cited page)" suffix for a claim `figure_verify`
-    found ungrounded figures in, or "" for a clean one."""
-    missing = claim.get("figures_unverified")
-    if not missing:
-        return ""
-    figs = ", ".join(str(t) for t in missing)
-    return f" (figure{'s' if len(missing) > 1 else ''} {figs} not found in the document)"
-
-
 def _inferred_claims(ent: dict) -> list[str]:
-    """Text for every role/timeline_event on an entity that needs verifying, in registry order.
+    """Text for every role on an entity the model marked `basis: inferred` (D34: "a lead to
+    verify, not a finding"), in registry order.
 
-    Two independent signals, either of which qualifies (D215). `basis: inferred` is the model's
-    own declaration (D34: "a lead to verify, not a finding"); `figures_unverified` is
-    `figure_verify`'s deterministic finding that a figure appears nowhere in the source. The
-    second matters because the first is near-inert — `basis: inferred` fires on 0.16% of facts,
-    so relying on it alone let computed figures pass as read-off-the-page.
+    Only relationships: an inferred fact or one with an ungrounded figure (D215) is a document
+    fact, which Review → Verification lists under "Worth checking" beside its page (D322). A
+    role has no row there, so it stays a lead.
     """
     claims = []
     for role in ent.get("roles", []):
         if role.get("basis") == "inferred":
             target = role.get("target_name") or role.get("target_id") or "?"
             claims.append(f"{role.get('relationship', '?')} → {target}")
-    for ev in ent.get("timeline_events", []):
-        if ev.get("basis") == "inferred" or ev.get("figures_unverified"):
-            claims.append(f"{ev.get('date', '?')}: {ev.get('event', '?')}{_derived_figures(ev)}")
     return claims
 
 
@@ -180,8 +167,8 @@ def _format(leads: dict, now: datetime.datetime) -> str:
                 lines.append(f"  - {callout['summary']} <!--wid:{callout['rid']}-->")
 
     if leads["inferred"]:
-        lines.append("\n## Inferred facts to verify\n")
-        lines.append("Roles and timeline events the extractor flagged `basis: inferred` — "
+        lines.append("\n## Inferred relationships to verify\n")
+        lines.append("Relationships the extractor flagged `basis: inferred` — "
                      "a lead to verify, not a finding.\n")
         for i in leads["inferred"]:
             link = f"[[{i['note_path']}|{i['name']}]]" if i["note_path"] else f"**{i['name']}**"

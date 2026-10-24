@@ -102,13 +102,13 @@ Watchdog also checks every number in a fact against the page it cites, and the p
 
 ### Marking facts
 
-Each fact has three buttons: **Verified** (you read the source and the fact holds), **Disputed** (the source, or another record, does not support it) and **Can't verify**. Click again to clear. Watchdog records your name and the time; set the name under [Your name](models-and-cost.md#verification). Once a fact is marked, **Add note** records what you checked it against. Marking never changes the fact and never calls an AI model.
+Watchdog uses every fact as extracted until you say otherwise, so you never have to work through them one by one. When a fact is wrong, click **Disputed**, the thumbs-down beside it: the source, or another record, does not support it. Two smaller buttons beside it, **Verified** (you read the source and the fact holds) and **Can't verify**, are there if you want a record of what you checked, for instance before publication. Click a mark again to clear it. Watchdog records your name and the time; set the name under [Your name](models-and-cost.md#verification). Once a fact is marked, **Add note** records what you checked it against. Marking never changes the fact and never calls an AI model.
 
-The bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact, then use the keyboard: J and K move, V, D or C mark it, N edits the note.
+The bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact, then use the keyboard: J and K move, D disputes it, V or C marks it, N edits the note.
 
 A fact you mark Disputed is never hidden. Wherever it appears (the document, the entity, the timeline, Review, citations, the notes on disk and what Claude is told) it carries the label **disputed**, and the summaries are told not to present it as established.
 
-**Review → Verification** lists every fact in the investigation with the same buttons, a progress bar and filters: not checked, disputed, can't verify, verified, no passage, and **changed since marked**, for facts whose wording or page changed after a document was processed again. Your mark stays with the old wording, since you did not check the new words. Every change rewrites `verification.md` in the investigation's folder, the written record of your checks.
+**Review → Verification** lists the investigation's facts with the same buttons. It opens on the facts you disputed, then on **Worth checking**: facts you have not marked that the model inferred, that carry a figure not found in the document, or that have no matching passage on their page. Other filters show can't verify, verified, all facts, and **changed since marked**, for facts whose wording or page changed after a document was processed again. Your mark stays with the old wording, since you did not check the new words. Every change rewrites `verification.md` in the investigation's folder, the written record of your checks.
 
 ## Review
 
@@ -129,7 +129,9 @@ At the end of every run, ordinary code (no AI) sweeps the entities and lists fou
 - an entity named as a relationship target that has no documents of its own: a company someone directs, say, that you have no records on;
 - an entity that turns up in several documents but has no relationships;
 - an unresolved contradiction;
-- a fact the model inferred, or a figure that wasn't on its cited page.
+- a relationship the model inferred rather than read.
+
+Inferred facts and figures not found in their document are listed under **Review → Verification → Worth checking**, beside their page, rather than here.
 
 A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name; such a lead says so, and the document is the only way to tell who or what it means.
 

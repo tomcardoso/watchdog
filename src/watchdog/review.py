@@ -3,7 +3,7 @@
 Five kinds:
 
   * contradictions — conflicting claims recorded on entity notes
-  * leads          — entities named but never profiled, isolated, or carrying inferred facts
+  * leads          — entities named but never profiled, isolated, or with inferred relationships
   * alerts         — unresolved watch-list hits in `briefings/alerts-*.md`
   * duplicates     — documents pre-processing's MinHash matched to an earlier one
   * merges         — two entity records that may be the same, left unmerged (D279)
@@ -96,7 +96,7 @@ def _lead_items(found: dict, docs: dict) -> list[dict]:
                          [f"Appears in {i['doc_count']} documents with no relationships"],
                          i.get("note_path")))
     for i in found["inferred"]:
-        out.append(_item("leads", i["rid"], f"{i['name']} — inferred facts to verify",
+        out.append(_item("leads", i["rid"], f"{i['name']} — inferred relationships to verify",
                          list(i["claims"]), i["note_path"]))
     return out
 

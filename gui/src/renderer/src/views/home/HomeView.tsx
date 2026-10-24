@@ -82,7 +82,7 @@ export default function HomeView() {
               <div className="home-stats">
                 <Stat icon={Files} label="Documents" value={fmtNum(s.totals.documents)} sub={`${fmtNum(s.totals.pages)} pages`} onClick={() => navigate({ view: 'documents' })} />
                 <Stat icon={Shapes} label="Entities" value={fmtNum(s.totals.entities)} onClick={() => navigate({ view: 'entities' })} />
-                <Stat icon={ShieldCheck} label="Facts verified" value={`${fmtNum(s.verification?.verified ?? 0)} of ${fmtNum(s.verification?.facts ?? 0)}`} onClick={() => navigate({ view: 'review', kind: 'verification' })} />
+                <Stat icon={ShieldCheck} label="Facts" value={fmtNum(s.verification?.facts ?? 0)} sub={s.verification?.disputed ? `${fmtNum(s.verification.disputed)} disputed` : undefined} onClick={() => navigate({ view: 'review', kind: 'verification' })} />
                 <Stat icon={CalendarRange} label="Timeline events" value={fmtNum(s.totals.events)} onClick={() => navigate({ view: 'timeline' })} />
               </div>
             )}

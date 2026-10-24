@@ -555,7 +555,7 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={Telescope}
           title="Lead sweep"
-          text="Runs the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and facts that still need verifying. Step through them in Review."
+          text="Runs the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and relationships the model inferred. Step through them in Review."
           label="Run lead sweep"
           onRun={() => launch('lead-sweep', {}, 'Lead sweep')}
         />

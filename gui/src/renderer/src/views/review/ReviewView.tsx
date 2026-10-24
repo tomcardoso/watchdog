@@ -61,7 +61,7 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
   leads: {
     label: 'Leads',
     icon: Lightbulb,
-    blurb: 'Places the record points but the investigation has not followed: entities named but never profiled, entities that recur with no relationships, entities whose notes carry contradictions, and inferred facts or unverified figures worth checking against the source.',
+    blurb: 'Places the record points but the investigation has not followed: entities named but never profiled, entities that recur with no relationships, and relationships the model inferred rather than read. Facts worth checking, such as inferred ones or figures not found in their document, are under Verification.',
     empty: 'No open leads. A full sweep reads every entity note again and lists anything left unexamined.'
   },
   alerts: {

@@ -57,6 +57,8 @@ def facts(vault: str) -> dict:
             rows.append({
                 "id": fid, "fact": f["fact"], "page": page,
                 "basis": "inferred" if f.get("basis") == "inferred" else "stated",
+                "figures_unverified": [str(t) for t in f.get("figures_unverified") or []
+                                       if isinstance(t, (str, int, float))],
                 "sha": sha, "filename": rec.get("filename") or sha[:12],
                 "title": rec.get("title") or rec.get("filename") or sha[:12],
                 "passage_method": f.get("passage_method") if f.get("passage_method") in METHODS else None,

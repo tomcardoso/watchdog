@@ -139,7 +139,7 @@ export interface VerificationSummary {
 }
 export type PassageMethod = 'quote' | 'matched' | 'unlocated'
 export interface LedgerFact {
-  id: string; fact: string; page: number | null; basis: 'stated' | 'inferred' | string
+  id: string; fact: string; page: number | null; basis: 'stated' | 'inferred' | string; figures_unverified: string[]
   sha: string; filename: string; title: string
   passage_method: PassageMethod | null; passage_page: number | null; mark: FactMark | null
 }

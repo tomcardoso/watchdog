@@ -1,18 +1,24 @@
 // Review → Verification: every fact in the investigation and the reporter's check of it (D271).
-// Progress at the top, a filter by status, and the same per-fact control as a document's Facts
-// tab. Keyboard: J/K to move, V/D/C to mark the focused fact, N for a note, O to open its page.
+// Facts are trusted until disputed (D322): the tab opens on what the reporter disputed, then on
+// facts worth checking (inferred, a figure not found in the document, or no matching passage),
+// with every fact one filter away. Keyboard: J/K to move, D/V/C to mark the focused fact, N for a
+// note, O to open its page.
 
-import { ArrowUpRight, FileText, History, SearchX, ShieldCheck } from 'lucide-react'
+import { ArrowUpRight, FileText, Hash, History, SearchX, ShieldCheck } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import type { LedgerFact } from '@shared/api'
 import { FactCheck, MarkSummary, STATUS_META, handleMarkKey, useMarks } from '@renderer/components/FactCheck'
-import { Callout, Empty, ErrorNote, Kbd, Progress, Segmented, Skeleton, cx } from '@renderer/components/ui'
+import { Callout, Empty, ErrorNote, Kbd, Segmented, Skeleton, cx } from '@renderer/components/ui'
 import { fmtNum, plural } from '@renderer/lib/format'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 
-type Filter = 'unchecked' | 'disputed' | 'unverifiable' | 'verified' | 'unlocated' | 'changed'
-const FILTERS: Filter[] = ['unchecked', 'disputed', 'unverifiable', 'verified', 'unlocated', 'changed']
+type Filter = 'disputed' | 'worth' | 'unverifiable' | 'verified' | 'all' | 'changed'
+const FILTERS: Filter[] = ['disputed', 'worth', 'unverifiable', 'verified', 'all', 'changed']
+
+/** Not yet marked, and something about it says read the page: the model inferred it, a figure in
+ * it is nowhere in the document, or no passage on its page matches it. */
+const worthChecking = (f: LedgerFact) => f.basis === 'inferred' || f.figures_unverified.length > 0 || f.passage_method === 'unlocated'
 const LIMIT = 300
 
 export function VerificationTab() {
@@ -35,15 +41,15 @@ export function VerificationTab() {
   const facts = q.data?.facts ?? []
   const markOf = (f: LedgerFact) => marks.get(f.id, f.mark)
   const counts = useMemo(() => {
-    const c: Record<Filter, number> = { unchecked: 0, disputed: 0, unverifiable: 0, verified: 0, unlocated: 0, changed: q.data?.orphaned.length ?? 0 }
+    const c: Record<Filter, number> = { disputed: 0, worth: 0, unverifiable: 0, verified: 0, all: facts.length, changed: q.data?.orphaned.length ?? 0 }
     for (const f of facts) {
       const m = marks.get(f.id, f.mark)
-      c[m ? m.status : 'unchecked']++
-      if (f.passage_method === 'unlocated') c.unlocated++
+      if (m) c[m.status]++
+      else if (worthChecking(f)) c.worth++
     }
     return c
   }, [facts, marks, q.data])
-  const filter: Filter = picked ?? (counts.disputed ? 'disputed' : 'unchecked')
+  const filter: Filter = picked ?? (counts.disputed ? 'disputed' : counts.worth ? 'worth' : 'all')
 
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   if (q.isLoading || !q.data)
@@ -59,8 +65,8 @@ export function VerificationTab() {
   const shown = facts.filter((f) => {
     if (stay.has(f.id)) return true
     const m = markOf(f)
-    if (filter === 'unlocated') return f.passage_method === 'unlocated'
-    if (filter === 'unchecked') return !m
+    if (filter === 'all') return true
+    if (filter === 'worth') return !m && worthChecking(f)
     return m?.status === filter
   })
   const move = (from: HTMLElement, d: number) => {
@@ -69,14 +75,14 @@ export function VerificationTab() {
   }
   const open = (f: LedgerFact) => navigate({ view: 'document', sha: f.sha, page: f.passage_page ?? f.page ?? undefined, tab: 'facts' })
   const label = (k: Filter) =>
-    k === 'unchecked' ? 'Not checked' : k === 'unlocated' ? 'No passage' : k === 'changed' ? 'Changed since marked' : STATUS_META[k].label
+    k === 'worth' ? 'Worth checking' : k === 'all' ? 'All facts' : k === 'changed' ? 'Changed since marked' : STATUS_META[k].label
 
   return (
     <div className="rv-queue">
       <div className="rv-blurb">
         <ShieldCheck />
         <p>
-          Your own check of each fact against its source. Mark a fact Verified once you have read the page and it holds, Disputed when the source or another record does not support it, and Can’t verify when you could not settle it. Your name and the time are recorded with each mark, and the list is kept in the investigation as <span className="mono">verification.md</span>.
+          Facts are used as extracted until you say otherwise. When one is wrong, mark it Disputed, the thumbs-down: it stays listed everywhere, labelled, and is never presented as established. Worth checking lists the facts most likely to be wrong: ones the model inferred, ones with a figure that is nowhere in the document, and ones with no matching passage on their page. Verified and Can’t verify are there if you want a record of what you checked. Your name and the time are recorded with each mark, and the list is kept in the investigation as <span className="mono">verification.md</span>.
         </p>
       </div>
 
@@ -89,16 +95,13 @@ export function VerificationTab() {
       <div className="vf-progress card">
         <div className="vf-progress-head">
           <span className="vf-progress-n">
-            <b className="tnum">{fmtNum(counts.verified)}</b> of <b className="tnum">{fmtNum(total)}</b> facts verified
+            <b className="tnum">{fmtNum(counts.disputed)}</b> disputed of <b className="tnum">{fmtNum(total)}</b> facts
           </span>
           <span className="faint">
-            {fmtNum(counts.disputed)} disputed · {fmtNum(counts.unverifiable)} can’t verify · {fmtNum(counts.unchecked)} not checked
+            {fmtNum(counts.worth)} worth checking · {fmtNum(counts.verified)} verified · {fmtNum(counts.unverifiable)} can’t verify
           </span>
         </div>
-        <Progress value={total ? (counts.verified + counts.disputed + counts.unverifiable) / total : 0} />
-        <div className="faint" style={{ fontSize: 'var(--fs-xs)' }}>
-          {total ? `${Math.round(((counts.verified + counts.disputed + counts.unverifiable) / total) * 100)}% checked. ` : ''}Recorded as {q.data.reporter}. Change the name in Settings.
-        </div>
+        <div className="faint" style={{ fontSize: 'var(--fs-xs)' }}>Recorded as {q.data.reporter}. Change the name in Settings.</div>
       </div>
 
       <div className="rv-toolbar" style={{ flexWrap: 'wrap' }}>
@@ -113,7 +116,7 @@ export function VerificationTab() {
         />
         <span className="spacer" />
         <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>
-          <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>V</Kbd> <Kbd>D</Kbd> <Kbd>C</Kbd> mark · <Kbd>N</Kbd> note · <Kbd>O</Kbd> open
+          <Kbd>J</Kbd> <Kbd>K</Kbd> move · <Kbd>D</Kbd> dispute · <Kbd>V</Kbd> <Kbd>C</Kbd> mark · <Kbd>N</Kbd> note · <Kbd>O</Kbd> open
         </span>
       </div>
 
@@ -135,8 +138,8 @@ export function VerificationTab() {
           ))}
         </div>
       ) : shown.length === 0 ? (
-        <Empty icon={ShieldCheck} title={filter === 'unchecked' ? (total ? 'Every fact has been checked' : 'No facts yet') : `No facts marked ${label(filter).toLowerCase()}`}>
-          {filter === 'unchecked' && total ? 'Disputed and can’t-verify facts stay listed under their own filters.' : filter === 'unlocated' ? 'Every fact has a quote or a matching passage on its page.' : 'Marks you make in a document’s Facts tab, or here, are listed under these filters.'}
+        <Empty icon={ShieldCheck} title={filter === 'worth' ? 'Nothing stands out to check' : filter === 'all' ? 'No facts yet' : `No facts marked ${label(filter).toLowerCase()}`}>
+          {filter === 'worth' ? 'No unmarked fact is inferred, carries a figure missing from its document, or lacks a matching passage.' : filter === 'all' ? 'Facts appear here once documents are processed.' : 'Marks you make in a document’s Facts tab, or here, are listed under these filters.'}
         </Empty>
       ) : (
         <div className="rv-list" ref={list}>
@@ -175,6 +178,12 @@ export function VerificationTab() {
                     <ArrowUpRight />
                   </button>
                   {f.basis === 'inferred' && <span className="faint" style={{ fontSize: 'var(--fs-xs)' }}>inferred</span>}
+                  {f.figures_unverified.length > 0 && (
+                    <span className="fact-unlocated">
+                      <Hash />
+                      {f.figures_unverified.length === 1 ? 'Figure' : 'Figures'} {f.figures_unverified.join(', ')} not found in the document
+                    </span>
+                  )}
                   {f.passage_method === 'unlocated' && (
                     <span className="fact-unlocated">
                       <SearchX />
