@@ -254,6 +254,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Rebuild notes** | Rewrites every entity and document note from the records, keeping your notes. No model call. |
 | **Rebuild the search index** | Rebuilds search from what is on disk, after changing the search model or merging entities. |
 | **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
+| **Export a copy for troubleshooting** | Writes one zip file of Watchdog's records and notes for this investigation, to [send with a report of a problem](troubleshooting.md#sending-a-copy-of-the-investigation). The original documents go in only if you include them. |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude after you update Watchdog. |
 
 ## Managing investigations

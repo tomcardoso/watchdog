@@ -1,8 +1,9 @@
 """Maintenance operations (D298): the timeline and the notes rebuilt from stored data, the lead
 sweep, the watch-list check, and an investigation's Claude setup refreshed. None calls a model.
 
-The search index (`ops.reindex`), the graph export (`ops.export`) and the entity operations
-(`ops.merge`, `ops.entities`) live in their own modules.
+The search index (`ops.reindex`), the graph export (`ops.export`), the copy for troubleshooting
+(`ops.troubleshoot`) and the entity operations (`ops.merge`, `ops.entities`) live in their own
+modules.
 """
 
 from __future__ import annotations

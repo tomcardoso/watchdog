@@ -513,6 +513,17 @@ to the investigation rather than the computer, and travels with the folder: toda
 `auth.choose_key` (the app's Billing card, `auth.chooseKey`), atomically, outside the registry lock
 and history (it is not pipeline state, and a key choice is not a version of the investigation).
 
+**Copy for troubleshooting (D323).** The `troubleshooting-copy` operation (`ops/troubleshoot.py`)
+zips, into a folder the reporter chose, `.watchdog/registry/`, `extracted/`, `timeline/` and
+`briefings/`, `processing-state.json`, `entities/`, `documents/`, `briefings/` and the generated
+top-level pages plus `context.md`, with a `manifest.json` (version, platform, known non-secret,
+non-path settings from `config.json`, the investigation's key labels). `morgue/`, `incoming/`,
+`queue/`, `staging/` and `text-positions/` go in only with `originals`. Everything else is left
+out: history, backups, `tmp/`, indexes, `.claude/`, `queries/`, `wiki/`, hidden files below a root,
+and symbolic links; nothing under `~/.watchdog` is read but `config.json`. `plan()` is the one list,
+read also by `vault.troubleshootingSize`; a new folder in this layout is left out until it is added
+there.
+
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
 through `vault_paths.py` helpers.
 

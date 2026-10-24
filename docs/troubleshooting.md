@@ -187,6 +187,21 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 - What actually happened — copy and paste any error messages
 - Your operating system and version, and the Watchdog version (shown at the bottom of the sidebar and under **Settings → About**)
 - The log file, if you can share it. Check it first: it can contain file names and paths from your investigations.
+- A copy of the investigation, if the problem is in what Watchdog produced and you can share it (see below).
+
+### Sending a copy of the investigation
+
+Much of what is needed to look into a wrong fact, a bad merge or a failed run is kept in hidden folders inside the investigation, which zipping the folder by hand can leave out. **Activity → Maintenance → Export a copy for troubleshooting** writes one zip file with what a report needs, in a folder you choose:
+
+- Watchdog's records of the documents and entities, including merges, your checks of facts and the processing history
+- what the model extracted from each document
+- the usage and cost records
+- the briefings, and the entity and document notes
+- a short note of the Watchdog version, your operating system and your settings
+
+It never contains your API keys or sign-ins, your conversations with Claude, the app's log or earlier versions of files. The original documents, and the text read from them, are left out unless you turn on **Include the original documents**. They make a problem with reading a document possible to reproduce, but the file is much larger and more sensitive.
+
+The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material: send it only to someone you would show the documents to, and not as an attachment to a public issue. Say in the issue that you have a copy, and ask how to send it privately.
 
 ## Where next
 

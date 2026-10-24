@@ -572,6 +572,7 @@ export interface OpParams {
   watch: NoParams
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
+  'troubleshooting-copy': { output: string; originals?: boolean }
   'merge-entities': { keep: string; merge: string }
   'undo-merge': { id: string }
   'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
@@ -594,6 +595,8 @@ export interface OpParams {
   'sample-create': { dir?: string; rebuild?: boolean }
 }
 export type OpName = keyof OpParams
+/** What a copy for troubleshooting would hold, before compression (D323). */
+export interface TroubleshootingSize { files: number; bytes: number; originals_files: number; originals_bytes: number }
 export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]'; required: boolean; default: unknown; nullable: boolean }
 export interface OpSpec { params: Record<string, OpParamSpec>; vault: boolean; engine: 'add' | 'index' | null; kind: 'job' | 'action' }
 
@@ -869,6 +872,7 @@ export interface Methods {
   'vault.resolveLink': [{ vault: string; target: string }, ResolvedLink]
   'vault.citations': [{ vault: string; links: string[] }, Record<string, CitationStatus>]
   'vault.checkCitations': [{ vault: string }, CitationReport]
+  'vault.troubleshootingSize': [{ vault: string }, TroubleshootingSize]
   'vault.pipeline': [{ vault: string }, PipelineState]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]

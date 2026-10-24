@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Gauge,
   Hammer,
+  LifeBuoy,
   Link2,
   Network,
   Play,
@@ -25,14 +26,14 @@ import {
 import { LucideIcon } from 'lucide-react'
 import { ReactNode, useState } from 'react'
 import type { CitationReport, Effort, Estimate, OpName, OpParams, RunOptions } from '@shared/api'
-import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
+import { Badge, Button, Callout, Field, Modal, Segmented, Skeleton, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { runAction, startJob } from '@renderer/lib/jobs'
 import { lastExportFolder } from '@renderer/lib/exportFolder'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
-import { fmtCost, plural } from '@renderer/lib/format'
+import { fmtBytes, fmtCost, plural } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import { usePublicRecordsGate } from './PublicRecordsGate'
 import RecheckModal from '../entities/RecheckModal'
@@ -439,6 +440,96 @@ function ExportCard() {
   )
 }
 
+// A copy of the investigation for troubleshooting (D323): one zip, written to a folder the
+// person chooses. The size shown is read from the files before anything is written.
+function TroubleshootingModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const vault = useApp((s) => s.project!.path)
+  const q = useRpc('vault.troubleshootingSize', open ? { vault } : null)
+  const [originals, setOriginals] = useState(false)
+  const s = q.data
+  const bytes = s ? s.bytes + (originals ? s.originals_bytes : 0) : null
+  const files = s ? s.files + (originals ? s.originals_files : 0) : null
+  const choose = async () => {
+    const out = await window.watchdog.dialog.openFolder({ title: 'Save the copy for troubleshooting in…', grant: 'export destination' })
+    if (!out) return
+    onClose()
+    await launch('troubleshooting-copy', { output: out, originals }, 'Copy for troubleshooting')
+  }
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={
+        <span className="row" style={{ gap: 8 }}>
+          <LifeBuoy style={{ width: 18, height: 18, color: 'var(--accent)' }} />
+          Export a copy for troubleshooting
+        </span>
+      }
+      sub="One zip file, to send with a report of a problem."
+      footer={
+        <>
+          <Button autoFocus onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" icon={FolderOpen} disabled={!s} onClick={() => void choose()}>
+            Choose folder and export
+          </Button>
+        </>
+      }
+    >
+      <div className="col" style={{ gap: 14 }}>
+        <p className="muted" style={{ margin: 0 }}>
+          The copy holds what Watchdog recorded about this investigation: its records of documents and entities, each document’s extraction, the processing history and usage, the briefings, the entity and document notes, and a note of the Watchdog version, this computer’s operating system and your settings. It never holds your keys or sign-ins, your conversations with Claude, or earlier versions of files.
+        </p>
+        <Callout tone="warning" title="This is still investigation material">
+          Even without the original documents, the notes and extractions quote them, name the people and organizations in them and record what you found. Send the copy only to someone you would show the documents to.
+        </Callout>
+        <Row label="Include the original documents" hint="The files themselves and the text read from them. Needed to reproduce a problem with reading a document, but much larger and more sensitive.">
+          <Switch checked={originals} onChange={setOriginals} label="Include originals" />
+        </Row>
+        {q.isError && <Callout tone="danger" title="Could not work out the size">{errorMessage(q.error)}</Callout>}
+        {!s && !q.isError && <Skeleton w="50%" />}
+        {s && bytes !== null && files !== null && (
+          <div>
+            About {fmtBytes(bytes)} in {plural(files, 'file')}, before compression.
+            {!originals && s.originals_files > 0 && <span className="faint"> The originals would add {fmtBytes(s.originals_bytes)}.</span>}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function TroubleshootingCard() {
+  const project = useApp((s) => s.project!)
+  const jobs = useApp((s) => s.jobs)
+  const [open, setOpen] = useState(false)
+  const zip = lastExportFolder(jobs, project.path, 'troubleshooting-copy')
+  return (
+    <>
+      <MCard
+        icon={LifeBuoy}
+        title="Export a copy for troubleshooting"
+        footer={
+          <div className="row wrap" style={{ gap: 8 }}>
+            <Button icon={Play} size="sm" onClick={() => setOpen(true)}>
+              Export a copy…
+            </Button>
+            {zip && (
+              <Button size="sm" variant="ghost" icon={Download} onClick={() => window.watchdog.shell.showItemInFolder(zip)}>
+                Show in folder
+              </Button>
+            )}
+          </div>
+        }
+      >
+        Writes one zip file of Watchdog’s records and notes for this investigation, to send with a report of a problem. The original documents are left out unless you include them. No model is used.
+      </MCard>
+      <TroubleshootingModal open={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
 /** The cards that need the full engine: every control inside is disabled until setup has
  * finished (D272). `display: contents` keeps the grid layout untouched. */
 // Every fact citation in saved answers, threads, briefings and the current-state page, checked
@@ -598,6 +689,7 @@ export default function MaintenancePanel() {
           Tokens, cost and timing for each processing run, by stage. It only reads recorded files, so it is free to look.
         </MCard>
         <ExportCard />
+        <TroubleshootingCard />
         <SimpleCard
           icon={BookOpen}
           title="Refresh Claude setup"

@@ -637,6 +637,14 @@ def check_citations(vault: str) -> dict:
     return citations.check_vault(require_vault(vault))
 
 
+@method("vault.troubleshootingSize")
+def troubleshooting_size(vault: str) -> dict:
+    """How much a copy for troubleshooting would hold, without and with the originals, before
+    compression (D323). Reads file sizes only."""
+    from watchdog.ops import troubleshoot
+    return troubleshoot.sizes(require_vault(vault))
+
+
 @method("vault.resolveLink")
 def resolve_link(vault: str, target: str) -> dict:
     """What a wikilink target points at: `documents/x`, `entities/person/y`,
