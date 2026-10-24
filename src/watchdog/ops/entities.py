@@ -48,7 +48,8 @@ def add_contradiction(rep, vault: Path, *, entity: str, label: str, a: str, a_do
     return {"added": bool(result["added"]), "entity_name": result["entity_name"], "rid": result["rid"]}
 
 
-@op("recheck-contradictions", engine="index", secrets=True, exit_code=lambda r: 1 if (r or {}).get("error") else 0)
+@op("recheck-contradictions", engine="index", secrets=True,
+    exit_code=lambda r: 1 if (r or {}).get("error") else 2 if (r or {}).get("spending_limit") else 0)
 def recheck_contradictions(rep, vault: Path, *, ids: list[str] = (), all: bool = False) -> dict:
     """Compare the stored facts of `ids` (or of every recurring entity, with `all`) for
     contradictions with the finalizer model, and file what it finds for Review (D287)."""

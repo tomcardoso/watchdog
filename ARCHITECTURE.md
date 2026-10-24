@@ -135,6 +135,15 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   `claude-agent-sdk`, which reports no limit.
 - **Auth failures (D242).** A provider auth or billing error stops the run with exit code 1
   instead of quarantining every document.
+- **Spending limit (D324).** `orchestrate._spending_stop` compares the investigation's limit
+  (`spend.limit`, from `.watchdog/settings.json`) with recorded processing cost since its last
+  reset: earlier runs' usage files summed once per run, plus `_run.usage`; subscription calls and
+  Ask Claude/Research turns never count (`spend.counts`). It is checked before each document,
+  after classification, before each section and the digest (`SpendingLimitReached`, caught in
+  `_guarded`, leaving the queue file and section checkpoints), before finalize's reconciliation
+  and between its calls, before each post-ingest model stage (`_stage_stop`, which sets `error`
+  so the batch stays pending), before a batch submission and before each re-check call. A stop
+  never cancels a call in flight; the summary carries `spending_limit` and the run exits 2.
 
 ---
 
@@ -477,7 +486,7 @@ queries/ wiki/               session-written findings and threads
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
   page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
-  settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290); absent until one is chosen
+  settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
   registry/
@@ -508,10 +517,13 @@ block from pre-processing (stamped on the document at extraction): readers use t
 know and ignore the rest, whatever its `format`.
 
 **Investigation settings (D290).** `.watchdog/settings.json` (`schema_version` 1) holds what belongs
-to the investigation rather than the computer, and travels with the folder: today only `keys`,
-`{provider: {id, label}}`, the labelled key each provider bills here. It is written by
-`auth.choose_key` (the app's Billing card, `auth.chooseKey`), atomically, outside the registry lock
-and history (it is not pipeline state, and a key choice is not a version of the investigation).
+to the investigation rather than the computer, and travels with the folder: `keys`,
+`{provider: {id, label}}`, the labelled key each provider bills here, and `spending_limit`,
+`{usd, reset_at}` (D324). Every writer reads the whole file and writes it back through
+`auth.write_investigation_settings`, atomically, outside the registry lock and history (it is not
+pipeline state, and a setting is not a version of the investigation): `auth.choose_key` (the
+Billing card, `auth.chooseKey`) and `spend.set_limit`/`spend.reset` (the Spending limit card,
+`spend.setLimit`, `spend.reset`).
 
 **Copy for troubleshooting (D323).** The `troubleshooting-copy` operation (`ops/troubleshoot.py`)
 zips, into a folder the reporter chose, `.watchdog/registry/`, `extracted/`, `timeline/` and
@@ -913,13 +925,13 @@ noted as such.
 - **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
   makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
   writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
-  and clear, the investigation's billing key, an Ask Claude session's tools, D299), a library
+  and clear, the investigation's billing key and spending limit, an Ask Claude session's tools, D299), a library
   function called in-process; either way under folder access (D268), the operation's locks (D293)
   and I7's commit discipline. The app keeps the
   gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
   before it starts an operation and passing the answer as a parameter; an operation never asks.
   The app is the only front end: there is no command line, and nothing imports `watchdog.cli` or
-  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300.* Guarded by
+  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300, D324.* Guarded by
   `tests/test_app_wording.py`.
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an

@@ -447,7 +447,24 @@ export interface Preflight {
   sample: { unprepared: string[]; refusal: string } | null
   /** Which labelled key pays for each provider the run uses (#690, D290). */
   billing?: Billing[]
+  /** The investigation's spending limit (D324), or null when it has none. `warning` is set once
+   * it is reached: the run would stop before sending anything. Never a reason to skip the pause. */
+  spending_limit?: (SpendingStatus & { warning: string | null }) | null
 }
+
+/** An investigation's spending limit and the processing spend recorded since its last reset
+ * (D324). Recorded cost only: Claude subscription calls, Ask Claude and Research don't count. */
+export interface SpendingStatus {
+  limit_usd: number | null
+  reset_at: string | null
+  spent_usd: number
+  remaining_usd: number | null
+  reached: boolean
+}
+
+/** `spend.limit`: the status, how Claude is billed here (on the subscription the limit doesn't
+ * apply), and whether this is the sample investigation. */
+export interface SpendingLimitInfo extends SpendingStatus { claude_mode: string | null; sample: boolean }
 
 /** One provider's paying key for a run: its label, never the key (D290). `missing` means the
  *  investigation chose a key this computer doesn't have, and the run will stop before any call. */
@@ -498,6 +515,8 @@ export interface Estimate {
   text: string
   estimate: Record<string, unknown> | null
   all_models: { label: string; provider: string; cost_usd: number; note: string | null }[] | null
+  /** Set when the estimate's upper end would pass what is left under the spending limit (D324). */
+  spending_warning?: string | null
 }
 
 /** `contradictions.estimate`: what a contradiction re-check would send and cost (D287). */
@@ -937,6 +956,9 @@ export interface Methods {
   'auth.setDefaultKey': [{ provider: string; id: string }, AuthStatus]
   'auth.investigationKeys': [{ vault: string }, InvestigationKeys]
   'auth.chooseKey': [{ vault: string; provider: string; id: string | null }, InvestigationKeys]
+  'spend.limit': [{ vault: string }, SpendingLimitInfo]
+  'spend.setLimit': [{ vault: string; usd: number | string | null }, SpendingLimitInfo]
+  'spend.reset': [{ vault: string }, SpendingLimitInfo]
   'auth.setBaseUrl': [{ provider: 'local' | 'openrouter'; url: string }, AuthStatus]
   'skills.list': [Record<string, never>, { skills: SkillInfo[]; user_dir: string }]
   'skills.read': [{ name: string }, { name: string; text: string }]

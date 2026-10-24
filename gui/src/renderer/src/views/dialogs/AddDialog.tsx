@@ -439,6 +439,8 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
 
       {pf && <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />}
 
+      {pf?.spending_limit?.warning && <Callout tone="warning" title="Spending limit reached">{pf.spending_limit.warning}</Callout>}
+
       {pf && !pf.auth.ok && (
         <Callout tone="warning" title="No model sign-in is set up" action={<Button size="sm" onClick={() => { useApp.getState().closeAdd(); navigate({ view: 'settings', tab: 'auth' }) }}>Open Settings</Button>}>
           {pf.auth.reason ?? 'Reading works without it, but extraction needs a sign-in or API key.'}
@@ -463,6 +465,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         {est?.data && (
           <div style={{ marginTop: 10 }}>
             <pre className="log add-estimate">{est.data.text.trim()}</pre>
+            {est.data.spending_warning && <Callout tone="warning" title="Spending limit" style={{ marginTop: 10 }}>{est.data.spending_warning}</Callout>}
             {est.data.all_models && est.data.all_models.length > 0 && (
               <table className="table add-compare">
                 <thead><tr><th>Model</th><th>Provider</th><th style={{ textAlign: 'right' }}>Estimated cost</th></tr></thead>
@@ -656,6 +659,15 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
 
           <BillingNote billing={pf.billing} onSettings={() => useApp.getState().closeAdd()} />
 
+          {/* A warning only (D324): the run itself stops on recorded spend; the pause above still applies. */}
+          {pf.spending_limit && (pf.spending_limit.warning ? (
+            <Callout tone="warning" title="Spending limit reached">{pf.spending_limit.warning}</Callout>
+          ) : pf.spending_limit.remaining_usd != null && (
+            <div className="faint" style={{ fontSize: 'var(--fs-sm)' }}>
+              ${pf.spending_limit.remaining_usd.toFixed(2)} left under this investigation’s ${pf.spending_limit.limit_usd?.toFixed(2)} spending limit. Processing stops when it is reached.
+            </div>
+          ))}
+
           <div>
             <div className="add-label">Where the text goes</div>
             <ul className="add-models">
@@ -767,7 +779,12 @@ function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; 
             </Callout>
           )}
           {!ok && job.state === 'cancelled' && <Callout tone="info" title="Stopped">The run was stopped. Anything already extracted is kept. Run Add again to continue.</Callout>}
-          {!ok && job.exit_code === 2 && (
+          {!ok && job.exit_code === 2 && spendingStop(job) && (
+            <Callout tone="warning" title="Stopped at the spending limit">
+              {spendingStop(job)} Nothing is lost.
+            </Callout>
+          )}
+          {!ok && job.exit_code === 2 && !spendingStop(job) && (
             <Callout tone="warning" title="Paused, and safe to resume">
               The run stopped partway, for example at a rate limit or while a batch is being processed. Nothing is lost. Run Add again to continue.
             </Callout>
@@ -784,6 +801,12 @@ function RunStep({ vault, job, done, autoNote, startAtWrite }: { vault: string; 
       )}
     </div>
   )
+}
+
+/** The spending-limit stop message a run's result carries (D324), or null. */
+function spendingStop(job: Job): string | null {
+  const r = job.result as { spending_limit?: string | null; post_ingest?: { spending_limit?: string | null } } | null
+  return r?.spending_limit ?? r?.post_ingest?.spending_limit ?? null
 }
 
 function DoneFooter({ vault, job, onAgain }: { vault: string; job?: Job; onAgain: () => void }) {

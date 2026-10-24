@@ -567,6 +567,9 @@ def _run_finalize(vault: Path, post_model: str, post_effort: str | None = None,
     finally:
         release_lock(lock)
 
+    if out.get("spending_limit"):
+        say(out["spending_limit"])
+        return out
     if out.get("error") or out.get("briefing_error"):
         reason = out.get("error") or out.get("briefing_error")
         say(f"The batch didn't finish: {reason}.")
@@ -1062,6 +1065,8 @@ def _print_summary(summary: dict) -> None:
     n_cancelled = sum(1 for r in summary["results"] if r.get("status") == "cancelled")
     if summary.get("auth_error"):
         headline = "Stopped: the provider refused the credentials or account."
+    elif summary.get("spending_limit"):
+        headline = "Stopped at the spending limit."
     elif summary.get("rate_limited"):
         headline = "Paused by a rate limit."
     elif summary.get("cancelled"):
@@ -1075,6 +1080,8 @@ def _print_summary(summary: dict) -> None:
         f"{f', {n_cancelled} not started' if n_cancelled else ''}.")
     if summary.get("rate_limited") and summary.get("stop_message"):
         say(summary["stop_message"])
+    if summary.get("spending_limit"):
+        say(summary["spending_limit"])
     for r in summary["results"]:
         name = r.get("filename") or r.get("sha256", "?")
         if r["status"] == "ok":
@@ -1086,7 +1093,10 @@ def _print_summary(summary: dict) -> None:
     if summary.get("quarantined"):
         say(_quarantine_notice(summary["quarantined"]))
     pi_error = summary.get("post_ingest_error") or (summary.get("post_ingest") or {}).get("error")
-    if pi_error:
+    if pi_error and (summary.get("post_ingest") or {}).get("spending_limit"):
+        say("Post-processing stopped at the spending limit. Documents already committed are saved; "
+            "the rest of the batch waits to be finished.")
+    elif pi_error:
         say(f"Post-processing didn't finish: {pi_error}.")
         if (summary.get("post_ingest") or {}).get("commit_skipped"):
             # Reconciliation failed before the commit pass (#403): nothing was written yet.
@@ -1107,7 +1117,7 @@ def _print_summary(summary: dict) -> None:
     if summary.get("batch_pending"):
         say("A batch extraction is in flight. Add documents again later to check on it and "
             "collect the results.")
-    elif summary.get("cancelled"):
+    elif summary.get("cancelled") and not summary.get("spending_limit"):
         say("Add documents again to process the remaining ones.")
     elif summary.get("finalize_skipped"):
         say(f"Extraction staged ({ext} document{'s' if ext != 1 else ''}); finish it under "

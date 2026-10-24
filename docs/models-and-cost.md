@@ -100,6 +100,22 @@ The main levers, roughly in order of effect:
 
 On a Claude subscription, **Activity → Usage** shows what the work would have cost at published rates, marked as not billed.
 
+<a id="spending-limit"></a>
+### A spending limit for one investigation
+
+The **Spending limit** card on each investigation's Overview stops processing when that investigation has spent a dollar amount you choose. Type the amount in US dollars, such as `50`, and press Enter; leave the field blank for no limit, which is the default. The limit is saved inside the investigation's folder, so it travels with it.
+
+Before each document is sent to the model, between the sections of a long document, and before each finishing step, Watchdog adds up what this investigation's processing has already cost, as recorded in **Activity → Usage**, and compares it with the limit. It never uses an estimate. Once the total reaches the limit, the run stops the way it stops at a rate limit: every document that finished is kept, the rest stay queued, a long document keeps the sections it has finished, and a batch waiting to be finished stays waiting. The Add documents dialog says that the limit stopped the run. To carry on, raise the limit or choose **Reset the count**, then add documents again.
+
+A few things to know:
+
+- **It can be passed slightly.** A call already under way when the limit is reached still finishes and is still charged, so the total can end up above the limit by what those calls cost. With several documents being read at once, that can be a few documents' worth.
+- **What counts.** Classifying, extracting, the finishing steps and **Re-check contradictions** count. Ask Claude and Research do not, since they can be billed separately (see [Claude: subscription or API key](#claude-subscription-or-api-key)). Calls on your Claude subscription do not count either: they are not charged per call, so on a subscription the limit has nothing to measure. A batch extraction's cost counts once its results are collected.
+- **Reset the count** starts counting again from now. The cost of earlier work stays in **Activity → Usage**; it just no longer counts towards the limit.
+- **Estimates are only a warning.** When **Estimate cost** in the Add documents dialog quotes more than is left under the limit, the dialog says so, but the run still asks the public-records question and still starts. It is the recorded cost that stops it.
+
+The limit works alongside a spending limit set with the provider (see [Your keys](#your-keys)), not instead of it: the provider's limit is the one enforced on its side.
+
 ## How the defaults were chosen
 
 The defaults come from running a fixed set of real public documents (six filings from a university's insolvency proceeding, 209 pages) through every candidate model and effort level, and checking each result against an answer key. An AI judge that was not one of the models tested read each result blind. **Main facts** are a document's material content; **must not miss** are the items where a miss would cost the story, often a clause in standard wording or a line under a table.
@@ -125,6 +141,8 @@ None of these needs to reach 100% for Watchdog to be useful: its job is to surfa
 Open **Settings** from the sidebar (or **Settings…** in the Watchdog menu on a Mac, **File → Settings** on Windows and Linux). Settings apply to every investigation on this computer. Each field shows a one-line description with a **More** link, saves as you change it, and has **Reset to default**. Its stored name, such as `extractor_model`, is shown beside it in small grey type; everything is stored in `config.json` in Watchdog's settings folder (`.watchdog/` in your home folder).
 
 For one batch only, the **Options** in the Add documents dialog override the processing and model fields without changing them.
+
+Two settings belong to a single investigation and live on its Overview instead: which key pays ([Billing](#billing)) and the [spending limit](#spending-limit).
 
 ### Vaults
 

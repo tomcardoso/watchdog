@@ -120,6 +120,10 @@ Two things help when a rate limit stops a run:
 
 Without it, the run stops cleanly on a rate limit. Nothing is lost: every document already processed is saved, so adding documents again picks up only what is still queued.
 
+## A run stopped at the spending limit
+
+The investigation has reached the spending limit set on its Overview. Nothing is lost: finished documents are kept and the rest stay queued. Raise the limit or choose **Reset the count** on the **Spending limit** card, then add documents again. See [A spending limit for one investigation](models-and-cost.md#spending-limit).
+
 ## A step routed to a local model fails immediately
 
 A message that the local backend needs a base URL means the address of your model server has not been set. Open **Settings → Models & keys**, choose the local provider, and enter the server's address (for example `http://localhost:11434/v1`).

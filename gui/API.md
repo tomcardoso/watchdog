@@ -255,8 +255,8 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 
 | Method | Params | Result |
 |---|---|---|
-| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290) |
-| `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null}` |
+| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290), and `spending_limit` (`spend.limit`'s status plus `warning`, set once the limit is reached), null without a limit (D324) |
+| `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null, spending_warning?: string\|null}` — `spending_warning` when the estimate's upper end would pass what is left under the spending limit; a warning only (D324) |
 
 ```
 RunOptions = {                       // ops.ingest.RunOptions; unset = configured default
@@ -455,6 +455,9 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `auth.setDefaultKey` | `{provider, id}` | `auth.status` result |
 | `auth.investigationKeys` | `{vault}` | `InvestigationKeys` — per provider, this computer's keys (masked), the investigation's choice and which key will pay |
 | `auth.chooseKey` | `{vault, provider, id: string\|null}` | `InvestigationKeys` — records the investigation's key for `provider` in its `.watchdog/settings.json` (id and name, never the key); `null` returns it to the default (D290) |
+| `spend.limit` | `{vault}` | `SpendingLimitInfo` — `{limit_usd\|null, reset_at\|null, spent_usd, remaining_usd\|null, reached, claude_mode, sample}`: the investigation's spending limit and the processing spend recorded since its last reset (D324); Claude subscription calls, Ask Claude and Research are not counted |
+| `spend.setLimit` | `{vault, usd: number\|string\|null}` | `SpendingLimitInfo` — stores the limit in `.watchdog/settings.json`; `null` or blank removes it; anything that isn't an amount of at least $0.01 is refused (`bad_value`) |
+| `spend.reset` | `{vault}` | `SpendingLimitInfo` — records now as the reset time, so only spend recorded after it counts |
 | `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result — an empty `url` removes it |
 | `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
 | `skills.read` | `{name}` | `{name, text}` |
