@@ -556,6 +556,16 @@ and symbolic links; nothing under `~/.watchdog` is read but `config.json`. `plan
 read also by `vault.troubleshootingSize`; a new folder in this layout is left out until it is added
 there.
 
+**Diagnostics report (D331).** The `diagnostics-report` operation (`ops/diagnostics.py`) writes one
+Markdown file of counts and shapes, safe to post publicly; `vault.diagnosticsReport` returns the
+same text for the dialog to show in full before saving. It reads `registry/` (`entities.json`,
+`documents.json`, `merges.json`, `requests.json`, `processing.log`, `usage/`), the stored
+extractions' fact fields (counts only), `review.open_items` and `leads.scan`, and writes only
+numbers and words from fixed vocabularies (file types, entity types, tiers, tasks, catalogued
+model ids, bundled skill names): a field it does not name is never read, and a value outside a
+vocabulary is counted as `other`. The one free text it touches, the processing log's warnings, is
+reduced to its kind by `warning_shape`. The file is named by time, never by the investigation.
+
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
 through `vault_paths.py` helpers.
 
@@ -1018,3 +1028,10 @@ noted as such.
   document note, entity record or note, relationship or timeline event changes, and every model
   input (synthesis, briefing, reconciliation) reads its facts as before. *History: D326.* Guarded by
   `tests/test_invariants.py::test_I17_…` and `tests/test_hidden_entities.py`.
+- **I18 — A report meant for public posting is built from an allowlist of aggregates.** The
+  diagnostics report holds numbers, and words from fixed vocabularies, and nothing a reporter's
+  material says: no file name, title, entity name or alias, relationship wording, fact, quote,
+  figure, identifier, date or summary. It names the fields it reads rather than filtering the ones
+  it does not want, so a field added to a registry later cannot reach it; its only free text, a
+  processing-log warning, is reduced to its shape first. *History: D331.* Guarded by
+  `tests/test_invariants.py::test_I18_…` and `tests/test_diagnostics.py`.

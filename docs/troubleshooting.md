@@ -195,7 +195,18 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 
 ### Sending a copy of the investigation
 
-Much of what is needed to look into a wrong fact, a bad merge or a failed run is kept in hidden folders inside the investigation, which zipping the folder by hand can leave out. **Activity → Maintenance → Export a copy for troubleshooting** writes one zip file with what a report needs, in a folder you choose:
+**Activity → Maintenance → Export a copy for troubleshooting** offers two choices, in a folder you choose.
+
+**Diagnostics only (safe to share)** writes one text file of counts and shapes. It is the one to attach to a public issue. It holds:
+
+- how many documents there are of each file type and page count range, and how many facts, Review items, merges, possible duplicates and document requests
+- how many records share a name, and how large those groups are
+- which kinds of warning the processing log holds and how often, each reduced to its shape: file names and anything in quotes are removed and every number is written as N
+- the models, calls, retries, tokens, cost and time of each run, and your operating system, Watchdog version and settings
+
+It never holds a file name, document title, the name of a person or organization, an alias, a relationship, a fact, a quote, a figure, an identifier, a date or a summary. It is built from a fixed list of counts, so a record field added in a later version does not appear in it. No model is used. The dialog shows the whole report before it is saved. Read it before you post it: even counts can hint at things, such as the languages or kinds of documents you work with.
+
+**Full copy (private)** writes one zip file with what a report needs to look into a wrong fact, a bad merge or a failed run. Much of that is kept in hidden folders inside the investigation, which zipping the folder by hand can leave out. The zip holds:
 
 - Watchdog's records of the documents and entities, including merges, your checks of facts and the processing history
 - what the model extracted from each document
@@ -205,7 +216,9 @@ Much of what is needed to look into a wrong fact, a bad merge or a failed run is
 
 It never contains your API keys or sign-ins, your conversations with Claude, the app's log or earlier versions of files. The original documents, and the text read from them, are left out unless you turn on **Include the original documents**. They make a problem with reading a document possible to reproduce, but the file is much larger and more sensitive.
 
-The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material: send it only to someone you would show the documents to, and not as an attachment to a public issue. Say in the issue that you have a copy, and ask how to send it privately.
+The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material: send it only to someone you would show the documents to.
+
+When you report a problem, attach the diagnostics report to the public issue. Offer the full copy only if you are asked for it, and send it privately, not as an attachment to the issue.
 
 ## Where next
 
