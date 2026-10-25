@@ -75,7 +75,11 @@ export interface DocumentRow {
   page_count: number | null
   record_skill: string | null
   ingested_at: string | null
+  /** The earlier document this one closely matches; null once the reporter called them different
+   * documents in Review (D328). */
   near_duplicate_of: string | null
+  /** "copies" once the reporter confirmed the match in Review (D328), else null. */
+  duplicate_verdict?: 'copies' | null
   note: string | null
   original: string | null
   fulltext: string | null
@@ -116,6 +120,8 @@ export interface Summary {
   near_duplicates: number
   possible_same: number
   alerts: number
+  /** Open document requests (tidy-up, D328). */
+  requests: number
   incoming: number
   awaiting_dig: number
   awaiting_bark: number
@@ -132,7 +138,7 @@ export interface Summary {
   hidden_entities?: number
   /** Items that need the reporter's judgement: contradictions, leads, alerts, disputed facts (D327). */
   judgement: number
-  /** Tidy-up: possible duplicate documents and possible same entities (D327). */
+  /** Tidy-up: possible duplicate documents, possible same entities and document requests (D327, D328). */
   tidy_up: number
   /** The short ranked slice to start with (D327). */
   start_here: StartHereItem[]
@@ -140,9 +146,14 @@ export interface Summary {
   batch: { briefing: string; at: string | null; added: Record<ReviewKind, number> } | null
   /** Open items a batch added since Review was last opened; null when it never was. */
   since_review: { since: string; added: Record<ReviewKind, number> } | null
+  /** The Overview's one line on what is new (D328): since the last visit to Review once there has
+   * been one, otherwise what the latest batch added; null when there is nothing to say. */
+  summary_line: { kind: 'since' | 'batch'; at: string | null; added: Record<ReviewKind, number> } | null
 }
 
-export interface StartHereItem { rid: string; kind: ReviewKind; title: string; note: string | null; reason: string }
+/** One Start here item (D327). A watch-list term's alerts are one item (D328): `term`, the
+ * `documents` it was found in, and every hit's id in `rids`. */
+export interface StartHereItem { rid: string; rids: string[]; kind: ReviewKind; title: string; note: string | null; reason: string; term?: string | null; documents?: string[] }
 
 // The verification ledger (D271): a reporter's own check of a fact.
 export type VerifyStatus = 'verified' | 'disputed' | 'unverifiable'
@@ -419,7 +430,13 @@ export interface DocumentRequest {
   likely_source: string | null
   cited_in: { sha: string; filename: string; note: string | null }[]
   added: string | null
+  /** How many documents cite it, and the key of its likely source's group (D328). */
+  cite_count: number
+  source_key: string
 }
+
+/** Requests grouped by the holder their likely source names (D328); `key` is "" for no source. */
+export interface RequestGroup { key: string; label: string; count: number; documents: number }
 
 // ── ingest ───────────────────────────────────────────────────────────────────
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -612,6 +629,7 @@ export interface OpParams {
   export: { format?: 'csv' | 'cypher'; output?: string | null }
   'troubleshooting-copy': { output: string; originals?: boolean }
   'merge-entities': { keep: string; merge: string }
+  'merge-entity-pairs': { keep: string[]; merge: string[] }
   'undo-merge': { id: string }
   'hide-entities': { ids: string[] }
   'unhide-entities': { ids: string[] }
@@ -698,7 +716,11 @@ export interface EverywhereResult {
 // ── review ───────────────────────────────────────────────────────────────────
 export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
 export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
-export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[]; entity?: string | null; related?: string[]; doc_count?: number; new?: boolean }
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[]; entity?: string | null; related?: string[]; doc_count?: number; new?: boolean; document?: string }
+
+/** What `merge-entity-pairs` returns (D328): each pair merged, failed (with why) or already one. */
+export interface MergePairRow { keep: string; merge: string; keep_name: string; merge_name: string; error?: string }
+export interface MergePairsResult { merged: MergePairRow[]; failed: MergePairRow[]; skipped: MergePairRow[] }
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
@@ -921,7 +943,7 @@ export interface Methods {
   'vault.sessionPrimer': [{ vault: string }, { text: string; chars: number; budget: number }]
   'vault.currentState': [{ vault: string }, { text: string }]
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
-  'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
+  'vault.requests': [{ vault: string }, { open: DocumentRequest[]; groups: RequestGroup[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
 
   'history.file': [{ vault: string; path: string }, FileHistory]
@@ -956,7 +978,7 @@ export interface Methods {
 
   'review.items': [{ vault: string; kinds?: ReviewKind[]; since?: string | null }, { items: ReviewItem[]; counts: Record<ReviewKind, number>; start_here: StartHereItem[] }]
   'review.opened': [{ vault: string }, { opened_at: string; previous: string | null }]
-  'review.resolve': [{ vault: string; rids: string[] }, { resolved: string[] }]
+  'review.resolve': [{ vault: string; rids: string[]; label?: 'review' | 'copies' | 'different' }, { resolved: string[] }]
   'review.unresolve': [{ vault: string; rids: string[] }, { unresolved: string[] }]
   'review.resolved': [{ vault: string }, { items: { rid: string; label: string; resolved_at: string; kind: string }[] }]
   'review.leads': [{ vault: string }, Record<string, unknown>]

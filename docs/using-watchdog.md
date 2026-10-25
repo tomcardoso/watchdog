@@ -10,9 +10,9 @@ The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Tim
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7). **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
-The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and a line on what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads." Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads, watch-list alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents and possible same entities, each a quick yes or no; click it to see both. **In progress** lists what is still being added. Each item links to the screen that deals with it.
+The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and one line on what is new. Until you first open Review, it says what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads." After that, it says what has come in since you last opened Review and is still open; when nothing has, there is no line. Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads, watch-list alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents, possible same entities and document requests, which you can work through in bulk; click it to see all three. **In progress** lists what is still being added. Each item links to the screen that deals with it.
 
-Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**. When more than one batch has come in since your last visit, or you have handled some of what was added, the Overview also says how many of the new items are still open.
+Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**.
 
 A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, `/watchdog-surface` in Ask Claude looks for connections you did not think to ask about.
 
@@ -116,18 +116,20 @@ A fact you mark Disputed is never hidden. Wherever it appears (the document, the
 
 **Review** is where everything Watchdog flagged waits for you, one tab each. The number beside Review in the sidebar counts the items that need your judgement, as on the Overview; the page's own line also counts the tidy-up. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
 
+**Duplicates**, **Merges** and **Requests** are tidy-up, so they are tables rather than cards: one row each, with a tick box. Tick rows with the mouse or X, or tick every row from the box in the heading, then choose what to do with all of them from the bar at the bottom. The row you are on opens underneath with the full detail. On these tabs, H gives the row's everyday answer (not the same, these are copies, or handled) to the ticked rows, or to the row you are on when none is ticked.
+
 ![The Review screen on its Contradictions tab, each contradiction with both claims and the documents they come from.](images/app-review.png)
 
 ### Start here
 
 Above the tabs, **Start here** lists up to seven items to look at first, each with one line on why it is there; the Overview shows the same list. The order comes from ordinary code (no AI), from what the investigation already records:
 
-1. An item tied to a term on your [watch list](#the-watch-list): every alert, and a contradiction or lead about an entity whose name matches a term.
+1. An item tied to a term on your [watch list](#the-watch-list): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
 2. An item about one of the most connected entities (those with relationships to the most others, as in the Network) or about an entity that several documents are mainly about.
 3. A contradiction between two documents, ahead of one between two passages of the same document.
 4. A lead named in several documents, ahead of one named in only one.
 
-Ties go to the item involving the better-connected entity, then the one in more documents. Only one alert per watch-list term is listed, and no kind of item fills more than half the list while others are waiting. Possible duplicates and possible same entities are tidy-up and never appear here, and nor does anything about an entity you [removed](#removing-an-entity). Click an item to go to it on its tab. In Review, click **Start here** to fold the list away; Watchdog remembers the choice.
+Ties go to the item involving the better-connected entity, then the one in more documents. No kind of item fills more than half the list while others are waiting. The counts elsewhere still count each document a term was found in, since each is a document to read. Tidy-up items never appear here, and nor does anything about an entity you [removed](#removing-an-entity). Click an item to go to it on its tab. In Review, click **Start here** to fold the list away; Watchdog remembers the choice.
 
 ### Contradictions
 
@@ -152,11 +154,13 @@ A relationship-target lead shows who names the target, how, on which page, and l
 
 ### Duplicates
 
-Documents judged to be near-copies of one already in the investigation, side by side. Watchdog never discards either; marking a pair handled only hides it.
+Documents judged to be near-copies of one already in the investigation, one row each, with the document it closely matches; the row you are on shows both side by side. Tick the pairs you have checked, then choose **These are copies** (H) if they are the same record, or **Different documents** (D) if the difference matters. Neither deletes anything. A copy stays marked as a copy in Documents and on its page; for different documents, the possible-duplicate flag goes from both. Either answer can be reversed under **Handled** with **Bring back**.
 
 ### Merges
 
-Two documents often name the same person or company, and Watchdog has to decide whether they mean the same one. It never decides on a name alone (see [how Watchdog decides two names are the same](how-it-works.md#same-entity)). Pairs it was unsure about wait at the top of this tab as **possible same entities**, each shown side by side with its facts. Choose **Merge…** if they are one, or **Not the same**, after which Watchdog never merges those two automatically.
+Two documents often name the same person or company, and Watchdog has to decide whether they mean the same one. It never decides on a name alone (see [how Watchdog decides two names are the same](how-it-works.md#same-entity)). Pairs it was unsure about wait at the top of this tab as **possible same entities**, one row each: both names, how many documents each is in, the strongest evidence they share (the same registration number, say, or the same relationship to the same company) and how confident Watchdog was. The row you are on shows the two records side by side with their facts.
+
+Tick the pairs that are one and choose **Merge ticked** (M); Watchdog asks first, listing which record each pair keeps: the one named in more documents, or else the longer name. The pairs are merged one at a time, and each merge goes into **Recent merges**, where it can be undone on its own. If one pair cannot be merged, the others still are, and the tab says which failed and why. Tick the pairs that are not one and choose **Not the same for ticked** (H); Watchdog never merges those two automatically. To choose which record to keep, use **Merge…** on the open row instead.
 
 When many records share one name, the queue does not list every possible pair. A short name that cannot be told apart, such as "Mr. Pike" in five documents, is shown as four pairs, each record beside the one named in the most documents. For a name the AI model compared, only the records it could not tell apart are listed.
 
@@ -164,7 +168,9 @@ Below the queue, **Recent merges** lists every merge, newest first: which record
 
 ### Requests
 
-Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and a link to the document that named it. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
+Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and links to the documents that named it.
+
+The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together; two names for one office, such as "City Finance" and "Finance Department", stay apart. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
 
 ### The watch list
 

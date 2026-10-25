@@ -72,13 +72,20 @@ def opened(vault: str) -> dict:
 
 
 @method("review.resolve")
-def resolve(vault: str, rids: list[str]) -> dict:
+def resolve(vault: str, rids: list[str], label: str = "review") -> dict:
+    """Mark items handled. `label` records how (D328): "copies" or "different" for a possible
+    duplicate, "review" (the default) for everything else."""
     from watchdog.pipeline import resolutions
+    from watchdog.review import LABELS
 
     v = require_vault(vault)
     ids = _rids(rids)
+    if label not in LABELS:
+        raise RpcError(f"Unknown label: {label}. Choose from {', '.join(LABELS)}.", code="bad_params")
+    if label != "review" and not all(r.startswith("duplicate:") for r in ids):
+        raise RpcError("Only a possible duplicate can be marked copies or different.", code="bad_params")
     with _recording(v, len(ids), True):
-        added = resolutions.resolve(v, ids, label="review")
+        added = resolutions.resolve(v, ids, label=label)
     return {"resolved": added}
 
 

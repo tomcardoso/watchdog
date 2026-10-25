@@ -417,10 +417,18 @@ def _str_or_none(v: Any) -> str | None:
     return v if isinstance(v, str) else str(v)
 
 
-def document_row(vault: Path, sha: str, rec: dict) -> dict:
-    """The app's `DocumentRow` for one `documents.json` record."""
+def document_row(vault: Path, sha: str, rec: dict, verdicts: dict[str, str] | None = None) -> dict:
+    """The app's `DocumentRow` for one `documents.json` record. `verdicts` is
+    `review.duplicate_verdicts` (read here when not given): a possible duplicate the reporter
+    called different documents is no longer flagged, one they called copies says so (D328)."""
     original, fulltext = document_paths(vault, rec)
     fields = _doc_text_fields(vault, sha, rec)
+    verdict = None
+    if rec.get("near_duplicate_of"):
+        if verdicts is None:
+            from watchdog.review import duplicate_verdicts
+            verdicts = duplicate_verdicts(vault)
+        verdict = verdicts.get(sha[:12])
     return {
         "sha": sha,
         "filename": rec.get("filename") or sha[:12],
@@ -430,7 +438,8 @@ def document_row(vault: Path, sha: str, rec: dict) -> dict:
         "page_count": rec.get("page_count") if isinstance(rec.get("page_count"), int) else None,
         "record_skill": _str_or_none(rec.get("record_skill")),
         "ingested_at": _str_or_none(rec.get("ingested_at")),
-        "near_duplicate_of": _str_or_none(wikilink_text(rec.get("near_duplicate_of"))),
+        "near_duplicate_of": None if verdict == "different" else _str_or_none(wikilink_text(rec.get("near_duplicate_of"))),
+        "duplicate_verdict": verdict if verdict == "copies" else None,
         "note": doc_note_stem(rec),
         "original": original,
         "fulltext": fulltext,
@@ -482,7 +491,9 @@ def sorted_document_rows(vault: Path, docs: dict | None = None, limit: int | Non
     items.sort(key=lambda kv: kv[1].get("ingested_at") or "", reverse=True)
     if limit is not None:
         items = items[:limit]
-    return [document_row(vault, sha, rec) for sha, rec in items]
+    from watchdog.review import duplicate_verdicts
+    verdicts = duplicate_verdicts(vault)
+    return [document_row(vault, sha, rec, verdicts) for sha, rec in items]
 
 
 def unresolved_contradictions(ent: dict, resolved: frozenset[str]) -> list[str]:

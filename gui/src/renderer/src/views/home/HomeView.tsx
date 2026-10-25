@@ -4,7 +4,7 @@
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
-  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles
+  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles, FileQuestion
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -69,7 +69,8 @@ export default function HomeView() {
   const tidy: WaitRow[] = s
     ? ([
         { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
-        { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge }
+        { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge },
+        { kind: 'requests', n: s.requests ?? 0, one: 'document request', many: 'document requests', hint: 'Records to ask for, grouped by who holds them', icon: FileQuestion }
       ] as WaitRow[]).filter((w) => w.n > 0)
     : []
 
@@ -312,29 +313,32 @@ function DropCard() {
 
 // ── Start here ───────────────────────────────────────────────────────────────
 function StartHere({ s }: { s: Summary }) {
-  const batch = s.batch ? describeAdded(s.batch.added) : ''
-  const since = s.since_review ? describeAdded(s.since_review.added) : ''
-  // The line about the last visit is only worth a second line when it says more than the batch's.
-  const showSince = !!since && since !== batch
-  if (!s.start_here?.length && !batch && !showSince) return null
+  // One line on what is new (D328): since the last visit to Review once there has been one,
+  // otherwise what the latest batch added.
+  const line = s.summary_line
+  const what = line ? describeAdded(line.added) : ''
+  if (!s.start_here?.length && !what) return null
   return (
     <section className="card home-panel home-start">
       <div className="home-section-head" style={{ margin: '0 12px 6px' }}>
         <h2>Start here</h2>
         <Button variant="ghost" size="sm" iconRight={ArrowRight} onClick={() => navigate({ view: 'review' })}>Review</Button>
       </div>
-      {(batch || showSince) && (
+      {what && line && (
         <div className="sh-new">
-          {batch && (
-            <p>
-              <Sparkles className="sh-new-ico" /> The latest batch{s.batch?.at ? ` (${fmtRelative(s.batch.at)})` : ''} added {batch}.
-            </p>
-          )}
-          {showSince && <p>Still open and new since you last opened Review ({fmtRelative(s.since_review!.since)}): {since}.</p>}
+          <p>
+            <Sparkles className="sh-new-ico" />{' '}
+            {line.kind === 'since'
+              ? `New since you last opened Review${line.at ? ` (${fmtRelative(line.at)})` : ''}, and still open: ${what}.`
+              : `The latest batch${line.at ? ` (${fmtRelative(line.at)})` : ''} added ${what}.`}
+          </p>
         </div>
       )}
       {s.start_here?.length ? (
-        <StartHereList items={s.start_here} onPick={(it) => navigate({ view: 'review', kind: it.kind, focus: it.rid })} />
+        <StartHereList
+          items={s.start_here}
+          onPick={(it) => navigate(it.kind === 'alerts' && it.term ? { view: 'review', kind: 'alerts', filter: it.term, focus: it.rid } : { view: 'review', kind: it.kind, focus: it.rid })}
+        />
       ) : (
         <p className="faint" style={{ margin: '0 12px 10px', fontSize: 'var(--fs-sm)' }}>Nothing needs your judgement right now.</p>
       )}

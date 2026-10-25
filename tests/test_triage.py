@@ -31,7 +31,7 @@ def _lead(rid, entity, docs, related=(), title=None):
 
 def _alert(rid, term, entity=None, title=None):
     return {"kind": "alerts", "rid": rid, "title": title or f"`{term}` in {rid}.pdf", "note": None,
-            "term": term, "entity": entity, "doc_count": 1}
+            "term": term, "entity": entity, "doc_count": 1, "document": f"{rid}.pdf"}
 
 
 def _rids(ranked):
@@ -51,7 +51,8 @@ def test_a_watch_list_term_outranks_everything_else():
 def test_an_alert_is_tied_to_its_term():
     ranked = triage.rank([_c("c:1", "x", 2), _alert("a:1", "Quayside")])
     assert _rids(ranked) == ["a:1", "c:1"]
-    assert ranked[0]["reason"] == "On your watch list: “Quayside”"
+    assert ranked[0]["title"] == "Quayside: 1 new document"
+    assert ranked[0]["reason"] == "On your watch list"   # the title names the term
 
 
 def test_the_most_connected_entities_and_main_subjects_rank_next():
@@ -112,13 +113,34 @@ def test_more_documents_break_a_tie_within_a_tier():
     assert _rids(ranked) == ["c:5", "c:2"]
 
 
-def test_the_slice_has_a_limit_and_one_alert_per_term():
-    items = [_alert(f"a:{i}", "Quayside") for i in range(5)] + [_alert("a:other", "Wharf 9")]
+def test_the_slice_has_a_limit_and_one_item_per_watch_list_term():
+    items = [_alert(f"a:{i}", "Quayside") for i in (3, 0, 4, 1, 2)] + [_alert("a:other", "Wharf 9")]
     items += [_c(f"c:{i}", f"e{i}", 2) for i in range(10)]
     ranked = triage.rank(items, limit=6)
     assert len(ranked) == 6
     alerts = [r for r in ranked if r["kind"] == "alerts"]
-    assert {r["rid"] for r in alerts} == {"a:0", "a:other"}
+    # D328: one item per term, its hits counted and named per document, and ranked by them.
+    assert [r["title"] for r in alerts] == ["Quayside: 5 new documents", "Wharf 9: 1 new document"]
+    assert alerts[0]["term"] == "Quayside"
+    assert alerts[0]["documents"] == [f"a:{i}.pdf" for i in range(5)]
+    assert alerts[0]["rids"] == [f"a:{i}" for i in range(5)] and alerts[0]["rid"] == "a:0"
+    assert alerts[1]["rids"] == ["a:other"]
+
+
+def test_group_alerts_keeps_other_items_and_drops_hits_on_a_removed_entity():
+    items = [_c("c:1", "x", 2), _alert("a:1", "Quayside", entity="gone"), _alert("a:2", "Quayside", entity="kept"),
+             _alert("a:3", "Quayside")]
+    out = triage.group_alerts(items, hidden={"gone"})
+    assert [i["kind"] for i in out] == ["contradictions", "alerts"]
+    group = out[1]
+    assert group["rids"] == ["a:2", "a:3"] and group["doc_count"] == 2 and group["related"] == ["kept"]
+    assert group["title"] == "Quayside: 2 new documents"
+
+
+def test_a_term_found_in_more_documents_ranks_first_whatever_the_order():
+    items = [_alert("a:1", "Pier 4"), _alert("b:1", "Quayside"), _alert("b:2", "Quayside")]
+    assert [r["term"] for r in triage.rank(items)] == ["Quayside", "Pier 4"]
+    assert [r["term"] for r in triage.rank(items[::-1])] == ["Quayside", "Pier 4"]
 
 
 def test_one_kind_takes_at_most_half_while_others_wait_and_fills_otherwise():
@@ -148,7 +170,10 @@ def test_a_removed_entity_never_appears_or_gives_a_reason():
 
 def test_each_result_carries_what_the_app_shows():
     (r,) = triage.rank([_c("c:1", "a", 2)])
-    assert set(r) == {"rid", "kind", "title", "note", "reason"}
+    assert set(r) == {"rid", "rids", "kind", "title", "note", "reason"}
+    assert r["rids"] == ["c:1"]
+    (a,) = triage.rank([_alert("a:1", "Quayside")])
+    assert set(a) == {"rid", "rids", "kind", "title", "note", "reason", "term", "documents"}
 
 
 # ── graph inputs ───────────────────────────────────────────────────────────────────────────────
@@ -172,18 +197,47 @@ def test_graph_inputs_count_neighbours_and_main_subjects():
 
 def test_groups_split_judgement_from_tidy_up():
     counts = {"contradictions": 3, "leads": 4, "alerts": 2, "disputed": 1,
-              "near_duplicates": 5, "possible_same": 6, "incoming": 99}
-    assert triage.groups(counts) == {"judgement": 10, "tidy_up": 11}
+              "near_duplicates": 5, "possible_same": 6, "requests": 7, "incoming": 99}
+    # Document requests are tidy-up too (D328).
+    assert triage.groups(counts) == {"judgement": 10, "tidy_up": 18}
     assert triage.groups({}) == {"judgement": 0, "tidy_up": 0}
 
 
 def test_the_overview_summary_carries_both_groups_and_the_slice(rich_vault):
     s = call("vault.summary", vault=str(rich_vault))
     assert s["judgement"] == s["contradictions"] + s["leads"] + s["alerts"] + s["verification"]["disputed"]
-    assert s["tidy_up"] == s["near_duplicates"] + s["possible_same"]
+    assert s["requests"] == 1
+    assert s["tidy_up"] == s["near_duplicates"] + s["possible_same"] + s["requests"]
     assert s["start_here"] and all(i["kind"] in triage.JUDGEMENT for i in s["start_here"])
     assert all(i["reason"] for i in s["start_here"])
     assert s["since_review"] is None                     # Review never opened
+    assert s["summary_line"] is None                     # and no batch recorded what it added
+
+
+# ── the Overview's one line on what is new ─────────────────────────────────────────────────────
+
+def _added(**kw):
+    return {k: kw.get(k, 0) for k in triage.REVIEW_KINDS}
+
+
+def test_before_the_first_visit_the_line_is_what_the_latest_batch_added():
+    batch = {"briefing": "b", "at": "2026-05-01T10:00:00", "added": _added(leads=2)}
+    assert triage.summary_line(batch, None) == {"kind": "batch", "at": "2026-05-01T10:00:00",
+                                                "added": _added(leads=2)}
+
+
+def test_after_a_visit_the_line_is_what_is_new_since_and_never_the_batch():
+    batch = {"briefing": "b", "at": "2026-05-01T10:00:00", "added": _added(leads=2)}
+    since = {"since": "2026-04-30T09:00:00", "added": _added(leads=1, alerts=1)}
+    assert triage.summary_line(batch, since) == {"kind": "since", "at": "2026-04-30T09:00:00",
+                                                 "added": _added(leads=1, alerts=1)}
+    # Nothing new since the visit: no line, rather than the batch's.
+    assert triage.summary_line(batch, {"since": "x", "added": _added()}) is None
+
+
+def test_no_line_when_nothing_was_added_or_recorded():
+    assert triage.summary_line(None, None) is None
+    assert triage.summary_line({"briefing": "b", "at": None, "added": _added()}, None) is None
 
 
 # ── items: the inputs Review attaches ─────────────────────────────────────────────────────────

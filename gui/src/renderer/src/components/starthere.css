@@ -50,6 +50,11 @@
 .sh-item .t b {
   font-weight: 600;
 }
+.sh-item .docs {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
 .sh-item .why {
   font-size: var(--fs-xs);
   color: var(--text-3);

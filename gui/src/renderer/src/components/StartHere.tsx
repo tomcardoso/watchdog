@@ -1,5 +1,6 @@
 // Start here (D327): the short ranked slice of Review items to look at first, each with the one
 // line on why it is there. The ranking is done by the engine (`triage.rank`); this only shows it.
+// A watch-list term is one item, with the documents it was found in (D328).
 
 import { ArrowRight, Bell, Lightbulb, Swords } from 'lucide-react'
 import type { ReviewKind, StartHereItem } from '@shared/api'
@@ -33,6 +34,12 @@ export function describeAdded(added: Partial<Record<ReviewKind, number>>): strin
   return joinList(judgement) + (tidyText ? `, plus ${tidyText}` : '')
 }
 
+/** A watch-list term's documents, by name: the first few, then how many more. */
+function listDocs(names: string[], shown = 4): string {
+  if (names.length <= shown) return joinList(names)
+  return `${names.slice(0, shown).join(', ')} and ${names.length - shown} more`
+}
+
 export function StartHereList({ items, onPick, compact }: { items: StartHereItem[]; onPick: (item: StartHereItem) => void; compact?: boolean }) {
   return (
     <ol className={'sh-list' + (compact ? ' compact' : '')}>
@@ -52,7 +59,8 @@ export function StartHereList({ items, onPick, compact }: { items: StartHereItem
                   <b>{head}</b>
                   {tail && <span className="muted"> — {tail.replace(/`/g, '')}</span>}
                 </span>
-                <span className="why">{it.reason}</span>
+                {it.documents && it.documents.length > 0 && <span className="docs">{listDocs(it.documents)}</span>}
+                {it.reason && <span className="why">{it.reason}</span>}
               </span>
               <ArrowRight className="go" />
             </button>

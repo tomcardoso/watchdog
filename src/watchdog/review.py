@@ -136,6 +136,7 @@ def _alerts(vault: Path, resolved: frozenset[str]) -> list[dict]:
                 title = f"`{term}` in {name}" if term else name
                 current = seen[rid] = _item("alerts", rid, title, [], note)
                 current["term"] = term
+                current["document"] = name
                 known = _KNOWN_ENTITY.search(m.group("rest") or "")
                 current["entity"] = known.group("id") if known else None
                 current["doc_count"] = 1
@@ -212,6 +213,24 @@ def open_items(vault: Path, kinds=KINDS) -> list[dict]:
             out += same_entities(vault, resolved)
         else:
             out += duplicates(vault, resolved)
+    return out
+
+
+# A possible duplicate's two outcomes (D328), recorded as the label of its resolution. "These are
+# copies" keeps the document flagged as a copy; "Different documents" clears the flag in the app.
+# Neither changes the registry, so bringing the item back restores the flag. A duplicate handled
+# before D328 (label "review") reads as copies, which is what marking it handled meant then.
+COPIES, DIFFERENT = "copies", "different"
+LABELS = ("review", COPIES, DIFFERENT)
+
+
+def duplicate_verdicts(vault: Path) -> dict[str, str]:
+    """`{sha256[:12]: "copies" | "different"}` for every handled possible duplicate."""
+    out = {}
+    for rid, meta in resolutions.load(vault).get("resolved", {}).items():
+        if rid.startswith("duplicate:"):
+            label = meta.get("label") if isinstance(meta, dict) else None
+            out[rid.split(":", 1)[1]] = DIFFERENT if label == DIFFERENT else COPIES
     return out
 
 

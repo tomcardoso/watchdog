@@ -84,6 +84,8 @@ def summary(vault: str) -> dict:
     from watchdog.review import open_items
     review_items = open_items(v, triage.REVIEW_KINDS)
     open_now = triage.ids_by_kind(review_items)
+    batch_added = triage.batch_delta(v, latest)
+    since = triage.new_since(v, triage.last_opened(v), open_now)
     briefing = None
     if latest is not None:
         briefing = {"path": f"briefings/{latest.name}", "name": latest.stem,
@@ -98,6 +100,7 @@ def summary(vault: str) -> dict:
         "near_duplicates": s["near_duplicates"],
         "possible_same": s["possible_same"],
         "alerts": s["alerts"],
+        "requests": s["requests"],
         "incoming": s["incoming"],
         "awaiting_dig": s["awaiting_dig"],
         "awaiting_bark": s["awaiting_bark"],
@@ -120,8 +123,9 @@ def summary(vault: str) -> dict:
         # Start here, the two groups and what is new (D327).
         **triage.groups({**s, "disputed": verified.get("disputed") or 0}),
         "start_here": triage.start_here(v, [i for i in review_items if i["kind"] in triage.JUDGEMENT]),
-        "batch": triage.batch_delta(v, latest),
-        "since_review": triage.new_since(v, triage.last_opened(v), open_now),
+        "batch": batch_added,
+        "since_review": since,
+        "summary_line": triage.summary_line(batch_added, since),
     }
 
 
@@ -200,9 +204,10 @@ def _doc_entities(sha: str, rec: dict, ents: dict) -> list[dict]:
     return out
 
 
-def _duplicates(sha: str, rec: dict, docs: dict) -> list[dict]:
+def _duplicates(sha: str, rec: dict, docs: dict, verdicts: dict[str, str]) -> list[dict]:
     """Documents this one nearly duplicates, in either direction. A document's
-    `near_duplicate_of` is a link to the earlier document's note (or just a filename)."""
+    `near_duplicate_of` is a link to the earlier document's note (or just a filename). A match
+    the reporter called different documents is left out (D328)."""
     mine = vaultio.doc_note_stem(rec)
     found: dict[str, dict] = {}
 
@@ -210,7 +215,7 @@ def _duplicates(sha: str, rec: dict, docs: dict) -> list[dict]:
         found.setdefault(other_sha, {"sha": other_sha, "filename": other.get("filename") or other_sha[:12],
                                      "note": vaultio.doc_note_stem(other)})
 
-    link = rec.get("near_duplicate_of")
+    link = rec.get("near_duplicate_of") if verdicts.get(sha[:12]) != "different" else None
     target = vaultio.wikilink_target(link) if link else None
     for other_sha, other in docs.items():
         if other_sha == sha or not isinstance(other, dict):
@@ -221,7 +226,7 @@ def _duplicates(sha: str, rec: dict, docs: dict) -> list[dict]:
             elif not target and other.get("filename") == link:
                 add(other_sha, other)
         other_target = vaultio.wikilink_target(other.get("near_duplicate_of"))
-        if mine and other_target == mine:
+        if mine and other_target == mine and verdicts.get(other_sha[:12]) != "different":
             add(other_sha, other)
     return list(found.values())
 
@@ -245,7 +250,9 @@ def document(vault: str, sha: str) -> dict:
     docs, ents = vaultio.load_documents(v), vaultio.load_entities(v)
     full = vaultio.resolve_sha(docs, sha)
     rec = docs[full]
-    row = vaultio.document_row(v, full, rec)
+    from watchdog.review import duplicate_verdicts
+    verdicts = duplicate_verdicts(v)
+    row = vaultio.document_row(v, full, rec, verdicts)
     parsed = vaultio.parse_note_file(vaultio.note_file(v, rec.get("document_note")) or Path("/nonexistent"))
     extraction = vaultio.extracted(v, full)
     ex_doc = extraction.get("document") if isinstance(extraction.get("document"), dict) else {}
@@ -274,7 +281,7 @@ def document(vault: str, sha: str) -> dict:
         "extract_model": rec.get("extract_model") or None,
         "extract_effort": rec.get("extract_effort") or None,
         "record_skill_hash": rec.get("record_skill_hash") or None,
-        "duplicates": _duplicates(full, rec, docs),
+        "duplicates": _duplicates(full, rec, docs, verdicts),
         "positions_pages": text_positions.available_pages(v, full),
     }
 
@@ -985,10 +992,13 @@ def write_file(vault: str, path: str, text: str) -> dict:
 
 @method("vault.requests")
 def requests_(vault: str) -> dict:
+    """The open document requests, most-cited first, each with its source group's key, and the
+    groups (`requests.worklist`, D328)."""
     from watchdog.pipeline import requests as _requests
     from watchdog.pipeline import resolutions
 
     v = require_vault(vault)
+    rows, groups = _requests.worklist(_requests.open_requests(v))
     open_ = [{
         "rid": r["rid"],
         "type": r.get("type") or None,
@@ -999,10 +1009,12 @@ def requests_(vault: str) -> dict:
                       "note": s.get("document_note")}
                      for s in (r.get("sources") or []) if isinstance(s, dict)],
         "added": r.get("added") or None,
-    } for r in _requests.open_requests(v)]
+        "cite_count": r["cite_count"],
+        "source_key": r["source_key"],
+    } for r in rows]
     resolved = resolutions.resolved_ids(v)
     resolved_count = sum(1 for rid in _requests.load(v).get("requests", {}) if rid in resolved)
-    return {"open": open_, "resolved_count": resolved_count}
+    return {"open": open_, "groups": groups, "resolved_count": resolved_count}
 
 
 @method("vault.contextFiles")

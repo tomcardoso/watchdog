@@ -28,7 +28,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 - **Engine setup (D272).** While the app's engine is still installing its background phase, the
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
   then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
-  `requeue`) or `index` (`reindex`, `merge-entities`, `undo-merge`, `rebuild-notes`,
+  `requeue`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
   `recheck-contradictions`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
@@ -98,7 +98,7 @@ Summary = {               // overview.summary(), made JSON-safe
   name, path,
   briefing: {path, name, date}|null,
   headline|null,         // the latest briefing's status line, Markdown with fact links, from its sidecar (D285)
-  contradictions, leads, near_duplicates, possible_same, alerts, // waiting on you
+  contradictions, leads, near_duplicates, possible_same, alerts, requests, // waiting on you
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
   has_work: bool,                                              // overview.has_work()
@@ -107,18 +107,21 @@ Summary = {               // overview.summary(), made JSON-safe
   verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
   top_entities: EntityRow[],         // 8 with the most documents, none removed (D326)
-  judgement, tidy_up,    // contradictions + leads + alerts + disputed facts; near_duplicates + possible_same (D327)
+  judgement, tidy_up,    // contradictions + leads + alerts + disputed facts; near_duplicates + possible_same + requests (D327, D328)
   start_here: StartHereItem[],       // triage.rank: up to 7 judgement items, best first, none of a removed entity
   batch: {briefing, at, added: {[kind]: n}}|null,      // what the latest briefing's batch added to Review
-  since_review: {since, added: {[kind]: n}}|null       // open items batches added since Review was last opened
+  since_review: {since, added: {[kind]: n}}|null,      // open items batches added since Review was last opened
+  summary_line: {kind: "since"|"batch", at, added: {[kind]: n}}|null  // triage.summary_line: the Overview's one line (D328)
 }
 
-StartHereItem = {rid, kind, title, note|null, reason}  // reason: one line on why it is there
+StartHereItem = {rid, rids, kind, title, note|null, reason,   // reason: one line on why it is there
+                 term?, documents?}  // an alert item is a whole watch-list term: every hit's id in rids, the documents by name (D328)
 
 DocumentRow = {
   sha, filename, title|null, document_type|null, date_of_document|null,
   page_count|null, record_skill|null, ingested_at|null,
-  near_duplicate_of|null,            // display text of the matched document
+  near_duplicate_of|null,            // display text of the matched document; null once called different documents in Review (D328)
+  duplicate_verdict: "copies"|null,  // the reporter confirmed the match in Review (D328)
   media_kind: "audio"|"video"|null, duration_seconds|null,   // recordings (D273)
   note: "documents/<slug>"|null,     // registry document_note
   original: "morgue/…/file.pdf"|null,// registry morgue_path, vault-relative
@@ -159,7 +162,7 @@ EntityRow = {
 | `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
 | `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
-| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
+| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
 
 ```
@@ -324,6 +327,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `watch` | yes | — | runs until stopped | add |
 | `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
 | `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
+| `merge-entity-pairs` | yes | `{keep: string[], merge: string[]}` | `{merged, failed, skipped}`, each `[{keep, merge, keep_name, merge_name, error?}]`; exit 1 when any failed. One `merge-entities` merge per pair, in order; a failure does not stop the rest (D328) | index |
 | `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
 | `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
@@ -436,7 +440,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 |---|---|---|
 | `review.items` | `{vault, kinds?: string[], since?}` | `{items: ReviewItem[], counts: {[kind]: n}, start_here: StartHereItem[]}` — `review.open_items`, plus the ranked Start here slice (`triage.rank`, D327); with `since`, an item a batch added after that time carries `new: true` |
 | `review.opened` | `{vault}` | `{opened_at, previous}` — records that Review was opened now in `.watchdog/review-seen.json` (D327); `previous` is the time to pass as `since` |
-| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
+| `review.resolve` | `{vault, rids, label?}` | `{resolved: string[]}` — `resolutions.resolve(label=…)`, "review" by default; a possible duplicate takes "copies" or "different" (D328); report files are not edited (D294) |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |

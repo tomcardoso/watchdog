@@ -1,7 +1,8 @@
 // Review: the five queues (contradictions, leads, watch-list
 // hits, possible duplicates, possible same entities), what has been handled, the watch list
 // itself, open document requests and the merge log. Built for triage by keyboard: J/K to move,
-// H to mark handled, O to open, U to undo.
+// H to mark handled, O to open, U to undo. The tidy-up queues (possible duplicates, possible same
+// entities, requests) are tables worked in bulk, in TidyTab.tsx (D328).
 
 import {
   ArrowUpRight,
@@ -27,19 +28,17 @@ import {
   Zap
 } from 'lucide-react'
 import { Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DocumentRequest, DocumentRow, ReviewItem, ReviewKind, StartHereItem } from '@shared/api'
+import type { DocumentRequest, ReviewItem, ReviewKind, StartHereItem } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Kbd, Skeleton, Tabs, cx } from '@renderer/components/ui'
 import { HistoryButton } from '@renderer/components/FileHistory'
-import { DocThumb } from '@renderer/components/DocThumb'
 import { Markdown, useOpenWikilink } from '@renderer/components/Markdown'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
-import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
+import { fmtRelative, plural } from '@renderer/lib/format'
 import { StartHereList } from '@renderer/components/StartHere'
 import { VerificationTab } from './VerificationTab'
-import { MergeLogSection, SamePairView } from './MergesTab'
-import MergeModal from '../entities/MergeModal'
+import { Key, TidyTab, type TidyKind } from './TidyTab'
 import '../documents/documents.css'
 import './review.css'
 
@@ -76,42 +75,44 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
   duplicates: {
     label: 'Possible duplicates',
     icon: GitCompare,
-    blurb: 'Documents the pipeline judged to be near-copies of an earlier one. Compare them, then confirm they are the same record or that the difference matters.',
+    blurb: 'Documents the pipeline judged to be near-copies of an earlier one, one row each. Tick the ones you have checked and say whether they are copies of the same record or different documents.',
     empty: 'No possible duplicate documents are waiting.'
   },
   merges: {
     label: 'Possible same entities',
     icon: GitMerge,
-    blurb: 'Two records that may be the same person, organization or place, which Watchdog was not sure enough to merge: one name is an initialled or shortened form of the other, or the AI model compared their facts and was not confident. Merge them if they are one; mark them not the same and they will never be merged automatically.',
+    blurb: 'Pairs of records that may be the same person, organization or place, which Watchdog was not sure enough to merge: one name is an initialled or shortened form of the other, or the AI model compared their facts and was not confident. Tick the pairs that are one and merge them; tick the rest and mark them not the same, and they will never be merged automatically. Each merge can be undone under Recent merges.',
     empty: 'No possible same entities are waiting. Pairs appear here when two records share a name but nothing else ties them together.'
   },
   requests: {
     label: 'Document requests',
     icon: FileQuestion,
-    blurb: 'Records the documents refer to but the vault does not hold: what is missing, why it matters, and where it likely sits. Mark a request handled once you have filed it or decided not to pursue it.',
+    blurb: 'Records the documents refer to but the investigation does not hold: what is missing, why it matters, and where it likely sits. Grouped by where they are likely held, so one request letter can cover several. Copy them into an email or a spreadsheet, and mark them handled once filed or dropped.',
     empty: 'No open document requests.'
   }
 }
 
-interface QItem extends ReviewItem {
+export interface QItem extends ReviewItem {
   kind: ReviewKind
   request?: DocumentRequest
 }
 
 const nameFromTitle = (t: string) => t.split(' — ')[0].replace(/`/g, '')
 const stripMd = (p: string) => p.replace(/\.md$/, '')
+const TIDY: Tab[] = ['merges', 'duplicates', 'requests']
 
 // ── triage state shared by the four queues and requests ─────────────────────────────────────
 function useTriage(vault: string) {
   const [hidden, setHidden] = useState<Set<string>>(new Set())
   const [undoStack, setUndoStack] = useState<{ rids: string[]; label: string }[]>([])
 
+  // `verdict` is a possible duplicate's answer, recorded with its resolution (D328).
   const resolve = useCallback(
-    async (rids: string[], label: string) => {
+    async (rids: string[], label: string, verdict?: 'copies' | 'different') => {
       setHidden((h) => new Set([...h, ...rids]))
       setUndoStack((s) => [...s, { rids, label }])
       try {
-        await call('review.resolve', { vault, rids })
+        await call('review.resolve', verdict ? { vault, rids, label: verdict } : { vault, rids })
         invalidate('review.', 'vault.summary', 'vault.requests', 'vault.entity')
       } catch (e) {
         setHidden((h) => {
@@ -147,7 +148,7 @@ function useTriage(vault: string) {
 
   return { hidden, resolve, undo, lastUndo: undoStack[undoStack.length - 1] ?? null, canUndo: undoStack.length > 0 }
 }
-type Triage = ReturnType<typeof useTriage>
+export type Triage = ReturnType<typeof useTriage>
 
 // When Review was last opened, before this visit (D327). Recorded once per visit; a second call
 // within a few seconds (React's development double mount) reuses the first answer.
@@ -230,9 +231,9 @@ export default function ReviewView() {
   // Disputed facts need judgement too (D327); they are listed under Verification, not a queue.
   const summary = useRpc('vault.summary', vault ? { vault } : null, { staleTime: 20_000 })
   const judgement = counts.contradictions + counts.leads + counts.alerts + (summary.data?.verification?.disputed ?? 0)
-  const tidy = counts.duplicates + counts.merges
+  const tidy = counts.duplicates + counts.merges + counts.requests
   const total = judgement + tidy
-  const startHere = (items.data?.start_here ?? []).filter((i) => !triage.hidden.has(i.rid))
+  const startHere = (items.data?.start_here ?? []).filter((i) => !(i.rids?.length ? i.rids : [i.rid]).every((r) => triage.hidden.has(r)))
   const [focusReq, setFocusReq] = useState<{ rid: string; n: number } | null>(focusRid ? { rid: focusRid, n: 0 } : null)
   useEffect(() => {
     if (focusRid) setFocusReq((f) => ({ rid: focusRid, n: (f?.n ?? 0) + 1 }))
@@ -241,7 +242,8 @@ export default function ReviewView() {
     chosen.current = true
     setTab(it.kind)
     setFocusReq((f) => ({ rid: it.rid, n: (f?.n ?? 0) + 1 }))
-    navigate({ view: 'review', kind: it.kind }, { replace: true })
+    // A watch-list term's item opens Alerts showing that term's hits (D328).
+    navigate(it.kind === 'alerts' && it.term ? { view: 'review', kind: 'alerts', filter: it.term } : { view: 'review', kind: it.kind }, { replace: true })
   }
   const queueTab = tab !== 'verification' && tab !== 'handled' && tab !== 'watchlist'
 
@@ -304,29 +306,46 @@ export default function ReviewView() {
                 </Button>
               </div>
             )}
-          <QueueTab
-            key={tab}
-            kind={tab}
-            focusRequest={focusReq}
-            triage={triage}
-            counts={counts}
-            go={go}
-            loading={tab === 'requests' ? requests.isLoading : items.isLoading}
-            error={tab === 'requests' ? requests.error : items.error}
-            retry={() => void (tab === 'requests' ? requests.refetch() : items.refetch())}
-            items={
-              tab === 'requests'
-                ? (requests.data?.open ?? []).map<QItem>((r) => ({
-                    kind: 'leads',
-                    rid: r.rid,
-                    title: r.what,
-                    detail: [r.why, r.likely_source ? `Likely source: ${r.likely_source}` : ''].filter(Boolean) as string[],
-                    note: null,
-                    request: r
-                  }))
-                : (items.data?.items ?? []).filter((i) => i.kind === tab && (tab !== 'alerts' || !termFilter || i.term === termFilter))
-            }
-          />
+          {TIDY.includes(tab) ? (
+            <TidyTab
+              key={tab}
+              kind={tab as TidyKind}
+              blurb={KIND_META[tab as TidyKind].blurb}
+              empty={KIND_META[tab as TidyKind].empty}
+              focusRequest={focusReq}
+              triage={triage}
+              groups={requests.data?.groups}
+              loading={tab === 'requests' ? requests.isLoading : items.isLoading}
+              error={tab === 'requests' ? requests.error : items.error}
+              retry={() => void (tab === 'requests' ? requests.refetch() : items.refetch())}
+              onEmpty={<GoNext kind={tab as QueueKind} counts={counts} go={go} />}
+              items={
+                tab === 'requests'
+                  ? (requests.data?.open ?? []).map<QItem>((r) => ({
+                      kind: 'leads',
+                      rid: r.rid,
+                      title: r.what,
+                      detail: [r.why, r.likely_source ? `Likely source: ${r.likely_source}` : ''].filter(Boolean) as string[],
+                      note: null,
+                      request: r
+                    }))
+                  : (items.data?.items ?? []).filter((i) => i.kind === tab)
+              }
+            />
+          ) : (
+            <QueueTab
+              key={tab}
+              kind={tab as QueueKind}
+              focusRequest={focusReq}
+              triage={triage}
+              counts={counts}
+              go={go}
+              loading={items.isLoading}
+              error={items.error}
+              retry={() => void items.refetch()}
+              items={(items.data?.items ?? []).filter((i) => i.kind === tab && (tab !== 'alerts' || !termFilter || i.term === termFilter))}
+            />
+          )}
           </>
         )}
       </div>
@@ -358,7 +377,6 @@ function StartHerePanel({ items, onPick }: { items: StartHereItem[]; onPick: (it
 }
 
 function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focusRequest }: { kind: QueueKind; items: QItem[]; triage: Triage; counts: Record<QueueKind, number>; go: (t: Tab) => void; loading: boolean; error: unknown; retry: () => void; focusRequest?: { rid: string; n: number } | null }) {
-  const vault = useVault()
   const openLink = useOpenWikilink()
   const meta = KIND_META[kind]
   const visible = items.filter((i) => !triage.hidden.has(i.rid))
@@ -372,9 +390,6 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
   const [handledHere, setHandledHere] = useState(0)
   const [sweeping, setSweeping] = useState(false)
   const flashTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-  const docs = useRpc('vault.documents', kind === 'duplicates' && vault ? { vault } : null)
-  const [mergeFor, setMergeFor] = useState<{ keep: string; merge: string } | null>(null)
-  const handledWord = kind === 'merges' ? 'marked not the same' : 'marked handled'
 
   const liveItems = visible.filter((i) => !leaving.has(i.rid))
   const focusId = focus && visible.some((i) => i.rid === focus) ? focus : liveItems[0]?.rid ?? null
@@ -400,7 +415,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
     setSelected(new Set())
     setLeaving((l) => new Set([...l, ...rids]))
     setHandledHere((n) => n + rids.length)
-    say(rids.length === 1 ? (kind === 'merges' ? 'Marked not the same' : 'Marked handled') : `${plural(rids.length, 'item')} ${handledWord}`, true)
+    say(rids.length === 1 ? 'Marked handled' : `${plural(rids.length, 'item')} marked handled`, true)
     // Let the card finish collapsing, then drop it from the list and write the resolution.
     setTimeout(() => {
       void triage.resolve(rids, kind)
@@ -489,7 +504,6 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
     }
   }
 
-  const otherWithItems = (['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests'] as QueueKind[]).filter((k) => k !== kind && counts[k] > 0)
 
   return (
     <div className="rv-queue">
@@ -497,12 +511,6 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
         <meta.icon />
         <p>{meta.blurb}</p>
       </div>
-
-      {kind === 'duplicates' && (
-        <div className="rv-note faint">
-          Marking a pair handled only hides it from this list and from reports. Both documents stay in the vault, and the later one is still flagged as a near-duplicate on its own page and in Documents.
-        </div>
-      )}
 
       {kind === 'leads' && (
         <div className="rv-toolbar">
@@ -539,13 +547,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
         <Empty
           icon={CheckCircle2}
           title={handledHere ? `All clear — ${plural(handledHere, 'item')} handled` : 'Nothing to review here'}
-          action={
-            otherWithItems.length ? (
-              <Button variant="primary" iconRight={ArrowUpRight} onClick={() => go(otherWithItems[0])}>
-                Go to {KIND_META[otherWithItems[0]].label.toLowerCase()} ({counts[otherWithItems[0]]})
-              </Button>
-            ) : undefined
-          }
+          action={<GoNext kind={kind} counts={counts} go={go} />}
         >
           {handledHere ? 'Handled items are listed under Handled, where any of them can be brought back.' : meta.empty}
         </Empty>
@@ -573,16 +575,9 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
                 say('Kept open')
               }}
               onOpen={() => openItem(it)}
-              onMerge={it.pair ? () => setMergeFor({ keep: it.pair!.a.id, merge: it.pair!.b.id }) : undefined}
-              docs={docs.data}
             />
           ))}
         </div>
-      )}
-
-      {kind === 'merges' && <MergeLogSection />}
-      {kind === 'merges' && (
-        <MergeModal open={!!mergeFor} onClose={() => setMergeFor(null)} initialKeep={mergeFor?.keep} initialMerge={mergeFor?.merge} />
       )}
 
       {/* the legend doubles as the bulk bar and the undo snackbar */}
@@ -592,7 +587,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
             <b className="tnum">{selected.size}</b>
             <span className="muted">selected</span>
             <Button size="sm" variant="primary" icon={Check} onClick={() => handle([...selected])}>
-              {kind === 'merges' ? `Mark ${selected.size} not the same` : `Mark ${selected.size} handled`}
+              {`Mark ${selected.size} handled`}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
               Clear
@@ -615,7 +610,7 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
         ) : (
           <>
             <Key k="J" k2="K" label="move" />
-            <Key k="H" label={kind === 'merges' ? 'not the same' : 'mark handled'} />
+            <Key k="H" label="mark handled" />
             <Key k="O" label="open" />
             <Key k="S" label="keep open, next" />
             <Key k="X" label="select" />
@@ -629,13 +624,14 @@ function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focu
   )
 }
 
-function Key({ k, k2, label }: { k: string; k2?: string; label: string }) {
+/** The way on from an emptied queue: the first other queue with something in it. */
+function GoNext({ kind, counts, go }: { kind: QueueKind; counts: Record<QueueKind, number>; go: (t: Tab) => void }) {
+  const next = (['contradictions', 'leads', 'alerts', 'duplicates', 'merges', 'requests'] as QueueKind[]).find((k) => k !== kind && counts[k] > 0)
+  if (!next) return null
   return (
-    <span className="rv-key">
-      <Kbd>{k}</Kbd>
-      {k2 && <Kbd>{k2}</Kbd>}
-      <span>{label}</span>
-    </span>
+    <Button variant="primary" iconRight={ArrowUpRight} onClick={() => go(next)}>
+      Go to {KIND_META[next].label.toLowerCase()} ({counts[next]})
+    </Button>
   )
 }
 
@@ -652,7 +648,7 @@ function renderTitle(title: string): ReactNode {
   )
 }
 
-function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHandle, onKeep, onOpen, onMerge, docs }: {
+function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHandle, onKeep, onOpen }: {
   item: QItem
   kind: QueueKind
   focused: boolean
@@ -663,8 +659,6 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
   onHandle: () => void
   onKeep: () => void
   onOpen: () => void
-  onMerge?: () => void
-  docs?: DocumentRow[]
 }) {
   const openLink = useOpenWikilink()
   const name = nameFromTitle(item.title)
@@ -684,9 +678,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
           {item.new && <span className="rv-new" data-tip="Added by a batch since you last opened Review">New</span>}
           {renderTitle(item.title)}
         </div>
-        {kind === 'duplicates' && <DuplicatePair item={item} docs={docs} />}
-        {kind === 'merges' && item.pair && <SamePairView pair={item.pair} expanded={focused} />}
-        {item.detail.length > 0 && kind !== 'duplicates' && (
+        {item.detail.length > 0 && (
           <div className={cx('rv-detail', !focused && 'clamped')}>
             {item.detail.length > 1 || /^\s*[-*]/.test(item.detail[0]) ? <Markdown compact text={item.detail.map((l) => (/^\s*([-*]|\d+\.)\s/.test(l) ? l : `- ${l}`)).join('\n')} /> : <Markdown compact text={item.detail[0]} />}
           </div>
@@ -705,7 +697,7 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
             {!focused && cited.length > 3 && <span className="faint">+{cited.length - 3}</span>}
           </div>
         )}
-        {item.note && kind !== 'merges' && (
+        {item.note && (
           <button
             className="rv-notelink"
             onClick={(e) => {
@@ -719,18 +711,13 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
         )}
         {focused && (
           <div className="rv-actions">
-            {onMerge && (
-              <Button size="sm" variant="primary" icon={GitMerge} onClick={onMerge}>
-                Merge…
-              </Button>
-            )}
-            <Button size="sm" variant={onMerge ? 'default' : 'primary'} icon={Check} onClick={onHandle}>
-              {kind === 'merges' ? 'Not the same' : 'Mark handled'} <Kbd>H</Kbd>
+            <Button size="sm" variant="primary" icon={Check} onClick={onHandle}>
+              Mark handled <Kbd>H</Kbd>
             </Button>
             <Button size="sm" onClick={onKeep}>
               Keep open
             </Button>
-            {item.note && kind !== 'merges' && (
+            {item.note && (
               <Button size="sm" iconRight={ArrowUpRight} onClick={onOpen}>
                 Open <Kbd>O</Kbd>
               </Button>
@@ -780,49 +767,8 @@ async function copyLeads(items: QItem[]) {
   }
 }
 
-function DuplicatePair({ item, docs }: { item: QItem; docs?: DocumentRow[] }) {
-  const prefix = item.rid.replace(/^duplicate:/, '')
-  const mine = docs?.find((d) => d.sha.startsWith(prefix))
-  const link = mine?.near_duplicate_of ?? null
-  const target = link ? stripMd(link.replace(/^\[\[|\]\]$/g, '').split('|')[0]) : null
-  const linkText = link?.replace(/^\[\[|\]\]$/g, '').split('|').pop() ?? null
-  const stem = (d: DocumentRow) => stripMd(d.note ?? '').replace(/^.*?(documents\/)/, '$1')
-  const other = docs?.find((d) => d.sha !== mine?.sha && ((target && stem(d) === target) || d.filename === linkText || d.filename === link))
-  return (
-    <>
-      <div className="rv-pair">
-        <PairDoc label="This document" doc={mine} />
-        <div className="rv-pair-vs">
-          <GitCompare />
-        </div>
-        <PairDoc label="Closely matches" doc={other} fallback={item.detail[0]} />
-      </div>
-      {item.detail[0] && <div className="rv-detail faint">{item.detail[0]}</div>}
-    </>
-  )
-}
-
-function PairDoc({ label, doc, fallback }: { label: string; doc?: DocumentRow; fallback?: string }) {
-  if (!doc) return <div className="rv-pairdoc ghost"><span className="eyebrow">{label}</span><span className="faint">{fallback ? 'Not found in the library' : 'Loading…'}</span></div>
-  return (
-    <button
-      className="rv-pairdoc"
-      onClick={(e) => {
-        e.stopPropagation()
-        navigate({ view: 'document', sha: doc.sha })
-      }}
-    >
-      <DocThumb sha={doc.sha} ext={doc.ext} original={doc.original} title={doc.title ?? doc.filename} summary={doc.summary} width={140} className="rv-thumb" />
-      <div className="rv-pairdoc-text">
-        <span className="eyebrow">{label}</span>
-        <span className="rv-pairdoc-title clamp-2">{doc.title ?? doc.filename}</span>
-        <span className="faint rv-pairdoc-meta">
-          {[doc.page_count ? plural(doc.page_count, 'page') : '', fmtDate(doc.date_of_document)].filter(Boolean).join(' · ')}
-        </span>
-      </div>
-    </button>
-  )
-}
+// How an item was handled, when the label says more than "handled" (D328).
+const HANDLED_AS: Record<string, string> = { copies: 'These are copies', different: 'Different documents' }
 
 // ── handled ──────────────────────────────────────────────────────────────────────────────────
 function HandledTab({ vault }: { vault: string }) {
@@ -872,7 +818,7 @@ function HandledTab({ vault }: { vault: string }) {
                     <div className="truncate rv-hlabel">{i.rid}</div>
                     <div className="faint rv-hmeta">
                       {i.resolved_at ? fmtRelative(i.resolved_at) : 'Handled'}
-                      {i.label ? ` · via ${i.label}` : ''}
+                      {HANDLED_AS[i.label] ? ` · ${HANDLED_AS[i.label]}` : i.label ? ` · via ${i.label}` : ''}
                     </div>
                   </div>
                   <Button size="sm" icon={Undo2} loading={busy === i.rid} onClick={() => void bringBack(i.rid)}>

@@ -55,11 +55,11 @@ function compare(a: DocumentRow, b: DocumentRow, key: SortKey, dir: 1 | -1): num
   return r * dir
 }
 
-function DupBadge() {
+function DupBadge({ copy }: { copy?: boolean }) {
   return (
-    <span className="docs-card-dup" data-tip="Looks like another document in this vault" data-tip-pos="bottom">
+    <span className="docs-card-dup" data-tip={copy ? 'You marked this a copy of another document in Review' : 'Looks like another document in this vault'} data-tip-pos="bottom">
       <Copy />
-      Possible duplicate
+      {copy ? 'Copy' : 'Possible duplicate'}
     </span>
   )
 }
@@ -70,7 +70,7 @@ function Card({ d }: { d: DocumentRow }) {
     <button className="docs-card" onClick={open} title={d.filename}>
       <div className="docs-card-thumb">
         <DocThumb sha={d.sha} ext={d.ext} original={d.original} title={titleOf(d)} summary={d.summary} />
-        {d.near_duplicate_of && <DupBadge />}
+        {d.near_duplicate_of && <DupBadge copy={d.duplicate_verdict === 'copies'} />}
         {d.media_kind ? (
           <span className="docs-card-pages">{fmtDuration(d.duration_seconds)}</span>
         ) : (
@@ -95,7 +95,7 @@ function ListRow({ d }: { d: DocumentRow }) {
         <span className="t truncate">{titleOf(d)}</span>
         <span className="f truncate">
           {d.title ? d.filename : d.ext.toUpperCase()}
-          {d.near_duplicate_of ? ' · possible duplicate' : ''}
+          {d.near_duplicate_of ? (d.duplicate_verdict === 'copies' ? ' · copy' : ' · possible duplicate') : ''}
         </span>
       </div>
       <span className="cell truncate">{d.document_type ?? ''}</span>

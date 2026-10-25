@@ -150,7 +150,7 @@ export default function DocumentView() {
                 <><span className="dot">·</span><span>{plural(d.page_count, 'page')}</span></>
               ) : null}
               {d.title && <><span className="dot">·</span><span className="mono truncate" style={{ maxWidth: 260 }}>{d.filename}</span></>}
-              {d.near_duplicate_of && <Badge tone="warning" tip={d.near_duplicate_of}>possible duplicate</Badge>}
+              {d.near_duplicate_of && <Badge tone="warning" tip={d.near_duplicate_of}>{d.duplicate_verdict === 'copies' ? 'copy' : 'possible duplicate'}</Badge>}
             </div>
           </div>
           <div className="docv-actions">

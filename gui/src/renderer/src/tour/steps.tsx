@@ -21,7 +21,7 @@ export interface TourStep {
 }
 
 const q = (s: string) => `“${s}”`
-const rid = (r: string) => `.rv-card[data-rid="${CSS.escape(r)}"]`
+const rid = (r: string) => `.rv-card[data-rid="${CSS.escape(r)}"], .rv-tt-row[data-rid="${CSS.escape(r)}"]`
 const subject = (title: string) => title.split(' — ').slice(1).join(' — ') || title
 const fact = (id: string) => `[data-fact-id="${CSS.escape(id)}"]`
 
@@ -95,7 +95,7 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
       body: () => (
         <>
           <p>When documents are added, each one is compared with those already here. This revised news release is almost the same as the original, so it is flagged as a possible duplicate.</p>
-          <p>Compare the two and decide whether the difference matters. Marking the pair handled keeps both documents.</p>
+          <p>Compare the two, then say whether they are copies of the same record or different documents. Neither answer deletes anything.</p>
         </>
       ),
       route: () => ({ view: 'review', kind: 'duplicates' }),

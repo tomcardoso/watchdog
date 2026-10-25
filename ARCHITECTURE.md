@@ -432,12 +432,18 @@ registry, keyed for idempotent replay (D67).
   (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
   function of the items and registry-derived inputs (watch-list terms, relationship-graph degree,
   `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
-  into judgement and tidy-up (duplicates, possible same). After the lead sweep, a run records the
+  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watch-list
+  term's alerts are one Start here item. The tidy-up queues are tables worked in bulk (D328): ticked
+  possible same entities are merged by `merge-entity-pairs`, one `merge-entities` merge per pair; a
+  possible duplicate is resolved with the label `copies` or `different`, and `different` hides the
+  `near_duplicate_of` flag in the app at read time, the registry unchanged. After the lead sweep, a run records the
   open Review ids in its briefing's sidecar (`review.open`) and the ones the previous briefing's
   record lacked (`review.added`), which the Overview shows as what the batch added; Review's
-  last-opened time, per investigation, is `.watchdog/review-seen.json`. Document
+  last-opened time, per investigation, is `.watchdog/review-seen.json`; the Overview shows one line
+  from either, never both (`triage.summary_line`). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
-  paraphrases, and `requests.md` is re-rendered (D111, D159).
+  paraphrases, and `requests.md` is re-rendered (D111, D159). Review groups them by the holder their
+  free-text `likely_source` names (`requests.source_group`, deterministic, D328).
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
   `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
@@ -637,7 +643,10 @@ line names; a file's newest entry is never removed. App-only (I10).
 **Merging entities (D54).** The `merge-entities` operation (`keep`, `merge`) unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
 what it changes. The merged id's facts reach the survivor through the merge log (§7). It keeps one
-`synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one.
+`synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one. Review's **Merge ticked** runs
+`merge-entity-pairs`, which calls the same merge once per pair, keeps going past a failed pair and
+reports each outcome; a pair whose record an earlier pair merged away is followed to its survivor
+(D328).
 
 **The merge log (D279).** `registry/merges.json` (`schema_version` 1) records every merge — keep
 and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the

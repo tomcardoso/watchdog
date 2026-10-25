@@ -8,7 +8,7 @@ Everything here is derived from the registry and the app's own files, with no mo
   those inputs from a vault. Signals, highest first:
 
     1. the item is tied to a watch-list term (an alert always is; another item when its entity's
-       name or an alias matches a term);
+       name or an alias matches a term); a term's alerts are one item (D328);
     2. it involves one of the most connected entities (degree in the relationship graph) or one
        that is the main subject (`morgue_entity_id`) of several documents;
     3. it is a contradiction between documents, rather than within one;
@@ -17,8 +17,8 @@ Everything here is derived from the registry and the app's own files, with no mo
   A removed entity (D326) never appears, as an item's own entity or as the reason for another.
 
 * **Judgement and tidy-up** (`groups`): contradictions, leads, alerts and disputed facts need the
-  reporter's judgement; possible duplicate documents and possible same entities are tidy-up, a
-  quick yes or no each. The Overview's headline number counts judgement only.
+  reporter's judgement; possible duplicate documents, possible same entities and document requests
+  are tidy-up, worked through in bulk (D328). The Overview's headline number counts judgement only.
 
 * **What a batch added** (`record_batch`, `batch_delta`): after a run writes its briefing, the
   open Review items are recorded in the briefing's sidecar (`.watchdog/briefings/<ts>.json`,
@@ -26,7 +26,8 @@ Everything here is derived from the registry and the app's own files, with no mo
 
 * **New since Review was last opened** (`mark_opened`, `last_opened`, `new_since`): the time the
   reporter last opened Review, per investigation, in `.watchdog/review-seen.json`. It is the app's
-  own state: no model input or registry reader looks at it.
+  own state: no model input or registry reader looks at it. The Overview shows one of the two,
+  never both (`summary_line`, D328).
 """
 
 from __future__ import annotations
@@ -80,6 +81,40 @@ def _display(eid: str, names: dict[str, list[str]]) -> str:
     return (names.get(eid) or [eid])[0]
 
 
+def group_alerts(items: list[dict], hidden: frozenset[str] | set[str] = frozenset()) -> list[dict]:
+    """Pure: `items` with the alerts folded into one item per watch-list term (D328), in the
+    place of the term's first alert. Each group is an alert item with `term`, `rids` (every hit,
+    one per document), `documents` (their names, sorted), `doc_count`, `related` (the known
+    entities the hits matched) and the title "<term>: N new documents"; its `rid` is its first
+    hit's. An alert whose entity is removed is dropped first. Other items pass through."""
+    out: list[dict] = []
+    by_term: dict[str, list[dict]] = {}
+    for item in items:
+        if item.get("kind") != "alerts" or not item.get("term"):
+            out.append(item)
+            continue
+        if item.get("entity") in hidden:
+            continue
+        if item["term"] not in by_term:
+            by_term[item["term"]] = []
+            out.append({"kind": "alerts", "term": item["term"]})   # a placeholder, filled below
+        by_term[item["term"]].append(item)
+    for slot in out:
+        hits = by_term.get(slot.get("term")) if "rid" not in slot else None
+        if hits is None:
+            continue
+        hits = sorted(hits, key=lambda h: ((h.get("document") or h.get("title") or "").casefold(),
+                                           h.get("rid") or ""))
+        n = len(hits)
+        related = sorted({h["entity"] for h in hits if h.get("entity")})
+        slot.update(rid=hits[0]["rid"], rids=[h["rid"] for h in hits],
+                    documents=[h.get("document") or h.get("title") or "" for h in hits],
+                    title=f"{slot['term']}: {n} new document{'s' if n != 1 else ''}",
+                    note=hits[0].get("note") if n == 1 else None, entity=None, related=related,
+                    doc_count=n)
+    return out
+
+
 def _signals(item: dict, *, terms, names, degree, central, subjects_set, subjects, hidden) -> dict:
     ids = [e for e in [item.get("entity"), *(item.get("related") or [])] if e and e not in hidden]
     kind = item.get("kind")
@@ -88,8 +123,8 @@ def _signals(item: dict, *, terms, names, degree, central, subjects_set, subject
     hub = next((e for e in ids if e in central), None)
     subject = next((e for e in ids if e in subjects_set), None) if hub is None else None
     reasons: list[str] = []
-    if term:
-        reasons.append(f"On your watch list: “{term}”")
+    if term:   # an alert's title already names its term
+        reasons.append("On your watch list" if kind == "alerts" else f"On your watch list: “{term}”")
     if hub:
         reasons.append(f"Involves {_display(hub, names)}, one of the most connected entities")
     elif subject:
@@ -125,14 +160,16 @@ def rank(items: list[dict], *, terms: list[dict] = (), names: dict[str, list[str
     Items are ordered by the signals in the module docstring, then by the highest degree among
     their entities and their document count; remaining ties go by kind, title and id, so the
     same registry always gives the same slice whatever order the items came in. An item whose own
-    entity is removed (`hidden`) is left out, and a removed entity is never a reason. At most one
-    alert per watch-list term is taken, and no kind takes more than half the slice while items of
-    another kind are waiting. Each result is `{rid, kind, title, note, reason}`."""
+    entity is removed (`hidden`) is left out, and a removed entity is never a reason. The alerts
+    are first folded into one item per watch-list term (`group_alerts`), so a term takes one place
+    however many documents it was found in, and no kind takes more than half the slice while items
+    of another kind are waiting. Each result is `{rid, rids, kind, title, note, reason}`, and an
+    alert also `term` and `documents`."""
     names, degree, subjects = names or {}, degree or {}, subjects or {}
     central, subjects_set = central_entities(degree, subjects, hidden)
     order = {k: i for i, k in enumerate(JUDGEMENT)}
     scored = []
-    for item in items:
+    for item in group_alerts(items, hidden):
         if item.get("kind") not in order or item.get("entity") in hidden:
             continue
         s = _signals(item, terms=list(terms), names=names, degree=degree, central=central,
@@ -146,28 +183,29 @@ def rank(items: list[dict], *, terms: list[dict] = (), names: dict[str, list[str
     cap = max(1, int(limit * _KIND_SHARE + 0.5))
     picked: list[tuple[dict, dict]] = []
     per_kind: dict[str, int] = {}
-    terms_used: set[str] = set()
     deferred: list[tuple[dict, dict]] = []
     for s, item in scored:
         if len(picked) >= limit:
             break
-        if item["kind"] == "alerts" and item.get("term") in terms_used:
-            continue
         if per_kind.get(item["kind"], 0) >= cap:
             deferred.append((s, item))
             continue
         picked.append((s, item))
         per_kind[item["kind"]] = per_kind.get(item["kind"], 0) + 1
-        if item["kind"] == "alerts":
-            terms_used.add(item.get("term"))
     # Nothing else waiting: fill the slice from what the share kept back, still in rank order.
     for s, item in deferred:
         if len(picked) >= limit:
             break
         picked.append((s, item))
     picked.sort(key=lambda t: t[0]["pos"])
-    return [{"rid": i["rid"], "kind": i["kind"], "title": i.get("title") or "", "note": i.get("note"),
-             "reason": s["reason"]} for s, i in picked]
+    out = []
+    for s, i in picked:
+        row = {"rid": i["rid"], "rids": list(i.get("rids") or [i["rid"]]), "kind": i["kind"],
+               "title": i.get("title") or "", "note": i.get("note"), "reason": s["reason"]}
+        if i["kind"] == "alerts":
+            row.update(term=i.get("term"), documents=list(i.get("documents") or []))
+        out.append(row)
+    return out
 
 
 # ── Start here: reading the inputs from a vault ────────────────────────────────────────────────
@@ -219,10 +257,10 @@ def start_here(vault: Path, items: list[dict] | None = None, limit: int = SLICE)
 def groups(counts: dict) -> dict:
     """Pure: the Overview's two totals from its counts (the `overview.summary` keys plus
     `disputed`). Judgement: contradictions, leads, watch-list alerts, disputed facts. Tidy-up:
-    possible duplicate documents and possible same entities."""
+    possible duplicate documents, possible same entities and open document requests (D328)."""
     n = lambda k: int(counts.get(k) or 0)   # noqa: E731
     return {"judgement": n("contradictions") + n("leads") + n("alerts") + n("disputed"),
-            "tidy_up": n("near_duplicates") + n("possible_same")}
+            "tidy_up": n("near_duplicates") + n("possible_same") + n("requests")}
 
 
 # ── What a batch added ─────────────────────────────────────────────────────────────────────────
@@ -310,6 +348,22 @@ def batch_delta(vault: Path, briefing: Path | None) -> dict | None:
         return None
     return {"briefing": briefing.stem, "at": rec.get("at"),
             "added": {k: len(rec["added"].get(k) or []) for k in REVIEW_KINDS}}
+
+
+def summary_line(batch: dict | None, since_review: dict | None) -> dict | None:
+    """Pure: the Overview's one line on what is new (D328). Once Review has been opened
+    (`since_review` is not None), what is still open and new since then; before the first visit,
+    what the latest batch added. Never both. None when the chosen one has nothing to say: a visit
+    after which nothing new is open shows no line, rather than falling back to the batch."""
+    if since_review is not None:
+        added = since_review.get("added") or {}
+        if not any(added.values()):
+            return None
+        return {"kind": "since", "at": since_review.get("since"), "added": added}
+    added = (batch or {}).get("added") or {}
+    if not any(added.values()):
+        return None
+    return {"kind": "batch", "at": batch.get("at"), "added": added}
 
 
 # ── New since Review was last opened ───────────────────────────────────────────────────────────
