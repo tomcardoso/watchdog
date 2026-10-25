@@ -294,6 +294,10 @@ def build_reconcile_prompt(bundle: dict) -> str:
       answers by pair index, so it cannot invent an id. Only medium-confidence pairs reach here
       (D279): `reconcile.build_bundle` merges high-confidence ones in code and leaves low ones for
       the reporter. A same-name pair is flagged `same_name` and carries each side's facts.
+    * **SAME-NAME GROUPS** — records with the very same name and type, judged together rather than
+      pair by pair (#755): each group's members (a member may be several records already joined)
+      with their facts and roles; the model answers, by member number, which are one thing and
+      which it cannot rule out, and `reconcile.NameGroups` checks the answer.
     * **ENTITIES** — the contradiction question. Each recurring entity's facts from the stored
       extractions (D280), split into this batch's `new_facts` and the earlier `stored_facts`, each
       group filed under a `[[documents/<slug>|<title>]]` heading, each fact with its short id, page,
@@ -304,6 +308,8 @@ def build_reconcile_prompt(bundle: dict) -> str:
         f"{_text('reconcile')}\n\n"
         f"CANDIDATE PAIRS (possible duplicate entities — confirm or reject each):\n"
         f"{json.dumps(bundle.get('pairs', []), ensure_ascii=False)}\n\n"
+        f"SAME-NAME GROUPS (records sharing one name — say which are the same thing):\n"
+        f"{json.dumps(bundle.get('groups', []), ensure_ascii=False)}\n\n"
         f"ENTITIES (each with the facts recorded about it: this batch's new facts and the stored "
         f"facts from earlier documents, by source document):\n"
         f"{json.dumps(bundle.get('entities', []), ensure_ascii=False)}"

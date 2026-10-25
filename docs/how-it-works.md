@@ -50,6 +50,8 @@ Much of it is plain bookkeeping by ordinary software: gathering every fact about
 - When two people share a full name and nothing else, or a name is short or general, an AI model reads both records' facts side by side and merges them only if it is confident.
 - When one name is an initialled or shortened form of the other ("J. Smith" and "John Smith"), nothing merges them automatically: you decide, on the Merges tab in Review.
 
+A short name can turn up in dozens of documents, each time recorded on its own, because the name alone cannot say whether they mean one thing. The model reads all the records with that name together, up to 30 at a time, and says which of them are the same and which it cannot tell apart; those it cannot tell apart wait for you in Review. A larger set is read in parts, then the results of the parts are read together. Anything a run could not get to is compared again on the next run, and the run's output says how many.
+
 Every merge is written to a log you can read, and a pair you mark "not the same" is never merged automatically afterwards.
 
 The parts that need judgement go to an AI model:

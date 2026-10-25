@@ -307,8 +307,19 @@ every document's claims side by side:
   is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
   match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
-  names, at least one side touched this run, capped at 2,000 pairs, then routes each by tier.
-  `apply_merges` applies rule and model merges by what is already committed (D128): a staged-only
+  names, at least one side touched this run (or carried from the last run), then routes each by
+  tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
+  pairs. Every pair inside the set is classified in code: high pairs merge as rule merges, low ones
+  become "possible same" items each paired with the set's most-documented record, and records
+  joined by a medium pair form a group the model judges in one answer (`NameGroups`): per slice of
+  at most 30 members (each member's six facts and eight roles, as for a same-name pair), the sets
+  that are one thing, by member number, and the sets it cannot rule out (filed as "possible same").
+  Code validates each answer (rejected whole if malformed) and drops a set that would join a
+  conflicting identifier or a dismissed pair. A group of several slices gets further rounds (up to
+  three): the clusters earlier rounds grew go into every slice as anchors. Every other pair keeps
+  the pair path, capped at 2,000. A pair past the cap, or a group not compared in full, is carried:
+  staged as the merge log's `carry` and blocked again by the next run; the run's output and log
+  give the counts. `apply_merges` applies rule and model merges by what is already committed (D128): a staged-only
   loser is an id rewrite, two committed sides get `merge_entities.run`, a committed side always
   survives, and no chain of merges joins a dismissed pair. Merges apply **before** the commit
   pass; merged survivors get one contradiction-only follow-up call over their joined record.
@@ -623,8 +634,9 @@ what it changes. The merged id's facts reach the survivor through the merge log 
 and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the
 `reporter_name`), rule, reason, evidence per occurrence (documents, D271 fact ids, matching
 identifier, shared attributes), run id and timestamps — and every "possible same" candidate
-(`same:<hash>` ids; "Not the same" is a resolution). A recurring decision adds an occurrence, not
-an entry. It is written only in the finalize commit (`RegistryBatch.flush`, before the registries,
+(`same:<hash>` ids; "Not the same" is a resolution), plus `carry`, the records whose
+possible-duplicate comparisons the last run could not finish (D325). A recurring decision adds an
+occurrence, not an entry. It is written only in the finalize commit (`RegistryBatch.flush`, before the registries,
 idempotently) or by `merge_entities.run`, under the registry lock, and regenerates `merges.md`. Each
 entry's `undo` keeps the merged record's extracted id, documents and fact ids, its registry
 snapshot and the backup path; the staged extraction keeps each moved entity's `extracted_id` and
@@ -724,7 +736,7 @@ same content to the user's own model server; every other backend sends it to tha
 | extract | once per document, or per section | page/section text, skill, brief, sidecar, known document types, file metadata | all vault entity state (D118) |
 | verify | once per document or section, when enabled | the extraction prompt plus its facts | vault data |
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
-| reconcile | once per run (chunked when large) | candidate pairs; each recurring entity's attributed claims and roles | raw text |
+| reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
@@ -939,12 +951,13 @@ noted as such.
   the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
   D268, D274, D299.*
 - **I12 — Entity merges are tiered and recorded.** Two entity records are joined only on a
-  high-confidence rule, a model judgement of a medium-confidence pair, or a reporter's merge; a
+  high-confidence rule, a model judgement of a medium-confidence pair or same-name group (checked
+  and applied by code, D325), or a reporter's merge; a
   person is never merged on a name alone, and initialled or partial names are never merged
   automatically. Every merge is written to `registry/merges.json` with who decided and the
   evidence, including a fold inside one document read in sections, and a pair the reporter marked
   "Not the same" (or whose merge was undone) is never merged automatically.
-  *History: D127, D279, D281, D282.*
+  *History: D127, D279, D281, D282, D325.*
 - **I13 — Entity notes are views of stored facts; model prose never replaces a fact.** An entity
   note's facts are rendered by code from the stored extractions on every write, and the note can be
   rebuilt from stored data with no model call. Model prose is stored separately (the registry's

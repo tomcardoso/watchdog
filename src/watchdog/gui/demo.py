@@ -330,8 +330,10 @@ class CannedModel:
         from watchdog.gui import demo_story
         # The instructions mention both headings too, so read from the last occurrence of each.
         head = text[text.rindex("CANDIDATE PAIRS (possible"):]
-        pair_json, ent_json = head.split("\n\nENTITIES (each", 1)
+        pair_json, rest = head.split("\n\nSAME-NAME GROUPS (records", 1)
+        group_json, ent_json = rest.split("\n\nENTITIES (each", 1)
         pairs = json.loads(pair_json.split("\n", 1)[1])
+        groups = json.loads(group_json.split("\n", 1)[1])
         entities = json.loads(ent_json.split("\n", 1)[1])
         merges = []
         for a, b, keep, reason in demo_story.MERGES:
@@ -349,6 +351,24 @@ class CannedModel:
             if pair.get("same_name") and re.fullmatch(re.escape(ids[0]) + r"-\d+", ids[1]):
                 merges.append({"pair": i, "keep_id": ids[0],
                                "reason": "The same person, described consistently in both documents."})
+        # Records with the very same name come as a group (#755): every record of one cast id
+        # (`marcus-teague`, `marcus-teague-2`, …) is one thing, unless it is an unsure one.
+        answered = []
+        for group in groups:
+            by_base: dict[str, list[int]] = {}
+            for m in group["members"]:
+                by_base.setdefault(re.sub(r"-\d+$", "", m["id"]), []).append(m["member"])
+            same, unsure = [], []
+            for base, nums in sorted(by_base.items()):
+                if len(nums) < 2:
+                    continue
+                if base in UNSURE_SAME_NAME:
+                    unsure.append(nums)
+                    continue
+                keep = next((m["member"] for m in group["members"] if m["id"] == base), nums[0])
+                same.append({"members": nums, "keep": keep,
+                             "reason": "The same person, described consistently in both documents."})
+            answered.append({"group": group["index"], "same": same, "unsure": unsure})
         ledger_ids = {e["entity_id"] for e in entities}
         # A document is "known" once it is committed to the vault or cited in this batch's claims.
         docs_path = self.vault / ".watchdog" / "registry" / "documents.json"
@@ -365,7 +385,7 @@ class CannedModel:
                 for side in ("a", "b"):
                     item[f"{side}_fact"] = _ledger_ref(ledger, c[f"{side}_doc"], c.get(f"{side}_cite"))
                 found.append(item)
-        return {"merges": merges, "contradictions": found}
+        return {"merges": merges, "groups": answered, "contradictions": found}
 
     def synthesis(self, text: str) -> dict:
         from watchdog.gui import demo_story

@@ -101,6 +101,17 @@ def test_inferred_listed():
     assert i["claims"] == ["Advisor → Alice Smith"]
 
 
+def test_an_inferred_relationship_is_one_lead_not_one_per_end():
+    """The registry stores each relationship on both entities; the target's copy is the reverse
+    role (`is_reverse`), and only the forward one is listed (#755)."""
+    reg = _registry()
+    reg["alice"]["roles"].append(
+        {"relationship": "Advisor", "target_id": "carol", "target_name": "Carol White",
+         "source_sha256": "d5", "is_reverse": True, "basis": "inferred"})
+    data = leads.find_leads(reg)
+    assert [(i["id"], i["claims"]) for i in data["inferred"]] == [("carol", ["Advisor → Alice Smith"])]
+
+
 def test_inferred_excludes_stated_only_entities():
     # bob and acme carry only basis:"stated" (or unset) roles/events -> never a lead
     data = leads.find_leads(_registry())

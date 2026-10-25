@@ -45,6 +45,18 @@ _JACCARD_MIN = 0.5
 # the most likely duplicates, and `build_bundle` reports how many were cut.
 _MAX_PAIRS = 2000
 
+# Records sharing one name and type are judged as a group, not pair by pair (#755): a name with n
+# records is n(n-1)/2 pairs, so a 91-record "Acme" alone was 4,095 pairs and ran most of a large
+# batch's identical-name pairs past `_MAX_PAIRS` unjudged. A group is cut into slices of at most
+# `_GROUP_MEMBERS` records per call: a member as the model sees it is at most about 3.5 KB (six facts
+# of up to 300 characters, eight roles, a summary line; measured on a 2,000-entity investigation),
+# so a full slice is about 105 KB, inside the smallest catalogued model's per-call data budget
+# (`chunking.prompt_budget_chars`, about 165 KB), and still few enough records to compare at once.
+# A group cut into several slices gets further rounds over the survivors (`NameGroups`), at most
+# `_GROUP_ROUNDS` rounds in all; what still has not been compared in full is carried to the next run.
+_GROUP_MEMBERS = 30
+_GROUP_ROUNDS = 3
+
 # Marker prefixed to an entity's claim ledger when `chunk_bundle` had to trim it to fit one call.
 _TRIMMED = "[the oldest stored facts are omitted to fit one reconciliation call]\n"
 
@@ -410,12 +422,29 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
     if only is not None:
         # A contradiction-only follow-up (`ledger_for`): no pairs to judge.
         return {"entities": entities, "pairs": [], "pairs_dropped": 0, "pair_verdicts": [],
-                "rule_merges": [], "candidates": [], "profiles": {}}
-    ranked = _ranked_pairs(working, touched)
-    blocked = ranked[:_MAX_PAIRS]
+                "rule_merges": [], "candidates": [], "profiles": {}, "groups": []}
+    # Records an earlier run could not finish comparing are blocked again, though only for pairs:
+    # they are not this batch's, so they hold no new facts to check for contradictions.
+    carried = {eid for eid in merge_log.carried_ids(vault) if eid in working}
+    block = touched | carried
+    ranked = _ranked_pairs(working, block)
+    # Pairs of records with the very same name and type are judged as groups (#755); every other
+    # pair keeps the pair path, under the pair cap.
+    same_key: dict[tuple[str, str], set[str]] = {}
+    others = []
+    for pair in ranked:
+        key = _group_key(working[pair["a"]["id"]])
+        if key == _group_key(working[pair["b"]["id"]]):
+            same_key.setdefault(key, set()).update((pair["a"]["id"], pair["b"]["id"]))
+        else:
+            others.append(pair)
+    blocked = others[:_MAX_PAIRS]
+    over = others[_MAX_PAIRS:]
     # Initialled-name pairs are found separately and capped separately: they are almost all low
     # tier, which costs no model call, so they must not crowd out pairs the model has to see.
-    blocked += _person_pairs(working, touched, {(p["a"]["id"], p["b"]["id"]) for p in ranked})[:_MAX_PAIRS]
+    initialled = _person_pairs(working, block, {(p["a"]["id"], p["b"]["id"]) for p in ranked})
+    blocked += initialled[:_MAX_PAIRS]
+    over += initialled[_MAX_PAIRS:]
 
     # Route each blocked pair by its confidence tier (D279): high merges in code, medium goes to the
     # model with both records' facts, low becomes a "possible same" item for the reporter, and a
@@ -455,9 +484,348 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
             synthesis = working[pair[side]["id"]].get("synthesis") or {}
             pair[side]["summary"] = _orienting_line(synthesis.get("summary") or "")
 
-    return {"entities": entities, "pairs": pairs, "pairs_dropped": max(0, len(ranked) - _MAX_PAIRS),
+    groups = _name_groups(same_key, working, _profile, evidence.dismissed(), rule_merges, candidates)
+    name_groups = NameGroups(groups, working, profiles)
+    return {"entities": entities, "pairs": pairs, "pairs_dropped": len(over),
             "pair_verdicts": verdicts, "rule_merges": rule_merges, "candidates": candidates,
-            "profiles": profiles}
+            "profiles": profiles, "groups": name_groups.next_items(), "name_groups": name_groups,
+            "carry_pairs": sorted({i for p in over for i in (p["a"]["id"], p["b"]["id"])}),
+            "carried_in": sorted(carried)}
+
+
+def _group_key(entry: dict) -> tuple[str, str]:
+    """What makes two records "the same name" for group judging: canonical type and the name's
+    comparison key (`identity.name_key`, a leading "the" dropped)."""
+    return canonical_type(entry.get("type", "")), identity.name_key(entry.get("name", ""))
+
+
+def _doc_order(profiles, ids) -> list[str]:
+    """`ids`, the records named in most documents first, then by id: a fixed order for slicing."""
+    return sorted(ids, key=lambda eid: (-len(profiles(eid).documents), eid))
+
+
+def _name_groups(same_key: dict, working: dict, profile, dismissed, rule_merges: list,
+                 candidates: list) -> list[dict]:
+    """Settle in code what the tiers settle for each set of same-name records, and return the
+    groups left for the model (#755, revising D279's pair-by-pair handling).
+
+    Every pair inside a set is classified, not only the pairs blocking produced, so a conflicting
+    identifier or a reporter's "Not the same" between two records no run touched still keeps them
+    apart. High pairs merge in code, as before (one rule merge per pair that joins two clusters);
+    low pairs (the same short person name, never merged automatically) become "possible same"
+    items, each record paired with the set's most-documented one rather than with every other
+    record, so a short name in thirty records is 29 items, not 435; and records joined by a medium
+    pair form a group of clusters (the records high pairs already joined) for the model."""
+    groups = []
+    for key in sorted(same_key):
+        ids = _doc_order(profile, same_key[key])
+        verdicts: dict[frozenset, dict | None] = {}
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                verdicts[frozenset((a, b))] = identity.classify(profile(a), profile(b), dismissed)
+        parent = {eid: eid for eid in ids}
+
+        def find(x):
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        members: set[str] = set()
+        low: list[tuple[str, str, dict]] = []
+        for i, a in enumerate(ids):
+            for b in ids[i + 1:]:
+                v = verdicts[frozenset((a, b))]
+                if v is None:
+                    continue
+                if v["tier"] == "low":
+                    low.append((a, b, v))
+                    continue
+                members.update((a, b))
+                if v["tier"] == "high" and find(a) != find(b):
+                    parent[find(b)] = find(a)
+                    rule_merges.append({"a": a, "b": b, "verdict": v})
+        anchor = next((a for a, _, _ in low), None)
+        for a, b, v in low:
+            if a == anchor:
+                candidates.append({"a": a, "b": b, "verdict": v})
+        clusters: dict[str, list[str]] = {}
+        for eid in ids:
+            if eid in members:
+                clusters.setdefault(find(eid), []).append(eid)
+        if len(clusters) < 2:
+            continue
+        first = working[ids[0]]
+        groups.append({"name": first.get("name", ""), "type": first.get("type", ""),
+                       "verdicts": verdicts, "clusters": [sorted(c) for c in clusters.values()]})
+    return groups
+
+
+class NameGroups:
+    """The model's judgement of same-name groups, round by round (#755).
+
+    Each group starts as clusters of records the tiers already joined (high pairs), usually one
+    record each. `next_items` cuts every unsettled group into slices of at most `_GROUP_MEMBERS`
+    clusters and numbers them for the model: in the first round, contiguous slices in a fixed order
+    (most documents first, then id); after that, when the group still does not fit one slice, the
+    clusters an earlier round grew (at most a third of a slice) go into every slice as anchors and
+    the rest are spread over the slices, so every record is compared with the records most likely
+    to be the thing it names. `absorb` takes the model's answers: for each slice, the sets of
+    members that are one thing (`same`, with the member to keep) and the sets it could not rule
+    out (`unsure`). Code checks every answer — indices in range, no member in two sets, the kept
+    member inside its set — and rejects a malformed one whole, leaving its records apart. A set
+    that would join two records with a conflicting identifier or a reporter's "Not the same" is
+    dropped on its own.
+
+    A group is settled when one valid answer covered all of it (compared in full), when a round no
+    longer shrinks it, or after `_GROUP_ROUNDS` rounds. One not compared in full, or with a slice
+    rejected or unanswered, is carried to the next run. `result` gives the merges, the "possible
+    same" pairs and the carried records."""
+
+    def __init__(self, groups: list[dict], working: dict, profiles: dict):
+        self.groups = groups
+        self.working = working
+        self.profiles = profiles
+        self.round = 0
+        self.slices: list[tuple[int, list[str]]] = []
+        self.parent: dict[str, str] = {}
+        for group in groups:
+            for cluster in group["clusters"]:
+                for eid in cluster:
+                    self.parent[eid] = cluster[0]
+        self.done = [False] * len(groups)
+        self.complete = [False] * len(groups)
+        self.failed = [False] * len(groups)
+        self.last_size = [len(g["clusters"]) for g in groups]
+        self.merges: list[tuple[str, str, dict, str]] = []
+        self.unsure: list[tuple[int, str, str]] = []
+        self.calls_rejected = 0
+
+    def _find(self, eid: str) -> str:
+        while self.parent[eid] != eid:
+            self.parent[eid] = self.parent[self.parent[eid]]
+            eid = self.parent[eid]
+        return eid
+
+    def _clusters(self, gi: int) -> dict[str, list[str]]:
+        """Each surviving cluster's id (the record that survives) -> its records."""
+        out: dict[str, list[str]] = {}
+        for cluster in self.groups[gi]["clusters"]:
+            for eid in cluster:
+                out.setdefault(self._find(eid), []).append(eid)
+        return out
+
+    def _verdict(self, gi: int, a: str, b: str) -> dict | None:
+        return self.groups[gi]["verdicts"].get(frozenset((a, b)))
+
+    def _docs(self, records: list[str]) -> int:
+        return len({d for eid in records if eid in self.profiles for d in self.profiles[eid].documents})
+
+    def _member(self, n: int, keep: str, records: list[str]) -> dict:
+        profs = [self.profiles[eid] for eid in [keep, *(r for r in records if r != keep)]
+                 if eid in self.profiles]
+        facts, digests = [], [p.facts_digest(identity.FACT_CAP) for p in profs]
+        for i in range(identity.FACT_CAP):        # round-robin, so every record is represented
+            facts += [d[i] for d in digests if i < len(d)]
+        roles, names = [], []
+        for p in profs:
+            roles += [r for r in p.roles_digest() if r not in roles]
+            names += [s for s in p.surfaces if s not in names]
+        synthesis = (self.working.get(keep) or {}).get("synthesis") or {}
+        out = {"member": n, "id": keep, "names": names[:8], "documents": self._docs(records),
+               "summary": _orienting_line(synthesis.get("summary") or ""),
+               "facts": facts[:identity.FACT_CAP], "roles": roles[:8]}
+        if len(records) > 1:
+            out["records"] = len(records)
+        return out
+
+    def _cut(self, gi: int, clusters: dict[str, list[str]]) -> list[list[str]] | None:
+        """This round's slices of group `gi` (cluster ids), or None when it is settled."""
+        size = len(clusters)
+        if size < 2:
+            return None
+        if self.round > 0 and (self.complete[gi] or size >= self.last_size[gi]):
+            return None               # compared in full, or the last round merged nothing
+        if self.round >= _GROUP_ROUNDS:
+            return None
+        ordered = sorted(clusters, key=lambda c: (-len(clusters[c]), -self._docs(clusters[c]), c))
+        if size <= _GROUP_MEMBERS:
+            return [ordered]
+        if self.round == 0:
+            k = math.ceil(size / _GROUP_MEMBERS)
+            step = math.ceil(size / k)
+            return [ordered[i:i + step] for i in range(0, size, step)]
+        anchors = [c for c in ordered if len(clusters[c]) > 1][:_GROUP_MEMBERS // 3]
+        rest = [c for c in ordered if c not in anchors]
+        room = _GROUP_MEMBERS - len(anchors)
+        k = math.ceil(len(rest) / room)
+        step = math.ceil(len(rest) / k)
+        return [anchors + rest[i:i + step] for i in range(0, len(rest), step)]
+
+    def next_items(self) -> list[dict]:
+        """This round's slices, numbered from 0; [] when every group is settled."""
+        self.slices = []
+        items = []
+        for gi, group in enumerate(self.groups):
+            if self.done[gi]:
+                continue
+            clusters = self._clusters(gi)
+            cut = self._cut(gi, clusters)
+            if cut is None:
+                self.done[gi] = True
+                continue
+            self.last_size[gi] = len(clusters)
+            for part in cut:
+                self.slices.append((gi, part))
+                items.append({"index": len(items), "name": group["name"], "type": group["type"],
+                              "members": [self._member(n, c, clusters[c]) for n, c in enumerate(part)]})
+        self.round += 1
+        return items
+
+    @staticmethod
+    def _index(value, size: int) -> int | None:
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value < size:
+            return value
+        return None
+
+    def _parse(self, answer: dict, size: int) -> tuple[list, list] | None:
+        """(same sets as (member indices, keep index, reason), unsure sets), or None when the
+        answer is malformed in any way."""
+        same, unsure, used = [], [], set()
+        for item in answer.get("same") or []:
+            if not isinstance(item, dict) or not isinstance(item.get("members"), list):
+                return None
+            idx = [self._index(m, size) for m in item["members"]]
+            keep = self._index(item.get("keep"), size)
+            if None in idx or len(set(idx)) != len(idx) or len(idx) < 2 or keep not in idx \
+                    or used & set(idx):
+                return None
+            used |= set(idx)
+            same.append((idx, keep, str(item.get("reason") or "")))
+        seen: set[int] = set()
+        for item in answer.get("unsure") or []:
+            if not isinstance(item, list):
+                return None
+            idx = [self._index(m, size) for m in item]
+            if None in idx or len(set(idx)) != len(idx) or len(idx) < 2 or seen & set(idx):
+                return None
+            seen |= set(idx)
+            unsure.append(idx)
+        return same, unsure
+
+    def absorb(self, answers: list[dict], warn) -> None:
+        """Apply one round's answers (each naming its slice by `group`), checked as described on
+        the class. A slice with no valid answer leaves its records apart and its group carried."""
+        answered: dict[int, dict] = {}
+        for answer in answers:
+            label = answer.get("group") if isinstance(answer, dict) else None
+            idx = self._index(label, len(self.slices))
+            if idx is None:
+                warn(f"reconcile: a same-name group answer names group {label!r}, which is not "
+                     f"in the list — skipped")
+                continue
+            if idx in answered:
+                warn(f"reconcile: same-name group {idx} was answered twice — the first answer is used")
+                continue
+            answered[idx] = answer
+        whole = {gi for gi, _ in self.slices}
+        whole = {gi for gi in whole if sum(1 for g, _ in self.slices if g == gi) == 1}
+        for si, (gi, part) in enumerate(self.slices):
+            name = self.groups[gi]["name"]
+            parsed = self._parse(answered[si], len(part)) if si in answered else None
+            if parsed is None:
+                if si in answered:
+                    warn(f"reconcile: the answer for same-name group {si} ({name}) is not a valid "
+                         f"partition — none of its records were merged, and they are carried to "
+                         f"the next run")
+                    self.calls_rejected += 1
+                self.failed[gi] = True
+                continue
+            if gi in whole:
+                self.complete[gi] = True
+            same, unsure = parsed
+            clusters = self._clusters(gi)
+            for members, keep, reason in same:
+                roots = [self._find(part[m]) for m in members]
+                target = self._find(part[keep])
+                joined = sorted({eid for r in set(roots) for eid in clusters[r]})
+                if any(self._verdict(gi, a, b) is None
+                       for i, a in enumerate(joined) for b in joined[i + 1:]):
+                    warn(f"reconcile: a merge in same-name group {si} ({name}) would join records "
+                         f"that cannot be the same (a different identifier, or marked “Not the "
+                         f"same”) — skipped")
+                    continue
+                for root in dict.fromkeys(roots):
+                    if root == target:
+                        continue
+                    verdict = self._verdict(gi, target, root) or {"tier": "medium", "rule": None}
+                    self.merges.append((target, root, verdict, reason))
+                    self.parent[root] = target
+                    clusters[target] = clusters.get(target, []) + clusters.pop(root, [])
+            for members in unsure:
+                self.unsure += [(gi, part[members[0]], part[m]) for m in members[1:]]
+
+    def result(self) -> dict:
+        """Merges as (keep id, merged id, verdict, reason), in order; "possible same" pairs as
+        (a, b, verdict) between records still apart; and the ids carried to the next run (each
+        carried group's surviving records)."""
+        unsure, seen = [], set()
+        for gi, a, b in self.unsure:
+            ka, kb = self._find(a), self._find(b)
+            pair = frozenset((ka, kb))
+            if ka == kb or pair in seen:
+                continue
+            verdict = self._verdict(gi, ka, kb)
+            if verdict is None:
+                continue
+            seen.add(pair)
+            unsure.append((ka, kb, verdict))
+        carried = sorted(c for gi in range(len(self.groups))
+                         if self.failed[gi] or not self.complete[gi] and len(self._clusters(gi)) > 1
+                         for c in self._clusters(gi))
+        return {"merges": list(self.merges), "unsure": unsure, "carried": carried,
+                "rejected": self.calls_rejected}
+
+
+# What one group member costs in a reconcile prompt, in characters, for the cost estimate: the mean
+# of a member's facts, roles and summary line on a 2,000-entity investigation was about 1,100.
+_GROUP_MEMBER_EST_CHARS = 1100
+
+
+def group_estimate(vault: Path, shas: list[str]) -> dict:
+    """A names-only forecast of the same-name group calls the next post-processing makes (#755),
+    for `ingest_setup.finalize_cost_estimate`: no extraction is read and no tier is decided, so it
+    counts every set of two or more records sharing a name and type that the tiers would leave to
+    the model — a non-distinctive name, or a person's full name — and assumes one more round
+    over the survivors whenever a group needs more than one slice. Returns ``{"groups",
+    "records", "calls", "est_tokens"}``; `calls` counts slices, which share calls when small."""
+    registry = _read_json_or(vault / ".watchdog" / "registry" / "entities.json", {})
+    counts: dict[tuple[str, str], int] = {}
+    staged_keys: set[tuple[str, str]] = set()
+    for entry in registry.values():
+        if isinstance(entry, dict):
+            key = _group_key(entry)
+            counts[key] = counts.get(key, 0) + 1
+    for _, artifact in _staged_artifacts(vault, shas):
+        for entity in artifact.get("entities") or []:
+            if isinstance(entity, dict) and entity.get("name"):
+                key = _group_key(entity)
+                counts[key] = counts.get(key, 0) + 1
+                staged_keys.add(key)
+    groups = records = calls = chars = 0
+    for key in staged_keys:
+        n = counts[key]
+        etype, name = key
+        judged = identity.is_full_person_name(name) if etype == "person" else not identity.is_distinctive(name)
+        if n < 2 or not name or not judged:
+            continue
+        slices = math.ceil(n / _GROUP_MEMBERS)
+        rounds = 2 if slices > 1 else 1
+        groups += 1
+        records += n
+        calls += slices + (math.ceil(slices / _GROUP_MEMBERS) if rounds > 1 else 0)
+        chars += n * _GROUP_MEMBER_EST_CHARS * rounds
+    return {"groups": groups, "records": records, "calls": calls, "est_tokens": chars // 4}
 
 
 def _trim_claims(entity: dict, budget: int) -> dict:
@@ -487,32 +855,54 @@ def chunk_bundle(bundle: dict, budget: int) -> list[dict]:
     entity too large for any one call has its oldest claims trimmed (`_trim_claims`) rather than
     deadlocking the batch on a call that can never fit."""
     pairs = bundle.get("pairs") or []
+    groups = bundle.get("groups") or []
     entities = [_trim_claims(e, budget) for e in bundle.get("entities") or []]
-    items = [("pair", i, p) for i, p in enumerate(pairs)] + [("entity", None, e) for e in entities]
+    items = ([("pair", i, p) for i, p in enumerate(pairs)]
+             + [("group", i, g) for i, g in enumerate(groups)]
+             + [("entity", None, e) for e in entities])
     chunks = []
-    for group in pack(items, budget, size=lambda item: json_size(item[2])):
-        chunk_pairs, pair_index, chunk_entities = [], [], []
-        for kind, i, item in group:
+    for packed in pack(items, budget, size=lambda item: json_size(item[2])):
+        chunk_pairs, pair_index, chunk_groups, group_index, chunk_entities = [], [], [], [], []
+        for kind, i, item in packed:
             if kind == "pair":
                 local = dict(item)
                 if "index" in local:
                     local["index"] = len(chunk_pairs)
                 chunk_pairs.append(local)
                 pair_index.append(i)
+            elif kind == "group":
+                chunk_groups.append({**item, "index": len(chunk_groups)})
+                group_index.append(i)
             else:
                 chunk_entities.append(item)
-        chunks.append({"pairs": chunk_pairs, "entities": chunk_entities, "pair_index": pair_index})
+        chunk = {"pairs": chunk_pairs, "entities": chunk_entities, "pair_index": pair_index}
+        if chunk_groups:
+            chunk["groups"], chunk["group_index"] = chunk_groups, group_index
+        chunks.append(chunk)
     return chunks
 
 
 def merge_chunk_results(chunks: list[dict], parsed: list[dict]) -> dict:
     """Combine each chunk's model answer into one answer over the whole bundle, in the shape
     `apply_merges` already takes: every merge's `pair` translated from its chunk's numbering back
-    to the bundle's, contradictions concatenated. A merge naming an index outside its own chunk is
-    passed on as a non-integer label so `apply_merges` warns and skips it, as it would any bad
-    index."""
-    merges, contradictions = [], []
+    to the bundle's, contradictions concatenated, and each same-name group answer's `group`
+    translated the same way (for `NameGroups.absorb`). A merge or group answer naming an index
+    outside its own chunk is passed on as a non-integer label so it is warned about and skipped, as
+    any bad index is."""
+    merges, contradictions, groups = [], [], []
     for n, (chunk, answer) in enumerate(zip(chunks, parsed)):
+        answer = answer if isinstance(answer, dict) else {}
+        gindex = chunk.get("group_index") or []
+        for item in answer.get("groups") or []:
+            if not isinstance(item, dict):
+                continue
+            local = item.get("group")
+            item = dict(item)
+            if isinstance(local, int) and not isinstance(local, bool) and 0 <= local < len(gindex):
+                item["group"] = gindex[local]
+            else:
+                item["group"] = f"chunk {n + 1} group {local!r}"
+            groups.append(item)
         index = chunk["pair_index"]
         for item in answer.get("merges") or []:
             local = item.get("pair")
@@ -523,7 +913,7 @@ def merge_chunk_results(chunks: list[dict], parsed: list[dict]) -> dict:
                 item["pair"] = f"chunk {n + 1} pair {local!r}"
             merges.append(item)
         contradictions.extend(answer.get("contradictions") or [])
-    return {"merges": merges, "contradictions": contradictions}
+    return {"merges": merges, "contradictions": contradictions, "groups": groups}
 
 
 def _rewrite_staged_ids(vault: Path, shas: list[str], merge_id: str, keep_id: str) -> str | None:
@@ -652,12 +1042,16 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
        provenance), which logs the merge itself, plus the same staged id rewrite, so this batch's
        own claims about the loser land on the survivor rather than resurrecting the merged-away id.
 
-    Low-tier pairs, and same-name medium pairs the model did not merge, are staged as
-    "possible same" candidates (`merge_log.candidate_entry`).
+    Same-name groups (#755) add the merges `NameGroups` checked and applied from the model's
+    partitions, as model decisions. Low-tier pairs, same-name medium pairs the model did not merge,
+    and a group's records the model could not rule out as one are staged as "possible same"
+    candidates (`merge_log.candidate_entry`). Records whose comparisons this run could not finish
+    (pairs past the cap, groups not compared in full) are staged as the merge log's `carry`, which
+    the next run blocks again.
 
     Merges chain (a→b then b→c) against an accumulating remap, flattened so every key points
     straight at its final survivor. Returns
-    ``{"merged": [...], "remap": {...}, "contradictions": [...], "candidates": n}`` —
+    ``{"merged": [...], "remap": {...}, "contradictions": [...], "candidates": n, "carried": {...}}`` —
     contradictions are carried through unapplied, since they need the committed vault to validate
     against (the caller applies them post-commit).
     """
@@ -706,6 +1100,12 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         verdict = verdicts[idx] if idx < len(verdicts) else {"tier": "medium", "rule": None}
         model_merged.add(frozenset(ids))
         decisions.append((keep_id, (ids - {keep_id}).pop(), verdict, "model", item.get("reason", "")))
+    # Same-name groups (#755): `NameGroups` has already checked every answer.
+    name_groups = bundle.get("name_groups")
+    group_result = name_groups.result() if name_groups is not None else \
+        {"merges": [], "unsure": [], "carried": [], "rejected": 0}
+    for keep_id, merge_id, verdict, reason in group_result["merges"]:
+        decisions.append((keep_id, merge_id, verdict, "model", reason))
 
     # Every original id now inside each surviving record, so a chain of merges (a→b, then c→b)
     # can never join two records the reporter marked "Not the same".
@@ -788,6 +1188,8 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         ids = frozenset((pair["a"]["id"], pair["b"]["id"]))
         if verdict and verdict.get("same_name") and ids not in model_merged:
             pending.append((pair["a"]["id"], pair["b"]["id"], verdict, True))
+    # A same-name group's records the model could not tell apart, each still a record of its own.
+    pending += [(a, b, verdict, True) for a, b, verdict in group_result["unsure"]]
     for a, b, verdict, declined in pending:
         if a in remap or b in remap or a not in profiles or b not in profiles:
             continue
@@ -796,12 +1198,22 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
         _stage_on_owner(vault, shas, {a, b}, entry)
         n_candidates += 1
 
+    # What this run could not finish comparing is carried to the next (#755): never dropped
+    # unseen. The carry replaces the last run's, so one is staged whenever either is non-empty.
+    carry = sorted({_current(eid) for eid in [*(bundle.get("carry_pairs") or []),
+                                               *group_result["carried"]]})
+    if carry or bundle.get("carried_in"):
+        _stage_on_owner(vault, shas, set(), merge_log.carry_entry(carry, run=run_id))
+
     # Flatten the chain: `apply_contradictions` follows the map one step only, so every key must
     # point straight at its final survivor rather than an intermediate id a later merge in this
     # same batch folded away.
     remap = {eid: _current(eid) for eid in remap}
     return {"merged": applied, "remap": remap, "contradictions": parsed.get("contradictions") or [],
-            "candidates": n_candidates}
+            "candidates": n_candidates,
+            "carried": {"pairs": bundle.get("pairs_dropped") or 0,
+                        "records": len(group_result["carried"]),
+                        "rejected": group_result["rejected"]}}
 
 
 def apply_contradictions(vault: Path, items: list, remap: dict, warn) -> list[dict]:

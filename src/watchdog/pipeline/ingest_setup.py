@@ -302,7 +302,8 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
                            usage_files: list[Path] | None = None) -> dict:
     """Pre-flight cost estimate for post-processing (`bark`): the staged `result_<sha>.json`/`notes_<sha>.md`
-    priced with the chars/4 heuristic. The $/token ratio comes only from standalone-finalize usage
+    priced with the chars/4 heuristic, plus the same-name group calls `reconcile.group_estimate`
+    forecasts from the registry (#755). The $/token ratio comes only from standalone-finalize usage
     files (every call in `orchestrate.FINALIZE_TASKS`), since a run's own finalize shares its usage
     file with extraction. No dollar figure without that history, or on subscription auth.
     `usage_files` replaces this vault's history, as in `cost_estimate`."""
@@ -320,7 +321,14 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
             est_tokens += len(p.read_text(encoding="utf-8")) // 4
         except OSError:
             continue
-    result = {"docs": docs, "est_tokens": est_tokens,
+    # Records sharing one name are compared in group calls of their own (#755), whose size
+    # follows the registry, not this batch's results, so they are added on.
+    groups = {"groups": 0, "records": 0, "calls": 0, "est_tokens": 0}
+    if docs:
+        from watchdog.pipeline import orchestrate, reconcile
+        groups = reconcile.group_estimate(vault, orchestrate._pending_commits(vault))
+        est_tokens += groups["est_tokens"]
+    result = {"docs": docs, "est_tokens": est_tokens, "same_name_groups": groups,
               "cost_low": None, "cost_high": None, "runs_used": 0}
     if backend == "claude-agent-sdk" or not docs:
         return result

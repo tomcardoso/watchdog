@@ -39,10 +39,13 @@ def _inferred_claims(ent: dict) -> list[str]:
     Only relationships: an inferred fact or one with an ungrounded figure (D215) is a document
     fact, which Review → Verification lists under "Worth checking" beside its page (D322). A
     role has no row there, so it stays a lead.
+
+    Forward roles only: the registry stores every relationship twice, once on each end (the copy on
+    the target carries `is_reverse`), so listing both made one inferred link two leads (#755).
     """
     claims = []
     for role in ent.get("roles", []):
-        if role.get("basis") == "inferred":
+        if role.get("basis") == "inferred" and not role.get("is_reverse"):
             target = role.get("target_name") or role.get("target_id") or "?"
             claims.append(f"{role.get('relationship', '?')} → {target}")
     return claims

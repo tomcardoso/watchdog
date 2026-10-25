@@ -2870,14 +2870,11 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     rec_bundle = reconcile.build_bundle(vault, shas)
     if not (rec_bundle["entities"] or rec_bundle["pairs"] or rec_bundle.get("rule_merges")
-            or rec_bundle.get("candidates")):
+            or rec_bundle.get("candidates") or rec_bundle.get("groups")
+            or rec_bundle.get("carried_in")):
         return result
     n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
-    if rec_bundle.get("pairs_dropped"):
-        msg = (f"reconcile: {rec_bundle['pairs_dropped']} weaker possible-duplicate pairs past the "
-               f"{reconcile._MAX_PAIRS}-pair ceiling were not sent this run")
-        _say(f"   ⚠  {msg}")
-        _log(vault, f"WARN {msg}")
+    n_groups = len(rec_bundle.get("groups") or [])
     # Split into as many size-bounded calls as the bundle needs (#696): one call per run could
     # outgrow the context window on a large batch, and since a failure here defers the whole batch
     # (I7), an oversized bundle used to deadlock it — every post-processing (`bark`) retry sent the same
@@ -2885,48 +2882,78 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     budget = chunking.prompt_budget_chars(reconciliation_model, reconciliation_backend, vault)
     # Nothing for the model when every pair was settled by tier and no entity can hold a
     # contradiction — the high merges and "possible same" pairs still apply below (D279).
-    needs_model = bool(rec_bundle["entities"] or rec_bundle["pairs"])
+    needs_model = bool(rec_bundle["entities"] or rec_bundle["pairs"] or n_groups)
     chunks = reconcile.chunk_bundle(rec_bundle, budget) if needs_model else []
-    answers = []
-    for n, chunk in enumerate(chunks, 1):
-        # The spending limit between calls (D324): a stop defers the whole batch, as a failure does.
-        msg = _spending_stop() if n > 1 else None
-        if msg:
-            result["error"] = result["spending_limit"] = msg
-            _say(msg)
-            _log(vault, f"SPENDING LIMIT {msg}")
-            return result
-        # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
-        # future change to the budget comes from real bundle sizes, not a guess.
-        rec_prompt = prompts.build_reconcile_prompt(chunk)
-        kb = len(rec_prompt) / 1024
-        c_pairs, c_ents = len(chunk["pairs"]), len(chunk["entities"])
-        part = f" · call {n} of {len(chunks)}" if len(chunks) > 1 else ""
-        _say(f"→  reconciling · {c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}, "
-             f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''} · {kb:.1f} KB{part}…")
-        try:
-            r = await _call_model(
-                task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
-                schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
-                detail=f"{c_ents} entities · {c_pairs} pairs · {kb:.1f} KB{part}", vault=vault)
-        except model_client.CALL_FAILURES as e:
-            # Any failed chunk defers the whole batch, exactly as the single call did: applying
-            # the merges the earlier chunks found would commit half-reconciled state (I7).
-            result["error"] = str(e)
-            if isinstance(e, model_client.ProviderAuthError):
-                result["auth_error"] = str(e)
-            _say(f"reconciliation skipped — {e}")
-            _log(vault, f"RECONCILE skipped: {e}")
-            return result
-        answers.append(r.parsed)
-    if len(chunks) > 1:
-        _say(f"   {n_ents} entities and {n_pairs} pairs reconciled across "
-             f"{len(chunks)} calls")
+    warn = lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}"))  # noqa: E731
+    name_groups = rec_bundle.get("name_groups")
+    calls = 0
 
-    applied = reconcile.apply_merges(
-        vault, shas, reconcile.merge_chunk_results(chunks, answers), rec_bundle,
-        warn=lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}")),
-        model=reconciliation_model)
+    async def _send(round_chunks: list[dict], label: str) -> list[dict] | None:
+        """Every call of one round, in order; None (with `result` set) when the batch must wait."""
+        nonlocal calls
+        out = []
+        for n, chunk in enumerate(round_chunks, 1):
+            # The spending limit between calls (D324): a stop defers the whole batch, as a failure does.
+            msg = _spending_stop() if calls else None
+            if msg:
+                result["error"] = result["spending_limit"] = msg
+                _say(msg)
+                _log(vault, f"SPENDING LIMIT {msg}")
+                return None
+            calls += 1
+            # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
+            # future change to the budget comes from real bundle sizes, not a guess.
+            rec_prompt = prompts.build_reconcile_prompt(chunk)
+            kb = len(rec_prompt) / 1024
+            c_pairs, c_ents = len(chunk["pairs"]), len(chunk["entities"])
+            c_groups = len(chunk.get("groups") or [])
+            part = f" · call {n} of {len(round_chunks)}" if len(round_chunks) > 1 else ""
+            what = []
+            if c_ents or not c_groups:
+                what.append(f"{c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}")
+            if c_pairs or not c_groups:
+                what.append(f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''}")
+            if c_groups:
+                what.append(f"{c_groups} same-name group{'s' if c_groups != 1 else ''}")
+            _say(f"→  {label} · {', '.join(what)} · {kb:.1f} KB{part}…")
+            try:
+                r = await _call_model(
+                    task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
+                    schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
+                    detail=f"{c_ents} entities · {c_pairs} pairs · {c_groups} groups · {kb:.1f} KB{part}",
+                    vault=vault)
+            except model_client.CALL_FAILURES as e:
+                # Any failed chunk defers the whole batch, exactly as the single call did: applying
+                # the merges the earlier chunks found would commit half-reconciled state (I7).
+                result["error"] = str(e)
+                if isinstance(e, model_client.ProviderAuthError):
+                    result["auth_error"] = str(e)
+                _say(f"reconciliation skipped — {e}")
+                _log(vault, f"RECONCILE skipped: {e}")
+                return None
+            out.append(r.parsed)
+        return out
+
+    answers = await _send(chunks, "reconciling")
+    if answers is None:
+        return result
+    merged_answer = reconcile.merge_chunk_results(chunks, answers)
+    if name_groups is not None:
+        # A same-name group too large for one call is compared again over each slice's survivors
+        # (#755), a bounded number of rounds (`reconcile._GROUP_ROUNDS`).
+        name_groups.absorb(merged_answer["groups"], warn)
+        while items := name_groups.next_items():
+            round_chunks = reconcile.chunk_bundle({"groups": items}, budget)
+            round_answers = await _send(round_chunks, "comparing same-name records again")
+            if round_answers is None:
+                return result
+            name_groups.absorb(reconcile.merge_chunk_results(round_chunks, round_answers)["groups"], warn)
+    if calls > 1:
+        groups_part = f", {n_groups} same-name groups" if n_groups else ""
+        _say(f"   {n_ents} entities, {n_pairs} pairs{groups_part} reconciled across {calls} calls")
+
+    applied = reconcile.apply_merges(vault, shas, merged_answer, rec_bundle, warn=warn,
+                                     model=reconciliation_model)
     result["merged"] = applied["merged"]
     result["remap"] = applied["remap"]
     result["contradictions"] = applied["contradictions"]
@@ -2967,6 +2994,21 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     if n_cand:
         _say(f"   {n_cand} possible same entit{'ies' if n_cand != 1 else 'y'} "
              f"left for you to check in Review (not merged)")
+    # Never dropped unseen (#755): what this run could not compare is said, logged and carried.
+    carried = applied.get("carried") or {}
+    result["carried"] = carried
+    if carried.get("pairs") or carried.get("records"):
+        parts = []
+        if carried.get("pairs"):
+            parts.append(f"{carried['pairs']} possible-duplicate pair{'s' if carried['pairs'] != 1 else ''} "
+                         f"past the {reconcile._MAX_PAIRS:,}-pair limit")
+        if carried.get("records"):
+            parts.append(f"{carried['records']} same-name record{'s' if carried['records'] != 1 else ''} "
+                         f"that could not all be compared with each other")
+        msg = (f"reconcile: {' and '.join(parts)} carried to the next run, which compares "
+               f"them again")
+        _say(f"   ⚠  {msg}")
+        _log(vault, f"WARN {msg}")
     return result
 
 

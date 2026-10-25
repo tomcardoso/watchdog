@@ -663,7 +663,33 @@ def _stage_finalize_corpus(vault: Path, docs: dict[str, str]) -> None:
 def test_finalize_cost_estimate_empty_tmp_returns_zero(tmp_path):
     vault = _make_vault(tmp_path)
     est = finalize_cost_estimate(vault, backend="claude-api")
-    assert est == {"docs": 0, "est_tokens": 0, "cost_low": None, "cost_high": None, "runs_used": 0}
+    assert est == {"docs": 0, "est_tokens": 0, "cost_low": None, "cost_high": None, "runs_used": 0,
+                   "same_name_groups": {"groups": 0, "records": 0, "calls": 0, "est_tokens": 0}}
+
+
+def test_finalize_cost_estimate_counts_the_same_name_group_calls(tmp_path):
+    """Records sharing a generic name are compared in group calls (#755), which the estimate adds
+    from the registry: 70 registered "Harbour Board" records plus one staged make 71, three
+    slices and a round over their survivors. A distinctive name merges in code and costs none."""
+    from watchdog.pipeline import reconcile
+    vault = _make_vault(tmp_path)
+    _stage_finalize_corpus(vault, {"sha1": "a" * 400})
+    reg = {f"hb-{i}": {"id": f"hb-{i}", "name": "Harbour Board", "type": "organization"}
+           for i in range(70)}
+    reg["nw"] = {"id": "nw", "name": "Northgate Civil Works", "type": "organization"}
+    (vault / ".watchdog" / "registry").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "registry" / "entities.json").write_text(json.dumps(reg))
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / "sha1.json").write_text(json.dumps({"document": {}, "entities": [
+        {"id": "hb", "name": "Harbour Board", "type": "Organization"},
+        {"id": "nw", "name": "Northgate Civil Works", "type": "Organization"}]}))
+
+    est = finalize_cost_estimate(vault, backend="claude-api")
+
+    groups = est["same_name_groups"]
+    assert (groups["groups"], groups["records"], groups["calls"]) == (1, 71, 4)
+    assert groups["est_tokens"] == 71 * reconcile._GROUP_MEMBER_EST_CHARS * 2 // 4
+    assert est["est_tokens"] > groups["est_tokens"]
 
 
 def test_finalize_cost_estimate_no_standalone_history_omits_cost(tmp_path):

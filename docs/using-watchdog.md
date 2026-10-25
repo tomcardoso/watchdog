@@ -145,6 +145,8 @@ Documents judged to be near-copies of one already in the investigation, side by 
 
 Two documents often name the same person or company, and Watchdog has to decide whether they mean the same one. It never decides on a name alone (see [how Watchdog decides two names are the same](how-it-works.md#same-entity)). Pairs it was unsure about wait at the top of this tab as **possible same entities**, each shown side by side with its facts. Choose **Merge…** if they are one, or **Not the same**, after which Watchdog never merges those two automatically.
 
+When many records share one name, the queue does not list every possible pair. A short name that cannot be told apart, such as "Mr. Pike" in five documents, is shown as four pairs, each record beside the one named in the most documents. For a name the AI model compared, only the records it could not tell apart are listed.
+
 Below the queue, **Recent merges** lists every merge, newest first: which records, how confident the decision was, and who decided (Watchdog's rules, the AI model by name, or you). If a merge is wrong, open it and choose **Undo merge**; Watchdog gives the merged record back its own facts, documents and relationships, and marks the pair Not the same. Contradictions recorded while the two were joined, your notes and the summary stay with the surviving entity. Where a merge cannot be split exactly, the button says why. The same record is kept in `merges.md`.
 
 ### Requests

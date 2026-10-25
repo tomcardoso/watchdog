@@ -247,16 +247,30 @@ def test_fold_and_commit_are_idempotent_across_reruns(tmp_path):
     assert _log(vault) == log
 
 
+def _groups_in(prompt: str) -> list[dict]:
+    """The SAME-NAME GROUPS list of a reconcile prompt (#755)."""
+    head = prompt[prompt.rindex("SAME-NAME GROUPS (records"):]
+    return json.loads(head.split("\n\nENTITIES (each", 1)[0].split("\n", 1)[1])
+
+
 def _fake_model(monkeypatch, merge_same_name: bool, seen: list):
+    """Reconcile answers every same-name group: one thing when `merge_same_name`, otherwise not
+    something the facts settle (`unsure`, a "possible same" item for the reporter)."""
     async def fake(*, task, prompt, schema, **kw):
         seen.append((task, prompt))
         parsed = {}
         if task == "reconcile":
             pairs = json.loads(prompt[prompt.rindex("CANDIDATE PAIRS (possible"):]
-                               .split("\n\nENTITIES (each", 1)[0].split("\n", 1)[1])
+                               .split("\n\nSAME-NAME GROUPS (records", 1)[0].split("\n", 1)[1])
             merges = [{"pair": p["index"], "keep_id": p["a"]["id"], "reason": "same facts"}
                       for p in pairs if merge_same_name and p.get("same_name")]
-            parsed = {"merges": merges, "contradictions": []}
+            groups = []
+            for g in _groups_in(prompt):
+                every = [m["member"] for m in g["members"]]
+                groups.append({"group": g["index"], "unsure": [] if merge_same_name else [every],
+                               "same": [{"members": every, "keep": 0, "reason": "same facts"}]
+                               if merge_same_name else []})
+            parsed = {"merges": merges, "groups": groups, "contradictions": []}
         return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
                                         auth_mode="subscription", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
@@ -274,7 +288,7 @@ def test_medium_pair_goes_to_the_model_with_both_sides_facts_and_a_yes_merges(tm
     asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
 
     prompt = next(p for t, p in seen if t == "reconcile")
-    assert '"same_name": true' in prompt
+    assert [len(g["members"]) for g in _groups_in(prompt)] == [2]
     assert "John Smith applied for a permit." in prompt and "John Smith spoke against the permit." in prompt
     reg = _registry(vault)
     assert "john-smith-2" not in reg and reg["john-smith"]["appears_in"] == ["sha-a", "sha-b"]
@@ -282,7 +296,7 @@ def test_medium_pair_goes_to_the_model_with_both_sides_facts_and_a_yes_merges(tm
     assert (m["tier"], m["rule"], m["model"], m["merged"]["id"]) == ("medium", "same-name", "haiku", "john-smith-2")
 
 
-def test_medium_pair_the_model_declines_stays_apart_and_becomes_a_review_item(tmp_path, monkeypatch):
+def test_medium_pair_the_model_cannot_settle_stays_apart_and_becomes_a_review_item(tmp_path, monkeypatch):
     from watchdog.review import open_items
     vault = make_vault(tmp_path)
     _stage(vault, tmp_path, "sha-a", [_person("john-smith", "John Smith")])
@@ -411,10 +425,7 @@ def test_a_disputed_fact_reaches_the_same_name_comparison_labelled(tmp_path, mon
     asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
 
     prompt = next(p for t, p in seen if t == "reconcile")
-    pairs = json.loads(prompt[prompt.rindex("CANDIDATE PAIRS (possible"):]
-                       .split("\n\nENTITIES (each", 1)[0].split("\n", 1)[1])
-    pair = next(p for p in pairs if p.get("same_name"))
-    side = next(s for s in (pair["a"], pair["b"]) if s["id"] == "john-smith")
-    by_text = {f["fact"]: f for f in side["facts"]}
+    member = next(m for g in _groups_in(prompt) for m in g["members"] if m["id"] == "john-smith")
+    by_text = {f["fact"]: f for f in member["facts"]}
     assert by_text["John Smith lives on Harbour Road."]["flags"] == ["disputed by the reporter"]
     assert "flags" not in by_text["John Smith applied for a permit."]
