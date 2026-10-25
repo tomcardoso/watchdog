@@ -134,10 +134,12 @@ with open(os.path.join(DIR, "summary.json"), "w") as f:
 with open(os.path.join(DIR, "detail_rows.json"), "w") as f:
     json.dump(detail_rows, f, indent=2)
 
-print(f"\nTotal item-arm judgments: {len(detail_rows)} (expect {140*3})")
-
-# sonnet-high sanity check on initial-order document specifically
-print("\n--- sonnet-high on initial-order-2021-02-01 (verify empty-extraction finding) ---")
-soh_rows = [r for r in detail_rows if r[0] == "initial-order-2021-02-01" and r[3] == "sonnet-high"]
-tiers = [r[4] for r in soh_rows]
-print(f"  {len(soh_rows)} items, tiers: {dict((t, tiers.count(t)) for t in set(tiers))}")
+# One row per keyed item per arm packaged for its document. Derived from this pass's keys and
+# mapping rather than a fixed count, so it holds for any corpus or arm list; a shortfall means a
+# judgment left out some arm's label for an item, which the tally above does not count.
+expected_rows = sum((len(keyed[doc]["facts"]) + len(keyed[doc]["must_not_miss"]))
+                    * len(mapping[doc]) for doc in docs)
+print(f"\nTotal item-arm judgments: {len(detail_rows)} (expect {expected_rows})")
+if len(detail_rows) != expected_rows:
+    print("WARNING: judgment count differs from keyed items x packaged arms — some item was "
+          "not graded for every arm")
