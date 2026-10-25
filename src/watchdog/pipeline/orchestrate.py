@@ -3075,7 +3075,8 @@ def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
 
 async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
                                 post_effort: str | None, post_backend: str | None,
-                                finalizer_overrides: dict | None = None) -> dict:
+                                finalizer_overrides: dict | None = None,
+                                bundle: dict | None = None) -> dict:
     """Entity-duplicate resolution over the staged batch and the registry, before anything is committed
     (D118, D128). A merge between two of this batch's documents is then a staged id rewrite, with no
     note surgery. `finalizer_overrides` may route this stage to its own model.
@@ -3083,12 +3084,14 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     Returns ``{"merged": [...], "remap": {...}, "contradictions": [...], "error": str | None}``.
     Contradictions are returned unapplied: they need the committed documents registry, so
     `_post_ingest` applies them after the commit. On a model or rate-limit error, `error` is set,
-    nothing is applied, and `finalize` must not commit — the batch stays pending for a retry."""
+    nothing is applied, and `finalize` must not commit — the batch stays pending for a retry.
+    `bundle`, when given, replaces `reconcile.build_bundle(vault, shas)`: "Bring this investigation
+    up to date" passes every committed same-name group with no batch (D336)."""
     fo = finalizer_overrides or {}
     reconciliation_model = fo.get("reconciliation_model", post_model)
     reconciliation_backend = fo.get("reconciliation_backend", post_backend)
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
-    rec_bundle = reconcile.build_bundle(vault, shas)
+    rec_bundle = bundle if bundle is not None else reconcile.build_bundle(vault, shas)
     if not (rec_bundle["entities"] or rec_bundle["pairs"] or rec_bundle.get("rule_merges")
             or rec_bundle.get("candidates") or rec_bundle.get("groups")
             or rec_bundle.get("carried_in")):
@@ -3249,6 +3252,10 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
     the per-sha split is also returned (not just patched to disk) so `run()` can sync it onto
     its own in-memory `results` list, which is built before this pass ever runs and would
     otherwise keep reporting an empty new/updated split for the life of that call."""
+    # The first documents of a new investigation are processed by this version of the pipeline,
+    # so an investigation older than the stamp (D336) starts with every migration applied.
+    from watchdog.pipeline import migrations
+    migrations.stamp_if_new(vault)
     if shas is None:
         shas = _pending_commits(vault)
         if not shas:

@@ -19,6 +19,8 @@ reindex, a re-run of post-flight, and re-processing that extracts the same fact 
 re-processing changes a fact's wording or page, the id changes with it, and the old mark is shown
 as no longer matching a current fact, with the fact as it read when marked. It is never moved to
 another fact, because a mark attached to words the reporter didn't check would be worse than none.
+The one move is to the same words on a corrected page, when "Bring this investigation up to date"
+fixes a one-page document's citations (`move_marks`, D336).
 
 Storage. ``.watchdog/registry/verification.json`` is the source of truth (``schema_version``
 1; unknown fields are kept on rewrite and ignored on read; a ledger with a newer version than this
@@ -337,6 +339,37 @@ def _mark(vault: Path, fid: str, status: str | None, note: str | None = None,
             except OSError as e:
                 print(f"  Warning: timeline not refreshed after the mark: {e}", file=sys.stderr)
     return {"id": fid, **entry}
+
+
+def move_marks(vault: Path, moves: dict[str, tuple[str, int | None]]) -> int:
+    """Carry marks to the id a fact has after a migration corrected its cited page (D336): `moves`
+    maps an old fact id to ``(new id, new page)``. The fact's words are unchanged, so this is the
+    same fact, not another one (the rule in the module docstring). The mark's page snapshot is
+    updated and its history gains a line saying where it moved from; a mark already on the new id
+    is left alone. Returns the marks moved."""
+    from watchdog.pipeline.write_vault import _registry_lock
+    if not moves or not _path(vault).exists():
+        return 0
+    with _registry_lock(_registry(vault), _LOCK):
+        data = load(vault)
+        if too_new(data):
+            return 0
+        moved = 0
+        for old, (new, page) in moves.items():
+            entry = data["marks"].get(old)
+            if not isinstance(entry, dict) or old == new or new in data["marks"]:
+                continue
+            entry = data["marks"].pop(old)
+            entry.setdefault("history", []).append(
+                {"status": entry.get("status"), "note": entry.get("note"), "by": entry.get("by"),
+                 "at": entry.get("at"), "page": entry.get("page"), "moved_from": old})
+            entry["page"] = page
+            data["marks"][new] = entry
+            moved += 1
+        if moved:
+            _save(vault, data)
+            render(vault, data=data)
+    return moved
 
 
 # ── reading it back ───────────────────────────────────────────────────────────────────

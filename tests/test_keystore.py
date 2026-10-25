@@ -311,7 +311,7 @@ def test_an_operation_that_calls_no_model_gets_no_keys(home, tmp_path, monkeypat
 def test_operations_that_call_a_model_are_the_ones_handed_keys():
     from watchdog import ops
     handed = {name for name, spec in (ops._load() or ops.OPS).items() if spec.secrets}
-    assert handed == {"add", "dig", "bark", "recheck-contradictions"}
+    assert handed == {"add", "dig", "bark", "recheck-contradictions", "migrate"}
 
 
 def test_a_job_is_handed_only_the_providers_its_models_use(home, tmp_path, monkeypatch):

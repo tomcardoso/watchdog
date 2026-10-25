@@ -4,7 +4,7 @@
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
-  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles, FileQuestion
+  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles, FileQuestion, RefreshCcw
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -23,6 +23,7 @@ import type { ReviewKind, Summary } from '@shared/api'
 import { StartHereList, describeAdded } from '@renderer/components/StartHere'
 import { BillingCard } from './BillingCard'
 import { SpendingLimitCard } from './SpendingLimitCard'
+import MigrateModal from '../activity/MigrateModal'
 import './home.css'
 
 /** A briefing's first screenful: whole paragraphs up to roughly `max` characters. */
@@ -84,6 +85,7 @@ export default function HomeView() {
         ) : (
           <>
             {s.has_work && <WorkBanner s={s} run={runLockState(pipe?.locks)} stopped={pipe?.stopped_run ?? null} />}
+            {!empty && <MigrationBanner />}
             {empty ? (
               <DropCard />
             ) : (
@@ -282,6 +284,37 @@ function WorkBanner({ s, run, stopped }: { s: Summary; run: RunLockState | null;
       <Button variant="primary" size="lg" disabled={!!run || !engine.ready} onClick={() => useApp.getState().openAdd()}>
         {n > 0 ? `Finish adding ${plural(n, 'document')}` : 'Finish the batch'}
       </Button>
+    </div>
+  )
+}
+
+// ── Bring up to date (D336) ──────────────────────────────────────────────────
+// Shown once: when the investigation has pending migrations the reporter has not dismissed the
+// banner for. Maintenance keeps the same step until it is done.
+function MigrationBanner() {
+  const vault = useVault()
+  const { data } = useRpc('migrations.status', { vault })
+  const [open, setOpen] = useState(false)
+  if (!data?.banner) return null
+  const n = data.pending.length
+  const dismiss = async () => {
+    try {
+      await call('migrations.dismissBanner', { vault })
+      invalidate('migrations.')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not hide this', body: errorMessage(e) })
+    }
+  }
+  return (
+    <div className="home-banner">
+      <div className="ico"><RefreshCcw /></div>
+      <div className="grow">
+        <div className="t">Watchdog has improved since these documents were processed</div>
+        <div className="s">{plural(n, 'step')} can bring this investigation up to date without processing its documents again. You see the cost first. It stays in Activity → Maintenance if you hide this.</div>
+      </div>
+      <Button variant="ghost" onClick={() => void dismiss()}>Not now</Button>
+      <Button variant="primary" onClick={() => setOpen(true)}>Review the steps</Button>
+      <MigrateModal open={open} onClose={() => setOpen(false)} />
     </div>
   )
 }

@@ -391,7 +391,7 @@ _RECHECK_OUTPUT_RATIO = (0.02, 0.10)
 
 def recheck_cost_estimate(vault: Path, est_tokens: int, model: str, backend: str | None,
                           max_runs: int = 3) -> dict:
-    """What a contradiction re-check of `est_tokens` (chars/4 of its prompts) would cost on the
+    """What a contradiction re-check (or a migration step, D336) of `est_tokens` (chars/4 of its prompts) would cost on the
     configured finalizer `model` (D287), at that model's list price: input tokens scaled by the
     model's tokenizer ratio and priced as cache misses (the `_catalog_cost_projection` rule), output
     tokens as a share of input — from this vault's standalone post-processing history at the high

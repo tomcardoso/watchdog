@@ -602,6 +602,24 @@ export interface RecheckEstimate {
   max_entity_calls: number
 }
 
+/** One pending step of "Bring this investigation up to date" (D336). */
+export interface MigrationStep { id: string; title: string; description: string; calls_model: boolean }
+/** `migrations.status`: the pending steps and whether the Overview's one-time banner is due. */
+export interface MigrationStatus { pending: MigrationStep[]; banner: boolean; applied: number; busy?: boolean }
+/** `migrations.estimate`: each pending step's work and cost, and the totals, before it starts. */
+export interface MigrationEstimate {
+  steps: (MigrationStep & { items: number; calls: number; est_tokens: number; detail: string; cost_low: number | null; cost_high: number | null; model: string | null; subscription?: boolean })[]
+  calls: number
+  est_tokens: number
+  cost_low: number | null
+  cost_high: number | null
+  subscription: boolean
+  auth: { mode: string | null; ok: boolean; reason: string | null }
+  billing?: Billing[]
+  busy: boolean
+  engine_ready: boolean
+}
+
 // ── jobs ─────────────────────────────────────────────────────────────────────
 export type JobState = 'running' | 'done' | 'failed' | 'cancelled'
 export interface DocProgress { filename: string; state: string; detail: string | null }
@@ -660,6 +678,7 @@ export interface OpParams {
   'unhide-entities': { ids: string[] }
   'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
   'recheck-contradictions': { ids?: string[]; all?: boolean }
+  migrate: NoParams
   'rebuild-timeline': NoParams
   'rebuild-notes': NoParams
   'lead-sweep': NoParams
@@ -996,6 +1015,10 @@ export interface Methods {
   'jobs.undoMerge': [{ vault: string; id: string }, Job]
   'jobs.recheckContradictions': [{ vault: string; ids?: string[]; all?: boolean }, Job]
   'contradictions.estimate': [{ vault: string; ids?: string[]; all?: boolean }, RecheckEstimate]
+  'jobs.migrate': [{ vault: string }, Job]
+  'migrations.status': [{ vault: string }, MigrationStatus]
+  'migrations.estimate': [{ vault: string }, MigrationEstimate]
+  'migrations.dismissBanner': [{ vault: string }, MigrationStatus]
   'action.run': [{ vault: string | null; op: OpName; params?: OpParams[OpName]; timeout?: number }, ActionResult]
 
   'search.query': [{ vault: string; query: string; top?: number; threshold?: number | null; rerank?: boolean }, SearchResult]

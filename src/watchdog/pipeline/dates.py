@@ -208,6 +208,56 @@ def read(raw) -> Reading:
     return _words(text)
 
 
+# ── a date lost before D329, read back from its fact (D336) ───────────────────────────────
+
+NO_YEAR = "no-year"       # the fact's text names no year: only reprocessing can recover a date
+TO_PASS = "pass"          # a year, but not exactly one full date code can read alone
+_ANY_YEAR = re.compile(r"(?<!\d)(1\d{3}|2[01]\d{2})(?!\d)")
+_EDGE = " \t\"'()[]{}“”‘’«»,;:"
+_WINDOW_BEFORE, _WINDOW_AFTER = 4, 2
+
+
+def find_in_text(text) -> tuple[str, str] | str:
+    """The one full date (day, month and year) a fact's own text states, for a fact whose printed
+    date the pre-D329 parser erased: ``(iso, wording)``, or `TO_PASS` when the text names a year
+    but not exactly one date code can read alone (two years, a month only, an ambiguous or bounded
+    wording), or `NO_YEAR`. Every window of words around the text's single year is read with
+    `read`, under its guards; all the readable full-date windows must agree, and the words just
+    before or after the shortest must not bound, approximate or join it ("after", "3 and")."""
+    text = text if isinstance(text, str) else ""
+    years = list(_ANY_YEAR.finditer(text))
+    if not years:
+        return NO_YEAR
+    if len(years) != 1:
+        return TO_PASS
+    toks = list(re.finditer(r"\S+", text))
+    k = next(n for n, t in enumerate(toks) if t.start() <= years[0].start() < t.end())
+    found: dict[str, tuple[int, str, int, int]] = {}
+    for i in range(max(0, k - _WINDOW_BEFORE), k + 1):
+        for j in range(k, min(len(toks), k + _WINDOW_AFTER + 1)):
+            wording = text[toks[i].start():toks[j].end()].strip(_EDGE + ".")
+            r = read(wording)
+            if r.pending or len(r.date) != 10:
+                continue
+            best = found.get(r.date)
+            if best is None or len(wording) < best[0]:
+                found[r.date] = (len(wording), wording, i, j)
+    if len(found) != 1:
+        return TO_PASS
+    ((iso, (_n, wording, i, j)),) = found.items()
+    def word(t) -> str:
+        return t.group(0).strip(_EDGE + ".").casefold()
+    before = toks[max(0, i - 2):i]
+    if {word(t) for t in before} & _QUALIFIERS or any(t.group(0).endswith(("-", "–", "—")) for t in before):
+        return TO_PASS
+    # After it, only a word joining a second figure counts ("3 March 2019 to 5"), not "to approve".
+    after = toks[j + 1:j + 3]
+    if after and (word(after[0]) in _QUALIFIERS or after[0].group(0) in ("-", "–", "—")) \
+            and len(after) > 1 and re.search(r"\d", after[1].group(0)):
+        return TO_PASS
+    return iso, wording
+
+
 def sanitize(extraction: dict) -> list[str]:
     """Read every ``key_facts[].date`` (post-flight, before timeline staging). An ISO value is left
     alone; one code reads becomes ISO with its printed wording kept in `date_text`; the rest keep
@@ -285,7 +335,9 @@ def build_prompt(items: list[dict]) -> str:
     from watchdog.pipeline import prompts
     lines = []
     for n, it in enumerate(items, 1):
-        line = (f"{n}. printed date: {json.dumps(it.get('text') or '', ensure_ascii=False)}\n"
+        printed = ("none kept; read it from the fact" if it.get("lost")
+                   else json.dumps(it.get('text') or '', ensure_ascii=False))
+        line = (f"{n}. printed date: {printed}\n"
                 f"   fact: {json.dumps(it.get('fact') or '', ensure_ascii=False)}\n"
                 f"   document dated: {it.get('doc_date') or 'undated'}")
         if it.get("pending") == PENDING_AMBIGUOUS:
@@ -320,12 +372,16 @@ def pending_items(vault: Path, shas: list[str]) -> list[dict]:
     return items
 
 
-def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult") -> dict:
+def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult", *,
+          restage: bool = True) -> dict:
     """Write what the pass settled into the staged extractions, before the commit (I7): the fact's
     date (and end), `date_basis: "inferred"`, its entities' timeline events, and the document's
     raw timeline files. An item the pass looked at but did not settle loses its `date_pending`
     mark and keeps what code gave it (the year of an ambiguous date, or no date). Items no call
-    covered keep the mark. Returns ``{"resolved", "undated", "documents"}``."""
+    covered keep the mark. A `lost` item (a date erased before D329, D336) records what the pass
+    made of it in `date_recovery` ("model" or "none"), so it is not asked again. `restage=False`
+    leaves the raw timeline files to the caller (a committed document's, `committed.sync`).
+    Returns ``{"resolved", "undated", "documents"}``."""
     from watchdog.pipeline import timeline
     from watchdog.pipeline.json_io import _read_json_or
     from watchdog.pipeline.postflight import refresh_timeline_events
@@ -351,6 +407,8 @@ def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult") ->
             value = result.settled.get(idx) or {}
             f.pop("date_pending", None)
             changed = True
+            if it.get("lost"):
+                f["date_recovery"] = "model" if value.get("start") else "none"
             if value.get("start"):
                 f["date"] = value["start"]
                 if value.get("end"):
@@ -364,7 +422,8 @@ def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult") ->
                 undated += 1
         if changed:
             refresh_timeline_events(art)
-            timeline.restage_document(vault, art)
+            if restage:
+                timeline.restage_document(vault, art)
             path.write_text(json.dumps(art, ensure_ascii=False, indent=2), encoding="utf-8")
             touched.append(sha)
     return {"resolved": resolved, "undated": undated, "documents": touched}

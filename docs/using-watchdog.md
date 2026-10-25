@@ -285,12 +285,26 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Lead sweep** | Refreshes the leads, with no model call. |
 | **Check citations** | Lists citations whose fact can no longer be found. |
 | **Re-check contradictions** | [Re-checks](#re-checking-contradictions) every entity with two or more facts. |
+| **Bring this investigation up to date** | Applies [improvements made since its documents were processed](#bringing-an-investigation-up-to-date). |
 | **Rebuild the timeline** | Regenerates the timeline from the records. |
 | **Rebuild notes** | Rewrites every entity and document note from the records, keeping your notes. No model call. |
 | **Rebuild the search index** | Rebuilds search from what is on disk, after changing the search model or merging entities. |
 | **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
 | **Export a copy for troubleshooting** | Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog's records and notes for this investigation, to send privately. The dialog shows the report in full before it is saved. The original documents go in the zip only if you include them. See [sending a copy of the investigation](troubleshooting.md#sending-a-copy-of-the-investigation). |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude after you update Watchdog. |
+
+### Bringing an investigation up to date
+
+Watchdog keeps improving how it reads documents, but most improvements apply as documents are processed, so an investigation started with an earlier version does not get them for the documents it already holds. When there is something to apply, the Overview shows **Watchdog has improved since these documents were processed** once, and **Activity → Maintenance → Bring this investigation up to date** keeps it until it is done. A new investigation never needs it.
+
+**Review the steps** lists what would change, how many model calls each step needs and one estimate of the cost, before anything is sent. The steps are:
+
+- **Free fixes to saved extractions.** Points a fact's entity tag at the entity its document meant when the tag is a near miss, and moves the citations of a one-page text (a plain-text, CSV or Markdown file) to page 1, with their quotes and passages found again. No AI model is used.
+- **Dates lost by the old date reader.** Before October 2026, a date the date reader could not read was erased. Watchdog reads it back from the fact's own words when they state exactly one full date; the AI model reads the others that name a year, and its dates are marked inferred, as on any fact. A fact whose words name no year stays undated: only processing its document again could recover a date that was printed there.
+- **Records with the same name.** Compares every group of records that share a name and type, as processing now does for the groups a new batch touches. Each merge is recorded under [Merges](#merges) and can be undone; records the model cannot tell apart go to **Possible same entities**.
+- **Housekeeping over every document.** Matches fact tags and relationships that name no entity to the entity meant, and [groups the places document requests can be got from](#requests), over every document rather than only the latest batch. What the model matched is marked inferred.
+
+Afterwards, the notes and the timeline are rebuilt. Your marks on facts, handled Review items, removed entities and wordings you showed apart are kept; a mark moves with its fact when the fact's page is corrected. The steps run one after another and respect the investigation's [spending limit](models-and-cost.md#spending-limit). If one stops, at the limit, on a failed call or when you choose **Stop**, the steps that finished are kept and the rest wait: run it again to finish them. Each run is one version in [History](#history-and-your-notes).
 
 ## Managing investigations
 

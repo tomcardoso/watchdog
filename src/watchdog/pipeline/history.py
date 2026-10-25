@@ -527,6 +527,10 @@ def label(cause: dict | None) -> str:
             text = f"Contradictions re-checked: {', '.join(names)}" + (f" and {more} more" if more > 0 else "")
         else:
             text = "Contradictions re-checked"
+    elif kind == "migrate":
+        n = int(c.get("count") or 0)
+        text = ("Brought up to date with this version of Watchdog"
+                + (f": {n} step{'s' if n != 1 else ''}" if n else ""))
     elif kind in ("hide", "unhide"):
         names = [n for n in c.get("names") or [] if isinstance(n, str)]
         more = int(c.get("count") or len(names)) - len(names)

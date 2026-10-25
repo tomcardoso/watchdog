@@ -176,6 +176,89 @@ def restage_document(vault: Path, extraction: dict) -> int:
     return stage_timeline_events(vault, extraction)
 
 
+def event_key(date: str, event: str, end: str = "") -> tuple[str, str, str]:
+    """What makes two records of one document the same event: its date, its range end and its
+    text, case folded (as `_stage_dedup_key`)."""
+    return ((date or "").strip(), (end or "").strip(), (event or "").strip().lower())
+
+
+def sync_document_events(vault: Path, changes: dict[str, list[tuple]]) -> dict:
+    """Bring committed documents' timeline records in line with facts whose date, page or tags a
+    migration changed (D336), in one pass over the timeline folder. `changes` maps a sha to
+    ``(old key or None, new record or None)`` pairs: a record with the old key (in a canonical or
+    a raw file) whose key is unchanged is updated in place (page, entity ids, date wording), so it
+    keeps its place in the deduplicated timeline; one whose key changed is removed, and the new
+    record is added to the document's raw file for its date, which the next post-processing
+    deduplicates like any other (until then `rebuild_timeline` shows it, D260). Returns
+    ``{"updated", "removed", "added"}``."""
+    td = _timeline_dir(vault)
+    out = {"updated": 0, "removed": 0, "added": 0}
+    if not changes:
+        return out
+    by_old: dict[tuple, dict] = {}
+    for sha, pairs in changes.items():
+        for old, new in pairs:
+            if old is not None:
+                by_old[(sha, *old)] = new
+    placed: set[tuple] = set()
+    if td.exists() and by_old:
+        for f in sorted(td.glob("*.ndjson")):
+            lines, touched = [], False
+            for line in _read_ndjson_lines(f):
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    lines.append(line)
+                    continue
+                sha = rec.get("source_sha256") if isinstance(rec, dict) else None
+                k = (sha, *event_key(rec.get("date"), rec.get("event"), event_end(rec))) if sha else None
+                if k is None or k not in by_old:
+                    lines.append(line)
+                    continue
+                new = by_old[k]
+                touched = True
+                if new is not None and (sha, *event_key(new["date"], new["event"], event_end(new))) == k:
+                    rec.update({key: new[key] for key in ("page", "entity_ids", "basis") if key in new})
+                    for key in ("date_end", "date_text", "date_basis"):
+                        if new.get(key):
+                            rec[key] = new[key]
+                        else:
+                            rec.pop(key, None)
+                    lines.append(json.dumps(rec, ensure_ascii=False))
+                    placed.add(k)
+                    out["updated"] += 1
+                else:
+                    out["removed"] += 1
+            if touched:
+                if lines:
+                    f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+                else:
+                    f.unlink(missing_ok=True)
+    for sha, pairs in changes.items():
+        for _old, new in pairs:
+            if new is None:
+                continue
+            k = (sha, *event_key(new["date"], new["event"], event_end(new)))
+            if k in placed:
+                continue
+            td.mkdir(parents=True, exist_ok=True)
+            raw = td / f"{new['date']}_{sha[:7]}.ndjson"
+            existing = _read_ndjson_lines(raw) if raw.exists() else []
+            have = set()
+            for line in existing:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                have.add((r.get("source_sha256"), *event_key(r.get("date"), r.get("event"), event_end(r))))
+            if k not in have:
+                existing.append(json.dumps({**new, "source_sha256": sha}, ensure_ascii=False))
+                raw.write_text("\n".join(existing) + "\n", encoding="utf-8")
+                out["added"] += 1
+            placed.add(k)
+    return out
+
+
 def collisions(vault: Path) -> list[dict]:
     """Promote no-canonical dates to canonical; return the remaining collisions.
 

@@ -29,7 +29,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
   then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
   `requeue`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
-  `recheck-contradictions`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
+  `recheck-contradictions`, `migrate`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
   code is converted to an error with its message (leading `Error:` stripped).
@@ -336,6 +336,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
 | `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
+| `migrate` | yes | — | `migrations.run`'s result (D336): `{steps: [{id, title, complete, summary}], applied, pending, stopped, spending_limit, error, rebuilt}`; exit code 2 at the spending limit, 1 on a failed call | index |
 | `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
 | `hide-entities` | yes | `{ids}` | `{hidden, already, names}` — removes entities from the investigation's views (D326): lists their ids in `registry/hidden.json` under the registry lock, with who and when; changes nothing else (I17). An action | |
 | `unhide-entities` | yes | `{ids}` | `{shown, not_listed, names}` — Bring back (D326). An action | |
@@ -350,7 +351,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `sample-create` | no | `{dir?, rebuild?}` | `{slug, name, path}` — builds the sample investigation with prepared model answers (no model call, no key, no network), refused when it exists unless `rebuild`, which deletes only the sample first (D303) | |
 | `projects-new` / `-register` / `-rename` / `-describe` / `-move` / `-archive` / `-delete` | no | see [projects](#projects) | `{slug, name, path}` | |
 
-Only `add`, `dig`, `bark` and `recheck-contradictions` call a model, so only they are handed the
+Only `add`, `dig`, `bark`, `recheck-contradictions` and `migrate` call a model, so only they are handed the
 investigation's keys (D295). `add` and `dig` without `skip_warning` decline the public-records
 gate and send nothing: the app shows the acknowledgement first and passes `skip_warning: true`
 once it is given.
@@ -375,6 +376,7 @@ last line on stderr), 64 (a request it could not read) or 130.
 | `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge": the `undo-merge` operation, refused up front when the merge can't be split (D280). Errors: `cannot_undo` with the reason, `not_found` |
 | `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): the `recheck-contradictions` operation (D287), after the checks it would make. Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
+| `jobs.migrate` | `{vault}` | `Job` — "Bring this investigation up to date" (D336): the `migrate` operation, after the checks it would make. Holds the processing lock while it runs; progress is the `migrate` stage, one step per migration, with each step's own stages inside. Errors: `busy`, `nothing_to_do` when no migration is pending, `auth_required`, `key_missing` (D290), `engine_not_ready` |
 | `action.run` | `{vault\|null, op, params?, timeout?: seconds}` | `{code, result, log, error\|null}` — a quick operation run to completion (rename, requeue…); `error` is the reason it gave when `code` isn't 0 |
 
 ```
@@ -408,6 +410,26 @@ RecheckEstimate = {
 | Method | Params | Result |
 |---|---|---|
 | `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287), plus `billing: Billing[]` (D290) and `sample: bool` (D307: prepared answers, $0). The app shows it and asks before `jobs.recheckContradictions` |
+
+## migrations
+
+Bringing an investigation up to date (D336). The stamp is `.watchdog/migrations.json`, app-owned.
+
+```
+MigrationStep = {id, title, description, calls_model: bool}
+MigrationStatus = {pending: MigrationStep[], banner: bool, applied: number, busy?: bool}
+MigrationEstimate = {
+  steps: [MigrationStep & {items, calls, est_tokens, detail, cost_low|null, cost_high|null, model|null, subscription?}],
+  calls, est_tokens, cost_low|null, cost_high|null,   // summed over the steps; null when a model is unpriced
+  subscription: bool, auth: {mode, ok, reason|null}, billing: Billing[], busy: bool, engine_ready: bool
+}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `migrations.status` | `{vault}` | `MigrationStatus` — the pending steps (none for the sample or an investigation with no committed document) and whether the Overview's one-time banner is due |
+| `migrations.estimate` | `{vault}` | `MigrationEstimate` — a read: `migrations.plan`, each model step priced on its stage's model by `ingest_setup.recheck_cost_estimate`. The app shows it and asks before `jobs.migrate` |
+| `migrations.dismissBanner` | `{vault}` | `MigrationStatus` — hides the banner for the steps pending now (a later migration shows it again); Maintenance keeps the row |
 
 ## search
 

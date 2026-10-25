@@ -132,10 +132,12 @@ CHORE = housekeeping.Chore(task="fact-tags", schema=SCHEMA, build_prompt=build_p
                            validate=validate, max_items=40)
 
 
-def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult") -> dict:
+def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult", *,
+          restage: bool = True) -> dict:
     """Write what the pass settled into the staged extractions (I7) and rebuild each changed
-    document's entity views and raw timeline files. Items no call covered are left for the next
-    finalize. Returns ``{"retagged": tags matched, "facts": facts changed, "unmatched"}``."""
+    document's entity views and raw timeline files (`restage=False` leaves the timeline files to
+    the caller: a committed document's, `committed.sync`, D336). Items no call covered are left
+    for the next finalize. Returns ``{"retagged": tags matched, "facts": facts changed, "unmatched"}``."""
     from watchdog.pipeline import timeline
     from watchdog.pipeline.postflight import explode_key_facts
     by_sha: dict[str, list[int]] = {}
@@ -181,7 +183,8 @@ def apply(vault: Path, items: list[dict], result: "housekeeping.ChoreResult") ->
                     e.pop("evidence_fragments", None)
                     e.pop("timeline_events", None)
             explode_key_facts(art)
-            timeline.restage_document(vault, art)
+            if restage:
+                timeline.restage_document(vault, art)
         path.write_text(json.dumps(art, ensure_ascii=False, indent=2), encoding="utf-8")
     return {"retagged": retagged, "facts": changed_facts, "unmatched": unmatched}
 

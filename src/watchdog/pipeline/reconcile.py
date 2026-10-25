@@ -493,6 +493,42 @@ def build_bundle(vault: Path, shas: list[str], only: set[str] | None = None) -> 
             "carried_in": sorted(carried)}
 
 
+def build_group_bundle(vault: Path) -> dict:
+    """Every set of committed records sharing one name and type, for "Bring this investigation up
+    to date" (D336): the bundle `build_bundle` would make for its same-name groups if every record
+    had been touched by the batch, and nothing else (no pairs, no contradiction check). The groups
+    go through the same tiers, `NameGroups` rounds, caps and carry (D325). Records an earlier run
+    carried that are in no group stay carried, since the carry this pass records replaces the last."""
+    working = _read_json_or(vault / ".watchdog" / "registry" / "entities.json", {})
+    same_key: dict[tuple[str, str], set[str]] = {}
+    for eid, entry in working.items():
+        if not isinstance(entry, dict) or entry.get("merged_into"):
+            continue
+        key = _group_key(entry)
+        if key[1]:
+            same_key.setdefault(key, set()).add(eid)
+    same_key = {k: v for k, v in same_key.items() if len(v) > 1}
+    evidence = identity.Evidence(vault, working, staged={})
+    profiles: dict[str, identity.Profile] = {}
+
+    def _profile(eid: str) -> identity.Profile:
+        if eid not in profiles:
+            profiles[eid] = evidence.registry_profile(eid, working[eid])
+        return profiles[eid]
+
+    rule_merges: list = []
+    candidates: list = []
+    groups = _name_groups(same_key, working, _profile, evidence.dismissed(), rule_merges, candidates)
+    name_groups = NameGroups(groups, working, profiles)
+    grouped = {eid for ids in same_key.values() for eid in ids}
+    carried = sorted(eid for eid in merge_log.carried_ids(vault) if eid in working)
+    return {"entities": [], "pairs": [], "pairs_dropped": 0, "pair_verdicts": [],
+            "rule_merges": rule_merges, "candidates": candidates, "profiles": profiles,
+            "groups": name_groups.next_items(), "name_groups": name_groups,
+            "carry_pairs": [eid for eid in carried if eid not in grouped], "carried_in": carried,
+            "records": len(grouped), "name_sets": len(same_key)}
+
+
 def _group_key(entry: dict) -> tuple[str, str]:
     """What makes two records "the same name" for group judging: canonical type and the name's
     comparison key (`identity.name_key`, a leading "the" dropped)."""
@@ -997,6 +1033,11 @@ def _stage_on_owner(vault: Path, shas: list[str], ids: set[str], entry: dict) ->
             target = (p, artifact)
             break
     if target is None:
+        if not shas:
+            # Nothing staged (D336's pass over committed records): written now, under the lock.
+            from watchdog.pipeline.write_vault import _registry_lock
+            with _registry_lock(vault / ".watchdog" / "registry"):
+                merge_log.record(vault, [entry])
         return
     path, artifact = target
     stage_identity_log(artifact, entry)

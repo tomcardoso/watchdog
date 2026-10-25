@@ -27,6 +27,8 @@ _NOTE_TEXT = {
             "add documents again to convert the rest.",
     "recheck-contradictions": "A contradiction re-check stopped before it finished. Nothing it "
                               "found was filed; run it again from the entity or from Maintenance.",
+    "migrate": "Bringing the investigation up to date stopped before it finished. The steps it "
+               "finished are kept; run it again from the Overview or Maintenance to do the rest.",
 }
 _DEFAULT_NOTE = ("A run stopped before it finished. The documents it had finished were kept; add "
                  "documents again to finish the rest.")

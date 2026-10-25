@@ -514,6 +514,46 @@ A batch is always finalized, never discarded (D242); post-processing with nothin
 
 ---
 
+## 9.5. Migrations: bringing an investigation up to date
+
+Most of §9 runs over a batch, so a pipeline change reaches only the documents processed after it.
+`pipeline/migrations.py` holds the **migrations** that apply such a change to what an investigation
+already stored (D336). `MIGRATIONS` lists them in order, each with an id, a title and description
+the app shows, whether it calls a model and on which stage's model, an `estimate` and an `apply`.
+Each runs the pipeline's own code on the committed documents' extractions; nothing is
+re-extracted, and no step does more to a document than the same step would on a fresh run.
+
+- **The stamp.** `.watchdog/migrations.json` records the ids applied (with the time and the
+  Watchdog version). `ops.projects.create` stamps a new investigation, the sample included, with
+  every current id; an older one with no committed document is stamped at its first commit
+  (`stamp_if_new`). An investigation with pending ids gets a one-time banner on its Overview (until
+  dismissed for those ids) and a row in Activity → Maintenance.
+- **The run** (`migrate` operation, `migrations.run`). `plan` gives every pending step's items,
+  calls and chars/4 tokens, priced per step in the app before it starts. The steps run in order
+  under the processing lock, as a run holds it, inside one history version (`kind: "migrate"`),
+  with their calls in the usage files. A model step checks the spending limit before it starts;
+  its chores and the reconcile rounds check it between calls (D324). A step is stamped only when it
+  finished with nothing unanswered, so a stop, a failed call or Stop leaves it and every later step
+  pending. Then the notes and the timeline are rebuilt (`entity_notes.rebuild`,
+  `timeline.rebuild_timeline`), unless the reporter stopped it.
+- **Committed records follow the extraction** (`pipeline/committed.py`). A step changes a
+  committed document's extraction; `Tracker` snapshots what it changes and `sync` carries it into
+  what the commit had derived: the entity timelines and the timeline files (a record updated in
+  place when its date and text are unchanged, else staged raw for the next dedup), a re-pointed
+  relationship and its reverse, and, when a corrected page changes a fact's D271 id, the
+  reporter's mark (`verification.move_marks`), contradiction fact links and summary short refs.
+- **The first migrations.** (1) Free fixes: post-flight's near-miss tag resolution and one-page
+  citations (quotes, figure checks and passages found again for the moved facts); the silent id
+  tidy changed only warnings, so stored ids are counted, never rewritten. (2) Erased dates: a fact
+  whose `date` is `""` with no `date_text` (the pre-D329 parser's erasure) has its date read from
+  its own text by code when the text names one year and exactly one full date in a window around it
+  reads with `dates.read` and no qualifier word bounds it (`dates.find_in_text`); the rest with a
+  year go to the date chore as `lost` items checked against the fact's text, marked inferred; each
+  looked-at fact records `date_recovery`. (3) Same-name groups: `reconcile.build_group_bundle`
+  gives every committed same-name set to `_reconcile_pre_commit` with no batch, so D325's tiers,
+  rounds, caps and carry apply and merges go through `merge_entities.run`. (4) The housekeeping
+  chores (fact tags, relationship targets, request sources) over every committed document.
+
 ## 10. Near-duplicate detection
 
 See §3. Detection only: the journalist decides whether two documents are the same. The dashboard
@@ -573,6 +613,7 @@ queries/ wiki/               session-written findings and threads
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
   page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
   review-seen.json           when the reporter last opened Review (D327); the app's own state, read by no model input
+  migrations.json            the migrations this investigation has had, and the steps its Overview banner was dismissed for (D336); the app's own state, read by no model input
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
@@ -1038,7 +1079,9 @@ noted as such.
   leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
   Investigation sessions can't hand-edit pipeline-owned files (the edit hook allows only their own
   pages); they change pipeline state only through deterministic session tools that take the
-  registry lock and ask the reporter. *History: D126–D129, D245, D258, D299, D304.*
+  registry lock and ask the reporter. Outside a run, only a migration (I19) changes a committed
+  extraction, under the processing lock, carrying the change into the records the commit derived.
+  *History: D126–D129, D245, D258, D299, D304, D336.*
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
@@ -1051,7 +1094,7 @@ noted as such.
 - **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
   makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
   writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
-  and clear, the investigation's billing key and spending limit, Review's last-opened time, an Ask Claude session's tools, D299), a library
+  and clear, the investigation's billing key and spending limit, Review's last-opened time, the migration banner's dismissal (D336), an Ask Claude session's tools, D299), a library
   function called in-process; either way under folder access (D268), the operation's locks (D293)
   and I7's commit discipline. The app keeps the
   gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
@@ -1115,3 +1158,12 @@ noted as such.
   it does not want, so a field added to a registry later cannot reach it; its only free text, a
   processing-log warning, is reduced to its shape first. *History: D331.* Guarded by
   `tests/test_invariants.py::test_I18_…` and `tests/test_diagnostics.py`.
+- **I19 — A change to stored records reaches existing investigations through a migration.** A
+  pipeline change that alters what investigations store adds a migration to
+  `pipeline/migrations.py` (or its decision says why none is needed). A migration applies only the
+  current pipeline's code to stored records, never more than the same step would do on a fresh run;
+  is safe to run twice; keeps the reporter's marks; merges only through the logged, undoable path;
+  runs under the processing lock as one history version, with the spending limit checked before
+  and between model calls; and is recorded as applied only when it finished. A new investigation
+  is stamped with every current migration. *History: D336.* Guarded by
+  `tests/test_invariants.py::test_I19_…` and `tests/test_migrations.py`.
