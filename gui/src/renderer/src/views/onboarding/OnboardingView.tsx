@@ -41,7 +41,7 @@ function Frame({ step, steps, children, footer, wide }: { step: Step; steps: Ste
   return (
     <div className="onb">
       <header className="onb-top">
-        <div className="onb-brand">
+        <div className="onb-brand logo-wag">
           <LogoMark />
           <span>Watchdog</span>
         </div>

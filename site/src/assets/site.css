@@ -203,15 +203,15 @@ kbd {
 /* The wordmark: the name, struck through with a highlighter. */
 .wordmark { display: inline-flex; align-items: center; text-decoration: none; }
 .wordmark-dog { width: 32px; height: 34px; margin: -6px 9px 0 0; flex: none; }
-/* Hover the dog and he wags: the tail turns about where it meets the rump, hidden behind the body. */
+/* Hover the dog or the name and he wags: the tail turns about where it meets the rump, hidden behind the body. */
 .wordmark-dog { overflow: visible; }
 .wordmark-tail { transform-box: view-box; transform-origin: 70px 152px; }
-.wordmark-dog:hover .wordmark-tail { animation: wag 0.23s ease-in-out infinite; }
+.wordmark:hover .wordmark-tail { animation: wag 0.23s ease-in-out infinite; }
 @keyframes wag {
   25% { transform: rotate(-16.8deg); }
   75% { transform: rotate(10.8deg); }
 }
-@media (prefers-reduced-motion: reduce) { .wordmark-dog:hover .wordmark-tail { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .wordmark:hover .wordmark-tail { animation: none; } }
 .wordmark-text {
   font-family: var(--font-read);
   font-weight: 650;

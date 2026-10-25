@@ -78,7 +78,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-drag">
-        <span className="sidebar-brand">
+        <span className="sidebar-brand logo-wag">
           <LogoMark />
           <span className="sidebar-brand-text">Watchdog</span>
         </span>
