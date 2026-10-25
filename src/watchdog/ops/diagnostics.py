@@ -1,8 +1,8 @@
 """A diagnostics report with no content in it, safe to post publicly (D331): counts and shapes of
 an investigation's records, as one Markdown file, with no model call.
 
-The troubleshooting copy (`ops.troubleshoot`, D323) is investigation material and can only be
-sent privately. This report is the other choice: it carries aggregates only, so a bug that shows
+The troubleshooting copy (`ops.troubleshoot`, D323) is investigation material, for the reporter's
+own use. This report is the one to attach to an issue: it carries aggregates only, so a bug that shows
 in counts and shapes (a date form dropped, a cap that cut a group of same-name records, quote
 failures concentrated in one file type, the spread of document requests) can be reported
 publicly without anonymising anything.

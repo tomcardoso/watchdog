@@ -199,7 +199,7 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 - What actually happened — copy and paste any error messages
 - Your operating system and version, and the Watchdog version (shown at the bottom of the sidebar and under **Settings → About**)
 - The log file, if you can share it. Check it first: it can contain file names and paths from your investigations.
-- A copy of the investigation, if the problem is in what Watchdog produced and you can share it (see below).
+- The diagnostics report, if the problem is in what Watchdog produced (see below). It is made to be posted publicly.
 
 ### Sending a copy of the investigation
 
@@ -214,7 +214,7 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 
 It never holds a file name, document title, the name of a person or organization, an alias, a relationship, a fact, a quote, a figure, an identifier, a date or a summary. It is built from a fixed list of counts, so a record field added in a later version does not appear in it. No model is used. The dialog shows the whole report before it is saved. Read it before you post it: even counts can hint at things, such as the languages or kinds of documents you work with.
 
-**Full copy (private)** writes one zip file with what a report needs to look into a wrong fact, a bad merge or a failed run. Much of that is kept in hidden folders inside the investigation, which zipping the folder by hand can leave out. The zip holds:
+**Full copy (private)** writes one zip file of the investigation's records, for your own use: to keep beside the investigation, or to hand to a colleague you would show the documents to. Much of that is kept in hidden folders inside the investigation, which zipping the folder by hand can leave out. The zip holds:
 
 - Watchdog's records of the documents and entities, including merges, your checks of facts and the processing history
 - what the model extracted from each document
@@ -224,9 +224,9 @@ It never holds a file name, document title, the name of a person or organization
 
 It never contains your API keys or sign-ins, your conversations with Claude, the app's log or earlier versions of files. The original documents, and the text read from them, are left out unless you turn on **Include the original documents**. They make a problem with reading a document possible to reproduce, but the file is much larger and more sensitive.
 
-The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material: send it only to someone you would show the documents to.
+The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material.
 
-When you report a problem, attach the diagnostics report to the public issue. Offer the full copy only if you are asked for it, and send it privately, not as an attachment to the issue.
+When you report a problem, attach the diagnostics report to the issue. Never attach the full copy: issues are public.
 
 ## Where next
 
