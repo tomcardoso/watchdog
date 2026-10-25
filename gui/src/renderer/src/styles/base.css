@@ -209,18 +209,22 @@ pre {
   }
 }
 
-/* The Watchdog mark (components/Logo.tsx): hover it and the dog wags. The tail turns about where
-   it meets the rump, hidden behind the body. It sits in window drag regions (the sidebar, the
-   start-up screen), which take no hover, so the mark itself opts out of dragging. */
+/* The Watchdog mark (components/Logo.tsx): hover it, or the wordmark it sits in (.logo-wag), and the
+   dog wags. The tail turns about where it meets the rump, hidden behind the body. Both sit in window
+   drag regions (the sidebar, the start-up screen), which take no hover, so they opt out of dragging. */
+.logo-mark,
+.logo-wag {
+  -webkit-app-region: no-drag;
+}
 .logo-mark {
   overflow: visible;
-  -webkit-app-region: no-drag;
 }
 .logo-tail {
   transform-box: view-box;
   transform-origin: 70px 152px;
 }
-.logo-mark:hover .logo-tail {
+.logo-mark:hover .logo-tail,
+.logo-wag:hover .logo-tail {
   animation: wag 0.23s ease-in-out infinite;
 }
 @keyframes wag {
@@ -232,7 +236,8 @@ pre {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .logo-mark:hover .logo-tail {
+  .logo-mark:hover .logo-tail,
+  .logo-wag:hover .logo-tail {
     animation: none;
   }
 }
