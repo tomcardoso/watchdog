@@ -156,7 +156,7 @@ export function SettingField({ setting, models, efforts }: { setting: SettingKey
           <span>
             {kind === 'secret' ? (isSet ? 'A value is stored' : 'Not set') : isSet ? `Current: ${setting.display}` : `Using the default: ${defText}`}
           </span>
-          {kind !== 'secret' && isSet && (
+          {kind !== 'secret' && isSet && String(setting.current) !== defText && (
             <button className="set-reset" disabled={busy} onClick={() => void save(setting.default === null || setting.default === undefined ? '' : String(setting.default))}>
               <RotateCcw /> Reset to default{defText !== 'not set' ? ` (${defText})` : ''}
             </button>

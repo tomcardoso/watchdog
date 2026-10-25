@@ -138,7 +138,7 @@ None of these needs to reach 100% for Watchdog to be useful: its job is to surfa
 
 ## Settings reference
 
-Open **Settings** from the sidebar (or **Settings…** in the Watchdog menu on a Mac, **File → Settings** on Windows and Linux). Settings apply to every investigation on this computer. Each field shows a one-line description with a **More** link, saves as you change it, and has **Reset to default**. Its stored name, such as `extractor_model`, is shown beside it in small grey type; everything is stored in `config.json` in Watchdog's settings folder (`.watchdog/` in your home folder).
+Open **Settings** from the sidebar (or **Settings…** in the Watchdog menu on a Mac, **File → Settings** on Windows and Linux). Settings apply to every investigation on this computer. Each field shows a one-line description with a **More** link, saves as you change it, and has **Reset to default** when it differs from the default. Its stored name, such as `extractor_model`, is shown beside it in small grey type; everything is stored in `config.json` in Watchdog's settings folder (`.watchdog/` in your home folder).
 
 For one batch only, the **Options** in the Add documents dialog override the processing and model fields without changing them.
 
