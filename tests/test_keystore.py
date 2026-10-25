@@ -311,7 +311,30 @@ def test_an_operation_that_calls_no_model_gets_no_keys(home, tmp_path, monkeypat
 def test_operations_that_call_a_model_are_the_ones_handed_keys():
     from watchdog import ops
     handed = {name for name, spec in (ops._load() or ops.OPS).items() if spec.secrets}
-    assert handed == {"add", "dig", "bark", "recheck-contradictions", "migrate"}
+    assert handed == {"add", "dig", "bark", "recheck-contradictions", "migrate",
+                      "research-fetch", "fetch-links"}
+
+
+def test_wayback_keys_are_stored_encrypted_and_handed_only_to_the_download(home, tmp_path):
+    """D341: the Wayback Machine keys live in credentials.json as the app's blobs, never in
+    config.json, and only the research download jobs get them, without any provider's key."""
+    from watchdog.gui import jobs
+    from watchdog.ops import research as research_op
+    keystore.provide({}, store="encrypted", backend="keychain")
+    (home).mkdir(parents=True, exist_ok=True)
+    (home / "config.json").write_text(json.dumps({"wayback_save": True, "wayback_access_key": "old"}))
+    with pytest.raises(ValueError):
+        auth.store_setting_secret("wayback_access_key", "acc-1")      # no blob from the app
+    auth.store_setting_secret("wayback_access_key", "acc-1", enc=seal("acc-1"))
+    auth.store_setting_secret("wayback_secret_key", "sec-2", enc=seal("sec-2"))
+    raw = json.loads((home / "credentials.json").read_text())
+    assert "acc-1" not in json.dumps(raw) and "sec-2" not in json.dumps(raw)
+    assert "wayback_access_key" not in json.loads((home / "config.json").read_text())
+    assert research_op.wayback_creds() == ("acc-1", "sec-2")
+    vault = tmp_path / "case"
+    (vault / ".watchdog" / "registry").mkdir(parents=True)
+    assert sorted(jobs._secrets(vault, "research-fetch", {}).values()) == ["acc-1", "sec-2"]
+    assert "acc-1" not in jobs._secrets(vault, "add", {}).values()
 
 
 def test_a_job_is_handed_only_the_providers_its_models_use(home, tmp_path, monkeypatch):

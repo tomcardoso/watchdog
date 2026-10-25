@@ -9,7 +9,7 @@ import { Markdown } from '@renderer/components/Markdown'
 import { call, errorMessage, invalidate, useEvent, useRpc } from '@renderer/lib/rpc'
 import { fmtCost, fmtRelative } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
-import { PermissionCard, PermissionRequest, SLASH, Thinking, ToolRow } from './ChatParts'
+import { PermissionCard, PermissionRequest, SLASH, splitCommand, Thinking, ToolRow } from './ChatParts'
 import { SAMPLE_LABEL, SampleEmpty, SampleQuestions, useSamplePlayback } from './SamplePlayback'
 import './chat.css'
 
@@ -39,7 +39,7 @@ interface Props {
   /** Rendered between the header and the messages (research sources, for example). */
   strip?: (api: WorkspaceApi) => ReactNode
   /** Route to open sessions under. */
-  view: 'ask' | 'research'
+  view: 'ask' | 'research' | 'context'
   session?: string
   prompt?: string
   /** Start a session of this mode as soon as the screen opens (the Overview's “Read it”). */
@@ -51,6 +51,18 @@ interface Props {
 }
 
 let localId = 1
+
+/** A sent message with a leading command shown by its label, as the shortcuts name it. */
+function userText(text: string): ReactNode {
+  const { command, rest } = splitCommand(text)
+  if (!command) return text
+  return <><span className="chat-user-cmd" title={command.name}>{command.label}</span>{rest && <> {rest}</>}</>
+}
+
+// Unsent text in the composer, per investigation, screen and conversation ('' for a new one), so
+// leaving Ask Claude or Web research and coming back finds it again. Memory only: it lasts until
+// the app quits and is never written to disk, since a draft can quote a document.
+const DRAFTS = new Map<string, string>()
 
 export default function ChatWorkspace(p: Props) {
   const project = useApp((s) => s.project)!
@@ -69,7 +81,19 @@ export default function ChatWorkspace(p: Props) {
   const [, setDetail] = useState<string | null>(null)
   const [cost, setCost] = useState<number | null>(null)
   const [model, setModel] = useState<ModelChoice>('sonnet')
-  const [text, setText] = useState('')
+  const draftKey = `${vault}\u0000${p.view}\u0000${active ?? ''}`
+  const [text, setTextState] = useState(() => DRAFTS.get(draftKey) ?? '')
+  const shownKey = useRef(draftKey)
+  const setText = useCallback((t: string) => {
+    setTextState(t)
+    if (t) DRAFTS.set(shownKey.current, t)
+    else DRAFTS.delete(shownKey.current)
+  }, [])
+  useEffect(() => {
+    if (shownKey.current === draftKey) return
+    shownKey.current = draftKey
+    setTextState(DRAFTS.get(draftKey) ?? '')
+  }, [draftKey])
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
@@ -357,7 +381,7 @@ export default function ChatWorkspace(p: Props) {
     setText('')
     void begin(t)
   }
-  const sugg = useMemo(() => (/^\/[^\s]*$/.test(text) ? SLASH.filter((s) => s.name.startsWith(text.toLowerCase())) : []), [text])
+  const sugg = useMemo(() => (/^\/[^\s]*$/.test(text) ? SLASH.filter((s) => s.name.startsWith(text.toLowerCase()) && s.name !== '/watchdog-context') : []), [text])
 
   const api: WorkspaceApi = {
     begin,
@@ -459,7 +483,7 @@ export default function ChatWorkspace(p: Props) {
               if (m.role === 'user')
                 return (
                   <div key={m.id} className="chat-user">
-                    <div className="chat-user-bubble selectable">{m.text}</div>
+                    <div className="chat-user-bubble selectable">{userText(m.text)}</div>
                   </div>
                 )
               return m.text.trim() ? (
@@ -507,9 +531,9 @@ export default function ChatWorkspace(p: Props) {
               <div className="chat-sugg">
                 {sugg.map((s) => (
                   <button key={s.name} onClick={() => api.prefill(s.name + (s.takesInput ? ' ' : ''))}>
-                    <span className="mono">{s.name}</span>
-                    <span className="faint">{s.hint}</span>
+                    <span style={{ fontWeight: 600 }}>{s.label}</span>
                     <span className="muted grow truncate">{s.text}</span>
+                    <span className="mono faint">{s.name}</span>
                   </button>
                 ))}
               </div>

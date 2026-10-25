@@ -6,15 +6,15 @@ This page covers the day-to-day work of an investigation, task by task: adding d
 
 ## Finding your way around
 
-The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
+The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Context**, **Watch list**, **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
 
-Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7). **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
+Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7), and **Ctrl+Tab** and **Ctrl+Shift+Tab** move to the next or previous item in the sidebar, in order, on every computer. **⌘[** and **⌘]** (Ctrl+[ and Ctrl+] on Windows and Linux) go back and forward through the screens you have visited; on Windows and Linux, Alt+← and Alt+→ do too, except while you are typing. **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
 The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and one line on what is new. Until you first open Review, it says what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads." After that, it says what has come in since you last opened Review and is still open; when nothing has, there is no line. Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads, watch-list alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents, possible same entities and document requests, which you can work through in bulk; click it to see all three. **In progress** lists what is still being added. Each item links to the screen that deals with it.
 
 Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**.
 
-A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, `/watchdog-surface` in Ask Claude looks for connections you did not think to ask about.
+A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, **Find connections** in Ask Claude looks for connections you did not think to ask about.
 
 ## Adding documents
 
@@ -126,7 +126,7 @@ A fact you mark Disputed is never hidden. Wherever it appears (the document, the
 
 Above the tabs, **Start here** lists up to seven items to look at first, each with one line on why it is there; the Overview shows the same list. The order comes from ordinary code (no AI), from what the investigation already records:
 
-1. An item tied to a term on your [watch list](#the-watch-list): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
+1. An item tied to a term on your [watch list](#watch-list): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
 2. An item about one of the most connected entities (those with relationships to the most others, as in the Network) or about an entity that several documents are mainly about.
 3. A contradiction between two documents, ahead of one between two passages of the same document.
 4. A lead named in several documents, ahead of one named in only one.
@@ -172,11 +172,7 @@ Below the queue, **Recent merges** lists every merge, newest first: which record
 
 Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and links to the documents that named it.
 
-The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together. Two names for one place, such as a registry's official name and a description of it, are grouped by a model when a run adds a source it has not seen (see [grouping request sources](how-it-works.md#request-sources)); such a group says **grouped by AI**, hovering over it shows the names it joined, and **Show apart** undoes a grouping you disagree with for good. Each request keeps its own wording. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. For a document held by a public body, [Ask Claude](#ask-claude)'s `/watchdog-request` drafts the request letter: a freedom-of-information, access-to-information or public-records request. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
-
-### The watch list
-
-**Watch list**, at the top right of Review, holds terms to flag whenever they appear in new documents: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word; wrap a term in slashes, like `/14\s+Quay Street/`, for a pattern. Every run scans its new documents, and matches appear on the **Alerts** tab with the page and surrounding words. **Check every document now** checks documents added before a term was. No model is called.
+The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together. Two names for one place, such as a registry's official name and a description of it, are grouped by a model when a run adds a source it has not seen (see [grouping request sources](how-it-works.md#request-sources)); such a group says **grouped by AI**, hovering over it shows the names it joined, and **Show apart** undoes a grouping you disagree with for good. Each request keeps its own wording. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. For a document held by a public body, [Ask Claude](#ask-claude)'s **Draft a records request** drafts the request letter: a freedom-of-information, access-to-information or public-records request. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
 
 ## Entities
 
@@ -230,35 +226,48 @@ Summaries, briefings and the pages Claude saves cite the facts they rest on, wit
 
 Sentences without a citation are expected: a model connecting facts or summing up. Anything you publish should rest on cited facts you have checked.
 
+## Context
+
+**Context** holds the investigation's brief, `context.md`, and the background material behind it. The brief says what you are investigating, as open questions; it is sent to the model with every document you add and shapes every briefing, so the Overview asks for it until it exists. See [Set the context](getting-started.md#set-the-context) for what to put in it and what to leave out.
+
+- **Add background files…** copies files you choose (published stories, notes, screenshots) into the investigation's `context/` folder. The originals stay where they are, and nothing is added as a document.
+- **Build it with Claude**, or **Update with Claude** once a brief exists, starts a conversation on this screen: Claude reads the background files, interviews you, and writes or updates the brief. Past context conversations are listed here too.
+- **Edit** changes the brief by hand, and **History** shows its earlier versions.
+
+## Watch list
+
+**Watch list**, under Work in the sidebar, holds terms to flag whenever they appear in new documents: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word; wrap a term in slashes, like `/14\s+Quay Street/`, for a pattern. Every run scans its new documents, and matches appear on Review's **Alerts** tab with the page and surrounding words, where you mark them handled like any other item. Each term shows how many of its matches are still open and links to them; **Edit watch list** on the Alerts tab comes back here. **Check every document now** checks documents added before a term was. No model is called. The list is `watchlist.md` in the investigation's folder, and **History** shows its earlier versions.
+
 ## Ask Claude
 
 **Ask Claude** is a conversation with Claude about the investigation, using only its documents and citing the page for each claim. Each conversation starts with a short account of where the whole investigation stands, which Watchdog builds from its records, so Claude knows the state of things without re-reading everything. Start a new conversation for each new line of inquiry. **Briefings → Current state** shows that account, and **What Claude is given** shows exactly what Claude receives.
 
 ![An Ask Claude conversation: a question, the searches Claude ran, and an answer with a page citation for each claim.](images/app-ask.png)
 
+A question you have typed but not sent stays in the box when you go to another screen and come back, for each conversation, until you quit Watchdog. It is never saved to disk.
+
 The documents Claude reads are treated as untrusted, since any of them could contain text written to steer it. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, cannot run programs on your computer, and changes no file except its own pages. Before it changes the investigation's records (an entity's summary, a contradiction, the watch list, the timeline) or fetches a web page, the app shows what it is about to do and asks. **Allow once** allows that one action; **Allow for this conversation** stops asking for that kind of change until you close the chat. Every change Claude makes is recorded in [history](#history-and-your-notes). Adding documents, merging entities and marking items handled stay with you.
 
-Start from a question in plain language or one of the shortcuts:
+Start from a question in plain language or one of the shortcuts below, shown as cards on an empty conversation. Typing `/` in the box lists them too:
 
-- `/watchdog-query` answers a question with a source for every claim, and files substantive answers to `queries/`.
-- `/watchdog-surface` looks across the whole investigation for shared addresses, people in unusual roles, recurring names and chronological anomalies.
-- `/watchdog-entity` refreshes an entity's summary and timeline from all its documents.
-- `/watchdog-wiki` writes thread pages in `wiki/` for findings that have grown into a real angle.
-- `/watchdog-health` checks for orphaned notes, broken links and open contradictions.
-- `/watchdog-request` drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
-- `/watchdog-context` (or **Seed investigation context**) reads the background files in `context/`, interviews you, and writes `context.md`, your investigation brief. The brief is sent to the model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it.
+- **Answer a question** answers a question with a source for every claim, and files substantive answers to `queries/`.
+- **Find connections** looks across the whole investigation for shared addresses, people in unusual roles, recurring names and chronological anomalies.
+- **Refresh an entity** refreshes an entity's summary and timeline from all its documents.
+- **Write thread pages** writes thread pages in `wiki/` for findings that have grown into a real angle.
+- **Check the investigation** checks for orphaned notes, broken links and open contradictions.
+- **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
 
 A selector chooses the Claude model for new conversations: Sonnet, the default, or Haiku, which is cheaper and suits simpler questions. Ask Claude always runs on Claude, whatever the other steps use.
 
 ### Web research
 
-When a question needs more than the investigation's documents, **Web research** can look it up. Enter a question, or leave the box blank for Claude to propose one from the investigation's gaps. Claude proposes a mission, confirms how wide to cast the net (quick, standard or deep), researches in rounds, checking in with you, and writes a memo to Briefings.
+When a question needs more than the investigation's documents, **Web research** can look it up. Enter a question, or leave the box blank for Claude to propose one from the investigation's gaps. Claude proposes a mission, confirms how wide to cast the net (quick, standard or deep), researches in rounds, checking in with you, and writes a memo to Briefings. Here, unlike in Ask Claude, it searches the web and reads pages without asking you each time, since that is the whole job; anything that would change the investigation still asks.
 
 Web research never writes to the investigation. It queues the sources it keeps, each with its address, a reliability tag and why it matters, and nothing is downloaded until you choose **Download**. The sources then go through the same reading and extraction as any document, so a blog post is never confused with a primary record. Queued sources survive an interrupted session. With the optional capture browser installed (see [Install](install.md#optional-full-page-snapshots)), pages are saved as full snapshots; [Web archiving](models-and-cost.md#web-archiving) can also save each source to the [Wayback Machine](https://web.archive.org).
 
 ## Briefings
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved. Pinned at the top are **Current state** (where the whole investigation stands, built from its records), the processing history and the investigation's brief, `context.md`, which you can edit there.
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. The investigation's brief has its own screen, [Context](#context).
 
 ## History and your notes
 

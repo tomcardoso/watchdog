@@ -382,6 +382,16 @@ def test_a_total_that_starts_again_counts_whole(env, monkeypatch):
 
 # ── what a session is given (D299) ────────────────────────────────────────────────────────
 
+def test_a_research_session_searches_and_reads_the_web_without_asking(env):
+    """D344: WebSearch and WebFetch are pre-approved in Web research only; Ask still asks."""
+    vault, events = env
+    api.start(str(vault), "research", prompt="who owns it?")
+    _wait_state(events)
+    opts = FakeClient.instances[0].options
+    assert {"WebSearch", "WebFetch"} <= set(opts.allowed_tools)
+    assert not {"Write", "Edit", "Bash"} & set(opts.allowed_tools)
+
+
 def test_a_sessions_options_carry_watchdogs_tools_the_primer_and_no_shell(env):
     from watchdog import session_tools
     from watchdog import primer
@@ -392,6 +402,7 @@ def test_a_sessions_options_carry_watchdogs_tools_the_primer_and_no_shell(env):
     assert set(opts.mcp_servers) == {"watchdog"} and opts.mcp_servers["watchdog"]["type"] == "sdk"
     # Only the read-only tools run without asking; the four that write go through the card (D304).
     assert opts.allowed_tools == [f"mcp__watchdog__{t}" for t in session_tools.READ_TOOLS]
+    assert "WebFetch" not in opts.allowed_tools and "WebSearch" not in opts.allowed_tools
     assert {"Bash", "PowerShell", "Monitor"} <= set(opts.disallowed_tools) and opts.sandbox is None
     assert opts.system_prompt["preset"] == "claude_code"
     assert opts.system_prompt["append"] == primer.session_text(vault)

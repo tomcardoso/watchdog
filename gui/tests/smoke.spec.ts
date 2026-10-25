@@ -332,7 +332,10 @@ test('every screen renders against the demo investigation', async () => {
     })
     expect(offscreen, 'Review tabs out of view at 1000 px').toEqual([])
     expect(await page.getByRole('tab').count()).toBe(6)
-    await page.locator('.rv-tools').getByRole('button', { name: 'Watch list' }).click()
+    // The watch list has its own screen under Work (D343); Alerts links to it.
+    await page.getByRole('tab', { name: /Alerts/ }).click()
+    await page.getByRole('button', { name: 'Edit watch list' }).click()
+    await expect(page.getByRole('heading', { name: 'Watch list' })).toBeVisible({ timeout: 10_000 })
     // The structured editor: add a term, see it listed, refuse a duplicate, remove it.
     const addBox = page.getByLabel('Add a term')
     await expect(addBox).toBeVisible({ timeout: 10_000 })

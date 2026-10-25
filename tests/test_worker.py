@@ -197,7 +197,7 @@ def test_a_run_on_this_computer_needs_no_acknowledgement(wdg_home, tmp_path, mon
         cfg["local_base_url"] = base_url
     if models == "mixed":
         cfg.update(extractor_model="local:qwen", classifier_model="local:qwen",
-                   finalizer_model="local:qwen", finalizer_briefing_model="sonnet")
+                   finalizer_model="local:qwen", finalizer_writing_model="sonnet")
     else:
         cfg.update(extractor_model=models, classifier_model=models, finalizer_model=models)
     (wdg_home / "config.json").write_text(json.dumps(cfg))

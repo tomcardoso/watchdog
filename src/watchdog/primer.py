@@ -149,7 +149,7 @@ def gather(vault: Path) -> dict:
 
     return {
         "name": _name(vault),
-        "aim": aim, "questions": questions,
+        "aim": aim, "questions": questions, "has_context": (vault / "context.md").is_file(),
         "documents": len(docs),
         "pages": sum(d.get("page_count") or 0 for d in docs.values()
                      if isinstance(d.get("page_count"), int)),
@@ -207,6 +207,10 @@ def render(data: dict, per_list: int = _LIST_LEVELS[0]) -> str:
         if len(data["questions"]) > _QUESTIONS_MAX:
             lines.append(f"- …and {len(data['questions']) - _QUESTIONS_MAX} more in `context.md`")
         lines.append("")
+    elif not data.get("has_context", True):
+        # Said outright so a session doesn't try to open the file and show the reporter an error.
+        lines += ["There is no `context.md` yet: the reporter has not set this investigation's "
+                  "context. Do not try to read it.", ""]
     elif not data["aim"]:
         lines += ["`context.md` lists no questions yet.", ""]
 

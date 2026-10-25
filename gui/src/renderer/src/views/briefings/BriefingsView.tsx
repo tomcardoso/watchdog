@@ -4,15 +4,15 @@
 // Claude starts each conversation with, D285, is one click away as "What Claude is given"), the
 // processing history and the investigation context.
 
-import { Activity, ArrowLeft, Bell, Bot, FileText, History, Lightbulb, MessageCircle, MessageSquareQuote, Network, Pencil, Save, Search, Target, X } from 'lucide-react'
+import { Activity, ArrowLeft, Bell, Bot, FileText, History, Lightbulb, MessageSquareQuote, Network, Search } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { BriefingRow } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Skeleton, cx } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
-import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
+import { useRpc } from '@renderer/lib/rpc'
 import { fmtDate } from '@renderer/lib/format'
-import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
+import { navigate, useApp, useVault } from '@renderer/lib/store'
 import { NoteActions, stripFrontmatter } from './NoteView'
 import './briefings.css'
 
@@ -22,8 +22,7 @@ const PRIMER = 'session-primer'
 
 const PINNED: { path: string; label: string; sub: string; icon: LucideIcon }[] = [
   { path: PRIMER, label: 'Current state', sub: 'Where the whole investigation stands', icon: Activity },
-  { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History },
-  { path: 'context.md', label: 'Investigation context', sub: 'Your questions and what you know', icon: Target }
+  { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History }
 ]
 
 const KINDS: { kind: BriefingRow['kind']; label: string; icon: LucideIcon }[] = [
@@ -139,32 +138,13 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
     ? { ...built, data: built.data ? { text: built.data.text, exists: true } : undefined }
     : file
   const pinned = PINNED.find((p) => p.path === path)
-  const isContext = path === 'context.md'
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState('')
-  const [saving, setSaving] = useState(false)
   useEffect(() => {
-    setEditing(false)
     setAsClaude(false)
   }, [path])
 
   const text = q.data?.text ?? ''
   const body = stripFrontmatter(text)
   const hasChecks = /^\s*- \[[ xX]\]/m.test(body)
-
-  const save = async () => {
-    setSaving(true)
-    try {
-      await call('vault.writeFile', { vault, path, text: draft })
-      invalidate('vault.readFile', 'vault.summary')
-      setEditing(false)
-      toast({ kind: 'success', title: 'Context saved', body: 'The next run and briefing will use it.' })
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not save', body: errorMessage(e) })
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
     <div className="bf-reader">
@@ -173,18 +153,12 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
           <div className="eyebrow">{pinned ? 'Pinned' : KINDS.find((k) => k.kind === row?.kind)?.label ?? 'Briefing'}</div>
           <div className="bf-reader-title truncate">{isPrimer && asClaude ? 'What Claude is given' : pinned?.label ?? row?.title ?? row?.name ?? path}</div>
         </div>
-        {isContext && !editing && (
-          <>
-            <Button size="sm" icon={MessageCircle} onClick={() => navigate({ view: 'ask' })}>Seed context with Claude</Button>
-            <Button size="sm" icon={Pencil} onClick={() => { setDraft(text); setEditing(true) }}>Edit</Button>
-          </>
-        )}
         {isPrimer && (
           <Button size="sm" variant="ghost" icon={asClaude ? ArrowLeft : Bot} aria-pressed={asClaude} onClick={() => setAsClaude(!asClaude)}>
             {asClaude ? 'Back to current state' : 'What Claude is given'}
           </Button>
         )}
-        {!editing && !isPrimer && <NoteActions path={path} />}
+        {!isPrimer && <NoteActions path={path} />}
       </div>
       <div className="bf-reader-scroll">
         <div className="bf-measure bf-article">
@@ -192,20 +166,8 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
             <ErrorNote error={q.error} retry={() => void q.refetch()} />
           ) : q.isLoading ? (
             <><Skeleton w="55%" h={28} /><Skeleton h={14} style={{ marginTop: 22 }} /><Skeleton h={14} style={{ marginTop: 8 }} /><Skeleton w="75%" h={14} style={{ marginTop: 8 }} /></>
-          ) : editing ? (
-            <>
-              <Callout tone="info">
-                Plain Markdown. This page is sent to the AI model with every document you add, so leave out anything you would not send with them: source names, contact details, unpublished tips.
-                Write open questions rather than conclusions, such as “I want to understand how the contract was awarded”. A page that states what you expect to find can lead the model to read the documents that way.
-              </Callout>
-              <textarea className="textarea bf-editor" value={draft} onChange={(e) => setDraft(e.target.value)} spellCheck autoFocus />
-              <div className="row" style={{ justifyContent: 'flex-end', marginTop: 12 }}>
-                <Button icon={X} variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
-                <Button icon={Save} variant="primary" loading={saving} onClick={() => void save()}>Save</Button>
-              </div>
-            </>
           ) : !q.data?.exists || !body.trim() ? (
-            <Empty icon={FileText} title={pinned ? `${pinned.label} is empty` : 'Nothing here'} action={isContext ? <Button icon={Pencil} onClick={() => { setDraft(text); setEditing(true) }}>Write context</Button> : undefined}>
+            <Empty icon={FileText} title={pinned ? `${pinned.label} is empty` : 'Nothing here'}>
               {path === 'log.md' ? 'This file is written at the end of a run that produces a briefing.' : 'This file does not exist yet.'}
             </Empty>
           ) : (

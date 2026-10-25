@@ -6,9 +6,9 @@
 // This module has no Electron import: the crypto is passed in, so `npm run test:unit` tests it
 // with a stand-in. `secrets.ts` binds it to Electron's safeStorage.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 export const ENC_TAG = 'safeStorage:v1'
 
@@ -47,6 +47,9 @@ export interface Provision {
 
 // The methods that carry a key the reader pasted, and the one only this process may call.
 export const KEY_METHODS = new Set(['auth.setAnthropicMode', 'auth.setKey', 'auth.addKey'])
+// Settings that are secrets, not a provider's key (D341): `settings.set` for one of these carries
+// its value sealed as `value_enc`, and the backend keeps it in credentials.json's `secrets`.
+export const SECRET_SETTINGS = new Set(['wayback_access_key', 'wayback_secret_key'])
 export const MAIN_ONLY_METHODS = new Set(['secrets.provide'])
 
 export function credentialsFile(): string {
@@ -102,11 +105,14 @@ function unseal(c: Crypto, b: SealedKey): string | null {
 }
 
 /** Every secret in a credentials file: each labelled item's `key` (D290), under
- * `keys[provider].items`. Labels, ids and the default are left alone. */
+ * `keys[provider].items`, and each secret setting under `secrets` (D341). Labels, ids and the
+ * default are left alone. */
 function secrets(state: Record<string, unknown>): unknown[] {
-  const keys = state?.keys
-  if (!keys || typeof keys !== 'object') return []
   const out: unknown[] = []
+  const settings = state?.secrets
+  if (settings && typeof settings === 'object') out.push(...Object.values(settings as Record<string, unknown>))
+  const keys = state?.keys
+  if (!keys || typeof keys !== 'object') return out
   for (const v of Object.values(keys as Record<string, unknown>)) {
     const items = (v as { items?: unknown } | null)?.items
     if (!Array.isArray(items)) continue
@@ -160,6 +166,14 @@ export function prepare(c: Crypto, platform: string, file: string): { status: St
  * (for its checks and its masked display) plus `key_enc`, its encrypted form, which is all the
  * backend writes. A `key_enc` from the window is never trusted. */
 export function sealParams(method: string, params: unknown, c: Crypto, status: StoreStatus | null): unknown {
+  if (method === 'settings.set' && params && typeof params === 'object') {
+    const { value_enc: _drop, ...rest } = params as Record<string, unknown>
+    const value = rest.value
+    if (SECRET_SETTINGS.has(String(rest.key)) && status?.store === 'encrypted' && typeof value === 'string' && value.trim()) {
+      return { ...rest, value_enc: seal(c, value.trim()) }
+    }
+    return rest
+  }
   if (!KEY_METHODS.has(method) || !params || typeof params !== 'object') return params
   const { key_enc: _ignored, ...rest } = params as Record<string, unknown>
   const key = rest.key
@@ -167,4 +181,38 @@ export function sealParams(method: string, params: unknown, c: Crypto, status: S
     return { ...rest, key_enc: seal(c, key.trim()) }
   }
   return rest
+}
+
+function writePrivate(file: string, data: unknown): void {
+  const tmp = join(dirname(file), `.${Date.now()}.tmp`)
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })
+  renameSync(tmp, file)
+}
+
+/** Move secret settings still in plain text in config.json (from before D341) into
+ * credentials.json, sealed, then drop them from config.json. Only with real encryption: without
+ * it they stay where they are, in a file only the user's account can read. Returns how many moved. */
+export function moveSettingSecrets(c: Crypto, status: StoreStatus, credFile: string, configFile: string): number {
+  if (status.store !== 'encrypted' || !existsSync(configFile)) return 0
+  let cfg: Record<string, unknown>
+  try {
+    cfg = JSON.parse(readFileSync(configFile, 'utf8'))
+  } catch {
+    return 0
+  }
+  if (!cfg || typeof cfg !== 'object') return 0
+  const found = [...SECRET_SETTINGS].filter((k) => typeof cfg[k] === 'string')
+  if (!found.length) return 0
+  const state = readState(credFile) ?? {}
+  const box = (state.secrets && typeof state.secrets === 'object' ? state.secrets : {}) as Record<string, unknown>
+  for (const k of found) {
+    const v = (cfg[k] as string).trim()
+    // A value already stored with the keys is newer than the leftover copy.
+    if (v && !(k in box)) box[k] = { ...seal(c, v), masked: mask(v) }
+    delete cfg[k]
+  }
+  if (Object.keys(box).length) state.secrets = box
+  writePrivate(credFile, state)
+  writePrivate(configFile, cfg)
+  return found.length
 }

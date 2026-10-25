@@ -7,7 +7,8 @@
 
 import { safeStorage } from 'electron'
 import log from 'electron-log/main'
-import { MAIN_ONLY_METHODS, credentialsFile, prepare, sealParams, type StoreStatus } from './keystore'
+import { join, dirname } from 'node:path'
+import { MAIN_ONLY_METHODS, credentialsFile, moveSettingSecrets, prepare, sealParams, storeStatus, type StoreStatus } from './keystore'
 
 let status: StoreStatus | null = null
 
@@ -15,6 +16,9 @@ let status: StoreStatus | null = null
 export async function provideSecrets(request: (method: string, params: unknown) => Promise<unknown>): Promise<void> {
   let provision
   try {
+    // Before decrypting, so a moved Wayback key is handed over in this same start (D341).
+    const moved = moveSettingSecrets(safeStorage, storeStatus(safeStorage, process.platform), credentialsFile(), join(dirname(credentialsFile()), 'config.json'))
+    if (moved) log.info(`keys: moved ${moved} Wayback Machine key(s) from config.json into encrypted storage`)
     const r = prepare(safeStorage, process.platform, credentialsFile())
     status = r.status
     provision = r.provision

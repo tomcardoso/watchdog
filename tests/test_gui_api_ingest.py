@@ -66,7 +66,7 @@ def test_preflight_warning_text_is_plain(rich_vault, wdg_home):
     ({"extractor_model": "local:q", "classifier_model": "local:q", "finalizer_model": "local:q"},
      "http://192.168.1.20:8000/v1", True),
     ({"extractor_model": "local:q", "classifier_model": "local:q", "finalizer_model": "local:q",
-      "finalizer_timeline_model": "openai:gpt-6-luna"}, "http://localhost:11434/v1", True),
+      "finalizer_housekeeping_model": "openai:gpt-6-luna"}, "http://localhost:11434/v1", True),
     ({}, None, True),
 ])
 def test_preflight_says_whether_the_acknowledgement_is_needed(rich_vault, wdg_home, monkeypatch,
@@ -102,12 +102,12 @@ def test_preflight_options_override_the_configured_models(rich_vault, wdg_home):
     credentials(wdg_home, "subscription")
     config(wdg_home, extractor_model="haiku", extractor_effort="low")
     p = call("ingest.preflight", vault=V(rich_vault), options={
-        "extractor_model": "sonnet-5.5", "extractor_effort": "high", "finalizer_briefing_model": "sonnet",
+        "extractor_model": "sonnet-5.5", "extractor_effort": "high", "finalizer_writing_model": "sonnet",
         "classifier_model": None, "concurrency": 2})
     by_stage = {m["stage"]: m for m in p["models"]}
     assert by_stage["extractor"]["model"] == "sonnet-5.5" and by_stage["extractor"]["effort"] == "high"
-    assert by_stage["finalizer:briefing"]["model"] == "sonnet"
-    assert "finalizer:synthesis" not in by_stage
+    assert by_stage["finalizer:writing"]["model"] == "sonnet"
+    assert "finalizer:housekeeping" not in by_stage
     assert by_stage["classifier"]["model"] == "haiku"
 
 

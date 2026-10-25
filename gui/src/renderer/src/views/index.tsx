@@ -17,6 +17,8 @@ export const VIEWS: Record<ViewName, React.LazyExoticComponent<React.ComponentTy
   briefings: lazy(() => import('./briefings/BriefingsView')),
   note: lazy(() => import('./briefings/NoteView')),
   ask: lazy(() => import('./chat/AskView')),
+  context: lazy(() => import('./chat/ContextView')),
+  watchlist: lazy(() => import('./watchlist/WatchlistView')),
   research: lazy(() => import('./chat/ResearchView')),
   activity: lazy(() => import('./activity/ActivityView')),
   settings: lazy(() => import('./settings/SettingsView'))

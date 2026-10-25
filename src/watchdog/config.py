@@ -30,12 +30,31 @@ def path() -> Path:
     return home() / "config.json"
 
 
+# The four finishing-stage model overrides D339 replaced, by the group each now belongs to, in the
+# order a value is taken when a reporter had set more than one.
+_LEGACY_FINALIZER_KEYS = {
+    "finalizer_writing_model": ("finalizer_synthesis_model", "finalizer_briefing_model"),
+    "finalizer_housekeeping_model": ("finalizer_reconciliation_model", "finalizer_timeline_model"),
+}
+
+
+def _upgrade(data: dict) -> dict:
+    """Settings saved before D339 read as their replacement: an old per-stage override becomes
+    its group's override unless that is already set, and the old key is dropped, so the next save
+    writes only the new keys."""
+    for new, olds in _LEGACY_FINALIZER_KEYS.items():
+        values = [data.pop(old) for old in olds if old in data]
+        if new not in data and any(values):
+            data[new] = next(v for v in values if v)
+    return data
+
+
 def read() -> dict:
     try:
         data = json.loads(path().read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
-    return data if isinstance(data, dict) else {}
+    return _upgrade(data) if isinstance(data, dict) else {}
 
 
 def load() -> dict:
@@ -47,7 +66,7 @@ def load() -> dict:
         data = json.loads(p.read_text(encoding="utf-8"))
     except (OSError, ValueError, UnicodeDecodeError) as e:
         sys.exit(f"Error: the settings file is damaged ({e}). Fix or remove {p}.")
-    return data if isinstance(data, dict) else {}
+    return _upgrade(data) if isinstance(data, dict) else {}
 
 
 def save(config: dict) -> None:

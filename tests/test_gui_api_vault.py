@@ -51,6 +51,7 @@ def test_summary_of_rich_vault(rich_vault, wdg_home):
     assert (s["incoming"], s["awaiting_dig"], s["awaiting_bark"], s["failed"]) == (2, 1, 1, 1)
     assert s["research_urls"] == 2 and s["has_work"] is True and s["pending_finalize"] is True
     assert s["context_unseeded"] is False
+    assert isinstance(s["context_missing"], bool)
     assert s["totals"] == {"documents": 4, "entities": 3, "pages": 10, "events": 3}
     assert [d["filename"] for d in s["recent_documents"]][:2] == ["report-one-copy.pdf", "dup-original.pdf"]
     assert [e["id"] for e in s["top_entities"]] == ["acme-corp", "bob-roe", "jane-doe"]
@@ -625,6 +626,27 @@ def test_requests(rich_vault):
     assert item["what"] == "The 2019 board minutes" and item["why"] == "Would fix the appointment date"
     assert item["likely_source"] == "Registry" and item["rid"].startswith("request:")
     assert item["cited_in"] == [{"sha": SHA1, "filename": "report-one.pdf", "note": "documents/report-one"}]
+
+
+def test_add_context_files_copies_without_clobbering(rich_vault, tmp_path):
+    """Background files are copied into context/ (D342); the originals stay, a taken name gets a
+    number, and a folder is skipped."""
+    src = tmp_path / "out"
+    src.mkdir()
+    (src / "background.txt").write_text("second copy")
+    (src / "story.pdf").write_bytes(b"%PDF-1")
+    r = call("vault.addContextFiles", vault=V(rich_vault),
+             paths=[str(src / "background.txt"), str(src / "story.pdf"), str(src)])
+    assert r == {"added": ["background-2.txt", "story.pdf"], "skipped": ["out"]}
+    assert (rich_vault / "context" / "background-2.txt").read_text() == "second copy"
+    assert (src / "story.pdf").exists()
+
+
+def test_context_missing_until_the_brief_has_text(rich_vault):
+    (rich_vault / "context.md").write_text("  \n")
+    assert call("vault.summary", vault=V(rich_vault))["context_missing"] is True
+    (rich_vault / "context.md").write_text("# Case — context\n\nI want to understand who owns Acme.\n")
+    assert call("vault.summary", vault=V(rich_vault))["context_missing"] is False
 
 
 def test_context_files_skip_hidden(rich_vault):

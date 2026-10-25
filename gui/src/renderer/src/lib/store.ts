@@ -15,10 +15,12 @@ export type Route =
   | { view: 'graph'; focus?: string }
   | { view: 'timeline'; entity?: string }
   | { view: 'search'; query?: string }
-  | { view: 'review'; kind?: ReviewKind | 'handled' | 'watchlist' | 'requests' | 'verification'; filter?: string; focus?: string }
+  | { view: 'review'; kind?: ReviewKind | 'handled' | 'requests' | 'verification'; filter?: string; focus?: string }
+  | { view: 'watchlist' }
   | { view: 'briefings'; path?: string }
   | { view: 'note'; path: string }
-  | { view: 'ask'; session?: string; prompt?: string; mode?: 'ask' | 'context' }
+  | { view: 'ask'; session?: string; prompt?: string }
+  | { view: 'context'; session?: string; start?: boolean }
   | { view: 'research'; session?: string }
   | { view: 'activity'; job?: string; tab?: string }
   | { view: 'settings'; tab?: string }

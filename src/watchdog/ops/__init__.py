@@ -130,8 +130,8 @@ OPS: dict[str, Op] = {}
 # The run options the app's forms share (`RunOptions` in gui/src/shared/api.ts). One an operation
 # doesn't take is dropped rather than refused, so a form can pass its whole set.
 RUN_OPTIONS = frozenset({
-    "extractor_model", "classifier_model", "finalizer_model", "finalizer_reconciliation_model",
-    "finalizer_synthesis_model", "finalizer_timeline_model", "finalizer_briefing_model",
+    "extractor_model", "classifier_model", "finalizer_model", "finalizer_writing_model",
+    "finalizer_housekeeping_model",
     "extractor_effort", "classifier_effort", "finalizer_effort", "concurrency", "classify_pages",
     "skill", "limit", "verify", "force", "wait", "skip_briefing", "chew_workers", "chunk_workers",
 })

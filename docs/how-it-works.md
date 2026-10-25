@@ -56,7 +56,7 @@ A short name can turn up in dozens of documents, each time recorded on its own, 
 
 Every merge is written to a log you can read, and a pair you mark "not the same" is never merged automatically afterwards.
 
-The parts that need judgement go to an AI model:
+The parts that need judgement go to an AI model. They are of two kinds. **Housekeeping** calls match, check and tidy: everything in the list below up to settling dates. **Writing** calls produce prose you read: the summaries and the briefing. The finishing step uses one model for both unless you choose a different one for either kind in Settings (see [the Settings reference](models-and-cost.md#settings-reference)).
 
 - **Recognizing the same entity under different names.** "Calder Valley University" and "CVU" are the same institution, but only a model can say two different-looking names refer to the same one. It is deliberately cautious, since a wrong merge would quietly conflate two different people.
 - **Flagging contradictions.** If one document says a company was dissolved in March and another says it filed papers in June, the discrepancy is flagged on the entity, with both sources: not resolved, not hidden. The model compares each new document's facts with the facts already recorded, and the sentences they rest on, never a summary. Older facts are not compared with each other on every run, which keeps each run's cost tied to what it adds; **Re-check contradictions** does that on demand.

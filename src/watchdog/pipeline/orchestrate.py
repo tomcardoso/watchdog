@@ -2538,11 +2538,10 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
                        post_effort: str | None = None, post_backend: str | None = None,
                        rec_result: dict | None = None, skip_briefing: bool = False,
                        finalizer_overrides: dict | None = None) -> dict:
-    """`finalizer_overrides` (#433) may carry `synthesis_model`/`synthesis_backend`,
-    `timeline_model`/`timeline_backend`, and `briefing_model`/`briefing_backend`, routing each
-    of those three stages to a different model than the rest of post-ingest; each falls back to
-    `post_model`/`post_backend` when absent from the dict (see `_reconcile_pre_commit`, which
-    resolves reconciliation's own pair the same way)."""
+    """`finalizer_overrides` carries a `<call>_model`/`<call>_backend` pair per model call, set
+    from the writing or housekeeping setting the call belongs to (`ops.ingest.FINALIZER_GROUPS`,
+    D339); each falls back to `post_model`/`post_backend` when absent from the dict (see
+    `_reconcile_pre_commit`, which resolves reconciliation's own pair the same way)."""
     fo = finalizer_overrides or {}
     synthesis_model = fo.get("synthesis_model", post_model)
     synthesis_backend = fo.get("synthesis_backend", post_backend)

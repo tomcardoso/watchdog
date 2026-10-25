@@ -64,7 +64,7 @@ def test_schema_kinds_and_choices(wdg_home):
     assert k["extractor_effort"]["kind"] == "effort"
     assert k["extractor_effort"]["choices"] == ["low", "medium", "high", "xhigh", "max"]
     assert k["extractor_model"]["kind"] == "model" and k["extractor_model"]["choices"] is None
-    assert k["finalizer_briefing_model"]["kind"] == "model"
+    assert k["finalizer_writing_model"]["kind"] == "model"
     assert k["wayback_secret_key"]["kind"] == "secret"
     assert k["chew_workers"]["kind"] == "text" and k["ocr_languages"]["kind"] == "text"
     assert k["embed_model"]["kind"] == "text"       # a Hugging Face id, not a Watchdog model value
@@ -83,7 +83,7 @@ def test_schema_current_default_and_display(wdg_home):
     assert k["garbled_threshold"]["is_set"] is False
     assert k["auto_approve"]["display"] == "true"
     assert k["classifier_model"]["display"] == "haiku"
-    assert k["finalizer_synthesis_model"]["display"] == "(not set)"
+    assert k["finalizer_writing_model"]["display"] == "(not set)"
 
 
 def test_schema_never_returns_a_secret(wdg_home):
@@ -159,6 +159,14 @@ def test_set_projects_dir_creates_the_folder(wdg_home, tmp_path):
     assert call_error("settings.set", key="projects_dir", value="")["code"] == "bad_value"
 
 
+def test_default_spending_limit_is_checked_and_clears_when_blank(wdg_home):
+    r = call("settings.set", key="default_spending_limit", value="$1,000")
+    assert r["value"] == 1000.0 and config(wdg_home)["default_spending_limit"] == 1000.0
+    assert call_error("settings.set", key="default_spending_limit", value="lots")["code"] == "bad_value"
+    call("settings.set", key="default_spending_limit", value="")
+    assert "default_spending_limit" not in config(wdg_home)
+
+
 def test_projects_dir_default_is_a_folder_reset_can_send(wdg_home, tmp_path, monkeypatch):
     """"Reset to default" sends the shown default; with none it sent "" and was refused."""
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
@@ -182,8 +190,11 @@ def test_set_keeps_other_settings_and_never_echoes_a_secret(wdg_home):
     (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "sonnet-5.5"}))
     r = call("settings.set", key="wayback_secret_key", value="hunter2")
     assert r["value"] is None and "hunter2" not in json.dumps(r) and "set" in r["display"]
-    assert config(wdg_home) == {"extractor_model": "sonnet-5.5", "wayback_secret_key": "hunter2"}
-    assert mode_bits(wdg_home / "config.json") == 0o600
+    # A secret setting is kept with the keys (D341), not in config.json.
+    assert config(wdg_home) == {"extractor_model": "sonnet-5.5"}
+    assert creds(wdg_home)["secrets"] == {"wayback_secret_key": "hunter2"}
+    assert mode_bits(wdg_home / "credentials.json") == 0o600
+    assert keyed(call("settings.schema"))["wayback_secret_key"]["is_set"] is True
 
 
 def test_set_with_a_corrupt_config_refuses_to_overwrite_it(wdg_home):

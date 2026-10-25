@@ -16,8 +16,8 @@ from watchdog.ops.ingest import FINALIZER_STAGES, Plan, RunOptions, resolve_plan
 
 # The `RunOptions` fields a form may set (`RunOptions` in gui/src/shared/api.ts).
 _OPTION_KEYS = (
-    "extractor_model", "classifier_model", "finalizer_model", "finalizer_reconciliation_model",
-    "finalizer_synthesis_model", "finalizer_timeline_model", "finalizer_briefing_model",
+    "extractor_model", "classifier_model", "finalizer_model", "finalizer_writing_model",
+    "finalizer_housekeeping_model",
     "extractor_effort", "classifier_effort", "finalizer_effort", "concurrency", "classify_pages",
     "skill", "limit", "verify", "force", "wait", "skip_briefing",
 )

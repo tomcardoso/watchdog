@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from watchdog import obsidian, projects
+from watchdog import config, obsidian, projects
 from watchdog.ops import op
 from watchdog.pipeline.write_vault import slugify
 from watchdog.vault import (
@@ -33,6 +33,15 @@ def _entry(slug: str) -> dict:
 def new(rep, *, name: str, description: str = "", dir: str | None = None) -> dict:
     """Create an investigation folder and list it."""
     vault = create(name, description=description, parent=Path(dir).expanduser().resolve() if dir else None)
+    # The default spending limit (D340) is applied here, where a reporter creates an investigation,
+    # not in `create`, which the sample and the benchmark harness also use.
+    default_limit = config.read().get("default_spending_limit")
+    if default_limit:
+        from watchdog import spend
+        try:
+            spend.set_limit(vault, default_limit)
+        except ValueError as e:
+            rep.warn(f"The default spending limit was not applied: {e}")
     rep.log(f"Created {vault}")
     return _entry(slugify(name.strip()))
 

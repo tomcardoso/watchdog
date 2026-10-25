@@ -22,8 +22,7 @@ from watchdog.gui.rpc import RpcError, method
 
 _EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 _MODEL_KEYS = {"classifier_model", "extractor_model", "finalizer_model",
-               "finalizer_reconciliation_model", "finalizer_synthesis_model",
-               "finalizer_timeline_model", "finalizer_briefing_model"}
+               "finalizer_writing_model", "finalizer_housekeeping_model"}
 _KINDS = {"bool": "bool", "int": "int", "float": "float", "path": "path"}
 
 
@@ -57,7 +56,7 @@ def _read_config() -> dict:
     except (OSError, ValueError):
         raise RpcError(f"The settings file is damaged. Fix or remove {path}.",
                        code="config_corrupt")
-    return data if isinstance(data, dict) else {}
+    return config._upgrade(data) if isinstance(data, dict) else {}
 
 
 def _display(key: str, value, config: dict) -> str:
@@ -68,10 +67,19 @@ def _display(key: str, value, config: dict) -> str:
         return str(value) if value is not None else "(not set)"
 
 
+def _secret_settings() -> tuple[str, ...]:
+    from watchdog.auth import SETTING_SECRETS
+    return SETTING_SECRETS
+
+
 def _setting(key: str, meta: dict, config: dict) -> dict:
     from watchdog.settings import default_value
     kind = _kind(key, meta)
     value = config.get(key)
+    if key in _secret_settings():
+        # Kept in credentials.json, encrypted (D341): only whether one is stored is shown.
+        from watchdog import auth as auth_cmd
+        value = "set" if auth_cmd.has_setting_secret(key) else None
     choices = meta.get("choices") if kind in ("choice", "effort") else None
     return {
         "key": key,
@@ -131,9 +139,10 @@ def schema() -> dict:
 
 
 @method("settings.set")
-def set_(key: str, value: str | None) -> dict:
+def set_(key: str, value: str | None, value_enc: dict | None = None) -> dict:
     """Validate and store one setting. An empty value clears a free-text or model setting back to
-    its default."""
+    its default. A secret setting (the Wayback Machine keys, D341) goes to credentials.json,
+    encrypted: `value_enc` is its sealed form, added by the app's main process."""
     from watchdog import config as config_file
     from watchdog import settings
 
@@ -142,6 +151,14 @@ def set_(key: str, value: str | None) -> dict:
     meta = settings.SETTINGS[key]
     config = _read_config()
     text = "" if value is None else (value if isinstance(value, str) else str(value))
+    from watchdog import auth as auth_cmd
+    if key in auth_cmd.SETTING_SECRETS:
+        try:
+            auth_cmd.store_setting_secret(key, text, enc=value_enc)
+        except ValueError as e:
+            raise RpcError(str(e), code="bad_value")
+        set_now = auth_cmd.has_setting_secret(key)
+        return {"key": key, "value": None, "display": _display(key, "set" if set_now else None, config)}
 
     if text.strip() == "" and meta.get("type") in ("string", "str"):
         config.pop(key, None)

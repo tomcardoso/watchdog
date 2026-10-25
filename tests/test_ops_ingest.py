@@ -147,47 +147,43 @@ def test_effort_no_default_stays_unset():
 
 
 def test_resolve_finalizer_overrides_falls_back_to_finalizer_model_when_unset():
-    """No per-stage flags/config: every stage resolves to exactly the aggregate finalizer's
-    own (backend, model), not a hardcoded default."""
+    """No group flags or config: both groups, and every call key in them, resolve to exactly the
+    finalizer's own (backend, model), not a hardcoded default."""
+    from watchdog.ops.ingest import FINALIZER_GROUPS
     from watchdog.ops.ingest import resolve_finalizer_overrides as _resolve_finalizer_overrides
     overrides = _resolve_finalizer_overrides(RunOptions(), {}, "openai", "gpt-5-mini")
-    assert overrides == {
-        "reconciliation_backend": "openai", "reconciliation_model": "gpt-5-mini",
-        "synthesis_backend": "openai", "synthesis_model": "gpt-5-mini",
-        "timeline_backend": "openai", "timeline_model": "gpt-5-mini",
-        "briefing_backend": "openai", "briefing_model": "gpt-5-mini",
-    }
+    names = [n for group, calls in FINALIZER_GROUPS.items() for n in (group, *calls)]
+    assert overrides == {k: v for n in names
+                         for k, v in ((f"{n}_backend", "openai"), (f"{n}_model", "gpt-5-mini"))}
 
 
-def test_resolve_finalizer_overrides_flag_overrides_one_stage():
-    """A single `--finalizer-<stage>-model` flag overrides only that stage; the others still
-    fall back to the aggregate finalizer."""
+def test_resolve_finalizer_overrides_flag_overrides_one_group():
+    """`finalizer_writing_model` routes the writing calls (synthesis, briefing) only; the
+    housekeeping calls still fall back to the finalizer (D339)."""
     from watchdog.ops.ingest import resolve_finalizer_overrides as _resolve_finalizer_overrides
     overrides = _resolve_finalizer_overrides(
-        RunOptions(finalizer_briefing_model="claude-api:sonnet-5.5"), {}, None, "haiku")
-    assert overrides["briefing_backend"] == "claude-api"
-    assert overrides["briefing_model"] == "sonnet-5.5"
-    assert overrides["reconciliation_backend"] is None
-    assert overrides["reconciliation_model"] == "haiku"
-    assert overrides["synthesis_backend"] is None
-    assert overrides["synthesis_model"] == "haiku"
-    assert overrides["timeline_backend"] is None
-    assert overrides["timeline_model"] == "haiku"
+        RunOptions(finalizer_writing_model="claude-api:sonnet-5.5"), {}, None, "haiku")
+    for call in ("writing", "synthesis", "briefing"):
+        assert overrides[f"{call}_backend"] == "claude-api"
+        assert overrides[f"{call}_model"] == "sonnet-5.5"
+    for call in ("housekeeping", "reconciliation", "timeline", "relationship", "request_dedup"):
+        assert overrides[f"{call}_backend"] is None
+        assert overrides[f"{call}_model"] == "haiku"
 
 
 def test_resolve_finalizer_overrides_config_key_and_flag_precedence():
-    """A config-file `finalizer_<stage>_model` sets the stage's default; a flag for the same
-    stage still wins, matching `_resolve_stage`'s own flag-beats-config rule."""
+    """A config-file `finalizer_<group>_model` sets the group's default; a flag for the same
+    group still wins, matching `_resolve_stage`'s own flag-beats-config rule."""
     from watchdog.ops.ingest import resolve_finalizer_overrides as _resolve_finalizer_overrides
-    config = {"finalizer_synthesis_model": "gemini:gemini-2.5-flash"}
+    config = {"finalizer_housekeeping_model": "gemini:gemini-2.5-flash"}
     overrides = _resolve_finalizer_overrides(RunOptions(), config, None, "haiku")
-    assert overrides["synthesis_backend"] == "gemini"
-    assert overrides["synthesis_model"] == "gemini-2.5-flash"
+    assert overrides["reconciliation_backend"] == "gemini"
+    assert overrides["timeline_model"] == "gemini-2.5-flash"
 
     overrides = _resolve_finalizer_overrides(
-        RunOptions(finalizer_synthesis_model="sonnet-5.5"), config, None, "haiku")
-    assert overrides["synthesis_backend"] is None
-    assert overrides["synthesis_model"] == "sonnet-5.5"
+        RunOptions(finalizer_housekeeping_model="sonnet-5.5"), config, None, "haiku")
+    assert overrides["reconciliation_backend"] is None
+    assert overrides["reconciliation_model"] == "sonnet-5.5"
 
 
 def test_process_does_not_require_claude_auth_when_all_stages_non_claude(wdg_home, tmp_path, monkeypatch):

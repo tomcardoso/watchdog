@@ -108,6 +108,7 @@ def summary(vault: str) -> dict:
         "failed": s["failed"],
         "research_urls": s["research_urls"],
         "context_unseeded": bool(s["context_unseeded"]),
+        "context_missing": bool(s["context_missing"]),
         "has_work": bool(home.has_work(s)),
         "totals": {
             "documents": len(docs),
@@ -1053,6 +1054,33 @@ def requests_(vault: str) -> dict:
     resolved = resolutions.resolved_ids(v)
     resolved_count = sum(1 for rid in _requests.load(v).get("requests", {}) if rid in resolved)
     return {"open": open_, "groups": groups, "resolved_count": resolved_count}
+
+
+@method("vault.addContextFiles")
+def add_context_files(vault: str, paths: list[str]) -> dict:
+    """Copy files the reporter chose into `context/`, the background material the Context
+    interview reads (D342). They are copies: the originals stay where they are, and nothing is
+    processed as a document. A name already taken gets a number. Folders are skipped."""
+    import shutil
+    v = require_vault(vault)
+    if not isinstance(paths, list) or not all(isinstance(p, str) for p in paths):
+        raise RpcError("Choose one or more files.", code="bad_params")
+    d = context_dir(v)
+    d.mkdir(parents=True, exist_ok=True)
+    added, skipped = [], []
+    for raw in paths:
+        src = Path(raw).expanduser()
+        if not src.is_file() or src.name.startswith("."):
+            skipped.append(src.name)
+            continue
+        dest = d / src.name
+        n = 1
+        while dest.exists():
+            n += 1
+            dest = d / f"{src.stem}-{n}{src.suffix}"
+        shutil.copy2(src, dest)
+        added.append(dest.name)
+    return {"added": added, "skipped": skipped}
 
 
 @method("vault.contextFiles")

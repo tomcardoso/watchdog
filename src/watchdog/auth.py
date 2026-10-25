@@ -483,6 +483,60 @@ def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
     return {"key": None, "id": None, "label": None, "source": "none"}
 
 
+# Settings that are secrets but not a provider's API key (D341): kept in credentials.json under
+# `secrets`, encrypted like a key, instead of in config.json.
+SETTING_SECRETS = ("wayback_access_key", "wayback_secret_key")
+
+
+def setting_secret(name: str, state: dict | None = None) -> str | None:
+    """A secret setting's value: the stored one (decrypted when this process was given it), else
+    a plain-text copy still in config.json from before D341 (the app moves it when it starts)."""
+    stored = ((state if state is not None else load_state()).get("secrets") or {}).get(name)
+    secret = _secret(stored)
+    if secret is not None:
+        return secret[0]
+    value = config.read().get(name)
+    return value.strip() or None if isinstance(value, str) else None
+
+
+def has_setting_secret(name: str) -> bool:
+    """Whether a secret setting is stored, readable here or not."""
+    return _secret((load_state().get("secrets") or {}).get(name)) is not None or bool(config.read().get(name))
+
+
+def store_setting_secret(name: str, value: str, *, enc: dict | None = None) -> None:
+    """Store a secret setting (blank removes it) the way a key is stored (`_seal`), and drop any
+    plain-text copy from config.json."""
+    if name not in SETTING_SECRETS:
+        raise ValueError(f"{name} isn't a secret setting.")
+    state = load_state()
+    secrets = state.setdefault("secrets", {})
+    value = (value or "").strip()
+    if value:
+        secrets[name] = _seal(state, value, enc)
+    else:
+        secrets.pop(name, None)
+    if not secrets:
+        state.pop("secrets", None)
+    save_state(state)
+    cfg = config.read()
+    if name in cfg:
+        cfg.pop(name)
+        config.save(cfg)
+
+
+def setting_secrets_for_job() -> dict[str, str]:
+    """The encrypted secret settings as `{blob data: value}` for a job that uses them (the research
+    download, for Wayback archiving): only those this process was given."""
+    out: dict[str, str] = {}
+    for stored in (load_state().get("secrets") or {}).values():
+        if keystore.is_blob(stored):
+            value = keystore.reveal(stored)
+            if value:
+                out[stored["data"]] = value
+    return out
+
+
 def secrets_for_run(vault: Path | None, providers=None) -> dict[str, str]:
     """The encrypted keys a job in `vault` may use, as `{blob data: key}` for
     `keystore.read_stdin` (D295): per provider, only the key the investigation resolves to (its

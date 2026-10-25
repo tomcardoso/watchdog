@@ -40,17 +40,17 @@ Choose **Create investigation**. Watchdog makes a folder named after the investi
 
 The investigation opens on its **Overview**. It is empty until you add documents.
 
-## Seed your context (optional but recommended)
+## Set the context
 
-Before adding records, it helps to tell Watchdog what you are investigating. This is especially useful for large or long-running investigations.
+Before adding records, tell Watchdog what you are investigating. Until you do, the Overview asks for it first.
 
-Put any background material in the investigation's `context/` folder: prior published stories, notes, screenshots of relevant web pages, anything that describes the scope. The fastest way to open the folder is **File → Show in Folder**. Then open **Ask Claude** and choose **Seed investigation context**.
+Open **Context**, under Work in the sidebar. Choose **Add background files…** to give Watchdog what you already hold: published stories as PDFs, notes, screenshots of relevant web pages, anything that describes the scope. They are copied into the investigation's `context/` folder; they are background for the brief, not documents to process. Then choose **Build it with Claude**.
 
-Claude reads the material and interviews you — who the key people and companies are, what you are looking for, what documents you expect. It then writes `context.md`, an investigative brief that persists across every future conversation and tells Claude what you already know.
+Claude reads the background files and interviews you — who the key people and companies are, what you are looking for, what documents you expect. It then writes `context.md`, an investigative brief that persists across every future conversation and tells Claude what you already know. You can also write the brief yourself with **Write it yourself**.
 
-Two things to keep in mind about the brief. First, it is sent to the AI model with every document you add, and used for the briefing, so it leaves your computer just as the documents do: keep source names, contact details, unpublished tips and anything confidential out of it, and out of the `context/` folder. Second, write it as open questions rather than conclusions: "I want to understand how the Pier 9 contract was awarded" or "I want to explore who owns the numbered company", not "the councillor hid her conflict". The model reads every document with the brief in view, and a brief that states what you expect to find can lead it to read the documents that way. Claude drafts the brief in this style; you can edit it at any time under **Briefings**. It also proposes a short list of watch-list candidates (names, companies and addresses drawn from the same material) for you to accept, edit or skip. Anything you approve is added to the watch list right away.
+Two things to keep in mind about the brief. First, it is sent to the AI model with every document you add, and used for the briefing, so it leaves your computer just as the documents do: keep source names, contact details, unpublished tips and anything confidential out of it, and out of the background files. Second, write it as open questions rather than conclusions: "I want to understand how the Pier 9 contract was awarded" or "I want to explore who owns the numbered company", not "the councillor hid her conflict". The model reads every document with the brief in view, and a brief that states what you expect to find can lead it to read the documents that way. Claude drafts the brief in this style; you can edit it at any time under **Context**. It also proposes a short list of watch-list candidates (names, companies and addresses drawn from the same material) for you to accept, edit or skip. Anything you approve is added to the watch list right away.
 
-This step is optional, but it noticeably improves the quality of summaries and of connection-finding. Once the brief exists, the Overview also shows a prompt to read any background folder not yet read.
+The brief noticeably improves the quality of summaries and of connection-finding. Once it exists, the Overview shows a prompt to read any background files added since.
 
 ## Add documents
 

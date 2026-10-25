@@ -825,7 +825,8 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 ## 13. Models, backends and skills
 
 - **Stages.** `classifier_model` (haiku), `extractor_model` (haiku, D315), `finalizer_model` (haiku) —
-  the finalizer split into reconciliation, synthesis, timeline and briefing overrides (D137).
+  the finalizer split into a writing override (synthesis, briefing) and a housekeeping override
+  (every other finishing call), `ops.ingest.FINALIZER_GROUPS` (D339, superseding D137's four).
   Efforts: `classifier_effort` (low), `extractor_effort` (high, D140, D315), `finalizer_effort` (unset:
   no effort is sent), `verifier_effort` (low); the classifier and extractor defaults apply only where
   the model supports them. Defaults are in `watchdog/defaults.py`; per-run options override. Haiku 5.5
@@ -920,7 +921,9 @@ the journalist's step (I5).
   retained. The session tool `research_seen` returns already-captured URLs so a recurring investigation doesn't
   re-fetch them.
 - **Wayback (optional).** With `wayback_save` and keys set, each source is also submitted to Save
-  Page Now; failures never block a download.
+  Page Now; failures never block a download. The two keys are secret settings (D341): stored in
+  `credentials.json`'s `secrets`, encrypted like an API key, and handed only to the `research-fetch`
+  and `fetch-links` jobs, which make no model call and so get no provider's key.
 - **`fetch-links`** downloads a given list of links through the same path, without a session.
 - Round summaries go to `briefings/research-<date>.md`, never `context.md`. Research bounds are
   advisory; only the egress checks are enforced. Web tools are granted by the skill's own
@@ -943,7 +946,7 @@ See D45–D48.
   its schema (`jobs.ops`), taking a `Reporter` for its log lines, warnings and progress events. `jobs.start` (long runs: `add`, `chew`, `dig`, `bark`, `reindex`,
   `merge-entities`…) and `action.run` (quick ones: `projects-rename`, `requeue`…) check the
   parameters, then run `python -m watchdog.worker` in the vault with `{op, params}` on stdin
-  (and the keys, for the four operations that call a model, D295), `NO_COLOR=1` (for third-party
+  (and the keys, for the operations that call a model, D295, or archive to the Wayback Machine, D341), `NO_COLOR=1` (for third-party
   libraries) and `WATCHDOG_PROGRESS=1`. The worker's `Reporter` writes log lines and
   `progress` events (chew files, per-document extraction states, finalize stages), which the
   server turns into `job.progress` events, then the operation's result. An operation never asks a

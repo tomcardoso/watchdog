@@ -56,6 +56,9 @@ export function buildMenu(getWindow: () => BrowserWindow | null): void {
         { label: 'Network', accelerator: 'CmdOrCtrl+5', click: send('go:graph') },
         { label: 'Review', accelerator: 'CmdOrCtrl+6', click: send('go:review') },
         { label: 'Ask', accelerator: 'CmdOrCtrl+7', click: send('go:ask') },
+        // Shown for discoverability only: the window handles Ctrl+Tab itself (App.tsx useShortcuts).
+        { label: 'Next Sidebar Item', accelerator: 'Ctrl+Tab', registerAccelerator: false, click: send('nav-next') },
+        { label: 'Previous Sidebar Item', accelerator: 'Ctrl+Shift+Tab', registerAccelerator: false, click: send('nav-prev') },
         { type: 'separator' },
         { role: 'reload' },
         { role: 'toggleDevTools' },
