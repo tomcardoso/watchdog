@@ -368,6 +368,11 @@ function EdgeRelationship({ r, byId, documents }: { r: GraphRelationship; byId: 
       <div className="gr-erel-head">
         <span className="gr-erel-label">{r.label}</span>
         {r.basis === 'inferred' && <span className="muted">inferred</span>}
+        {r.target_inferred && (
+          <span className="muted" title={r.target_texts.length ? `Matched by AI from “${r.target_texts.join('”, “')}”` : 'Matched by AI'}>
+            target inferred
+          </span>
+        )}
       </div>
       <div className="gr-erel-dir">{from} <ArrowRight size={11} /> {to}{r.date_ranges.length > 0 && <> · {r.date_ranges.join('; ')}</>}</div>
       {r.wordings.map((w, j) => (

@@ -44,7 +44,7 @@ _ADMISSION_MAX_WAIT_S = 300.0
 # Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
-                  "relationship-labels", "date-resolve"}
+                  "relationship-labels", "date-resolve", "role-targets"}
 
 
 @dataclass
@@ -2367,6 +2367,76 @@ async def _date_pass(vault: Path, shas: list[str], finalizer_overrides: dict | N
     return {**applied, "rejected": res.rejected, "unanswered": len(res.unanswered)}
 
 
+async def _run_chore(vault: Path, chore, items: list, *, model: str, backend: str | None,
+                     effort: str | None, what: str, stage: str):
+    """One housekeeping chore (`housekeeping.run_chore`) on `model`, with the spending limit checked
+    before its first call too (D324). Returns the `ChoreResult`, or None when the limit stopped it
+    before any call — every item then stays as code left it. `what` names the items in messages."""
+    from watchdog.pipeline import housekeeping
+    msg = _spending_stop()
+    if msg:
+        _say(f"   ⚠  {what}: {len(items)} not settled — {msg}")
+        _log(vault, f"WARN {what}: {len(items)} not settled — {msg}")
+        return None
+    progress.emit("stage", stage=stage, done=None, total=None)
+
+    async def call(*, task, schema, prompt, detail):
+        return await _call_model(task=task, model=model, backend=backend, schema=schema,
+                                 prompt=prompt, effort=effort, detail=detail, vault=vault)
+
+    res = await housekeeping.run_chore(
+        chore, items, call=call, stop=_spending_stop, failures=model_client.CALL_FAILURES,
+        halting=(model_client.RateLimitError, model_client.ProviderAuthError))
+    if res.rejected:
+        _log(vault, f"WARN {what}: {res.rejected} answer(s) failed the checks and were not used")
+    if res.error or res.stopped:
+        _say(f"   ⚠  {what}: {len(res.unanswered)} not settled this run — {res.stopped or res.error}")
+        _log(vault, f"WARN {what}: {len(res.unanswered)} not settled this run — "
+                    f"{res.stopped or res.error}")
+    return res
+
+
+async def _role_target_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
+                            post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
+    """Relationship targets named by an id no entity has (D332), on the staged extractions after
+    reconciliation and before the commit: code's exact matches first, silently, then the model
+    for the rest (`role_targets.CHORE`, on the reconciliation model, which judges identity
+    elsewhere). Code checks every answer. No call when nothing is left, or at the spending limit;
+    a failure leaves the targets as leads and never holds up the commit."""
+    from watchdog.pipeline import role_targets
+    out = {"exact": 0, "matched": 0, "unmatched": 0}
+    if not shas:
+        return out
+    try:
+        batch = role_targets.Batch(vault, shas)
+        out["exact"] = role_targets.resolve_exact(batch)
+        items = role_targets.pending_items(batch)
+    except OSError as e:
+        _log(vault, f"WARN relationship targets not checked — {e}")
+        return out
+    if not items:
+        return out
+    fo = finalizer_overrides or {}
+    n = len(items)
+    _say(f"→  matching {n} relationship target{'s' if n != 1 else ''} named by an unknown id…")
+    res = await _run_chore(vault, role_targets.CHORE, items,
+                           model=fo.get("reconciliation_model", post_model),
+                           backend=fo.get("reconciliation_backend", post_backend),
+                           effort=post_effort, what="relationship targets", stage="role-targets")
+    if res is None:
+        return {**out, "unanswered": n}
+    try:
+        applied = role_targets.apply(batch, items, res)
+    except OSError as e:
+        _log(vault, f"WARN relationship targets not saved — {e}")
+        return out
+    if applied["matched"]:
+        m = applied["matched"]
+        _say(f"   matched {m} relationship target{'s' if m != 1 else ''} to an existing entity, "
+             "marked as inferred")
+    return {**out, **applied, "rejected": res.rejected, "unanswered": len(res.unanswered)}
+
+
 def _stage_stop(vault: Path, out: dict) -> bool:
     """Whether post-processing stops before its next model stage at the spending limit (D324).
     Once stopped it stays stopped. Sets `out["error"]`, so the batch's inputs are kept and the
@@ -3201,7 +3271,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
                    benchmark_arm_id: str | None = None) -> dict:
     """Resolve, commit and post-process the pending batch.
 
-    Order: exact-name fold → pre-commit reconciliation → housekeeping (the date pass, D330) →
+    Order: exact-name fold → pre-commit reconciliation → housekeeping (relationship targets, D332;
+    dates, D330) →
     commit pass (sorted sha order) →
     post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
     a run, by post-processing on its own, and to resume an interrupted finalize. Consumed inputs are
@@ -3279,7 +3350,9 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
             out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
 
-    # Dates code could not settle (D330), on the staged extractions so the commit writes them.
+    # Relationship targets named by an unknown id (D332) and dates code could not settle (D330),
+    # on the staged extractions so the commit writes them.
+    await _role_target_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
     await _date_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
     commit_summary = _commit_pending(vault, shas)
     progress.emit("stage", stage="commit", done=len(shas), total=len(shas))

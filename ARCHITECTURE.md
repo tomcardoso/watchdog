@@ -414,6 +414,22 @@ two readings. `dates.apply` writes `date`, `date_end` and `date_basis: "inferred
 extraction, rebuilds its entities' timeline events and restages its raw timeline files. A failed
 call leaves what code read (a year, or no date); it never holds up the commit.
 
+The **relationship-target pass** (`pipeline/role_targets.py`, task `role-targets`, the reconciliation
+model, D332) runs just before the date pass. A role whose `target_id` no entity has (not the
+document's, the batch's or the registry's; hidden ones excluded) is first matched by code
+(`resolve_exact`): the id, slugified, against each entity's slugified id, name and aliases, the
+document's own entities first, then the batch and registry; exactly one match is applied silently.
+The rest go to the chore, one item per document and id, with the naming entities and wordings, the
+document's entities (at most 60, most similar first) and up to 8 registry entities by word overlap or
+initials. `role_targets.validate` accepts only an id the item offered, not the naming entity, whose
+type fits the `kind` the model gave and any `target_type` the role carries (organization and public
+body count as fitting). `apply` rewrites `target_id`, keeps the first id in `extracted_target_id`
+(as a fold does, so `merge_log.carried_items` and undo treat the role like any other) and marks
+`target_basis: "inferred"`; a looked-at item left unmatched is marked `target_unmatched`. The mark
+rides on the registry's forward and reverse roles and on the relationship view's statements
+(`entity_facts` roles carry the extracted id as a seventh field), and shows as "target inferred
+from “…”" in entity notes and as inferred in the app.
+
 **Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
 `documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
 so the vault doesn't depend on completion order. `write_vault` canonicalizes entity types to a
@@ -805,6 +821,7 @@ same content to the user's own model server; every other backend sends it to tha
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
+| role-targets | when a staged relationship names a target id no entity has and code found no exact match (≤40 per call) | the id, the naming entities and wordings, the document's entities (≤60) and up to 8 similarly named registry entities: ids, names, types, aliases | facts; raw text; everything else |
 | date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |

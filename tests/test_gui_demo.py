@@ -112,6 +112,24 @@ def test_timeline_briefings_and_review_queues(demo_vault):
     assert "[ ]" not in requests_md and "<!--wid:request:" in requests_md
 
 
+def _usage_tasks(vault: Path) -> list[str]:
+    return [c.get("task") for p in (vault / ".watchdog" / "registry" / "usage").glob("usage-*.json")
+            for c in json.loads(p.read_text(encoding="utf-8")).get("calls") or []]
+
+
+def test_unprofiled_targets_stay_leads_after_the_target_pass(demo_vault):
+    """The sample's two relationship targets without a record are leads by design: the target pass
+    (D332) asks about them and matches neither, so the leads list is what it was before it."""
+    from watchdog.pipeline import leads
+    vault, _, _ = demo_vault
+    assert "role-targets" in _usage_tasks(vault)
+    unprofiled = leads.scan(vault)["unprofiled"]
+    assert sorted(u["name"] for u in unprofiled) == ["Audit Committee of Council",
+                                                      "Harbourgate Surety Company"]
+    entities = _registry(vault, "entities.json")
+    assert not any(r.get("target_basis") for e in entities.values() for r in e.get("roles") or [])
+
+
 def test_pipeline_state_left_for_the_app(demo_vault):
     vault, home, stdout = demo_vault
     assert sorted(p.name for p in (vault / "incoming").iterdir()) == [

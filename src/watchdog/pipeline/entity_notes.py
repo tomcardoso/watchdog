@@ -221,6 +221,9 @@ def _relationship_line(row: dict, documents: dict) -> str:
     label = _defang(row["label"])
     dates = f" — {'; '.join(_defang(d) for d in row['date_ranges'])}" if row["date_ranges"] else ""
     basis = " *(inferred)*" if row["basis"] == "inferred" else ""
+    if row.get("target_inferred"):
+        texts = "”, “".join(_defang(t) for t in row.get("target_texts") or [])
+        basis += f" *(target inferred from “{texts}”)*" if texts else " *(target inferred)*"
     parts, seen = [], set()
     for src in row["sources"]:
         mark = (src["sha"], src["page"])

@@ -346,6 +346,9 @@ def _relationships(v: Path, eid: str, ent: dict) -> list[dict]:
             "group": r["group"],
             "wordings": _wordings(r),
             "sources": [{"sha": x["sha"], "page": x["page"], "wording": x["label"]} for x in r["sources"]],
+            # The model matched the target to this record (D332): the ids the documents gave.
+            "target_inferred": bool(r.get("target_inferred")),
+            "target_texts": r.get("target_texts") or [],
         })
     return out
 
@@ -495,6 +498,8 @@ def graph(vault: str) -> dict:
             continue
         rels = [{"from": r["from"], "to": r["to"], "label": r["label"], "group": r["group"],
                  "docs": r["docs"], "basis": r["basis"], "date_ranges": r["date_ranges"],
+                 "target_inferred": bool(r.get("target_inferred")),
+                 "target_texts": r.get("target_texts") or [],
                  "wordings": _wordings(r)} for r in e["relationships"]]
         cited.update(e["docs"])
         labels = _edge_labels(e["relationships"])

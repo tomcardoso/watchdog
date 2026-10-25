@@ -270,6 +270,10 @@ export interface Relationship {
   group: string | null
   wordings: RelationshipWording[]
   sources: { sha: string | null; page: number | null; wording: string }[]
+  /** The model matched the relationship's target to a record (D332); `target_texts` are the ids
+   * the documents gave it. */
+  target_inferred: boolean
+  target_texts: string[]
 }
 
 /** One relationship on a graph edge, in its own direction (D291). */
@@ -281,6 +285,8 @@ export interface GraphRelationship {
   docs: string[]
   basis: 'stated' | 'inferred'
   date_ranges: string[]
+  target_inferred: boolean
+  target_texts: string[]
   wordings: RelationshipWording[]
 }
 

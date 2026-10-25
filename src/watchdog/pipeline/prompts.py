@@ -370,6 +370,12 @@ def build_date_resolve_prompt(items_text: str) -> str:
     return f"{_render('date_resolve')}\n\nDates:\n\n{items_text}"
 
 
+def build_role_targets_prompt(items_text: str) -> str:
+    # The relationship-target chore (D332): the numbered items `role_targets.build_prompt` lays
+    # out. Code checks every answer (`role_targets.validate`); the model only proposes.
+    return f"{_render('role_targets')}\n\nTargets:\n\n{items_text}"
+
+
 def build_request_dedup_prompt(open_requests: list[dict]) -> str:
     # Document-request dedup (#416): each open request shown by index with the fields a
     # journalist would compare by eye — type, wording, likely source. sources/added/rid stay

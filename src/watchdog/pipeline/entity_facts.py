@@ -56,10 +56,11 @@ def _slim(artifact: dict | None) -> dict | None:
                 f.pop(k, None)
         facts.append(f)
     # Each role as the document states it, `(entity id, relationship, target id, page, basis,
-    # date_range)`: the relationship view (D291) counts every document that states one, where the
-    # registry keeps only the first document per wording.
+    # date_range, inferred target)`: the relationship view (D291) counts every document that states
+    # one, where the registry keeps only the first document per wording. The last is the id the
+    # extraction gave when the model matched the target to an entity (D332), else None.
     roles = [(e.get("id"), r.get("relationship"), r.get("target_id"), r.get("page"),
-              r.get("basis"), r.get("date_range"))
+              r.get("basis"), r.get("date_range"), _inferred_target(r))
              for e in artifact.get("entities") or [] if isinstance(e, dict) and e.get("id")
              for r in e.get("roles") or []
              if isinstance(r, dict) and isinstance(r.get("relationship"), str)
@@ -68,6 +69,13 @@ def _slim(artifact: dict | None) -> dict | None:
             "date": doc.get("date_of_document"),
             "entities": [e.get("id") for e in artifact.get("entities") or [] if isinstance(e, dict)],
             "roles": roles}
+
+
+def _inferred_target(role: dict) -> str | None:
+    """The id a relationship's target had as extracted, when the model matched it (D332)."""
+    if role.get("target_basis") != "inferred":
+        return None
+    return str(role.get("extracted_target_id") or "").strip() or None
 
 
 def _load(path: Path) -> dict | None:

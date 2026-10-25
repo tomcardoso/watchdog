@@ -485,6 +485,12 @@ class CannedModel:
                 out.append({"pair": int(head.group(1)), "groups": groups})
         return {"pairs": out}
 
+    def role_targets(self, text: str) -> dict:
+        # The sample's relationship targets without a record (a surety, a council committee) are
+        # leads by design: nothing in the investigation is them, so a careful model matches none.
+        items = re.findall(r"^(\d+)\. target id: ", text, re.M)
+        return {"answers": [{"item": int(n), "match": "", "kind": ""} for n in items]}
+
     async def __call__(self, *, task, prompt, schema, model=None, backend=None, max_retries=1,
                        effort=None):
         from watchdog import model_client
@@ -494,7 +500,8 @@ class CannedModel:
                     "entity-synthesis": self.synthesis, "timeline-dedup": self.timeline_dedup,
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
                     "briefing": self.briefing, "relationship-labels": self.relationship_labels,
-                    "date-resolve": lambda text: {"answers": []}}
+                    "date-resolve": lambda text: {"answers": []},
+                    "role-targets": self.role_targets}
         handler = handlers.get(task)
         if handler is None:
             raise RuntimeError(f"demo: no canned answer for task {task!r}")

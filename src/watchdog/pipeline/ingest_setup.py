@@ -302,10 +302,12 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
 def housekeeping_estimate(vault: Path, shas: list[str]) -> dict:
     """The housekeeping passes' share of the next post-processing (D330): for each chore, the
     prompts it would send for the staged documents `shas`, at chars/4. Returns ``{"items",
-    "calls", "est_tokens"}`` summed over the chores (the date chore, so far)."""
-    from watchdog.pipeline import dates, housekeeping
+    "calls", "est_tokens"}`` summed over the chores: relationship targets named by an unknown id
+    (D332) and dates (D330)."""
+    from watchdog.pipeline import dates, housekeeping, role_targets
     out = {"items": 0, "calls": 0, "est_tokens": 0}
-    for chore, items in ((dates.CHORE, dates.pending_items(vault, shas)),):
+    for chore, items in ((role_targets.CHORE, role_targets.estimate_items(vault, shas)),
+                         (dates.CHORE, dates.pending_items(vault, shas))):
         calls, chars = housekeeping.estimate_chars(chore, items)
         out["items"] += len(items)
         out["calls"] += calls

@@ -148,7 +148,7 @@ At the end of every run, ordinary code (no AI) sweeps the entities and lists fou
 
 Inferred facts and figures not found in their document are listed under **Review → Verification → Worth checking**, beside their page, rather than here.
 
-A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name; such a lead says so, and the document is the only way to tell who or what it means.
+A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name. Before anything is saved, Watchdog tries to match that label to an entity it already has (see [matching relationship targets](how-it-works.md#relationship-targets)); a label it cannot match stays a lead that says so, and the document is the only way to tell who or what it means. A relationship whose target the AI model matched says **inferred** beside the target on the entity's page and **target inferred** on the Network; hover over it to see the label the document gave.
 
 **Copy leads** copies the open leads, or the ones you have selected, as a table to paste into an email or a spreadsheet. **Run full lead sweep** refreshes the list.
 
