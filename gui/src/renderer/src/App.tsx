@@ -9,7 +9,7 @@ import { BackendGate } from './shell/BackendGate'
 import { CommandPalette } from './shell/CommandPalette'
 import { DropOverlay } from './shell/DropOverlay'
 import { JobDock } from './shell/JobDock'
-import { Sidebar } from './shell/Sidebar'
+import { Sidebar, sidebarViewOf, sidebarViews } from './shell/Sidebar'
 import { Toasts } from './shell/Toasts'
 import { ViewBoundary } from './shell/ViewBoundary'
 import { TooltipLayer } from './components/TooltipLayer'
@@ -31,6 +31,15 @@ const GO: Record<string, Route> = {
 }
 
 /** Menu items, palette entries and shortcuts all arrive here as command names. */
+/** Go to the next (1) or previous (-1) sidebar button, in order, wrapping. */
+function cycleSidebar(step: 1 | -1): void {
+  const s = useApp.getState()
+  const views = sidebarViews(!!s.project)
+  const at = views.indexOf(sidebarViewOf(s.route.view))
+  const next = at < 0 ? (step > 0 ? 0 : views.length - 1) : (at + step + views.length) % views.length
+  s.navigate({ view: views[next] } as Route)
+}
+
 function runCommand(name: string): void {
   const s = useApp.getState()
   const needsProject = name.startsWith('go:') || ['search', 'add-documents', 'show-folder', 'open-obsidian', 'fetch-links'].includes(name)
@@ -42,6 +51,10 @@ function runCommand(name: string): void {
   switch (name) {
     case 'palette':
       return s.setPalette(true)
+    case 'nav-next':
+      return cycleSidebar(1)
+    case 'nav-prev':
+      return cycleSidebar(-1)
     case 'switch-investigation':
       return s.setProject(null)
     case 'add-documents':
@@ -91,6 +104,14 @@ function useBootstrap(): void {
   }, [setProject])
 }
 
+const isMac = window.watchdog.platform === 'darwin'
+
+/** Whether a key press lands in something being typed into. */
+function editing(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))
+}
+
 function useShortcuts(): void {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -102,10 +123,16 @@ function useShortcuts(): void {
         useApp.getState().goBack()
       } else if (mod && e.key === ']') {
         useApp.getState().goForward()
-      } else if (e.altKey && e.key === 'ArrowLeft') {
-        useApp.getState().goBack()
-      } else if (e.altKey && e.key === 'ArrowRight') {
-        useApp.getState().goForward()
+      } else if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Tab') {
+        // Next or previous sidebar button, in order, wrapping (Ctrl+Tab on every platform, as
+        // between a browser's tabs). It does nothing in a text field, so it is safe there too.
+        e.preventDefault()
+        cycleSidebar(e.shiftKey ? -1 : 1)
+      } else if (e.altKey && !mod && (e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !isMac && !editing(e.target)) {
+        // Back and forward as in a Windows or Linux browser. Not on a Mac, where Option+arrow
+        // moves by word in text and ⌘[ / ⌘] are the convention, and never while typing.
+        if (e.key === 'ArrowLeft') useApp.getState().goBack()
+        else useApp.getState().goForward()
       }
     }
     const onMouse = (e: MouseEvent) => {

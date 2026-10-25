@@ -45,6 +45,22 @@ const WORK: NavDef[] = [
   { view: 'briefings', label: 'Briefings', icon: BookOpenText }
 ]
 
+const WATCHDOG: NavDef[] = [
+  { view: 'activity', label: 'Activity', icon: Activity },
+  { view: 'settings', label: 'Settings', icon: Settings }
+]
+
+/** The sidebar's buttons in the order they appear, for Ctrl+Tab / Ctrl+Shift+Tab (App.tsx). */
+export function sidebarViews(hasProject: boolean): ViewName[] {
+  const list = hasProject ? [...INVESTIGATION, ...WORK, ...WATCHDOG] : [{ view: 'projects' as ViewName }, ...WATCHDOG]
+  return list.map((n) => n.view)
+}
+
+/** The sidebar button a screen belongs to: a document is under Documents, and so on. */
+export function sidebarViewOf(view: ViewName): ViewName {
+  return ({ document: 'documents', entity: 'entities', note: 'briefings' } as Partial<Record<ViewName, ViewName>>)[view] ?? view
+}
+
 export function Sidebar() {
   const project = useApp((s) => s.project)
   const route = useApp((s) => s.route)
@@ -59,14 +75,7 @@ export function Sidebar() {
   const backend = useApp((s) => s.project) // re-render on project change
   void backend
 
-  const current = (v: ViewName) => {
-    const r = route.view
-    if (v === r) return true
-    if (v === 'documents' && r === 'document') return true
-    if (v === 'entities' && r === 'entity') return true
-    if (v === 'briefings' && r === 'note') return true
-    return false
-  }
+  const current = (v: ViewName) => v === sidebarViewOf(route.view)
   const item = (n: NavDef, extra?: React.ReactNode) => (
     <button key={n.view} className="nav-item" aria-current={current(n.view) ? 'page' : undefined} onClick={() => navigate(n.route ?? ({ view: n.view } as Route))}>
       <n.icon />
@@ -128,8 +137,8 @@ export function Sidebar() {
         )}
         <div className="nav-group">
           {project && <div className="nav-label">Watchdog</div>}
-          {item({ view: 'activity', label: 'Activity', icon: Activity }, running > 0 ? <span className="spinner nav-spin" /> : undefined)}
-          {item({ view: 'settings', label: 'Settings', icon: Settings })}
+          {item(WATCHDOG[0], running > 0 ? <span className="spinner nav-spin" /> : undefined)}
+          {item(WATCHDOG[1])}
         </div>
       </nav>
       <BackendFoot />

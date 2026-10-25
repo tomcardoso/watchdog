@@ -52,6 +52,11 @@ interface Props {
 
 let localId = 1
 
+// Unsent text in the composer, per investigation, screen and conversation ('' for a new one), so
+// leaving Ask Claude or Web research and coming back finds it again. Memory only: it lasts until
+// the app quits and is never written to disk, since a draft can quote a document.
+const DRAFTS = new Map<string, string>()
+
 export default function ChatWorkspace(p: Props) {
   const project = useApp((s) => s.project)!
   const vault = project.path
@@ -69,7 +74,19 @@ export default function ChatWorkspace(p: Props) {
   const [, setDetail] = useState<string | null>(null)
   const [cost, setCost] = useState<number | null>(null)
   const [model, setModel] = useState<ModelChoice>('sonnet')
-  const [text, setText] = useState('')
+  const draftKey = `${vault}\u0000${p.view}\u0000${active ?? ''}`
+  const [text, setTextState] = useState(() => DRAFTS.get(draftKey) ?? '')
+  const shownKey = useRef(draftKey)
+  const setText = useCallback((t: string) => {
+    setTextState(t)
+    if (t) DRAFTS.set(shownKey.current, t)
+    else DRAFTS.delete(shownKey.current)
+  }, [])
+  useEffect(() => {
+    if (shownKey.current === draftKey) return
+    shownKey.current = draftKey
+    setTextState(DRAFTS.get(draftKey) ?? '')
+  }, [draftKey])
   const [busy, setBusy] = useState(false)
   const [loading, setLoading] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
