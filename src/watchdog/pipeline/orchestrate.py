@@ -605,7 +605,7 @@ def _candidates_checklist(text: str, *, vault: Path | None = None, sha: str | No
     return harvest.format_checklist(candidates)
 
 
-def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
+def _sidecar_skill(sidecar_text: str | None, *, filename: str, quiet: bool = False) -> str | None:
     """A per-document record-skill pin from the sidecar's `skill:` field, resolved
     deterministically in Python — never shown to the classifier. Lets one ingest queue mix
     document types without `--skill` forcing a single pin across the whole run (D120: benchmarking
@@ -616,7 +616,7 @@ def _sidecar_skill(sidecar_text: str | None, *, filename: str) -> str | None:
     if not value:
         return None
     resolved = skills_catalog.resolve_name(value)
-    if not resolved:
+    if not resolved and not quiet:
         _say(f"⚠  {filename}: sidecar pins unknown skill "
              f"'{value}' (a sidecar may name a catalog skill, not a file path) — classifying instead")
     return resolved

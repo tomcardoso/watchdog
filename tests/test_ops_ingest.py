@@ -230,6 +230,93 @@ def test_process_still_requires_claude_auth_when_a_stage_uses_claude(wdg_home, t
         ing.process(vault, RunOptions(skip_warning=True), finalize=True)
 
 
+def _pin_queued_doc(vault, skill="corporate-filings"):
+    f = vault / ".watchdog" / "queue" / "sha1.json"
+    d = json.loads(f.read_text())
+    d["sidecar"] = f"skill: {skill}\n"
+    f.write_text(json.dumps(d))
+
+
+class _Reached(Exception):
+    """Raised by the stubbed queue scan: the auth and key checks were passed."""
+
+
+def _extractor_only_setup(wdg_home, tmp_path, monkeypatch, *, pinned):
+    """A machine with no Claude set up, an extractor on DeepSeek, the classifier and finalizer on
+    their Claude defaults (#748). Returns the backends `check_run_keys` was asked about."""
+    from watchdog import auth as auth_module
+    _fake_catalog(monkeypatch, tmp_path)
+    vault = _vault_with_queued_doc(tmp_path)
+    if pinned:
+        _pin_queued_doc(vault)
+    monkeypatch.chdir(vault)
+    monkeypatch.setattr(auth_module, "resolve_auth",
+                        lambda: {"mode": "none", "reason": "no Claude here"})
+    checked = []
+    monkeypatch.setattr(auth_module, "check_run_keys", lambda v, backends: checked.append(list(backends)))
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "deepseek:deepseek-flash"}))
+    monkeypatch.setattr("watchdog.pipeline.ingest_setup.run",
+                        lambda *a, **k: (_ for _ in ()).throw(_Reached()))
+    return vault, checked
+
+
+def test_process_extraction_only_with_pinned_skills_needs_no_claude_auth(wdg_home, tmp_path, monkeypatch):
+    """The classifier never runs (every document pins its skill) and the finalizer never runs
+    (`finalize=False`), so Claude's missing auth is no reason to stop (#748)."""
+    vault, checked = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=True)
+    with pytest.raises(_Reached):
+        ing.process(vault, RunOptions(skip_warning=True), finalize=False)
+    assert checked == [["deepseek"]]
+
+
+def test_process_run_wide_skill_needs_no_classifier_auth(wdg_home, tmp_path, monkeypatch):
+    vault, checked = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=False)
+    with pytest.raises(_Reached):
+        ing.process(vault, RunOptions(skip_warning=True, skill="corporate-filings"), finalize=False)
+    assert checked == [["deepseek"]]
+
+
+def test_process_unpinned_document_still_requires_classifier_auth(wdg_home, tmp_path, monkeypatch):
+    vault, _ = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=False)
+    with pytest.raises(SystemExit, match="no Claude here"):
+        ing.process(vault, RunOptions(skip_warning=True), finalize=False)
+
+
+def test_process_one_unpinned_document_among_pinned_requires_classifier_auth(wdg_home, tmp_path, monkeypatch):
+    vault, _ = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=True)
+    q = vault / ".watchdog" / "queue"
+    d = json.loads((q / "sha1.json").read_text())
+    d.pop("sidecar")
+    d["sha256"], d["filename"] = "sha2", "b.pdf"
+    (q / "sha2.json").write_text(json.dumps(d))
+    with pytest.raises(SystemExit, match="no Claude here"):
+        ing.process(vault, RunOptions(skip_warning=True), finalize=False)
+
+
+def test_process_unknown_sidecar_skill_counts_as_unpinned(wdg_home, tmp_path, monkeypatch):
+    vault, _ = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=False)
+    _pin_queued_doc(vault, skill="no-such-skill")
+    with pytest.raises(SystemExit, match="no Claude here"):
+        ing.process(vault, RunOptions(skip_warning=True), finalize=False)
+
+
+def test_process_with_finalize_still_requires_finalizer_auth(wdg_home, tmp_path, monkeypatch):
+    vault, _ = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=True)
+    with pytest.raises(SystemExit, match="no Claude here"):
+        ing.process(vault, RunOptions(skip_warning=True), finalize=True)
+
+
+def test_process_keys_check_covers_the_stages_that_will_run(wdg_home, tmp_path, monkeypatch):
+    """With the finalizer on another provider too, finalizing adds its backend to the key check
+    and still needs no Claude auth."""
+    vault, checked = _extractor_only_setup(wdg_home, tmp_path, monkeypatch, pinned=True)
+    (wdg_home / "config.json").write_text(json.dumps({
+        "extractor_model": "deepseek:deepseek-flash", "finalizer_model": "gemini:gemini-2.5-flash"}))
+    with pytest.raises(_Reached):
+        ing.process(vault, RunOptions(skip_warning=True), finalize=True)
+    assert set(checked[0]) == {"deepseek", "gemini"}
+
+
 def test_finish_does_not_require_claude_auth_when_finalizer_non_claude(wdg_home, tmp_path, monkeypatch):
     from watchdog import auth as auth_module
     from watchdog.pipeline import orchestrate as orch_module
