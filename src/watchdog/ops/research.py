@@ -17,15 +17,16 @@ from watchdog.pipeline import capture, research
 def wayback_creds() -> tuple[str, str] | None:
     """The archive.org (access key, secret key) when Wayback archiving is on and both keys are
     set; else None (the default, #201)."""
-    cfg = config.read()
-    if not cfg.get("wayback_save"):
+    from watchdog import auth
+    if not config.read().get("wayback_save"):
         return None
-    access = (cfg.get("wayback_access_key") or "").strip()
-    secret = (cfg.get("wayback_secret_key") or "").strip()
+    state = auth.load_state()
+    access = auth.setting_secret("wayback_access_key", state)
+    secret = auth.setting_secret("wayback_secret_key", state)
     return (access, secret) if access and secret else None
 
 
-@op("research-fetch")
+@op("research-fetch", secrets=True)
 def research_fetch(rep, vault: Path, *, file: str | None = None) -> dict:
     """Download the sources a research session queued (or those listed in `file`). Rows that
     fail stay queued, so a transient failure is never lost; an explicit `file` is left as it is."""
@@ -48,7 +49,7 @@ def research_fetch(rep, vault: Path, *, file: str | None = None) -> dict:
     return {"downloaded": n, "failed": len(results) - n}
 
 
-@op("fetch-links")
+@op("fetch-links", secrets=True)
 def fetch_links(rep, vault: Path, *, targets: list[str]) -> dict:
     """Download a list of links, or the links in a file, into `incoming/` (#197)."""
     require_vault(vault)

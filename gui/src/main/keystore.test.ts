@@ -7,7 +7,7 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ENC_TAG, mask, prepare, revealAll, seal, sealParams, storeStatus, type Crypto } from './keystore.ts'
+import { ENC_TAG, mask, moveSettingSecrets, prepare, revealAll, seal, sealParams, storeStatus, type Crypto } from './keystore.ts'
 
 function fakeCrypto(opts: { available?: boolean; backend?: string; broken?: boolean } = {}): Crypto {
   return {
@@ -120,3 +120,33 @@ test('a pasted key is sealed before it reaches the backend, and only for key met
   const other = { vault: '/v' }
   assert.equal(sealParams('vault.summary', other, c, enc), other)
 })
+
+test('a Wayback key typed in Settings is sealed; other settings pass through untouched (D341)', () => {
+  const c = fakeCrypto()
+  const enc = storeStatus(c, 'darwin')
+  const sealed = sealParams('settings.set', { key: 'wayback_secret_key', value: ' s3cret ', value_enc: 'forged' }, c, enc) as Record<string, unknown>
+  assert.equal((sealed.value_enc as { data: string }).data, seal(c, 's3cret').data)
+  const plain = sealParams('settings.set', { key: 'extractor_model', value: 'sonnet', value_enc: 'forged' }, c, enc) as Record<string, unknown>
+  assert.deepEqual(plain, { key: 'extractor_model', value: 'sonnet' })
+})
+
+test('plain-text Wayback keys move from config.json into credentials.json, sealed, and are handed over', () => {
+  const c = fakeCrypto()
+  const { file, dir } = tempFile(credentials(c))
+  const cfg = join(dir, 'config.json')
+  writeFileSync(cfg, JSON.stringify({ wayback_save: true, wayback_access_key: 'acc', wayback_secret_key: 'sec' }))
+  try {
+    assert.equal(moveSettingSecrets(c, storeStatus(c, 'darwin'), file, cfg), 2)
+    assert.deepEqual(JSON.parse(readFileSync(cfg, 'utf8')), { wayback_save: true })
+    const raw = readFileSync(file, 'utf8')
+    assert.ok(!raw.includes('"acc"') && !raw.includes('"sec"'))
+    const values = Object.values(prepare(c, 'darwin', file).provision.keys)
+    assert.ok(values.includes('acc') && values.includes('sec') && values.includes(KEYS['k-1']))
+    // Without real encryption nothing moves.
+    writeFileSync(cfg, JSON.stringify({ wayback_access_key: 'acc2' }))
+    assert.equal(moveSettingSecrets(c, storeStatus(fakeCrypto({ backend: 'basic_text' }), 'linux'), file, cfg), 0)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+

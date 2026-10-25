@@ -103,6 +103,8 @@ def run_providers_for(op: str, params: dict) -> list[str] | None:
             from watchdog.ops.ingest import RunOptions, resolve_plan
             plan = resolve_plan(RunOptions(**{k: params[k] for k in _MODEL_PARAMS if params.get(k)}))
             return run_providers(plan.backends)
+        if op in ("research-fetch", "fetch-links"):
+            return []                      # no model call: no provider's key (D341)
         if op == "recheck-contradictions":
             from watchdog.pipeline import recheck
             return run_providers([recheck.finalizer_stage()[0]])
@@ -122,7 +124,13 @@ def _secrets(vault: Path | None, op: str | None = None, params: dict | None = No
     try:
         from watchdog.auth import secrets_for_run
         providers = run_providers_for(op, params or {}) if op else None
-        return secrets_for_run(vault, providers)
+        keys = secrets_for_run(vault, providers)
+        if op in ("research-fetch", "fetch-links"):
+            # The Wayback Machine keys, for archiving what it downloads (D341). Nothing else
+            # gets them, and an Ask Claude session never does: it only queues the links.
+            from watchdog.auth import setting_secrets_for_job
+            keys.update(setting_secrets_for_job())
+        return keys
     except Exception:  # noqa: BLE001
         return {}
 

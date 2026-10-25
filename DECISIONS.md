@@ -2945,3 +2945,9 @@ D324's limit is per investigation, which the owner wants to keep. A computer-wid
 
 Tradeoff: changing the default never reaches existing investigations, and a folder created on another computer carries that computer's limit, or none.
 
+### D341 — The Wayback Machine keys are encrypted like API keys and reach only the download jobs
+
+The archive.org access and secret keys sat in plain text in `config.json` (0600), unlike API keys (D295). They are now secret settings: `auth.SETTING_SECRETS`, stored in `credentials.json` under `secrets` as the app's sealed blobs. `settings.set` for one carries `value_enc`, sealed by the main process (`keystore.sealParams`), and the backend refuses plain text when the app encrypts. When the backend starts, the main process first moves any plain-text copy out of `config.json` into `secrets`, sealed (`moveSettingSecrets`), then decrypts them with the API keys. Only `research-fetch` and `fetch-links` are handed them, and those jobs get no provider's key. An Ask Claude session never needs them: it queues links, and the download archives them. A tool that let a session archive a page itself would run in the backend and return only the snapshot address, so the keys would still not reach the session; none is built yet.
+
+Tradeoff: as with API keys, the keys can't be read on another computer or account, and a copy of `config.json` backed up before the move still holds them in plain text.
+

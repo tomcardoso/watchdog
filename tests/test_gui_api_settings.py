@@ -190,8 +190,11 @@ def test_set_keeps_other_settings_and_never_echoes_a_secret(wdg_home):
     (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "sonnet-5.5"}))
     r = call("settings.set", key="wayback_secret_key", value="hunter2")
     assert r["value"] is None and "hunter2" not in json.dumps(r) and "set" in r["display"]
-    assert config(wdg_home) == {"extractor_model": "sonnet-5.5", "wayback_secret_key": "hunter2"}
-    assert mode_bits(wdg_home / "config.json") == 0o600
+    # A secret setting is kept with the keys (D341), not in config.json.
+    assert config(wdg_home) == {"extractor_model": "sonnet-5.5"}
+    assert creds(wdg_home)["secrets"] == {"wayback_secret_key": "hunter2"}
+    assert mode_bits(wdg_home / "credentials.json") == 0o600
+    assert keyed(call("settings.schema"))["wayback_secret_key"]["is_set"] is True
 
 
 def test_set_with_a_corrupt_config_refuses_to_overwrite_it(wdg_home):
