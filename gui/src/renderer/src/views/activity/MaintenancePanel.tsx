@@ -477,7 +477,7 @@ function TroubleshootingModal({ open, onClose }: { open: boolean; onClose: () =>
           Export a copy for troubleshooting
         </span>
       }
-      sub={kind === 'diagnostics' ? 'One text file of counts, safe to post with a report of a problem.' : 'One zip file, to send privately with a report of a problem.'}
+      sub={kind === 'diagnostics' ? 'One text file of counts, safe to post with a report of a problem.' : 'One zip file of this investigation’s records, for your own use. Never attach it to an issue: issues are public.'}
       footer={
         <>
           <Button autoFocus onClick={onClose}>
@@ -563,7 +563,7 @@ function TroubleshootingCard() {
           </div>
         }
       >
-        Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog’s records and notes for this investigation, to send privately. No model is used.
+        Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog’s records and notes for this investigation, for your own use. No model is used.
       </MCard>
       <TroubleshootingModal open={open} onClose={() => setOpen(false)} />
     </>
