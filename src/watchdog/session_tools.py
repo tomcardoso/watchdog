@@ -12,6 +12,7 @@ backend and appear to Claude as `mcp__watchdog__<name>`:
 - `write_entity`      store a refreshed summary and timeline for one entity (/watchdog-entity)
 - `watchlist_add`     add terms to `watchlist.md` (/watchdog-context)
 - `contradiction_add` record a contradiction the reporter confirmed (/watchdog-surface)
+- `wayback_archive`   ask the Wayback Machine to save a public page; returns only the archive link
 
 Each tool set is bound to one investigation when the session starts, and no tool takes a folder,
 a project name or a file outside that investigation, so a session can't reach another one. The
@@ -31,7 +32,9 @@ SERVER = "watchdog"
 
 READ_TOOLS = ("search", "leads", "check_citations", "research_seen")
 WRITE_TOOLS = ("timeline", "write_entity", "watchlist_add", "contradiction_add")
-TOOLS = READ_TOOLS + WRITE_TOOLS
+# Changes nothing in the investigation but acts on the web for the reporter, so it asks (D345).
+WEB_TOOLS = ("wayback_archive",)
+TOOLS = READ_TOOLS + WRITE_TOOLS + WEB_TOOLS
 
 
 def tool_name(name: str) -> str:
@@ -203,6 +206,28 @@ class SessionTools:
         return (f"Added the contradiction to {r['entity_name']} ({r['note_path']}). The reporter can "
                 f"mark it handled in Review. Resolution id: {r['rid']}.")
 
+    def wayback_archive(self, url: str) -> str:
+        """Ask the Wayback Machine to save a public page (D345). The archive.org keys stay in this
+        process (D341): the session sends an address and gets back only the snapshot link."""
+        from watchdog import auth
+        from watchdog.pipeline import research
+        self._require_vault()
+        try:
+            url = research.validate_url(str(url or "").strip())
+        except research.ResearchError as e:
+            raise ToolError(f"That address can't be archived: {e}.")
+        access = auth.setting_secret("wayback_access_key")
+        secret = auth.setting_secret("wayback_secret_key")
+        if not (access and secret):
+            raise ToolError("The Wayback Machine isn't set up: the reporter can add its keys in "
+                            "Settings, under the Wayback Machine settings.")
+        snapshot = research.save_to_wayback(url, access, secret)
+        if not snapshot:
+            raise ToolError("The Wayback Machine didn't accept the page. It may be rate-limiting, "
+                            "or the keys may be wrong; try again later.")
+        return _json({"url": url, "archived": snapshot,
+                      "note": "Saving finishes in the background; the link shows the newest snapshot."})
+
 
 def _json(data) -> str:
     return json.dumps(data, ensure_ascii=False, indent=1)
@@ -264,6 +289,13 @@ SCHEMAS: dict[str, tuple[str, dict]] = {
         {"type": "object", "properties": {
             "terms": {"type": "array", "items": _STR, "minItems": 1},
         }, "required": ["terms"], "additionalProperties": False}),
+    "wayback_archive": (
+        "Ask the Internet Archive's Wayback Machine to save a public web page, so a citable copy "
+        "survives if the page changes. Returns JSON with the archive link. Use it when the reporter "
+        "asks to archive a page; it needs the Wayback Machine keys set up in Watchdog.",
+        {"type": "object", "properties": {
+            "url": {**_STR, "description": "The public http(s) address to archive."},
+        }, "required": ["url"], "additionalProperties": False}),
     "contradiction_add": (
         "Record a contradiction in an entity's note. Only after the reporter has explicitly confirmed "
         "this candidate against the sources.",
@@ -311,7 +343,7 @@ def sdk_server(vault: Path):
     for name in TOOLS:
         description, schema = SCHEMAS[name]
         annotations = ToolAnnotations(readOnlyHint=name in READ_TOOLS, destructiveHint=False,
-                                      openWorldHint=False)
+                                      openWorldHint=name in WEB_TOOLS)
 
         def bind(n):
             async def handler(args):

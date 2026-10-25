@@ -351,6 +351,7 @@ _WATCHDOG_TOOL_TITLES = {
     "leads": "List leads",
     "check_citations": "Check citations",
     "research_seen": "List sources already captured",
+    "wayback_archive": "Save a page to the Wayback Machine",
 }
 
 # What "Allow for this conversation" covers for a Watchdog tool that writes (D308): the whole tool,
@@ -359,6 +360,7 @@ _WATCHDOG_TOOL_SCOPES = {
     "write_entity": "rewriting any entity's summary and timeline",
     "watchlist_add": "adding terms to the watch list",
     "timeline": "rebuilding the timeline",
+    "wayback_archive": "saving pages to the Wayback Machine",
 }
 
 _UNTIL = "until you close this chat or quit Watchdog"
@@ -370,6 +372,11 @@ def _entity_name(vault: Path, entity_id) -> str:
     entry = _read_json_or(Path(vault) / ".watchdog" / "registry" / "entities.json", {}).get(entity_id)
     name = entry.get("name") if isinstance(entry, dict) else None
     return name or str(entity_id)
+
+
+def session_tools_web() -> tuple[str, ...]:
+    from watchdog.session_tools import WEB_TOOLS
+    return WEB_TOOLS
 
 
 def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
@@ -390,7 +397,7 @@ def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
     if tool.startswith(prefix):
         name = tool[len(prefix):]
         title = _WATCHDOG_TOOL_TITLES.get(name, name.replace("_", " "))
-        changes = True
+        changes = name not in session_tools_web()
         scope = _WATCHDOG_TOOL_SCOPES.get(name)
         if name == "write_entity":
             entity = _entity_name(vault, inp.get("entity_id"))
@@ -408,6 +415,9 @@ def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
             description = "Add to watchlist.md: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
         elif name == "timeline":
             description = "Write timeline.md again from the stored events."
+        elif name == "wayback_archive":
+            description = (f"Ask the Internet Archive to save {inp.get('url', '')}. Watchdog sends it "
+                           "with your Wayback Machine keys; Claude gets back only the archive link.")
     elif tool in _EDIT_TOOLS:
         raw = inp.get(_EDIT_TOOLS[tool])
         rel = _vault_relative(vault, raw) if isinstance(raw, str) and raw else None

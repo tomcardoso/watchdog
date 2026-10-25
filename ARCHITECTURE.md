@@ -701,7 +701,9 @@ runs a command, starts agents, schedules prompts, runs workflows or changes fold
 permission card, never Claude Code's own judge. What it needs from Watchdog is a tool of the
 in-process MCP server `watchdog` (`watchdog/session_tools.py`): `search`, `leads`, `check_citations`
 and `research_seen` read and are pre-approved; `timeline`, `write_entity`, `watchlist_add` and
-`contradiction_add` write and ask the reporter every time. Each tool set is bound to the session's
+`contradiction_add` write and ask the reporter every time; `wayback_archive` writes nothing but
+submits a page to the Wayback Machine with the archive.org keys, which stay in the backend (D341),
+and asks too (D345). Each tool set is bound to the session's
 vault and takes no folder, project or outside file; the writers call the library function under
 the registry lock, refuse a vault without folder access, refuse a line break in any value written
 into a line of Markdown (`pipeline/inline_text`), and record a version (`{"kind": "session", "tool":

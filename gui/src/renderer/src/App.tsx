@@ -24,8 +24,6 @@ const GO: Record<string, Route> = {
   'go:entities': { view: 'entities' },
   'go:timeline': { view: 'timeline' },
   'go:graph': { view: 'graph' },
-  'go:review': { view: 'review' },
-  'go:ask': { view: 'ask' },
   settings: { view: 'settings' },
   search: { view: 'search' }
 }

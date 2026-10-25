@@ -308,6 +308,24 @@ def test_retain_pending_empty_deletes_worklist(tmp_path):
     assert not q.exists()
 
 
+def test_failed_downloads_are_recorded_counted_apart_and_dismissable(tmp_path):
+    """D346: a failure stays queued but is recorded with its reason and attempts, so it isn't
+    shown or counted as waiting to download; a success or a dismissal forgets it."""
+    vault = tmp_path / "v"
+    q = research.queue_path(vault)
+    q.parent.mkdir(parents=True)
+    q.write_text("https://a.com\tA\nhttps://b.com\tB\nhttps://c.com\tC\n", encoding="utf-8")
+    D = research.Deposit
+    research.record_attempts(vault, [D("https://a.com", None, "refused: HTTP 403"), D("https://b.com", tmp_path / "b.html")])
+    research.record_attempts(vault, [D("https://a.com", None, "refused: HTTP 403")])
+    failed = research.read_failures(vault)
+    assert set(failed) == {"https://a.com"} and failed["https://a.com"]["attempts"] == 2
+    assert research.pending_count(vault) == 2            # b and c: a failed, so it isn't offered
+    assert research.dismiss(vault, ["https://a.com"]) == 1
+    assert research.read_failures(vault) == {} and research.pending_count(vault) == 2
+    assert [e["url"] for e in research.parse_worklist(q.read_text())] == ["https://b.com", "https://c.com"]
+
+
 # ── seen_urls: re-fetch avoidance (#196, Part A) ───────────────────────────────
 
 def test_seen_urls_unions_documents_and_incoming_sidecars(tmp_path):

@@ -133,9 +133,16 @@ def test_a_corrupt_usage_file_reads_as_an_empty_run(rich_vault):
 def test_research_status(rich_vault, wdg_home):
     r = call("research.status", vault=V(rich_vault))
     assert r == {"queued": [
-        {"url": "https://example.org/a", "title": "A page", "source_type": "news", "relevance": "context"},
-        {"url": "https://example.org/b", "title": None, "source_type": None, "relevance": None}],
+        {"url": "https://example.org/a", "title": "A page", "source_type": "news", "relevance": "context", "failed": None},
+        {"url": "https://example.org/b", "title": None, "source_type": None, "relevance": None, "failed": None}],
         "wayback_configured": False}
+    # A failed download is marked, with its reason, and can be taken off the queue (D346).
+    from watchdog.pipeline import research
+    research.record_attempts(rich_vault, [research.Deposit("https://example.org/b", None, "refused: HTTP 403")])
+    r = call("research.status", vault=V(rich_vault))
+    assert r["queued"][1]["failed"] == {"error": "refused: HTTP 403", "attempts": 1}
+    assert call("research.dismiss", vault=V(rich_vault), urls=["https://example.org/b"]) == {"removed": 1}
+    assert [x["url"] for x in call("research.status", vault=V(rich_vault))["queued"]] == ["https://example.org/a"]
 
 
 def test_research_status_wayback(rich_vault, wdg_home):

@@ -311,3 +311,31 @@ def test_the_default_citation_check_skips_a_symlink_out_of_the_investigation(too
     assert not any("out.md" in p["path"] for p in report["pages_with_problems"])
     from watchdog.pipeline import citations
     assert all(not p.is_symlink() for p in citations.pages(vault))
+
+
+def test_wayback_archive_keeps_the_keys_and_returns_only_the_link(tools, tmp_path, monkeypatch):
+    """D345: the tool sends the page with the stored keys and hands back the snapshot link; the
+    keys never appear in what the session sees, and a private or bad address is refused."""
+    from watchdog import auth, config
+    from watchdog.pipeline import research
+    monkeypatch.setattr(config, "HOME", tmp_path / "home")
+    with pytest.raises(ToolError, match="isn't set up"):
+        tools.wayback_archive("https://example.org/page")
+    auth.store_setting_secret("wayback_access_key", "ACCESS-123")
+    auth.store_setting_secret("wayback_secret_key", "SECRET-456")
+    sent = {}
+
+    def fake_save(url, access, secret, **_):
+        sent.update(url=url, access=access, secret=secret)
+        return f"https://web.archive.org/web/{url}"
+    monkeypatch.setattr(research, "save_to_wayback", fake_save)
+    out = tools.wayback_archive("https://example.org/page")
+    assert json.loads(out)["archived"] == "https://web.archive.org/web/https://example.org/page"
+    assert sent == {"url": "https://example.org/page", "access": "ACCESS-123", "secret": "SECRET-456"}
+    assert "ACCESS-123" not in out and "SECRET-456" not in out
+    with pytest.raises(ToolError, match="can't be archived"):
+        tools.wayback_archive("file:///etc/passwd")
+    monkeypatch.setattr(research, "save_to_wayback", lambda *a, **k: None)
+    with pytest.raises(ToolError, match="didn't accept"):
+        tools.wayback_archive("https://example.org/page")
+

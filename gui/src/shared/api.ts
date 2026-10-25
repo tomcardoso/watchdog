@@ -899,7 +899,11 @@ export interface UsageRun {
 
 // ── research ─────────────────────────────────────────────────────────────────
 export interface ResearchStatus {
-  queued: { url: string; title: string | null; source_type: string | null; relevance: string | null }[]
+  queued: {
+    url: string; title: string | null; source_type: string | null; relevance: string | null
+    /** Set once a download of it failed (D346). */
+    failed: { error: string; attempts: number } | null
+  }[]
   wayback_configured: boolean
 }
 
@@ -1068,6 +1072,7 @@ export interface Methods {
   'usage.run': [{ vault: string; ts?: string }, UsageRun]
 
   'research.status': [{ vault: string }, ResearchStatus]
+  'research.dismiss': [{ vault: string; urls: string[] }, { removed: number }]
 
   'chat.start': [{ vault: string; mode: ChatMode; model?: string | null; prompt?: string }, { session: string }]
   'chat.send': [{ session: string; text: string }, { ok: boolean }]

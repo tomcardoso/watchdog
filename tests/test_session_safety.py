@@ -23,7 +23,7 @@ def test_vault_settings_preapprove_only_the_read_tools_and_run_no_commands():
     allow = settings["permissions"]["allow"]
     assert [r for r in allow if r.startswith("mcp__")] == [session_tools.tool_name(t)
                                                            for t in session_tools.READ_TOOLS]
-    assert not any(session_tools.tool_name(t) in allow for t in session_tools.WRITE_TOOLS)
+    assert not any(session_tools.tool_name(t) in allow for t in session_tools.WRITE_TOOLS + session_tools.WEB_TOOLS)
     assert not any(r.startswith("Bash(") for r in allow)
     assert "hooks" not in settings
     assert "watchdog " not in json.dumps(settings)
