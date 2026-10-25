@@ -238,12 +238,12 @@ RECONCILE = _obj(
             "items": _obj(
                 {"pair": {"type": "integer",
                           "description": "index into the CANDIDATE PAIRS list"},
-                 "keep_id": {"type": "string",
-                             "description": "which of the pair's two ids survives — copied "
-                                            "verbatim; the other is folded into it"},
+                 "keep": {"type": "string", "enum": ["a", "b"],
+                          "description": "which side of the pair survives, \"a\" or \"b\" "
+                                         "(never an id); the other is folded into it"},
                  "reason": {"type": "string",
                             "description": "one clause on why these are the same real-world thing"}},
-                ["pair", "keep_id", "reason"],
+                ["pair", "keep", "reason"],
             ),
         },
         "groups": {

@@ -101,9 +101,13 @@ def _mock_reconcile_merge(monkeypatch):
     """Post-ingest model mock: reconcile confirms the one candidate pair as a merge keeping the
     shorter-named entity; every other post-ingest call is an empty/canned no-op."""
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+        pairs = json.loads(prompt[prompt.rindex("CANDIDATE PAIRS (possible"):]
+                           .split("\n\nSAME-NAME GROUPS (records", 1)[0].split("\n", 1)[1]) \
+            if "CANDIDATE PAIRS (possible" in prompt else []
         parsed = {
-            "reconcile": {"merges": [{"pair": 0, "keep_id": _KEEP_ID,
-                                      "reason": "same university, name variant"}],
+            "reconcile": {"merges": [{"pair": 0,
+                                      "keep": "a" if pairs[0]["a"].get("id") == _KEEP_ID else "b",
+                                      "reason": "same university, name variant"}] if pairs else [],
                           "contradictions": []},
             "entity-synthesis": {"entity_syntheses": []},
             "timeline-dedup": {"groups": []},

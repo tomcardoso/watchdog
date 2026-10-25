@@ -262,7 +262,7 @@ def _fake_model(monkeypatch, merge_same_name: bool, seen: list):
         if task == "reconcile":
             pairs = json.loads(prompt[prompt.rindex("CANDIDATE PAIRS (possible"):]
                                .split("\n\nSAME-NAME GROUPS (records", 1)[0].split("\n", 1)[1])
-            merges = [{"pair": p["index"], "keep_id": p["a"]["id"], "reason": "same facts"}
+            merges = [{"pair": p["index"], "keep": "a", "reason": "same facts"}
                       for p in pairs if merge_same_name and p.get("same_name")]
             groups = []
             for g in _groups_in(prompt):

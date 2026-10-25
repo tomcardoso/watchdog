@@ -339,7 +339,8 @@ class CannedModel:
         for a, b, keep, reason in demo_story.MERGES:
             for i, pair in enumerate(pairs):
                 if {pair["a"]["id"], pair["b"]["id"]} == {a, b}:
-                    merges.append({"pair": i, "keep_id": keep, "reason": reason})
+                    merges.append({"pair": i, "keep": "a" if pair["a"]["id"] == keep else "b",
+                                   "reason": reason})
         # A same-name pair the rules could not settle (D279) is a record the fold kept apart under
         # a fresh slug (`marcus-teague-2`). The story has one entity per cast id, so a careful model
         # reading both sides' facts would confirm it — except where the facts give it nothing to go
@@ -349,7 +350,7 @@ class CannedModel:
             if ids[0] in UNSURE_SAME_NAME:
                 continue
             if pair.get("same_name") and re.fullmatch(re.escape(ids[0]) + r"-\d+", ids[1]):
-                merges.append({"pair": i, "keep_id": ids[0],
+                merges.append({"pair": i, "keep": "a" if pair["a"]["id"] == ids[0] else "b",
                                "reason": "The same person, described consistently in both documents."})
         # Records with the very same name come as a group (#755): every record of one cast id
         # (`marcus-teague`, `marcus-teague-2`, …) is one thing, unless it is an unsure one.

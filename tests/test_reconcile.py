@@ -12,6 +12,8 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 from watchdog import model_client
 from watchdog.pipeline import identity, orchestrate, reconcile
 
@@ -328,7 +330,7 @@ def _pairs_for(a_id, b_id):
 def test_apply_merges_folds_confirmed_duplicate(tmp_path):
     vault = make_vault(tmp_path)
     pairs = _pairs_for("alice-smith", "a-smith-duplicate")
-    parsed = {"merges": [{"pair": 0, "keep_id": "alice-smith", "reason": "same person"}]}
+    parsed = {"merges": [{"pair": 0, "keep": "a", "reason": "same person"}]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
 
     assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
@@ -341,7 +343,7 @@ def test_apply_merges_folds_confirmed_duplicate(tmp_path):
 def test_apply_merges_skips_bad_pair_index_with_warning(tmp_path):
     vault = make_vault(tmp_path)
     warnings = []
-    parsed = {"merges": [{"pair": 9, "keep_id": "alice-smith"}]}
+    parsed = {"merges": [{"pair": 9, "keep": "a"}]}
     out = reconcile.apply_merges(
         vault, [], parsed, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
@@ -352,15 +354,40 @@ def test_apply_merges_skips_bad_pair_index_with_warning(tmp_path):
     assert "a-smith-duplicate" in reg
 
 
-def test_apply_merges_skips_keep_id_not_in_pair(tmp_path):
+@pytest.mark.parametrize("bad", ["bob-jones", "alice-smith", "c", "A", "", None, 0])
+def test_apply_merges_rejects_a_keep_that_is_not_a_side(tmp_path, bad):
+    """Only "a" or "b" names the survivor; an id (even a right one) or anything else is logged and
+    skipped, and nothing is merged (D335)."""
     vault = make_vault(tmp_path)
     warnings = []
-    parsed = {"merges": [{"pair": 0, "keep_id": "bob-jones"}]}
+    parsed = {"merges": [{"pair": 0, "keep": bad}]}
     out = reconcile.apply_merges(
         vault, [], parsed, {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")},
         warn=warnings.append)
-    assert out["merged"] == []
-    assert warnings and "not one of pair" in warnings[0]
+    assert out["merged"] == [] and out["remap"] == {}
+    assert warnings and "neither" in warnings[0]
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    assert "a-smith-duplicate" in reg
+
+
+def test_apply_merges_ids_come_from_the_pair_not_the_model(tmp_path):
+    """The model answers a side; the survivor and the folded id are both read from the stored
+    pair, so a stray spelling in the answer's other fields cannot change either (D335)."""
+    vault = make_vault(tmp_path)
+    pairs = _pairs_for("a-smith-duplicate", "alice-smith")
+    parsed = {"merges": [{"pair": 0, "keep": "b", "keep_id": "alice-smithh", "reason": "same"}]}
+    out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
+    assert out["remap"] == {"a-smith-duplicate": "alice-smith"}
+    assert out["merged"][0]["keep_id"] == "alice-smith"
+    assert out["merged"][0]["merge_id"] == "a-smith-duplicate"
+
+
+def test_apply_merges_keeping_side_a(tmp_path):
+    vault = make_vault(tmp_path)
+    pairs = _pairs_for("a-smith-duplicate", "alice-smith")
+    parsed = {"merges": [{"pair": 0, "keep": "a", "reason": "same"}]}
+    out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
+    assert out["remap"] == {"alice-smith": "a-smith-duplicate"}
 
 
 def test_apply_merges_chains_through_prior_merge(tmp_path):
@@ -372,8 +399,8 @@ def test_apply_merges_chains_through_prior_merge(tmp_path):
         {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
     ]
     parsed = {"merges": [
-        {"pair": 0, "keep_id": "alice-smith", "reason": "x"},
-        {"pair": 1, "keep_id": "alice-smith", "reason": "y"},   # bob folds into the survivor
+        {"pair": 0, "keep": "b", "reason": "x"},
+        {"pair": 1, "keep": "a", "reason": "y"},   # bob folds into the survivor
     ]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert len(out["merged"]) == 2
@@ -392,8 +419,8 @@ def test_apply_merges_returns_flattened_remap(tmp_path):
         {"index": 1, "a": {"id": "alice-smith"}, "b": {"id": "bob-jones"}},
     ]
     parsed = {"merges": [
-        {"pair": 0, "keep_id": "alice-smith", "reason": "same person"},
-        {"pair": 1, "keep_id": "bob-jones", "reason": "same person again"},
+        {"pair": 0, "keep": "b", "reason": "same person"},
+        {"pair": 1, "keep": "b", "reason": "same person again"},
     ]}
     out = reconcile.apply_merges(vault, [], parsed, {"pairs": pairs}, warn=lambda m: None)
     assert out["remap"] == {"a-smith-duplicate": "bob-jones", "alice-smith": "bob-jones"}
@@ -422,12 +449,27 @@ def _stage_touch(vault: Path, sha: str, filename: str, entity_id: str, name: str
     _stage(vault, sha, filename, [_touch(entity_id, name, entity_type, claim)])
 
 
+def _pairs_in(prompt: str) -> list[dict]:
+    """The CANDIDATE PAIRS list of a reconcile prompt."""
+    head = prompt[prompt.rindex("CANDIDATE PAIRS (possible"):]
+    return json.loads(head.split("\n\nSAME-NAME GROUPS (records", 1)[0].split("\n", 1)[1])
+
+
+def _as_sides(prompt: str, merges: list[dict]) -> list[dict]:
+    """Turn a test's `keep_id` intent into the side ("a"/"b") the model answers with."""
+    if "CANDIDATE PAIRS (possible" not in prompt:
+        return []
+    pairs = _pairs_in(prompt)
+    return [{"pair": m["pair"], "keep": "a" if pairs[m["pair"]]["a"]["id"] == m["keep_id"] else "b",
+             "reason": m["reason"]} for m in merges if m["pair"] < len(pairs)]
+
+
 def _mock_reconcile_confirm(monkeypatch, merges):
     """Post-ingest model mock: reconcile confirms `merges`; every other post-ingest call is an
     empty/canned no-op — mirrors test_golden_merge.py's `_mock_reconcile_merge`."""
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         parsed = {
-            "reconcile": {"merges": merges, "contradictions": []},
+            "reconcile": {"merges": _as_sides(prompt, merges), "contradictions": []},
             "entity-synthesis": {"entity_syntheses": []},
             "timeline-dedup": {"groups": []},
             "briefing": {"investigation_status": "x", "what_was_ingested": []},
@@ -546,7 +588,7 @@ def test_initialled_person_is_a_review_item_not_a_model_question(tmp_path, monke
 
     async def fake(*, task, prompt, schema, **kw):
         prompts.append((task, prompt))
-        parsed = {"reconcile": {"merges": [{"pair": 0, "keep_id": "alice-smith", "reason": "x"}],
+        parsed = {"reconcile": {"merges": [{"pair": 0, "keep": "a", "reason": "x"}],
                                 "contradictions": []}}.get(task, {})
         return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
                                         auth_mode="subscription", cost_usd=0.0)
@@ -622,8 +664,8 @@ def test_apply_contradictions_follows_a_chained_remap(tmp_path):
     }
     parsed = {
         "merges": [
-            {"pair": 0, "keep_id": "alice-smith", "reason": "same person"},
-            {"pair": 1, "keep_id": "bob-jones", "reason": "same person again"},
+            {"pair": 0, "keep": "b", "reason": "same person"},
+            {"pair": 1, "keep": "b", "reason": "same person again"},
         ],
         "contradictions": [{
             "entity_id": "a-smith-duplicate", "label": "Role",
@@ -645,7 +687,7 @@ def test_apply_merges_then_contradictions_lands_on_the_survivors_note(tmp_path):
     vault = make_vault(tmp_path)
     bundle = {"pairs": _pairs_for("alice-smith", "a-smith-duplicate")}
     parsed = {
-        "merges": [{"pair": 0, "keep_id": "alice-smith", "reason": "same"}],
+        "merges": [{"pair": 0, "keep": "a", "reason": "same"}],
         "contradictions": [{
             "entity_id": "a-smith-duplicate", "label": "Role",
             "a_value": "director", "a_doc": "doc-a", "b_value": "officer", "b_doc": "doc-b",

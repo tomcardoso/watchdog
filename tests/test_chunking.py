@@ -77,8 +77,8 @@ def test_chunk_bundle_renumbers_pairs_per_chunk_and_maps_back():
     # A model answering "pair 1" in chunk 2 means bundle pair 3.
     merged = reconcile.merge_chunk_results(chunks, [
         {"merges": [], "contradictions": [{"x": 1}]},
-        {"merges": [{"pair": 1, "keep_id": "a3", "reason": "r"}], "contradictions": []},
-        {"merges": [{"pair": 7, "keep_id": "a4", "reason": "r"}], "contradictions": [{"x": 2}]},
+        {"merges": [{"pair": 1, "keep": "a", "reason": "r"}], "contradictions": []},
+        {"merges": [{"pair": 7, "keep": "b", "reason": "r"}], "contradictions": [{"x": 2}]},
     ])
     assert merged["merges"][0]["pair"] == 3
     assert not isinstance(merged["merges"][1]["pair"], int)   # out of its chunk → apply_merges skips
@@ -117,7 +117,7 @@ def test_reconcile_pre_commit_splits_and_applies_merges_once(tmp_path, monkeypat
     async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
         calls.append(prompt)
         return model_client.ModelResult(
-            parsed={"merges": [{"pair": 0, "keep_id": "x", "reason": "r"}], "contradictions": []},
+            parsed={"merges": [{"pair": 0, "keep": "a", "reason": "r"}], "contradictions": []},
             text="", model="m", backend="b", auth_mode="api-key", cost_usd=0.0)
     monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
 

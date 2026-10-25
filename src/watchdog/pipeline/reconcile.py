@@ -1090,11 +1090,13 @@ def apply_merges(vault: Path, shas: list[str], parsed: dict, bundle: dict, warn,
             continue
         pair = pairs[idx]
         ids = {pair["a"]["id"], pair["b"]["id"]}
-        keep_id = item.get("keep_id")
-        if keep_id not in ids:
-            warn(f"reconcile: merge keeps '{keep_id}', which is not one of pair {idx} "
-                 f"({', '.join(sorted(ids))}) — skipped")
+        # The model names a side, never an id: a retyped id can come back "corrected" (D335).
+        side = item.get("keep")
+        if side not in ("a", "b"):
+            warn(f"reconcile: merge of pair {idx} keeps {side!r}, which is neither \"a\" nor "
+                 f"\"b\" — skipped")
             continue
+        keep_id = pair[side]["id"]
         names.setdefault(pair["a"]["id"], pair["a"].get("name", pair["a"]["id"]))
         names.setdefault(pair["b"]["id"], pair["b"].get("name", pair["b"]["id"]))
         verdict = verdicts[idx] if idx < len(verdicts) else {"tier": "medium", "rule": None}
