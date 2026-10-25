@@ -57,6 +57,12 @@ export function isGranted(path: string): boolean {
   return load().folders.some((g) => within(p, real(g.path)))
 }
 
+/** The grant that already allows `path` (itself or a folder above it), or null. */
+export function coveringGrant(path: string): Grant | null {
+  const p = real(path)
+  return load().folders.find((g) => within(p, real(g.path))) ?? null
+}
+
 /** Record a grant the user has just made (a folder dialog choice or an approved prompt). A folder
  * already covered by a broader grant is not added twice; narrower grants it covers are folded in. */
 export function addGrant(path: string, label: string): Grant[] {

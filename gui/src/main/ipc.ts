@@ -9,7 +9,7 @@ import type { EngineStatus } from '@shared/api'
 import { Engine } from './engine'
 import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
-import { addGrant, listGrants, requestGrant, revokeGrant } from './access'
+import { addGrant, coveringGrant, listGrants, requestGrant, revokeGrant } from './access'
 import { getThumb, putThumb } from './thumbs'
 import { prepareRequest } from './secrets'
 
@@ -80,6 +80,7 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
   // Folder access (main/access.ts). The renderer can list and revoke, and can ask — but a grant
   // outside a folder dialog always goes through a native prompt the renderer can't answer itself.
   ipcMain.handle('access:list', () => listGrants())
+  ipcMain.handle('access:covering', (_e, path: string) => coveringGrant(path))
   ipcMain.handle('access:request', async (_e, path: string, label: string, why: string) => {
     const ok = await requestGrant(getWindow(), path, label, why)
     if (ok) refreshRoots()
