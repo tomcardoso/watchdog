@@ -382,7 +382,8 @@ def _timeline_dedup_key(event: dict) -> str:
     # Full text, not a prefix — a truncated key can collide on a long fact's shared opening
     # clause (e.g. "On March 3, 2019, Acme Corp transferred...") while the divergent, material
     # part of the sentence lands past the cutoff, silently losing the second event.
-    return f"{event.get('date', '')}|{event.get('event', '').lower()}"
+    end = event.get("date_end") or ""
+    return f"{event.get('date', '')}|{event.get('event', '').lower()}" + (f"|{end}" if end else "")
 
 
 def _merge_timeline_events(existing: list[dict], incoming: list[dict], doc_sha256: str) -> list[dict]:
@@ -410,8 +411,10 @@ def _build_timeline_section(events: list[dict], docs_reg: dict) -> str:
     for ev in sorted_events:
         date_str = ev.get("date", "")
         year = date_str[:4] if date_str else "Unknown"
-        rendered_date = _render_date(date_str)
+        from watchdog.pipeline import dates
+        rendered_date = dates.render_span(date_str, ev.get("date_end"))
         basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
+        basis_note += dates.inferred_note(ev)
 
         doc_entry = docs_reg.get(ev.get("source_sha256", ""), {})
         doc_note = doc_entry.get("document_note", "")

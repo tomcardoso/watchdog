@@ -311,13 +311,20 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
             names = [r["name"] for r in p["entities"]]
             out = {"entities": len(p["entities"]), "facts": p["facts"], "skipped": p["skipped"],
                    "calls_total": len(calls), "calls_done": 0, "found": 0, "filed": [],
-                   "repeats": 0, "rejected": 0, "stopped": False, "error": None}
+                   "repeats": 0, "rejected": 0, "stopped": False, "error": None,
+                   "spending_limit": None}
             if not calls:
                 return out
             found: list[tuple[set[str], list]] = []
 
             async def ask() -> None:
                 for n, chunk in enumerate(calls, 1):
+                    # The investigation's spending limit, before each call (D324).
+                    msg = orchestrate._spending_stop()
+                    if msg:
+                        out["spending_limit"] = msg
+                        say(msg)
+                        return
                     progress.emit("stage", stage="recheck", done=n - 1, total=len(calls))
                     who = ", ".join(e["name"] for e in chunk["entities"][:3])
                     say(f"Call {n} of {len(calls)}: {who}")
@@ -342,7 +349,7 @@ def run(vault: Path, ids: list[str] | None = None, *, model: str | None = None,
             out["found"] = sum(len(items) for _ids, items in found)
             whole = ids is None
             c = cause(names, whole)
-            if out["stopped"] or out["error"]:
+            if out["stopped"] or out["error"] or out["spending_limit"]:
                 c["incomplete"] = True
             entities = _read_json_or(vault / ".watchdog" / "registry" / "entities.json", {})
             with history.recording(vault, c):
@@ -361,13 +368,22 @@ def summary(out: dict) -> str:
             f"({out['facts']} facts) in {out['calls_done']} of {out['calls_total']} "
             f"call{'s' if out['calls_total'] != 1 else ''}.")
     if not out["calls_done"]:
-        why = f"The model call failed: {out['error']}." if out["error"] else "Stopped before the first call finished."
+        if out.get("spending_limit"):
+            why = "The investigation's spending limit was already reached."
+        elif out["error"]:
+            why = f"The model call failed: {out['error']}."
+        else:
+            why = "Stopped before the first call finished."
         return f"{head} {why} Nothing was checked, and nothing was filed."
     found = (f" {filed} new contradiction{'s' if filed != 1 else ''} filed for Review."
              if filed else " No new contradictions were found.")
     if out["repeats"]:
         found += (f" {out['repeats']} already recorded (open or handled) "
                   f"{'were' if out['repeats'] != 1 else 'was'} not filed again.")
+    if out.get("spending_limit"):
+        found += (" Stopped at the investigation's spending limit before every call was made; what "
+                  "the finished calls found was filed. Raise or reset the limit on the Overview to "
+                  "re-check the rest.")
     if out["stopped"]:
         found += " Stopped before every call finished; what the finished calls found was filed."
     if out["error"]:

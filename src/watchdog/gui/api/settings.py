@@ -464,6 +464,51 @@ def choose_key(vault: str, provider: str, id: str | None = None) -> dict:
     return _investigation_keys(v)
 
 
+# ── the investigation's spending limit (D324) ─────────────────────────────────────
+
+def _spending_limit(v: Path) -> dict:
+    from watchdog import auth as auth_cmd
+    from watchdog import spend
+    from watchdog.ops import sample
+
+    return {**spend.status(v), "claude_mode": auth_cmd.load_state().get("mode"),
+            "sample": sample.is_sample_folder(v)}
+
+
+@method("spend.limit")
+def spending_limit(vault: str) -> dict:
+    """The investigation's spending limit, the processing spend recorded since its last reset,
+    what is left and whether it has been reached."""
+    from watchdog.gui.vaultio import require_vault
+    return _spending_limit(require_vault(vault))
+
+
+@method("spend.setLimit")
+def set_spending_limit(vault: str, usd: float | str | None = None) -> dict:
+    """Set the limit in US dollars; null or blank removes it. Writes `.watchdog/settings.json` in
+    the investigation's folder, beside the choice of key (D290)."""
+    from watchdog import spend
+    from watchdog.gui.vaultio import require_vault
+
+    v = require_vault(vault)
+    try:
+        spend.set_limit(v, usd)
+    except ValueError as e:
+        raise RpcError(str(e), code="bad_value")
+    return _spending_limit(v)
+
+
+@method("spend.reset")
+def reset_spending(vault: str) -> dict:
+    """Count from now: record the reset time, so only spend recorded after it counts."""
+    from watchdog import spend
+    from watchdog.gui.vaultio import require_vault
+
+    v = require_vault(vault)
+    spend.reset(v)
+    return _spending_limit(v)
+
+
 @method("auth.setBaseUrl")
 def set_base_url(provider: str, url: str) -> dict:
     """Set (or, with an empty `url`, remove) the endpoint of a provider that takes one."""

@@ -53,6 +53,7 @@ def _open_alerts(vault: Path, resolved: frozenset[str]) -> int:
 
 def summary(vault: Path) -> dict:
     from watchdog.pipeline import leads, orchestrate, research, resolutions
+    from watchdog.pipeline import requests as _requests
     from watchdog.pipeline.preprocess_batch import find_files
     from watchdog.review import count_open_duplicates, count_open_same_entities
 
@@ -70,6 +71,7 @@ def summary(vault: Path) -> dict:
         "near_duplicates": count_open_duplicates(vault),
         "possible_same": count_open_same_entities(vault, resolved),
         "alerts": _open_alerts(vault, resolved),
+        "requests": len(_requests.open_requests(vault)),
         "incoming": count_incoming(vault),
         "awaiting_dig": count_awaiting_processing(vault),
         "awaiting_bark": count_awaiting_post(vault),

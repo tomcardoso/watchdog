@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, PencilLine, RefreshCw, ScanSearch, Sparkles, Undo2 } from 'lucide-react'
+import { AlertTriangle, ArrowLeft, ArrowRight, BookOpen, Check, CalendarClock, Clock, ExternalLink, Eye, EyeOff, FileText, GitMerge, Link2, ListChecks, MessageSquare, MoreHorizontal, Network, PencilLine, RefreshCw, ScanSearch, Sparkles, Undo2 } from 'lucide-react'
 import { CSSProperties, useMemo, useState } from 'react'
 import { DocThumb } from '@renderer/components/DocThumb'
 import { EntityAvatar, EntityChip } from '@renderer/components/EntityChip'
@@ -9,6 +9,7 @@ import { NotesEditor, cleanNotes } from '@renderer/components/NotesEditor'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import type { EntityDetail, Relationship, TimelineEvent } from '@shared/api'
 import { typeMeta } from '@renderer/lib/entityTypes'
+import { spanLabel } from '@renderer/lib/dateSpan'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
@@ -16,6 +17,7 @@ import ContradictionModal from './ContradictionModal'
 import { EntityFacts } from './EntityFacts'
 import MergeModal from './MergeModal'
 import RecheckModal from './RecheckModal'
+import RemoveModal, { bringBack } from './RemoveModal'
 import './entities.css'
 
 export default function EntityView() {
@@ -32,6 +34,7 @@ export default function EntityView() {
   const [mergeOpen, setMergeOpen] = useState(false)
   const [contraOpen, setContraOpen] = useState(false)
   const [recheckOpen, setRecheckOpen] = useState(false)
+  const [removeOpen, setRemoveOpen] = useState(false)
 
   if (q.isLoading) return <PageSkeleton />
   if (q.isError || !q.data)
@@ -54,6 +57,7 @@ export default function EntityView() {
         <BackLink />
 
         {mergedInto && <StubNotice id={mergedInto} />}
+        {e.hidden && !mergedInto && <RemovedNotice id={e.id} name={e.name} hidden={e.hidden} />}
 
         <header className="ent-hero">
           <EntityAvatar type={e.type} size={76} />
@@ -69,6 +73,7 @@ export default function EntityView() {
                 </Badge>
               )}
               {mergedInto && <Badge icon={GitMerge}>Merged</Badge>}
+              {e.hidden && <Badge icon={EyeOff}>Removed</Badge>}
             </div>
             <h1 className="selectable">{e.name}</h1>
             {e.aliases.filter((a) => a.toLowerCase() !== e.name.toLowerCase()).length > 0 && (
@@ -111,7 +116,10 @@ export default function EntityView() {
                   { separator: true, label: '' },
                   { label: 'Record a contradiction…', icon: AlertTriangle, onClick: () => setContraOpen(true) },
                   { label: tooLarge ? 'Re-check contradictions (too large)' : 'Re-check contradictions…', icon: ScanSearch, onClick: () => setRecheckOpen(true), disabled: !!mergedInto || !!tooLarge },
-                  { label: 'Merge into another entity…', icon: GitMerge, danger: true, onClick: () => setMergeOpen(true), disabled: !!mergedInto }
+                  { label: 'Merge into another entity…', icon: GitMerge, danger: true, onClick: () => setMergeOpen(true), disabled: !!mergedInto },
+                  e.hidden
+                    ? { label: 'Bring back', icon: Eye, onClick: () => void bringBack([{ id: e.id, name: e.name }]) }
+                    : { label: 'Remove from investigation…', icon: EyeOff, danger: true, onClick: () => setRemoveOpen(true), disabled: !!mergedInto }
                 ]}
               />
             </div>
@@ -165,6 +173,7 @@ export default function EntityView() {
       </div>
 
       <MergeModal open={mergeOpen} onClose={() => setMergeOpen(false)} initialMerge={e.id} />
+      <RemoveModal open={removeOpen} onClose={() => setRemoveOpen(false)} entities={[{ id: e.id, name: e.name }]} />
       <RecheckModal open={recheckOpen} onClose={() => setRecheckOpen(false)} ids={[e.id]} name={e.name} />
       <ContradictionModal open={contraOpen} onClose={() => setContraOpen(false)} entityId={e.id} entityName={e.name} entityDocs={e.documents} />
     </div>
@@ -222,6 +231,34 @@ function StubNotice({ id }: { id: string }) {
       }
     >
       This note is now a redirect. Its aliases, documents, roles and timeline were folded into the surviving entity, which holds the full record.
+    </Callout>
+  )
+}
+
+function RemovedNotice({ id, name, hidden }: { id: string; name: string; hidden: { at: string | null; by: string | null } }) {
+  const [busy, setBusy] = useState(false)
+  const when = hidden.at ? fmtDate(hidden.at.slice(0, 10)) : null
+  return (
+    <Callout
+      tone="info"
+      title="Removed from this investigation"
+      style={{ marginBottom: 18 }}
+      action={
+        <Button
+          size="sm"
+          icon={Eye}
+          loading={busy}
+          onClick={async () => {
+            setBusy(true)
+            await bringBack([{ id, name }])
+            setBusy(false)
+          }}
+        >
+          Bring back
+        </Button>
+      }
+    >
+      {`Removed${hidden.by ? ` by ${hidden.by}` : ''}${when ? ` on ${when}` : ''}. It is left out of the Network, the Entities list, Search, Review and the Overview counts. Its facts stay in the documents, and the AI model still reads them.`}
     </Callout>
   )
 }
@@ -353,7 +390,10 @@ function MiniTimeline({ events }: { events: TimelineEvent[] }) {
       <ol className="ent-tl">
         {shown.map((ev, i) => (
           <li key={i}>
-            <div className="when">{fmtDate(ev.date)}</div>
+            <div className="when" title={ev.date_inferred && ev.date_text ? `Date inferred from “${ev.date_text}”` : undefined}>
+              {ev.end ? spanLabel(ev.date, ev.end) : fmtDate(ev.date)}
+              {ev.date_inferred && <span className="faint"> · inferred</span>}
+            </div>
             <div className="what selectable">{ev.text}{ev.disputed && <> <DisputedBadge /></>}</div>
             {ev.sha && ev.filename && (
               <div className="src">

@@ -39,7 +39,11 @@ def _recording(v, count: int, resolved: bool):
 
 
 @method("review.items")
-def items(vault: str, kinds: list[str] | None = None) -> dict:
+def items(vault: str, kinds: list[str] | None = None, since: str | None = None) -> dict:
+    """The open items of the given kinds, with the Start here slice (D327). With `since` (the
+    time Review was last opened, as `review.opened` returned it), each item a batch added after
+    then carries `new: true`."""
+    from watchdog import triage
     from watchdog.review import KINDS, open_items
 
     v = require_vault(vault)
@@ -47,19 +51,41 @@ def items(vault: str, kinds: list[str] | None = None) -> dict:
     bad = [k for k in wanted if k not in KINDS]
     if bad:
         raise RpcError(f"Unknown kind: {bad[0]}. Choose from {', '.join(KINDS)}.", code="bad_params")
+    if since is not None and not isinstance(since, str):
+        raise RpcError("since must be a time", code="bad_params")
     found = open_items(v, wanted)
+    added = triage.added_since(v, since) or set()
+    for i in found:
+        i["new"] = i["rid"] in added
     return {"items": found,
-            "counts": {k: sum(1 for i in found if i["kind"] == k) for k in KINDS if k in wanted}}
+            "counts": {k: sum(1 for i in found if i["kind"] == k) for k in KINDS if k in wanted},
+            "start_here": triage.start_here(v, [i for i in found if i["kind"] in triage.JUDGEMENT])}
+
+
+@method("review.opened")
+def opened(vault: str) -> dict:
+    """Record that the reporter opened Review now, in the investigation's
+    `.watchdog/review-seen.json` (D327). Returns `{opened_at, previous}`: `previous` is what
+    Review's "new" labels are measured from."""
+    from watchdog import triage
+    return triage.mark_opened(require_vault(vault))
 
 
 @method("review.resolve")
-def resolve(vault: str, rids: list[str]) -> dict:
+def resolve(vault: str, rids: list[str], label: str = "review") -> dict:
+    """Mark items handled. `label` records how (D328): "copies" or "different" for a possible
+    duplicate, "review" (the default) for everything else."""
     from watchdog.pipeline import resolutions
+    from watchdog.review import LABELS
 
     v = require_vault(vault)
     ids = _rids(rids)
+    if label not in LABELS:
+        raise RpcError(f"Unknown label: {label}. Choose from {', '.join(LABELS)}.", code="bad_params")
+    if label != "review" and not all(r.startswith("duplicate:") for r in ids):
+        raise RpcError("Only a possible duplicate can be marked copies or different.", code="bad_params")
     with _recording(v, len(ids), True):
-        added = resolutions.resolve(v, ids, label="review")
+        added = resolutions.resolve(v, ids, label=label)
     return {"resolved": added}
 
 

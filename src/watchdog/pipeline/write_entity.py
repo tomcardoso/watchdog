@@ -46,7 +46,7 @@ def _clean_events(events: list) -> list[dict]:
     date is dropped (the event stays, undated) rather than reaching the note's year grouping. An
     event whose text, date or source isn't one line raises ValueError."""
     from watchdog.pipeline.inline_text import require_single_line
-    from watchdog.pipeline.postflight import _DATE_RE, _parse_precise_date
+    from watchdog.pipeline import dates
     out = []
     for ev in events or []:
         if not isinstance(ev, dict) or not (ev.get("event") or "").strip():
@@ -55,8 +55,10 @@ def _clean_events(events: list) -> list[dict]:
         for key in ("event", "date", "source_sha256"):
             require_single_line(ev.get(key), f"A timeline event's {key}")
         date = (ev.get("date") or "").strip()
-        if date and not _DATE_RE.match(date):
-            date = _parse_precise_date(date) or ""
+        if date and not dates.ISO_SHAPE.match(date):
+            # What code can read (D329); an ambiguous numeric date keeps its year only, and no
+            # model pass follows a session's write.
+            date = dates.read(date).date
         out.append({**ev, "date": date})
     return out
 

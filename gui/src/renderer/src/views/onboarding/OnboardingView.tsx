@@ -106,6 +106,8 @@ function Welcome({ next }: { next: () => void }) {
 
 // ── b. engine ────────────────────────────────────────────────────────────────
 
+let autoAdvanced = false
+
 function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: BackendStatus | null; mode: OnboardingMode; next: () => void; back?: () => void; onBackendAction: Props['onBackendAction'] }) {
   const eng = useEngine()
   const { status, run } = eng
@@ -124,13 +126,14 @@ function EngineStep({ backend, mode, next, back, onBackendAction }: { backend: B
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, status?.engine])
 
-  // Move on by itself the moment phase 1 is in place during this visit.
-  const [advanced, setAdvanced] = useState(false)
+  // Move on by itself the moment phase 1 is in place, once per app session: Back to this step
+  // afterwards stays here. The flag lives outside the component because the step is mounted again
+  // when the engine starts, and on every Back.
   useEffect(() => {
-    if (advanced || !coreReady || !run || run.state === 'idle' || mode === 'update') return
-    setAdvanced(true)
+    if (autoAdvanced || !coreReady || !run || run.state === 'idle' || mode === 'update') return
+    autoAdvanced = true
     next()
-  }, [coreReady, run, advanced, mode, next])
+  }, [coreReady, run, mode, next])
 
   // With a Python the app did not install, only the models remain: start them and carry on.
   const continueExternal = () => {

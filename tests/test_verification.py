@@ -273,3 +273,15 @@ def test_settings_offer_your_name_with_a_neutral_default(wdg_home):
     assert V.reporter_name() == "Sam Lee"
     assert call("settings.set", key="reporter_name", value="")["value"] is None
     assert V.reporter_name() == "Journalist"
+
+
+def test_rpc_facts_lists_figures_not_found_for_worth_checking(rich_vault, wdg_home):
+    # Review → Verification's "Worth checking" filter reads this field (D322).
+    path = rich_vault / ".watchdog" / "extracted" / f"{SHA1}.json"
+    ex = json.loads(path.read_text())
+    ex["document"]["key_facts"][0]["figures_unverified"] = ["360.3"]
+    path.write_text(json.dumps(ex))
+    rows = call("verify.facts", vault=str(rich_vault))["facts"]
+    assert all(isinstance(r["figures_unverified"], list) for r in rows)
+    first = next(r for r in rows if r["sha"] == SHA1 and r["fact"] == ex["document"]["key_facts"][0]["fact"])
+    assert first["figures_unverified"] == ["360.3"]

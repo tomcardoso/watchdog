@@ -259,8 +259,11 @@ def test_contradiction_check_labels_disputed_facts_and_compares_all_after_a_merg
 def test_build_bundle_empty_when_nothing_staged(tmp_path):
     vault = make_vault(tmp_path)   # a populated registry, but no staged batch → nothing touched
     bundle = reconcile.build_bundle(vault, [])
+    name_groups = bundle.pop("name_groups")
+    assert name_groups.result() == {"merges": [], "unsure": [], "carried": [], "rejected": 0}
     assert bundle == {"entities": [], "pairs": [], "pairs_dropped": 0, "pair_verdicts": [],
-                      "rule_merges": [], "candidates": [], "profiles": {}}
+                      "rule_merges": [], "candidates": [], "profiles": {}, "groups": [],
+                      "carry_pairs": [], "carried_in": []}
 
 
 # ── _rewrite_staged_ids: remap scope beyond entities[].id / role.target_id ────
@@ -655,3 +658,227 @@ def test_apply_merges_then_contradictions_lands_on_the_survivors_note(tmp_path):
     assert applied[0]["entity_id"] == "alice-smith"
     note = (vault / "entities" / "person" / "alice-smith.md").read_text()
     assert "[!contradiction] Role" in note
+
+
+# ── same-name groups (#755) ───────────────────────────────────────────────────
+
+def _group_of(n: int, name: str = "Harbour Board", etype: str = "organization"):
+    """`n` records of one generic name, each from its own document with one fact, as
+    `_name_groups` reads them: (same_key, working registry, profile function, profiles)."""
+    working, profiles = {}, {}
+    for i in range(n):
+        eid = f"hb-{i:02d}"
+        working[eid] = {"id": eid, "name": name, "type": etype, "appears_in": [f"sha-{i:02d}"]}
+        p = identity.Profile(eid, name, etype)
+        p.documents = [f"sha-{i:02d}"]
+        p.facts = [{"id": f"fact:{i}", "fact": f"{name} met on day {i}.", "page": 1,
+                    "sha": f"sha-{i:02d}", "title": f"Doc {i}", "date": None, "mark": None}]
+        profiles[eid] = p
+    same_key = {reconcile._group_key(working["hb-00"]): set(working)}
+    return same_key, working, profiles
+
+
+def _groups(n: int, **kw):
+    same_key, working, profiles = _group_of(n, **kw)
+    rules, cands = [], []
+    groups = reconcile._name_groups(same_key, working, profiles.__getitem__, frozenset(), rules, cands)
+    return reconcile.NameGroups(groups, working, profiles), rules, cands
+
+
+def _judge_all(ng, answer, warn=lambda m: None) -> int:
+    """Drive every round with `answer(slice item) -> group answer`; returns the calls made (one
+    slice per call, the most a round can need)."""
+    calls = 0
+    while items := ng.next_items():
+        calls += len(items)
+        ng.absorb([answer(item) for item in items], warn)
+    return calls
+
+
+def test_identical_names_go_to_the_model_as_one_group_not_pairs(tmp_path):
+    same_key, working, profiles = _group_of(3)
+    for eid in working:
+        working[eid]["aliases"] = []
+    ng, rules, cands = _groups(3)
+    items = ng.next_items()
+    assert [len(i["members"]) for i in items] == [1 * 3] and not rules and not cands
+    member = items[0]["members"][0]
+    assert {"member", "id", "names", "facts", "roles", "summary", "documents"} <= set(member)
+    assert member["facts"][0]["fact"].startswith("Harbour Board met on day")
+
+
+def test_a_ninety_record_group_is_judged_in_a_bounded_number_of_calls():
+    """91 records of one name: round one cuts four slices of at most `_GROUP_MEMBERS`; a model
+    that finds every slice one thing leaves four survivors, which round two compares in one
+    call. Five calls, not 4,095 pairs."""
+    ng, _, _ = _groups(91)
+    calls = _judge_all(ng, lambda item: {"group": item["index"], "unsure": [], "same": [
+        {"members": [m["member"] for m in item["members"]], "keep": 0, "reason": "same body"}]})
+    assert calls == 5
+    out = ng.result()
+    assert len(out["merges"]) == 90 and out["carried"] == []
+    keeps = {k for k, _, _, _ in out["merges"]}
+    merged = {m for _, m, _, _ in out["merges"]}
+    assert len(merged) == 90 and not (merged & {next(iter(keeps - merged))})
+    assert all(v["rule"] == "generic-name" for _, _, v, _ in out["merges"])
+
+
+def test_a_group_whose_slices_merge_nothing_is_carried_not_dropped():
+    ng, _, _ = _groups(91)
+    calls = _judge_all(ng, lambda item: {"group": item["index"], "same": [], "unsure": []})
+    assert calls == 4                                   # no second round: nothing shrank
+    out = ng.result()
+    assert out["merges"] == [] and len(out["carried"]) == 91
+
+
+def test_a_malformed_partition_is_rejected_whole_and_its_records_carried():
+    ng, _, _ = _groups(4)
+    warnings = []
+    item = ng.next_items()[0]
+    # Member 1 in two sets: not a partition.
+    ng.absorb([{"group": item["index"], "unsure": [], "same": [
+        {"members": [0, 1], "keep": 0, "reason": "x"}, {"members": [1, 2], "keep": 2, "reason": "y"}]}],
+        warnings.append)
+    assert ng.next_items() == []
+    out = ng.result()
+    assert out["merges"] == [] and out["rejected"] == 1 and len(out["carried"]) == 4
+    assert any("not a valid partition" in w for w in warnings)
+
+
+def test_bad_member_numbers_and_keeps_outside_the_set_are_rejected():
+    for bad in ({"members": [0, 9], "keep": 0}, {"members": [0, 1], "keep": 2},
+                {"members": [0, True], "keep": 0}, {"members": [0], "keep": 0}):
+        ng, _, _ = _groups(3)
+        item = ng.next_items()[0]
+        ng.absorb([{"group": item["index"], "same": [{**bad, "reason": "x"}], "unsure": []}],
+                  lambda m: None)
+        assert ng.result()["merges"] == [], bad
+
+
+def test_a_set_joining_a_dismissed_pair_is_skipped_and_the_rest_applied():
+    same_key, working, profiles = _group_of(3)
+    groups = reconcile._name_groups(same_key, working, profiles.__getitem__,
+                                    frozenset({identity.pair_id("hb-00", "hb-01")}), [], [])
+    ng = reconcile.NameGroups(groups, working, profiles)
+    item = ng.next_items()[0]
+    ids = [m["id"] for m in item["members"]]
+    n = {eid: i for i, eid in enumerate(ids)}
+    warnings = []
+    ng.absorb([{"group": 0, "unsure": [], "same": [
+        {"members": [n["hb-00"], n["hb-01"], n["hb-02"]], "keep": n["hb-00"], "reason": "x"}]}],
+        warnings.append)
+    assert ng.result()["merges"] == [] and any("cannot be the same" in w for w in warnings)
+
+
+def test_unsure_members_become_possible_same_pairs_between_survivors():
+    ng, _, _ = _groups(4)
+    item = ng.next_items()[0]
+    ids = [m["id"] for m in item["members"]]
+    ng.absorb([{"group": 0, "same": [{"members": [0, 1], "keep": 0, "reason": "x"}],
+                "unsure": [[1, 2]]}], lambda m: None)
+    out = ng.result()
+    # Member 1 was merged into member 0, so the unsure pair is between the survivor and member 2;
+    # member 3 the model left out, sure it is a different body.
+    assert [(a, b) for a, b, _ in out["unsure"]] == [(ids[0], ids[2])]
+
+
+def test_same_short_person_name_is_review_items_paired_with_one_record_not_every_pair():
+    """Low tier ("Mr. Pike" in five records) is never merged; each record is paired with the
+    most-documented one: four items, not ten."""
+    ng, rules, cands = _groups(5, name="Mr. Pike", etype="person")
+    assert ng.next_items() == [] and not rules
+    assert len(cands) == 4 and len({c["a"] for c in cands}) == 1
+    assert all(c["verdict"]["rule"] == "same-partial-name" for c in cands)
+
+
+def _stage_board(vault: Path, n: int) -> list[str]:
+    shas = []
+    for i in range(n):
+        sha = f"sha-hb{i:02d}"
+        claim = (f"The Harbour Board approved berth {i} at the port." if i < 6
+                 else f"The Harbour Board of a school district met on day {i}.")
+        _stage(vault, sha, f"board-{i:02d}.pdf",
+               [_touch("harbour-board", "Harbour Board", "Organization", claim)])
+        shas.append(sha)
+    return shas
+
+
+def _mock_group_answers(monkeypatch, calls: list):
+    """Reconcile merges the members whose facts mention the port into one, and leaves the others
+    apart — a model's canned answer to every same-name group slice."""
+    async def fake(*, task, prompt, schema, **kw):
+        parsed = {}
+        if task == "reconcile":
+            head = prompt[prompt.rindex("SAME-NAME GROUPS (records"):]
+            groups = json.loads(head.split("\n\nENTITIES (each", 1)[0].split("\n", 1)[1])
+            if groups:
+                calls.append(prompt)
+            answers = []
+            for g in groups:
+                port = [m["member"] for m in g["members"]
+                        if any("port" in f["fact"] for f in m["facts"])]
+                same = [{"members": port, "keep": port[0], "reason": "the same port authority"}] \
+                    if len(port) > 1 else []
+                answers.append({"group": g["index"], "same": same, "unsure": []})
+            parsed = {"merges": [], "groups": answers, "contradictions": []}
+        return model_client.ModelResult(parsed=parsed, text="", model="m", backend="claude-agent-sdk",
+                                        auth_mode="subscription", cost_usd=0.0)
+    monkeypatch.setattr(orchestrate.model_client, "acomplete_json", fake)
+
+
+def test_finalize_merges_part_of_a_large_same_name_group_and_logs_each_merge(tmp_path, monkeypatch, capsys):
+    """Ten records of "Harbour Board", at most six to a slice: the port authority's six are
+    merged (the round over the two slices' survivors joins what each slice found), the four
+    school boards stay apart, and every merge is a logged, undoable model decision."""
+    monkeypatch.setattr(reconcile, "_GROUP_MEMBERS", 6)
+    vault = make_vault(tmp_path)
+    _stage_board(vault, 10)
+    calls = []
+    _mock_group_answers(monkeypatch, calls)
+
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    reg = json.loads((vault / ".watchdog" / "registry" / "entities.json").read_text())
+    boards = {eid: e for eid, e in reg.items() if e["name"] == "Harbour Board"}
+    assert len(boards) == 5                                   # one port authority + four others
+    port = next(e for e in boards.values() if len(e["appears_in"]) == 6)
+    assert sorted(port["appears_in"]) == [f"sha-hb{i:02d}" for i in range(6)]
+    log = json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())
+    model_merges = [m for m in log["merges"] if m["decided_by"] == "model"]
+    assert len(model_merges) == 5
+    assert all((m["tier"], m["rule"], m["model"]) == ("medium", "generic-name", "haiku")
+               for m in model_merges)
+    assert all(m["undo"].get("changes") for m in model_merges)
+    assert log.get("carry", {}).get("ids", []) == []
+    # Round one: two slices (sharing one call here); round two: one call over the survivors.
+    assert len(calls) == 2
+
+
+def test_pairs_past_the_cap_are_carried_reported_and_blocked_again(tmp_path, monkeypatch, capsys):
+    """Nothing is dropped unseen: a pair past `_MAX_PAIRS` is named in the run's output and log,
+    kept in the merge log's carry, and blocked by the next run even though that run's documents
+    never name it."""
+    monkeypatch.setattr(reconcile, "_MAX_PAIRS", 1)
+    vault = make_vault(tmp_path)
+    _stage(vault, "sha-g", "doc-g.pdf", [
+        _touch("dee-co", "Dee Co", "Company", "Dee Co filed its charter."),
+        _touch("dee-co-holdings", "Dee Co Holdings", "Company", "Dee Co Holdings raised capital."),
+        _touch("zed-co-holdings", "Zed Co Holdings", "Company", "Zed Co Holdings opened."),
+        _touch("zed-co-holdings-intl", "Zed Co Holdings International", "Company", "It opened.")])
+    _mock_reconcile_confirm(monkeypatch, [])
+    asyncio.run(orchestrate.finalize(vault, post_model="haiku"))
+
+    out = capsys.readouterr().out
+    assert "past the 1-pair limit carried to the next run" in out
+    log = json.loads((vault / ".watchdog" / "registry" / "merges.json").read_text())
+    carried = set(log["carry"]["ids"])
+    assert carried
+    assert "carried to the next run" in (vault / ".watchdog" / "registry" / "processing.log").read_text()
+
+    _stage(vault, "sha-h", "doc-h.pdf", [_touch("acme-corp", "Acme Corp", "Company", "Acme moved.")])
+    bundle = reconcile.build_bundle(vault, ["sha-h"])
+    assert set(bundle["carried_in"]) == carried
+    blocked = {p["a"]["id"] for p in bundle["pairs"]} | {p["b"]["id"] for p in bundle["pairs"]} \
+        | set(bundle["carry_pairs"])
+    assert carried <= blocked
+    assert all(e["entity_id"] not in carried for e in bundle["entities"])   # pairs only

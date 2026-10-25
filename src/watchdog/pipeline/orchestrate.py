@@ -44,7 +44,7 @@ _ADMISSION_MAX_WAIT_S = 300.0
 # Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
-                  "relationship-labels"}
+                  "relationship-labels", "date-resolve"}
 
 
 @dataclass
@@ -77,9 +77,50 @@ class _RunState:
     # so each one's first `_admit` check runs before any call completes; reserving eagerly lets a
     # later document see the earlier ones. Released in `_guarded`'s `finally`.
     admission_reserved: "dict[str, int]" = field(default_factory=dict)
+    # The investigation the run records spend for, and the spend already recorded before this
+    # run began, keyed by the reset time it was counted from (D324). None outside a run.
+    vault: "Path | None" = None
+    spend_baseline: "tuple[str | None, float] | None" = None
 
 
 _run = _RunState()
+
+
+class SpendingLimitReached(Exception):
+    """The investigation's recorded spend has reached its spending limit (D324). Raised at a
+    checkpoint before a model call, never mid-call; the run stops the way a rate limit stops it."""
+
+
+def _spending_stop() -> str | None:
+    """The stop message when this run's investigation has a spending limit and the spend recorded
+    since its last reset, this run's calls included, has reached it; None otherwise (no run, no
+    limit, or under it). Recorded cost only, never an estimate (D263, D324). The limit is read
+    afresh at every check, so raising or resetting it on the Overview applies to a running run."""
+    vault = _run.vault
+    if vault is None:
+        return None
+    from watchdog import spend
+    lim = spend.limit(vault)
+    if lim["usd"] is None:
+        return None
+    # Earlier runs' files don't change while this one holds the processing lock, so they are
+    # summed once (per reset time); this run's own records are added from memory, not its
+    # partial file, which holds the same records.
+    if _run.spend_baseline is None or _run.spend_baseline[0] != lim["reset_at"]:
+        _run.spend_baseline = (lim["reset_at"],
+                               spend.recorded(vault, lim["reset_at"], include_partial=False))
+    since = spend._parse_ts(lim["reset_at"])
+    spent = _run.spend_baseline[1] + spend.sum_records(_run.usage or [], since)
+    if spent >= lim["usd"]:
+        return spend.stop_message(spent, lim["usd"])
+    return None
+
+
+def _check_spend() -> None:
+    """Raise `SpendingLimitReached` at a checkpoint when `_spending_stop` says so."""
+    msg = _spending_stop()
+    if msg:
+        raise SpendingLimitReached(msg)
 
 
 def _say(msg: str) -> None:
@@ -422,6 +463,8 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     _run.telemetry_on = telemetry_db.enabled()
     _run.usage = []
     _run.admission_reserved.clear()
+    _run.vault = Path(vault)
+    _run.spend_baseline = None
     usage_dir = vault / ".watchdog" / "registry" / "usage"
     usage_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -452,6 +495,8 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
         _run.usage_partial_path.unlink(missing_ok=True)
     _run.usage_partial_path = None
     _run.usage = None
+    _run.vault = None
+    _run.spend_baseline = None
     _run.run_id = None
     _run.benchmark_arm_id = None
     _run.config_snapshot = None
@@ -1194,6 +1239,9 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
         carry = _carry_text(entities_seen, last_parts[-1].get("observations") or "")
 
     for sec in sections[len(checkpoints):]:
+        # Before each section (D324). A stop here leaves the finished sections' checkpoints on
+        # disk and the queue file in place, so the next run replays them and pays only for the rest.
+        _check_spend()
         progress.emit("doc", sha=sha, filename=pf["filename"], state="section",
                       detail=f"{sec['index']} of {len(sections)}")
         prior = _facts_so_far(section_parts)
@@ -1251,6 +1299,7 @@ async def _extract_sectioned(vault, sha, pf, skill_text, plan, model, skill_labe
                                     r.parsed, r.cost_usd or 0.0)
         carry = _note_section_entities(entities_seen, r.parsed)
 
+    _check_spend()   # before the digest call: every section is checkpointed by now
     parts = _ordered_parts(section_parts)
     extraction, scratchpad, digest_cost = await _merge_sectioned(
         parts, pf, sha, skill_label, skill_text, model, effort, backend, brief, vault)
@@ -1412,6 +1461,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
 
     flow = f"{pg} · {skill_label}"        # the accumulated in-flight prefix for this document's row
 
+    # The spending limit is checked again between classifying and extracting (D324): another
+    # document's calls may have reached it while this one was being classified.
+    _check_spend()
     plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
     progress.emit("doc", sha=sha, filename=filename, state="extracting", detail=None)
     if plan.get("sectioned"):
@@ -1719,6 +1771,12 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     results: list[dict] = []
     batch_docs: list[dict] = []
     skills: dict[str, str] = {}          # sha -> skill label, persisted with the batch state
+    # The spending limit (D324), before anything is classified, and again before the submission.
+    # A batch is one request: once submitted, its whole cost lands when it is collected.
+    msg = _spending_stop()
+    if msg:
+        _say(msg)
+        return {"results": [], "batch_pending": False, "spending_limit": msg}
     sectioned_shas: list[str] = []
     whole_docs: list[tuple[str, dict]] = []
     for sha in shas:
@@ -1783,13 +1841,21 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
 
         async def _sectioned(sha: str) -> dict:
             async with sem:
-                return await _extract_document(vault, sha, brief, extract_model, classify_model,
-                                               classify_pages, pinned_skill, extract_effort,
-                                               extract_backend=sectioned_backend,
-                                               classify_backend=classify_backend,
-                                               classify_effort=classify_effort, force=force)
+                try:
+                    _check_spend()
+                    return await _extract_document(vault, sha, brief, extract_model, classify_model,
+                                                   classify_pages, pinned_skill, extract_effort,
+                                                   extract_backend=sectioned_backend,
+                                                   classify_backend=classify_backend,
+                                                   classify_effort=classify_effort, force=force)
+                except SpendingLimitReached:      # queue file and section checkpoints stay
+                    return {"sha256": sha, "filename": "", "status": "cancelled"}
         results.extend(await asyncio.gather(*[_sectioned(s) for s in sectioned_shas]))
 
+    msg = _spending_stop()
+    if msg:
+        _say(msg)
+        return {"results": results, "batch_pending": False, "spending_limit": msg}
     if not batch_docs:
         return {"results": results, "batch_pending": False}
 
@@ -2149,7 +2215,11 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
         if not _valid_index(ki, n) or ki in survivors:
             continue
         dups = g.get("duplicates")
-        survivors[ki] = [di for di in dups if _valid_index(di, n) and di != ki] if isinstance(dups, list) else []
+        # Two events are the same only when both ends of their dates match (D330): a range and a
+        # single date filed under the same start, or two ranges ending apart, are never folded.
+        end = timeline.event_end(events[ki])
+        survivors[ki] = [di for di in dups if _valid_index(di, n) and di != ki
+                         and timeline.event_end(events[di]) == end] if isinstance(dups, list) else []
     dropped = {di for dups in survivors.values() for di in dups}
 
     kept: list[dict] = []
@@ -2247,6 +2317,72 @@ async def _relationship_labels(vault: Path, batch_shas: list[str], model: str,
     return len(res["grouped"])
 
 
+async def _date_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
+                     post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
+    """The date chore (D330), the first housekeeping pass (`housekeeping.run_chore`): the staged
+    facts whose printed date code could not settle (`dates.sanitize`) go to the model with their
+    fact and their document's date, and code checks every answer before writing it into the
+    staged extraction. Runs on the timeline stage's model, after reconciliation and before the
+    commit. No call when nothing is pending, and none at the spending limit; a failed call leaves
+    its dates as code read them (the year of an ambiguous one, else off the timeline) and never
+    holds up the commit."""
+    from watchdog.pipeline import dates, housekeeping
+    items = dates.pending_items(vault, shas)
+    if not items:
+        return {"resolved": 0, "undated": 0}
+    fo = finalizer_overrides or {}
+    model = fo.get("timeline_model", post_model)
+    backend = fo.get("timeline_backend", post_backend)
+    warn = lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}"))  # noqa: E731
+    msg = _spending_stop()
+    if msg:
+        warn(f"dates: {len(items)} not settled — {msg}")
+        return {"resolved": 0, "undated": len(items), "spending_limit": msg}
+    progress.emit("stage", stage="dates", done=None, total=None)
+    _say(f"→  reading {len(items)} date{'s' if len(items) != 1 else ''} code could not settle…")
+
+    async def call(*, task, schema, prompt, detail):
+        return await _call_model(task=task, model=model, backend=backend, schema=schema,
+                                 prompt=prompt, effort=post_effort, detail=detail, vault=vault)
+
+    res = await housekeeping.run_chore(
+        dates.CHORE, items, call=call, stop=_spending_stop, failures=model_client.CALL_FAILURES,
+        halting=(model_client.RateLimitError, model_client.ProviderAuthError))
+    try:
+        applied = dates.apply(vault, items, res)
+    except OSError as e:
+        warn(f"dates not saved — {e}")
+        return {"resolved": 0, "undated": len(items)}
+    left = applied["undated"] + len(res.unanswered)
+    if applied["resolved"]:
+        _say(f"   placed {applied['resolved']} date{'s' if applied['resolved'] != 1 else ''} on the "
+             "timeline, marked as inferred")
+    if res.rejected:
+        _log(vault, f"WARN dates: {res.rejected} answer(s) failed the checks and were not used")
+    if res.error or res.stopped:
+        warn(f"dates: {len(res.unanswered)} not settled this run — {res.stopped or res.error}")
+    if left:
+        _log(vault, f"WARN dates: {left} fact(s) kept without a full date (left off the timeline, or "
+                    "placed at the year only)")
+    return {**applied, "rejected": res.rejected, "unanswered": len(res.unanswered)}
+
+
+def _stage_stop(vault: Path, out: dict) -> bool:
+    """Whether post-processing stops before its next model stage at the spending limit (D324).
+    Once stopped it stays stopped. Sets `out["error"]`, so the batch's inputs are kept and the
+    next post-processing redoes what was skipped, as after a rate limit."""
+    if out.get("spending_limit"):
+        return True
+    msg = _spending_stop()
+    if not msg:
+        return False
+    out["spending_limit"] = msg
+    out["error"] = msg
+    _say(msg)
+    _log(vault, f"SPENDING LIMIT {msg}")
+    return True
+
+
 async def _post_ingest(vault: Path, results: list, brief: str | None, post_model: str,
                        post_effort: str | None = None, post_backend: str | None = None,
                        rec_result: dict | None = None, skip_briefing: bool = False,
@@ -2296,14 +2432,14 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # same relationship; code checks and records each group, and the notes show the canonical
     # label. Most runs make one call, many make none.
     progress.emit("stage", stage="relationships", done=None, total=None)
-    out["relationship_groups"] = await _relationship_labels(
+    out["relationship_groups"] = 0 if _stage_stop(vault, out) else await _relationship_labels(
         vault, batch_shas, fo.get("relationship_model", post_model),
         fo.get("relationship_backend", post_backend), post_effort)
 
     # 1. Entity synthesis for multi-mention entities (Python builds + applies; model reconciles).
     bundle = synthesis_bundle.build_bundle(vault, batch_shas)
     progress.emit("stage", stage="synthesis", done=0, total=len(bundle.get("entities") or []))
-    if bundle.get("entities"):
+    if bundle.get("entities") and not _stage_stop(vault, out):
         n_ents = len(bundle["entities"])
         # Split across size-bounded calls (#696): one call per run outgrew the context window —
         # and the output cap, since every entity gets its own rewritten summary — on a large
@@ -2319,6 +2455,9 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         failed = 0
         answered = False
         for n, chunk in enumerate(chunks, 1):
+            if n > 1 and _stage_stop(vault, out):
+                failed += sum(len(c) for c in chunks[n - 1:])
+                break
             try:
                 r = await _call_model(
                     task="entity-synthesis", model=synthesis_model, backend=synthesis_backend,
@@ -2359,7 +2498,9 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     # 2. Timeline: promote pending, model-dedup any real collisions, rebuild timeline.md.
     progress.emit("stage", stage="timeline", done=None, total=None)
     _say("→  rebuilding timeline…")
-    cols = timeline.collisions(vault)
+    # At the spending limit the model's de-duplication is skipped and the colliding dates are
+    # left as they are, the way a failed dedup call leaves them, for the next run (D324).
+    cols = [] if _stage_stop(vault, out) else timeline.collisions(vault)
     out["timeline_collisions"] = len(cols)
     if cols:
         _say(f"   de-duplicating {len(cols)} date{'s' if len(cols) != 1 else ''} "
@@ -2435,7 +2576,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             return   # leave the month untouched rather than risk a bad fold
         timeline.apply_precision_matches(vault, grp, matches)
 
-    await asyncio.gather(*(_precision(grp) for grp in timeline.month_precision_groups(vault)))
+    if not out.get("spending_limit"):
+        await asyncio.gather(*(_precision(grp) for grp in timeline.month_precision_groups(vault)))
     n_dates, n_events = timeline.rebuild_timeline(vault, quiet=True)
     _say(f"   timeline.md · {n_dates} date{'s' if n_dates != 1 else ''}, "
          f"{n_events} event{'s' if n_events != 1 else ''}")
@@ -2451,6 +2593,8 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
         # itself is skipped; synthesis and the timeline above already ran.
         out["briefing_skipped"] = True
         _say(f"→  briefing skipped{''}")
+    elif _stage_stop(vault, out):
+        pass   # no briefing this run; `error` keeps the batch pending for the next one
     else:
         progress.emit("stage", stage="briefing", done=None, total=None)
         _say("→  writing briefing…")
@@ -2542,6 +2686,16 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
              f"(named-but-unprofiled, isolated, contradictions) — "
              f"{leads_relpath}")
 
+    # 5a. What this batch added to Review (D327): the open items, recorded with the briefing
+    # once its alerts and leads are in, so the Overview can say what the batch added. Never fails
+    # the run: without the record, the Overview just says nothing about the batch.
+    if out.get("briefing"):
+        from watchdog import triage
+        try:
+            triage.record_batch(vault, out["briefing"])
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            _say(f"   could not record what this batch added to Review — {e}")
+
     # 5b. Document-request dedup (#416, D159). Exact-string matching at record time only
     # converges identical wording — a citation of the same real document phrased differently
     # stays a separate open entry. Skipped unless this run actually recorded a new request, so
@@ -2551,7 +2705,7 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
     open_ = requests.open_requests(vault)
     added_new_requests = any(
         s.get("sha256") in ok_shas for r in open_ for s in r.get("sources") or [])
-    if added_new_requests and len(open_) > 1:
+    if added_new_requests and len(open_) > 1 and not _stage_stop(vault, out):
         if len(open_) > _DEDUP_MAX_ITEMS:
             open_ = sorted(open_, key=lambda r: ((r.get("type") or "").casefold(),
                                                  (r.get("what") or "").casefold()))
@@ -2780,14 +2934,11 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
     rec_bundle = reconcile.build_bundle(vault, shas)
     if not (rec_bundle["entities"] or rec_bundle["pairs"] or rec_bundle.get("rule_merges")
-            or rec_bundle.get("candidates")):
+            or rec_bundle.get("candidates") or rec_bundle.get("groups")
+            or rec_bundle.get("carried_in")):
         return result
     n_pairs, n_ents = len(rec_bundle["pairs"]), len(rec_bundle["entities"])
-    if rec_bundle.get("pairs_dropped"):
-        msg = (f"reconcile: {rec_bundle['pairs_dropped']} weaker possible-duplicate pairs past the "
-               f"{reconcile._MAX_PAIRS}-pair ceiling were not sent this run")
-        _say(f"   ⚠  {msg}")
-        _log(vault, f"WARN {msg}")
+    n_groups = len(rec_bundle.get("groups") or [])
     # Split into as many size-bounded calls as the bundle needs (#696): one call per run could
     # outgrow the context window on a large batch, and since a failure here defers the whole batch
     # (I7), an oversized bundle used to deadlock it — every post-processing (`bark`) retry sent the same
@@ -2795,41 +2946,78 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     budget = chunking.prompt_budget_chars(reconciliation_model, reconciliation_backend, vault)
     # Nothing for the model when every pair was settled by tier and no entity can hold a
     # contradiction — the high merges and "possible same" pairs still apply below (D279).
-    needs_model = bool(rec_bundle["entities"] or rec_bundle["pairs"])
+    needs_model = bool(rec_bundle["entities"] or rec_bundle["pairs"] or n_groups)
     chunks = reconcile.chunk_bundle(rec_bundle, budget) if needs_model else []
-    answers = []
-    for n, chunk in enumerate(chunks, 1):
-        # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
-        # future change to the budget comes from real bundle sizes, not a guess.
-        rec_prompt = prompts.build_reconcile_prompt(chunk)
-        kb = len(rec_prompt) / 1024
-        c_pairs, c_ents = len(chunk["pairs"]), len(chunk["entities"])
-        part = f" · call {n} of {len(chunks)}" if len(chunks) > 1 else ""
-        _say(f"→  reconciling · {c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}, "
-             f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''} · {kb:.1f} KB{part}…")
-        try:
-            r = await _call_model(
-                task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
-                schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
-                detail=f"{c_ents} entities · {c_pairs} pairs · {kb:.1f} KB{part}", vault=vault)
-        except model_client.CALL_FAILURES as e:
-            # Any failed chunk defers the whole batch, exactly as the single call did: applying
-            # the merges the earlier chunks found would commit half-reconciled state (I7).
-            result["error"] = str(e)
-            if isinstance(e, model_client.ProviderAuthError):
-                result["auth_error"] = str(e)
-            _say(f"reconciliation skipped — {e}")
-            _log(vault, f"RECONCILE skipped: {e}")
-            return result
-        answers.append(r.parsed)
-    if len(chunks) > 1:
-        _say(f"   {n_ents} entities and {n_pairs} pairs reconciled across "
-             f"{len(chunks)} calls")
+    warn = lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}"))  # noqa: E731
+    name_groups = rec_bundle.get("name_groups")
+    calls = 0
 
-    applied = reconcile.apply_merges(
-        vault, shas, reconcile.merge_chunk_results(chunks, answers), rec_bundle,
-        warn=lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}")),
-        model=reconciliation_model)
+    async def _send(round_chunks: list[dict], label: str) -> list[dict] | None:
+        """Every call of one round, in order; None (with `result` set) when the batch must wait."""
+        nonlocal calls
+        out = []
+        for n, chunk in enumerate(round_chunks, 1):
+            # The spending limit between calls (D324): a stop defers the whole batch, as a failure does.
+            msg = _spending_stop() if calls else None
+            if msg:
+                result["error"] = result["spending_limit"] = msg
+                _say(msg)
+                _log(vault, f"SPENDING LIMIT {msg}")
+                return None
+            calls += 1
+            # Sized and reported the same way the old #216 digest telemetry was — visibility, so a
+            # future change to the budget comes from real bundle sizes, not a guess.
+            rec_prompt = prompts.build_reconcile_prompt(chunk)
+            kb = len(rec_prompt) / 1024
+            c_pairs, c_ents = len(chunk["pairs"]), len(chunk["entities"])
+            c_groups = len(chunk.get("groups") or [])
+            part = f" · call {n} of {len(round_chunks)}" if len(round_chunks) > 1 else ""
+            what = []
+            if c_ents or not c_groups:
+                what.append(f"{c_ents} recurring entit{'ies' if c_ents != 1 else 'y'}")
+            if c_pairs or not c_groups:
+                what.append(f"{c_pairs} possible duplicate{'s' if c_pairs != 1 else ''}")
+            if c_groups:
+                what.append(f"{c_groups} same-name group{'s' if c_groups != 1 else ''}")
+            _say(f"→  {label} · {', '.join(what)} · {kb:.1f} KB{part}…")
+            try:
+                r = await _call_model(
+                    task="reconcile", model=reconciliation_model, backend=reconciliation_backend,
+                    schema=schemas.RECONCILE, prompt=rec_prompt, effort=post_effort,
+                    detail=f"{c_ents} entities · {c_pairs} pairs · {c_groups} groups · {kb:.1f} KB{part}",
+                    vault=vault)
+            except model_client.CALL_FAILURES as e:
+                # Any failed chunk defers the whole batch, exactly as the single call did: applying
+                # the merges the earlier chunks found would commit half-reconciled state (I7).
+                result["error"] = str(e)
+                if isinstance(e, model_client.ProviderAuthError):
+                    result["auth_error"] = str(e)
+                _say(f"reconciliation skipped — {e}")
+                _log(vault, f"RECONCILE skipped: {e}")
+                return None
+            out.append(r.parsed)
+        return out
+
+    answers = await _send(chunks, "reconciling")
+    if answers is None:
+        return result
+    merged_answer = reconcile.merge_chunk_results(chunks, answers)
+    if name_groups is not None:
+        # A same-name group too large for one call is compared again over each slice's survivors
+        # (#755), a bounded number of rounds (`reconcile._GROUP_ROUNDS`).
+        name_groups.absorb(merged_answer["groups"], warn)
+        while items := name_groups.next_items():
+            round_chunks = reconcile.chunk_bundle({"groups": items}, budget)
+            round_answers = await _send(round_chunks, "comparing same-name records again")
+            if round_answers is None:
+                return result
+            name_groups.absorb(reconcile.merge_chunk_results(round_chunks, round_answers)["groups"], warn)
+    if calls > 1:
+        groups_part = f", {n_groups} same-name groups" if n_groups else ""
+        _say(f"   {n_ents} entities, {n_pairs} pairs{groups_part} reconciled across {calls} calls")
+
+    applied = reconcile.apply_merges(vault, shas, merged_answer, rec_bundle, warn=warn,
+                                     model=reconciliation_model)
     result["merged"] = applied["merged"]
     result["remap"] = applied["remap"]
     result["contradictions"] = applied["contradictions"]
@@ -2870,6 +3058,21 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     if n_cand:
         _say(f"   {n_cand} possible same entit{'ies' if n_cand != 1 else 'y'} "
              f"left for you to check in Review (not merged)")
+    # Never dropped unseen (#755): what this run could not compare is said, logged and carried.
+    carried = applied.get("carried") or {}
+    result["carried"] = carried
+    if carried.get("pairs") or carried.get("records"):
+        parts = []
+        if carried.get("pairs"):
+            parts.append(f"{carried['pairs']} possible-duplicate pair{'s' if carried['pairs'] != 1 else ''} "
+                         f"past the {reconcile._MAX_PAIRS:,}-pair limit")
+        if carried.get("records"):
+            parts.append(f"{carried['records']} same-name record{'s' if carried['records'] != 1 else ''} "
+                         f"that could not all be compared with each other")
+        msg = (f"reconcile: {' and '.join(parts)} carried to the next run, which compares "
+               f"them again")
+        _say(f"   ⚠  {msg}")
+        _log(vault, f"WARN {msg}")
     return result
 
 
@@ -2998,7 +3201,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
                    benchmark_arm_id: str | None = None) -> dict:
     """Resolve, commit and post-process the pending batch.
 
-    Order: exact-name fold → pre-commit reconciliation → commit pass (sorted sha order) →
+    Order: exact-name fold → pre-commit reconciliation → housekeeping (the date pass, D330) →
+    commit pass (sorted sha order) →
     post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
     a run, by post-processing on its own, and to resume an interrupted finalize. Consumed inputs are
     cleared only on a clean pass. If reconciliation fails, nothing commits and the batch stays
@@ -3045,7 +3249,14 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
     shas = _pending_commits(vault)
     _restore_missing_results(vault, shas)
     rec_result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
-    if shas:
+    # The spending limit before the first finishing stage (D324). Reconciliation must come before
+    # the commit (I7), so a stop here commits nothing and the whole batch stays pending.
+    msg = _spending_stop()
+    if msg:
+        _say(msg)
+        _log(vault, f"SPENDING LIMIT {msg}")
+        rec_result["error"] = rec_result["spending_limit"] = msg
+    elif shas:
         progress.emit("stage", stage="fold", done=0, total=len(shas))
         _batch_exact_fold(vault, shas)
         progress.emit("stage", stage="reconcile", done=None, total=None)
@@ -3062,10 +3273,14 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
                "committed_writes": {}, "commit_skipped": True}
         if rec_result.get("auth_error"):
             out["auth_error"] = rec_result["auth_error"]
+        if rec_result.get("spending_limit"):
+            out["spending_limit"] = rec_result["spending_limit"]
         if standalone_usage:
             out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
 
+    # Dates code could not settle (D330), on the staged extractions so the commit writes them.
+    await _date_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
     commit_summary = _commit_pending(vault, shas)
     progress.emit("stage", stage="commit", done=len(shas), total=len(shas))
     if brief is None:
@@ -3158,6 +3373,9 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         extra_summary = {"batch_pending": batch_out.get("batch_pending", False)}
         if batch_out.get("auth_error"):
             extra_summary["auth_error"] = batch_out["auth_error"]
+        if batch_out.get("spending_limit"):   # nothing submitted; finishing waits too (D324)
+            extra_summary["spending_limit"] = batch_out["spending_limit"]
+            cancelled_flag = True
     else:
         if not shas:
             return {"results": [], "extracted": 0, "skipped": 0, "failed": 0}
@@ -3194,8 +3412,11 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         tasks: list = []
 
         def _request_stop(rate_limit: str | None = None, resets_at: int | None = None,
-                          auth_error: str | None = None) -> None:
-            """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent."""
+                          auth_error: str | None = None, spending_limit: str | None = None) -> None:
+            """Stop the batch once: flag it, record why, cancel in-flight work. Idempotent.
+
+            A spending-limit stop (D324) cancels nothing: a call already under way is paid for
+            either way, so each in-flight document stops at its own next checkpoint instead."""
             if cancelled.is_set():
                 return
             cancelled.set()
@@ -3204,8 +3425,23 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 stop_reason["resets_at"] = resets_at
             if auth_error:
                 stop_reason["auth_error"] = auth_error
+            if spending_limit:
+                stop_reason["spending_limit"] = spending_limit
+                return
             for t in tasks:
                 t.cancel()
+
+        def _spending_stopped(sha: str, msg: str, started: bool = False) -> dict:
+            if started:   # its row showed it under way; it is back in the queue
+                progress.emit("doc", sha=sha, filename=_queued_filename(vault, sha) or "",
+                              state="queued", detail="spending limit")
+            if not cancelled.is_set():
+                print()
+                _say(msg)
+                progress.emit("message", text=msg)
+                _log(vault, f"SPENDING LIMIT {msg}")
+                _request_stop(spending_limit=msg)
+            return {"sha256": sha, "filename": "", "status": "cancelled"}
 
         async def _guarded(sha: str) -> dict:
             if cancelled.is_set():                   # never started — leave queue file for resume
@@ -3236,6 +3472,10 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                 async with sem:
                     if cancelled.is_set():
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
+                    # Before the document is sent (D324): recorded spend against the limit.
+                    msg = _spending_stop()
+                    if msg:
+                        return _spending_stopped(sha, msg)
                     try:
                         return await _extract_document(vault, sha, brief, extract_model, classify_model,
                                                        classify_pages, pinned_skill, extract_effort,
@@ -3285,6 +3525,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
                                  + "Fix the key or balance in Settings, then add documents again.")
                             _request_stop(auth_error=str(e))
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
+                    except SpendingLimitReached as e:    # between calls — queue file and checkpoints stay
+                        return _spending_stopped(sha, str(e), started=True)
                     except asyncio.CancelledError:       # ctrl+c mid-document — queue file stays
                         return {"sha256": sha, "filename": "", "status": "cancelled"}
                     except Exception as e:               # one bad doc must not sink the batch
@@ -3299,6 +3541,12 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
 
         def _on_interrupt() -> None:
             if cancelled.is_set():
+                # A spending-limit stop lets in-flight documents run to their next checkpoint;
+                # Stop still cancels them.
+                if stop_reason.get("spending_limit") and not stop_reason.get("interrupted"):
+                    stop_reason["interrupted"] = True
+                    for t in tasks:
+                        t.cancel()
                 return
             print()
             _say("Interrupted — finishing current writes, then stopping…")
@@ -3331,6 +3579,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
         rate_limit_msg = stop_reason.get("rate_limit")
         rate_limit_resets_at = stop_reason.get("resets_at")
         extra_summary = {"auth_error": stop_reason["auth_error"]} if stop_reason.get("auth_error") else {}
+        if stop_reason.get("spending_limit"):
+            extra_summary["spending_limit"] = stop_reason["spending_limit"]
 
     def by_status(s):
         return sum(1 for r in results if r.get("status") == s)
@@ -3371,6 +3621,8 @@ async def run(vault: Path, *, concurrency: int = DEFAULT_CONCURRENCY,
             # new/updated entity split was still unknown at the time (#403 phase 1) — sync it in
             # now from what the commit pass actually did, so a caller reading `summary["results"]`
             # (not just the briefing, which already reads the patched result_<sha>.json) sees it.
+            if summary["post_ingest"].get("spending_limit"):
+                summary["spending_limit"] = summary["post_ingest"]["spending_limit"]
             written_map = summary["post_ingest"].get("committed_writes") or {}
             for r in results:
                 w = written_map.get(r.get("sha256"))

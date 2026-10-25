@@ -99,3 +99,21 @@ def test_stamp_document_records_the_near_duplicate():
          "document_note": "documents/orig"}]}}
     orchestrate._stamp_document(extraction, sha="c" * 64, pf=pf, skill_label="generic")
     assert extraction["document"]["near_duplicate_of"] == "[[documents/orig|orig.pdf]]"
+
+
+def test_an_unprofiled_lead_shows_who_names_it_and_where(vault):
+    reg = vault / ".watchdog" / "registry" / "entities.json"
+    reg.write_text(json.dumps({"harbour": {"name": "Harbour Holdings Ltd", "roles": [
+        {"relationship": "director", "target_id": "a", "target_name": "a",
+         "source_sha256": "b" * 64, "page": 3}]}}))
+    (lead,) = review.open_items(vault, ("leads",))
+    assert lead["title"] == "a — named but never profiled"
+    assert lead["detail"][0] == "Harbour Holdings Ltd — director → a (p. 3)"
+    assert "only as the id “a”" in lead["detail"][1]
+    assert lead["cited"] == [{"sha": "b" * 64, "filename": "memo.pdf", "note": "documents/memo"}]
+
+
+def test_a_named_unprofiled_lead_has_no_id_note(vault):
+    (lead,) = review.open_items(vault, ("leads",))
+    assert lead["detail"] == ["Acme → Ghost Co"]
+    assert lead["cited"] == []

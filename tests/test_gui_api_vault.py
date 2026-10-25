@@ -79,7 +79,7 @@ def test_methods_tolerate_a_bare_vault_directory(tmp_path):
     assert call("vault.graph", vault=v) == {"nodes": [], "edges": [], "documents": {}}
     assert call("vault.timeline", vault=v) == {"events": []}
     assert call("vault.briefings", vault=v) == []
-    assert call("vault.requests", vault=v) == {"open": [], "resolved_count": 0}
+    assert call("vault.requests", vault=v) == {"open": [], "groups": [], "resolved_count": 0}
     assert call("vault.contextFiles", vault=v) == []
     assert call("vault.readFile", vault=v, path="log.md") == {"text": "", "exists": False}
     p = call("vault.pipeline", vault=v)

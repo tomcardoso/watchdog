@@ -34,7 +34,7 @@ _KEY_FACT = _obj(
         # Nullable, not bare "string": a gpt-nano sectioned extraction nulled `date` on 21 of 26
         # key_facts in one live document rather than omitting it — the same weak-json_object-mode
         # null-vs-omit gap fixed elsewhere in this schema (#490). Every reader already treats null
-        # and absent the same (postflight._sanitize_dates's `if date and ...`, explode_key_facts's
+        # and absent the same (dates.sanitize's `if not raw`, explode_key_facts's
         # `(fact.get("date") or "").strip()`, merge.py's `f.get("date")` truthiness check).
         "date": _NULLABLE_STR,                                        # set ⇒ also a timeline event
         "entities": {"type": "array", "items": {"type": "string"}},   # entity ids the fact is about
@@ -224,6 +224,10 @@ SYNTHESIS = _obj(
 #
 #   `merges`         — entity resolution over Python-blocked candidate pairs; the model confirms or
 #                      rejects each by pair `index`, so it can't invent an id.
+#   `groups`         — same-name groups (#755): per group, by member index, the sets that are one
+#                      thing and the sets it could not rule out. Optional, since a call may carry
+#                      no group (and the contradiction re-check never does); code checks each
+#                      answer (`reconcile.NameGroups`).
 #   `contradictions` — structured fields that are exactly `contradiction.run`'s arguments, so the
 #                      callout is written by the deterministic writer (D81) and a bad document
 #                      reference fails validation instead of landing in a note.
@@ -240,6 +244,32 @@ RECONCILE = _obj(
                  "reason": {"type": "string",
                             "description": "one clause on why these are the same real-world thing"}},
                 ["pair", "keep_id", "reason"],
+            ),
+        },
+        "groups": {
+            "type": "array",
+            "items": _obj(
+                {"group": {"type": "integer",
+                           "description": "index into the SAME-NAME GROUPS list"},
+                 "same": {"type": "array",
+                          "description": "each set of members that are one real-world thing; a "
+                                         "member in no set stays a record of its own",
+                          "items": _obj(
+                              {"members": {"type": "array", "items": {"type": "integer"},
+                                           "description": "two or more member numbers"},
+                               "keep": {"type": "integer",
+                                        "description": "the member number that survives, one of "
+                                                       "`members`"},
+                               "reason": {"type": "string",
+                                          "description": "one clause on what in the facts shows "
+                                                         "they are one thing"}},
+                              ["members", "keep", "reason"])},
+                 "unsure": {"type": "array",
+                            "items": {"type": "array", "items": {"type": "integer"}},
+                            "description": "sets of member numbers, each in no `same` set together, "
+                                           "that might be one thing but the facts do not show it; "
+                                           "each member in at most one set"}},
+                ["group", "same", "unsure"],
             ),
         },
         "contradictions": {

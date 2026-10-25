@@ -327,3 +327,20 @@ def test_a_failed_first_call_says_nothing_was_checked(vault, monkeypatch):
                       say=lambda m: None, warn=lambda m: None)
     assert out["error"] and out["calls_done"] == 0 and not processing_lock(vault).exists()
     assert recheck.summary(out).endswith("Nothing was checked, and nothing was filed.")
+
+
+def test_the_spending_limit_stops_the_re_check_between_calls(vault, monkeypatch):
+    """D324: before each call the recorded spend is compared with the investigation's limit; a
+    stop files what the finished calls found and says how to go on."""
+    from watchdog import spend
+    monkeypatch.setattr(chunking, "prompt_budget_chars", lambda *a, **k: 7000)
+    # A limit one $0.002 call passes (finer than the app's cents, so written directly).
+    (vault / ".watchdog" / "settings.json").write_text(json.dumps(
+        {"spending_limit": {"usd": spend.status(vault)["spent_usd"] + 0.001}}))
+    fake = FakeModel(lambda ents: [_first_last(ents[0])])
+    out = _run(vault, monkeypatch, fake, ["northgate-civil-works"])
+    assert out["calls_total"] >= 2 and out["calls_done"] == 1 and len(fake.prompts) == 1
+    assert out["spending_limit"] and len(out["filed"]) == 1 and not out["error"]
+    assert "spending limit" in recheck.summary(out) and not processing_lock(vault).exists()
+    from watchdog import ops
+    assert ops.exit_code("recheck-contradictions", out) == 2

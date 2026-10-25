@@ -120,6 +120,10 @@ Two things help when a rate limit stops a run:
 
 Without it, the run stops cleanly on a rate limit. Nothing is lost: every document already processed is saved, so adding documents again picks up only what is still queued.
 
+## A run stopped at the spending limit
+
+The investigation has reached the spending limit set on its Overview. Nothing is lost: finished documents are kept and the rest stay queued. Raise the limit or choose **Reset the count** on the **Spending limit** card, then add documents again. See [A spending limit for one investigation](models-and-cost.md#spending-limit).
+
 ## A step routed to a local model fails immediately
 
 A message that the local backend needs a base URL means the address of your model server has not been set. Open **Settings → Models & keys**, choose the local provider, and enter the server's address (for example `http://localhost:11434/v1`).
@@ -147,6 +151,10 @@ While documents are being added, Watchdog keeps a small lock file in the investi
 ## A note was deleted or edited by mistake
 
 Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History and your notes](using-watchdog.md#history-and-your-notes).
+
+## A dated fact is missing from the timeline, or shows only its year
+
+The fact is still on its document and its entities; only its place on the timeline is missing. Watchdog places a date only when it can read it with confidence: the year must be printed, and a date written in figures that could be read two ways (03/04/2021) is placed at its year until a model settles which reading the document means. If that step could not run (a rate limit, the [spending limit](#a-run-stopped-at-the-spending-limit)) or found no confident answer, the date stays as it was. [How it works](how-it-works.md#dates) explains the rules.
 
 ## A merge joined two different people or companies
 
@@ -187,6 +195,34 @@ If something is not working, open an issue at [github.com/tomcardoso/watchdog/is
 - What actually happened — copy and paste any error messages
 - Your operating system and version, and the Watchdog version (shown at the bottom of the sidebar and under **Settings → About**)
 - The log file, if you can share it. Check it first: it can contain file names and paths from your investigations.
+- A copy of the investigation, if the problem is in what Watchdog produced and you can share it (see below).
+
+### Sending a copy of the investigation
+
+**Activity → Maintenance → Export a copy for troubleshooting** offers two choices, in a folder you choose.
+
+**Diagnostics only (safe to share)** writes one text file of counts and shapes. It is the one to attach to a public issue. It holds:
+
+- how many documents there are of each file type and page count range, and how many facts, Review items, merges, possible duplicates and document requests
+- how many records share a name, and how large those groups are
+- which kinds of warning the processing log holds and how often, each reduced to its shape: file names and anything in quotes are removed and every number is written as N
+- the models, calls, retries, tokens, cost and time of each run, and your operating system, Watchdog version and settings
+
+It never holds a file name, document title, the name of a person or organization, an alias, a relationship, a fact, a quote, a figure, an identifier, a date or a summary. It is built from a fixed list of counts, so a record field added in a later version does not appear in it. No model is used. The dialog shows the whole report before it is saved. Read it before you post it: even counts can hint at things, such as the languages or kinds of documents you work with.
+
+**Full copy (private)** writes one zip file with what a report needs to look into a wrong fact, a bad merge or a failed run. Much of that is kept in hidden folders inside the investigation, which zipping the folder by hand can leave out. The zip holds:
+
+- Watchdog's records of the documents and entities, including merges, your checks of facts and the processing history
+- what the model extracted from each document
+- the usage and cost records
+- the briefings, and the entity and document notes
+- a short note of the Watchdog version, your operating system and your settings
+
+It never contains your API keys or sign-ins, your conversations with Claude, the app's log or earlier versions of files. The original documents, and the text read from them, are left out unless you turn on **Include the original documents**. They make a problem with reading a document possible to reproduce, but the file is much larger and more sensitive.
+
+The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material: send it only to someone you would show the documents to.
+
+When you report a problem, attach the diagnostics report to the public issue. Offer the full copy only if you are asked for it, and send it privately, not as an attachment to the issue.
 
 ## Where next
 

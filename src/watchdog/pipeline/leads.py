@@ -5,8 +5,9 @@ Four signals, read from `.watchdog/registry/entities.json`:
   * **Named but never profiled** — a relationship target with no entity record.
   * **Mentioned often but unconnected** — in `_ISOLATED_MIN_DOCS`+ documents, with no relationships.
   * **Unresolved contradictions** — entities carrying contradiction flags.
-  * **Facts to verify** — roles or events marked `basis: inferred`, or carrying a figure
-    `figure_verify` couldn't find in the source (D215).
+  * **Inferred relationships** — roles marked `basis: inferred`. An inferred fact, or one carrying
+    a figure `figure_verify` couldn't find in the source (D215), is listed in Review →
+    Verification under "Worth checking" instead (D322).
 
 `scan` returns the four lists; `write_leads` writes them to `briefings/leads-<date>.md`,
 overwriting (current state, not a log). See D40."""
@@ -31,60 +32,66 @@ def _callout_summary(callout: str) -> str:
     return first or (lines[1] if len(lines) > 1 else "contradiction")
 
 
-def _derived_figures(claim: dict) -> str:
-    """The " (figures 1,234, 5,678 not on the cited page)" suffix for a claim `figure_verify`
-    found ungrounded figures in, or "" for a clean one."""
-    missing = claim.get("figures_unverified")
-    if not missing:
-        return ""
-    figs = ", ".join(str(t) for t in missing)
-    return f" (figure{'s' if len(missing) > 1 else ''} {figs} not found in the document)"
-
-
 def _inferred_claims(ent: dict) -> list[str]:
-    """Text for every role/timeline_event on an entity that needs verifying, in registry order.
+    """Text for every role on an entity the model marked `basis: inferred` (D34: "a lead to
+    verify, not a finding"), in registry order.
 
-    Two independent signals, either of which qualifies (D215). `basis: inferred` is the model's
-    own declaration (D34: "a lead to verify, not a finding"); `figures_unverified` is
-    `figure_verify`'s deterministic finding that a figure appears nowhere in the source. The
-    second matters because the first is near-inert — `basis: inferred` fires on 0.16% of facts,
-    so relying on it alone let computed figures pass as read-off-the-page.
+    Only relationships: an inferred fact or one with an ungrounded figure (D215) is a document
+    fact, which Review → Verification lists under "Worth checking" beside its page (D322). A
+    role has no row there, so it stays a lead.
+
+    Forward roles only: the registry stores every relationship twice, once on each end (the copy on
+    the target carries `is_reverse`), so listing both made one inferred link two leads (#755).
     """
     claims = []
     for role in ent.get("roles", []):
-        if role.get("basis") == "inferred":
+        if role.get("basis") == "inferred" and not role.get("is_reverse"):
             target = role.get("target_name") or role.get("target_id") or "?"
             claims.append(f"{role.get('relationship', '?')} → {target}")
-    for ev in ent.get("timeline_events", []):
-        if ev.get("basis") == "inferred" or ev.get("figures_unverified"):
-            claims.append(f"{ev.get('date', '?')}: {ev.get('event', '?')}{_derived_figures(ev)}")
     return claims
 
 
-def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> dict:
+def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset(),
+               hidden: frozenset[str] = frozenset()) -> dict:
     """Pure: derive the four lead lists from an entity-registry dict.
 
     ``resolved`` is the set of acknowledged resolution ids (#266); any lead — or individual
     contradiction callout — whose id is in it drops out of the active list. Every returned item
-    carries its own ``rid`` so the report can print a copyable/checkbox-able marker."""
+    carries its own ``rid`` so the report can print a copyable/checkbox-able marker.
+
+    ``hidden`` is the ids removed from the investigation (D326): such an entity raises no lead of
+    its own, its relationships name no unprofiled target, and it is never one itself."""
     unprofiled: dict[str, dict] = {}
     isolated: list[dict] = []
     contradictions: list[dict] = []
     inferred: list[dict] = []
 
     for eid, ent in entities_reg.items():
+        if eid in hidden:
+            continue
         roles = ent.get("roles", [])
         for role in roles:
             tid = role.get("target_id")
-            if not tid or tid in entities_reg:
+            if not tid or tid in entities_reg or tid in hidden:
                 continue   # a profiled target (incl. every reverse role) is not a lead
             rec = unprofiled.setdefault(tid, {
-                "id": tid, "name": role.get("target_name") or tid,
-                "mentioned_by": set(), "docs": set(),
+                "id": tid, "name": tid, "mentioned_by": set(), "by_ids": set(), "docs": set(),
+                "mentions": [],
             })
-            rec["mentioned_by"].add(ent.get("name") or eid)
+            # Extraction names a role's target by id only; write_vault fills `target_name` from
+            # the target's record and falls back to the id when there is none, so a dangling
+            # target usually reads as its bare id. A real name, when any role carries one, wins.
+            if role.get("target_name") and role["target_name"] != tid:
+                rec["name"] = role["target_name"]
+            by = ent.get("name") or eid
+            rec["mentioned_by"].add(by)
+            rec["by_ids"].add(eid)
             if role.get("source_sha256"):
                 rec["docs"].add(role["source_sha256"])
+            mention = {"by": by, "relationship": role.get("relationship") or "",
+                       "sha": role.get("source_sha256") or None, "page": role.get("page")}
+            if mention not in rec["mentions"]:
+                rec["mentions"].append(mention)
 
         if not roles and len(ent.get("appears_in", [])) >= _ISOLATED_MIN_DOCS:
             rid = resolutions.lead_id("isolated", eid)
@@ -108,13 +115,17 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> di
         if claims:
             rid = resolutions.lead_id("inferred", eid)
             if rid not in resolved:
+                docs = {r["source_sha256"] for r in roles if r.get("basis") == "inferred"
+                        and not r.get("is_reverse") and r.get("source_sha256")}
                 inferred.append({"id": eid, "name": ent.get("name") or eid,
                                  "note_path": ent.get("note_path", ""), "claims": claims,
-                                 "rid": rid})
+                                 "doc_count": len(docs), "rid": rid})
 
     unprofiled_list = [
-        {"id": v["id"], "name": v["name"],
-         "mentioned_by": sorted(v["mentioned_by"]), "doc_count": len(v["docs"]),
+        {"id": v["id"], "name": v["name"], "named": v["name"] != v["id"],
+         "mentioned_by": sorted(v["mentioned_by"]), "by_ids": sorted(v["by_ids"]),
+         "doc_count": len(v["docs"]),
+         "docs": sorted(v["docs"]), "mentions": v["mentions"],
          "rid": resolutions.lead_id("unprofiled", v["id"])}
         for v in unprofiled.values()
     ]
@@ -133,9 +144,11 @@ def total(leads: dict) -> int:
 
 
 def scan(vault: Path) -> dict:
-    """Run the sweep over a vault's entity registry, minus anything already resolved (#266)."""
+    """Run the sweep over a vault's entity registry, minus anything already resolved (#266) and
+    any entity removed from the investigation (D326)."""
+    from watchdog.pipeline import hidden
     return find_leads(_load_json(vault / ".watchdog" / "registry" / "entities.json"),
-                      resolutions.resolved_ids(vault))
+                      resolutions.resolved_ids(vault), hidden.hidden_ids(vault))
 
 
 def _format(leads: dict, now: datetime.datetime) -> str:
@@ -170,8 +183,8 @@ def _format(leads: dict, now: datetime.datetime) -> str:
                 lines.append(f"  - {callout['summary']} <!--wid:{callout['rid']}-->")
 
     if leads["inferred"]:
-        lines.append("\n## Inferred facts to verify\n")
-        lines.append("Roles and timeline events the extractor flagged `basis: inferred` — "
+        lines.append("\n## Inferred relationships to verify\n")
+        lines.append("Relationships the extractor flagged `basis: inferred` — "
                      "a lead to verify, not a finding.\n")
         for i in leads["inferred"]:
             link = f"[[{i['note_path']}|{i['name']}]]" if i["note_path"] else f"**{i['name']}**"

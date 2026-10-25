@@ -135,6 +135,15 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   `claude-agent-sdk`, which reports no limit.
 - **Auth failures (D242).** A provider auth or billing error stops the run with exit code 1
   instead of quarantining every document.
+- **Spending limit (D324).** `orchestrate._spending_stop` compares the investigation's limit
+  (`spend.limit`, from `.watchdog/settings.json`) with recorded processing cost since its last
+  reset: earlier runs' usage files summed once per run, plus `_run.usage`; subscription calls and
+  Ask Claude/Research turns never count (`spend.counts`). It is checked before each document,
+  after classification, before each section and the digest (`SpendingLimitReached`, caught in
+  `_guarded`, leaving the queue file and section checkpoints), before finalize's reconciliation
+  and between its calls, before each post-ingest model stage (`_stage_stop`, which sets `error`
+  so the batch stays pending), before a batch submission and before each re-check call. A stop
+  never cancels a call in flight; the summary carries `spending_limit` and the run exits 2.
 
 ---
 
@@ -166,7 +175,13 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    in code (`verify.merge_candidates`): sanitized, and suppressed when they near-duplicate an
    existing fact anywhere in the document (D199). Survivors are ordinary facts tagged
    `added_by: "verify"` in the staged JSON. Not available on batch backends.
-5. **Post-flight** — validates the JSON; resolves each `quote_locator` to the full sentence on the
+5. **Post-flight** — validates the JSON; reads each fact's printed date (`pipeline/dates.py`, D329:
+   `dateparser`, all its languages, absolute dates only, a printed year required, only the
+   precision the wording gives; a numeric day/month pair with two real readings keeps its year and
+   both readings; anything else keeps its wording in `date_text` and is marked `date_pending` for
+   finalize's date pass, D330); points a fact tag that is a near miss of a defined id at it, and
+   on a one-page text (a `.txt`, `.csv` or `.md`) cites page 1 for every fact (#757); resolves each
+   `quote_locator` to the full sentence on the
    cited page, correcting `page` when the locator resolves uniquely elsewhere (D75, D177); checks
    each fact's figures against the page text and annotates figures found nowhere or only on
    another page (D112, D200); stamps a source passage on every fact (`pipeline/passages.py`, D270:
@@ -298,8 +313,19 @@ every document's claims side by side:
   is no pair. The fold (`_batch_exact_fold`, D127) folds only high matches, and gives a same-slug
   match that is not high a fresh slug (`john-smith-2`). `build_bundle` blocks the rest: same
   canonical type, name-token Jaccard ≥ 0.5 (subsets score 1.0), plus a surname index for initialled
-  names, at least one side touched this run, capped at 2,000 pairs, then routes each by tier.
-  `apply_merges` applies rule and model merges by what is already committed (D128): a staged-only
+  names, at least one side touched this run (or carried from the last run), then routes each by
+  tier. **Same-name groups (D325):** records sharing a type and `identity.name_key` are not sent as
+  pairs. Every pair inside the set is classified in code: high pairs merge as rule merges, low ones
+  become "possible same" items each paired with the set's most-documented record, and records
+  joined by a medium pair form a group the model judges in one answer (`NameGroups`): per slice of
+  at most 30 members (each member's six facts and eight roles, as for a same-name pair), the sets
+  that are one thing, by member number, and the sets it cannot rule out (filed as "possible same").
+  Code validates each answer (rejected whole if malformed) and drops a set that would join a
+  conflicting identifier or a dismissed pair. A group of several slices gets further rounds (up to
+  three): the clusters earlier rounds grew go into every slice as anchors. Every other pair keeps
+  the pair path, capped at 2,000. A pair past the cap, or a group not compared in full, is carried:
+  staged as the merge log's `carry` and blocked again by the next run; the run's output and log
+  give the counts. `apply_merges` applies rule and model merges by what is already committed (D128): a staged-only
   loser is an id rewrite, two committed sides get `merge_entities.run`, a committed side always
   survives, and no chain of merges joins a dismissed pair. Merges apply **before** the commit
   pass; merged survivors get one contradiction-only follow-up call over their joined record.
@@ -371,7 +397,22 @@ say (the owner's call).
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
 `pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Order: **tiered fold → reconciliation merges → commit → post-ingest.**
+Order: **tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
+
+**Housekeeping passes (`pipeline/housekeeping.py`, D330).** Small model chores over items code
+could not settle, run on the staged extractions before the commit. A chore is a task name, a prompt
+showing its items numbered, an answer schema (`{"answers": [{"item": n, …}]}`) and a validator;
+`run_chore` makes no call when there are no items, sends at most `max_items` per call, checks the
+spending limit between calls (D324), records usage under the chore's task name, and drops a
+malformed or rejected answer without failing the rest. One chore per call. A chore's prompts count
+towards the finalize estimate (`ingest_setup.housekeeping_estimate`). The first chore is the
+**date pass** (`dates.CHORE`, task `date-resolve`, the timeline stage's model): each `date_pending`
+fact goes with its printed date, its text and its document's date; `dates.validate` accepts a real
+ISO date, or a start and an end (a range), whose years lie within the printed ones (or within a
+year of the fact's or document's when none is printed), and holds an ambiguous numeric date to its
+two readings. `dates.apply` writes `date`, `date_end` and `date_basis: "inferred"` into the staged
+extraction, rebuilds its entities' timeline events and restages its raw timeline files. A failed
+call leaves what code read (a year, or no date); it never holds up the commit.
 
 **Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
 `documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
@@ -393,7 +434,10 @@ registry, keyed for idempotent replay (D67).
   most 200 events per call, D248); `_select_kept` keeps the originals and unions entity ids onto
   each survivor (D59). A failed call leaves the date untouched for the next run (D65). Months
   mixing month- and day-precision events get a precision pass that can only fold a coarse event
-  into a day (D63). `timeline.rebuild_timeline` is the single renderer of `timeline.md`.
+  into a day (D63). A range (`date_end`, D330) is filed under its start; two events fold only when
+  both ends match, and a range never enters the precision pass. `timeline.rebuild_timeline` is the
+  single renderer of `timeline.md`, which shows a range as "Apr–Jun 2024" and a model-settled date
+  with its printed wording.
 - **Briefing.** One call over compact per-document results (key facts, entity names, near-dup
   alerts, contradiction flags) and the scratchpads, condensed in steps when the batch is large
   (D238). The key facts are read from the stored extractions as citable lines
@@ -408,9 +452,22 @@ registry, keyed for idempotent replay (D67).
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
   The app's Review (`watchdog/review.py`) lists the open ones, plus near-duplicate documents
   (`documents.json` `near_duplicate_of`, stamped at extraction from chew's MinHash match), and
-  writes to the same store (D252). Document
+  writes to the same store (D252). `watchdog/triage.py` (D327) ranks the judgement items
+  (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
+  function of the items and registry-derived inputs (watch-list terms, relationship-graph degree,
+  `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
+  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watch-list
+  term's alerts are one Start here item. The tidy-up queues are tables worked in bulk (D328): ticked
+  possible same entities are merged by `merge-entity-pairs`, one `merge-entities` merge per pair; a
+  possible duplicate is resolved with the label `copies` or `different`, and `different` hides the
+  `near_duplicate_of` flag in the app at read time, the registry unchanged. After the lead sweep, a run records the
+  open Review ids in its briefing's sidecar (`review.open`) and the ones the previous briefing's
+  record lacked (`review.added`), which the Overview shows as what the batch added; Review's
+  last-opened time, per investigation, is `.watchdog/review-seen.json`; the Overview shows one line
+  from either, never both (`triage.summary_line`). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
-  paraphrases, and `requests.md` is re-rendered (D111, D159).
+  paraphrases, and `requests.md` is re-rendered (D111, D159). Review groups them by the holder their
+  free-text `likely_source` names (`requests.source_group`, deterministic, D328).
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
   `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
@@ -471,13 +528,14 @@ queries/ wiki/               session-written findings and threads
   text-positions/<sha>.json  OCR'd lines' boxes per scanned page or image, written by pre-processing and kept (D289); none for pages with their own text layer
   timeline/                  raw and canonical NDJSON events
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
-  briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283) and status line (D285)
+  briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283), status line (D285) and the open Review ids with those its batch added (D327)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
   page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
+  review-seen.json           when the reporter last opened Review (D327); the app's own state, read by no model input
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
-  settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290); absent until one is chosen
+  settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
   .preprocessing-lock        held while files are pre-processed
   registry/
@@ -486,6 +544,7 @@ queries/ wiki/               session-written findings and threads
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
     relationships.json       relationship-wording groups, split marks and compared wordings (D291)
+    hidden.json              entities the reporter removed from the investigation, with who, when, name and type (D326); a view overlay
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
@@ -508,10 +567,34 @@ block from pre-processing (stamped on the document at extraction): readers use t
 know and ignore the rest, whatever its `format`.
 
 **Investigation settings (D290).** `.watchdog/settings.json` (`schema_version` 1) holds what belongs
-to the investigation rather than the computer, and travels with the folder: today only `keys`,
-`{provider: {id, label}}`, the labelled key each provider bills here. It is written by
-`auth.choose_key` (the app's Billing card, `auth.chooseKey`), atomically, outside the registry lock
-and history (it is not pipeline state, and a key choice is not a version of the investigation).
+to the investigation rather than the computer, and travels with the folder: `keys`,
+`{provider: {id, label}}`, the labelled key each provider bills here, and `spending_limit`,
+`{usd, reset_at}` (D324). Every writer reads the whole file and writes it back through
+`auth.write_investigation_settings`, atomically, outside the registry lock and history (it is not
+pipeline state, and a setting is not a version of the investigation): `auth.choose_key` (the
+Billing card, `auth.chooseKey`) and `spend.set_limit`/`spend.reset` (the Spending limit card,
+`spend.setLimit`, `spend.reset`).
+
+**Copy for troubleshooting (D323).** The `troubleshooting-copy` operation (`ops/troubleshoot.py`)
+zips, into a folder the reporter chose, `.watchdog/registry/`, `extracted/`, `timeline/` and
+`briefings/`, `processing-state.json`, `entities/`, `documents/`, `briefings/` and the generated
+top-level pages plus `context.md`, with a `manifest.json` (version, platform, known non-secret,
+non-path settings from `config.json`, the investigation's key labels). `morgue/`, `incoming/`,
+`queue/`, `staging/` and `text-positions/` go in only with `originals`. Everything else is left
+out: history, backups, `tmp/`, indexes, `.claude/`, `queries/`, `wiki/`, hidden files below a root,
+and symbolic links; nothing under `~/.watchdog` is read but `config.json`. `plan()` is the one list,
+read also by `vault.troubleshootingSize`; a new folder in this layout is left out until it is added
+there.
+
+**Diagnostics report (D331).** The `diagnostics-report` operation (`ops/diagnostics.py`) writes one
+Markdown file of counts and shapes, safe to post publicly; `vault.diagnosticsReport` returns the
+same text for the dialog to show in full before saving. It reads `registry/` (`entities.json`,
+`documents.json`, `merges.json`, `requests.json`, `processing.log`, `usage/`), the stored
+extractions' fact fields (counts only), `review.open_items` and `leads.scan`, and writes only
+numbers and words from fixed vocabularies (file types, entity types, tiers, tasks, catalogued
+model ids, bundled skill names): a field it does not name is never read, and a value outside a
+vocabulary is counted as `other`. The one free text it touches, the processing log's warnings, is
+reduced to its kind by `warning_shape`. The file is named by time, never by the investigation.
 
 **Working files (D276).** The locks, run state and run log are named for the app's stages and built
 through `vault_paths.py` helpers.
@@ -573,7 +656,7 @@ and put back the newer of that snapshot and the app's last save if the edit chan
 
 **Version history (D286).** `pipeline/history.py` versions every tracked file: Markdown outside
 `morgue/`, `incoming/`, `context/` and hidden folders, plus `entities`, `documents`, `merges`,
-`verification`, `resolutions` and `requests` `.json`. Blobs are content-addressed and compressed;
+`verification`, `resolutions`, `requests`, `relationships` and `hidden` `.json`. Blobs are content-addressed and compressed;
 `log.jsonl` (`schema_version` per line) is the source of truth, appended to by every snapshot and
 rewritten only by `history.remove` (D288); `index.json` (per path its versions, removal gaps and
 last-seen size and mtime, per version its cause and log offset) is rebuilt from it when missing or
@@ -594,14 +677,18 @@ line names; a file's newest entry is never removed. App-only (I10).
 **Merging entities (D54).** The `merge-entities` operation (`keep`, `merge`) unions the losing entity onto
 the survivor, remaps every registry and timeline reference, writes a redirect stub, and snapshots
 what it changes. The merged id's facts reach the survivor through the merge log (§7). It keeps one
-`synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one.
+`synthesis`, marked `stale: merge`, and suggests `/watchdog-entity` when both had one. Review's **Merge ticked** runs
+`merge-entity-pairs`, which calls the same merge once per pair, keeps going past a failed pair and
+reports each outcome; a pair whose record an earlier pair merged away is followed to its survivor
+(D328).
 
 **The merge log (D279).** `registry/merges.json` (`schema_version` 1) records every merge — keep
 and merged records, tier, `decided_by` (`rule`, `model` with its id, or `reporter` with the
 `reporter_name`), rule, reason, evidence per occurrence (documents, D271 fact ids, matching
 identifier, shared attributes), run id and timestamps — and every "possible same" candidate
-(`same:<hash>` ids; "Not the same" is a resolution). A recurring decision adds an occurrence, not
-an entry. It is written only in the finalize commit (`RegistryBatch.flush`, before the registries,
+(`same:<hash>` ids; "Not the same" is a resolution), plus `carry`, the records whose
+possible-duplicate comparisons the last run could not finish (D325). A recurring decision adds an
+occurrence, not an entry. It is written only in the finalize commit (`RegistryBatch.flush`, before the registries,
 idempotently) or by `merge_entities.run`, under the registry lock, and regenerates `merges.md`. Each
 entry's `undo` keeps the merged record's extracted id, documents and fact ids, its registry
 snapshot and the backup path; the staged extraction keeps each moved entity's `extracted_id` and
@@ -636,6 +723,21 @@ re-points and restores third records' roles, retags timeline NDJSON from the fac
 "Not the same", and renders the notes. Contradictions, the journalist's Notes and the AI summary
 stay with the survivor. `merge_undo.check` refuses, with a reason, section folds,
 undone entries, a survivor merged away later, a merged id now taken, or a reprocessed document.
+
+**Removed entities (D326).** `pipeline/hidden.py`; the `hide-entities` and `unhide-entities`
+actions (`ops/entities.py`) write `registry/hidden.json` (`schema_version` 1: per id `at`, `by`,
+and the `name` and `type` it had) under the registry lock, as one history version, and nothing
+else (I17). Keyed on the id, so a record processing recreates, or one the identity code folds into a
+listed survivor, stays hidden. Read-side filters leave a listed id out: `vaultio.visible_entities`
+(the Entities list, the Overview's entity total and top entities, the command palette),
+`vault.graph` (nodes and every edge touching one), `leads.find_leads` (its own leads, and
+unprofiled targets only it names), `merge_log.open_candidates` ("possible same" pairs, Review's
+merges and `merges.md`) and the app's Search (entity-note hits; passages and document notes stay).
+Every model input (synthesis, briefing, reconcile, the re-check), the entity's own note and page,
+other entities' notes and relationships, and exports ignore the list; an Ask Claude session's
+leads tool reads `leads.scan`, so it lists what Review lists.
+A merge (`merge_entities.run`) keeps the survivor's own state; a listed loser's record moves to the
+log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 
 ---
 
@@ -701,8 +803,9 @@ same content to the user's own model server; every other backend sends it to tha
 | extract | once per document, or per section | page/section text, skill, brief, sidecar, known document types, file metadata | all vault entity state (D118) |
 | verify | once per document or section, when enabled | the extraction prompt plus its facts | vault data |
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
-| reconcile | once per run (chunked when large) | candidate pairs; each recurring entity's attributed claims and roles | raw text |
+| reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
+| date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
 | request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
@@ -865,8 +968,9 @@ noted as such.
   is not asked to restate as prose what it emitted structurally. Exception: `document.summary`, a
   bounded digest grounded in `key_facts` — a prompt instruction, not a checked postcondition.
   A document's own wording is never rewritten: a relationship's canonical label is a model
-  proposal that code checks and records beside it (D291).
-  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270, D291.*
+  proposal that code checks and records beside it (D291), and so is a date the model settles,
+  which keeps its printed wording and is marked inferred (D330).
+  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270, D291, D330.*
 - **I2 — Local-first preprocessing.** Source documents never leave the machine during chew, and
   chew costs no API tokens. This bounds source-document egress; web research is allowed (§14).
   *History: D1, D45.*
@@ -895,20 +999,22 @@ noted as such.
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
-  `page` citation, D177, is not covered: a citation is checkable.) *History: D167, D177.*
+  `page` citation, D177, is not covered: a citation is checkable.) A printed date that code
+  rewrites into ISO keeps its wording in `date_text`, and code never supplies a part the wording
+  lacks (D329). *History: D167, D177, D329.*
 - **I9 — Output is plain text.** An operation's output is lines of plain text, structured progress
   events and a result; nothing writes a terminal escape sequence, and warnings go to stderr.
   *History: D174, D300.* Guarded by `tests/test_invariants.py::test_I9_…`.
 - **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
   makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
   writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
-  and clear, the investigation's billing key, an Ask Claude session's tools, D299), a library
+  and clear, the investigation's billing key and spending limit, Review's last-opened time, an Ask Claude session's tools, D299), a library
   function called in-process; either way under folder access (D268), the operation's locks (D293)
   and I7's commit discipline. The app keeps the
   gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
   before it starts an operation and passing the answer as a parameter; an operation never asks.
   The app is the only front end: there is no command line, and nothing imports `watchdog.cli` or
-  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300.* Guarded by
+  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300, D324, D327.* Guarded by
   `tests/test_app_wording.py`.
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an
@@ -916,12 +1022,13 @@ noted as such.
   the allowed list. Guarded by `tests/test_access.py` and `tests/test_gui_access.py`. *History:
   D268, D274, D299.*
 - **I12 — Entity merges are tiered and recorded.** Two entity records are joined only on a
-  high-confidence rule, a model judgement of a medium-confidence pair, or a reporter's merge; a
+  high-confidence rule, a model judgement of a medium-confidence pair or same-name group (checked
+  and applied by code, D325), or a reporter's merge; a
   person is never merged on a name alone, and initialled or partial names are never merged
   automatically. Every merge is written to `registry/merges.json` with who decided and the
   evidence, including a fold inside one document read in sections, and a pair the reporter marked
   "Not the same" (or whose merge was undone) is never merged automatically.
-  *History: D127, D279, D281, D282.*
+  *History: D127, D279, D281, D282, D325.*
 - **I13 — Entity notes are views of stored facts; model prose never replaces a fact.** An entity
   note's facts are rendered by code from the stored extractions on every write, and the note can be
   rebuilt from stored data with no model call. Model prose is stored separately (the registry's
@@ -951,3 +1058,17 @@ noted as such.
   encrypted by the app and this process can't read it (a key that failed to decrypt): it stops and says why. An environment variable still overrides, as it overrides
   everything. *History: D290, D295.* Guarded by `tests/test_invariants.py::test_I16_…`,
   `tests/test_labelled_keys.py` and `tests/test_keystore.py`.
+- **I17 — Removing an entity hides it; it never changes what a source says.** An entity the reporter
+  removed from the investigation (`registry/hidden.json`) is left out of the views and leads only:
+  the Network, the Entities list, Search's entity notes, leads, "possible same" pairs and the
+  Overview and Review counts. Removing it writes that list and nothing else: no extraction, fact,
+  document note, entity record or note, relationship or timeline event changes, and every model
+  input (synthesis, briefing, reconciliation) reads its facts as before. *History: D326.* Guarded by
+  `tests/test_invariants.py::test_I17_…` and `tests/test_hidden_entities.py`.
+- **I18 — A report meant for public posting is built from an allowlist of aggregates.** The
+  diagnostics report holds numbers, and words from fixed vocabularies, and nothing a reporter's
+  material says: no file name, title, entity name or alias, relationship wording, fact, quote,
+  figure, identifier, date or summary. It names the fields it reads rather than filtering the ones
+  it does not want, so a field added to a registry later cannot reach it; its only free text, a
+  processing-log warning, is reduced to its shape first. *History: D331.* Guarded by
+  `tests/test_invariants.py::test_I18_…` and `tests/test_diagnostics.py`.

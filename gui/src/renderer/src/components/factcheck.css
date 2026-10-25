@@ -40,6 +40,10 @@
   border-color: var(--border-strong);
   background: var(--hover);
 }
+.fcheck-btn.quiet {
+  padding: 0 6px;
+  border-color: transparent;
+}
 .fcheck-btn:focus-visible {
   box-shadow: var(--focus-ring);
 }

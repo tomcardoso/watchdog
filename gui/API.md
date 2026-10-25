@@ -28,7 +28,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
 - **Engine setup (D272).** While the app's engine is still installing its background phase, the
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
   then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
-  `requeue`) or `index` (`reindex`, `merge-entities`, `undo-merge`, `rebuild-notes`,
+  `requeue`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
   `recheck-contradictions`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
@@ -98,20 +98,30 @@ Summary = {               // overview.summary(), made JSON-safe
   name, path,
   briefing: {path, name, date}|null,
   headline|null,         // the latest briefing's status line, Markdown with fact links, from its sidecar (D285)
-  contradictions, leads, near_duplicates, possible_same, alerts, // waiting on you
+  contradictions, leads, near_duplicates, possible_same, alerts, requests, // waiting on you
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
   has_work: bool,                                              // overview.has_work()
-  totals: {documents, entities, pages, events},
+  totals: {documents, entities, pages, events},   // entities: not counting ones removed from the investigation (D326)
+  hidden_entities,       // entities removed from the investigation that still have a record (D326)
   verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
-  top_entities: EntityRow[]          // 8 with the most documents
+  top_entities: EntityRow[],         // 8 with the most documents, none removed (D326)
+  judgement, tidy_up,    // contradictions + leads + alerts + disputed facts; near_duplicates + possible_same + requests (D327, D328)
+  start_here: StartHereItem[],       // triage.rank: up to 7 judgement items, best first, none of a removed entity
+  batch: {briefing, at, added: {[kind]: n}}|null,      // what the latest briefing's batch added to Review
+  since_review: {since, added: {[kind]: n}}|null,      // open items batches added since Review was last opened
+  summary_line: {kind: "since"|"batch", at, added: {[kind]: n}}|null  // triage.summary_line: the Overview's one line (D328)
 }
+
+StartHereItem = {rid, rids, kind, title, note|null, reason,   // reason: one line on why it is there
+                 term?, documents?}  // an alert item is a whole watch-list term: every hit's id in rids, the documents by name (D328)
 
 DocumentRow = {
   sha, filename, title|null, document_type|null, date_of_document|null,
   page_count|null, record_skill|null, ingested_at|null,
-  near_duplicate_of|null,            // display text of the matched document
+  near_duplicate_of|null,            // display text of the matched document; null once called different documents in Review (D328)
+  duplicate_verdict: "copies"|null,  // the reporter confirmed the match in Review (D328)
   media_kind: "audio"|"video"|null, duration_seconds|null,   // recordings (D273)
   note: "documents/<slug>"|null,     // registry document_note
   original: "morgue/…/file.pdf"|null,// registry morgue_path, vault-relative
@@ -134,9 +144,10 @@ EntityRow = {
 | `vault.documents` | `{vault}` | `DocumentRow[]` |
 | `vault.document` | `{vault, sha}` | `DocumentDetail` (below) |
 | `vault.textPositions` | `{vault, sha, pages?: int[]}` | `{unit: "line"\|null, engine\|null, pages: int[], boxes: {"<page>": {width, height, lines: [[left, top, right, bottom, text]]}}}` — the saved positions of OCR'd lines (D289) from `.watchdog/text-positions/<sha>.json`: `pages` lists every page that has them, `boxes` holds only the requested pages (at most 50 per call; none without `pages`). Coordinates are in the page's own units (PDF points, image pixels), origin top left; scale by the drawn size over `width`/`height`. Everything empty for a document without the file. Errors: `bad_params` (`pages` not a list of integers), `not_found` |
-| `vault.entities` | `{vault}` | `EntityRow[]` |
+| `vault.entities` | `{vault}` | `EntityRow[]` — every entity except those removed from the investigation (D326) |
+| `vault.hiddenEntities` | `{vault}` | `{items: [{id, name, type, at\|null, by\|null, exists, doc_count}]}` — the entities removed from the investigation (`registry/hidden.json`, D326), most recently removed first, with the name and type each had when removed; `exists` is false once its record has gone from the registry (the id stays listed, so it is hidden again if processing brings it back) |
 | `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
-| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View` |
+| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View`. An entity removed from the investigation (D326) is not a node, and no edge touches it |
 | `vault.relationshipSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping's wordings apart again (`relationships.split`, D291): recorded in `registry/relationships.json` and the vault's history, the two entities' notes refreshed; later runs never regroup those wordings. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
@@ -151,7 +162,7 @@ EntityRow = {
 | `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
 | `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
-| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null}], resolved_count}` |
+| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
 
 ```
@@ -188,10 +199,14 @@ EntityDetail = EntityRow & {
               stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)
               summary_md, analysis_md|null,     // with citations rendered as fact links (D283); show these
               citations: {cited, linked, unknown, missing, disputed}} | null,   // the entity summary, from the registry; who wrote it is metadata, not shown (D284); unknown fields ignored
+  hidden: {at|null, by|null} | null,            // removed from the investigation (D326): the page still opens, with Bring back
 }
 
 TimelineEvent = {
   date, precision: "day"|"month"|"year"|null, text,
+  end|null, end_precision|null,   // a range's end (D330); the event is filed under its start
+  date_text|null,                 // the date as printed, when code or the model rewrote it (D329)
+  date_inferred: bool,            // the model settled the date; show it as inferred (D330)
   entities: [{id, name, type}], sha|null, filename|null, page|null, note|null,
   disputed: bool         // the reporter disputes the fact behind the event; show the label (D285)
 }
@@ -255,8 +270,8 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 
 | Method | Params | Result |
 |---|---|---|
-| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290) |
-| `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null}` |
+| `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290), and `spending_limit` (`spend.limit`'s status plus `warning`, set once the limit is reached), null without a limit (D324) |
+| `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null, spending_warning?: string\|null}` — `spending_warning` when the estimate's upper end would pass what is left under the spending limit; a warning only (D324) |
 
 ```
 RunOptions = {                       // ops.ingest.RunOptions; unset = configured default
@@ -315,10 +330,13 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `watch` | yes | — | runs until stopped | add |
 | `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
 | `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
+| `merge-entity-pairs` | yes | `{keep: string[], merge: string[]}` | `{merged, failed, skipped}`, each `[{keep, merge, keep_name, merge_name, error?}]`; exit 1 when any failed. One `merge-entities` merge per pair, in order; a failure does not stop the rest (D328) | index |
 | `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
 | `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
 | `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
+| `hide-entities` | yes | `{ids}` | `{hidden, already, names}` — removes entities from the investigation's views (D326): lists their ids in `registry/hidden.json` under the registry lock, with who and when; changes nothing else (I17). An action | |
+| `unhide-entities` | yes | `{ids}` | `{shown, not_listed, names}` — Bring back (D326). An action | |
 | `rebuild-timeline` | yes | — | `{dates, events}` | |
 | `lead-sweep` | yes | — | counts per lead kind | |
 | `watchlist-check` | yes | — | `{documents, hits, file?}` | |
@@ -423,8 +441,9 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 
 | Method | Params | Result |
 |---|---|---|
-| `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `review.open_items` |
-| `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
+| `review.items` | `{vault, kinds?: string[], since?}` | `{items: ReviewItem[], counts: {[kind]: n}, start_here: StartHereItem[]}` — `review.open_items`, plus the ranked Start here slice (`triage.rank`, D327); with `since`, an item a batch added after that time carries `new: true` |
+| `review.opened` | `{vault}` | `{opened_at, previous}` — records that Review was opened now in `.watchdog/review-seen.json` (D327); `previous` is the time to pass as `since` |
+| `review.resolve` | `{vault, rids, label?}` | `{resolved: string[]}` — `resolutions.resolve(label=…)`, "review" by default; a possible duplicate takes "copies" or "different" (D328); report files are not edited (D294) |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
@@ -455,6 +474,9 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `auth.setDefaultKey` | `{provider, id}` | `auth.status` result |
 | `auth.investigationKeys` | `{vault}` | `InvestigationKeys` — per provider, this computer's keys (masked), the investigation's choice and which key will pay |
 | `auth.chooseKey` | `{vault, provider, id: string\|null}` | `InvestigationKeys` — records the investigation's key for `provider` in its `.watchdog/settings.json` (id and name, never the key); `null` returns it to the default (D290) |
+| `spend.limit` | `{vault}` | `SpendingLimitInfo` — `{limit_usd\|null, reset_at\|null, spent_usd, remaining_usd\|null, reached, claude_mode, sample}`: the investigation's spending limit and the processing spend recorded since its last reset (D324); Claude subscription calls, Ask Claude and Research are not counted |
+| `spend.setLimit` | `{vault, usd: number\|string\|null}` | `SpendingLimitInfo` — stores the limit in `.watchdog/settings.json`; `null` or blank removes it; anything that isn't an amount of at least $0.01 is refused (`bad_value`) |
+| `spend.reset` | `{vault}` | `SpendingLimitInfo` — records now as the reset time, so only spend recorded after it counts |
 | `auth.setBaseUrl` | `{provider: "local"\|"openrouter", url}` | `auth.status` result — an empty `url` removes it |
 | `skills.list` | — | `{skills: [{name, description, source: "package"\|"user"}], user_dir}` |
 | `skills.read` | `{name}` | `{name, text}` |

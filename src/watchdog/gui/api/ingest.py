@@ -138,7 +138,18 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         "ack_required": local_only is None,
         "ack_note": local_only,
         "sample": None,
+        "spending_limit": _spending(v),
     }
+
+
+def _spending(v) -> dict | None:
+    """The investigation's spending limit and what is left under it (D324), or None without one.
+    `warning` is set once it is reached: the run would stop before sending anything."""
+    from watchdog import spend
+    st = spend.status(v)
+    if st["limit_usd"] is None:
+        return None
+    return {**st, "warning": spend.estimate_warning(st, None)}
 
 
 def _sample_preflight(v, opts: RunOptions) -> dict:
@@ -163,6 +174,7 @@ def _sample_preflight(v, opts: RunOptions) -> dict:
         "ack_required": False,
         "ack_note": sample.NOTE,
         "sample": {"unprepared": sample.unprepared(v, to_send), "refusal": sample.REFUSAL},
+        "spending_limit": None,
     }
 
 
@@ -225,5 +237,9 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
     if all_models:
         rows = rows_fn(v, est["est_tokens"])
         text += "\n\n" + strip_ansi(_format_all_models_estimate(rows)).strip()
+    # A warning only, never a reason to skip or stop at the public-records pause (D324): the
+    # run itself stops on recorded spend, not on this estimate.
+    from watchdog import spend
     return {"text": text, "estimate": est,
-            "all_models": _all_models_rows(rows) if rows is not None else None}
+            "all_models": _all_models_rows(rows) if rows is not None else None,
+            "spending_warning": spend.estimate_warning(spend.status(v), est.get("cost_high"))}

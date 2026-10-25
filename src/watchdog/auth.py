@@ -376,6 +376,22 @@ def _read_investigation_settings(vault: Path) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def read_investigation_settings(vault: Path) -> dict:
+    """The investigation's `.watchdog/settings.json`, `{}` when missing or unreadable."""
+    return _read_investigation_settings(vault)
+
+
+def write_investigation_settings(vault: Path, data: dict) -> None:
+    """Replace the investigation's `.watchdog/settings.json` atomically. Callers read the whole
+    file, change their own key and write it all back, so one setting never drops another."""
+    data["schema_version"] = _SETTINGS_VERSION
+    path = investigation_settings_path(vault)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def investigation_keys(vault: Path) -> dict[str, dict]:
     """The investigation's chosen key per provider: `{provider: {"id", "label"}}`. A provider
     absent here uses its default key."""
@@ -401,13 +417,8 @@ def choose_key(vault: Path, provider: str, key_id: str | None) -> None:
         items, _default = key_items(load_state(), provider)
         item = find_key(items, key_id)
         keys[provider] = {"id": item["id"], "label": item["label"]}
-    data["schema_version"] = _SETTINGS_VERSION
     data["keys"] = keys
-    path = investigation_settings_path(vault)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    write_investigation_settings(vault, data)
 
 
 def _match_choice(items: list[dict], choice: dict) -> dict | None:

@@ -75,7 +75,11 @@ export interface DocumentRow {
   page_count: number | null
   record_skill: string | null
   ingested_at: string | null
+  /** The earlier document this one closely matches; null once the reporter called them different
+   * documents in Review (D328). */
   near_duplicate_of: string | null
+  /** "copies" once the reporter confirmed the match in Review (D328), else null. */
+  duplicate_verdict?: 'copies' | null
   note: string | null
   original: string | null
   fulltext: string | null
@@ -116,6 +120,8 @@ export interface Summary {
   near_duplicates: number
   possible_same: number
   alerts: number
+  /** Open document requests (tidy-up, D328). */
+  requests: number
   incoming: number
   awaiting_dig: number
   awaiting_bark: number
@@ -128,7 +134,26 @@ export interface Summary {
   recent_documents: DocumentRow[]
   top_entities: EntityRow[]
   verification: VerificationSummary
+  /** Entities removed from the investigation that still have a record (D326). */
+  hidden_entities?: number
+  /** Items that need the reporter's judgement: contradictions, leads, alerts, disputed facts (D327). */
+  judgement: number
+  /** Tidy-up: possible duplicate documents, possible same entities and document requests (D327, D328). */
+  tidy_up: number
+  /** The short ranked slice to start with (D327). */
+  start_here: StartHereItem[]
+  /** What the latest briefing's batch added to Review, or null when it has no record. */
+  batch: { briefing: string; at: string | null; added: Record<ReviewKind, number> } | null
+  /** Open items a batch added since Review was last opened; null when it never was. */
+  since_review: { since: string; added: Record<ReviewKind, number> } | null
+  /** The Overview's one line on what is new (D328): since the last visit to Review once there has
+   * been one, otherwise what the latest batch added; null when there is nothing to say. */
+  summary_line: { kind: 'since' | 'batch'; at: string | null; added: Record<ReviewKind, number> } | null
 }
+
+/** One Start here item (D327). A watch-list term's alerts are one item (D328): `term`, the
+ * `documents` it was found in, and every hit's id in `rids`. */
+export interface StartHereItem { rid: string; rids: string[]; kind: ReviewKind; title: string; note: string | null; reason: string; term?: string | null; documents?: string[] }
 
 // The verification ledger (D271): a reporter's own check of a fact.
 export type VerifyStatus = 'verified' | 'disputed' | 'unverifiable'
@@ -139,7 +164,7 @@ export interface VerificationSummary {
 }
 export type PassageMethod = 'quote' | 'matched' | 'unlocated'
 export interface LedgerFact {
-  id: string; fact: string; page: number | null; basis: 'stated' | 'inferred' | string
+  id: string; fact: string; page: number | null; basis: 'stated' | 'inferred' | string; figures_unverified: string[]
   sha: string; filename: string; title: string
   passage_method: PassageMethod | null; passage_page: number | null; mark: FactMark | null
 }
@@ -210,6 +235,13 @@ export interface TextPositions {
 export interface TimelineEvent {
   date: string
   precision: 'day' | 'month' | 'year' | null
+  /** A range's end (D330); the event is filed under its start `date`. */
+  end?: string | null
+  end_precision?: 'day' | 'month' | 'year' | null
+  /** The date as the document printed it, when code or the model rewrote it (D329, D330). */
+  date_text?: string | null
+  /** The model, not the document's own wording, settled this date (D330). */
+  date_inferred?: boolean
   text: string
   entities: EntityRef[]
   sha: string | null
@@ -350,7 +382,12 @@ export interface EntityDetail extends EntityRow {
   timeline: TimelineEvent[]
   facts: EntityFact[]                  // every fact tagged to the entity, in date order (D280)
   synthesis: EntitySynthesis | null
+  /** Removed from the investigation (D326): hidden from the views until brought back. */
+  hidden?: { at: string | null; by: string | null } | null
 }
+
+/** An entity removed from the investigation (D326), as the Removed list shows it. */
+export interface HiddenEntity { id: string; name: string; type: EntityType | string; at: string | null; by: string | null; exists: boolean; doc_count: number }
 
 export interface GraphData {
   nodes: { id: string; name: string; type: string; doc_count: number }[]
@@ -400,7 +437,13 @@ export interface DocumentRequest {
   likely_source: string | null
   cited_in: { sha: string; filename: string; note: string | null }[]
   added: string | null
+  /** How many documents cite it, and the key of its likely source's group (D328). */
+  cite_count: number
+  source_key: string
 }
+
+/** Requests grouped by the holder their likely source names (D328); `key` is "" for no source. */
+export interface RequestGroup { key: string; label: string; count: number; documents: number }
 
 // ── ingest ───────────────────────────────────────────────────────────────────
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -447,7 +490,24 @@ export interface Preflight {
   sample: { unprepared: string[]; refusal: string } | null
   /** Which labelled key pays for each provider the run uses (#690, D290). */
   billing?: Billing[]
+  /** The investigation's spending limit (D324), or null when it has none. `warning` is set once
+   * it is reached: the run would stop before sending anything. Never a reason to skip the pause. */
+  spending_limit?: (SpendingStatus & { warning: string | null }) | null
 }
+
+/** An investigation's spending limit and the processing spend recorded since its last reset
+ * (D324). Recorded cost only: Claude subscription calls, Ask Claude and Research don't count. */
+export interface SpendingStatus {
+  limit_usd: number | null
+  reset_at: string | null
+  spent_usd: number
+  remaining_usd: number | null
+  reached: boolean
+}
+
+/** `spend.limit`: the status, how Claude is billed here (on the subscription the limit doesn't
+ * apply), and whether this is the sample investigation. */
+export interface SpendingLimitInfo extends SpendingStatus { claude_mode: string | null; sample: boolean }
 
 /** One provider's paying key for a run: its label, never the key (D290). `missing` means the
  *  investigation chose a key this computer doesn't have, and the run will stop before any call. */
@@ -498,6 +558,8 @@ export interface Estimate {
   text: string
   estimate: Record<string, unknown> | null
   all_models: { label: string; provider: string; cost_usd: number; note: string | null }[] | null
+  /** Set when the estimate's upper end would pass what is left under the spending limit (D324). */
+  spending_warning?: string | null
 }
 
 /** `contradictions.estimate`: what a contradiction re-check would send and cost (D287). */
@@ -572,8 +634,13 @@ export interface OpParams {
   watch: NoParams
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
+  'troubleshooting-copy': { output: string; originals?: boolean }
+  'diagnostics-report': { output: string }
   'merge-entities': { keep: string; merge: string }
+  'merge-entity-pairs': { keep: string[]; merge: string[] }
   'undo-merge': { id: string }
+  'hide-entities': { ids: string[] }
+  'unhide-entities': { ids: string[] }
   'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
   'recheck-contradictions': { ids?: string[]; all?: boolean }
   'rebuild-timeline': NoParams
@@ -594,6 +661,8 @@ export interface OpParams {
   'sample-create': { dir?: string; rebuild?: boolean }
 }
 export type OpName = keyof OpParams
+/** What a copy for troubleshooting would hold, before compression (D323). */
+export interface TroubleshootingSize { files: number; bytes: number; originals_files: number; originals_bytes: number }
 export interface OpParamSpec { type: 'str' | 'int' | 'bool' | 'float' | 'list[str]'; required: boolean; default: unknown; nullable: boolean }
 export interface OpSpec { params: Record<string, OpParamSpec>; vault: boolean; engine: 'add' | 'index' | null; kind: 'job' | 'action' }
 
@@ -655,7 +724,11 @@ export interface EverywhereResult {
 // ── review ───────────────────────────────────────────────────────────────────
 export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
 export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
-export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string }
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[]; entity?: string | null; related?: string[]; doc_count?: number; new?: boolean; document?: string }
+
+/** What `merge-entity-pairs` returns (D328): each pair merged, failed (with why) or already one. */
+export interface MergePairRow { keep: string; merge: string; keep_name: string; merge_name: string; error?: string }
+export interface MergePairsResult { merged: MergePairRow[]; failed: MergePairRow[]; skipped: MergePairRow[] }
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
@@ -861,6 +934,7 @@ export interface Methods {
   'vault.textPositions': [{ vault: string; sha: string; pages?: number[] }, TextPositions]
   'vault.entities': [{ vault: string }, EntityRow[]]
   'vault.entity': [{ vault: string; id: string }, EntityDetail]
+  'vault.hiddenEntities': [{ vault: string }, { items: HiddenEntity[] }]
   'vault.graph': [{ vault: string }, GraphData]
   'vault.relationshipSplit': [{ vault: string; group: string }, { group: string; status: string; by: string | null; at: string | null }]
   'vault.timeline': [{ vault: string }, { events: TimelineEvent[] }]
@@ -869,6 +943,8 @@ export interface Methods {
   'vault.resolveLink': [{ vault: string; target: string }, ResolvedLink]
   'vault.citations': [{ vault: string; links: string[] }, Record<string, CitationStatus>]
   'vault.checkCitations': [{ vault: string }, CitationReport]
+  'vault.troubleshootingSize': [{ vault: string }, TroubleshootingSize]
+  'vault.diagnosticsReport': [{ vault: string }, { text: string }]
   'vault.pipeline': [{ vault: string }, PipelineState]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]
@@ -876,7 +952,7 @@ export interface Methods {
   'vault.sessionPrimer': [{ vault: string }, { text: string; chars: number; budget: number }]
   'vault.currentState': [{ vault: string }, { text: string }]
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
-  'vault.requests': [{ vault: string }, { open: DocumentRequest[]; resolved_count: number }]
+  'vault.requests': [{ vault: string }, { open: DocumentRequest[]; groups: RequestGroup[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
 
   'history.file': [{ vault: string; path: string }, FileHistory]
@@ -909,8 +985,9 @@ export interface Methods {
   'search.everywhere': [{ query: string; top?: number }, EverywhereResult]
   'search.status': [{ vault: string }, { total: number; documents: number; notes: number }]
 
-  'review.items': [{ vault: string; kinds?: ReviewKind[] }, { items: ReviewItem[]; counts: Record<ReviewKind, number> }]
-  'review.resolve': [{ vault: string; rids: string[] }, { resolved: string[] }]
+  'review.items': [{ vault: string; kinds?: ReviewKind[]; since?: string | null }, { items: ReviewItem[]; counts: Record<ReviewKind, number>; start_here: StartHereItem[] }]
+  'review.opened': [{ vault: string }, { opened_at: string; previous: string | null }]
+  'review.resolve': [{ vault: string; rids: string[]; label?: 'review' | 'copies' | 'different' }, { resolved: string[] }]
   'review.unresolve': [{ vault: string; rids: string[] }, { unresolved: string[] }]
   'review.resolved': [{ vault: string }, { items: { rid: string; label: string; resolved_at: string; kind: string }[] }]
   'review.leads': [{ vault: string }, Record<string, unknown>]
@@ -933,6 +1010,9 @@ export interface Methods {
   'auth.setDefaultKey': [{ provider: string; id: string }, AuthStatus]
   'auth.investigationKeys': [{ vault: string }, InvestigationKeys]
   'auth.chooseKey': [{ vault: string; provider: string; id: string | null }, InvestigationKeys]
+  'spend.limit': [{ vault: string }, SpendingLimitInfo]
+  'spend.setLimit': [{ vault: string; usd: number | string | null }, SpendingLimitInfo]
+  'spend.reset': [{ vault: string }, SpendingLimitInfo]
   'auth.setBaseUrl': [{ provider: 'local' | 'openrouter'; url: string }, AuthStatus]
   'skills.list': [Record<string, never>, { skills: SkillInfo[]; user_dir: string }]
   'skills.read': [{ name: string }, { name: string; text: string }]

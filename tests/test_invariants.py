@@ -480,3 +480,63 @@ def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
     with pytest.raises(RpcError):
         chat.ChatManager().start(vault, "ask", None, "who")
     assert sent == []
+
+
+# ── I17: removing an entity hides it from views; it never changes a source's record (D326) ──
+
+def test_I17_removing_an_entity_changes_no_record_and_no_model_input(tmp_path):
+    """Removing an entity writes only its listing: every extraction, note, registry record and
+    timeline is byte-for-byte unchanged, and the synthesis and reconcile inputs still carry its
+    facts. Only the views leave it out."""
+    import json as _json
+    from watchdog.gui import vaultio
+    from watchdog.pipeline import hidden, reconcile, synthesis_bundle
+    from watchdog.pipeline.write_vault import run as wv_run
+    from tests.test_write_vault import make_extraction, make_vault
+    vault = make_vault(tmp_path)
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
+    wv_run(make_extraction(tmp_path), vault)
+    wv_run(make_extraction(tmp_path, {"document": {"sha256": "def456", "filename": "two.pdf"}}), vault)
+
+    def files():
+        return {p.relative_to(vault).as_posix(): p.read_bytes() for p in vault.rglob("*")
+                if p.is_file() and ".watchdog/history" not in p.as_posix()
+                and p.name not in (hidden.FILE, ".write-lock")}
+
+    def inputs():
+        return (_json.dumps(synthesis_bundle.build_bundle(vault, ["def456"]), sort_keys=True),
+                _json.dumps(reconcile.build_bundle(vault, ["def456"])["entities"], sort_keys=True))
+
+    before, before_inputs = files(), inputs()
+    hidden.run_hide(vault, ["alice-smith"], by="Test Reporter")
+    assert hidden.hidden_ids(vault) == {"alice-smith"}
+    assert files() == before
+    assert inputs() == before_inputs and "Smith is listed as director" in before_inputs[0]
+    assert "alice-smith" not in {r["id"] for r in vaultio.sorted_entity_rows(vault)}
+
+
+# ── I18: a report meant for public posting is built from an allowlist of aggregates (D331) ───
+
+def test_I18_the_diagnostics_report_holds_no_content(tmp_path):
+    """Strings planted in the registry, an extraction and the processing log, and a registry field
+    the report has never heard of, none reach the report."""
+    import json as _json
+    from watchdog.ops import diagnostics
+    from tests.test_write_vault import make_vault
+    vault = make_vault(tmp_path)
+    reg = vault / ".watchdog" / "registry"
+    (reg / "entities.json").write_text(_json.dumps({"e-1": {
+        "id": "e-1", "name": "Plant Zulu Ltd", "type": "organization", "aliases": ["Zulu Alias"],
+        "appears_in": ["a" * 64], "roles": [{"relationship": "owns the plant wharf", "basis": "stated"}],
+        "synthesis": {"summary": "plant summary"}, "later_field": "plant later field"}}))
+    (reg / "documents.json").write_text(_json.dumps({"a" * 64: {
+        "filename": "plant-ledger.pdf", "title": "Plant Ledger", "page_count": 3, "later_field": "plant later"}}))
+    (vault / ".watchdog" / "extracted").mkdir(parents=True, exist_ok=True)
+    (vault / ".watchdog" / "extracted" / f"{'a' * 64}.json").write_text(_json.dumps({"document": {"key_facts": [
+        {"fact": "plant fact", "quote": "plant quote", "basis": "stated", "date": "2020-01-01"}]}}))
+    (reg / "processing.log").write_text(
+        '[2026-01-01T00:00:00Z] WARN plant-ledger.pdf: quote "plant quote" missing on page 4 of Plant Zulu Ltd\n')
+    text = diagnostics.text(vault).lower()
+    assert "plant" not in text and "zulu" not in text
+    assert "documents" in text and "page 4" not in text
+

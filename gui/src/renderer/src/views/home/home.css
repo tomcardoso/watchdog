@@ -416,3 +416,52 @@
 .home-billing-label { font-weight: 560; font-size: var(--fs-sm); }
 .home-billing-row .select { width: 100%; }
 .home-billing-note { color: var(--text-3); font-size: var(--fs-xs); line-height: 1.45; }
+
+/* Start here and the two groups (D327) */
+.home-start {
+  padding: 16px 8px 8px;
+}
+.home-start .home-section-head h2 {
+  font-size: var(--fs-md);
+}
+.sh-new-ico {
+  width: 14px;
+  height: 14px;
+  vertical-align: -2px;
+  color: var(--accent-text);
+}
+.home-count {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  vertical-align: 1px;
+}
+.home-tidy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+  padding: 9px 12px;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.home-tidy:hover {
+  color: var(--text);
+}
+.home-tidy svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}

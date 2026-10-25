@@ -29,3 +29,21 @@ test('no finished export, or a result without a folder, shows nothing', () => {
   assert.equal(lastExportFolder({}, '/v'), null)
   assert.equal(lastExportFolder(job('a', { result: {} }), '/v/Harbour Files'), null)
 })
+
+test('another operation is asked for by name', () => {
+  const jobs = {
+    ...job('graph', { finished: '2026-10-11T12:00:00', result: { output: '/graph' } }),
+    ...job('copy', { op: 'troubleshooting-copy', finished: '2026-10-11T11:00:00', result: { output: '/out/copy.zip' } })
+  }
+  assert.equal(lastExportFolder(jobs, '/v/Harbour Files', 'troubleshooting-copy'), '/out/copy.zip')
+  assert.equal(lastExportFolder(jobs, '/v/Harbour Files'), '/graph')
+})
+
+test('a list of operations takes the latest finished one of any of them', () => {
+  const jobs = {
+    ...job('copy', { op: 'troubleshooting-copy', finished: '2026-10-11T11:00:00', result: { output: '/out/copy.zip' } }),
+    ...job('report', { op: 'diagnostics-report', finished: '2026-10-11T12:00:00', result: { output: '/out/report.md' } })
+  }
+  assert.equal(lastExportFolder(jobs, '/v/Harbour Files', ['troubleshooting-copy', 'diagnostics-report']), '/out/report.md')
+  assert.equal(lastExportFolder(jobs, '/v/Harbour Files', ['troubleshooting-copy']), '/out/copy.zip')
+})

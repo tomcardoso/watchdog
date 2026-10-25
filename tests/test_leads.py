@@ -97,7 +97,19 @@ def test_inferred_listed():
     i = data["inferred"][0]
     assert i["name"] == "Carol White"
     assert i["note_path"] == "entities/person/carol"
-    assert i["claims"] == ["Advisor → Alice Smith", "2020-01-01: Joined the board"]
+    # Carol's inferred timeline event is a document fact: Verification lists it, not Leads (D322).
+    assert i["claims"] == ["Advisor → Alice Smith"]
+
+
+def test_an_inferred_relationship_is_one_lead_not_one_per_end():
+    """The registry stores each relationship on both entities; the target's copy is the reverse
+    role (`is_reverse`), and only the forward one is listed (#755)."""
+    reg = _registry()
+    reg["alice"]["roles"].append(
+        {"relationship": "Advisor", "target_id": "carol", "target_name": "Carol White",
+         "source_sha256": "d5", "is_reverse": True, "basis": "inferred"})
+    data = leads.find_leads(reg)
+    assert [(i["id"], i["claims"]) for i in data["inferred"]] == [("carol", ["Advisor → Alice Smith"])]
 
 
 def test_inferred_excludes_stated_only_entities():
@@ -108,55 +120,23 @@ def test_inferred_excludes_stated_only_entities():
     assert "acme" not in ids
 
 
-# ── D215: figure_verify's deterministic signal is a lead too ─────────────────
+# ── D322: inferred facts and unverified figures are Verification's, not Leads' ───
 
-def test_derived_figure_makes_a_lead_without_any_inferred_marking():
-    """`basis: inferred` fires on 0.16% of facts, so the lead sweep saw almost no derivations.
-    A timeline event carrying `figures_unverified` now qualifies on its own."""
+def test_an_inferred_or_figure_flagged_event_alone_is_not_a_lead():
+    """Review → Verification lists these under "Worth checking", beside the fact's page."""
     reg = _registry()
     reg["bob"]["timeline_events"] = [
         {"date": "2021-04-30", "event": "Total claims were $360.3 million",
          "figures_unverified": ["360.3"]},
-    ]
-    data = leads.find_leads(reg)
-    bob = next(i for i in data["inferred"] if i["id"] == "bob")
-    assert bob["claims"] == [
-        "2021-04-30: Total claims were $360.3 million (figure 360.3 not found in the document)"
-    ]
-
-
-def test_derived_figure_lead_names_every_missing_figure():
-    reg = _registry()
-    reg["bob"]["timeline_events"] = [
-        {"date": "2021-04-30", "event": "Assets fell", "figures_unverified": ["17319", "73026"]},
-    ]
-    claims = leads.find_leads(reg)["inferred"]
-    bob = next(i for i in claims if i["id"] == "bob")
-    assert bob["claims"] == ["2021-04-30: Assets fell (figures 17319, 73026 not found in the document)"]
-
-
-def test_off_page_figure_alone_is_not_a_lead():
-    """`figures_off_page` means the number is real and printed, just not where the fact cited —
-    a citation problem, not a verify-the-arithmetic one. It must not inflate this list."""
-    reg = _registry()
-    reg["bob"]["timeline_events"] = [
-        {"date": "2021-04-30", "event": "Revenue was $193.4 million",
-         "figures_off_page": {"193.4": [7]}},
+        {"date": "2021-05-01", "event": "Moved offices", "basis": "inferred"},
     ]
     ids = {i["id"] for i in leads.find_leads(reg)["inferred"]}
     assert "bob" not in ids
 
 
-def test_derived_figure_lead_is_resolvable_like_any_other():
-    """It rides the existing per-entity `inferred` resolution id, so `watchdog resolve` still
-    clears it — a new lead class that couldn't be acknowledged would be a nuisance."""
-    reg = _registry()
-    reg["bob"]["timeline_events"] = [
-        {"date": "2021-04-30", "event": "Total claims", "figures_unverified": ["360.3"]},
-    ]
-    resolved = frozenset({leads.resolutions.lead_id("inferred", "bob")})
-    ids = {i["id"] for i in leads.find_leads(reg, resolved)["inferred"]}
-    assert "bob" not in ids
+def test_inferred_relationship_lead_is_resolvable():
+    resolved = frozenset({leads.resolutions.lead_id("inferred", "carol")})
+    assert leads.find_leads(_registry(), resolved)["inferred"] == []
 
 
 def test_total_and_empty():
@@ -198,6 +178,36 @@ def test_dangling_without_target_name_falls_back_to_id():
                             "source_sha256": "d1", "is_reverse": False}]}}
     data = leads.find_leads(reg)
     assert data["unprofiled"][0]["name"] == "ghost-123"
+    assert data["unprofiled"][0]["named"] is False
+
+
+def test_target_name_filled_with_its_own_id_counts_as_unnamed():
+    # write_vault fills a dangling target's name with its id; a role elsewhere that does carry a
+    # real name supplies it, whichever entity is read first.
+    reg = {"x": {"name": "X", "roles": [{"relationship": "Owner", "target_id": "a", "target_name": "a",
+                                          "source_sha256": "d1", "page": 4}]}}
+    (u,) = leads.find_leads(reg)["unprofiled"]
+    assert (u["name"], u["named"]) == ("a", False)
+    reg["y"] = {"name": "Y", "roles": [{"relationship": "Partner", "target_id": "a",
+                                         "target_name": "Anna Bianchi", "source_sha256": "d2"}]}
+    (u,) = leads.find_leads(reg)["unprofiled"]
+    assert (u["name"], u["named"]) == ("Anna Bianchi", True)
+
+
+def test_unprofiled_keeps_each_mention_and_its_documents():
+    (u,) = leads.find_leads(_registry())["unprofiled"]
+    assert u["docs"] == ["d1", "d2"]
+    assert u["mentions"] == [
+        {"by": "Alice Smith", "relationship": "Director", "sha": "d1", "page": None},
+        {"by": "Bob Jones", "relationship": "Owner", "sha": "d2", "page": None},
+    ]
+
+
+def test_a_repeated_mention_is_listed_once():
+    role = {"relationship": "Director", "target_id": "shell-co", "source_sha256": "d1", "page": 2}
+    reg = {"x": {"name": "X", "roles": [role, dict(role)]}}
+    (u,) = leads.find_leads(reg)["unprofiled"]
+    assert len(u["mentions"]) == 1 and u["doc_count"] == 1
 
 
 # ── write_leads ─────────────────────────────────────────────────────────────────
@@ -212,7 +222,7 @@ def test_write_leads_snapshot(tmp_path):
     assert "Mentioned often but unconnected" in body
     assert "Unresolved contradictions" in body
     assert "[[entities/company/acme|Acme Ltd]]" in body
-    assert "Inferred facts to verify" in body
+    assert "Inferred relationships to verify" in body
     assert "[[entities/person/carol|Carol White]]" in body
     assert "Advisor → Alice Smith" in body
 

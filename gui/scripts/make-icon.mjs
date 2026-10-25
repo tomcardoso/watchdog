@@ -1,7 +1,9 @@
 // Renders resources/icon.png (1024×1024): the Jack Russell mark (also in src/renderer/src/components/
-// Logo.tsx, docs/images/logo.svg and site/src/favicon.svg) on a white tile. The dog is placed by eye,
-// not by its bounding box, which the tail and nose pull off centre. electron-builder derives the
-// .icns/.ico.
+// Logo.tsx, docs/images/logo.svg and site/src/favicon.svg) on a white tile. The dog fills about 82%
+// of the tile's height, so it reads at Dock size. It is centred optically, not by its bounding box,
+// which the tail and nose pull off centre: dog point (118, 105) sits at the tile's centre, which
+// leaves the dog left of the box's centre on purpose.
+// electron-builder derives the .icns/.ico.
 import { chromium } from '@playwright/test'
 import { resolve } from 'node:path'
 
@@ -14,7 +16,7 @@ const svg = `
   </defs>
   <rect x="100" y="100" width="824" height="824" rx="190" fill="url(#bg)"/>
   <rect x="101.5" y="101.5" width="821" height="821" rx="188.5" fill="none" stroke="#141416" stroke-opacity="0.12" stroke-width="3"/>
-  <g transform="translate(100 100) scale(4.12) translate(-18 -5)">
+  <g transform="translate(-66.2 -2.5) scale(4.9)">
     <path d="M68 158 C57 154 48 145 44 131 C43 126 49 124 51 129 C55 140 63 146 71 148 Z" fill="#ffffff" stroke="#141416" stroke-width="4" stroke-linejoin="round"/>
     <path d="M126 38 C138 36 146 42 148 48 L168 54 C174 56 174 63 168 65 L152 70 C148 76 144 80 142 86 C150 98 152 110 150 124 C148 138 148 152 148 166 L160 167 C163 169 162 173 159 173 L136 173 C134 160 134 148 132 140 C124 148 116 156 114 166 L126 167 C129 169 128 173 125 173 L84 173 C70 173 64 162 68 148 C72 130 80 116 90 104 C100 92 106 80 110 64 C112 50 116 40 126 38 Z" fill="#ffffff"/>
     <clipPath id="body"><path d="M126 38 C138 36 146 42 148 48 L168 54 C174 56 174 63 168 65 L152 70 C148 76 144 80 142 86 C150 98 152 110 150 124 C148 138 148 152 148 166 L160 167 C163 169 162 173 159 173 L136 173 C134 160 134 148 132 140 C124 148 116 156 114 166 L126 167 C129 169 128 173 125 173 L84 173 C70 173 64 162 68 148 C72 130 80 116 90 104 C100 92 106 80 110 64 C112 50 116 40 126 38 Z"/></clipPath>

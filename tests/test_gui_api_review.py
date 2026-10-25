@@ -20,10 +20,12 @@ GHOST = "lead:unprofiled:ghost-ltd"
 
 def test_items_match_the_terminal_review(rich_vault):
     r = call("review.items", vault=V(rich_vault))
+    # Without `since`, nothing is new (D327); otherwise the items are the library's.
+    assert [i.pop("new") for i in r["items"]] == [False] * len(r["items"])
     assert r["items"] == open_items(rich_vault)
     assert r["counts"] == {"contradictions": 1, "leads": 2, "alerts": 1, "duplicates": 1, "merges": 0}
     first = r["items"][0]
-    assert set(first) == {"kind", "rid", "title", "detail", "note"}
+    assert set(first) == {"kind", "rid", "title", "detail", "note", "entity", "doc_count"}
     assert first["title"] == "Jane Doe — Start date of Jane Doe's directorship"
     assert first["note"] == "entities/person/jane-doe"
     json.dumps(r)
@@ -38,7 +40,8 @@ def test_items_can_be_filtered_by_kind(rich_vault):
 
 def test_items_on_an_empty_vault(tmp_path):
     r = call("review.items", vault=V(make_vault(tmp_path)))
-    assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0}}
+    assert r == {"items": [], "counts": {"contradictions": 0, "leads": 0, "alerts": 0, "duplicates": 0, "merges": 0},
+                 "start_here": []}
 
 
 def test_resolve_writes_the_store_and_leaves_the_briefing_alone(rich_vault):

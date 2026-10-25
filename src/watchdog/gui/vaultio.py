@@ -417,10 +417,18 @@ def _str_or_none(v: Any) -> str | None:
     return v if isinstance(v, str) else str(v)
 
 
-def document_row(vault: Path, sha: str, rec: dict) -> dict:
-    """The app's `DocumentRow` for one `documents.json` record."""
+def document_row(vault: Path, sha: str, rec: dict, verdicts: dict[str, str] | None = None) -> dict:
+    """The app's `DocumentRow` for one `documents.json` record. `verdicts` is
+    `review.duplicate_verdicts` (read here when not given): a possible duplicate the reporter
+    called different documents is no longer flagged, one they called copies says so (D328)."""
     original, fulltext = document_paths(vault, rec)
     fields = _doc_text_fields(vault, sha, rec)
+    verdict = None
+    if rec.get("near_duplicate_of"):
+        if verdicts is None:
+            from watchdog.review import duplicate_verdicts
+            verdicts = duplicate_verdicts(vault)
+        verdict = verdicts.get(sha[:12])
     return {
         "sha": sha,
         "filename": rec.get("filename") or sha[:12],
@@ -430,7 +438,8 @@ def document_row(vault: Path, sha: str, rec: dict) -> dict:
         "page_count": rec.get("page_count") if isinstance(rec.get("page_count"), int) else None,
         "record_skill": _str_or_none(rec.get("record_skill")),
         "ingested_at": _str_or_none(rec.get("ingested_at")),
-        "near_duplicate_of": _str_or_none(wikilink_text(rec.get("near_duplicate_of"))),
+        "near_duplicate_of": None if verdict == "different" else _str_or_none(wikilink_text(rec.get("near_duplicate_of"))),
+        "duplicate_verdict": verdict if verdict == "copies" else None,
         "note": doc_note_stem(rec),
         "original": original,
         "fulltext": fulltext,
@@ -482,7 +491,9 @@ def sorted_document_rows(vault: Path, docs: dict | None = None, limit: int | Non
     items.sort(key=lambda kv: kv[1].get("ingested_at") or "", reverse=True)
     if limit is not None:
         items = items[:limit]
-    return [document_row(vault, sha, rec) for sha, rec in items]
+    from watchdog.review import duplicate_verdicts
+    verdicts = duplicate_verdicts(vault)
+    return [document_row(vault, sha, rec, verdicts) for sha, rec in items]
 
 
 def unresolved_contradictions(ent: dict, resolved: frozenset[str]) -> list[str]:
@@ -520,11 +531,20 @@ def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> di
     }
 
 
+def visible_entities(vault: Path, ents: dict) -> dict:
+    """`ents` without the entities removed from the investigation (D326): what the app's views
+    and counts show."""
+    from watchdog.pipeline import hidden
+    gone = hidden.hidden_ids(vault)
+    return {k: e for k, e in ents.items() if k not in gone} if gone else ents
+
+
 def sorted_entity_rows(vault: Path, ents: dict | None = None, limit: int | None = None) -> list[dict]:
     """Entities with the most documents first, then by name — sorted on registry fields before
-    any row is built, so `limit` only reads the notes it returns."""
+    any row is built, so `limit` only reads the notes it returns. An entity removed from the
+    investigation (D326) is left out."""
     from watchdog.pipeline import resolutions
-    ents = load_entities(vault) if ents is None else ents
+    ents = visible_entities(vault, load_entities(vault) if ents is None else ents)
     resolved = resolutions.resolved_ids(vault)
     items = [(eid, e) for eid, e in ents.items() if isinstance(e, dict)]
     items.sort(key=lambda kv: (-len(kv[1].get("appears_in") or []), (kv[1].get("name") or kv[0]).lower()))
@@ -569,12 +589,13 @@ def raw_timeline_events(vault: Path, docs: dict) -> list[dict]:
             return False
 
     committed = {sha for sha in docs if not re_extracted(sha)}
-    seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
+    seen = {(e.get("date"), e.get("date_end") or "", e.get("event"), e.get("source_sha256"))
+            for e in events}
     for rf in sorted(td.glob("*_*.ndjson")):
         for ev in _ndjson(rf):
             if ev.get("source_sha256") not in committed:
                 continue
-            key = (ev.get("date"), ev.get("event"), ev.get("source_sha256"))
+            key = (ev.get("date"), ev.get("date_end") or "", ev.get("event"), ev.get("source_sha256"))
             if key not in seen:
                 seen.add(key)
                 events.append(ev)
@@ -588,10 +609,16 @@ def timeline_event(ev: dict, docs: dict, ents: dict, index=None) -> dict:
     sha = ev.get("source_sha256") or None
     rec = docs.get(sha) if sha else None
     date = (ev.get("date") or "").strip()
+    end = (ev.get("date_end") or "").strip() if isinstance(ev.get("date_end"), str) else ""
     page = ev.get("page")
     return {
         "date": date,
         "precision": precision(date),
+        # A range's end (D330), the date as printed, and whether the model settled it.
+        "end": end if end and precision(end) else None,
+        "end_precision": precision(end) if end else None,
+        "date_text": (ev.get("date_text") or "").strip() or None,
+        "date_inferred": ev.get("date_basis") == "inferred",
         "text": ev.get("event") or "",
         "entities": [entity_ref(ents, eid) for eid in (ev.get("entity_ids") or []) if eid],
         "sha": sha,

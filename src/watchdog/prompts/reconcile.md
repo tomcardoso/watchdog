@@ -23,6 +23,16 @@ Do NOT merge when the names merely resemble each other:
 
 When in doubt, do not merge. A missed merge leaves two notes a journalist can join by hand; a wrong merge silently fuses two people's records and is far harder to notice or undo.
 
+### Same-name groups
+
+SAME-NAME GROUPS lists sets of records that carry the very same name and type, each record taken from different documents. A group's `members` are numbered from 0; each carries the `names`, `facts`, `roles` and document count its documents record, and a member with `records` is several records already known to be one thing. A short or common name ("Northgate", "Port Services", "John Smith") often names several different things, so the same name alone is never enough: merge members only when their facts show one real-world thing, and treat a fact flagged "disputed by the reporter" as weak evidence that cannot justify a merge on its own.
+
+Return one entry in `groups` for every group, naming it by its `index`:
+- `same` — each set of two or more members that are one thing, with `keep` (the member whose record should survive: the one with the most documents, unless another's name is more complete) and a one-clause `reason`. A member appears in at most one set. Leave a member out of every set when nothing shows it is the same as another; it stays a record of its own.
+- `unsure` — sets of members, each from a different `same` set or in none, that might be one thing but whose facts neither show it nor rule it out. Each becomes a "possible same" item for the reporter to check. Leave out members whose facts show they are different things. A member appears in at most one `unsure` set.
+
+Return the entry even when nothing in the group is the same thing (`same` and `unsure` empty). An answer with a member number outside the group, or a member in two sets, is discarded whole.
+
 ## Job 2 — Contradiction detection
 
 ENTITIES lists each recurring entity with the facts recorded about it, taken from the source documents themselves. `new_facts` are the facts from the documents just added; `stored_facts` are the facts from every earlier document. Each group is filed under the `[[documents/<slug>|<title>]]` heading of the document it comes from, and each fact carries a short id in square brackets, its page, any warning, and, where one was found, the source passage it rests on. Two documents can disagree about the same entity — a date, a figure, an ownership share, a role, a status.

@@ -11,6 +11,7 @@ import {
   FolderOpen,
   Gauge,
   Hammer,
+  LifeBuoy,
   Link2,
   Network,
   Play,
@@ -25,14 +26,14 @@ import {
 import { LucideIcon } from 'lucide-react'
 import { ReactNode, useState } from 'react'
 import type { CitationReport, Effort, Estimate, OpName, OpParams, RunOptions } from '@shared/api'
-import { Badge, Button, Field, Segmented, Switch } from '@renderer/components/ui'
+import { Badge, Button, Callout, Field, Modal, Segmented, Skeleton, Switch } from '@renderer/components/ui'
 import { ModelPicker } from '@renderer/components/ModelPicker'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { runAction, startJob } from '@renderer/lib/jobs'
 import { lastExportFolder } from '@renderer/lib/exportFolder'
 import { useEngineGate } from '@renderer/lib/engine'
 import { EngineWait } from '@renderer/components/EngineWait'
-import { fmtCost, plural } from '@renderer/lib/format'
+import { fmtBytes, fmtCost, plural } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import { usePublicRecordsGate } from './PublicRecordsGate'
 import RecheckModal from '../entities/RecheckModal'
@@ -439,6 +440,134 @@ function ExportCard() {
   )
 }
 
+// A copy of the investigation for troubleshooting (D323), or a report of counts alone that is safe
+// to post publicly (D331). The report is shown in full before anything is saved; the size of the
+// full copy is read from the files before anything is written.
+type CopyKind = 'diagnostics' | 'full'
+
+function TroubleshootingModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const vault = useApp((s) => s.project!.path)
+  const [kind, setKind] = useState<CopyKind>('diagnostics')
+  const [originals, setOriginals] = useState(false)
+  const q = useRpc('vault.troubleshootingSize', open && kind === 'full' ? { vault } : null)
+  const report = useRpc('vault.diagnosticsReport', open && kind === 'diagnostics' ? { vault } : null)
+  const s = q.data
+  const bytes = s ? s.bytes + (originals ? s.originals_bytes : 0) : null
+  const files = s ? s.files + (originals ? s.originals_files : 0) : null
+  const ready = kind === 'diagnostics' ? !!report.data : !!s
+  const choose = async () => {
+    const out = await window.watchdog.dialog.openFolder({
+      title: kind === 'diagnostics' ? 'Save the diagnostics report in…' : 'Save the copy for troubleshooting in…',
+      grant: 'export destination'
+    })
+    if (!out) return
+    onClose()
+    if (kind === 'diagnostics') await launch('diagnostics-report', { output: out }, 'Diagnostics report')
+    else await launch('troubleshooting-copy', { output: out, originals }, 'Copy for troubleshooting')
+  }
+  return (
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={
+        <span className="row" style={{ gap: 8 }}>
+          <LifeBuoy style={{ width: 18, height: 18, color: 'var(--accent)' }} />
+          Export a copy for troubleshooting
+        </span>
+      }
+      sub={kind === 'diagnostics' ? 'One text file of counts, safe to post with a report of a problem.' : 'One zip file, to send privately with a report of a problem.'}
+      footer={
+        <>
+          <Button autoFocus onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="primary" icon={FolderOpen} disabled={!ready} onClick={() => void choose()}>
+            Choose folder and export
+          </Button>
+        </>
+      }
+    >
+      <div className="col" style={{ gap: 14 }}>
+        <Segmented
+          value={kind}
+          onChange={setKind}
+          options={[
+            { value: 'diagnostics', label: 'Diagnostics only (safe to share)' },
+            { value: 'full', label: 'Full copy (private)' }
+          ]}
+        />
+        {kind === 'diagnostics' ? (
+          <>
+            <p className="muted" style={{ margin: 0 }}>
+              A report of counts and shapes: how many documents of each file type, how many facts, Review items and merges, which kinds of warning the processing log holds, and the models, calls, tokens and cost of each run. It never holds a file name, title, name, quote, fact, figure, identifier, date or summary, and no model is used.
+            </p>
+            <Callout tone="warning" title="Read it before you post it">
+              Even counts can hint at things, such as the languages or kinds of documents you work with. This is the whole report; nothing else is saved.
+            </Callout>
+            {report.isError && <Callout tone="danger" title="Could not build the report">{errorMessage(report.error)}</Callout>}
+            {!report.data && !report.isError && <Skeleton w="50%" />}
+            {report.data && (
+              <div className="act-estimate" style={{ maxHeight: 320, overflow: 'auto' }}>
+                <pre>{report.data.text}</pre>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="muted" style={{ margin: 0 }}>
+              The copy holds what Watchdog recorded about this investigation: its records of documents and entities, each document’s extraction, the processing history and usage, the briefings, the entity and document notes, and a note of the Watchdog version, this computer’s operating system and your settings. It never holds your keys or sign-ins, your conversations with Claude, or earlier versions of files.
+            </p>
+            <Callout tone="warning" title="This is still investigation material">
+              Even without the original documents, the notes and extractions quote them, name the people and organizations in them and record what you found. Send the copy only to someone you would show the documents to, and do not post it publicly.
+            </Callout>
+            <Row label="Include the original documents" hint="The files themselves and the text read from them. Needed to reproduce a problem with reading a document, but much larger and more sensitive.">
+              <Switch checked={originals} onChange={setOriginals} label="Include originals" />
+            </Row>
+            {q.isError && <Callout tone="danger" title="Could not work out the size">{errorMessage(q.error)}</Callout>}
+            {!s && !q.isError && <Skeleton w="50%" />}
+            {s && bytes !== null && files !== null && (
+              <div>
+                About {fmtBytes(bytes)} in {plural(files, 'file')}, before compression.
+                {!originals && s.originals_files > 0 && <span className="faint"> The originals would add {fmtBytes(s.originals_bytes)}.</span>}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
+function TroubleshootingCard() {
+  const project = useApp((s) => s.project!)
+  const jobs = useApp((s) => s.jobs)
+  const [open, setOpen] = useState(false)
+  const zip = lastExportFolder(jobs, project.path, ['troubleshooting-copy', 'diagnostics-report'])
+  return (
+    <>
+      <MCard
+        icon={LifeBuoy}
+        title="Export a copy for troubleshooting"
+        footer={
+          <div className="row wrap" style={{ gap: 8 }}>
+            <Button icon={Play} size="sm" onClick={() => setOpen(true)}>
+              Export a copy…
+            </Button>
+            {zip && (
+              <Button size="sm" variant="ghost" icon={Download} onClick={() => window.watchdog.shell.showItemInFolder(zip)}>
+                Show in folder
+              </Button>
+            )}
+          </div>
+        }
+      >
+        Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog’s records and notes for this investigation, to send privately. No model is used.
+      </MCard>
+      <TroubleshootingModal open={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
 /** The cards that need the full engine: every control inside is disabled until setup has
  * finished (D272). `display: contents` keeps the grid layout untouched. */
 // Every fact citation in saved answers, threads, briefings and the current-state page, checked
@@ -555,7 +684,7 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={Telescope}
           title="Lead sweep"
-          text="Runs the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and facts that still need verifying. Step through them in Review."
+          text="Runs the full lead sweep, a deterministic pass over the entity graph with no model call: entities named but never profiled, recurring entities with no relationships, entities carrying unresolved contradictions, and relationships the model inferred. Step through them in Review."
           label="Run lead sweep"
           onRun={() => launch('lead-sweep', {}, 'Lead sweep')}
         />
@@ -598,6 +727,7 @@ export default function MaintenancePanel() {
           Tokens, cost and timing for each processing run, by stage. It only reads recorded files, so it is free to look.
         </MCard>
         <ExportCard />
+        <TroubleshootingCard />
         <SimpleCard
           icon={BookOpen}
           title="Refresh Claude setup"

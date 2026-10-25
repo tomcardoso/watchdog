@@ -7,10 +7,14 @@ import { DisputedBadge } from '@renderer/components/FactCheck'
 import { Button, Dropdown, Empty, ErrorNote, Modal, Skeleton, useDebounced } from '@renderer/components/ui'
 import { ENTITY_TYPES, TimelineEvent } from '@shared/api'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
+import { spanLabel } from '@renderer/lib/dateSpan'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { startJob } from '@renderer/lib/jobs'
 import { errorMessage, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
+// The source links share `.ent-src` with the entity page; without this the Timeline opened
+// first in a session showed them unstyled.
+import '../entities/entities.css'
 import './timeline.css'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
@@ -280,12 +284,14 @@ export default function TimelineView() {
 function EventRow({ ev }: { ev: TimelineEvent }) {
   const p = precisionOf(ev)
   const first = ev.entities[0]
-  const when = p === 'day' ? fmtDate(ev.date).replace(/,?\s*\d{4}$/, '') : p === 'month' ? MONTHS[monthOf(ev.date) - 1]?.slice(0, 3) ?? fmtDate(ev.date) : yearOf(ev.date) || ev.date
+  const when = ev.end ? spanLabel(ev.date, ev.end) : p === 'day' ? fmtDate(ev.date).replace(/,?\s*\d{4}$/, '') : p === 'month' ? MONTHS[monthOf(ev.date) - 1]?.slice(0, 3) ?? fmtDate(ev.date) : yearOf(ev.date) || ev.date
+  const note = ev.end ? 'range' : p === 'month' ? 'month only' : p === 'year' ? 'year only' : null
   return (
     <>
       <div className="tl-date">
         {when}
-        {p !== 'day' && <small>{p === 'month' ? 'month only' : 'year only'}</small>}
+        {note && <small>{note}</small>}
+        {ev.date_inferred && <small title={ev.date_text ? `Printed as “${ev.date_text}”` : undefined}>date inferred</small>}
       </div>
       <div className="tl-dot" style={{ '--dot': first ? typeMeta(first.type).color : 'var(--text-3)' } as CSSProperties} />
       <div className="tl-card">

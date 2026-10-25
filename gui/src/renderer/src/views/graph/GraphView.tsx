@@ -1,4 +1,4 @@
-import { ArrowLeft, ArrowLeftRight, ArrowRight, FileText, Maximize, Minus, Network, Plus, Search, Split, X } from 'lucide-react'
+import { ArrowLeft, ArrowLeftRight, ArrowRight, EyeOff, FileText, Maximize, Minus, Network, Plus, Search, Split, X } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityAvatar } from '@renderer/components/EntityChip'
 import { plainText } from '@renderer/components/Markdown'
@@ -9,6 +9,7 @@ import { fmtNum, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { GraphEngine, RawEdge, RawNode } from './engine'
+import RemoveModal from '../entities/RemoveModal'
 import '../entities/entities.css'
 import './graph.css'
 
@@ -273,6 +274,7 @@ function SideCard({ id, edges, byId, summary, aliases, onPick, onClose }: { id: 
   }, [edges, id, byId])
   const nRels = rels.reduce((n, r) => n + r.items.length, 0)
   const sum = plainText(summary, 260)
+  const [removeOpen, setRemoveOpen] = useState(false)
   return (
     <div className="gr-panel gr-card" style={{ '--chip-color': m.color } as CSSProperties}>
       <div className="gr-card-head">
@@ -310,7 +312,9 @@ function SideCard({ id, edges, byId, summary, aliases, onPick, onClose }: { id: 
           Open entity
         </Button>
         <Button onClick={() => navigate({ view: 'timeline', entity: id })}>Timeline</Button>
+        <Button icon={EyeOff} tip="Remove from investigation…" onClick={() => setRemoveOpen(true)} />
       </div>
+      <RemoveModal open={removeOpen} onClose={() => setRemoveOpen(false)} entities={[{ id, name: n.name }]} onDone={onClose} />
     </div>
   )
 }

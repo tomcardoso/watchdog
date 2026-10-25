@@ -109,7 +109,7 @@ class SessionTools:
 
     def leads(self) -> str:
         """Entities named but never profiled, recurring but unconnected, with open contradictions,
-        or with inferred facts to verify. No model call."""
+        or with inferred relationships to verify. No model call."""
         from watchdog.pipeline import leads as _leads
         data = _leads.scan(self._require_vault())
         for c in data.get("contradictions") or []:
@@ -229,7 +229,7 @@ SCHEMAS: dict[str, tuple[str, dict]] = {
     "leads": (
         "The lead sweep over the entity graph, with no model call: entities named but never profiled, "
         "entities in many documents with no relationships, entities with open contradictions, and "
-        "inferred facts to verify. Returns JSON.",
+        "inferred relationships to verify. Returns JSON.",
         {"type": "object", "properties": {}, "additionalProperties": False}),
     "check_citations": (
         "Check the fact citations on saved pages against the stored facts. Changes nothing. Returns "

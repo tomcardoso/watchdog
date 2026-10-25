@@ -15,6 +15,7 @@ export const STAGE_LABELS: Record<string, string> = {
   dig: 'Processing (model extraction)',
   fold: 'Merging exact duplicates',
   reconcile: 'Reconciling entities',
+  dates: 'Reading dates',
   commit: 'Writing to the vault',
   contradictions: 'Flagging contradictions',
   relationships: 'Grouping relationship wordings',

@@ -74,11 +74,18 @@ def _briefing_date(name: str, path: Path) -> str | None:
 @method("vault.summary")
 def summary(vault: str) -> dict:
     from watchdog import overview as home
+    from watchdog import triage
 
     v = require_vault(vault)
     s = home.summary(v)
     docs, ents = vaultio.load_documents(v), vaultio.load_entities(v)
     latest = s["briefing"]
+    verified = _verification_summary(v, docs)
+    from watchdog.review import open_items
+    review_items = open_items(v, triage.REVIEW_KINDS)
+    open_now = triage.ids_by_kind(review_items)
+    batch_added = triage.batch_delta(v, latest)
+    since = triage.new_since(v, triage.last_opened(v), open_now)
     briefing = None
     if latest is not None:
         briefing = {"path": f"briefings/{latest.name}", "name": latest.stem,
@@ -93,6 +100,7 @@ def summary(vault: str) -> dict:
         "near_duplicates": s["near_duplicates"],
         "possible_same": s["possible_same"],
         "alerts": s["alerts"],
+        "requests": s["requests"],
         "incoming": s["incoming"],
         "awaiting_dig": s["awaiting_dig"],
         "awaiting_bark": s["awaiting_bark"],
@@ -103,15 +111,28 @@ def summary(vault: str) -> dict:
         "has_work": bool(home.has_work(s)),
         "totals": {
             "documents": len(docs),
-            "entities": len(ents),
+            "entities": len(vaultio.visible_entities(v, ents)),
             "pages": sum(d.get("page_count") or 0 for d in docs.values()
                          if isinstance(d, dict) and isinstance(d.get("page_count"), int)),
             "events": len(vaultio.raw_timeline_events(v, docs)),
         },
         "recent_documents": vaultio.sorted_document_rows(v, docs, limit=8),
         "top_entities": vaultio.sorted_entity_rows(v, ents, limit=8),
-        "verification": _verification_summary(v, docs),
+        "verification": verified,
+        "hidden_entities": len(hidden_ids_in(v, ents)),
+        # Start here, the two groups and what is new (D327).
+        **triage.groups({**s, "disputed": verified.get("disputed") or 0}),
+        "start_here": triage.start_here(v, [i for i in review_items if i["kind"] in triage.JUDGEMENT]),
+        "batch": batch_added,
+        "since_review": since,
+        "summary_line": triage.summary_line(batch_added, since),
     }
+
+
+def hidden_ids_in(v: Path, ents: dict) -> set[str]:
+    """The removed entities (D326) that still have a record."""
+    from watchdog.pipeline import hidden
+    return {i for i in hidden.hidden_ids(v) if i in ents}
 
 
 def _verification_summary(v: Path, docs: dict) -> dict:
@@ -183,9 +204,10 @@ def _doc_entities(sha: str, rec: dict, ents: dict) -> list[dict]:
     return out
 
 
-def _duplicates(sha: str, rec: dict, docs: dict) -> list[dict]:
+def _duplicates(sha: str, rec: dict, docs: dict, verdicts: dict[str, str]) -> list[dict]:
     """Documents this one nearly duplicates, in either direction. A document's
-    `near_duplicate_of` is a link to the earlier document's note (or just a filename)."""
+    `near_duplicate_of` is a link to the earlier document's note (or just a filename). A match
+    the reporter called different documents is left out (D328)."""
     mine = vaultio.doc_note_stem(rec)
     found: dict[str, dict] = {}
 
@@ -193,7 +215,7 @@ def _duplicates(sha: str, rec: dict, docs: dict) -> list[dict]:
         found.setdefault(other_sha, {"sha": other_sha, "filename": other.get("filename") or other_sha[:12],
                                      "note": vaultio.doc_note_stem(other)})
 
-    link = rec.get("near_duplicate_of")
+    link = rec.get("near_duplicate_of") if verdicts.get(sha[:12]) != "different" else None
     target = vaultio.wikilink_target(link) if link else None
     for other_sha, other in docs.items():
         if other_sha == sha or not isinstance(other, dict):
@@ -204,7 +226,7 @@ def _duplicates(sha: str, rec: dict, docs: dict) -> list[dict]:
             elif not target and other.get("filename") == link:
                 add(other_sha, other)
         other_target = vaultio.wikilink_target(other.get("near_duplicate_of"))
-        if mine and other_target == mine:
+        if mine and other_target == mine and verdicts.get(other_sha[:12]) != "different":
             add(other_sha, other)
     return list(found.values())
 
@@ -228,7 +250,9 @@ def document(vault: str, sha: str) -> dict:
     docs, ents = vaultio.load_documents(v), vaultio.load_entities(v)
     full = vaultio.resolve_sha(docs, sha)
     rec = docs[full]
-    row = vaultio.document_row(v, full, rec)
+    from watchdog.review import duplicate_verdicts
+    verdicts = duplicate_verdicts(v)
+    row = vaultio.document_row(v, full, rec, verdicts)
     parsed = vaultio.parse_note_file(vaultio.note_file(v, rec.get("document_note")) or Path("/nonexistent"))
     extraction = vaultio.extracted(v, full)
     ex_doc = extraction.get("document") if isinstance(extraction.get("document"), dict) else {}
@@ -257,7 +281,7 @@ def document(vault: str, sha: str) -> dict:
         "extract_model": rec.get("extract_model") or None,
         "extract_effort": rec.get("extract_effort") or None,
         "record_skill_hash": rec.get("record_skill_hash") or None,
-        "duplicates": _duplicates(full, rec, docs),
+        "duplicates": _duplicates(full, rec, docs, verdicts),
         "positions_pages": text_positions.available_pages(v, full),
     }
 
@@ -336,7 +360,9 @@ def _entity_timeline(v: Path, eid: str, ent: dict, docs: dict, ents: dict) -> li
             continue
         events.append(vaultio.timeline_event(
             {"date": ev.get("date"), "event": ev["event"], "page": ev.get("page"),
-             "source_sha256": ev.get("source_sha256"), "entity_ids": [eid]}, docs, ents, index))
+             "source_sha256": ev.get("source_sha256"), "entity_ids": [eid],
+             **{k: ev[k] for k in ("date_end", "date_text", "date_basis") if ev.get(k)}},
+            docs, ents, index))
         events[-1]["entities"] = [me]
     events.sort(key=lambda e: vaultio.date_sort_key(e["date"]))
     return events
@@ -406,7 +432,35 @@ def entity(vault: str, id: str) -> dict:
         "role_count": len(rels),
         "contradictions": _contradictions(ent, sections.get("contradictions"), resolved),
         "timeline": _entity_timeline(v, id, ent, docs, ents),
+        "hidden": _hidden_record(v, id),
     }
+
+
+def _hidden_record(v: Path, eid: str) -> dict | None:
+    from watchdog.pipeline import hidden
+    rec = hidden.records(v).get(eid)
+    return None if rec is None else {"at": rec.get("at") or None, "by": rec.get("by") or None}
+
+
+@method("vault.hiddenEntities")
+def hidden_entities(vault: str) -> dict:
+    """The entities removed from the investigation (D326), most recently removed first, each with
+    the name and type it had then and whether its record still exists."""
+    from watchdog.pipeline import hidden
+
+    v = require_vault(vault)
+    ents = vaultio.load_entities(v)
+    out = []
+    for eid, rec in hidden.records(v).items():
+        ent = ents.get(eid) if isinstance(ents.get(eid), dict) else None
+        out.append({"id": eid, "name": (ent or {}).get("name") or rec.get("name") or eid,
+                    "type": vaultio.entity_type((ent or {}).get("type") or rec.get("type")),
+                    "at": rec.get("at") or None, "by": rec.get("by") or None,
+                    "exists": ent is not None,
+                    "doc_count": len((ent or {}).get("appears_in") or [])})
+    out.sort(key=lambda r: r["name"].lower())
+    out.sort(key=lambda r: r["at"] or "", reverse=True)
+    return {"items": out}
 
 
 # ── graph and timeline ───────────────────────────────────────────────────────────
@@ -428,13 +482,17 @@ def graph(vault: str) -> dict:
 
     v = require_vault(vault)
     docs = vaultio.load_documents(v)
-    ents = {k: e for k, e in vaultio.load_entities(v).items() if isinstance(e, dict)}
+    # An entity removed from the investigation (D326) is not drawn, nor any line to it.
+    ents = {k: e for k, e in vaultio.visible_entities(v, vaultio.load_entities(v)).items()
+            if isinstance(e, dict)}
     nodes = [{"id": eid, "name": e.get("name") or eid, "type": vaultio.entity_type(e.get("type")),
               "doc_count": len(e.get("appears_in") or [])} for eid, e in ents.items()]
     nodes.sort(key=lambda n: (-n["doc_count"], n["name"].lower()))
     view = relationships.View(v)
     edges, cited = [], set()
     for e in view.edges():
+        if e["a"] not in ents or e["b"] not in ents:
+            continue
         rels = [{"from": r["from"], "to": r["to"], "label": r["label"], "group": r["group"],
                  "docs": r["docs"], "basis": r["basis"], "date_ranges": r["date_ranges"],
                  "wordings": _wordings(r)} for r in e["relationships"]]
@@ -635,6 +693,22 @@ def check_citations(vault: str) -> dict:
     stored facts (what a session's `check_citations` tool reports). Changes nothing."""
     from watchdog.pipeline import citations
     return citations.check_vault(require_vault(vault))
+
+
+@method("vault.diagnosticsReport")
+def diagnostics_report(vault: str) -> dict:
+    """The content-free diagnostics report as Markdown, to show in full before it is saved
+    (D331). Built from counts only, by `ops.diagnostics`."""
+    from watchdog.ops import diagnostics
+    return {"text": diagnostics.text(require_vault(vault))}
+
+
+@method("vault.troubleshootingSize")
+def troubleshooting_size(vault: str) -> dict:
+    """How much a copy for troubleshooting would hold, without and with the originals, before
+    compression (D323). Reads file sizes only."""
+    from watchdog.ops import troubleshoot
+    return troubleshoot.sizes(require_vault(vault))
 
 
 @method("vault.resolveLink")
@@ -928,10 +1002,13 @@ def write_file(vault: str, path: str, text: str) -> dict:
 
 @method("vault.requests")
 def requests_(vault: str) -> dict:
+    """The open document requests, most-cited first, each with its source group's key, and the
+    groups (`requests.worklist`, D328)."""
     from watchdog.pipeline import requests as _requests
     from watchdog.pipeline import resolutions
 
     v = require_vault(vault)
+    rows, groups = _requests.worklist(_requests.open_requests(v))
     open_ = [{
         "rid": r["rid"],
         "type": r.get("type") or None,
@@ -942,10 +1019,12 @@ def requests_(vault: str) -> dict:
                       "note": s.get("document_note")}
                      for s in (r.get("sources") or []) if isinstance(s, dict)],
         "added": r.get("added") or None,
-    } for r in _requests.open_requests(v)]
+        "cite_count": r["cite_count"],
+        "source_key": r["source_key"],
+    } for r in rows]
     resolved = resolutions.resolved_ids(v)
     resolved_count = sum(1 for rid in _requests.load(v).get("requests", {}) if rid in resolved)
-    return {"open": open_, "resolved_count": resolved_count}
+    return {"open": open_, "groups": groups, "resolved_count": resolved_count}
 
 
 @method("vault.contextFiles")

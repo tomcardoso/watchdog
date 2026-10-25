@@ -271,6 +271,9 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     log_path = merge_log.path(vault_path)
     if log_path.exists():
         backup_paths.append(log_path)
+    from watchdog.pipeline import hidden
+    if hidden.path(vault_path).exists():
+        backup_paths.append(hidden.path(vault_path))
     backup_dir = _snapshot(vault_path, "merge-entities", backup_paths)
     if backup_dir:
         log_entry["undo"]["backup"] = str(Path(backup_dir).relative_to(vault_path)) \
@@ -336,6 +339,14 @@ def _run_unlocked(vault_path: Path, keep_id: str, merge_id: str, log_entry: dict
     # is rewritten onto the survivor. Contradiction/alert resolutions are keyed on content, not
     # entity id, so they need no remap.
     stats["resolutions_remapped"] = resolutions.remap_entity(vault_path, merge_id, keep_id)
+
+    # Removed from the investigation (D326): the survivor keeps its own state, hidden only if it
+    # was hidden itself. The merged record's listing goes with the undo record, so undoing the
+    # merge lists the split record again.
+    hidden_rec = hidden.on_merge(vault_path, keep_id, merge_id)
+    if hidden_rec is not None:
+        log_entry["undo"]["hidden"] = hidden_rec
+    stats["survivor_hidden"] = keep_id in hidden.hidden_ids(vault_path)
 
     log_data = merge_log.load(vault_path)
     merge_log.mark_candidate_merged(log_data, keep_id, merge_id)

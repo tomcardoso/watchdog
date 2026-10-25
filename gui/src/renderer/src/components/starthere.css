@@ -1,0 +1,85 @@
+/* Start here (D327): the ranked slice on the Overview and in Review. */
+.sh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.sh-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  border-radius: var(--r-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sh-item:hover {
+  background: var(--hover);
+}
+.sh-item .ico {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  flex: none;
+}
+.sh-item .ico svg {
+  width: 14px;
+  height: 14px;
+}
+.sh-text {
+  gap: 1px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.sh-item .t {
+  font-size: var(--fs-md);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.sh-item .t b {
+  font-weight: 600;
+}
+.sh-item .docs {
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.sh-item .why {
+  font-size: var(--fs-xs);
+  color: var(--text-3);
+}
+.sh-item .go {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.sh-item:hover .go,
+.sh-item:focus-visible .go {
+  opacity: 1;
+}
+.sh-list.compact .sh-item {
+  padding: 6px 10px;
+}
+.sh-new {
+  margin: 0 12px 8px;
+  font-size: var(--fs-sm);
+  color: var(--text-2);
+  line-height: 1.45;
+}
+.sh-new p {
+  margin: 0 0 4px;
+}

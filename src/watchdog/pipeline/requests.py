@@ -18,6 +18,7 @@ are folded by the finalize-time dedup call. Resolution is manual (in the app's R
 import datetime
 import json
 import os
+import re
 from pathlib import Path
 
 from watchdog.pipeline import resolutions
@@ -137,6 +138,75 @@ def open_requests(vault: Path) -> list[dict]:
     items.sort(key=lambda r: (r.get("what") or "").lower())
     items.sort(key=lambda r: r.get("added") or "", reverse=True)
     return items
+
+
+# ── Working the list in Review (D328) ────────────────────────────────────────────
+
+# Where the model's free-text `likely_source` stops naming the holder and starts saying how to ask:
+# "City Clerk, by access request", "the corporation, or a court order", "Land Registry (Ontario)".
+_SOURCE_CUT = re.compile(r"\s*(?:[,;(]|\s[-–—]\s|\bor\b|\bvia\b|\bby\b|\bthrough\b|\bunder\b)", re.I)
+_SOURCE_LEAD = re.compile(r"^(?:the|a|an)\s+", re.I)
+NO_SOURCE = ""   # the group key of requests whose source was not given
+
+
+def source_group(likely_source: str | None) -> tuple[str, str]:
+    """Pure: `(key, label)` of the holder a request's `likely_source` names, so requests to the
+    same office group together whatever the wording around it.
+
+    The holder is the text before the first comma, semicolon, parenthesis, spaced dash, or "or",
+    "via", "by", "through", "under" (which start an alternative or the way to ask); a leading
+    article, punctuation, case and spacing are folded for the key. The label is that text as
+    written, less the article. No source, or nothing left, gives `("", "")`."""
+    text = re.sub(r"\s+", " ", likely_source or "").strip()
+    head = _SOURCE_CUT.split(text, maxsplit=1)[0].strip() if text else ""
+    head = _SOURCE_LEAD.sub("", head).strip()
+    key = re.sub(r"[^\w&]+", " ", head.casefold()).strip()
+    if not key:
+        return NO_SOURCE, ""
+    # A closing full stop stays on an abbreviation ("Ltd.", "Inc.") and goes elsewhere.
+    if head.endswith(".") and not re.search(r"\b[A-Za-z]{1,4}\.$", head):
+        head = head.rstrip(" .")
+    return key, head[0].upper() + head[1:]
+
+
+def cite_count(request: dict) -> int:
+    """How many distinct documents cite a request."""
+    return len({s.get("sha256") or s.get("filename") for s in request.get("sources") or []
+                if isinstance(s, dict) and (s.get("sha256") or s.get("filename"))})
+
+
+def worklist(open_: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Pure: the open requests as Review works them, and their source groups.
+
+    Requests are sorted by how many documents cite them, most first, then by `what`; each gains
+    `cite_count` and `source_key`. Groups are `{key, label, count, documents}`, ordered by the
+    most-cited request in each, then by size and label; requests with no source come last. A
+    group's label is its most frequent wording (ties: alphabetical)."""
+    rows = []
+    for r in open_:
+        key, label = source_group(r.get("likely_source"))
+        rows.append({**r, "cite_count": cite_count(r), "source_key": key, "_label": label})
+    rows.sort(key=lambda r: ((r.get("what") or "").casefold(), r.get("rid") or ""))
+    rows.sort(key=lambda r: -r["cite_count"])
+    by_key: dict[str, list[dict]] = {}
+    for r in rows:
+        by_key.setdefault(r["source_key"], []).append(r)
+    groups = []
+    for key, members in by_key.items():
+        words: dict[str, int] = {}
+        for r in members:
+            words[r["_label"]] = words.get(r["_label"], 0) + 1
+        label = sorted(words.items(), key=lambda t: (-t[1], t[0].casefold(), t[0]))[0][0] if key else ""
+        shas = {s.get("sha256") or s.get("filename") for r in members for s in r.get("sources") or []
+                if isinstance(s, dict)}
+        groups.append({"key": key, "label": label, "count": len(members),
+                       "documents": len(shas - {None}), "_top": members[0]["cite_count"]})
+    groups.sort(key=lambda g: (g["key"] == NO_SOURCE, -g["_top"], -g["count"], g["label"].casefold()))
+    for g in groups:
+        del g["_top"]
+    for r in rows:
+        del r["_label"]
+    return rows, groups
 
 
 def _format(open_: list[dict]) -> str:

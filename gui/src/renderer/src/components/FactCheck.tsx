@@ -1,8 +1,9 @@
 // The reporter's own check of a fact (D271): Verified, Disputed or Can't verify, with an optional
-// note. Used on each fact row in a document and in Review → Verification. Marks are written
-// through `verify.mark`.
+// note. Facts are trusted until marked, so Disputed, the thumbs-down, is the button in front; the
+// other two are there for a reporter keeping a record of what they checked (D322). Used on each
+// fact row in a document and in Review → Verification. Marks are written through `verify.mark`.
 
-import { Check, CircleHelp, MessageSquareText, X } from 'lucide-react'
+import { Check, CircleHelp, MessageSquareText, ThumbsDown } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FactMark, VerifyStatus } from '@shared/api'
 import { Badge, cx } from '@renderer/components/ui'
@@ -13,10 +14,10 @@ import './factcheck.css'
 
 export const STATUS_META: Record<VerifyStatus, { label: string; icon: typeof Check; key: string; tip: string }> = {
   verified: { label: 'Verified', icon: Check, key: 'V', tip: 'You checked this against the source and it holds' },
-  disputed: { label: 'Disputed', icon: X, key: 'D', tip: 'The source, or another record, does not support this' },
+  disputed: { label: 'Disputed', icon: ThumbsDown, key: 'D', tip: 'Wrong: the source, or another record, does not support this' },
   unverifiable: { label: "Can't verify", icon: CircleHelp, key: 'C', tip: 'You could not confirm or rule this out' }
 }
-export const STATUSES: VerifyStatus[] = ['verified', 'disputed', 'unverifiable']
+export const STATUSES: VerifyStatus[] = ['disputed', 'verified', 'unverifiable']
 
 /** The label a fact the reporter disputes carries wherever it is shown (D285): never hidden. */
 export function DisputedBadge() {
@@ -96,20 +97,23 @@ export function FactCheck({ id, mark, marks, noteOpen, setNoteOpen }: { id: stri
           {STATUSES.map((s) => {
             const m = STATUS_META[s]
             const on = mark?.status === s
+            // Only the thumbs-down carries its label until used; the others show as icons.
+            const quiet = s !== 'disputed' && !on
             return (
               <button
                 key={s}
                 type="button"
-                className={cx('fcheck-btn', `is-${s}`, on && 'on')}
+                className={cx('fcheck-btn', `is-${s}`, on && 'on', quiet && 'quiet')}
                 aria-pressed={on}
-                data-tip={on ? `${m.label}. Click again to clear (${m.key})` : `${m.tip} (${m.key})`}
+                aria-label={m.label}
+                data-tip={on ? `${m.label}. Click again to clear (${m.key})` : quiet ? `${m.label}: ${m.tip.charAt(0).toLowerCase()}${m.tip.slice(1)} (${m.key})` : `${m.tip} (${m.key})`}
                 onClick={(e) => {
                   e.stopPropagation()
                   void marks.set(id, on ? null : s, undefined, mark)
                 }}
               >
                 <m.icon />
-                {m.label}
+                {!quiet && m.label}
               </button>
             )
           })}

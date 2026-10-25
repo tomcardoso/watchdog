@@ -7,7 +7,13 @@ Stored at ``.watchdog/registry/merges.json``::
                  "reporter", "same_name", "occurrences": [...], "undo": {...},
                  "first_at", "last_at"}],
      "candidates": {"same:<hash>": {"id", "a", "b", "tier", "rule", "reason", "model_declined",
-                                    "evidence", "status", "first_seen", "last_seen", "run"}}}
+                                    "evidence", "status", "first_seen", "last_seen", "run"}},
+     "carry": {"ids", "at", "run"}}
+
+`carry` (#755) names the records whose possible-duplicate comparisons the last run could not
+finish — a pair past the reconcile pair cap, or a same-name group too large to compare in full —
+so the next run blocks them again even if none of its documents names them. Absent until a run
+first carries something.
 
 A merge is one decision to treat two records as one entity: `keep` survives, `merged` is folded
 into it. `decided_by` is ``rule`` (code, under `identity.classify`), ``model`` (the reconcile
@@ -116,6 +122,18 @@ def candidate_entry(*, a, b, verdict: dict, model_declined: bool = False,
             "status": "open", "first_seen": at, "last_seen": at, "run": run}
 
 
+def carry_entry(ids, run: str | None = None) -> dict:
+    """The records the next run must compare again (#755), ready for `record`. It replaces the
+    log's current `carry` whole, so an empty one clears it."""
+    return {"kind": "carry", "id": "carry", "ids": sorted(set(ids)), "at": _now(), "run": run}
+
+
+def carried_ids(vault: Path | None) -> set[str]:
+    """The ids the last run carried forward (`carry_entry`)."""
+    carry = load(vault).get("carry")
+    return {i for i in carry.get("ids") or [] if isinstance(i, str)} if isinstance(carry, dict) else set()
+
+
 UNDO_VERSION = 2
 
 
@@ -174,6 +192,11 @@ def record(vault: Path, entries: list[dict], data: dict | None = None, render_no
     for entry in entries:
         if entry.get("kind") == "candidate":
             _upsert_candidate(data["candidates"], entry)
+        elif entry.get("kind") == "carry":
+            # A replayed older document's carry never overwrites a newer run's.
+            current = data.get("carry") if isinstance(data.get("carry"), dict) else {}
+            if (entry.get("at") or "") >= (current.get("at") or ""):
+                data["carry"] = {k: entry.get(k) for k in ("ids", "at", "run")}
         else:
             _upsert_merge(data["merges"], entry)
     save(vault, data, render_note=render_note)
@@ -221,18 +244,20 @@ def former_ids(vault: Path | None) -> dict[str, set[str]]:
 
 def open_candidates(vault: Path, entities: dict | None = None,
                     resolved: frozenset[str] | None = None, data: dict | None = None) -> list[dict]:
-    """Candidates still waiting on the reporter: open, not dismissed, and both records still exist
-    as separate entities (a merge by any route closes them)."""
-    from watchdog.pipeline import resolutions
+    """Candidates still waiting on the reporter: open, not dismissed, both records still exist
+    as separate entities (a merge by any route closes them), and neither removed from the
+    investigation (D326; bringing it back reopens the pair)."""
+    from watchdog.pipeline import hidden, resolutions
     from watchdog.pipeline.json_io import _read_json_or
     data = data if data is not None else load(vault)
     if entities is None:
         entities = _read_json_or(Path(vault) / ".watchdog" / "registry" / "entities.json", {})
     resolved = resolved if resolved is not None else resolutions.resolved_ids(vault)
+    removed = hidden.hidden_ids(vault)
     out = []
     for cid, c in data.get("candidates", {}).items():
         a, b = (c.get("a") or {}).get("id"), (c.get("b") or {}).get("id")
-        if c.get("status") != "open" or cid in resolved:
+        if c.get("status") != "open" or cid in resolved or a in removed or b in removed:
             continue
         if a not in entities or b not in entities or a == b:
             continue

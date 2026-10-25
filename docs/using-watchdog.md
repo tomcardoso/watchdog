@@ -10,7 +10,9 @@ The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Tim
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7). **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
-The **Overview** is the investigation's front page: the headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, possible same entities, watch-list alerts, disputed facts) and what is in progress, each linking to the screen that deals with it.
+The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and one line on what is new. Until you first open Review, it says what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads." After that, it says what has come in since you last opened Review and is still open; when nothing has, there is no line. Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads, watch-list alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents, possible same entities and document requests, which you can work through in bulk; click it to see all three. **In progress** lists what is still being added. Each item links to the screen that deals with it.
+
+Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**.
 
 A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, `/watchdog-surface` in Ask Claude looks for connections you did not think to ask about.
 
@@ -102,19 +104,32 @@ Watchdog also checks every number in a fact against the page it cites, and the p
 
 ### Marking facts
 
-Each fact has three buttons: **Verified** (you read the source and the fact holds), **Disputed** (the source, or another record, does not support it) and **Can't verify**. Click again to clear. Watchdog records your name and the time; set the name under [Your name](models-and-cost.md#verification). Once a fact is marked, **Add note** records what you checked it against. Marking never changes the fact and never calls an AI model.
+Watchdog uses every fact as extracted until you say otherwise, so you never have to work through them one by one. When a fact is wrong, click **Disputed**, the thumbs-down beside it: the source, or another record, does not support it. Two smaller buttons beside it, **Verified** (you read the source and the fact holds) and **Can't verify**, are there if you want a record of what you checked, for instance before publication. Click a mark again to clear it. Watchdog records your name and the time; set the name under [Your name](models-and-cost.md#verification). Once a fact is marked, **Add note** records what you checked it against. Marking never changes the fact and never calls an AI model.
 
-The bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact, then use the keyboard: J and K move, V, D or C mark it, N edits the note.
+The bar above the facts filters them (all, not checked, no passage, inferred, figures). Select a fact, then use the keyboard: J and K move, D disputes it, V or C marks it, N edits the note.
 
 A fact you mark Disputed is never hidden. Wherever it appears (the document, the entity, the timeline, Review, citations, the notes on disk and what Claude is told) it carries the label **disputed**, and the summaries are told not to present it as established.
 
-**Review → Verification** lists every fact in the investigation with the same buttons, a progress bar and filters: not checked, disputed, can't verify, verified, no passage, and **changed since marked**, for facts whose wording or page changed after a document was processed again. Your mark stays with the old wording, since you did not check the new words. Every change rewrites `verification.md` in the investigation's folder, the written record of your checks.
+**Review → Verification** lists the investigation's facts with the same buttons. It opens on the facts you disputed, then on **Worth checking**: facts you have not marked that the model inferred, that carry a figure not found in the document, or that have no matching passage on their page. Other filters show can't verify, verified, all facts, and **changed since marked**, for facts whose wording or page changed after a document was processed again. Your mark stays with the old wording, since you did not check the new words. Every change rewrites `verification.md` in the investigation's folder, the written record of your checks.
 
 ## Review
 
-**Review** is where everything Watchdog flagged waits for you, one tab each, with a count beside Review in the sidebar. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
+**Review** is where everything Watchdog flagged waits for you, one tab each. The number beside Review in the sidebar counts the items that need your judgement, as on the Overview; the page's own line also counts the tidy-up. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
+
+**Duplicates**, **Merges** and **Requests** are tidy-up, so they are tables rather than cards: one row each, with a tick box. Tick rows with the mouse or X, or tick every row from the box in the heading, then choose what to do with all of them from the bar at the bottom. The row you are on opens underneath with the full detail. On these tabs, H gives the row's everyday answer (not the same, these are copies, or handled) to the ticked rows, or to the row you are on when none is ticked.
 
 ![The Review screen on its Contradictions tab, each contradiction with both claims and the documents they come from.](images/app-review.png)
+
+### Start here
+
+Above the tabs, **Start here** lists up to seven items to look at first, each with one line on why it is there; the Overview shows the same list. The order comes from ordinary code (no AI), from what the investigation already records:
+
+1. An item tied to a term on your [watch list](#the-watch-list): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
+2. An item about one of the most connected entities (those with relationships to the most others, as in the Network) or about an entity that several documents are mainly about.
+3. A contradiction between two documents, ahead of one between two passages of the same document.
+4. A lead named in several documents, ahead of one named in only one.
+
+Ties go to the item involving the better-connected entity, then the one in more documents. No kind of item fills more than half the list while others are waiting. The counts elsewhere still count each document a term was found in, since each is a document to read. Tidy-up items never appear here, and nor does anything about an entity you [removed](#removing-an-entity). Click an item to go to it on its tab. In Review, click **Start here** to fold the list away; Watchdog remembers the choice.
 
 ### Contradictions
 
@@ -129,23 +144,33 @@ At the end of every run, ordinary code (no AI) sweeps the entities and lists fou
 - an entity named as a relationship target that has no documents of its own: a company someone directs, say, that you have no records on;
 - an entity that turns up in several documents but has no relationships;
 - an unresolved contradiction;
-- a fact the model inferred, or a figure that wasn't on its cited page.
+- a relationship the model inferred rather than read.
 
-**Run full lead sweep** refreshes the list.
+Inferred facts and figures not found in their document are listed under **Review → Verification → Worth checking**, beside their page, rather than here.
+
+A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name; such a lead says so, and the document is the only way to tell who or what it means.
+
+**Copy leads** copies the open leads, or the ones you have selected, as a table to paste into an email or a spreadsheet. **Run full lead sweep** refreshes the list.
 
 ### Duplicates
 
-Documents judged to be near-copies of one already in the investigation, side by side. Watchdog never discards either; marking a pair handled only hides it.
+Documents judged to be near-copies of one already in the investigation, one row each, with the document it closely matches; the row you are on shows both side by side. Tick the pairs you have checked, then choose **These are copies** (H) if they are the same record, or **Different documents** (D) if the difference matters. Neither deletes anything. A copy stays marked as a copy in Documents and on its page; for different documents, the possible-duplicate flag goes from both. Either answer can be reversed under **Handled** with **Bring back**.
 
 ### Merges
 
-Two documents often name the same person or company, and Watchdog has to decide whether they mean the same one. It never decides on a name alone (see [how Watchdog decides two names are the same](how-it-works.md#same-entity)). Pairs it was unsure about wait at the top of this tab as **possible same entities**, each shown side by side with its facts. Choose **Merge…** if they are one, or **Not the same**, after which Watchdog never merges those two automatically.
+Two documents often name the same person or company, and Watchdog has to decide whether they mean the same one. It never decides on a name alone (see [how Watchdog decides two names are the same](how-it-works.md#same-entity)). Pairs it was unsure about wait at the top of this tab as **possible same entities**, one row each: both names, how many documents each is in, the strongest evidence they share (the same registration number, say, or the same relationship to the same company) and how confident Watchdog was. The row you are on shows the two records side by side with their facts.
+
+Tick the pairs that are one and choose **Merge ticked** (M); Watchdog asks first, listing which record each pair keeps: the one named in more documents, or else the longer name. The pairs are merged one at a time, and each merge goes into **Recent merges**, where it can be undone on its own. If one pair cannot be merged, the others still are, and the tab says which failed and why. Tick the pairs that are not one and choose **Not the same for ticked** (H); Watchdog never merges those two automatically. To choose which record to keep, use **Merge…** on the open row instead.
+
+When many records share one name, the queue does not list every possible pair. A short name that cannot be told apart, such as "Mr. Pike" in five documents, is shown as four pairs, each record beside the one named in the most documents. For a name the AI model compared, only the records it could not tell apart are listed.
 
 Below the queue, **Recent merges** lists every merge, newest first: which records, how confident the decision was, and who decided (Watchdog's rules, the AI model by name, or you). If a merge is wrong, open it and choose **Undo merge**; Watchdog gives the merged record back its own facts, documents and relationships, and marks the pair Not the same. Contradictions recorded while the two were joined, your notes and the summary stay with the surviving entity. Where a merge cannot be split exactly, the button says why. The same record is kept in `merges.md`.
 
 ### Requests
 
-Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and a link to the document that named it. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
+Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and links to the documents that named it.
+
+The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together; two names for one office, such as "City Finance" and "Finance Department", stay apart. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
 
 ### The watch list
 
@@ -167,13 +192,25 @@ An entity's page shows everything the documents say about it:
 
 Sometimes one person or company ends up as two entities, usually because a name is spelled differently. Select the two on the Entities screen and choose **Merge…**, or open one and choose **Merge into another entity…** from its **⋯** menu. The dialog shows both before you commit. Everything combines onto the survivor, and the merge is recorded under your name; it can be undone from [Merges](#merges). Afterwards, **Rebuild search index** removes the merged entity from Search, and **Refresh summary from all sources** rewrites the survivor's summary.
 
+### Removing an entity
+
+Processing profiles everything the documents name, including things that are not part of your story: an office on a letterhead, a research centre that helped you, your own newsroom. To take one out, choose **Remove from investigation…** from its **⋯** menu, from a selected dot's card in the [Network](#timeline-and-network), or select one or more on the Entities screen. The dialog says what will happen before anything changes.
+
+A removed entity is left out of the Network (with every line to it), the Entities list, entity notes in Search, Review and the counts on the Overview. Documents added later that name it do not bring it back, and neither does Watchdog deciding that a new record is the same thing.
+
+Nothing is deleted. The documents still say what they say: the entity's facts stay in each document's note and in source passages in Search, and other entities keep their relationships to it in their own notes. The AI model also still reads those facts when it writes summaries and briefings and looks for contradictions, so removing an entity does not change what a summary is based on. An export of the investigation's entities still includes it.
+
+Removed entities are listed under **Removed** at the bottom of the Entities screen's type list, with who removed each and when. **Bring back** shows one again; it is also on the entity's own page, which still opens. If a removed entity is merged with another, the survivor keeps its own state: it is hidden only if it was removed itself. Undoing that merge removes the split record again.
+
 ## Timeline and Network
 
 **Timeline** lays out every dated event by year and month, each linked to its page. Filter it by entity, type, years or a word. An event whose fact you disputed stays, labelled **disputed**.
 
+An event dated only to a month or a year says **month only** or **year only**. One that covers a period is shown as a range, such as "Apr–Jun 2024", under the month it starts, and says **range**. When a model, not the document's own wording, settled a date (a period, a quarter, a date in words or one written in figures that could be read two ways), the event says **date inferred**; hover over it to see the date as printed, and check the page before you rely on it. [How it works](how-it-works.md#dates) explains how dates are read.
+
 ![The Timeline: a bar chart of events by year, then each dated event with its entities and the page it came from.](images/app-timeline.png)
 
-**Network** draws the entities as a graph: each dot an entity, sized by how many documents name it and coloured by type, with one line between two related entities. Hover over a dot to see its connections, click for details, double-click to open it. Click a line for every relationship between the two, with the documents and pages that state it. When documents describe one relationship in different words ("lawyer for", "counsel for"), it is listed once with each document's own words shown as "As written" (see [how wordings are grouped](how-it-works.md#relationship-wordings)); **Show wordings separately** undoes a grouping you disagree with. A slider sets the minimum number of documents for an entity to be drawn.
+**Network** draws the entities as a graph: each dot an entity, sized by how many documents name it and coloured by type, with one line between two related entities. Hover over a dot to see its connections, click for details, double-click to open it. Click a line for every relationship between the two, with the documents and pages that state it. When documents describe one relationship in different words ("lawyer for", "counsel for"), it is listed once with each document's own words shown as "As written" (see [how wordings are grouped](how-it-works.md#relationship-wordings)); **Show wordings separately** undoes a grouping you disagree with. A slider sets the minimum number of documents for an entity to be drawn. To take something that is not part of your story out of the graph for good, use **Remove from investigation…** on its card (see [Removing an entity](#removing-an-entity)).
 
 ![The Network screen: entities as coloured dots by type, joined by lines where documents state a relationship.](images/app-network.png)
 
@@ -250,6 +287,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Rebuild notes** | Rewrites every entity and document note from the records, keeping your notes. No model call. |
 | **Rebuild the search index** | Rebuilds search from what is on disk, after changing the search model or merging entities. |
 | **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
+| **Export a copy for troubleshooting** | Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog's records and notes for this investigation, to send privately. The dialog shows the report in full before it is saved. The original documents go in the zip only if you include them. See [sending a copy of the investigation](troubleshooting.md#sending-a-copy-of-the-investigation). |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude after you update Watchdog. |
 
 ## Managing investigations
