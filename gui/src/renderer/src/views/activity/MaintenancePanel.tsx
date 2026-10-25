@@ -161,7 +161,7 @@ function WatchCard() {
   const toggle = async (on: boolean) => {
     setBusy(true)
     try {
-      if (on) await startJob('watch', {}, 'Watching incoming')
+      if (on) await startJob('watch', {}, 'Watching for new files')
       else if (running) await call('jobs.cancel', { id: running.id })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not change watching', body: errorMessage(e) })
@@ -175,9 +175,9 @@ function WatchCard() {
         <Eye />
       </div>
       <div className="grow">
-        <div className="card-title">Watch incoming for new files</div>
+        <div className="card-title">Watch for new files</div>
         <div className="act-mcard-text" style={{ margin: '2px 0 0' }}>
-          While this is on, files that land in <span className="mono">incoming/</span> are pre-processed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
+          While this is on, files you put in the investigation’s <span className="mono">incoming</span> folder (File → Show in Folder) are pre-processed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
         </div>
       </div>
       {running && (
@@ -185,7 +185,7 @@ function WatchCard() {
           Show output
         </Button>
       )}
-      <Switch checked={!!running} disabled={busy} onChange={(v) => void toggle(v)} label="Watch incoming" />
+      <Switch checked={!!running} disabled={busy} onChange={(v) => void toggle(v)} label="Watch for new files" />
     </div>
   )
 }

@@ -150,7 +150,7 @@ export function AddDialog() {
           const log = useApp.getState().jobs[j.id]?.log ?? []
           const text = log.map((l) => l.text).join('\n')
           if (p && /is a folder/i.test(text)) dirs.push(p)
-          else issues.push(`${p ? basename(p) : 'Documents in incoming'}: ${lastError(log) || 'could not be read'}`)
+          else issues.push(`${p ? basename(p) : 'Documents waiting to be added'}: ${lastError(log) || 'could not be read'}`)
         }
       }
       setFolders(dirs)
@@ -383,7 +383,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
     }
   }
   const waiting = pf ? [
-    pf.incoming > 0 && `${plural(pf.incoming, 'file')} in incoming`,
+    pf.incoming > 0 && `${plural(pf.incoming, 'file')} waiting to be added`,
     pf.queued - pf.staged > 0 && `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`,
     pf.staged > 0 && `${plural(pf.staged, 'document')} extracted, waiting to be finished`,
     pf.pending_finalization && 'a batch waiting to be finished'

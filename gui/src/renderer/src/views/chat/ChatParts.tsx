@@ -23,7 +23,7 @@ export const SLASH: SlashCommand[] = [
   { name: '/watchdog-health', label: 'Check the investigation', hint: '', takesInput: false, text: 'Look for orphaned notes, broken links, record mismatches and open contradictions.' },
   { name: '/watchdog-context', label: 'Set the context', hint: '', takesInput: false, text: 'Write context.md, your brief, from the files in context/ and a short interview.' },
   { name: '/watchdog-request', label: 'Draft a records request', hint: '[request]', takesInput: true, text: 'Draft a request for a document the investigation needs, saved to queries/.' },
-  { name: '/watchdog-research', label: 'Research on the web', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources to download into incoming/.' }
+  { name: '/watchdog-research', label: 'Research on the web', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources for you to download.' }
 ]
 
 /** A message as the reporter sees it: a leading command shown by its label. */

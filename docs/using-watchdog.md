@@ -231,7 +231,7 @@ Sentences without a citation are expected: a model connecting facts or summing u
 **Context** holds the investigation's brief, `context.md`, and the background material behind it. The brief says what you are investigating, as open questions; it is sent to the model with every document you add and shapes every briefing, so the Overview asks for it until it exists. See [Set the context](getting-started.md#set-the-context) for what to put in it and what to leave out.
 
 - **Add background files…** copies files you choose (published stories, notes, screenshots) into the investigation's `context/` folder. The originals stay where they are, and nothing is added as a document.
-- **Build it with Claude**, or **Update with Claude** once a brief exists, starts a conversation on this screen: Claude reads the background files, interviews you, and writes or updates the brief. Past context conversations are listed here too.
+- **Build it with Claude**, or **Update with Claude** once a brief exists, starts a conversation on this screen: Claude reads the background files, interviews you, and writes or updates the brief. If there are none, it asks for some first; add them with **Add background files…**, which stays above the conversation, and tell Claude when they are in. Past context conversations are listed here too.
 - **Edit** changes the brief by hand, and **History** shows its earlier versions.
 
 ## Watch list
@@ -287,7 +287,7 @@ If an earlier version holds something that should not be kept, such as a source'
 
 | Card | What it does |
 |---|---|
-| **Watch incoming for new files** | Reads files as they land in `incoming/`. Nothing is sent to a model. |
+| **Watch for new files** | Reads files as you put them in the investigation's `incoming` folder. Nothing is sent to a model. |
 | **Pre-processing** | Converts every file in `incoming/` to text on your computer. |
 | **Processing** | Extracts facts with a model and stages the result, with **Estimate** first. |
 | **Post-processing** | Finishes a batch: merges entities, flags contradictions, writes summaries, the timeline and the briefing. Safe to run again. |
