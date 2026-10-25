@@ -38,9 +38,14 @@ def save(projects: dict) -> None:
     path().write_text(json.dumps(projects, indent=2) + "\n", encoding="utf-8")
 
 
+def default_projects_dir() -> str:
+    """The investigations folder when none is set (Settings shows it as the default)."""
+    return str(Path.home() / "Investigations")
+
+
 def projects_dir() -> Path:
     """Where new investigations are created: the `projects_dir` setting, else ~/Investigations."""
-    return Path(config.load().get("projects_dir") or Path.home() / "Investigations").expanduser()
+    return Path(config.load().get("projects_dir") or default_projects_dir()).expanduser()
 
 
 def find(slug: str) -> tuple[str, dict]:

@@ -28,6 +28,8 @@ SETTINGS = {
             "  Existing vaults are not moved."
         ),
         "type": "path",
+        # So Settings' "Reset to default" sends a folder: an empty path is refused.
+        "default_fn": "watchdog.projects:default_projects_dir",
     },
     # ── OCR ───────────────────────────────────────────────────────────────────
     "ocr_engine": {

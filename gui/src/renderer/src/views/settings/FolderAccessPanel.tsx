@@ -27,12 +27,25 @@ export function FolderAccessPanel() {
   useEffect(reload, [])
 
   const add = async () => {
+    const before = new Set((await window.watchdog.access.list()).map((g) => g.path))
     const picked = await window.watchdog.dialog.openFolder({ title: 'Allow Watchdog to work in a folder', grant: 'added in Settings' })
-    if (picked) {
-      reload()
+    if (!picked) return
+    const after = await window.watchdog.access.list()
+    setGrants(after)
+    // A folder inside one already allowed adds nothing (main/access.ts addGrant), so say why the
+    // list didn't change rather than leave it looking as if the choice was lost.
+    if (after.some((g) => !before.has(g.path))) {
+      toast({ kind: 'success', title: 'Folder allowed', body: picked })
       invalidate('projects.')
       void refreshOpen()
+      return
     }
+    const cover = await window.watchdog.access.covering(picked)
+    toast({
+      kind: 'info',
+      title: 'Already allowed',
+      body: cover && cover.path !== picked ? `${picked} is inside ${cover.path}, which Watchdog may already use.` : `Watchdog may already use ${picked}.`
+    })
   }
   const remove = async (g: FolderGrant) => {
     const ok = await window.watchdog.dialog.confirm({

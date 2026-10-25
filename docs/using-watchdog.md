@@ -329,7 +329,7 @@ Each investigation is an ordinary folder of Markdown files (plain text with ligh
 
 ### Folder access
 
-Watchdog changes files only in folders you have allowed, which limits the damage if a document contains instructions meant to trick an AI, or if something goes wrong. You allow a folder by choosing it for a purpose: the folder that holds your investigations, an existing investigation, a destination to move or export to. **Settings → Folder access** lists each allowed folder; **Remove access** stops Watchdog changing files there and deletes nothing. If you open an investigation outside the allowed folders, Watchdog asks before it does anything. Reading is not limited.
+Watchdog changes files only in folders you have allowed, which limits the damage if a document contains instructions meant to trick an AI, or if something goes wrong. You allow a folder by choosing it for a purpose: the folder that holds your investigations, an existing investigation, a destination to move or export to. **Settings → Folder access** lists each allowed folder, and **Allow a folder** adds one; a folder inside one already allowed is covered by it, so it is not listed again. **Remove access** stops Watchdog changing files there and deletes nothing. If you open an investigation outside the allowed folders, Watchdog asks before it does anything. Reading is not limited.
 
 ---
 

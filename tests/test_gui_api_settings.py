@@ -159,6 +159,15 @@ def test_set_projects_dir_creates_the_folder(wdg_home, tmp_path):
     assert call_error("settings.set", key="projects_dir", value="")["code"] == "bad_value"
 
 
+def test_projects_dir_default_is_a_folder_reset_can_send(wdg_home, tmp_path, monkeypatch):
+    """"Reset to default" sends the shown default; with none it sent "" and was refused."""
+    monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
+    default = keyed(call("settings.schema"))["projects_dir"]["default"]
+    assert default == str(tmp_path / "Investigations")
+    r = call("settings.set", key="projects_dir", value=default)
+    assert (tmp_path / "Investigations").is_dir() and r["value"] == default
+
+
 def test_set_empty_clears_a_text_or_model_setting(wdg_home):
     call("settings.set", key="extractor_model", value="sonnet-5.5")
     r = call("settings.set", key="extractor_model", value="")
@@ -227,6 +236,14 @@ def test_status_subscription(wdg_home):
                            "session_reason": None, "env_key_set": False,
                            "key_masked": None, "key_source": None, "key_label": None}
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
+
+
+def test_status_subscription_still_reports_a_stored_anthropic_key(wdg_home):
+    """Switching a toggle to API key uses the key under Provider keys rather than asking again."""
+    write_creds(wdg_home, "subscription", {"anthropic": "sk-ant-abcdefghijklmnop"})
+    c = call("auth.status")["claude"]
+    assert c["mode"] == "subscription" and c["reason"] is None
+    assert c["key_masked"] == "sk-ant-abc…mnop" and c["key_source"] == "stored"
 
 
 def test_status_subscription_without_a_login_or_with_an_env_key(wdg_home, monkeypatch):

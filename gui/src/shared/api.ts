@@ -1217,6 +1217,8 @@ export interface WatchdogBridge {
   notify(title: string, body: string): void
   access: {
     list(): Promise<FolderGrant[]>
+    /** The grant that already allows `path` (the folder itself or one above it), or null. */
+    covering(path: string): Promise<FolderGrant | null>
     /** Ask the user, in a native prompt, to allow `path`. Resolves true once granted. */
     request(path: string, label: string, why: string): Promise<boolean>
     revoke(path: string): Promise<FolderGrant[]>

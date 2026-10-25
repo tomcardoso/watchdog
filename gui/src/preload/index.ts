@@ -81,6 +81,7 @@ const bridge: WatchdogBridge = {
   notify: (title, body) => ipcRenderer.send('notify', title, body),
   access: {
     list: () => ipcRenderer.invoke('access:list'),
+    covering: (path) => ipcRenderer.invoke('access:covering', path),
     request: (path, label, why) => ipcRenderer.invoke('access:request', path, label, why),
     revoke: (path) => ipcRenderer.invoke('access:revoke', path)
   },
