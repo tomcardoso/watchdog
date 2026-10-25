@@ -9,7 +9,7 @@ import { Markdown } from '@renderer/components/Markdown'
 import { call, errorMessage, invalidate, useEvent, useRpc } from '@renderer/lib/rpc'
 import { fmtCost, fmtRelative } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
-import { PermissionCard, PermissionRequest, SLASH, Thinking, ToolRow } from './ChatParts'
+import { PermissionCard, PermissionRequest, SLASH, splitCommand, Thinking, ToolRow } from './ChatParts'
 import { SAMPLE_LABEL, SampleEmpty, SampleQuestions, useSamplePlayback } from './SamplePlayback'
 import './chat.css'
 
@@ -51,6 +51,13 @@ interface Props {
 }
 
 let localId = 1
+
+/** A sent message with a leading command shown by its label, as the shortcuts name it. */
+function userText(text: string): ReactNode {
+  const { command, rest } = splitCommand(text)
+  if (!command) return text
+  return <><span className="chat-user-cmd" title={command.name}>{command.label}</span>{rest && <> {rest}</>}</>
+}
 
 // Unsent text in the composer, per investigation, screen and conversation ('' for a new one), so
 // leaving Ask Claude or Web research and coming back finds it again. Memory only: it lasts until
@@ -476,7 +483,7 @@ export default function ChatWorkspace(p: Props) {
               if (m.role === 'user')
                 return (
                   <div key={m.id} className="chat-user">
-                    <div className="chat-user-bubble selectable">{m.text}</div>
+                    <div className="chat-user-bubble selectable">{userText(m.text)}</div>
                   </div>
                 )
               return m.text.trim() ? (
@@ -524,9 +531,9 @@ export default function ChatWorkspace(p: Props) {
               <div className="chat-sugg">
                 {sugg.map((s) => (
                   <button key={s.name} onClick={() => api.prefill(s.name + (s.takesInput ? ' ' : ''))}>
-                    <span className="mono">{s.name}</span>
-                    <span className="faint">{s.hint}</span>
+                    <span style={{ fontWeight: 600 }}>{s.label}</span>
                     <span className="muted grow truncate">{s.text}</span>
+                    <span className="mono faint">{s.name}</span>
                   </button>
                 ))}
               </div>

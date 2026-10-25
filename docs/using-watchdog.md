@@ -14,7 +14,7 @@ The **Overview** is the investigation's front page. It opens with **Start here**
 
 Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**.
 
-A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, `/watchdog-surface` in Ask Claude looks for connections you did not think to ask about.
+A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, **Find connections** in Ask Claude looks for connections you did not think to ask about.
 
 ## Adding documents
 
@@ -172,7 +172,7 @@ Below the queue, **Recent merges** lists every merge, newest first: which record
 
 Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and links to the documents that named it.
 
-The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together. Two names for one place, such as a registry's official name and a description of it, are grouped by a model when a run adds a source it has not seen (see [grouping request sources](how-it-works.md#request-sources)); such a group says **grouped by AI**, hovering over it shows the names it joined, and **Show apart** undoes a grouping you disagree with for good. Each request keeps its own wording. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. For a document held by a public body, [Ask Claude](#ask-claude)'s `/watchdog-request` drafts the request letter: a freedom-of-information, access-to-information or public-records request. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
+The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together. Two names for one place, such as a registry's official name and a description of it, are grouped by a model when a run adds a source it has not seen (see [grouping request sources](how-it-works.md#request-sources)); such a group says **grouped by AI**, hovering over it shows the names it joined, and **Show apart** undoes a grouping you disagree with for good. Each request keeps its own wording. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. For a document held by a public body, [Ask Claude](#ask-claude)'s **Draft a records request** drafts the request letter: a freedom-of-information, access-to-information or public-records request. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
 
 ### The watch list
 
@@ -240,15 +240,15 @@ A question you have typed but not sent stays in the box when you go to another s
 
 The documents Claude reads are treated as untrusted, since any of them could contain text written to steer it. So a conversation stays inside its own investigation, cannot read Watchdog's settings or keys, cannot run programs on your computer, and changes no file except its own pages. Before it changes the investigation's records (an entity's summary, a contradiction, the watch list, the timeline) or fetches a web page, the app shows what it is about to do and asks. **Allow once** allows that one action; **Allow for this conversation** stops asking for that kind of change until you close the chat. Every change Claude makes is recorded in [history](#history-and-your-notes). Adding documents, merging entities and marking items handled stay with you.
 
-Start from a question in plain language or one of the shortcuts:
+Start from a question in plain language or one of the shortcuts below, shown as cards on an empty conversation. Typing `/` in the box lists them too:
 
-- `/watchdog-query` answers a question with a source for every claim, and files substantive answers to `queries/`.
-- `/watchdog-surface` looks across the whole investigation for shared addresses, people in unusual roles, recurring names and chronological anomalies.
-- `/watchdog-entity` refreshes an entity's summary and timeline from all its documents.
-- `/watchdog-wiki` writes thread pages in `wiki/` for findings that have grown into a real angle.
-- `/watchdog-health` checks for orphaned notes, broken links and open contradictions.
-- `/watchdog-request` drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
-- `/watchdog-context` (or **Seed investigation context**) reads the background files in `context/`, interviews you, and writes `context.md`, your investigation brief. The brief is sent to the model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it.
+- **Answer a question** answers a question with a source for every claim, and files substantive answers to `queries/`.
+- **Find connections** looks across the whole investigation for shared addresses, people in unusual roles, recurring names and chronological anomalies.
+- **Refresh an entity** refreshes an entity's summary and timeline from all its documents.
+- **Write thread pages** writes thread pages in `wiki/` for findings that have grown into a real angle.
+- **Check the investigation** checks for orphaned notes, broken links and open contradictions.
+- **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
+- **Set the context** (or **Seed investigation context**) reads the background files in `context/`, interviews you, and writes `context.md`, your investigation brief. The brief is sent to the model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it.
 
 A selector chooses the Claude model for new conversations: Sonnet, the default, or Haiku, which is cheaper and suits simpler questions. Ask Claude always runs on Claude, whatever the other steps use.
 

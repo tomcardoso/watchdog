@@ -62,6 +62,7 @@
 .chat-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .chat-chip { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; color: var(--text); transition: border-color var(--dur), box-shadow var(--dur); }
 .chat-chip:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }
+.chat-user-cmd { font-weight: 620; }
 .chat-chip-name { font-weight: 600; display: flex; align-items: center; gap: 6px; font-size: 13px; }
 .chat-chip-name svg { width: 12px; height: 12px; color: var(--text-3); }
 .chat-chip-text { font-size: var(--fs-sm); color: var(--text-2); line-height: 1.45; }

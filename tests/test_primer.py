@@ -31,7 +31,8 @@ def test_empty_vault_primer_is_short_and_says_so(tmp_path):
     text = primer.build(vault)
     assert text.startswith("# vault: where the investigation stands\n")
     assert "No documents have been added yet." in text
-    assert "`context.md` lists no questions yet." in text
+    # A new investigation has no context.md: say so, so a session doesn't try to read it.
+    assert "There is no `context.md` yet" in text and "Do not try to read it." in text
     assert "## Citing" in text and "#^f-" in text
     for absent in ("## Most-mentioned entities", "## Waiting on the reporter", "## Recent briefings"):
         assert absent not in text
@@ -134,3 +135,11 @@ def test_current_state_empty_vault(tmp_path):
     assert "No documents have been added yet." in text
     assert "No questions yet. Add them in Investigation context" in text
     assert "`" not in text and "watchdog " not in text
+
+
+def test_a_context_md_without_questions_is_named_as_such(tmp_path):
+    vault = make_vault(tmp_path)
+    (vault / "context.md").write_text("# vault — context\n")
+    text = primer.build(vault)
+    assert "`context.md` lists no questions yet." in text
+    assert "There is no `context.md` yet" not in text

@@ -8,21 +8,30 @@ import { Button, cx } from '@renderer/components/ui'
 
 export interface SlashCommand {
   name: string
+  /** What the reporter sees: the command's job in plain words. `name` is what Claude is sent. */
+  label: string
   hint: string
   takesInput: boolean
   /** What it does, one line. */
   text: string
 }
 export const SLASH: SlashCommand[] = [
-  { name: '/watchdog-query', hint: '[question]', takesInput: true, text: 'Answer a question from your vault, with sources.' },
-  { name: '/watchdog-surface', hint: '', takesInput: false, text: 'Find connections and anomalies across the full vault.' },
-  { name: '/watchdog-entity', hint: '[id…]', takesInput: true, text: 'Refresh an entity’s summary and timeline from all its source documents.' },
-  { name: '/watchdog-wiki', hint: '', takesInput: false, text: 'Create or update investigation thread pages in wiki/.' },
-  { name: '/watchdog-health', hint: '', takesInput: false, text: 'Check vault integrity: orphaned notes, broken links, registry mismatches, open contradictions.' },
-  { name: '/watchdog-context', hint: '', takesInput: false, text: 'Seed context.md from the background files in context/.' },
-  { name: '/watchdog-request', hint: '[request]', takesInput: true, text: 'Draft a records request for a document the investigation needs, saved to queries/.' },
-  { name: '/watchdog-research', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources for download into incoming/.' }
+  { name: '/watchdog-query', label: 'Answer a question', hint: '[question]', takesInput: true, text: 'Answer a question from the investigation, with a source for every claim.' },
+  { name: '/watchdog-surface', label: 'Find connections', hint: '', takesInput: false, text: 'Look across the whole investigation for connections and anomalies.' },
+  { name: '/watchdog-entity', label: 'Refresh an entity', hint: '[id…]', takesInput: true, text: 'Rewrite an entity’s summary and timeline from all its source documents.' },
+  { name: '/watchdog-wiki', label: 'Write thread pages', hint: '', takesInput: false, text: 'Create or update the pages in wiki/ that follow a line of inquiry.' },
+  { name: '/watchdog-health', label: 'Check the investigation', hint: '', takesInput: false, text: 'Look for orphaned notes, broken links, record mismatches and open contradictions.' },
+  { name: '/watchdog-context', label: 'Set the context', hint: '', takesInput: false, text: 'Write context.md, your brief, from the files in context/ and a short interview.' },
+  { name: '/watchdog-request', label: 'Draft a records request', hint: '[request]', takesInput: true, text: 'Draft a request for a document the investigation needs, saved to queries/.' },
+  { name: '/watchdog-research', label: 'Research on the web', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources to download into incoming/.' }
 ]
+
+/** A message as the reporter sees it: a leading command shown by its label. */
+export function splitCommand(text: string): { command: SlashCommand | null; rest: string } {
+  const m = /^(\/[\w-]+)(?:\s+([\s\S]*))?$/.exec(text.trim())
+  const command = m ? SLASH.find((s) => s.name === m[1].toLowerCase()) ?? null : null
+  return command ? { command, rest: (m![2] ?? '').trim() } : { command: null, rest: text }
+}
 
 const KEYS = ['command', 'file_path', 'path', 'pattern', 'query', 'url', 'prompt', 'description']
 /** A path inside the investigation, shown relative to it (`entities/…md`), so a tool row never
@@ -64,7 +73,10 @@ export function ToolRow({ msg, vault }: { msg: ChatMessage; vault?: string }) {
   const [open, setOpen] = useState(false)
   const t = msg.tool
   if (!t) return null
-  const Icon = t.is_error ? AlertTriangle : toolIcon(t.name)
+  // Reading a file that isn't there yet (a new investigation's context.md) is not a failure.
+  const missing = t.is_error && t.name === 'Read' && /^File does not exist/.test(t.result ?? '')
+  const failed = t.is_error && !missing
+  const Icon = failed ? AlertTriangle : toolIcon(t.name)
   const pending = t.result === null && !t.is_error
   let input = ''
   try {
@@ -73,20 +85,20 @@ export function ToolRow({ msg, vault }: { msg: ChatMessage; vault?: string }) {
     input = String(t.input)
   }
   return (
-    <div className={cx('chat-tool', t.is_error && 'err', open && 'open')}>
+    <div className={cx('chat-tool', failed && 'err', open && 'open')}>
       <button className="chat-tool-head" aria-expanded={open} onClick={() => setOpen(!open)}>
         <ChevronRight className="chev" />
         <Icon className="ico" />
         <span className="chat-tool-name">{toolName(t.name)}</span>
-        <span className="chat-tool-sum truncate">{cut(summarizeInput(t.input, vault).replace(/\s+/g, ' '), 140)}</span>
+        <span className="chat-tool-sum truncate">{cut(summarizeInput(t.input, vault).replace(/\s+/g, ' '), 140)}{missing && ' — not there yet'}</span>
         {pending && <span className="spinner" style={{ width: 11, height: 11 }} />}
       </button>
       {open && (
         <div className="chat-tool-body selectable">
           <div className="eyebrow">Input</div>
           <pre>{cut(input, 4000)}</pre>
-          <div className="eyebrow" style={{ marginTop: 8 }}>{t.is_error ? 'Error' : 'Result'}</div>
-          <pre className={t.is_error ? 'err' : undefined}>{pending ? 'Waiting for the result…' : cut(t.result ?? '', 6000) || '(empty)'}</pre>
+          <div className="eyebrow" style={{ marginTop: 8 }}>{failed ? 'Error' : 'Result'}</div>
+          <pre className={failed ? 'err' : undefined}>{pending ? 'Waiting for the result…' : missing ? 'This file doesn’t exist yet, so Claude carries on without it.' : cut(t.result ?? '', 6000) || '(empty)'}</pre>
         </div>
       )}
     </div>

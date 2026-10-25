@@ -43,7 +43,7 @@ function Empty({ api, name }: { api: WorkspaceApi; name: string }) {
     <div className="chat-empty">
       <h2>Ask about {name}</h2>
       <p>
-        Claude works inside this investigation: it reads your notes, the registry and the extracted documents, answers with citations, and files substantial answers to <span className="mono">queries/</span>. Type a question below, or start from one of the shortcuts below.
+        Claude works inside this investigation: it reads your notes, the registry and the extracted documents, answers with citations, and files substantial answers to <span className="mono">queries/</span>. Type a question below, or start from one of these.
       </p>
       <div className="chat-chips">
         {SLASH.map((s) => (
@@ -57,7 +57,7 @@ function Empty({ api, name }: { api: WorkspaceApi; name: string }) {
               else void api.begin(s.name)
             }}
           >
-            <span className="mono chat-chip-name">{s.name}{s.name === '/watchdog-research' && <Globe />}</span>
+            <span className="chat-chip-name">{s.label}{s.name === '/watchdog-research' && <Globe />}</span>
             <span className="chat-chip-text">{s.text}</span>
             <span className="chat-chip-act">{s.name === '/watchdog-research' ? 'Opens Web research' : s.takesInput ? 'Add your question' : 'Runs now'}</span>
           </button>
