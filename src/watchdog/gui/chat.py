@@ -99,8 +99,10 @@ def build_options(session: "Session", can_use_tool):
                   # Claude Code adds stays off until it is reviewed here.
                   tools=list(SESSION_TOOLS),
                   # Only the read-only Watchdog tools run without asking; the four that write go
-                  # through `can_use_tool`, the app's permission card (D304).
-                  allowed_tools=[session_tools.tool_name(t) for t in session_tools.READ_TOOLS],
+                  # through `can_use_tool`, the app's permission card (D304). A research session
+                  # also searches and reads the web without asking (D344).
+                  allowed_tools=[session_tools.tool_name(t) for t in session_tools.READ_TOOLS]
+                  + (list(RESEARCH_WEB_TOOLS) if session.mode == "research" else []),
                   disallowed_tools=list(DISALLOWED_TOOLS))
     kwargs["env"] = session_auth_env(session)
     from watchdog.gui.engine_setup import bundled_claude_path
@@ -126,6 +128,11 @@ def build_options(session: "Session", can_use_tool):
 # hand over to another (`/watchdog-query` suggests `/watchdog-wiki`).
 SESSION_TOOLS = ("Read", "Glob", "Grep", "Write", "Edit", "NotebookEdit", "WebFetch", "WebSearch",
                  "TodoWrite", "Skill")
+
+# Pre-approved in a Web research session only (D344): searching the web and reading pages is the
+# whole job there, and a card per host buried the conversation. Elsewhere they still ask. Neither
+# can write to the investigation; a fetched page stays untrusted data (I6).
+RESEARCH_WEB_TOOLS = ("WebSearch", "WebFetch")
 
 # Belt and braces behind the allowlist: a session has no shell (D299) and nothing that starts other
 # agents, schedules prompts, runs workflow scripts or moves the session to another folder (D304),

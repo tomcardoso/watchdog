@@ -2963,3 +2963,9 @@ The watch list sat behind a button at the top right of Review, beside the findin
 
 Tradeoff: the sidebar's Work group grows to seven items, and the terms and their matches are on two screens.
 
+### D344 — A Web research session searches and reads the web without asking
+
+D45 meant the research command's `allowed-tools` to pre-approve WebSearch and WebFetch while it runs, but in the app's sessions every search and every new host still raised a permission card, and a research round asks for dozens. A session in `research` mode now has both in `allowed_tools` (`chat.RESEARCH_WEB_TOOLS`); Ask Claude and Context sessions still ask, with D304's per-host "Allow for this conversation". Claude Code's classifier-based `auto` permission mode was considered and not used: D304 keeps `permission_mode="default"` so a model never decides in the reporter's place, and auto mode would cover every tool, including the four that change records.
+
+Tradeoff: a page that tries to steer the session can make it fetch further addresses without a card, including one that carries text from the investigation in its URL. Research reads only public material by design, fetched pages stay untrusted data (I6), and nothing a session fetches is written to the investigation without the reporter's Download.
+
