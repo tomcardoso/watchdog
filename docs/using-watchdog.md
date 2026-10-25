@@ -10,7 +10,9 @@ The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Tim
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7). **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
-The **Overview** is the investigation's front page: the headline from the latest briefing, the briefing itself, what is waiting on you (contradictions, leads, possible duplicates, possible same entities, watch-list alerts, disputed facts) and what is in progress, each linking to the screen that deals with it.
+The **Overview** is the investigation's front page. It opens with **Start here**, a short list of the items in Review most worth your time (see [Start here](#start-here)), and a line on what the latest batch added, such as "The latest batch added 6 contradictions and 4 leads." Below are the headline from the latest briefing and the briefing itself. At the side, **Needs your judgement** counts the contradictions, leads, watch-list alerts and disputed facts waiting for you; the number beside the heading counts these only. **Tidy-up**, folded to one line under it, totals the possible duplicate documents and possible same entities, each a quick yes or no; click it to see both. **In progress** lists what is still being added. Each item links to the screen that deals with it.
+
+Watchdog remembers when you last opened Review in each investigation. In Review, each item a batch added since then is labelled **New**. When more than one batch has come in since your last visit, or you have handled some of what was added, the Overview also says how many of the new items are still open.
 
 A typical loop, once the first batch is in: add documents, read the briefing, work through Review, then ask questions. After a substantial batch, `/watchdog-surface` in Ask Claude looks for connections you did not think to ask about.
 
@@ -112,9 +114,20 @@ A fact you mark Disputed is never hidden. Wherever it appears (the document, the
 
 ## Review
 
-**Review** is where everything Watchdog flagged waits for you, one tab each, with a count beside Review in the sidebar. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
+**Review** is where everything Watchdog flagged waits for you, one tab each. The number beside Review in the sidebar counts the items that need your judgement, as on the Overview; the page's own line also counts the tidy-up. Read an item, open it if you need more, then mark it handled or keep it open. **Mark handled** removes an item from the queue, the Overview and future briefings, without deleting it; **Handled**, at the top right, lists what you have handled, and **Bring back** returns one. The keyboard works throughout: J and K move, H marks handled, O opens, S keeps open and moves on, X selects, U undoes.
 
 ![The Review screen on its Contradictions tab, each contradiction with both claims and the documents they come from.](images/app-review.png)
+
+### Start here
+
+Above the tabs, **Start here** lists up to seven items to look at first, each with one line on why it is there; the Overview shows the same list. The order comes from ordinary code (no AI), from what the investigation already records:
+
+1. An item tied to a term on your [watch list](#the-watch-list): every alert, and a contradiction or lead about an entity whose name matches a term.
+2. An item about one of the most connected entities (those with relationships to the most others, as in the Network) or about an entity that several documents are mainly about.
+3. A contradiction between two documents, ahead of one between two passages of the same document.
+4. A lead named in several documents, ahead of one named in only one.
+
+Ties go to the item involving the better-connected entity, then the one in more documents. Only one alert per watch-list term is listed, and no kind of item fills more than half the list while others are waiting. Possible duplicates and possible same entities are tidy-up and never appear here, and nor does anything about an entity you [removed](#removing-an-entity). Click an item to go to it on its tab. In Review, click **Start here** to fold the list away; Watchdog remembers the choice.
 
 ### Contradictions
 

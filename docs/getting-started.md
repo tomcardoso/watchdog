@@ -87,7 +87,7 @@ When the run finishes, the **Overview** shows the headline from the latest brief
 
 ![The Overview of the sample investigation: counts of documents, entities and checked facts, a paragraph on where things stand, the latest briefing and what is waiting on you.](images/app-overview.png)
 
-The Overview also shows what is waiting on you (contradictions, leads, possible duplicates, possible same entities and watch-list alerts) and what is in progress, with each item linking to the screen that deals with it. Every briefing Watchdog writes is kept under **Briefings**.
+The Overview also opens with **Start here**, a short list of the items most worth checking first, and shows what needs your judgement, what is left to tidy up and what is in progress, with each item linking to the screen that deals with it ([the Overview](using-watchdog.md#finding-your-way-around) explains each part). Every briefing Watchdog writes is kept under **Briefings**.
 
 ## Explore the results
 

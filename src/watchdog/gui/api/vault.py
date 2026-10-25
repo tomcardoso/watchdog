@@ -74,11 +74,16 @@ def _briefing_date(name: str, path: Path) -> str | None:
 @method("vault.summary")
 def summary(vault: str) -> dict:
     from watchdog import overview as home
+    from watchdog import triage
 
     v = require_vault(vault)
     s = home.summary(v)
     docs, ents = vaultio.load_documents(v), vaultio.load_entities(v)
     latest = s["briefing"]
+    verified = _verification_summary(v, docs)
+    from watchdog.review import open_items
+    review_items = open_items(v, triage.REVIEW_KINDS)
+    open_now = triage.ids_by_kind(review_items)
     briefing = None
     if latest is not None:
         briefing = {"path": f"briefings/{latest.name}", "name": latest.stem,
@@ -110,8 +115,13 @@ def summary(vault: str) -> dict:
         },
         "recent_documents": vaultio.sorted_document_rows(v, docs, limit=8),
         "top_entities": vaultio.sorted_entity_rows(v, ents, limit=8),
-        "verification": _verification_summary(v, docs),
+        "verification": verified,
         "hidden_entities": len(hidden_ids_in(v, ents)),
+        # Start here, the two groups and what is new (D327).
+        **triage.groups({**s, "disputed": verified.get("disputed") or 0}),
+        "start_here": triage.start_here(v, [i for i in review_items if i["kind"] in triage.JUDGEMENT]),
+        "batch": triage.batch_delta(v, latest),
+        "since_review": triage.new_since(v, triage.last_opened(v), open_now),
     }
 
 

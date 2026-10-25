@@ -428,7 +428,14 @@ registry, keyed for idempotent replay (D67).
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
   The app's Review (`watchdog/review.py`) lists the open ones, plus near-duplicate documents
   (`documents.json` `near_duplicate_of`, stamped at extraction from chew's MinHash match), and
-  writes to the same store (D252). Document
+  writes to the same store (D252). `watchdog/triage.py` (D327) ranks the judgement items
+  (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
+  function of the items and registry-derived inputs (watch-list terms, relationship-graph degree,
+  `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
+  into judgement and tidy-up (duplicates, possible same). After the lead sweep, a run records the
+  open Review ids in its briefing's sidecar (`review.open`) and the ones the previous briefing's
+  record lacked (`review.added`), which the Overview shows as what the batch added; Review's
+  last-opened time, per investigation, is `.watchdog/review-seen.json`. Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
   paraphrases, and `requests.md` is re-rendered (D111, D159).
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
@@ -491,11 +498,12 @@ queries/ wiki/               session-written findings and threads
   text-positions/<sha>.json  OCR'd lines' boxes per scanned page or image, written by pre-processing and kept (D289); none for pages with their own text layer
   timeline/                  raw and canonical NDJSON events
   tmp/                       per-run scratch (result_<sha>.json, notes_<sha>.md, checkpoints)
-  briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283) and status line (D285)
+  briefings/<ts>.json        a briefing's short-ref → D271 id map, citation counts (D283), status line (D285) and the open Review ids with those its batch added (D327)
   research/                  research worklist (§14)
   backups/<ts>-<op>/         pre-mutation snapshots (merge-entities, undo-merge, a fresh run's wipe of leftovers)
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
   page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
+  review-seen.json           when the reporter last opened Review (D327); the app's own state, read by no model input
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
@@ -953,13 +961,13 @@ noted as such.
 - **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
   makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
   writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
-  and clear, the investigation's billing key and spending limit, an Ask Claude session's tools, D299), a library
+  and clear, the investigation's billing key and spending limit, Review's last-opened time, an Ask Claude session's tools, D299), a library
   function called in-process; either way under folder access (D268), the operation's locks (D293)
   and I7's commit discipline. The app keeps the
   gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
   before it starts an operation and passing the answer as a parameter; an operation never asks.
   The app is the only front end: there is no command line, and nothing imports `watchdog.cli` or
-  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300, D324.* Guarded by
+  `watchdog.cmd` (D300). *History: D265, D271, D286, D288, D298, D299, D300, D324, D327.* Guarded by
   `tests/test_app_wording.py`.
 - **I11 — Under the app, Watchdog writes only where the user has allowed it.** With
   `WATCHDOG_ENFORCE_ACCESS=1`, file changes under the home folder or mounted volumes outside an

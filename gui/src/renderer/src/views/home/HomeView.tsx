@@ -4,7 +4,7 @@
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
-  ShieldAlert, ShieldCheck, GitMerge
+  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -20,6 +20,7 @@ import { EngineWait } from '@renderer/components/EngineWait'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import type { ReviewKind, Summary } from '@shared/api'
+import { StartHereList, describeAdded } from '@renderer/components/StartHere'
 import { BillingCard } from './BillingCard'
 import { SpendingLimitCard } from './SpendingLimitCard'
 import './home.css'
@@ -56,15 +57,20 @@ export default function HomeView() {
   }
 
   const empty = !!s && s.totals.documents === 0 && !s.has_work
-  const waiting = s
+  // Two groups (D327): what needs the reporter's judgement, shown, and tidy-up, folded to one line.
+  const judgement: WaitRow[] = s
     ? ([
         { kind: 'contradictions', n: s.contradictions, one: 'contradiction', many: 'contradictions', hint: 'Facts that disagree across documents', icon: Scale },
         { kind: 'leads', n: s.leads, one: 'open lead', many: 'open leads', hint: 'Names and threads worth chasing', icon: Lightbulb },
-        { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
         { kind: 'alerts', n: s.alerts, one: 'alert', many: 'alerts', hint: 'Matches for names you are watching', icon: Bell },
-        { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge },
         { kind: 'verification', n: s.verification?.disputed ?? 0, one: 'disputed fact', many: 'disputed facts', hint: 'Facts you marked as not supported by the source', icon: ShieldAlert }
-      ] as const).filter((w) => w.n > 0)
+      ] as WaitRow[]).filter((w) => w.n > 0)
+    : []
+  const tidy: WaitRow[] = s
+    ? ([
+        { kind: 'duplicates', n: s.near_duplicates, one: 'possible duplicate document', many: 'possible duplicate documents', hint: 'Near-copies to confirm or dismiss', icon: Copy },
+        { kind: 'merges', n: s.possible_same ?? 0, one: 'possible same entity', many: 'possible same entities', hint: 'Two records that may be one person or company', icon: GitMerge }
+      ] as WaitRow[]).filter((w) => w.n > 0)
     : []
 
   return (
@@ -92,6 +98,7 @@ export default function HomeView() {
               <div className="home-main">
                 {!empty && (
                   <>
+                    <StartHere s={s} />
                     {s.headline && (
                       <blockquote className="home-pull">
                         <span className="eyebrow">Where things stand</span>
@@ -152,7 +159,7 @@ export default function HomeView() {
               </div>
 
               <aside className="home-side">
-                <Waiting items={waiting} s={s} empty={empty} />
+                <Waiting judgement={judgement} tidy={tidy} s={s} empty={empty} />
                 <InProgress s={s} failedDocs={pipe?.failed ?? []} />
                 <BillingCard vault={vault} />
                 <SpendingLimitCard vault={vault} />
@@ -303,30 +310,82 @@ function DropCard() {
   )
 }
 
+// ── Start here ───────────────────────────────────────────────────────────────
+function StartHere({ s }: { s: Summary }) {
+  const batch = s.batch ? describeAdded(s.batch.added) : ''
+  const since = s.since_review ? describeAdded(s.since_review.added) : ''
+  // The line about the last visit is only worth a second line when it says more than the batch's.
+  const showSince = !!since && since !== batch
+  if (!s.start_here?.length && !batch && !showSince) return null
+  return (
+    <section className="card home-panel home-start">
+      <div className="home-section-head" style={{ margin: '0 12px 6px' }}>
+        <h2>Start here</h2>
+        <Button variant="ghost" size="sm" iconRight={ArrowRight} onClick={() => navigate({ view: 'review' })}>Review</Button>
+      </div>
+      {(batch || showSince) && (
+        <div className="sh-new">
+          {batch && (
+            <p>
+              <Sparkles className="sh-new-ico" /> The latest batch{s.batch?.at ? ` (${fmtRelative(s.batch.at)})` : ''} added {batch}.
+            </p>
+          )}
+          {showSince && <p>Still open and new since you last opened Review ({fmtRelative(s.since_review!.since)}): {since}.</p>}
+        </div>
+      )}
+      {s.start_here?.length ? (
+        <StartHereList items={s.start_here} onPick={(it) => navigate({ view: 'review', kind: it.kind, focus: it.rid })} />
+      ) : (
+        <p className="faint" style={{ margin: '0 12px 10px', fontSize: 'var(--fs-sm)' }}>Nothing needs your judgement right now.</p>
+      )}
+    </section>
+  )
+}
+
 // ── Waiting on you ───────────────────────────────────────────────────────────
-function Waiting({ items, s, empty }: { items: { kind: string; n: number; one: string; many: string; hint: string; icon: typeof Scale }[]; s: Summary; empty: boolean }) {
+interface WaitRow { kind: string; n: number; one: string; many: string; hint: string; icon: typeof Scale }
+
+function WaitButton({ w }: { w: WaitRow }) {
+  return (
+    <button className="home-wait" onClick={() => navigate({ view: 'review', kind: w.kind as ReviewKind })}>
+      <span className="ico"><w.icon /></span>
+      <span className="grow col" style={{ gap: 0, alignItems: 'flex-start' }}>
+        <span className="n"><b className="tnum">{fmtNum(w.n)}</b> {w.n === 1 ? w.one : w.many}</span>
+        <span className="k truncate">{w.hint}</span>
+      </span>
+      <ArrowRight className="go" />
+    </button>
+  )
+}
+
+function Waiting({ judgement, tidy, s, empty }: { judgement: WaitRow[]; tidy: WaitRow[]; s: Summary; empty: boolean }) {
+  const [openTidy, setOpenTidy] = useState(false)
   if (empty) return null
+  const tidyTotal = s.tidy_up ?? tidy.reduce((a, w) => a + w.n, 0)
   return (
     <section className="card home-panel">
-      <h3>Waiting on you</h3>
-      {items.length === 0 ? (
+      <h3>
+        Needs your judgement{s.judgement ? <span className="home-count tnum">{fmtNum(s.judgement)}</span> : null}
+      </h3>
+      {judgement.length === 0 ? (
         <div className="home-clear">
           <Check />
-          <span>Nothing needs review right now.{s.totals.documents > 0 ? ' New documents may add items.' : ''}</span>
+          <span>Nothing needs your judgement right now.{s.totals.documents > 0 && !tidyTotal ? ' New documents may add items.' : ''}</span>
         </div>
       ) : (
         <div className="home-waiting">
-          {items.map((w) => (
-            <button key={w.kind} className="home-wait" onClick={() => navigate({ view: 'review', kind: w.kind as ReviewKind })}>
-              <span className="ico"><w.icon /></span>
-              <span className="grow col" style={{ gap: 0, alignItems: 'flex-start' }}>
-                <span className="n"><b className="tnum">{fmtNum(w.n)}</b> {w.n === 1 ? w.one : w.many}</span>
-                <span className="k truncate">{w.hint}</span>
-              </span>
-              <ArrowRight className="go" />
-            </button>
-          ))}
+          {judgement.map((w) => <WaitButton key={w.kind} w={w} />)}
         </div>
+      )}
+      {tidyTotal > 0 && (
+        <>
+          <button className="home-tidy" aria-expanded={openTidy} onClick={() => setOpenTidy(!openTidy)}>
+            {openTidy ? <ChevronDown /> : <ChevronRight />}
+            <span className="grow">Tidy-up</span>
+            <b className="tnum">{fmtNum(tidyTotal)}</b>
+          </button>
+          {openTidy && <div className="home-waiting">{tidy.map((w) => <WaitButton key={w.kind} w={w} />)}</div>}
+        </>
       )}
     </section>
   )

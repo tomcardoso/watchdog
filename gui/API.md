@@ -106,8 +106,14 @@ Summary = {               // overview.summary(), made JSON-safe
   hidden_entities,       // entities removed from the investigation that still have a record (D326)
   verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
-  top_entities: EntityRow[]          // 8 with the most documents, none removed (D326)
+  top_entities: EntityRow[],         // 8 with the most documents, none removed (D326)
+  judgement, tidy_up,    // contradictions + leads + alerts + disputed facts; near_duplicates + possible_same (D327)
+  start_here: StartHereItem[],       // triage.rank: up to 7 judgement items, best first, none of a removed entity
+  batch: {briefing, at, added: {[kind]: n}}|null,      // what the latest briefing's batch added to Review
+  since_review: {since, added: {[kind]: n}}|null       // open items batches added since Review was last opened
 }
+
+StartHereItem = {rid, kind, title, note|null, reason}  // reason: one line on why it is there
 
 DocumentRow = {
   sha, filename, title|null, document_type|null, date_of_document|null,
@@ -428,7 +434,8 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 
 | Method | Params | Result |
 |---|---|---|
-| `review.items` | `{vault, kinds?: string[]}` | `{items: ReviewItem[], counts: {[kind]: n}}` — `review.open_items` |
+| `review.items` | `{vault, kinds?: string[], since?}` | `{items: ReviewItem[], counts: {[kind]: n}, start_here: StartHereItem[]}` — `review.open_items`, plus the ranked Start here slice (`triage.rank`, D327); with `since`, an item a batch added after that time carries `new: true` |
+| `review.opened` | `{vault}` | `{opened_at, previous}` — records that Review was opened now in `.watchdog/review-seen.json` (D327); `previous` is the time to pass as `since` |
 | `review.resolve` | `{vault, rids}` | `{resolved: string[]}` — `resolutions.resolve(label="review")`; report files are not edited (D294) |
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |

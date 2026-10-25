@@ -2632,6 +2632,16 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
              f"(named-but-unprofiled, isolated, contradictions) — "
              f"{leads_relpath}")
 
+    # 5a. What this batch added to Review (D327): the open items, recorded with the briefing
+    # once its alerts and leads are in, so the Overview can say what the batch added. Never fails
+    # the run: without the record, the Overview just says nothing about the batch.
+    if out.get("briefing"):
+        from watchdog import triage
+        try:
+            triage.record_batch(vault, out["briefing"])
+        except (OSError, ValueError, KeyError, TypeError) as e:
+            _say(f"   could not record what this batch added to Review — {e}")
+
     # 5b. Document-request dedup (#416, D159). Exact-string matching at record time only
     # converges identical wording — a citation of the same real document phrased differently
     # stays a separate open entry. Skipped unless this run actually recorded a new request, so

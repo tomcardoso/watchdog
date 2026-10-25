@@ -6,6 +6,8 @@
 import {
   ArrowUpRight,
   Bell,
+  ChevronDown,
+  ChevronRight,
   Check,
   CheckCheck,
   CheckCircle2,
@@ -25,7 +27,7 @@ import {
   Zap
 } from 'lucide-react'
 import { Fragment, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DocumentRequest, DocumentRow, ReviewItem, ReviewKind } from '@shared/api'
+import type { DocumentRequest, DocumentRow, ReviewItem, ReviewKind, StartHereItem } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Kbd, Skeleton, Tabs, cx } from '@renderer/components/ui'
 import { HistoryButton } from '@renderer/components/FileHistory'
 import { DocThumb } from '@renderer/components/DocThumb'
@@ -34,6 +36,7 @@ import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { startJob } from '@renderer/lib/jobs'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
 import { fmtDate, fmtRelative, plural } from '@renderer/lib/format'
+import { StartHereList } from '@renderer/components/StartHere'
 import { VerificationTab } from './VerificationTab'
 import { MergeLogSection, SamePairView } from './MergesTab'
 import MergeModal from '../entities/MergeModal'
@@ -146,14 +149,54 @@ function useTriage(vault: string) {
 }
 type Triage = ReturnType<typeof useTriage>
 
+// When Review was last opened, before this visit (D327). Recorded once per visit; a second call
+// within a few seconds (React's development double mount) reuses the first answer.
+const openedCache = new Map<string, { previous: string | null; at: number }>()
+function useLastOpened(vault: string): string | null | undefined {
+  const [since, setSince] = useState<string | null | undefined>(() => {
+    const c = openedCache.get(vault)
+    return c && Date.now() - c.at < 5_000 ? c.previous : undefined
+  })
+  useEffect(() => {
+    if (!vault) return
+    const c = openedCache.get(vault)
+    if (c && Date.now() - c.at < 5_000) {
+      setSince(c.previous)
+      return
+    }
+    let live = true
+    call('review.opened', { vault })
+      .then((r) => {
+        openedCache.set(vault, { previous: r.previous, at: Date.now() })
+        if (live) setSince(r.previous)
+        invalidate('vault.summary')
+      })
+      .catch(() => live && setSince(null))
+    return () => {
+      live = false
+    }
+  }, [vault])
+  return since
+}
+
+function readOpen(): boolean {
+  try {
+    return localStorage.getItem('wd.review.startHere') !== 'closed'
+  } catch {
+    return true
+  }
+}
+
 export default function ReviewView() {
   const vault = useVault()
   const route = useApp((s) => s.route)
   const routeKind = route.view === 'review' ? route.kind : undefined
   const termFilter = route.view === 'review' && route.kind === 'alerts' ? route.filter : undefined
+  const focusRid = route.view === 'review' ? route.focus : undefined
   const triage = useTriage(vault)
+  const since = useLastOpened(vault)
 
-  const items = useRpc('review.items', vault ? { vault } : null, { staleTime: 5_000 })
+  const items = useRpc('review.items', vault && since !== undefined ? { vault, since } : null, { staleTime: 5_000 })
   const requests = useRpc('vault.requests', vault ? { vault } : null, { staleTime: 5_000 })
 
   const counts = useMemo(() => {
@@ -184,7 +227,23 @@ export default function ReviewView() {
     navigate({ view: 'review', kind: t }, { replace: true })
   }
 
-  const total = counts.contradictions + counts.leads + counts.alerts + counts.duplicates + counts.merges
+  // Disputed facts need judgement too (D327); they are listed under Verification, not a queue.
+  const summary = useRpc('vault.summary', vault ? { vault } : null, { staleTime: 20_000 })
+  const judgement = counts.contradictions + counts.leads + counts.alerts + (summary.data?.verification?.disputed ?? 0)
+  const tidy = counts.duplicates + counts.merges
+  const total = judgement + tidy
+  const startHere = (items.data?.start_here ?? []).filter((i) => !triage.hidden.has(i.rid))
+  const [focusReq, setFocusReq] = useState<{ rid: string; n: number } | null>(focusRid ? { rid: focusRid, n: 0 } : null)
+  useEffect(() => {
+    if (focusRid) setFocusReq((f) => ({ rid: focusRid, n: (f?.n ?? 0) + 1 }))
+  }, [focusRid])
+  const pick = (it: StartHereItem) => {
+    chosen.current = true
+    setTab(it.kind)
+    setFocusReq((f) => ({ rid: it.rid, n: (f?.n ?? 0) + 1 }))
+    navigate({ view: 'review', kind: it.kind }, { replace: true })
+  }
+  const queueTab = tab !== 'verification' && tab !== 'handled' && tab !== 'watchlist'
 
   return (
     <div className="page">
@@ -193,7 +252,12 @@ export default function ReviewView() {
           <div className="grow">
             <h1 className="page-title">Review</h1>
             <div className="page-sub">
-              {items.data ? (total ? `${plural(total, 'item')} waiting on you.` : 'Nothing is waiting on you.') : 'Loading what is waiting on you…'} Handled items stop appearing in briefings and on the overview.
+              {items.data
+                ? total
+                  ? `${judgement === 1 ? '1 item needs' : `${plural(judgement, 'item')} need`} your judgement${tidy ? `, and ${plural(tidy, 'tidy-up item')} ${tidy === 1 ? 'is' : 'are'} waiting` : ''}.`
+                  : 'Nothing is waiting on you.'
+                : 'Loading what is waiting on you…'}{' '}
+              Handled items stop appearing in briefings and on the overview.
             </div>
           </div>
           <div className="rv-tools" role="group" aria-label="Review tools">
@@ -205,6 +269,8 @@ export default function ReviewView() {
             ))}
           </div>
         </div>
+
+        {queueTab && startHere.length > 0 && <StartHerePanel items={startHere} onPick={pick} />}
 
         <Tabs<Tab>
           value={tab}
@@ -241,6 +307,7 @@ export default function ReviewView() {
           <QueueTab
             key={tab}
             kind={tab}
+            focusRequest={focusReq}
             triage={triage}
             counts={counts}
             go={go}
@@ -268,12 +335,37 @@ export default function ReviewView() {
 }
 
 // ── queue ────────────────────────────────────────────────────────────────────────────────────
-function QueueTab({ kind, items, triage, counts, go, loading, error, retry }: { kind: QueueKind; items: QItem[]; triage: Triage; counts: Record<QueueKind, number>; go: (t: Tab) => void; loading: boolean; error: unknown; retry: () => void }) {
+function StartHerePanel({ items, onPick }: { items: StartHereItem[]; onPick: (it: StartHereItem) => void }) {
+  const [open, setOpen] = useState(readOpen)
+  const toggle = () => {
+    setOpen(!open)
+    try {
+      localStorage.setItem('wd.review.startHere', open ? 'closed' : 'open')
+    } catch {
+      /* a remembered choice is a convenience only */
+    }
+  }
+  return (
+    <section className="rv-start card">
+      <button type="button" className="rv-start-head" aria-expanded={open} onClick={toggle}>
+        {open ? <ChevronDown /> : <ChevronRight />}
+        <span className="grow">Start here</span>
+        <span className="faint">{open ? 'Ranked from the watch list, the most connected entities and how many documents are involved' : plural(items.length, 'item')}</span>
+      </button>
+      {open && <StartHereList items={items} onPick={onPick} compact />}
+    </section>
+  )
+}
+
+function QueueTab({ kind, items, triage, counts, go, loading, error, retry, focusRequest }: { kind: QueueKind; items: QItem[]; triage: Triage; counts: Record<QueueKind, number>; go: (t: Tab) => void; loading: boolean; error: unknown; retry: () => void; focusRequest?: { rid: string; n: number } | null }) {
   const vault = useVault()
   const openLink = useOpenWikilink()
   const meta = KIND_META[kind]
   const visible = items.filter((i) => !triage.hidden.has(i.rid))
-  const [focus, setFocus] = useState<string | null>(null)
+  const [focus, setFocus] = useState<string | null>(focusRequest?.rid ?? null)
+  useEffect(() => {
+    if (focusRequest) setFocus(focusRequest.rid)
+  }, [focusRequest])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [leaving, setLeaving] = useState<Set<string>>(new Set())
   const [flash, setFlash] = useState<{ text: string; undo: boolean } | null>(null)
@@ -588,7 +680,10 @@ function Card({ item, kind, focused, selected, leaving, onFocus, onToggle, onHan
         <input type="checkbox" checked={selected} onChange={onToggle} aria-label="Select" />
       </label>
       <div className="rv-body">
-        <div className="rv-title">{renderTitle(item.title)}</div>
+        <div className="rv-title">
+          {item.new && <span className="rv-new" data-tip="Added by a batch since you last opened Review">New</span>}
+          {renderTitle(item.title)}
+        </div>
         {kind === 'duplicates' && <DuplicatePair item={item} docs={docs} />}
         {kind === 'merges' && item.pair && <SamePairView pair={item.pair} expanded={focused} />}
         {item.detail.length > 0 && kind !== 'duplicates' && (

@@ -75,7 +75,8 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset(),
             if not tid or tid in entities_reg or tid in hidden:
                 continue   # a profiled target (incl. every reverse role) is not a lead
             rec = unprofiled.setdefault(tid, {
-                "id": tid, "name": tid, "mentioned_by": set(), "docs": set(), "mentions": [],
+                "id": tid, "name": tid, "mentioned_by": set(), "by_ids": set(), "docs": set(),
+                "mentions": [],
             })
             # Extraction names a role's target by id only; write_vault fills `target_name` from
             # the target's record and falls back to the id when there is none, so a dangling
@@ -84,6 +85,7 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset(),
                 rec["name"] = role["target_name"]
             by = ent.get("name") or eid
             rec["mentioned_by"].add(by)
+            rec["by_ids"].add(eid)
             if role.get("source_sha256"):
                 rec["docs"].add(role["source_sha256"])
             mention = {"by": by, "relationship": role.get("relationship") or "",
@@ -113,13 +115,16 @@ def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset(),
         if claims:
             rid = resolutions.lead_id("inferred", eid)
             if rid not in resolved:
+                docs = {r["source_sha256"] for r in roles if r.get("basis") == "inferred"
+                        and not r.get("is_reverse") and r.get("source_sha256")}
                 inferred.append({"id": eid, "name": ent.get("name") or eid,
                                  "note_path": ent.get("note_path", ""), "claims": claims,
-                                 "rid": rid})
+                                 "doc_count": len(docs), "rid": rid})
 
     unprofiled_list = [
         {"id": v["id"], "name": v["name"], "named": v["name"] != v["id"],
-         "mentioned_by": sorted(v["mentioned_by"]), "doc_count": len(v["docs"]),
+         "mentioned_by": sorted(v["mentioned_by"]), "by_ids": sorted(v["by_ids"]),
+         "doc_count": len(v["docs"]),
          "docs": sorted(v["docs"]), "mentions": v["mentions"],
          "rid": resolutions.lead_id("unprofiled", v["id"])}
         for v in unprofiled.values()

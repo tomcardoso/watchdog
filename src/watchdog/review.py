@@ -38,6 +38,12 @@ _ALERT_TERM = re.compile(r"^### `(?P<term>.+)`")
 
 WIKILINK = re.compile(r"^\[\[(?P<target>[^|\]]+)(?:\|(?P<text>.+))?\]\]$")   # text may hold `]`
 
+# A callout's citation of a document note, as `contradiction.build_callout` writes it; how many
+# distinct documents a contradiction cites is a Start here signal (D327).
+_DOC_LINK = re.compile(r"\[\[documents/(?P<slug>[^|\]#]+)")
+# The "known entity" link an alert line carries when the matched words are an entity's name.
+_KNOWN_ENTITY = re.compile(r"known entity \[\[entities/(?:[^/|\]]+/)*(?P<id>[^/|\]]+?)(?:\.md)?(?:\|[^\]]*)?\]\]")
+
 
 def _item(kind: str, rid: str, title: str, detail: list[str], note: str | None) -> dict:
     return {"kind": kind, "rid": rid, "title": title, "detail": detail, "note": note or None}
@@ -54,8 +60,11 @@ def contradictions(found: dict) -> list[dict]:
     for c in found["contradictions"]:
         for callout in c["callouts"]:
             lines = _callout_lines(callout.get("text", "")) or [callout["summary"]]
-            out.append(_item("contradictions", callout["rid"], f"{c['name']} — {lines[0]}",
-                             lines[1:], c["note_path"]))
+            item = _item("contradictions", callout["rid"], f"{c['name']} — {lines[0]}",
+                         lines[1:], c["note_path"])
+            item["entity"] = c["id"]
+            item["doc_count"] = len({m.group("slug") for m in _DOC_LINK.finditer(callout.get("text", ""))})
+            out.append(item)
     return out
 
 
@@ -90,14 +99,19 @@ def _lead_items(found: dict, docs: dict) -> list[dict]:
         item = _item("leads", u["rid"], f"{u['name']} — named but never profiled",
                      _unprofiled_detail(u), None)
         item["cited"] = _cited(u["docs"], docs)
+        item.update(entity=u["id"], related=list(u.get("by_ids") or []), doc_count=u["doc_count"])
         out.append(item)
     for i in found["isolated"]:
-        out.append(_item("leads", i["rid"], f"{i['name']} — mentioned often but unconnected",
-                         [f"Appears in {i['doc_count']} documents with no relationships"],
-                         i.get("note_path")))
+        item = _item("leads", i["rid"], f"{i['name']} — mentioned often but unconnected",
+                     [f"Appears in {i['doc_count']} documents with no relationships"],
+                     i.get("note_path"))
+        item.update(entity=i["id"], doc_count=i["doc_count"])
+        out.append(item)
     for i in found["inferred"]:
-        out.append(_item("leads", i["rid"], f"{i['name']} — inferred relationships to verify",
-                         list(i["claims"]), i["note_path"]))
+        item = _item("leads", i["rid"], f"{i['name']} — inferred relationships to verify",
+                     list(i["claims"]), i["note_path"])
+        item.update(entity=i["id"], doc_count=i.get("doc_count") or 0)
+        out.append(item)
     return out
 
 
@@ -122,6 +136,9 @@ def _alerts(vault: Path, resolved: frozenset[str]) -> list[dict]:
                 title = f"`{term}` in {name}" if term else name
                 current = seen[rid] = _item("alerts", rid, title, [], note)
                 current["term"] = term
+                known = _KNOWN_ENTITY.search(m.group("rest") or "")
+                current["entity"] = known.group("id") if known else None
+                current["doc_count"] = 1
             elif current is not None and line.startswith("  - "):
                 current["detail"].append(line[4:])
             elif not line.strip():

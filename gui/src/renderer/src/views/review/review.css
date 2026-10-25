@@ -134,3 +134,10 @@
 .rv-watch-hits { background: none; border: 0; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
 .rv-watch-filter { display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); margin-bottom: 8px; }
 .rv-watch-filter code { background: var(--surface-sunken); padding: 0 4px; border-radius: 4px; }
+
+/* Start here and new items (D327) */
+.rv-start { margin-bottom: 14px; padding: 4px 6px 6px; }
+.rv-start-head { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 8px; border: none; background: none; color: var(--text); font: inherit; font-weight: 640; text-align: left; cursor: pointer; }
+.rv-start-head svg { width: 15px; height: 15px; flex: none; color: var(--text-3); }
+.rv-start-head .faint { font-weight: 400; font-size: var(--fs-xs); text-align: right; }
+.rv-new { display: inline-block; margin-right: 8px; padding: 0 7px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-size: var(--fs-xs); font-weight: 650; vertical-align: 2px; }

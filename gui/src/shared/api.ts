@@ -130,7 +130,19 @@ export interface Summary {
   verification: VerificationSummary
   /** Entities removed from the investigation that still have a record (D326). */
   hidden_entities?: number
+  /** Items that need the reporter's judgement: contradictions, leads, alerts, disputed facts (D327). */
+  judgement: number
+  /** Tidy-up: possible duplicate documents and possible same entities (D327). */
+  tidy_up: number
+  /** The short ranked slice to start with (D327). */
+  start_here: StartHereItem[]
+  /** What the latest briefing's batch added to Review, or null when it has no record. */
+  batch: { briefing: string; at: string | null; added: Record<ReviewKind, number> } | null
+  /** Open items a batch added since Review was last opened; null when it never was. */
+  since_review: { since: string; added: Record<ReviewKind, number> } | null
 }
+
+export interface StartHereItem { rid: string; kind: ReviewKind; title: string; note: string | null; reason: string }
 
 // The verification ledger (D271): a reporter's own check of a fact.
 export type VerifyStatus = 'verified' | 'disputed' | 'unverifiable'
@@ -686,7 +698,7 @@ export interface EverywhereResult {
 // ── review ───────────────────────────────────────────────────────────────────
 export type ReviewKind = 'contradictions' | 'leads' | 'alerts' | 'duplicates' | 'merges'
 export const REVIEW_KINDS: ReviewKind[] = ['contradictions', 'leads', 'alerts', 'duplicates', 'merges']
-export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[] }
+export interface ReviewItem { kind: ReviewKind; rid: string; title: string; detail: string[]; note: string | null; pair?: SamePair; term?: string; cited?: { sha: string; filename: string; note: string | null }[]; entity?: string | null; related?: string[]; doc_count?: number; new?: boolean }
 
 // Entity identity (D279): a "possible same" pair left for the reporter, and the merge log.
 export type MergeTier = 'high' | 'medium' | 'low' | 'manual'
@@ -942,7 +954,8 @@ export interface Methods {
   'search.everywhere': [{ query: string; top?: number }, EverywhereResult]
   'search.status': [{ vault: string }, { total: number; documents: number; notes: number }]
 
-  'review.items': [{ vault: string; kinds?: ReviewKind[] }, { items: ReviewItem[]; counts: Record<ReviewKind, number> }]
+  'review.items': [{ vault: string; kinds?: ReviewKind[]; since?: string | null }, { items: ReviewItem[]; counts: Record<ReviewKind, number>; start_here: StartHereItem[] }]
+  'review.opened': [{ vault: string }, { opened_at: string; previous: string | null }]
   'review.resolve': [{ vault: string; rids: string[] }, { resolved: string[] }]
   'review.unresolve': [{ vault: string; rids: string[] }, { unresolved: string[] }]
   'review.resolved': [{ vault: string }, { items: { rid: string; label: string; resolved_at: string; kind: string }[] }]
