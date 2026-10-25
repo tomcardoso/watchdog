@@ -628,6 +628,7 @@ export interface OpParams {
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
   'troubleshooting-copy': { output: string; originals?: boolean }
+  'diagnostics-report': { output: string }
   'merge-entities': { keep: string; merge: string }
   'merge-entity-pairs': { keep: string[]; merge: string[] }
   'undo-merge': { id: string }
@@ -936,6 +937,7 @@ export interface Methods {
   'vault.citations': [{ vault: string; links: string[] }, Record<string, CitationStatus>]
   'vault.checkCitations': [{ vault: string }, CitationReport]
   'vault.troubleshootingSize': [{ vault: string }, TroubleshootingSize]
+  'vault.diagnosticsReport': [{ vault: string }, { text: string }]
   'vault.pipeline': [{ vault: string }, PipelineState]
   'vault.briefings': [{ vault: string }, BriefingRow[]]
   'vault.notes': [{ vault: string }, { path: string; kind: 'query' | 'wiki'; title: string; modified: string }[]]
