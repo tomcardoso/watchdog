@@ -111,8 +111,8 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
 
           {p.incoming.length > 0 && (
             <div className="pipe-group">
-              <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting in incoming <span className="n">{p.incoming.length}</span></div>
-              <p>Files in the investigation's incoming folder that haven't been read yet.</p>
+              <div className="pipe-group-head"><Inbox style={{ color: 'var(--info)' }} />Waiting to be added <span className="n">{p.incoming.length}</span></div>
+              <p>Files you have added or downloaded that haven't been read yet.</p>
               <FileList rows={p.incoming.map((f) => ({ key: f.path, name: f.name, why: [fmtBytes(f.size), f.sidecar ? 'with sidecar' : ''].filter(Boolean).join(' · ') }))} />
               <div className="pipe-actions"><Button size="sm" variant="primary" disabled={!engine.ready} onClick={() => openAdd()}>Add them</Button></div>
             </div>

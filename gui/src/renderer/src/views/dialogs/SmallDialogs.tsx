@@ -66,7 +66,7 @@ export function NewInvestigationDialog() {
       open={open}
       onClose={() => setOpen(false)}
       title="New investigation"
-      sub="Creates a folder on this computer with incoming for documents to add and context for background material."
+      sub="Creates a folder on this computer to hold the investigation’s documents, notes and background material."
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>

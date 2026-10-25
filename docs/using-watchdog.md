@@ -287,7 +287,7 @@ If an earlier version holds something that should not be kept, such as a source'
 
 | Card | What it does |
 |---|---|
-| **Watch incoming for new files** | Reads files as they land in `incoming/`. Nothing is sent to a model. |
+| **Watch for new files** | Reads files as you put them in the investigation's `incoming` folder. Nothing is sent to a model. |
 | **Pre-processing** | Converts every file in `incoming/` to text on your computer. |
 | **Processing** | Extracts facts with a model and stages the result, with **Estimate** first. |
 | **Post-processing** | Finishes a batch: merges entities, flags contradictions, writes summaries, the timeline and the briefing. Safe to run again. |

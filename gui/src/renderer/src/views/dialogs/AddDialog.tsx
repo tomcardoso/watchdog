@@ -150,7 +150,7 @@ export function AddDialog() {
           const log = useApp.getState().jobs[j.id]?.log ?? []
           const text = log.map((l) => l.text).join('\n')
           if (p && /is a folder/i.test(text)) dirs.push(p)
-          else issues.push(`${p ? basename(p) : 'Documents in incoming'}: ${lastError(log) || 'could not be read'}`)
+          else issues.push(`${p ? basename(p) : 'Documents waiting to be added'}: ${lastError(log) || 'could not be read'}`)
         }
       }
       setFolders(dirs)
