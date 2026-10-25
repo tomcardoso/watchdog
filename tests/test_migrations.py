@@ -159,6 +159,35 @@ def test_an_old_investigation_has_every_step_pending_and_a_banner(tmp_path):
     assert st["banner"] is False and st["pending"]          # dismissed once, still in Maintenance
 
 
+def test_a_step_with_nothing_to_do_is_settled_silently(tmp_path, monkeypatch):
+    vault = old_vault(tmp_path)
+    first = migrations.MIGRATIONS[0]
+    monkeypatch.setattr(first, "estimate", lambda ctx: {"items": 0, "calls": 0, "est_tokens": 0, "detail": ""})
+    st = migrations.status(vault)
+    assert first.id not in [s["id"] for s in st["pending"]] and st["banner"] is True
+    assert migrations.load(vault)["applied"][first.id]["summary"] == "nothing to do"
+
+
+def test_nothing_left_to_do_means_no_banner_and_no_repeat_estimates(tmp_path, monkeypatch):
+    vault = old_vault(tmp_path)
+    calls = []
+    for m in migrations.MIGRATIONS:
+        monkeypatch.setattr(m, "estimate", lambda ctx, mid=m.id: calls.append(mid) or {"items": 0})
+    assert migrations.status(vault) == {"pending": [], "banner": False, "applied": len(migrations.MIGRATIONS)}
+    n = len(calls)
+    migrations.status(vault)
+    assert len(calls) == n                                   # settled: nothing estimated again
+
+
+def test_a_failing_estimate_leaves_the_step_pending(tmp_path, monkeypatch):
+    vault = old_vault(tmp_path)
+    first = migrations.MIGRATIONS[0]
+    def boom(ctx):
+        raise ValueError("unreadable")
+    monkeypatch.setattr(first, "estimate", boom)
+    assert first.id in [s["id"] for s in migrations.status(vault)["pending"]]
+
+
 # ── the plan ─────────────────────────────────────────────────────────────────────────────
 
 def test_the_plan_counts_each_step_without_writing(tmp_path, fake):

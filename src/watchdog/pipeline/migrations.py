@@ -139,9 +139,57 @@ def pending(vault: Path) -> list["Migration"]:
     return [m for m in MIGRATIONS if m.id not in done]
 
 
+def _fingerprint(vault: Path) -> str:
+    """Changes whenever the records a step's estimate reads change: the registry's two main files
+    and the folder of saved extractions."""
+    parts = []
+    for p in (vault / ".watchdog" / "registry" / "documents.json",
+              vault / ".watchdog" / "registry" / "entities.json", vault / ".watchdog" / "extracted"):
+        try:
+            st = p.stat()
+            parts.append(f"{st.st_mtime_ns}:{st.st_size}")
+        except OSError:
+            parts.append("-")
+    return "|".join(parts)
+
+
+def settle_empty(vault: Path) -> list[str]:
+    """Record as applied every pending step whose estimate finds nothing to do, so the banner and
+    Maintenance only offer steps that would change something. The counts are cached against the
+    records' fingerprint, so the estimates run again only after the records change. A step whose
+    estimate fails is left pending. Returns the ids settled."""
+    from watchdog.pipeline import history
+    vault = Path(vault)
+    steps = pending(vault)
+    if not steps or history.run_in_progress(vault):   # never judge records a run is changing
+        return []
+    data = load(vault)
+    fp = _fingerprint(vault)
+    checked = data.get("checked") if isinstance(data.get("checked"), dict) else {}
+    if checked.get("fp") == fp and all(m.id in (checked.get("items") or {}) for m in steps):
+        counts = checked["items"]
+    else:
+        ctx = _context(vault, say=lambda m: None)
+        counts = {}
+        for m in steps:
+            try:
+                counts[m.id] = int(m.estimate(ctx).get("items") or 0)
+            except Exception:  # noqa: BLE001 — an estimate that fails leaves the step pending
+                counts[m.id] = -1
+        data = load(vault)
+        data["checked"] = {"fp": fp, "items": counts}
+        _save(vault, data)
+    settled = [m.id for m in steps if counts.get(m.id) == 0]
+    for mid in settled:
+        mark_applied(vault, mid, "nothing to do")
+    return settled
+
+
 def status(vault: Path) -> dict:
     """What the app shows: the pending steps, whether the Overview's one-time banner is due (a
-    pending step the reporter has not dismissed it for), and how many steps were applied."""
+    pending step the reporter has not dismissed it for), and how many steps were applied. Steps
+    with nothing to do are settled first (`settle_empty`)."""
+    settle_empty(vault)
     data = load(vault)
     steps = pending(vault)
     dismissed = set(data["banner_dismissed"])
