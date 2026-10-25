@@ -277,7 +277,12 @@ export default function AuthPanel() {
         <div className="set-field" style={{ borderTop: 'none' }}>
           <div className="set-field-text">
             <div className="set-field-label">Adding documents</div>
-            <div className="set-field-short">How reading documents pays for Claude. An API key bills per token, to your Anthropic account, with no usage limit; recommended. A subscription is not metered, but a large batch can reach your plan’s limit.</div>
+            <div className="set-field-short">
+              {s.stages.some((st) => st.provider === 'anthropic')
+                ? 'How the processing stages that run on Claude pay for it (Billing, under Processing stages below).'
+                : 'No processing stage runs on Claude at the moment (see Processing stages below), so this applies only once you set one to a Claude model.'}{' '}
+              An API key bills per token, to your Anthropic account, with no usage limit; recommended. A subscription is not metered, but a large batch can reach your plan’s limit.
+            </div>
           </div>
           <div className="set-field-control">
             <Segmented
@@ -291,7 +296,7 @@ export default function AuthPanel() {
             />
             {asking && (
               <div className="set-input-row">
-                <input className="input" type="password" autoFocus autoComplete="off" placeholder="Paste your Anthropic API key" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
+                <input className="input" type="password" autoFocus autoComplete="off" placeholder="No Anthropic key is stored yet: paste one" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
                 <Button variant="primary" loading={busy} disabled={!apiKey.trim()} onClick={() => void switchMode('api-key', apiKey)}>
                   Use this key
                 </Button>
@@ -317,7 +322,7 @@ export default function AuthPanel() {
             />
             {askingSession && (
               <div className="set-input-row">
-                <input className="input" type="password" autoFocus autoComplete="off" placeholder="Paste your Anthropic API key" value={sessionKey} onChange={(e) => setSessionKey(e.target.value)} />
+                <input className="input" type="password" autoFocus autoComplete="off" placeholder="No Anthropic key is stored yet: paste one" value={sessionKey} onChange={(e) => setSessionKey(e.target.value)} />
                 <Button variant="primary" loading={busy} disabled={!sessionKey.trim()} onClick={() => void switchSessionMode('api-key', sessionKey)}>
                   Use this key
                 </Button>
@@ -343,7 +348,7 @@ export default function AuthPanel() {
         <div className="set-card-head">
           <div>
             <div className="card-title">Processing stages</div>
-            <div className="card-sub">Which provider each step runs on, and whether it is ready. Change models under Models in the sections list.</div>
+            <div className="card-sub">Which provider each step runs on, and whether it is ready. Change models under Models in the sections list. Billing for a step on Claude follows Adding documents, above.</div>
           </div>
         </div>
         <table className="table">

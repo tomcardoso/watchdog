@@ -700,8 +700,9 @@ def status_data() -> dict:
     """What Settings → Models & keys shows, as data.
 
     `claude` is Claude's access mode for processing (`mode`) and for the app's sessions
-    (`session_mode`, D318); `logged_in` only when either is subscription, `key_masked` and
-    `key_source` only when either is api-key. `stages` says which provider each pipeline stage is
+    (`session_mode`, D318); `logged_in` only when either is subscription. `key_masked` and
+    `key_source` describe the default Anthropic key whatever the mode, so switching a toggle to
+    API key can use a key already stored under Provider keys instead of asking for one. `stages` says which provider each pipeline stage is
     routed to and whether it can run; `keys` lists every provider with a key available (masked —
     the key itself never leaves this function); `base_urls` the user-supplied endpoints."""
     state = load_state()
@@ -714,11 +715,10 @@ def status_data() -> dict:
               "logged_in": None, "env_key_set": env_set, "key_masked": None, "key_source": None}
     if "subscription" in (mode, sessions):
         claude["logged_in"] = claude_code_logged_in()
-    if "api-key" in (mode, sessions):
-        masked = default_masked("anthropic", state)
-        if masked:
-            claude["key_masked"] = masked
-            claude["key_source"] = "env" if env_set else "stored"
+    masked = default_masked("anthropic", state)
+    if masked:
+        claude["key_masked"] = masked
+        claude["key_source"] = "env" if env_set else "stored"
 
     # Which provider each pipeline stage is routed to, and whether that provider is ready:
     # what decides whether processing will run, independent of Claude's mode above (#325).

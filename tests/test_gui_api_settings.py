@@ -238,6 +238,14 @@ def test_status_subscription(wdg_home):
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
 
 
+def test_status_subscription_still_reports_a_stored_anthropic_key(wdg_home):
+    """Switching a toggle to API key uses the key under Provider keys rather than asking again."""
+    write_creds(wdg_home, "subscription", {"anthropic": "sk-ant-abcdefghijklmnop"})
+    c = call("auth.status")["claude"]
+    assert c["mode"] == "subscription" and c["reason"] is None
+    assert c["key_masked"] == "sk-ant-abc…mnop" and c["key_source"] == "stored"
+
+
 def test_status_subscription_without_a_login_or_with_an_env_key(wdg_home, monkeypatch):
     write_creds(wdg_home, "subscription")
     monkeypatch.setattr("watchdog.auth.claude_code_logged_in", lambda: False)
