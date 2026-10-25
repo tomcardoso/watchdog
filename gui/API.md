@@ -194,7 +194,7 @@ EntityDetail = EntityRow & {
                    target_inferred: bool, target_texts: string[]}],   // one row per counterpart, direction and meaning (D291); role is the canonical label; target_inferred when the model matched the target to a record in every source (D332), target_texts the ids the documents gave
   contradictions: [{rid, summary, text, resolved: bool}],
   timeline: TimelineEvent[],
-  facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail
+  facts: (Fact & {sha, title|null, doc_date|null, note|null, link_inferred: bool})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail; link_inferred when the fact reached the entity through a tag the model matched (D333)
   synthesis: {summary, analysis|null, by: "model"|"session"|"carried", model|null, made_at|null,
               facts_total|null, facts_shown|null, stale: "merge"|"undo"|null,
               stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)

@@ -397,7 +397,7 @@ say (the owner's call).
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
 `pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Order: **tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
+Order: **fact-tag pass → tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
 
 **Housekeeping passes (`pipeline/housekeeping.py`, D330).** Small model chores over items code
 could not settle, run on the staged extractions before the commit. A chore is a task name, a prompt
@@ -413,6 +413,19 @@ year of the fact's or document's when none is printed), and holds an ambiguous n
 two readings. `dates.apply` writes `date`, `date_end` and `date_basis: "inferred"` into the staged
 extraction, rebuilds its entities' timeline events and restages its raw timeline files. A failed
 call leaves what code read (a year, or no date); it never holds up the commit.
+
+The **fact-tag pass** (`pipeline/fact_tags.py`, task `fact-tags`, the reconciliation model, D333)
+runs first, before the fold, so a re-tagged fact is identity evidence and reconciliation input like
+any other. A fact tag naming no entity of its own document, after post-flight's near-miss step
+(`_resolve_near_miss_tags`, #757), goes to the chore as one item per document and tag, with up to
+three facts carrying it and the document's entities (at most 60, most similar first);
+`fact_tags.validate` accepts only an id the document defines. `apply` re-tags every fact of the
+document carrying that tag (original tags in `extracted_entities`), records the id in
+`entities_inferred`, rebuilds the document's `evidence_fragments`/`timeline_events`
+(`explode_key_facts`) and restages its raw timeline files; an unmatched tag is recorded in
+`tags_unmatched` and still dropped by the fan-out. `FactIndex` resolves `entities_inferred` through
+the merge log like any tag, and the entity note and app mark such a fact "link inferred". Every run
+logs the batch's dangling-tag rate (`FACT TAGS n of m … dropped`).
 
 The **relationship-target pass** (`pipeline/role_targets.py`, task `role-targets`, the reconciliation
 model, D332) runs just before the date pass. A role whose `target_id` no entity has (not the
@@ -821,6 +834,7 @@ same content to the user's own model server; every other backend sends it to tha
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
+| fact-tags | when a staged fact carries a tag its document does not define, after post-flight's near-miss step (≤40 per call) | the tag, up to three facts carrying it, the document's entities (≤60): ids, names, types, aliases | other documents; raw text; everything else |
 | role-targets | when a staged relationship names a target id no entity has and code found no exact match (≤40 per call) | the id, the naming entities and wordings, the document's entities (≤60) and up to 8 similarly named registry entities: ids, names, types, aliases | facts; raw text; everything else |
 | date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |

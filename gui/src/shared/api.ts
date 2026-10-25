@@ -309,6 +309,8 @@ export interface EntityFact extends Fact {
   title: string | null
   doc_date: string | null
   note: string | null
+  /** The fact reached this entity through a tag an AI model matched (D333). */
+  link_inferred?: boolean
 }
 
 /** The AI-written summary of an entity, kept in the registry (D280). */

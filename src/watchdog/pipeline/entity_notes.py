@@ -64,7 +64,7 @@ def mark_label(mark: dict | None) -> str:
     return _MARKS.get((mark or {}).get("status"), "not checked")
 
 
-def _fact_line(f: dict, *, with_source: bool, with_passage: bool) -> str:
+def _fact_line(f: dict, *, with_source: bool, with_passage: bool, eid: str | None = None) -> str:
     from watchdog.pipeline.write_vault import (
         _defang, _figure_verification_note, _page_link, _quote_verification_note,
     )
@@ -77,7 +77,9 @@ def _fact_line(f: dict, *, with_source: bool, with_passage: bool) -> str:
         source = f" — [[{f['note']}|{_defang(f.get('title') or '')}]]" + (f", {page}" if page else "")
     else:
         source = f" — {page}" if page else ""
-    line = (f"- {head}{inferred}{_defang(f.get('fact') or '')}{source}"
+    # The fact named this entity by a tag the document did not define, matched by the model (D333).
+    linked = " *(link to this entity inferred)*" if eid and eid in (f.get("entities_inferred") or []) else ""
+    line = (f"- {head}{inferred}{_defang(f.get('fact') or '')}{source}{linked}"
             f"{_figure_verification_note(f)} · {mark_label(f.get('mark'))} ^{block_id(f['id'])}")
     quote = _defang((f.get("quote") or "").strip())
     if quote:
@@ -88,13 +90,14 @@ def _fact_line(f: dict, *, with_source: bool, with_passage: bool) -> str:
     return line
 
 
-def facts_section(facts: list[dict]) -> str:
-    """The `## Facts` body for an entity's facts (already resolved), or "" when there are none."""
+def facts_section(facts: list[dict], eid: str | None = None) -> str:
+    """The `## Facts` body for the facts (already resolved) of the entity `eid`, or "" when there
+    are none."""
     if not facts:
         return ""
     facts = entity_facts.chronological(facts)
     if len(facts) <= FLAT_MAX:
-        return "\n".join(_fact_line(f, with_source=True, with_passage=True) for f in facts)
+        return "\n".join(_fact_line(f, with_source=True, with_passage=True, eid=eid) for f in facts)
 
     from watchdog.pipeline.write_vault import _defang, _render_date
     groups: dict[str, list[dict]] = {}
@@ -121,14 +124,14 @@ def facts_section(facts: list[dict]) -> str:
             out.append(f"- {link(sha, label(sha))} — {len(fs)} fact{'s' if len(fs) != 1 else ''}")
             for f in fs:
                 if (f.get("mark") or {}).get("status") == "disputed":
-                    out.append("  " + _fact_line(f, with_source=False, with_passage=False))
+                    out.append("  " + _fact_line(f, with_source=False, with_passage=False, eid=eid))
                     shown += 1
         out.append("")
     for sha in full:
         fs = sorted(groups[sha], key=lambda f: f.get("index", 0))
         keep = [f for i, f in enumerate(fs) if i < GROUP_FACTS or f.get("mark")]
         out.append(f"### {label(sha)}\n")
-        out += [_fact_line(f, with_source=False, with_passage=False) for f in keep]
+        out += [_fact_line(f, with_source=False, with_passage=False, eid=eid) for f in keep]
         shown += len(keep)
         if len(keep) < len(fs):
             more = len(fs) - len(keep)
@@ -278,7 +281,7 @@ def render(entry: dict, facts: list[dict], documents: dict, contradictions: str,
                               resolver, stats)
     if summary:
         body += f"\n## {SUMMARY_HEADING}\n\n{summary}\n"
-    listed = facts_section(facts)
+    listed = facts_section(facts, entry["id"])
     if listed:
         body += f"\n## Facts\n\n{listed}\n"
     if contradictions:

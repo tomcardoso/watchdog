@@ -501,7 +501,9 @@ class CannedModel:
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
                     "briefing": self.briefing, "relationship-labels": self.relationship_labels,
                     "date-resolve": lambda text: {"answers": []},
-                    "role-targets": self.role_targets}
+                    "role-targets": self.role_targets,
+                    # Every fact in the sample tags an entity its document defines (`check_story`).
+                    "fact-tags": lambda text: {"answers": []}}
         handler = handlers.get(task)
         if handler is None:
             raise RuntimeError(f"demo: no canned answer for task {task!r}")

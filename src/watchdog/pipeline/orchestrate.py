@@ -44,7 +44,8 @@ _ADMISSION_MAX_WAIT_S = 300.0
 # Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
-                  "relationship-labels", "date-resolve", "role-targets"}
+                  "relationship-labels", "date-resolve", "role-targets",
+                  "fact-tags"}
 
 
 @dataclass
@@ -2396,6 +2397,51 @@ async def _run_chore(vault: Path, chore, items: list, *, model: str, backend: st
     return res
 
 
+async def _fact_tag_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
+                         post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
+    """Fact tags that name no entity of their document (D333), first in finalize, before the
+    exact-name fold: post-flight already pointed near misses at the id meant (#757); the rest go to
+    the model (`fact_tags.CHORE`, on the reconciliation model) with the document's entities, and
+    code checks every answer. Logs the batch's dangling-tag rate every run, before and after.
+    No call when nothing dangles, or at the spending limit; a failure leaves the tags dropped as
+    before and never holds up the commit."""
+    from watchdog.pipeline import fact_tags
+    if not shas:
+        return {"tags": 0, "dangling": 0}
+    try:
+        before = fact_tags.stats(vault, shas)
+        items = fact_tags.pending_items(vault, shas)
+    except OSError as e:
+        _log(vault, f"WARN fact tags not checked — {e}")
+        return {"tags": 0, "dangling": 0}
+    out = {**before, "retagged": 0, "facts": 0, "unmatched": 0}
+    if items:
+        fo = finalizer_overrides or {}
+        n = len(items)
+        _say(f"→  matching {n} fact tag{'s' if n != 1 else ''} that name no entity of their document…")
+        res = await _run_chore(vault, fact_tags.CHORE, items,
+                               model=fo.get("reconciliation_model", post_model),
+                               backend=fo.get("reconciliation_backend", post_backend),
+                               effort=post_effort, what="fact tags", stage="fact-tags")
+        if res is not None:
+            try:
+                out.update(fact_tags.apply(vault, items, res))
+            except OSError as e:
+                _log(vault, f"WARN fact tags not saved — {e}")
+            out["rejected"], out["unanswered"] = res.rejected, len(res.unanswered)
+        if out["facts"]:
+            f = out["facts"]
+            _say(f"   filed {f} more fact{'s' if f != 1 else ''} under the entity the document meant, "
+                 "marked as inferred")
+    if before["tags"]:
+        after = fact_tags.stats(vault, shas)["dangling"]
+        rate = 100 * before["dangling"] / before["tags"]
+        _log(vault, f"FACT TAGS {before['dangling']} of {before['tags']} ({rate:.1f}%) named no entity "
+                    f"of their document; {out['retagged']} matched by the model, {after} dropped")
+        out["dropped"] = after
+    return out
+
+
 async def _role_target_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
                             post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
     """Relationship targets named by an id no entity has (D332), on the staged extractions after
@@ -3271,8 +3317,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
                    benchmark_arm_id: str | None = None) -> dict:
     """Resolve, commit and post-process the pending batch.
 
-    Order: exact-name fold → pre-commit reconciliation → housekeeping (relationship targets, D332;
-    dates, D330) →
+    Order: fact tags (D333) → exact-name fold → pre-commit reconciliation → housekeeping
+    (relationship targets, D332; dates, D330) →
     commit pass (sorted sha order) →
     post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
     a run, by post-processing on its own, and to resume an interrupted finalize. Consumed inputs are
@@ -3328,6 +3374,9 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
         _log(vault, f"SPENDING LIMIT {msg}")
         rec_result["error"] = rec_result["spending_limit"] = msg
     elif shas:
+        # Fact tags that name no entity of their document (D333), before the fold, so a re-tagged
+        # fact counts as identity evidence and reaches reconciliation like any other.
+        await _fact_tag_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
         progress.emit("stage", stage="fold", done=0, total=len(shas))
         _batch_exact_fold(vault, shas)
         progress.emit("stage", stage="reconcile", done=None, total=None)

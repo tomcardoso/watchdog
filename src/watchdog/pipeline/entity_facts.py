@@ -216,6 +216,10 @@ class FactIndex:
             "title": rec.get("title") or rec.get("filename") or sha[:12],
             "note": rec.get("document_note"), "morgue": rec.get("morgue_path"),
             "entities": current,
+            # Entities the fact reached through a tag the model matched (D333), as current ids.
+            "entities_inferred": [r for r in dict.fromkeys(
+                self.resolve(sha, t) for t in f.get("entities_inferred") or [] if isinstance(t, str))
+                if r in current],
             "mark": attach(self.marks.get(fid), f),
         }
 
@@ -232,7 +236,8 @@ class FactIndex:
         """Every fact tagged to `eid` in the documents it appears in (or `shas`), each a dict:
         `id`, `fact`, `page`, `basis`, `date`, `quote`, the figure and quote flags, the passage
         fields, `sha`, `index` (reading order in its document), `doc_date`, `title`, `note`,
-        `morgue`, `entities` (current ids) and `mark` (the reporter's current mark, or None)."""
+        `morgue`, `entities` (current ids), `entities_inferred` (those the fact reached through a
+        tag the model matched, D333) and `mark` (the reporter's current mark, or None)."""
         entry = self.entities.get(eid) or {}
         shas = list(shas) if shas is not None else list(entry.get("appears_in") or [])
         out = []

@@ -380,7 +380,9 @@ def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
     for f in entity_facts.chronological(index.facts_for(eid)):
         row = fact_row({**f, "entities": f.get("entities") or []}, f["id"], ents, f.get("mark"))
         row.update({"sha": f["sha"], "title": f.get("title"), "doc_date": f.get("doc_date") or None,
-                    "note": f.get("note")})
+                    "note": f.get("note"),
+                    # Reached this entity through a tag the model matched (D333).
+                    "link_inferred": eid in (f.get("entities_inferred") or [])})
         rows.append(row)
     synth = (ents.get(eid) or {}).get("synthesis")
     synthesis = None

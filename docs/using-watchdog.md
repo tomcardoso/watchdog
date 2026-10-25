@@ -100,6 +100,8 @@ Under each fact is the text from the document that supports it:
 
 The model marks a fact *(inferred)* when it reasoned to it rather than read it in the document. Treat an inferred fact as a lead to verify. But the mark is the model's own hint, not a check: it marks very few facts this way, and an unmarked fact is not thereby guaranteed to be stated in the document.
 
+On an entity's page, a fact that says **link inferred** reached the entity through a model's judgement: the document named the entity by a label it did not define, such as an abbreviation, and a model matched the label to this entity (see [matching labels to entities](how-it-works.md#fact-tags)). The fact itself is as the document states it; check the page to confirm it is about this entity.
+
 Watchdog also checks every number in a fact against the page it cites, and the pages either side, allowing for figures printed in thousands or rounded. Where a number does not check out, the fact carries a note: *figure not found in the document — may be derived* (usually a total or difference the model calculated; check the arithmetic), or *found on another page, not the one cited*. Roughly two to three per cent of facts carry one, so a note is worth stopping on. Dates are not checked this way.
 
 ### Marking facts
