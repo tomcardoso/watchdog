@@ -11,7 +11,7 @@ Watchdog is built around Claude and uses it by default. It can reach Claude in t
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
 - **Subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
-**Settings → Models & keys** sets each separately, for two kinds of work:
+The **Billing** card in **Settings → Models & keys** sets each separately, for two kinds of work:
 
 - **Adding documents**: reading, extracting and the finishing steps. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
 - **Ask Claude and Research**: questions and web research. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
@@ -247,7 +247,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 
 ### App panels
 
-- **Models & keys.** How Claude is billed for adding documents and for Ask Claude and Research, each provider's keys, and the Processing stages table; see [Claude: subscription or API key](#claude-subscription-or-api-key) and [Your keys](#your-keys).
+- **Models & keys.** Billing: how adding documents and Ask Claude and Research pay for Claude, each provider's keys, and the Processing stages table; see [Claude: subscription or API key](#claude-subscription-or-api-key) and [Your keys](#your-keys).
 - **Folder access.** The folders Watchdog may change; see [Folder access](using-watchdog.md#folder-access).
 - **Version history.** How much history the open investigation keeps, and **Clear history…**; see [History and your notes](using-watchdog.md#history-and-your-notes).
 - **Record skills.** Every skill, to read, and the folder for your own; see [Record skills](how-it-works.md#record-skills).
