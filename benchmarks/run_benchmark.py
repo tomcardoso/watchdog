@@ -842,7 +842,7 @@ LOCK_NAME = ".bench-run.lock"
 
 @contextlib.contextmanager
 def run_lock(root: Path):
-    """Hold `root` for one `bench run` invocation, refusing a second one against it (#656, D338).
+    """Hold `root` for one `bench run` invocation, refusing a second one against it (#656, D337).
 
     Arm vaults are keyed by arm id under the root and shared by every invocation, so two
     overlapping runs write into the same vaults and each scores whatever the other left. The lock

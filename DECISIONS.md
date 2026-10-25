@@ -2921,7 +2921,7 @@ Tradeoff: pair merges an earlier run lost to a retyped id (D335) are not asked a
 
 A step whose estimate finds nothing to do is recorded as applied when the app reads the status (`settle_empty`), so the banner and Maintenance offer only steps that would change something; the counts are cached against the records' file stamps and never judged while a run holds the investigation.
 
-### D338 — A benchmark run holds its vault root; an arm that extracted nothing is never scored
+### D337 — A benchmark run holds its vault root; an arm that extracted nothing is never scored
 
 Issue #656. Benchmark arm vaults are keyed by arm id under one root and reused by every invocation, so two overlapping `bench run`s wrote into the same vaults and one's report scored the other's extractions: an arm whose own documents-extracted was 0 showed a non-zero recall. A run now holds `<vault-root>/.bench-run.lock` (the `pipeline/locks.py` lock, so a dead holder is taken over at once) and a second run against the root refuses, and scoring skips any extractor arm whose own count is 0, reporting "not scored" with the reason.
 
