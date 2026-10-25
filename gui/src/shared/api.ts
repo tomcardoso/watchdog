@@ -270,6 +270,10 @@ export interface Relationship {
   group: string | null
   wordings: RelationshipWording[]
   sources: { sha: string | null; page: number | null; wording: string }[]
+  /** The model matched the relationship's target to a record (D332); `target_texts` are the ids
+   * the documents gave it. */
+  target_inferred: boolean
+  target_texts: string[]
 }
 
 /** One relationship on a graph edge, in its own direction (D291). */
@@ -281,6 +285,8 @@ export interface GraphRelationship {
   docs: string[]
   basis: 'stated' | 'inferred'
   date_ranges: string[]
+  target_inferred: boolean
+  target_texts: string[]
   wordings: RelationshipWording[]
 }
 
@@ -303,6 +309,8 @@ export interface EntityFact extends Fact {
   title: string | null
   doc_date: string | null
   note: string | null
+  /** The fact reached this entity through a tag an AI model matched (D333). */
+  link_inferred?: boolean
 }
 
 /** The AI-written summary of an entity, kept in the registry (D280). */
@@ -443,7 +451,16 @@ export interface DocumentRequest {
 }
 
 /** Requests grouped by the holder their likely source names (D328); `key` is "" for no source. */
-export interface RequestGroup { key: string; label: string; count: number; documents: number }
+/** A source group of open requests (D328). `grouped_by: "model"` when an AI model joined several
+ * wordings of one place under `label` (D334); `wordings` are the requests' own. */
+export interface RequestGroup {
+  key: string
+  label: string
+  count: number
+  documents: number
+  grouped_by?: 'model' | null
+  wordings?: string[]
+}
 
 // ── ingest ───────────────────────────────────────────────────────────────────
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -585,6 +602,24 @@ export interface RecheckEstimate {
   max_entity_calls: number
 }
 
+/** One pending step of "Bring this investigation up to date" (D336). */
+export interface MigrationStep { id: string; title: string; description: string; calls_model: boolean }
+/** `migrations.status`: the pending steps and whether the Overview's one-time banner is due. */
+export interface MigrationStatus { pending: MigrationStep[]; banner: boolean; applied: number; busy?: boolean }
+/** `migrations.estimate`: each pending step's work and cost, and the totals, before it starts. */
+export interface MigrationEstimate {
+  steps: (MigrationStep & { items: number; calls: number; est_tokens: number; detail: string; cost_low: number | null; cost_high: number | null; model: string | null; subscription?: boolean })[]
+  calls: number
+  est_tokens: number
+  cost_low: number | null
+  cost_high: number | null
+  subscription: boolean
+  auth: { mode: string | null; ok: boolean; reason: string | null }
+  billing?: Billing[]
+  busy: boolean
+  engine_ready: boolean
+}
+
 // ── jobs ─────────────────────────────────────────────────────────────────────
 export type JobState = 'running' | 'done' | 'failed' | 'cancelled'
 export interface DocProgress { filename: string; state: string; detail: string | null }
@@ -643,6 +678,7 @@ export interface OpParams {
   'unhide-entities': { ids: string[] }
   'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
   'recheck-contradictions': { ids?: string[]; all?: boolean }
+  migrate: NoParams
   'rebuild-timeline': NoParams
   'rebuild-notes': NoParams
   'lead-sweep': NoParams
@@ -937,6 +973,7 @@ export interface Methods {
   'vault.hiddenEntities': [{ vault: string }, { items: HiddenEntity[] }]
   'vault.graph': [{ vault: string }, GraphData]
   'vault.relationshipSplit': [{ vault: string; group: string }, { group: string; status: string; by: string | null; at: string | null }]
+  'vault.requestSourceSplit': [{ vault: string; group: string }, { group: string; status: string; by: string | null; at: string | null }]
   'vault.timeline': [{ vault: string }, { events: TimelineEvent[] }]
   'vault.note': [{ vault: string; path: string }, Note]
   'vault.saveNotes': [{ vault: string; path: string; text: string }, { ok: boolean }]
@@ -978,6 +1015,10 @@ export interface Methods {
   'jobs.undoMerge': [{ vault: string; id: string }, Job]
   'jobs.recheckContradictions': [{ vault: string; ids?: string[]; all?: boolean }, Job]
   'contradictions.estimate': [{ vault: string; ids?: string[]; all?: boolean }, RecheckEstimate]
+  'jobs.migrate': [{ vault: string }, Job]
+  'migrations.status': [{ vault: string }, MigrationStatus]
+  'migrations.estimate': [{ vault: string }, MigrationEstimate]
+  'migrations.dismissBanner': [{ vault: string }, MigrationStatus]
   'action.run': [{ vault: string | null; op: OpName; params?: OpParams[OpName]; timeout?: number }, ActionResult]
 
   'search.query': [{ vault: string; query: string; top?: number; threshold?: number | null; rerank?: boolean }, SearchResult]

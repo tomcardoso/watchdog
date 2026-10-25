@@ -339,7 +339,8 @@ class CannedModel:
         for a, b, keep, reason in demo_story.MERGES:
             for i, pair in enumerate(pairs):
                 if {pair["a"]["id"], pair["b"]["id"]} == {a, b}:
-                    merges.append({"pair": i, "keep_id": keep, "reason": reason})
+                    merges.append({"pair": i, "keep": "a" if pair["a"]["id"] == keep else "b",
+                                   "reason": reason})
         # A same-name pair the rules could not settle (D279) is a record the fold kept apart under
         # a fresh slug (`marcus-teague-2`). The story has one entity per cast id, so a careful model
         # reading both sides' facts would confirm it — except where the facts give it nothing to go
@@ -349,7 +350,7 @@ class CannedModel:
             if ids[0] in UNSURE_SAME_NAME:
                 continue
             if pair.get("same_name") and re.fullmatch(re.escape(ids[0]) + r"-\d+", ids[1]):
-                merges.append({"pair": i, "keep_id": ids[0],
+                merges.append({"pair": i, "keep": "a" if pair["a"]["id"] == ids[0] else "b",
                                "reason": "The same person, described consistently in both documents."})
         # Records with the very same name come as a group (#755): every record of one cast id
         # (`marcus-teague`, `marcus-teague-2`, …) is one thing, unless it is an unsure one.
@@ -485,6 +486,23 @@ class CannedModel:
                 out.append({"pair": int(head.group(1)), "groups": groups})
         return {"pairs": out}
 
+    def request_sources(self, text: str) -> dict:
+        from watchdog.gui import demo_story
+        answers = []
+        for m in re.finditer(r'^(\d+)\. "(.*?)" \(', text, re.M):
+            label = m.group(2)
+            for phrase, canonical in demo_story.SOURCE_GROUPS:
+                if phrase in label.lower():
+                    label = canonical
+            answers.append({"item": int(m.group(1)), "label": label})
+        return {"answers": answers}
+
+    def role_targets(self, text: str) -> dict:
+        # The sample's relationship targets without a record (a surety, a council committee) are
+        # leads by design: nothing in the investigation is them, so a careful model matches none.
+        items = re.findall(r"^(\d+)\. target id: ", text, re.M)
+        return {"answers": [{"item": int(n), "match": "", "kind": ""} for n in items]}
+
     async def __call__(self, *, task, prompt, schema, model=None, backend=None, max_retries=1,
                        effort=None):
         from watchdog import model_client
@@ -494,7 +512,11 @@ class CannedModel:
                     "entity-synthesis": self.synthesis, "timeline-dedup": self.timeline_dedup,
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
                     "briefing": self.briefing, "relationship-labels": self.relationship_labels,
-                    "date-resolve": lambda text: {"answers": []}}
+                    "date-resolve": lambda text: {"answers": []},
+                    "role-targets": self.role_targets,
+                    # Every fact in the sample tags an entity its document defines (`check_story`).
+                    "fact-tags": lambda text: {"answers": []},
+                    "request-sources": self.request_sources}
         handler = handlers.get(task)
         if handler is None:
             raise RuntimeError(f"demo: no canned answer for task {task!r}")

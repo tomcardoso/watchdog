@@ -115,6 +115,11 @@ def create(name: str, *, description: str = "", parent: Path | None = None) -> P
     (vault / ".claude" / "settings.json").write_text(json.dumps(claude_settings(), indent=2) + "\n")
     obsidian.register(vault)
 
+    # Everything this investigation will hold is processed by this version of the pipeline, so it
+    # starts with every migration applied and never sees "Bring this investigation up to date".
+    from watchdog.pipeline import migrations
+    migrations.stamp_current(vault)
+
     listed = projects.load()
     entry = {"name": name, "path": str(vault), "created_at": now}
     if description:

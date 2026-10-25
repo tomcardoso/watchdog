@@ -217,7 +217,8 @@ def test_entity_detail(rich_vault):
         "role": "director of", "target_id": "acme-corp", "target_name": "Acme Corp",
         "target_type": "organization", "direction": "out", "docs": [SHA1], "group": None,
         "wordings": [{"text": "director of", "sources": [{"sha": SHA1, "page": 2}]}],
-        "sources": [{"sha": SHA1, "page": 2, "wording": "director of"}]}]
+        "sources": [{"sha": SHA1, "page": 2, "wording": "director of"}],
+        "target_inferred": False, "target_texts": []}]
     c = e["contradictions"][0]
     assert c["summary"] == "Start date of Jane Doe's directorship" and c["resolved"] is False
     assert c["rid"] == resolutions.contradiction_id(CALLOUT) and c["text"] == CALLOUT
@@ -258,6 +259,7 @@ def test_graph_keeps_stated_edges_between_profiled_entities(rich_vault):
     assert edge["relationships"] == [{
         "from": "jane-doe", "to": "acme-corp", "label": "director of", "group": None,
         "docs": [SHA1], "basis": "stated", "date_ranges": ["2019–2023"],
+        "target_inferred": False, "target_texts": [],
         "wordings": [{"text": "director of", "sources": [{"sha": SHA1, "page": 2}]}]}]
     assert g["documents"][SHA1]["note"] == "documents/report-one"
 

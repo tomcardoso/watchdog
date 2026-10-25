@@ -346,6 +346,9 @@ def _relationships(v: Path, eid: str, ent: dict) -> list[dict]:
             "group": r["group"],
             "wordings": _wordings(r),
             "sources": [{"sha": x["sha"], "page": x["page"], "wording": x["label"]} for x in r["sources"]],
+            # The model matched the target to this record (D332): the ids the documents gave.
+            "target_inferred": bool(r.get("target_inferred")),
+            "target_texts": r.get("target_texts") or [],
         })
     return out
 
@@ -377,7 +380,9 @@ def _entity_facts(v: Path, eid: str, ents: dict, docs: dict) -> dict:
     for f in entity_facts.chronological(index.facts_for(eid)):
         row = fact_row({**f, "entities": f.get("entities") or []}, f["id"], ents, f.get("mark"))
         row.update({"sha": f["sha"], "title": f.get("title"), "doc_date": f.get("doc_date") or None,
-                    "note": f.get("note")})
+                    "note": f.get("note"),
+                    # Reached this entity through a tag the model matched (D333).
+                    "link_inferred": eid in (f.get("entities_inferred") or [])})
         rows.append(row)
     synth = (ents.get(eid) or {}).get("synthesis")
     synthesis = None
@@ -495,6 +500,8 @@ def graph(vault: str) -> dict:
             continue
         rels = [{"from": r["from"], "to": r["to"], "label": r["label"], "group": r["group"],
                  "docs": r["docs"], "basis": r["basis"], "date_ranges": r["date_ranges"],
+                 "target_inferred": bool(r.get("target_inferred")),
+                 "target_texts": r.get("target_texts") or [],
                  "wordings": _wordings(r)} for r in e["relationships"]]
         cited.update(e["docs"])
         labels = _edge_labels(e["relationships"])
@@ -518,6 +525,25 @@ def relationship_split(vault: str, group: str) -> dict:
         raise RpcError("That is not a relationship grouping.", code="bad_params")
     try:
         entry = relationships.split(v, group)
+    except LookupError:
+        raise RpcError("That grouping is no longer in effect.", code="not_found")
+    except ValueError as e:
+        raise RpcError(str(e), code="log_too_new")
+    return {"group": entry["id"], "status": entry["status"], "by": entry.get("split_by"),
+            "at": entry.get("split_at")}
+
+
+@method("vault.requestSourceSplit")
+def request_source_split(vault: str, group: str) -> dict:
+    """Show a grouping of request sources apart again (D334), through `request_sources.split`, the
+    library function that records it (an app-only operation, I10). Later runs never regroup them."""
+    from watchdog.pipeline import request_sources
+
+    v = require_vault(vault)
+    if not isinstance(group, str) or not group.startswith("src:"):
+        raise RpcError("That is not a grouping of request sources.", code="bad_params")
+    try:
+        entry = request_sources.split(v, group)
     except LookupError:
         raise RpcError("That grouping is no longer in effect.", code="not_found")
     except ValueError as e:
@@ -1004,11 +1030,13 @@ def write_file(vault: str, path: str, text: str) -> dict:
 def requests_(vault: str) -> dict:
     """The open document requests, most-cited first, each with its source group's key, and the
     groups (`requests.worklist`, D328)."""
+    from watchdog.pipeline import request_sources
     from watchdog.pipeline import requests as _requests
     from watchdog.pipeline import resolutions
 
     v = require_vault(vault)
-    rows, groups = _requests.worklist(_requests.open_requests(v))
+    rows, groups = _requests.worklist(_requests.open_requests(v),
+                                      request_sources.mapping(request_sources.load(v)))
     open_ = [{
         "rid": r["rid"],
         "type": r.get("type") or None,

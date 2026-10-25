@@ -540,3 +540,26 @@ def test_I18_the_diagnostics_report_holds_no_content(tmp_path):
     assert "plant" not in text and "zulu" not in text
     assert "documents" in text and "page 4" not in text
 
+
+
+def test_I19_migrations_are_registered_stamped_and_kept_out_of_model_inputs(tmp_path, monkeypatch):
+    """Every migration is registered once with what the app shows; a new investigation is stamped
+    with all of them; the stamp lives outside the registry and outside version history, so no
+    model input or restore reads it; and the operation that runs them is the one model operation
+    the app runs for it."""
+    from watchdog import ops
+    from watchdog.ops import projects as projects_op
+    from watchdog.pipeline import history, migrations
+    ids = [m.id for m in migrations.MIGRATIONS]
+    assert ids and len(ids) == len(set(ids))
+    assert all(m.title and m.description and m.calls_model == (m.stage is not None)
+               for m in migrations.MIGRATIONS)
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setattr("watchdog.config.HOME", home)
+    monkeypatch.setattr("watchdog.obsidian.config_path", lambda: tmp_path / "obsidian.json")
+    vault = projects_op.create("Invariant check", parent=tmp_path)
+    assert set(migrations.load(vault)["applied"]) == set(ids) and migrations.pending(vault) == []
+    rel = migrations.stamp_path(vault).relative_to(vault).as_posix()
+    assert not rel.startswith(".watchdog/registry/") and not history.tracked(rel)
+    assert ops.get("migrate").secrets

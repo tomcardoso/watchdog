@@ -15,6 +15,7 @@ import {
   Link2,
   Network,
   Play,
+  RefreshCcw,
   RefreshCw,
   Coins,
   ScanSearch,
@@ -37,6 +38,7 @@ import { fmtBytes, fmtCost, plural } from '@renderer/lib/format'
 import { navigate, toast, useApp } from '@renderer/lib/store'
 import { usePublicRecordsGate } from './PublicRecordsGate'
 import RecheckModal from '../entities/RecheckModal'
+import MigrateModal from './MigrateModal'
 
 const EFFORTS: Effort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
@@ -638,6 +640,32 @@ function RecheckCard() {
   )
 }
 
+// Bring this investigation up to date (D336): the improvements made since its documents were
+// processed, applied to what it holds. The badge says how many steps are waiting.
+function MigrateCard() {
+  const vault = useApp((s) => s.project!.path)
+  const q = useRpc('migrations.status', { vault })
+  const [open, setOpen] = useState(false)
+  const n = q.data?.pending.length ?? 0
+  return (
+    <>
+      <MCard
+        icon={RefreshCcw}
+        title="Bring this investigation up to date"
+        note={q.data ? <Badge tone={n ? 'accent' : undefined}>{n ? plural(n, 'step') + ' waiting' : 'Up to date'}</Badge> : undefined}
+        footer={
+          <Button size="sm" icon={Play} disabled={!n} onClick={() => setOpen(true)}>
+            Review the steps…
+          </Button>
+        }
+      >
+        Applies improvements made to Watchdog since this investigation’s documents were processed, without processing them again: dates the old date reader lost, records with the same name, fact tags and relationships that name no entity, and other fixes. You see each step and the cost before anything is sent. A step that stops waits for the next time.
+      </MCard>
+      <MigrateModal open={open} onClose={() => setOpen(false)} />
+    </>
+  )
+}
+
 function Gated({ children }: { children: ReactNode }) {
   const ready = useEngineGate().ready
   return (
@@ -709,6 +737,9 @@ export default function MaintenancePanel() {
         <CitationsCard />
         <Gated>
           <RecheckCard />
+        </Gated>
+        <Gated>
+          <MigrateCard />
         </Gated>
         <Gated>
         <SimpleCard

@@ -56,10 +56,11 @@ def _slim(artifact: dict | None) -> dict | None:
                 f.pop(k, None)
         facts.append(f)
     # Each role as the document states it, `(entity id, relationship, target id, page, basis,
-    # date_range)`: the relationship view (D291) counts every document that states one, where the
-    # registry keeps only the first document per wording.
+    # date_range, inferred target)`: the relationship view (D291) counts every document that states
+    # one, where the registry keeps only the first document per wording. The last is the id the
+    # extraction gave when the model matched the target to an entity (D332), else None.
     roles = [(e.get("id"), r.get("relationship"), r.get("target_id"), r.get("page"),
-              r.get("basis"), r.get("date_range"))
+              r.get("basis"), r.get("date_range"), _inferred_target(r))
              for e in artifact.get("entities") or [] if isinstance(e, dict) and e.get("id")
              for r in e.get("roles") or []
              if isinstance(r, dict) and isinstance(r.get("relationship"), str)
@@ -68,6 +69,13 @@ def _slim(artifact: dict | None) -> dict | None:
             "date": doc.get("date_of_document"),
             "entities": [e.get("id") for e in artifact.get("entities") or [] if isinstance(e, dict)],
             "roles": roles}
+
+
+def _inferred_target(role: dict) -> str | None:
+    """The id a relationship's target had as extracted, when the model matched it (D332)."""
+    if role.get("target_basis") != "inferred":
+        return None
+    return str(role.get("extracted_target_id") or "").strip() or None
 
 
 def _load(path: Path) -> dict | None:
@@ -208,6 +216,10 @@ class FactIndex:
             "title": rec.get("title") or rec.get("filename") or sha[:12],
             "note": rec.get("document_note"), "morgue": rec.get("morgue_path"),
             "entities": current,
+            # Entities the fact reached through a tag the model matched (D333), as current ids.
+            "entities_inferred": [r for r in dict.fromkeys(
+                self.resolve(sha, t) for t in f.get("entities_inferred") or [] if isinstance(t, str))
+                if r in current],
             "mark": attach(self.marks.get(fid), f),
         }
 
@@ -224,7 +236,8 @@ class FactIndex:
         """Every fact tagged to `eid` in the documents it appears in (or `shas`), each a dict:
         `id`, `fact`, `page`, `basis`, `date`, `quote`, the figure and quote flags, the passage
         fields, `sha`, `index` (reading order in its document), `doc_date`, `title`, `note`,
-        `morgue`, `entities` (current ids) and `mark` (the reporter's current mark, or None)."""
+        `morgue`, `entities` (current ids), `entities_inferred` (those the fact reached through a
+        tag the model matched, D333) and `mark` (the reporter's current mark, or None)."""
         entry = self.entities.get(eid) or {}
         shas = list(shas) if shas is not None else list(entry.get("appears_in") or [])
         out = []

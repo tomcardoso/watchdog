@@ -12,4 +12,6 @@ A date relative to something else ("the following Tuesday", "three days later", 
 
 When an item says its figures can be read two ways, answer one of the two readings only when the fact, the wording or the document's date shows which one is meant (a weekday that fits only one, a sequence that only one keeps in order); otherwise answer nothing.
 
+When an item says no printed date was kept, the fact's own words are the only wording: answer the date or period the fact's event happened on, as those words state it. Answer nothing when they name several dates and do not show which one dates the event, or name a date that is not when the event happened (a document's date mentioned in passing, a deadline still to come).
+
 Do not correct a date that looks wrong. Read it as printed.

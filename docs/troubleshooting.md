@@ -154,7 +154,11 @@ Entity and document notes are rewritten from Watchdog's own records, so nothing 
 
 ## A dated fact is missing from the timeline, or shows only its year
 
-The fact is still on its document and its entities; only its place on the timeline is missing. Watchdog places a date only when it can read it with confidence: the year must be printed, and a date written in figures that could be read two ways (03/04/2021) is placed at its year until a model settles which reading the document means. If that step could not run (a rate limit, the [spending limit](#a-run-stopped-at-the-spending-limit)) or found no confident answer, the date stays as it was. [How it works](how-it-works.md#dates) explains the rules.
+The fact is still on its document and its entities; only its place on the timeline is missing. Watchdog places a date only when it can read it with confidence: the year must be printed, and a date written in figures that could be read two ways (03/04/2021) is placed at its year until a model settles which reading the document means. If that step could not run (a rate limit, the [spending limit](#a-run-stopped-at-the-spending-limit)) or found no confident answer, the date stays as it was. In an investigation started before October 2026, a date the old reader could not read was erased; [bringing the investigation up to date](using-watchdog.md#bringing-an-investigation-up-to-date) reads back the ones the fact's words still state. [How it works](how-it-works.md#dates) explains the rules.
+
+## Bringing an investigation up to date stopped partway
+
+The steps that finished are kept; the rest are still listed under **Activity → Maintenance → Bring this investigation up to date**. A step that stops at the [spending limit](#a-run-stopped-at-the-spending-limit) asks nothing further: raise the limit or reset the count, then run it again. A failed call (a rate limit, a provider outage) leaves its step waiting, and items it had already settled are not asked again. The Overview's banner, once hidden, does not come back for the same steps; Maintenance shows them until they are done. See [Bringing an investigation up to date](using-watchdog.md#bringing-an-investigation-up-to-date).
 
 ## A merge joined two different people or companies
 

@@ -29,7 +29,7 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
   then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
   `requeue`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
-  `recheck-contradictions`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
+  `recheck-contradictions`, `migrate`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
   code is converted to an error with its message (leading `Error:` stripped).
@@ -147,7 +147,7 @@ EntityRow = {
 | `vault.entities` | `{vault}` | `EntityRow[]` — every entity except those removed from the investigation (D326) |
 | `vault.hiddenEntities` | `{vault}` | `{items: [{id, name, type, at\|null, by\|null, exists, doc_count}]}` — the entities removed from the investigation (`registry/hidden.json`, D326), most recently removed first, with the name and type each had when removed; `exists` is false once its record has gone from the registry (the id stays listed, so it is hidden again if processing brings it back) |
 | `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
-| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View`. An entity removed from the investigation (D326) is not a node, and no edge touches it |
+| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, target_inferred, target_texts, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View`. An entity removed from the investigation (D326) is not a node, and no edge touches it |
 | `vault.relationshipSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping's wordings apart again (`relationships.split`, D291): recorded in `registry/relationships.json` and the vault's history, the two entities' notes refreshed; later runs never regroup those wordings. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
@@ -162,7 +162,8 @@ EntityRow = {
 | `vault.sessionPrimer` | `{vault}` | `{text, chars, budget}` — the primer every Ask Claude session starts with, built now from the vault's records exactly as the app appends it to a session's system prompt (`primer.build`, D285, D299). Briefings → Current state shows it under **What Claude is given**. Read-only, no model |
 | `vault.currentState` | `{vault}` | `{text}` — the same records as the primer (`primer.gather`), rendered for the reporter: no citation instructions or command lines, the app's names for where things live (Review → Leads), no length budget (`gui/current_state.py`). Briefings → Current state shows it. Read-only, no model |
 | `vault.writeFile` | `{vault, path, text}` | `{ok}` — only `context.md` and `watchlist.md`. Recorded as a version of the file's history (D286) |
-| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last |
+| `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents, grouped_by: "model"\|null, wordings: string[]}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last; a group the model joined across wordings (`request_sources.mapping`, D334) has a `src:` key, the model's label, `grouped_by: "model"` and the wordings it joined |
+| `vault.requestSourceSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping of request sources apart again (`request_sources.split`, D334): recorded in `registry/request_sources.json` and the vault's history; later runs never regroup those sources. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
 
 ```
@@ -190,10 +191,11 @@ EntityDetail = EntityRow & {
   documents: DocumentRow[],                     // appears_in, resolved
   relationships: [{role, target_id, target_name|null, target_type|null, direction: "out"|"in",
                    docs: string[], group|null, wordings: [{text, sources: [{sha, page}]}],
-                   sources: [{sha, page, wording}]}],   // one row per counterpart, direction and meaning (D291); role is the canonical label
+                   sources: [{sha, page, wording}],
+                   target_inferred: bool, target_texts: string[]}],   // one row per counterpart, direction and meaning (D291); role is the canonical label; target_inferred when the model matched the target to a record in every source (D332), target_texts the ids the documents gave
   contradictions: [{rid, summary, text, resolved: bool}],
   timeline: TimelineEvent[],
-  facts: (Fact & {sha, title|null, doc_date|null, note|null})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail
+  facts: (Fact & {sha, title|null, doc_date|null, note|null, link_inferred: bool})[],   // every fact tagged to the entity in the stored extractions, in date order (D280); mark as in DocumentDetail; link_inferred when the fact reached the entity through a tag the model matched (D333)
   synthesis: {summary, analysis|null, by: "model"|"session"|"carried", model|null, made_at|null,
               facts_total|null, facts_shown|null, stale: "merge"|"undo"|null,
               stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)
@@ -334,6 +336,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `undo-merge` | yes | `{id}` | `{split_name, keep_name, documents, facts}` | index |
 | `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
+| `migrate` | yes | — | `migrations.run`'s result (D336): `{steps: [{id, title, complete, summary}], applied, pending, stopped, spending_limit, error, rebuilt}`; exit code 2 at the spending limit, 1 on a failed call | index |
 | `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
 | `hide-entities` | yes | `{ids}` | `{hidden, already, names}` — removes entities from the investigation's views (D326): lists their ids in `registry/hidden.json` under the registry lock, with who and when; changes nothing else (I17). An action | |
 | `unhide-entities` | yes | `{ids}` | `{shown, not_listed, names}` — Bring back (D326). An action | |
@@ -348,7 +351,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `sample-create` | no | `{dir?, rebuild?}` | `{slug, name, path}` — builds the sample investigation with prepared model answers (no model call, no key, no network), refused when it exists unless `rebuild`, which deletes only the sample first (D303) | |
 | `projects-new` / `-register` / `-rename` / `-describe` / `-move` / `-archive` / `-delete` | no | see [projects](#projects) | `{slug, name, path}` | |
 
-Only `add`, `dig`, `bark` and `recheck-contradictions` call a model, so only they are handed the
+Only `add`, `dig`, `bark`, `recheck-contradictions` and `migrate` call a model, so only they are handed the
 investigation's keys (D295). `add` and `dig` without `skip_warning` decline the public-records
 gate and send nothing: the app shows the acknowledgement first and passes `skip_warning: true`
 once it is given.
@@ -373,6 +376,7 @@ last line on stderr), 64 (a request it could not read) or 130.
 | `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge": the `undo-merge` operation, refused up front when the merge can't be split (D280). Errors: `cannot_undo` with the reason, `not_found` |
 | `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): the `recheck-contradictions` operation (D287), after the checks it would make. Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
+| `jobs.migrate` | `{vault}` | `Job` — "Bring this investigation up to date" (D336): the `migrate` operation, after the checks it would make. Holds the processing lock while it runs; progress is the `migrate` stage, one step per migration, with each step's own stages inside. Errors: `busy`, `nothing_to_do` when no migration is pending, `auth_required`, `key_missing` (D290), `engine_not_ready` |
 | `action.run` | `{vault\|null, op, params?, timeout?: seconds}` | `{code, result, log, error\|null}` — a quick operation run to completion (rename, requeue…); `error` is the reason it gave when `code` isn't 0 |
 
 ```
@@ -406,6 +410,26 @@ RecheckEstimate = {
 | Method | Params | Result |
 |---|---|---|
 | `contradictions.estimate` | `{vault, ids?: string[], all?: bool}` | `RecheckEstimate` — a read: `recheck.plan` priced by `ingest_setup.recheck_cost_estimate` (D287), plus `billing: Billing[]` (D290) and `sample: bool` (D307: prepared answers, $0). The app shows it and asks before `jobs.recheckContradictions` |
+
+## migrations
+
+Bringing an investigation up to date (D336). The stamp is `.watchdog/migrations.json`, app-owned.
+
+```
+MigrationStep = {id, title, description, calls_model: bool}
+MigrationStatus = {pending: MigrationStep[], banner: bool, applied: number, busy?: bool}
+MigrationEstimate = {
+  steps: [MigrationStep & {items, calls, est_tokens, detail, cost_low|null, cost_high|null, model|null, subscription?}],
+  calls, est_tokens, cost_low|null, cost_high|null,   // summed over the steps; null when a model is unpriced
+  subscription: bool, auth: {mode, ok, reason|null}, billing: Billing[], busy: bool, engine_ready: bool
+}
+```
+
+| Method | Params | Result |
+|---|---|---|
+| `migrations.status` | `{vault}` | `MigrationStatus` — the pending steps (none for the sample or an investigation with no committed document) and whether the Overview's one-time banner is due |
+| `migrations.estimate` | `{vault}` | `MigrationEstimate` — a read: `migrations.plan`, each model step priced on its stage's model by `ingest_setup.recheck_cost_estimate`. The app shows it and asks before `jobs.migrate` |
+| `migrations.dismissBanner` | `{vault}` | `MigrationStatus` — hides the banner for the steps pending now (a later migration shows it again); Maintenance keeps the row |
 
 ## search
 

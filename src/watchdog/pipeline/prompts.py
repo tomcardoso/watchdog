@@ -370,6 +370,24 @@ def build_date_resolve_prompt(items_text: str) -> str:
     return f"{_render('date_resolve')}\n\nDates:\n\n{items_text}"
 
 
+def build_role_targets_prompt(items_text: str) -> str:
+    # The relationship-target chore (D332): the numbered items `role_targets.build_prompt` lays
+    # out. Code checks every answer (`role_targets.validate`); the model only proposes.
+    return f"{_render('role_targets')}\n\nTargets:\n\n{items_text}"
+
+
+def build_fact_tags_prompt(items_text: str) -> str:
+    # The fact-tag chore (D333): the numbered items `fact_tags.build_prompt` lays out. Code checks
+    # every answer (`fact_tags.validate`); the model only proposes.
+    return f"{_render('fact_tags')}\n\nTags:\n\n{items_text}"
+
+
+def build_request_sources_prompt(items_text: str) -> str:
+    # The request-source chore (D334): the numbered sources `request_sources.build_prompt` lays
+    # out. Code checks every answer and forms the groups (`request_sources.apply`).
+    return f"{_render('request_sources')}\n\nSources:\n\n{items_text}"
+
+
 def build_request_dedup_prompt(open_requests: list[dict]) -> str:
     # Document-request dedup (#416): each open request shown by index with the fields a
     # journalist would compare by eye — type, wording, likely source. sources/added/rid stay

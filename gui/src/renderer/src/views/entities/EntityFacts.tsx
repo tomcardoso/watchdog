@@ -95,6 +95,7 @@ export function EntityFacts({ facts }: { facts: EntityFact[] }) {
             <span className="truncate">{withSource ? docLabel(f) : 'Open'}{f.page ? ` · p. ${f.page}` : ''}</span>
           </button>
           {f.basis === 'inferred' && <Badge tone="info" icon={Info} tip="Reasoned from the document, not stated in it. Verify before relying on it.">inferred</Badge>}
+          {f.link_inferred && <Badge tone="info" icon={Info} tip="The document named this entity by a label it did not define; an AI model matched the label to this entity. Check the page.">link inferred</Badge>}
           {f.figure_note && <Badge tone="warning" icon={AlertTriangle} tip={f.figure_note}>check figure</Badge>}
           {mark?.status === 'disputed' && <DisputedBadge />}
         </div>

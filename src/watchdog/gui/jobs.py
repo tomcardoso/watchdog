@@ -107,6 +107,10 @@ def run_providers_for(op: str, params: dict) -> list[str] | None:
         if op == "recheck-contradictions":
             from watchdog.pipeline import recheck
             return run_providers([recheck.finalizer_stage()[0]])
+        if op == "migrate":
+            from watchdog.pipeline import migrations
+            stages, _effort = migrations.stages()
+            return run_providers([b for b, _m in stages.values()])
     except (Exception, SystemExit):  # noqa: BLE001 — a bad setting is the run's to report
         return None
     return None

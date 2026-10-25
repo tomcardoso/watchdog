@@ -175,17 +175,24 @@ def cite_count(request: dict) -> int:
                 if isinstance(s, dict) and (s.get("sha256") or s.get("filename"))})
 
 
-def worklist(open_: list[dict]) -> tuple[list[dict], list[dict]]:
+def worklist(open_: list[dict], mapped: dict | None = None) -> tuple[list[dict], list[dict]]:
     """Pure: the open requests as Review works them, and their source groups.
 
     Requests are sorted by how many documents cite them, most first, then by `what`; each gains
-    `cite_count` and `source_key`. Groups are `{key, label, count, documents}`, ordered by the
-    most-cited request in each, then by size and label; requests with no source come last. A
-    group's label is its most frequent wording (ties: alphabetical)."""
+    `cite_count` and `source_key`. Groups are `{key, label, count, documents, grouped_by,
+    wordings}`, ordered by the most-cited request in each, then by size and label; requests with no
+    source come last. A group's label is its most frequent wording (ties: alphabetical).
+
+    `mapped` is `request_sources.mapping` (D334): a source key in one of its groups goes under that
+    group's id and label instead, with `grouped_by: "model"` and the wordings it joined; nothing
+    in the requests themselves changes."""
+    mapped = mapped or {}
     rows = []
     for r in open_:
         key, label = source_group(r.get("likely_source"))
-        rows.append({**r, "cite_count": cite_count(r), "source_key": key, "_label": label})
+        g = mapped.get(key) if key else None
+        rows.append({**r, "cite_count": cite_count(r), "source_key": g["id"] if g else key,
+                     "_label": label, "_group": g})
     rows.sort(key=lambda r: ((r.get("what") or "").casefold(), r.get("rid") or ""))
     rows.sort(key=lambda r: -r["cite_count"])
     by_key: dict[str, list[dict]] = {}
@@ -199,13 +206,17 @@ def worklist(open_: list[dict]) -> tuple[list[dict], list[dict]]:
         label = sorted(words.items(), key=lambda t: (-t[1], t[0].casefold(), t[0]))[0][0] if key else ""
         shas = {s.get("sha256") or s.get("filename") for r in members for s in r.get("sources") or []
                 if isinstance(s, dict)}
-        groups.append({"key": key, "label": label, "count": len(members),
-                       "documents": len(shas - {None}), "_top": members[0]["cite_count"]})
+        g = members[0]["_group"]
+        groups.append({"key": key, "label": (g.get("label") or label) if g else label,
+                       "count": len(members), "documents": len(shas - {None}),
+                       "grouped_by": "model" if g else None,
+                       "wordings": sorted(words, key=lambda w: (-words[w], w.casefold())) if g else [],
+                       "_top": members[0]["cite_count"]})
     groups.sort(key=lambda g: (g["key"] == NO_SOURCE, -g["_top"], -g["count"], g["label"].casefold()))
     for g in groups:
         del g["_top"]
     for r in rows:
-        del r["_label"]
+        del r["_label"], r["_group"]
     return rows, groups
 
 

@@ -44,7 +44,8 @@ _ADMISSION_MAX_WAIT_S = 300.0
 # Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
-                  "relationship-labels", "date-resolve"}
+                  "relationship-labels", "date-resolve", "role-targets",
+                  "fact-tags", "request-sources"}
 
 
 @dataclass
@@ -2367,6 +2368,156 @@ async def _date_pass(vault: Path, shas: list[str], finalizer_overrides: dict | N
     return {**applied, "rejected": res.rejected, "unanswered": len(res.unanswered)}
 
 
+async def _run_chore(vault: Path, chore, items: list, *, model: str, backend: str | None,
+                     effort: str | None, what: str, stage: str):
+    """One housekeeping chore (`housekeeping.run_chore`) on `model`, with the spending limit checked
+    before its first call too (D324). Returns the `ChoreResult`, or None when the limit stopped it
+    before any call — every item then stays as code left it. `what` names the items in messages."""
+    from watchdog.pipeline import housekeeping
+    msg = _spending_stop()
+    if msg:
+        _say(f"   ⚠  {what}: {len(items)} not settled — {msg}")
+        _log(vault, f"WARN {what}: {len(items)} not settled — {msg}")
+        return None
+    progress.emit("stage", stage=stage, done=None, total=None)
+
+    async def call(*, task, schema, prompt, detail):
+        return await _call_model(task=task, model=model, backend=backend, schema=schema,
+                                 prompt=prompt, effort=effort, detail=detail, vault=vault)
+
+    res = await housekeeping.run_chore(
+        chore, items, call=call, stop=_spending_stop, failures=model_client.CALL_FAILURES,
+        halting=(model_client.RateLimitError, model_client.ProviderAuthError))
+    if res.rejected:
+        _log(vault, f"WARN {what}: {res.rejected} answer(s) failed the checks and were not used")
+    if res.error or res.stopped:
+        _say(f"   ⚠  {what}: {len(res.unanswered)} not settled this run — {res.stopped or res.error}")
+        _log(vault, f"WARN {what}: {len(res.unanswered)} not settled this run — "
+                    f"{res.stopped or res.error}")
+    return res
+
+
+async def _fact_tag_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
+                         post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
+    """Fact tags that name no entity of their document (D333), first in finalize, before the
+    exact-name fold: post-flight already pointed near misses at the id meant (#757); the rest go to
+    the model (`fact_tags.CHORE`, on the reconciliation model) with the document's entities, and
+    code checks every answer. Logs the batch's dangling-tag rate every run, before and after.
+    No call when nothing dangles, or at the spending limit; a failure leaves the tags dropped as
+    before and never holds up the commit."""
+    from watchdog.pipeline import fact_tags
+    if not shas:
+        return {"tags": 0, "dangling": 0}
+    try:
+        before = fact_tags.stats(vault, shas)
+        items = fact_tags.pending_items(vault, shas)
+    except OSError as e:
+        _log(vault, f"WARN fact tags not checked — {e}")
+        return {"tags": 0, "dangling": 0}
+    out = {**before, "retagged": 0, "facts": 0, "unmatched": 0}
+    if items:
+        fo = finalizer_overrides or {}
+        n = len(items)
+        _say(f"→  matching {n} fact tag{'s' if n != 1 else ''} that name no entity of their document…")
+        res = await _run_chore(vault, fact_tags.CHORE, items,
+                               model=fo.get("reconciliation_model", post_model),
+                               backend=fo.get("reconciliation_backend", post_backend),
+                               effort=post_effort, what="fact tags", stage="fact-tags")
+        if res is not None:
+            try:
+                out.update(fact_tags.apply(vault, items, res))
+            except OSError as e:
+                _log(vault, f"WARN fact tags not saved — {e}")
+            out["rejected"], out["unanswered"] = res.rejected, len(res.unanswered)
+        if out["facts"]:
+            f = out["facts"]
+            _say(f"   filed {f} more fact{'s' if f != 1 else ''} under the entity the document meant, "
+                 "marked as inferred")
+    if before["tags"]:
+        after = fact_tags.stats(vault, shas)["dangling"]
+        rate = 100 * before["dangling"] / before["tags"]
+        _log(vault, f"FACT TAGS {before['dangling']} of {before['tags']} ({rate:.1f}%) named no entity "
+                    f"of their document; {out['retagged']} matched by the model, {after} dropped")
+        out["dropped"] = after
+    return out
+
+
+async def _request_source_pass(vault: Path, out: dict, model: str, backend: str | None,
+                               effort: str | None) -> None:
+    """Group the open requests' likely sources across wordings (D334, `request_sources.CHORE`, on
+    the request-dedup model), recording a source → group mapping beside the ledger. No call when
+    every open source was put to the model before; a failed call leaves its sources ungrouped and
+    unevaluated, for the next post-processing."""
+    from watchdog.pipeline import request_sources
+    try:
+        items = request_sources.items(requests.open_requests(vault), request_sources.load(vault))
+    except OSError as e:
+        _log(vault, f"WARN request sources not grouped — {e}")
+        return
+    if not items:
+        return
+    n = sum(1 for it in items if it["new"])
+    _say(f"→  grouping {n} new likely source{'s' if n != 1 else ''} of document requests…")
+    res = await _run_chore(vault, request_sources.CHORE, items, model=model, backend=backend,
+                           effort=effort, what="request sources", stage="request-sources")
+    if res is None:
+        return
+    try:
+        applied = request_sources.apply(vault, items, res, model=res.model or model, run=_run.run_id)
+    except OSError as e:
+        _log(vault, f"WARN request sources not saved — {e}")
+        return
+    if applied["dropped"]:
+        _log(vault, f"WARN request sources: {applied['dropped']} proposed group(s) joined sources "
+                    "you showed apart and were not used")
+    if applied["grouped"]:
+        g = len(applied["grouped"])
+        out["request_source_groups"] = g
+        _say(f"   grouped the likely sources of document requests into {g} "
+             f"place{'s' if g != 1 else ''} named in several ways")
+
+
+async def _role_target_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
+                            post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
+    """Relationship targets named by an id no entity has (D332), on the staged extractions after
+    reconciliation and before the commit: code's exact matches first, silently, then the model
+    for the rest (`role_targets.CHORE`, on the reconciliation model, which judges identity
+    elsewhere). Code checks every answer. No call when nothing is left, or at the spending limit;
+    a failure leaves the targets as leads and never holds up the commit."""
+    from watchdog.pipeline import role_targets
+    out = {"exact": 0, "matched": 0, "unmatched": 0}
+    if not shas:
+        return out
+    try:
+        batch = role_targets.Batch(vault, shas)
+        out["exact"] = role_targets.resolve_exact(batch)
+        items = role_targets.pending_items(batch)
+    except OSError as e:
+        _log(vault, f"WARN relationship targets not checked — {e}")
+        return out
+    if not items:
+        return out
+    fo = finalizer_overrides or {}
+    n = len(items)
+    _say(f"→  matching {n} relationship target{'s' if n != 1 else ''} named by an unknown id…")
+    res = await _run_chore(vault, role_targets.CHORE, items,
+                           model=fo.get("reconciliation_model", post_model),
+                           backend=fo.get("reconciliation_backend", post_backend),
+                           effort=post_effort, what="relationship targets", stage="role-targets")
+    if res is None:
+        return {**out, "unanswered": n}
+    try:
+        applied = role_targets.apply(batch, items, res)
+    except OSError as e:
+        _log(vault, f"WARN relationship targets not saved — {e}")
+        return out
+    if applied["matched"]:
+        m = applied["matched"]
+        _say(f"   matched {m} relationship target{'s' if m != 1 else ''} to an existing entity, "
+             "marked as inferred")
+    return {**out, **applied, "rejected": res.rejected, "unanswered": len(res.unanswered)}
+
+
 def _stage_stop(vault: Path, out: dict) -> bool:
     """Whether post-processing stops before its next model stage at the spending limit (D324).
     Once stopped it stays stopped. Sets `out["error"]`, so the batch's inputs are kept and the
@@ -2730,6 +2881,11 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             _say(f"   consolidated {n_folded} duplicate document request"
                  f"{'s' if n_folded != 1 else ''}")
 
+    # 5c. Where requests can be got, grouped across wordings (D334): only when an open request's
+    # source has never been put to the model. Its mapping is for Review; requests.md is unchanged.
+    if not out.get("spending_limit"):
+        await _request_source_pass(vault, out, request_dedup_model, request_dedup_backend, post_effort)
+
     # 6. Document requests (deterministic Python from here — #365). Re-render requests.md from
     # the ledger write_vault populated per-document at extraction time and 5b's dedup pass just
     # folded; requests are never re-fed into any *other* model prompt.
@@ -2919,7 +3075,8 @@ def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
 
 async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
                                 post_effort: str | None, post_backend: str | None,
-                                finalizer_overrides: dict | None = None) -> dict:
+                                finalizer_overrides: dict | None = None,
+                                bundle: dict | None = None) -> dict:
     """Entity-duplicate resolution over the staged batch and the registry, before anything is committed
     (D118, D128). A merge between two of this batch's documents is then a staged id rewrite, with no
     note surgery. `finalizer_overrides` may route this stage to its own model.
@@ -2927,12 +3084,14 @@ async def _reconcile_pre_commit(vault: Path, shas: list[str], post_model: str,
     Returns ``{"merged": [...], "remap": {...}, "contradictions": [...], "error": str | None}``.
     Contradictions are returned unapplied: they need the committed documents registry, so
     `_post_ingest` applies them after the commit. On a model or rate-limit error, `error` is set,
-    nothing is applied, and `finalize` must not commit — the batch stays pending for a retry."""
+    nothing is applied, and `finalize` must not commit — the batch stays pending for a retry.
+    `bundle`, when given, replaces `reconcile.build_bundle(vault, shas)`: "Bring this investigation
+    up to date" passes every committed same-name group with no batch (D336)."""
     fo = finalizer_overrides or {}
     reconciliation_model = fo.get("reconciliation_model", post_model)
     reconciliation_backend = fo.get("reconciliation_backend", post_backend)
     result: dict = {"merged": [], "remap": {}, "contradictions": [], "error": None}
-    rec_bundle = reconcile.build_bundle(vault, shas)
+    rec_bundle = bundle if bundle is not None else reconcile.build_bundle(vault, shas)
     if not (rec_bundle["entities"] or rec_bundle["pairs"] or rec_bundle.get("rule_merges")
             or rec_bundle.get("candidates") or rec_bundle.get("groups")
             or rec_bundle.get("carried_in")):
@@ -3093,6 +3252,10 @@ def _commit_pending(vault: Path, shas: list[str] | None = None) -> dict:
     the per-sha split is also returned (not just patched to disk) so `run()` can sync it onto
     its own in-memory `results` list, which is built before this pass ever runs and would
     otherwise keep reporting an empty new/updated split for the life of that call."""
+    # The first documents of a new investigation are processed by this version of the pipeline,
+    # so an investigation older than the stamp (D336) starts with every migration applied.
+    from watchdog.pipeline import migrations
+    migrations.stamp_if_new(vault)
     if shas is None:
         shas = _pending_commits(vault)
         if not shas:
@@ -3201,7 +3364,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
                    benchmark_arm_id: str | None = None) -> dict:
     """Resolve, commit and post-process the pending batch.
 
-    Order: exact-name fold → pre-commit reconciliation → housekeeping (the date pass, D330) →
+    Order: fact tags (D333) → exact-name fold → pre-commit reconciliation → housekeeping
+    (relationship targets, D332; dates, D330) →
     commit pass (sorted sha order) →
     post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
     a run, by post-processing on its own, and to resume an interrupted finalize. Consumed inputs are
@@ -3257,6 +3421,9 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
         _log(vault, f"SPENDING LIMIT {msg}")
         rec_result["error"] = rec_result["spending_limit"] = msg
     elif shas:
+        # Fact tags that name no entity of their document (D333), before the fold, so a re-tagged
+        # fact counts as identity evidence and reaches reconciliation like any other.
+        await _fact_tag_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
         progress.emit("stage", stage="fold", done=0, total=len(shas))
         _batch_exact_fold(vault, shas)
         progress.emit("stage", stage="reconcile", done=None, total=None)
@@ -3279,7 +3446,9 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
             out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
 
-    # Dates code could not settle (D330), on the staged extractions so the commit writes them.
+    # Relationship targets named by an unknown id (D332) and dates code could not settle (D330),
+    # on the staged extractions so the commit writes them.
+    await _role_target_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
     await _date_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
     commit_summary = _commit_pending(vault, shas)
     progress.emit("stage", stage="commit", done=len(shas), total=len(shas))

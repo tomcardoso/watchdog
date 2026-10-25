@@ -110,7 +110,7 @@ Before each document is sent to the model, between the sections of a long docume
 A few things to know:
 
 - **It can be passed slightly.** A call already under way when the limit is reached still finishes and is still charged, so the total can end up above the limit by what those calls cost. With several documents being read at once, that can be a few documents' worth.
-- **What counts.** Classifying, extracting, the finishing steps and **Re-check contradictions** count. Ask Claude and Research do not, since they can be billed separately (see [Claude: subscription or API key](#claude-subscription-or-api-key)). Calls on your Claude subscription do not count either: they are not charged per call, so on a subscription the limit has nothing to measure. A batch extraction's cost counts once its results are collected.
+- **What counts.** Classifying, extracting, the finishing steps, **Re-check contradictions** and [bringing an investigation up to date](using-watchdog.md#bringing-an-investigation-up-to-date) count. Ask Claude and Research do not, since they can be billed separately (see [Claude: subscription or API key](#claude-subscription-or-api-key)). Calls on your Claude subscription do not count either: they are not charged per call, so on a subscription the limit has nothing to measure. A batch extraction's cost counts once its results are collected.
 - **Reset the count** starts counting again from now. The cost of earlier work stays in **Activity → Usage**; it just no longer counts towards the limit.
 - **Estimates are only a warning.** When **Estimate cost** in the Add documents dialog quotes more than is left under the limit, the dialog says so, but the run still asks the public-records question and still starts. It is the recorded cost that stops it.
 
@@ -197,7 +197,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Classifier model | `haiku` | Reads a document's opening pages and picks its record skill. |
 | Extractor model | `haiku` | Extracts each document. |
 | Finalizer model | `haiku` | The finishing steps. |
-| Finalizer reconciliation / synthesis / timeline / briefing model | *(unset)* | Override the finalizer model for one finishing step: entity matching and contradictions, summaries, the timeline (including settling the dates code could not read), or the briefing. |
+| Finalizer reconciliation / synthesis / timeline / briefing model | *(unset)* | Override the finalizer model for one finishing step: entity matching (including matching relationship targets named only by a label) and contradictions, summaries, the timeline (including settling the dates code could not read), or the briefing. |
 | Classifier effort | `low` | How hard the classifier thinks. |
 | Extractor effort | `high` | How hard the extractor thinks. |
 | Finalizer effort | *(unset)* | Left unset, the model uses its own default. |

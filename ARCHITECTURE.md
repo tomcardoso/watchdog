@@ -397,7 +397,7 @@ say (the owner's call).
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
 `pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Order: **tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
+Order: **fact-tag pass → tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
 
 **Housekeeping passes (`pipeline/housekeeping.py`, D330).** Small model chores over items code
 could not settle, run on the staged extractions before the commit. A chore is a task name, a prompt
@@ -413,6 +413,35 @@ year of the fact's or document's when none is printed), and holds an ambiguous n
 two readings. `dates.apply` writes `date`, `date_end` and `date_basis: "inferred"` into the staged
 extraction, rebuilds its entities' timeline events and restages its raw timeline files. A failed
 call leaves what code read (a year, or no date); it never holds up the commit.
+
+The **fact-tag pass** (`pipeline/fact_tags.py`, task `fact-tags`, the reconciliation model, D333)
+runs first, before the fold, so a re-tagged fact is identity evidence and reconciliation input like
+any other. A fact tag naming no entity of its own document, after post-flight's near-miss step
+(`_resolve_near_miss_tags`, #757), goes to the chore as one item per document and tag, with up to
+three facts carrying it and the document's entities (at most 60, most similar first);
+`fact_tags.validate` accepts only an id the document defines. `apply` re-tags every fact of the
+document carrying that tag (original tags in `extracted_entities`), records the id in
+`entities_inferred`, rebuilds the document's `evidence_fragments`/`timeline_events`
+(`explode_key_facts`) and restages its raw timeline files; an unmatched tag is recorded in
+`tags_unmatched` and still dropped by the fan-out. `FactIndex` resolves `entities_inferred` through
+the merge log like any tag, and the entity note and app mark such a fact "link inferred". Every run
+logs the batch's dangling-tag rate (`FACT TAGS n of m … dropped`).
+
+The **relationship-target pass** (`pipeline/role_targets.py`, task `role-targets`, the reconciliation
+model, D332) runs just before the date pass. A role whose `target_id` no entity has (not the
+document's, the batch's or the registry's; hidden ones excluded) is first matched by code
+(`resolve_exact`): the id, slugified, against each entity's slugified id, name and aliases, the
+document's own entities first, then the batch and registry; exactly one match is applied silently.
+The rest go to the chore, one item per document and id, with the naming entities and wordings, the
+document's entities (at most 60, most similar first) and up to 8 registry entities by word overlap or
+initials. `role_targets.validate` accepts only an id the item offered, not the naming entity, whose
+type fits the `kind` the model gave and any `target_type` the role carries (organization and public
+body count as fitting). `apply` rewrites `target_id`, keeps the first id in `extracted_target_id`
+(as a fold does, so `merge_log.carried_items` and undo treat the role like any other) and marks
+`target_basis: "inferred"`; a looked-at item left unmatched is marked `target_unmatched`. The mark
+rides on the registry's forward and reverse roles and on the relationship view's statements
+(`entity_facts` roles carry the extracted id as a seventh field), and shows as "target inferred
+from “…”" in entity notes and as inferred in the app.
 
 **Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
 `documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
@@ -467,13 +496,63 @@ registry, keyed for idempotent replay (D67).
   from either, never both (`triage.summary_line`). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
   paraphrases, and `requests.md` is re-rendered (D111, D159). Review groups them by the holder their
-  free-text `likely_source` names (`requests.source_group`, deterministic, D328).
+  free-text `likely_source` names (`requests.source_group`, deterministic, D328), then by the
+  mapping in `registry/request_sources.json` (D334): after the dedup, when an open request's source
+  key was never `evaluated`, the request-source chore (`pipeline/request_sources.py`, task
+  `request-sources`, the request-dedup model, ≤150 sources per call) is shown each source as Review
+  would group it now (a key alone, or an active group under its label), new ones first, and answers
+  a short label per item; `validate` takes one plain line of at most 80 characters, and `apply`
+  makes a group of the items whose labels fold to the same text, dropping one that joins two keys of
+  a reporter-split group and superseding an active group it takes in. `worklist(open, mapping)`
+  files a mapped key under the group's `src:` id and label, marked `grouped_by: "model"`; a request's
+  own `likely_source` is never rewritten, and `requests.md` is unchanged. `split` (the app's
+  `vault.requestSourceSplit`, I10) marks a group `split` for good.
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
   `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
 A batch is always finalized, never discarded (D242); post-processing with nothing pending reports so.
 
 ---
+
+## 9.5. Migrations: bringing an investigation up to date
+
+Most of §9 runs over a batch, so a pipeline change reaches only the documents processed after it.
+`pipeline/migrations.py` holds the **migrations** that apply such a change to what an investigation
+already stored (D336). `MIGRATIONS` lists them in order, each with an id, a title and description
+the app shows, whether it calls a model and on which stage's model, an `estimate` and an `apply`.
+Each runs the pipeline's own code on the committed documents' extractions; nothing is
+re-extracted, and no step does more to a document than the same step would on a fresh run.
+
+- **The stamp.** `.watchdog/migrations.json` records the ids applied (with the time and the
+  Watchdog version). `ops.projects.create` stamps a new investigation, the sample included, with
+  every current id; an older one with no committed document is stamped at its first commit
+  (`stamp_if_new`). An investigation with pending ids gets a one-time banner on its Overview (until
+  dismissed for those ids) and a row in Activity → Maintenance.
+- **The run** (`migrate` operation, `migrations.run`). `plan` gives every pending step's items,
+  calls and chars/4 tokens, priced per step in the app before it starts. The steps run in order
+  under the processing lock, as a run holds it, inside one history version (`kind: "migrate"`),
+  with their calls in the usage files. A model step checks the spending limit before it starts;
+  its chores and the reconcile rounds check it between calls (D324). A step is stamped only when it
+  finished with nothing unanswered, so a stop, a failed call or Stop leaves it and every later step
+  pending. Then the notes and the timeline are rebuilt (`entity_notes.rebuild`,
+  `timeline.rebuild_timeline`), unless the reporter stopped it.
+- **Committed records follow the extraction** (`pipeline/committed.py`). A step changes a
+  committed document's extraction; `Tracker` snapshots what it changes and `sync` carries it into
+  what the commit had derived: the entity timelines and the timeline files (a record updated in
+  place when its date and text are unchanged, else staged raw for the next dedup), a re-pointed
+  relationship and its reverse, and, when a corrected page changes a fact's D271 id, the
+  reporter's mark (`verification.move_marks`), contradiction fact links and summary short refs.
+- **The first migrations.** (1) Free fixes: post-flight's near-miss tag resolution and one-page
+  citations (quotes, figure checks and passages found again for the moved facts); the silent id
+  tidy changed only warnings, so stored ids are counted, never rewritten. (2) Erased dates: a fact
+  whose `date` is `""` with no `date_text` (the pre-D329 parser's erasure) has its date read from
+  its own text by code when the text names one year and exactly one full date in a window around it
+  reads with `dates.read` and no qualifier word bounds it (`dates.find_in_text`); the rest with a
+  year go to the date chore as `lost` items checked against the fact's text, marked inferred; each
+  looked-at fact records `date_recovery`. (3) Same-name groups: `reconcile.build_group_bundle`
+  gives every committed same-name set to `_reconcile_pre_commit` with no batch, so D325's tiers,
+  rounds, caps and carry apply and merges go through `merge_entities.run`. (4) The housekeeping
+  chores (fact tags, relationship targets, request sources) over every committed document.
 
 ## 10. Near-duplicate detection
 
@@ -534,6 +613,7 @@ queries/ wiki/               session-written findings and threads
   history/                   version history of generated and app-edited files (D286): objects/ (zlib blobs by SHA-256), log.jsonl, index.json, size.json (D288), .lock
   page-notes.json            the reporter's last app-saved Notes per saved page, with the time (D296)
   review-seen.json           when the reporter last opened Review (D327); the app's own state, read by no model input
+  migrations.json            the migrations this investigation has had, and the steps its Overview banner was dismissed for (D336); the app's own state, read by no model input
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
@@ -544,6 +624,7 @@ queries/ wiki/               session-written findings and threads
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
     relationships.json       relationship-wording groups, split marks and compared wordings (D291)
+    request_sources.json     groups of request sources named in several ways, split marks and keys already compared (D334); Review's grouping reads it
     hidden.json              entities the reporter removed from the investigation, with who, when, name and type (D326); a view overlay
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
@@ -805,10 +886,13 @@ same content to the user's own model server; every other backend sends it to tha
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
+| fact-tags | when a staged fact carries a tag its document does not define, after post-flight's near-miss step (≤40 per call) | the tag, up to three facts carrying it, the document's entities (≤60): ids, names, types, aliases | other documents; raw text; everything else |
+| role-targets | when a staged relationship names a target id no entity has and code found no exact match (≤40 per call) | the id, the naming entities and wordings, the document's entities (≤60) and up to 8 similarly named registry entities: ids, names, types, aliases | facts; raw text; everything else |
 | date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
 | request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
+| request-sources | when an open request's likely source was never compared (≤150 per call) | each source's name as Review groups it, up to three wordings, its number of requests | the requests' text; everything else |
 | briefing | once per run | brief, compact per-document results with citable fact lines, alerts, contradiction flags, scratchpads | raw text; full notes |
 
 ---
@@ -995,7 +1079,9 @@ noted as such.
   leaves the batch wholly uncommitted, and `dig` leaves the vault untouched by construction.
   Investigation sessions can't hand-edit pipeline-owned files (the edit hook allows only their own
   pages); they change pipeline state only through deterministic session tools that take the
-  registry lock and ask the reporter. *History: D126–D129, D245, D258, D299, D304.*
+  registry lock and ask the reporter. Outside a run, only a migration (I19) changes a committed
+  extraction, under the processing lock, carrying the change into the records the commit derived.
+  *History: D126–D129, D245, D258, D299, D304, D336.*
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
@@ -1008,7 +1094,7 @@ noted as such.
 - **I10 — The app's mutations go through library operations.** Every vault mutation the desktop app
   makes is a registered operation (`watchdog/ops/`) run by the worker process, or, for a few small
   writes (resolutions, settings, keys, a note's Notes section, version history's restore, removal
-  and clear, the investigation's billing key and spending limit, Review's last-opened time, an Ask Claude session's tools, D299), a library
+  and clear, the investigation's billing key and spending limit, Review's last-opened time, the migration banner's dismissal (D336), an Ask Claude session's tools, D299), a library
   function called in-process; either way under folder access (D268), the operation's locks (D293)
   and I7's commit discipline. The app keeps the
   gates (the public-records acknowledgement, confirmations before irreversible operations) by asking
@@ -1072,3 +1158,12 @@ noted as such.
   it does not want, so a field added to a registry later cannot reach it; its only free text, a
   processing-log warning, is reduced to its shape first. *History: D331.* Guarded by
   `tests/test_invariants.py::test_I18_…` and `tests/test_diagnostics.py`.
+- **I19 — A change to stored records reaches existing investigations through a migration.** A
+  pipeline change that alters what investigations store adds a migration to
+  `pipeline/migrations.py` (or its decision says why none is needed). A migration applies only the
+  current pipeline's code to stored records, never more than the same step would do on a fresh run;
+  is safe to run twice; keeps the reporter's marks; merges only through the logged, undoable path;
+  runs under the processing lock as one history version, with the spending limit checked before
+  and between model calls; and is recorded as applied only when it finished. A new investigation
+  is stamped with every current migration. *History: D336.* Guarded by
+  `tests/test_invariants.py::test_I19_…` and `tests/test_migrations.py`.
