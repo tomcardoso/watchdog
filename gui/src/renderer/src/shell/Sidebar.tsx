@@ -1,6 +1,6 @@
 import {
   Activity, BookOpenText, ChevronsUpDown, Files, FolderOpen, Globe2, House, LayoutGrid, ListChecks,
-  MessageSquareText, Network, Plus, Search, Settings, Shapes, CalendarRange, Target
+  MessageSquareText, Network, Plus, ScanSearch, Search, Settings, Shapes, CalendarRange, Target
 } from 'lucide-react'
 import { CSSProperties } from 'react'
 import { AlertTriangle, RotateCw } from 'lucide-react'
@@ -39,6 +39,7 @@ const INVESTIGATION: NavDef[] = [
 ]
 const WORK: NavDef[] = [
   { view: 'context', label: 'Context', icon: Target },
+  { view: 'watchlist', label: 'Watch list', icon: ScanSearch },
   { view: 'review', label: 'Review', icon: ListChecks },
   { view: 'search', label: 'Search', icon: Search },
   { view: 'ask', label: 'Ask Claude', icon: MessageSquareText },

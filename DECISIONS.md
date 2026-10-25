@@ -2957,3 +2957,9 @@ The brief (`context.md`) is sent with every document and shapes every briefing, 
 
 Tradeoff: background files are copies, so an edited original is not picked up until it is added again; and context conversations from before this move to the Context screen's list, out of Ask Claude's.
 
+### D343 — The watch list is its own screen under Work; its matches stay in Review
+
+The watch list sat behind a button at the top right of Review, beside the findings it produces. It is a standing instruction, neither part of the brief (Context, D342) nor a finding, so it now has its own screen, **Watch list** (`views/watchlist/WatchlistView.tsx`, the editor moved unchanged). Its matches stay on Review's Alerts tab: they are items to handle, counted on the Overview and in briefings like the rest, and moving them would take them out of the one queue where things are marked handled. Each term links to its open alerts, and the Alerts tab links back with **Edit watch list**.
+
+Tradeoff: the sidebar's Work group grows to seven items, and the terms and their matches are on two screens.
+

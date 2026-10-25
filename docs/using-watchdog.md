@@ -6,7 +6,7 @@ This page covers the day-to-day work of an investigation, task by task: adding d
 
 ## Finding your way around
 
-The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Context**, **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
+The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Context**, **Watch list**, **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7), and **Ctrl+Tab** and **Ctrl+Shift+Tab** move to the next or previous item in the sidebar, in order, on every computer. **⌘[** and **⌘]** (Ctrl+[ and Ctrl+] on Windows and Linux) go back and forward through the screens you have visited; on Windows and Linux, Alt+← and Alt+→ do too, except while you are typing. **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
@@ -126,7 +126,7 @@ A fact you mark Disputed is never hidden. Wherever it appears (the document, the
 
 Above the tabs, **Start here** lists up to seven items to look at first, each with one line on why it is there; the Overview shows the same list. The order comes from ordinary code (no AI), from what the investigation already records:
 
-1. An item tied to a term on your [watch list](#the-watch-list): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
+1. An item tied to a term on your [watch list](#watch-list): the alerts, and a contradiction or lead about an entity whose name matches a term. A term's alerts are one item, such as "Harbourline Dredging: 3 new documents", with the documents named; click it to see that term's alerts on the Alerts tab.
 2. An item about one of the most connected entities (those with relationships to the most others, as in the Network) or about an entity that several documents are mainly about.
 3. A contradiction between two documents, ahead of one between two passages of the same document.
 4. A lead named in several documents, ahead of one named in only one.
@@ -173,10 +173,6 @@ Below the queue, **Recent merges** lists every merge, newest first: which record
 Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and links to the documents that named it.
 
 The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together. Two names for one place, such as a registry's official name and a description of it, are grouped by a model when a run adds a source it has not seen (see [grouping request sources](how-it-works.md#request-sources)); such a group says **grouped by AI**, hovering over it shows the names it joined, and **Show apart** undoes a grouping you disagree with for good. Each request keeps its own wording. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. For a document held by a public body, [Ask Claude](#ask-claude)'s **Draft a records request** drafts the request letter: a freedom-of-information, access-to-information or public-records request. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
-
-### The watch list
-
-**Watch list**, at the top right of Review, holds terms to flag whenever they appear in new documents: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word; wrap a term in slashes, like `/14\s+Quay Street/`, for a pattern. Every run scans its new documents, and matches appear on the **Alerts** tab with the page and surrounding words. **Check every document now** checks documents added before a term was. No model is called.
 
 ## Entities
 
@@ -237,6 +233,10 @@ Sentences without a citation are expected: a model connecting facts or summing u
 - **Add background files…** copies files you choose (published stories, notes, screenshots) into the investigation's `context/` folder. The originals stay where they are, and nothing is added as a document.
 - **Build it with Claude**, or **Update with Claude** once a brief exists, starts a conversation on this screen: Claude reads the background files, interviews you, and writes or updates the brief. Past context conversations are listed here too.
 - **Edit** changes the brief by hand, and **History** shows its earlier versions.
+
+## Watch list
+
+**Watch list**, under Work in the sidebar, holds terms to flag whenever they appear in new documents: a name, a company, an address, a phrase. Matching is case-insensitive and whole-word; wrap a term in slashes, like `/14\s+Quay Street/`, for a pattern. Every run scans its new documents, and matches appear on Review's **Alerts** tab with the page and surrounding words, where you mark them handled like any other item. Each term shows how many of its matches are still open and links to them; **Edit watch list** on the Alerts tab comes back here. **Check every document now** checks documents added before a term was. No model is called. The list is `watchlist.md` in the investigation's folder, and **History** shows its earlier versions.
 
 ## Ask Claude
 
