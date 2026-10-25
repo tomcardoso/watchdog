@@ -12,6 +12,9 @@ import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { startJob } from '@renderer/lib/jobs'
 import { errorMessage, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
+// The source links share `.ent-src` with the entity page; without this the Timeline opened
+// first in a session showed them unstyled.
+import '../entities/entities.css'
 import './timeline.css'
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']

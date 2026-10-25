@@ -272,6 +272,10 @@
   left: 50%;
   bottom: 22px;
   transform: translateX(-50%);
+  /* Centred by its own width: shrink-to-fit would wrap the hint into a narrow column. */
+  width: max-content;
+  max-width: calc(100% - 32px);
+  white-space: nowrap;
   display: flex;
   align-items: center;
   gap: 12px;
