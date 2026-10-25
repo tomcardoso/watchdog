@@ -130,6 +130,12 @@ def _pair_key(frm: str, to: str) -> str:
 
 # ── the view ──────────────────────────────────────────────────────────────────────────────
 
+def _target_text(role: dict) -> str | None:
+    """The id a role's target had as extracted, when the model matched it to an entity (D332)."""
+    from watchdog.pipeline.entity_facts import _inferred_target
+    return _inferred_target(role)
+
+
 def _page(value) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
 
@@ -181,7 +187,8 @@ class View:
         out: list[dict] = []
         seen: set[tuple] = set()
 
-        def add(frm, to, label, sha, page, basis, date_range, to_name=None, to_type=None):
+        def add(frm, to, label, sha, page, basis, date_range, to_name=None, to_type=None,
+                target_text=None):
             label = (label or "").strip()
             key = normalize(label)
             if not frm or not to or frm == to or not key:
@@ -193,7 +200,7 @@ class View:
             out.append({"from": frm, "to": to, "label": label, "key": key, "sha": sha or None,
                         "page": _page(page), "basis": "inferred" if basis == "inferred" else "stated",
                         "date_range": (date_range or "").strip() or None,
-                        "to_name": to_name, "to_type": to_type})
+                        "to_name": to_name, "to_type": to_type, "target_text": target_text})
 
         for eid in sorted(self.entities):
             ent = self.entities[eid]
@@ -207,16 +214,17 @@ class View:
                 add(eid, to, r.get("relationship"), r.get("source_sha256"), r.get("page"),
                     r.get("basis"), r.get("date_range"),
                     None if to in self.entities else (r.get("target_name") or tid),
-                    None if to in self.entities else r.get("target_type"))
+                    None if to in self.entities else r.get("target_type"),
+                    _target_text(r))
         for sha in sorted(self.documents):
             if self.docs is not None and sha not in self.docs:
                 continue
             doc = self.index.document(sha)
-            for eid, label, tid, page, basis, date_range in (doc or {}).get("roles") or []:
+            for eid, label, tid, page, basis, date_range, target_text in (doc or {}).get("roles") or []:
                 frm = self.index.resolve(sha, eid)
                 to = self.index.resolve(sha, tid)
                 if frm and to:
-                    add(frm, to, label, sha, page, basis, date_range)
+                    add(frm, to, label, sha, page, basis, date_range, target_text=target_text)
         self._statements = out
         return out
 
@@ -390,10 +398,14 @@ def group_statements(statements: list[dict], active: dict[tuple, dict],
                 "keys": sorted({s["key"] for s in stmts}),
                 "group": g.get("id") if g else None,
                 "wordings": list(wordings.values()),
-                "sources": [{k: s[k] for k in ("sha", "page", "label", "basis", "date_range")}
-                            for s in stmts],
+                "sources": [{**{k: s[k] for k in ("sha", "page", "label", "basis", "date_range")},
+                             "target_text": s.get("target_text")} for s in stmts],
                 "docs": docs,
                 "basis": "inferred" if all(s["basis"] == "inferred" for s in stmts) else "stated",
+                # The model matched the counterpart (D332) in every source: shown as inferred.
+                "target_inferred": all(s.get("target_text") for s in stmts),
+                "target_texts": list(dict.fromkeys(s["target_text"] for s in stmts
+                                                   if s.get("target_text"))),
                 "date_ranges": ranges,
                 "to_name": next((s["to_name"] for s in stmts if s["to_name"]), None),
                 "to_type": next((s["to_type"] for s in stmts if s["to_type"]), None),
@@ -424,7 +436,8 @@ def rows_for_entry(entry: dict) -> list[dict]:
                       "sha": r.get("source_sha256"), "page": _page(r.get("page")),
                       "basis": "inferred" if r.get("basis") == "inferred" else "stated",
                       "date_range": (r.get("date_range") or "").strip() or None,
-                      "to_name": r.get("target_name"), "to_type": r.get("target_type")})
+                      "to_name": r.get("target_name"), "to_type": r.get("target_type"),
+                      "target_text": _target_text(r)})
     rows = []
     for (frm, to), group in group_statements(stmts, {}).items():
         for r in group:

@@ -397,7 +397,7 @@ say (the owner's call).
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
 `pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Order: **tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
+Order: **fact-tag pass → tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
 
 **Housekeeping passes (`pipeline/housekeeping.py`, D330).** Small model chores over items code
 could not settle, run on the staged extractions before the commit. A chore is a task name, a prompt
@@ -413,6 +413,35 @@ year of the fact's or document's when none is printed), and holds an ambiguous n
 two readings. `dates.apply` writes `date`, `date_end` and `date_basis: "inferred"` into the staged
 extraction, rebuilds its entities' timeline events and restages its raw timeline files. A failed
 call leaves what code read (a year, or no date); it never holds up the commit.
+
+The **fact-tag pass** (`pipeline/fact_tags.py`, task `fact-tags`, the reconciliation model, D333)
+runs first, before the fold, so a re-tagged fact is identity evidence and reconciliation input like
+any other. A fact tag naming no entity of its own document, after post-flight's near-miss step
+(`_resolve_near_miss_tags`, #757), goes to the chore as one item per document and tag, with up to
+three facts carrying it and the document's entities (at most 60, most similar first);
+`fact_tags.validate` accepts only an id the document defines. `apply` re-tags every fact of the
+document carrying that tag (original tags in `extracted_entities`), records the id in
+`entities_inferred`, rebuilds the document's `evidence_fragments`/`timeline_events`
+(`explode_key_facts`) and restages its raw timeline files; an unmatched tag is recorded in
+`tags_unmatched` and still dropped by the fan-out. `FactIndex` resolves `entities_inferred` through
+the merge log like any tag, and the entity note and app mark such a fact "link inferred". Every run
+logs the batch's dangling-tag rate (`FACT TAGS n of m … dropped`).
+
+The **relationship-target pass** (`pipeline/role_targets.py`, task `role-targets`, the reconciliation
+model, D332) runs just before the date pass. A role whose `target_id` no entity has (not the
+document's, the batch's or the registry's; hidden ones excluded) is first matched by code
+(`resolve_exact`): the id, slugified, against each entity's slugified id, name and aliases, the
+document's own entities first, then the batch and registry; exactly one match is applied silently.
+The rest go to the chore, one item per document and id, with the naming entities and wordings, the
+document's entities (at most 60, most similar first) and up to 8 registry entities by word overlap or
+initials. `role_targets.validate` accepts only an id the item offered, not the naming entity, whose
+type fits the `kind` the model gave and any `target_type` the role carries (organization and public
+body count as fitting). `apply` rewrites `target_id`, keeps the first id in `extracted_target_id`
+(as a fold does, so `merge_log.carried_items` and undo treat the role like any other) and marks
+`target_basis: "inferred"`; a looked-at item left unmatched is marked `target_unmatched`. The mark
+rides on the registry's forward and reverse roles and on the relationship view's statements
+(`entity_facts` roles carry the extracted id as a seventh field), and shows as "target inferred
+from “…”" in entity notes and as inferred in the app.
 
 **Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
 `documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
@@ -467,7 +496,17 @@ registry, keyed for idempotent replay (D67).
   from either, never both (`triage.summary_line`). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
   paraphrases, and `requests.md` is re-rendered (D111, D159). Review groups them by the holder their
-  free-text `likely_source` names (`requests.source_group`, deterministic, D328).
+  free-text `likely_source` names (`requests.source_group`, deterministic, D328), then by the
+  mapping in `registry/request_sources.json` (D334): after the dedup, when an open request's source
+  key was never `evaluated`, the request-source chore (`pipeline/request_sources.py`, task
+  `request-sources`, the request-dedup model, ≤150 sources per call) is shown each source as Review
+  would group it now (a key alone, or an active group under its label), new ones first, and answers
+  a short label per item; `validate` takes one plain line of at most 80 characters, and `apply`
+  makes a group of the items whose labels fold to the same text, dropping one that joins two keys of
+  a reporter-split group and superseding an active group it takes in. `worklist(open, mapping)`
+  files a mapped key under the group's `src:` id and label, marked `grouped_by: "model"`; a request's
+  own `likely_source` is never rewritten, and `requests.md` is unchanged. `split` (the app's
+  `vault.requestSourceSplit`, I10) marks a group `split` for good.
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
   `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
@@ -544,6 +583,7 @@ queries/ wiki/               session-written findings and threads
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
     relationships.json       relationship-wording groups, split marks and compared wordings (D291)
+    request_sources.json     groups of request sources named in several ways, split marks and keys already compared (D334); Review's grouping reads it
     hidden.json              entities the reporter removed from the investigation, with who, when, name and type (D326); a view overlay
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
@@ -805,10 +845,13 @@ same content to the user's own model server; every other backend sends it to tha
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
+| fact-tags | when a staged fact carries a tag its document does not define, after post-flight's near-miss step (≤40 per call) | the tag, up to three facts carrying it, the document's entities (≤60): ids, names, types, aliases | other documents; raw text; everything else |
+| role-targets | when a staged relationship names a target id no entity has and code found no exact match (≤40 per call) | the id, the naming entities and wordings, the document's entities (≤60) and up to 8 similarly named registry entities: ids, names, types, aliases | facts; raw text; everything else |
 | date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
 | request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
+| request-sources | when an open request's likely source was never compared (≤150 per call) | each source's name as Review groups it, up to three wordings, its number of requests | the requests' text; everything else |
 | briefing | once per run | brief, compact per-document results with citable fact lines, alerts, contradiction flags, scratchpads | raw text; full notes |
 
 ---

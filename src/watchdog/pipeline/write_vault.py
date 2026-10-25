@@ -694,6 +694,8 @@ def _role_line(role: dict, docs_reg: dict) -> str:
     """Format a role dict as a Markdown relationship line with pretty links."""
     date_part = f" — {role['date_range']}" if role.get("date_range") else ""
     basis_part = " *(inferred)*" if role.get("basis") == "inferred" else ""
+    from watchdog.pipeline.role_targets import inferred_note
+    basis_part += inferred_note(role)
 
     # target_id sits in the wikilink *target* position. It's postflight-slugified for a profiled
     # target, but a role can point at an unprofiled entity (leads.py: "named but never profiled"),
@@ -815,6 +817,9 @@ def _add_reverse_role(
         "date_range":    role.get("date_range"),
         "source_sha256": doc_sha256,
         "is_reverse":    True,
+        # A target the model matched (D332) is marked on both ends of the relationship.
+        **({"target_basis": "inferred", "extracted_target_id": role.get("extracted_target_id")}
+           if role.get("target_basis") == "inferred" else {}),
     })
     target["date_last_updated"] = _today()
     modified.add(target_id)

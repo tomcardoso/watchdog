@@ -452,6 +452,11 @@ REQUEST_GROUPS = [
     ["competitive-process"],
 ]
 
+# Likely sources of document requests that name the same place (D334), as a careful model would
+# group them: the City's procurement office under its short name and under its division's name.
+# The clerk, the finance department and the City itself stay apart.
+SOURCE_GROUPS = [("procurement and real property", "City Procurement and Real Property")]
+
 # Relationship wordings that name the same relationship (D291), as a careful model would group them:
 # the judgment calls Marisol Fernandes counsel for the citizens' group, the councillor's letter its
 # lawyer. The canned model keeps every other pair holding two wordings in the story apart (a

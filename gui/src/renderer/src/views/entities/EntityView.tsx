@@ -459,7 +459,10 @@ function Relationships({ rels }: { rels: Relationship[] }) {
                 {[...g.items.values()].map((r) => {
                   // The documents' own wordings, when they differ from the label shown (D291).
                   const words = (r.wordings ?? []).map((w) => w.text)
-                  const tip = words.length > 1 || (words[0] && words[0].toLowerCase() !== r.role.toLowerCase()) ? `As written: ${words.map((w) => `"${w}"`).join(', ')}` : undefined
+                  const written = words.length > 1 || (words[0] && words[0].toLowerCase() !== r.role.toLowerCase()) ? `As written: ${words.map((w) => `"${w}"`).join(', ')}` : ''
+                  // A target the model matched to a record (D332) says so, with the id the document gave.
+                  const matched = r.target_inferred ? `Target inferred by AI from “${(r.target_texts ?? []).join('”, “')}”` : ''
+                  const tip = [written, matched].filter(Boolean).join(' · ') || undefined
                   const chip = r.target_name && r.target_type ? (
                     <EntityChip id={r.target_id} name={r.target_name} type={r.target_type} />
                   ) : (
@@ -467,7 +470,8 @@ function Relationships({ rels }: { rels: Relationship[] }) {
                       {r.target_name || r.target_id}
                     </span>
                   )
-                  return tip ? <span key={r.target_id} data-tip={tip}>{chip}</span> : <span key={r.target_id} style={{ display: 'contents' }}>{chip}</span>
+                  const shown = r.target_inferred ? <>{chip}<span className="faint"> inferred</span></> : chip
+                  return tip ? <span key={r.target_id} data-tip={tip}>{shown}</span> : <span key={r.target_id} style={{ display: 'contents' }}>{shown}</span>
                 })}
               </div>
             </div>

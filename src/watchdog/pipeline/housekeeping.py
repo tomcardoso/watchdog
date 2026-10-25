@@ -63,6 +63,7 @@ class ChoreResult:
     calls: int = 0
     stopped: str | None = None
     error: str | None = None
+    model: str | None = None     # the model id the last successful call ran on
 
 
 def windows(n: int, size: int) -> list[list[int]]:
@@ -112,6 +113,7 @@ async def run_chore(chore: Chore, items: list, *,
                 break
             continue
         result.calls += 1
+        result.model = getattr(r, "model", None) or result.model
         seen: set[int] = set()
         answers = (getattr(r, "parsed", None) or {}).get("answers")
         for a in answers if isinstance(answers, list) else []:

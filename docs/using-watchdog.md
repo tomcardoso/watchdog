@@ -100,6 +100,8 @@ Under each fact is the text from the document that supports it:
 
 The model marks a fact *(inferred)* when it reasoned to it rather than read it in the document. Treat an inferred fact as a lead to verify. But the mark is the model's own hint, not a check: it marks very few facts this way, and an unmarked fact is not thereby guaranteed to be stated in the document.
 
+On an entity's page, a fact that says **link inferred** reached the entity through a model's judgement: the document named the entity by a label it did not define, such as an abbreviation, and a model matched the label to this entity (see [matching labels to entities](how-it-works.md#fact-tags)). The fact itself is as the document states it; check the page to confirm it is about this entity.
+
 Watchdog also checks every number in a fact against the page it cites, and the pages either side, allowing for figures printed in thousands or rounded. Where a number does not check out, the fact carries a note: *figure not found in the document — may be derived* (usually a total or difference the model calculated; check the arithmetic), or *found on another page, not the one cited*. Roughly two to three per cent of facts carry one, so a note is worth stopping on. Dates are not checked this way.
 
 ### Marking facts
@@ -148,7 +150,7 @@ At the end of every run, ordinary code (no AI) sweeps the entities and lists fou
 
 Inferred facts and figures not found in their document are listed under **Review → Verification → Worth checking**, beside their page, rather than here.
 
-A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name; such a lead says so, and the document is the only way to tell who or what it means.
+A relationship-target lead shows who names the target, how, on which page, and links to each document under **Named in**. The AI model sometimes points a relationship at something it never wrote down as an entity, leaving only a short label (an id) instead of a name. Before anything is saved, Watchdog tries to match that label to an entity it already has (see [matching relationship targets](how-it-works.md#relationship-targets)); a label it cannot match stays a lead that says so, and the document is the only way to tell who or what it means. A relationship whose target the AI model matched says **inferred** beside the target on the entity's page and **target inferred** on the Network; hover over it to see the label the document gave.
 
 **Copy leads** copies the open leads, or the ones you have selected, as a table to paste into an email or a spreadsheet. **Run full lead sweep** refreshes the list.
 
@@ -170,7 +172,7 @@ Below the queue, **Recent merges** lists every merge, newest first: which record
 
 Documents your documents refer to but you do not have: the transcript a hearing order cites, an exhibit filed but never attached. Each carries why it matters, where it can plausibly be obtained, and links to the documents that named it.
 
-The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together; two names for one office, such as "City Finance" and "Finance Department", stay apart. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
+The table lists the requests most cited first. **By likely source**, the default, groups them by the office or company the AI model said holds them, so one request letter can cover a group; **Most cited first** shows one list. The grouping goes by the name at the start of the likely source and ignores what follows a comma, a bracket or words such as "or" and "by", so "City Clerk" and "the City Clerk, by access request" fall together. Two names for one place, such as a registry's official name and a description of it, are grouped by a model when a run adds a source it has not seen (see [grouping request sources](how-it-works.md#request-sources)); such a group says **grouped by AI**, hovering over it shows the names it joined, and **Show apart** undoes a grouping you disagree with for good. Each request keeps its own wording. Tick a group's heading to tick all its requests. **Copy requests** copies them, or the ticked ones, as a table to paste into an email or a spreadsheet. Mark requests handled (H) once you have filed them or decided not to. When a run adds a request, a model merges any open requests it judges to name the same document; if one seems missing, check whether it was merged into a differently worded one.
 
 ### The watch list
 

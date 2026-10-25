@@ -535,6 +535,8 @@ def label(cause: dict | None) -> str:
         text = f"{verb}: {shown} (by you)" if shown else f"{verb} (by you)"
     elif kind == "relationship_split":
         text = "Relationship wordings shown apart (by you)"
+    elif kind == "request_source_split":
+        text = "Request sources shown apart (by you)"
     elif kind == "rebuild":
         text = "Notes rebuilt from stored data"
     elif kind == "notes":

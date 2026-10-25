@@ -448,7 +448,7 @@ DOCS_B.append(dict(
         REQ("Procurement file", "Committee scoring sheets and informal bid contacts for the three firms approached "
             "before Contract C-2022-041 was awarded", "The staff report says three firms were approached "
             "informally; the record would show who they were and what they said",
-            "City Procurement and Real Property"),
+            "Procurement and Real Property Division, City of Port Calder"),
         REQ("Integrity inquiry record", "Notice of Inquiry IC-2022-07 issued by the Integrity Commissioner",
             "Sets out the allegations against Councillor Whitcombe and the dates of the inquiry",
             "Office of the Integrity Commissioner"),

@@ -486,6 +486,23 @@ class CannedModel:
                 out.append({"pair": int(head.group(1)), "groups": groups})
         return {"pairs": out}
 
+    def request_sources(self, text: str) -> dict:
+        from watchdog.gui import demo_story
+        answers = []
+        for m in re.finditer(r'^(\d+)\. "(.*?)" \(', text, re.M):
+            label = m.group(2)
+            for phrase, canonical in demo_story.SOURCE_GROUPS:
+                if phrase in label.lower():
+                    label = canonical
+            answers.append({"item": int(m.group(1)), "label": label})
+        return {"answers": answers}
+
+    def role_targets(self, text: str) -> dict:
+        # The sample's relationship targets without a record (a surety, a council committee) are
+        # leads by design: nothing in the investigation is them, so a careful model matches none.
+        items = re.findall(r"^(\d+)\. target id: ", text, re.M)
+        return {"answers": [{"item": int(n), "match": "", "kind": ""} for n in items]}
+
     async def __call__(self, *, task, prompt, schema, model=None, backend=None, max_retries=1,
                        effort=None):
         from watchdog import model_client
@@ -495,7 +512,11 @@ class CannedModel:
                     "entity-synthesis": self.synthesis, "timeline-dedup": self.timeline_dedup,
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
                     "briefing": self.briefing, "relationship-labels": self.relationship_labels,
-                    "date-resolve": lambda text: {"answers": []}}
+                    "date-resolve": lambda text: {"answers": []},
+                    "role-targets": self.role_targets,
+                    # Every fact in the sample tags an entity its document defines (`check_story`).
+                    "fact-tags": lambda text: {"answers": []},
+                    "request-sources": self.request_sources}
         handler = handlers.get(task)
         if handler is None:
             raise RuntimeError(f"demo: no canned answer for task {task!r}")
