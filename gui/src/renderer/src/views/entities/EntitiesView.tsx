@@ -1,16 +1,17 @@
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { AddDocumentsButton } from '@renderer/components/EngineWait'
-import { AlertTriangle, FileText, GitMerge, Link2, Search, Shapes, UserX, Users, X, Copy } from 'lucide-react'
+import { AlertTriangle, Eye, EyeOff, FileText, GitMerge, Link2, Search, Shapes, UserX, Users, X, Copy } from 'lucide-react'
 import { CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
 import { EntityAvatar } from '@renderer/components/EntityChip'
 import { plainText } from '@renderer/components/Markdown'
 import { Badge, Button, Empty, ErrorNote, Skeleton, cx, useDebounced } from '@renderer/components/ui'
-import { ENTITY_TYPES, EntityRow } from '@shared/api'
+import { ENTITY_TYPES, EntityRow, HiddenEntity } from '@shared/api'
 import { TYPE_META, typeMeta } from '@renderer/lib/entityTypes'
-import { fmtNum, plural } from '@renderer/lib/format'
+import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { useRpc } from '@renderer/lib/rpc'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import MergeModal from './MergeModal'
+import RemoveModal, { bringBack } from './RemoveModal'
 import './entities.css'
 
 type Sort = 'docs' | 'name' | 'updated' | 'contradictions'
@@ -40,6 +41,10 @@ export default function EntitiesView() {
   const [flags, setFlags] = useState<Set<Flag>>(new Set())
   const [selected, setSelected] = useState<string[]>([])
   const [mergeOpen, setMergeOpen] = useState(false)
+  const [removeOpen, setRemoveOpen] = useState(false)
+  // Entities removed from the investigation (D326), listed apart so they can be brought back.
+  const [showRemoved, setShowRemoved] = useState(false)
+  const removed = useRpc('vault.hiddenEntities', { vault })
   const scroller = useRef<HTMLDivElement>(null)
 
   const all = q.data ?? []
@@ -76,7 +81,7 @@ export default function EntitiesView() {
     if (q.data) setSelected((s) => s.filter((id) => q.data.some((e) => e.id === id)))
   }, [q.data])
 
-  const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id].slice(-2)))
+  const toggle = (id: string) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))
   const toggleFlag = (f: Flag) =>
     setFlags((s) => {
       const n = new Set(s)
@@ -84,20 +89,29 @@ export default function EntitiesView() {
       else n.add(f)
       return n
     })
-  const setType = (t: string | null) => navigate({ view: 'entities', type: t ?? undefined }, { replace: true })
+  const setType = (t: string | null) => {
+    setShowRemoved(false)
+    navigate({ view: 'entities', type: t ?? undefined }, { replace: true })
+  }
   const meta = type ? typeMeta(type) : null
 
   return (
     <div className="ent-shell">
       <nav className="ent-rail" aria-label="Entity types">
         <div className="eyebrow">Entity types</div>
-        <RailItem label="All entities" icon={Shapes} count={all.length} active={!type} onClick={() => setType(null)} loading={q.isLoading} />
+        <RailItem label="All entities" icon={Shapes} count={all.length} active={!type && !showRemoved} onClick={() => setType(null)} loading={q.isLoading} />
         {ENTITY_TYPES.map((t) => (
-          <RailItem key={t} label={TYPE_META[t].plural} icon={TYPE_META[t].icon} color={TYPE_META[t].color} count={counts[t] ?? 0} active={type === t} onClick={() => setType(t)} loading={q.isLoading} />
+          <RailItem key={t} label={TYPE_META[t].plural} icon={TYPE_META[t].icon} color={TYPE_META[t].color} count={counts[t] ?? 0} active={type === t && !showRemoved} onClick={() => setType(t)} loading={q.isLoading} />
         ))}
+        {(removed.data?.items.length ?? 0) > 0 && (
+          <RailItem label="Removed" icon={EyeOff} count={removed.data!.items.length} active={showRemoved} onClick={() => { setShowRemoved(true); setSelected([]) }} loading={removed.isLoading} />
+        )}
         <p className="ent-rail-blurb">{meta ? meta.blurb : 'Every person, organization, public body, place, asset and proceeding the pipeline has profiled from your documents.'}</p>
       </nav>
 
+      {showRemoved ? (
+        <RemovedList items={removed.data?.items ?? []} />
+      ) : (
       <div className="ent-main">
         <div className="ent-head">
           <h1>{meta ? meta.plural : 'Entities'}</h1>
@@ -176,9 +190,12 @@ export default function EntitiesView() {
 
           {selected.length > 0 && (
             <div className="ent-bar">
-              <span style={{ fontWeight: 560 }}>{selected.length === 1 ? '1 selected. Choose a second entity to merge.' : '2 selected'}</span>
-              <Button variant="primary" size="sm" icon={GitMerge} disabled={selected.length !== 2} onClick={() => setMergeOpen(true)}>
+              <span style={{ fontWeight: 560 }}>{selected.length === 1 ? '1 selected. Choose a second entity to merge.' : `${fmtNum(selected.length)} selected`}</span>
+              <Button variant="primary" size="sm" icon={GitMerge} disabled={selected.length !== 2} tip={selected.length > 2 ? 'Select exactly two entities to merge' : undefined} onClick={() => setMergeOpen(true)}>
                 Merge…
+              </Button>
+              <Button size="sm" icon={EyeOff} onClick={() => setRemoveOpen(true)}>
+                Remove from investigation…
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setSelected([])}>
                 Clear
@@ -188,6 +205,14 @@ export default function EntitiesView() {
         </div>
       </div>
 
+      )}
+
+      <RemoveModal
+        open={removeOpen}
+        onClose={() => setRemoveOpen(false)}
+        entities={selected.map((id) => ({ id, name: all.find((e) => e.id === id)?.name ?? id }))}
+        onDone={() => setSelected([])}
+      />
       <MergeModal
         open={mergeOpen}
         onClose={() => {
@@ -197,6 +222,58 @@ export default function EntitiesView() {
         initialKeep={selected.length === 2 ? [...selected].map((id) => all.find((e) => e.id === id)).sort((a, b) => (b?.doc_count ?? 0) - (a?.doc_count ?? 0))[0]?.id : undefined}
         initialMerge={selected.length === 2 ? [...selected].map((id) => all.find((e) => e.id === id)).sort((a, b) => (b?.doc_count ?? 0) - (a?.doc_count ?? 0))[1]?.id : undefined}
       />
+    </div>
+  )
+}
+
+function RemovedList({ items }: { items: HiddenEntity[] }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const back = async (e: HiddenEntity) => {
+    setBusy(e.id)
+    await bringBack([{ id: e.id, name: e.name }])
+    setBusy(null)
+  }
+  return (
+    <div className="ent-main">
+      <div className="ent-head">
+        <h1>Removed</h1>
+        <div className="ent-head-sub">{plural(items.length, 'entity', 'entities')}</div>
+      </div>
+      <div className="ent-hint">
+        Entities you removed from this investigation. They are left out of the Network, the Entities list, Search, Review and the Overview counts, and documents added later do not bring them back. Their facts stay in the documents. <b>Bring back</b> shows one again.
+      </div>
+      <div className="ent-listwrap" style={{ overflow: 'auto' }}>
+        {items.length === 0 ? (
+          <Empty icon={Eye} title="Nothing removed">
+            Every entity is shown.
+          </Empty>
+        ) : (
+          items.map((e) => {
+            const m = typeMeta(e.type)
+            return (
+              <div key={e.id} className="ent-row" style={{ position: 'relative', '--chip-color': m.color } as CSSProperties} onClick={() => e.exists && navigate({ view: 'entity', id: e.id })} role={e.exists ? 'link' : undefined} tabIndex={e.exists ? 0 : undefined} onKeyDown={(ev) => e.exists && ev.key === 'Enter' && navigate({ view: 'entity', id: e.id })}>
+                <span />
+                <EntityAvatar type={e.type} size={44} />
+                <div className="ent-row-body">
+                  <div className="ent-row-name">
+                    <span className="nm truncate">{e.name}</span>
+                    <span className="ty">{m.label}</span>
+                  </div>
+                  <div className="ent-row-sum">
+                    {`Removed${e.by ? ` by ${e.by}` : ''}${e.at ? ` on ${fmtDate(e.at.slice(0, 10))}` : ''}.`}
+                    {e.exists ? ` In ${plural(e.doc_count, 'document')}.` : ' No document names it now; if one does again, it stays removed.'}
+                  </div>
+                </div>
+                <div className="ent-row-stats" onClick={(ev) => ev.stopPropagation()}>
+                  <Button size="sm" icon={Eye} loading={busy === e.id} onClick={() => void back(e)}>
+                    Bring back
+                  </Button>
+                </div>
+              </div>
+            )
+          })
+        )}
+      </div>
     </div>
   )
 }

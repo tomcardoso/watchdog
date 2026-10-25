@@ -336,7 +336,8 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
     snap = undo.get("entry") or {}
     changes = undo.get("changes") or []
 
-    paths = [reg / "entities.json", merge_log.path(vault), reg / "manifest.json"]
+    from watchdog.pipeline import hidden
+    paths = [reg / "entities.json", merge_log.path(vault), reg / "manifest.json", hidden.path(vault)]
     paths += [_artifact_path(vault, c["sha"]) for c in changes]
     paths += [vault / f"{entities[keep]['note_path']}.md"]
     snapshot(vault, "undo-merge", [p for p in paths if p.exists()])
@@ -385,6 +386,9 @@ def _undo_unlocked(vault: Path, merge_id: str, by: str | None) -> dict:
 
     # 3. The pair is "Not the same", the log and registry are written, and the notes rendered.
     resolutions.resolve(vault, [pair_id(keep, new)], label="undo merge")
+    # A record removed from the investigation before the merge is removed again (D326).
+    if isinstance(undo.get("hidden"), dict):
+        hidden.restore(vault, new, {**undo["hidden"], "name": entities[new]["name"]})
     merge_log.save(vault, data, render_note=False)
     _write_json_atomic(reg / "entities.json", entities)
     _update_manifest(vault, entities)

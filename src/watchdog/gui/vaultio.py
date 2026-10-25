@@ -520,11 +520,20 @@ def entity_row(vault: Path, eid: str, ent: dict, resolved: frozenset[str]) -> di
     }
 
 
+def visible_entities(vault: Path, ents: dict) -> dict:
+    """`ents` without the entities removed from the investigation (D326): what the app's views
+    and counts show."""
+    from watchdog.pipeline import hidden
+    gone = hidden.hidden_ids(vault)
+    return {k: e for k, e in ents.items() if k not in gone} if gone else ents
+
+
 def sorted_entity_rows(vault: Path, ents: dict | None = None, limit: int | None = None) -> list[dict]:
     """Entities with the most documents first, then by name — sorted on registry fields before
-    any row is built, so `limit` only reads the notes it returns."""
+    any row is built, so `limit` only reads the notes it returns. An entity removed from the
+    investigation (D326) is left out."""
     from watchdog.pipeline import resolutions
-    ents = load_entities(vault) if ents is None else ents
+    ents = visible_entities(vault, load_entities(vault) if ents is None else ents)
     resolved = resolutions.resolved_ids(vault)
     items = [(eid, e) for eid, e in ents.items() if isinstance(e, dict)]
     items.sort(key=lambda kv: (-len(kv[1].get("appears_in") or []), (kv[1].get("name") or kv[0]).lower()))

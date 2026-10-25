@@ -244,18 +244,20 @@ def former_ids(vault: Path | None) -> dict[str, set[str]]:
 
 def open_candidates(vault: Path, entities: dict | None = None,
                     resolved: frozenset[str] | None = None, data: dict | None = None) -> list[dict]:
-    """Candidates still waiting on the reporter: open, not dismissed, and both records still exist
-    as separate entities (a merge by any route closes them)."""
-    from watchdog.pipeline import resolutions
+    """Candidates still waiting on the reporter: open, not dismissed, both records still exist
+    as separate entities (a merge by any route closes them), and neither removed from the
+    investigation (D326; bringing it back reopens the pair)."""
+    from watchdog.pipeline import hidden, resolutions
     from watchdog.pipeline.json_io import _read_json_or
     data = data if data is not None else load(vault)
     if entities is None:
         entities = _read_json_or(Path(vault) / ".watchdog" / "registry" / "entities.json", {})
     resolved = resolved if resolved is not None else resolutions.resolved_ids(vault)
+    removed = hidden.hidden_ids(vault)
     out = []
     for cid, c in data.get("candidates", {}).items():
         a, b = (c.get("a") or {}).get("id"), (c.get("b") or {}).get("id")
-        if c.get("status") != "open" or cid in resolved:
+        if c.get("status") != "open" or cid in resolved or a in removed or b in removed:
             continue
         if a not in entities or b not in entities or a == b:
             continue

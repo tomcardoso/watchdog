@@ -102,10 +102,11 @@ Summary = {               // overview.summary(), made JSON-safe
   incoming, awaiting_dig, awaiting_bark, pending_finalize: bool,
   failed, research_urls, context_unseeded: bool,               // in progress
   has_work: bool,                                              // overview.has_work()
-  totals: {documents, entities, pages, events},
+  totals: {documents, entities, pages, events},   // entities: not counting ones removed from the investigation (D326)
+  hidden_entities,       // entities removed from the investigation that still have a record (D326)
   verification: VerificationSummary,   // verification.summary() over every committed fact (D271)
   recent_documents: DocumentRow[],   // newest 8 by ingested_at
-  top_entities: EntityRow[]          // 8 with the most documents
+  top_entities: EntityRow[]          // 8 with the most documents, none removed (D326)
 }
 
 DocumentRow = {
@@ -134,9 +135,10 @@ EntityRow = {
 | `vault.documents` | `{vault}` | `DocumentRow[]` |
 | `vault.document` | `{vault, sha}` | `DocumentDetail` (below) |
 | `vault.textPositions` | `{vault, sha, pages?: int[]}` | `{unit: "line"\|null, engine\|null, pages: int[], boxes: {"<page>": {width, height, lines: [[left, top, right, bottom, text]]}}}` — the saved positions of OCR'd lines (D289) from `.watchdog/text-positions/<sha>.json`: `pages` lists every page that has them, `boxes` holds only the requested pages (at most 50 per call; none without `pages`). Coordinates are in the page's own units (PDF points, image pixels), origin top left; scale by the drawn size over `width`/`height`. Everything empty for a document without the file. Errors: `bad_params` (`pages` not a list of integers), `not_found` |
-| `vault.entities` | `{vault}` | `EntityRow[]` |
+| `vault.entities` | `{vault}` | `EntityRow[]` — every entity except those removed from the investigation (D326) |
+| `vault.hiddenEntities` | `{vault}` | `{items: [{id, name, type, at\|null, by\|null, exists, doc_count}]}` — the entities removed from the investigation (`registry/hidden.json`, D326), most recently removed first, with the name and type each had when removed; `exists` is false once its record has gone from the registry (the id stays listed, so it is hidden again if processing brings it back) |
 | `vault.entity` | `{vault, id}` | `EntityDetail` (below) |
-| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View` |
+| `vault.graph` | `{vault}` | `{nodes: [{id, name, type, doc_count}], edges: [{source, target, role, labels: string[], docs: string[], directed: bool, relationships: [{from, to, label, group|null, docs, basis, date_ranges, wordings: [{text, sources: [{sha, page}]}]}]}], documents: {sha: {title, note|null}}}` — one edge per pair of profiled entities, whatever the direction or wording (D291): `labels` lists every distinct relationship (canonical label, best documented first), `role` joins them, `docs` are the documents stating any of them, `directed` is true when every relationship runs source → target, each relationship carries the documents' own wordings with their pages. Read from the registry and the stored extractions through `relationships.View`. An entity removed from the investigation (D326) is not a node, and no edge touches it |
 | `vault.relationshipSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping's wordings apart again (`relationships.split`, D291): recorded in `registry/relationships.json` and the vault's history, the two entities' notes refreshed; later runs never regroup those wordings. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.timeline` | `{vault}` | `{events: TimelineEvent[]}` sorted by date |
 | `vault.note` | `{vault, path}` | `{path, exists, frontmatter: object, body: string, title\|null, kind: "entity"\|"document"\|"briefing"\|"query"\|"wiki"\|"other"}` |
@@ -188,6 +190,7 @@ EntityDetail = EntityRow & {
               stale_notice|null,                // the out-of-date warning the note shows for a stale summary (D285)
               summary_md, analysis_md|null,     // with citations rendered as fact links (D283); show these
               citations: {cited, linked, unknown, missing, disputed}} | null,   // the entity summary, from the registry; who wrote it is metadata, not shown (D284); unknown fields ignored
+  hidden: {at|null, by|null} | null,            // removed from the investigation (D326): the page still opens, with Bring back
 }
 
 TimelineEvent = {
@@ -319,6 +322,8 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `rebuild-notes` | yes | — | `{entities, documents}` (D280) | index |
 | `recheck-contradictions` | yes | `{ids?, all?}` | `recheck.run`'s result (D287) | index |
 | `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
+| `hide-entities` | yes | `{ids}` | `{hidden, already, names}` — removes entities from the investigation's views (D326): lists their ids in `registry/hidden.json` under the registry lock, with who and when; changes nothing else (I17). An action | |
+| `unhide-entities` | yes | `{ids}` | `{shown, not_listed, names}` — Bring back (D326). An action | |
 | `rebuild-timeline` | yes | — | `{dates, events}` | |
 | `lead-sweep` | yes | — | counts per lead kind | |
 | `watchlist-check` | yes | — | `{documents, hits, file?}` | |

@@ -1,5 +1,6 @@
 """Entity operations beside the merge itself (D298): undo a merge, record a contradiction the
-reporter found, and re-check stored facts for contradictions with the finalizer model (D287).
+reporter found, re-check stored facts for contradictions with the finalizer model (D287), and
+remove an entity from the investigation's views or bring it back (D326).
 """
 
 from __future__ import annotations
@@ -70,4 +71,50 @@ def recheck_contradictions(rep, vault: Path, *, ids: list[str] = (), all: bool =
     except recheck.Busy as e:
         sys.exit(f"Error: {e}")
     rep.log(recheck.summary(out))
+    return out
+
+
+def _registry_busy(e: OSError) -> None:
+    # The registry lock (D258): on Windows `msvcrt` gives up after ~10s while another run (usually
+    # post-processing committing a batch) holds it, as for a merge.
+    sys.exit(f"Error: the investigation's records could not be written ({e}). If documents are "
+             "being added to this investigation, wait for that to finish and try again.")
+
+
+@op("hide-entities", kind="action")
+def hide_entities(rep, vault: Path, *, ids: list[str]) -> dict:
+    """Remove entities from the investigation's views (D326): their ids go on the lasting list in
+    `registry/hidden.json`. Nothing a source says is changed (I17)."""
+    from watchdog.pipeline import hidden
+    require_vault(vault)
+    try:
+        out = hidden.run_hide(vault, list(ids))
+    except OSError as e:
+        _registry_busy(e)
+    except ValueError as e:
+        sys.exit(f"Error: {e}")
+    n = len(out["hidden"])
+    if n:
+        rep.log(f"Removed {n} entit{'ies' if n != 1 else 'y'} from the investigation's views: "
+                f"{', '.join(out['names'][:5])}{' and more' if len(out['names']) > 5 else ''}. "
+                "Their facts stay in the document notes; Bring back shows them again.")
+    else:
+        rep.log("Already removed; nothing changed.")
+    return out
+
+
+@op("unhide-entities", kind="action")
+def unhide_entities(rep, vault: Path, *, ids: list[str]) -> dict:
+    """Bring removed entities back into the investigation's views (D326)."""
+    from watchdog.pipeline import hidden
+    require_vault(vault)
+    try:
+        out = hidden.run_bring_back(vault, list(ids))
+    except OSError as e:
+        _registry_busy(e)
+    except ValueError as e:
+        sys.exit(f"Error: {e}")
+    n = len(out["shown"])
+    rep.log(f"Brought back {n} entit{'ies' if n != 1 else 'y'}." if n else
+            "None of these was removed; nothing changed.")
     return out

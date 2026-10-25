@@ -58,7 +58,7 @@ SCHEMA_VERSION = 1
 HISTORY_DIR = (".watchdog", "history")
 REGISTRY_DIR = ".watchdog/registry/"
 REGISTRY_FILES = ("entities.json", "documents.json", "merges.json", "verification.json",
-                  "resolutions.json", "requests.json", "relationships.json")
+                  "resolutions.json", "requests.json", "relationships.json", "hidden.json")
 # Top-level folders whose files are never versioned: the originals and their full text, the drop
 # zone and background material. Hidden folders are skipped everywhere.
 EXCLUDED_TOP = frozenset({"morgue", "incoming", "context"})
@@ -527,6 +527,12 @@ def label(cause: dict | None) -> str:
             text = f"Contradictions re-checked: {', '.join(names)}" + (f" and {more} more" if more > 0 else "")
         else:
             text = "Contradictions re-checked"
+    elif kind in ("hide", "unhide"):
+        names = [n for n in c.get("names") or [] if isinstance(n, str)]
+        more = int(c.get("count") or len(names)) - len(names)
+        verb = "Removed from the investigation" if kind == "hide" else "Brought back"
+        shown = ", ".join(names) + (f" and {more} more" if more > 0 else "")
+        text = f"{verb}: {shown} (by you)" if shown else f"{verb} (by you)"
     elif kind == "relationship_split":
         text = "Relationship wordings shown apart (by you)"
     elif kind == "rebuild":

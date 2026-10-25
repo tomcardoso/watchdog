@@ -128,6 +128,8 @@ export interface Summary {
   recent_documents: DocumentRow[]
   top_entities: EntityRow[]
   verification: VerificationSummary
+  /** Entities removed from the investigation that still have a record (D326). */
+  hidden_entities?: number
 }
 
 // The verification ledger (D271): a reporter's own check of a fact.
@@ -350,7 +352,12 @@ export interface EntityDetail extends EntityRow {
   timeline: TimelineEvent[]
   facts: EntityFact[]                  // every fact tagged to the entity, in date order (D280)
   synthesis: EntitySynthesis | null
+  /** Removed from the investigation (D326): hidden from the views until brought back. */
+  hidden?: { at: string | null; by: string | null } | null
 }
+
+/** An entity removed from the investigation (D326), as the Removed list shows it. */
+export interface HiddenEntity { id: string; name: string; type: EntityType | string; at: string | null; by: string | null; exists: boolean; doc_count: number }
 
 export interface GraphData {
   nodes: { id: string; name: string; type: string; doc_count: number }[]
@@ -594,6 +601,8 @@ export interface OpParams {
   'troubleshooting-copy': { output: string; originals?: boolean }
   'merge-entities': { keep: string; merge: string }
   'undo-merge': { id: string }
+  'hide-entities': { ids: string[] }
+  'unhide-entities': { ids: string[] }
   'add-contradiction': { entity: string; label: string; a: string; a_doc: string; a_page?: number; b: string; b_doc: string; b_page?: number }
   'recheck-contradictions': { ids?: string[]; all?: boolean }
   'rebuild-timeline': NoParams
@@ -883,6 +892,7 @@ export interface Methods {
   'vault.textPositions': [{ vault: string; sha: string; pages?: number[] }, TextPositions]
   'vault.entities': [{ vault: string }, EntityRow[]]
   'vault.entity': [{ vault: string; id: string }, EntityDetail]
+  'vault.hiddenEntities': [{ vault: string }, { items: HiddenEntity[] }]
   'vault.graph': [{ vault: string }, GraphData]
   'vault.relationshipSplit': [{ vault: string; group: string }, { group: string; status: string; by: string | null; at: string | null }]
   'vault.timeline': [{ vault: string }, { events: TimelineEvent[] }]

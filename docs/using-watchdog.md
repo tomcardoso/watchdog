@@ -173,13 +173,23 @@ An entity's page shows everything the documents say about it:
 
 Sometimes one person or company ends up as two entities, usually because a name is spelled differently. Select the two on the Entities screen and choose **Merge…**, or open one and choose **Merge into another entity…** from its **⋯** menu. The dialog shows both before you commit. Everything combines onto the survivor, and the merge is recorded under your name; it can be undone from [Merges](#merges). Afterwards, **Rebuild search index** removes the merged entity from Search, and **Refresh summary from all sources** rewrites the survivor's summary.
 
+### Removing an entity
+
+Processing profiles everything the documents name, including things that are not part of your story: an office on a letterhead, a research centre that helped you, your own newsroom. To take one out, choose **Remove from investigation…** from its **⋯** menu, from a selected dot's card in the [Network](#timeline-and-network), or select one or more on the Entities screen. The dialog says what will happen before anything changes.
+
+A removed entity is left out of the Network (with every line to it), the Entities list, entity notes in Search, Review and the counts on the Overview. Documents added later that name it do not bring it back, and neither does Watchdog deciding that a new record is the same thing.
+
+Nothing is deleted. The documents still say what they say: the entity's facts stay in each document's note and in source passages in Search, and other entities keep their relationships to it in their own notes. The AI model also still reads those facts when it writes summaries and briefings and looks for contradictions, so removing an entity does not change what a summary is based on. An export of the investigation's entities still includes it.
+
+Removed entities are listed under **Removed** at the bottom of the Entities screen's type list, with who removed each and when. **Bring back** shows one again; it is also on the entity's own page, which still opens. If a removed entity is merged with another, the survivor keeps its own state: it is hidden only if it was removed itself. Undoing that merge removes the split record again.
+
 ## Timeline and Network
 
 **Timeline** lays out every dated event by year and month, each linked to its page. Filter it by entity, type, years or a word. An event whose fact you disputed stays, labelled **disputed**.
 
 ![The Timeline: a bar chart of events by year, then each dated event with its entities and the page it came from.](images/app-timeline.png)
 
-**Network** draws the entities as a graph: each dot an entity, sized by how many documents name it and coloured by type, with one line between two related entities. Hover over a dot to see its connections, click for details, double-click to open it. Click a line for every relationship between the two, with the documents and pages that state it. When documents describe one relationship in different words ("lawyer for", "counsel for"), it is listed once with each document's own words shown as "As written" (see [how wordings are grouped](how-it-works.md#relationship-wordings)); **Show wordings separately** undoes a grouping you disagree with. A slider sets the minimum number of documents for an entity to be drawn.
+**Network** draws the entities as a graph: each dot an entity, sized by how many documents name it and coloured by type, with one line between two related entities. Hover over a dot to see its connections, click for details, double-click to open it. Click a line for every relationship between the two, with the documents and pages that state it. When documents describe one relationship in different words ("lawyer for", "counsel for"), it is listed once with each document's own words shown as "As written" (see [how wordings are grouped](how-it-works.md#relationship-wordings)); **Show wordings separately** undoes a grouping you disagree with. A slider sets the minimum number of documents for an entity to be drawn. To take something that is not part of your story out of the graph for good, use **Remove from investigation…** on its card (see [Removing an entity](#removing-an-entity)).
 
 ![The Network screen: entities as coloured dots by type, joined by lines where documents state a relationship.](images/app-network.png)
 

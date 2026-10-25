@@ -51,22 +51,28 @@ def _inferred_claims(ent: dict) -> list[str]:
     return claims
 
 
-def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset()) -> dict:
+def find_leads(entities_reg: dict, resolved: frozenset[str] = frozenset(),
+               hidden: frozenset[str] = frozenset()) -> dict:
     """Pure: derive the four lead lists from an entity-registry dict.
 
     ``resolved`` is the set of acknowledged resolution ids (#266); any lead — or individual
     contradiction callout — whose id is in it drops out of the active list. Every returned item
-    carries its own ``rid`` so the report can print a copyable/checkbox-able marker."""
+    carries its own ``rid`` so the report can print a copyable/checkbox-able marker.
+
+    ``hidden`` is the ids removed from the investigation (D326): such an entity raises no lead of
+    its own, its relationships name no unprofiled target, and it is never one itself."""
     unprofiled: dict[str, dict] = {}
     isolated: list[dict] = []
     contradictions: list[dict] = []
     inferred: list[dict] = []
 
     for eid, ent in entities_reg.items():
+        if eid in hidden:
+            continue
         roles = ent.get("roles", [])
         for role in roles:
             tid = role.get("target_id")
-            if not tid or tid in entities_reg:
+            if not tid or tid in entities_reg or tid in hidden:
                 continue   # a profiled target (incl. every reverse role) is not a lead
             rec = unprofiled.setdefault(tid, {
                 "id": tid, "name": tid, "mentioned_by": set(), "docs": set(), "mentions": [],
@@ -133,9 +139,11 @@ def total(leads: dict) -> int:
 
 
 def scan(vault: Path) -> dict:
-    """Run the sweep over a vault's entity registry, minus anything already resolved (#266)."""
+    """Run the sweep over a vault's entity registry, minus anything already resolved (#266) and
+    any entity removed from the investigation (D326)."""
+    from watchdog.pipeline import hidden
     return find_leads(_load_json(vault / ".watchdog" / "registry" / "entities.json"),
-                      resolutions.resolved_ids(vault))
+                      resolutions.resolved_ids(vault), hidden.hidden_ids(vault))
 
 
 def _format(leads: dict, now: datetime.datetime) -> str:

@@ -506,6 +506,7 @@ queries/ wiki/               session-written findings and threads
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
     relationships.json       relationship-wording groups, split marks and compared wordings (D291)
+    hidden.json              entities the reporter removed from the investigation, with who, when, name and type (D326); a view overlay
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
     usage/usage-<ts>.json    per-call token/cost/latency records (D50, D86, D132)
@@ -607,7 +608,7 @@ and put back the newer of that snapshot and the app's last save if the edit chan
 
 **Version history (D286).** `pipeline/history.py` versions every tracked file: Markdown outside
 `morgue/`, `incoming/`, `context/` and hidden folders, plus `entities`, `documents`, `merges`,
-`verification`, `resolutions` and `requests` `.json`. Blobs are content-addressed and compressed;
+`verification`, `resolutions`, `requests`, `relationships` and `hidden` `.json`. Blobs are content-addressed and compressed;
 `log.jsonl` (`schema_version` per line) is the source of truth, appended to by every snapshot and
 rewritten only by `history.remove` (D288); `index.json` (per path its versions, removal gaps and
 last-seen size and mtime, per version its cause and log offset) is rebuilt from it when missing or
@@ -671,6 +672,21 @@ re-points and restores third records' roles, retags timeline NDJSON from the fac
 "Not the same", and renders the notes. Contradictions, the journalist's Notes and the AI summary
 stay with the survivor. `merge_undo.check` refuses, with a reason, section folds,
 undone entries, a survivor merged away later, a merged id now taken, or a reprocessed document.
+
+**Removed entities (D326).** `pipeline/hidden.py`; the `hide-entities` and `unhide-entities`
+actions (`ops/entities.py`) write `registry/hidden.json` (`schema_version` 1: per id `at`, `by`,
+and the `name` and `type` it had) under the registry lock, as one history version, and nothing
+else (I17). Keyed on the id, so a record processing recreates, or one the identity code folds into a
+listed survivor, stays hidden. Read-side filters leave a listed id out: `vaultio.visible_entities`
+(the Entities list, the Overview's entity total and top entities, the command palette),
+`vault.graph` (nodes and every edge touching one), `leads.find_leads` (its own leads, and
+unprofiled targets only it names), `merge_log.open_candidates` ("possible same" pairs, Review's
+merges and `merges.md`) and the app's Search (entity-note hits; passages and document notes stay).
+Every model input (synthesis, briefing, reconcile, the re-check), the entity's own note and page,
+other entities' notes and relationships, and exports ignore the list; an Ask Claude session's
+leads tool reads `leads.scan`, so it lists what Review lists.
+A merge (`merge_entities.run`) keeps the survivor's own state; a listed loser's record moves to the
+log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 
 ---
 
@@ -987,3 +1003,10 @@ noted as such.
   encrypted by the app and this process can't read it (a key that failed to decrypt): it stops and says why. An environment variable still overrides, as it overrides
   everything. *History: D290, D295.* Guarded by `tests/test_invariants.py::test_I16_…`,
   `tests/test_labelled_keys.py` and `tests/test_keystore.py`.
+- **I17 — Removing an entity hides it; it never changes what a source says.** An entity the reporter
+  removed from the investigation (`registry/hidden.json`) is left out of the views and leads only:
+  the Network, the Entities list, Search's entity notes, leads, "possible same" pairs and the
+  Overview and Review counts. Removing it writes that list and nothing else: no extraction, fact,
+  document note, entity record or note, relationship or timeline event changes, and every model
+  input (synthesis, briefing, reconciliation) reads its facts as before. *History: D326.* Guarded by
+  `tests/test_invariants.py::test_I17_…` and `tests/test_hidden_entities.py`.

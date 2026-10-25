@@ -57,6 +57,32 @@ class _DocIndex:
                 "original": morgue.replace("\\", "/") if isinstance(morgue, str) and morgue else None}
 
 
+class _Removed:
+    """What Search leaves out for an investigation (D326): the notes and ids of entities removed
+    from it. Their facts are still found in source passages and document notes."""
+
+    def __init__(self, vault: Path):
+        from watchdog.pipeline import hidden
+        self.ids = hidden.hidden_ids(vault)
+        self.notes = hidden.hidden_notes(vault, vaultio.load_entities(vault)) if self.ids else set()
+
+    def note(self, path) -> bool:
+        from watchdog.pipeline.hidden import note_stem
+        return bool(self.notes) and note_stem(path) in self.notes
+
+    def hit(self, h: dict) -> bool:
+        return h.get("kind") == "entity" and self.note(h.get("path"))
+
+    def entity(self, e: dict) -> bool:
+        return e.get("id") in self.ids or self.note(e.get("note_path"))
+
+    def report(self, row: dict) -> dict:
+        if not self.ids:
+            return row
+        return {**row, "entities": [e for e in row["entities"] if not self.entity(e)],
+                "hits": [h for h in row["hits"] if not self.hit(h)]}
+
+
 def _exact_hit(index: _DocIndex, h: dict) -> dict:
     """One full-text hit with its links. A corpus hit is keyed on the document's sha; any other
     kind is a generated note, whose `path` is the note's vault-relative path."""
@@ -86,10 +112,13 @@ def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
         raise RpcError("Type something to search for.", code="bad_params")
     n = _top(top)
     index = _DocIndex(v)
+    removed = _Removed(v)
+    # A removed entity's note can take a slot, so ask for a few more when any is removed.
+    ask = n + min(len(removed.notes), _TOP_MAX) if removed.notes else n
 
     exact_raw, exact_error = [], None
     try:
-        exact_raw = fulltext.search(v, query, limit=n)
+        exact_raw = [h for h in fulltext.search(v, query, limit=ask) if not removed.hit(h)][:n]
     except Exception as e:  # noqa: BLE001 — an unavailable lane must not hide the other one
         exact_error = str(e)
 
@@ -107,7 +136,8 @@ def query(vault: str, query: str, top: int = 5, threshold: float | None = None,
         try:
             passages_raw = embed.search(v, query, top_n=n, min_score=min_score, scope="corpus",
                                         rerank=bool(rerank))
-            notes_raw = embed.search(v, query, top_n=n, min_score=min_score, scope="notes")
+            notes_raw = [r for r in embed.search(v, query, top_n=ask, min_score=min_score, scope="notes")
+                         if not removed.note(r.get("note_path"))][:n]
         except Exception as e:  # noqa: BLE001 — e.g. fastembed not installed
             semantic_error = f"{type(e).__name__}: {e}"
 
@@ -171,6 +201,7 @@ def batch(terms: list[str], vault: str | None = None, everywhere: bool = False,
             results, _skipped = everywhere_report(projects, [term], n)
             hits, ok = [], True
             for r in results:
+                r = _Removed(Path(r["path"])).report(r)
                 hits += _term_hits(_DocIndex(Path(r["path"])), r, vault_name=r["name"])
                 ok = ok and r["error"] is None
             out.append({"term": term, "checked": ok, "hits": hits})
@@ -180,6 +211,8 @@ def batch(terms: list[str], vault: str | None = None, everywhere: bool = False,
         raise RpcError("Choose an investigation to search, or search everywhere.", code="bad_params")
     v = require_vault(vault)
     report, _failures = batch_report(v, clean, n)
+    removed = _Removed(v)
+    report = [removed.report(r) for r in report]
     index = _DocIndex(v)
     return {"terms": [{"term": r["term"], "checked": r["error"] is None, "hits": _term_hits(index, r)}
                       for r in report]}
@@ -194,6 +227,7 @@ def everywhere(query: str, top: int = 5) -> dict:
     results, skipped = everywhere_report(vaultio.registered_projects(), [query.strip()], _top(top))
     vaults = []
     for r in results:
+        r = _Removed(Path(r["path"])).report(r)
         index = _DocIndex(Path(r["path"]))
         vaults.append({
             "slug": r["slug"], "name": r["name"], "path": r["path"],

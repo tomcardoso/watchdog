@@ -103,7 +103,7 @@ def summary(vault: str) -> dict:
         "has_work": bool(home.has_work(s)),
         "totals": {
             "documents": len(docs),
-            "entities": len(ents),
+            "entities": len(vaultio.visible_entities(v, ents)),
             "pages": sum(d.get("page_count") or 0 for d in docs.values()
                          if isinstance(d, dict) and isinstance(d.get("page_count"), int)),
             "events": len(vaultio.raw_timeline_events(v, docs)),
@@ -111,7 +111,14 @@ def summary(vault: str) -> dict:
         "recent_documents": vaultio.sorted_document_rows(v, docs, limit=8),
         "top_entities": vaultio.sorted_entity_rows(v, ents, limit=8),
         "verification": _verification_summary(v, docs),
+        "hidden_entities": len(hidden_ids_in(v, ents)),
     }
+
+
+def hidden_ids_in(v: Path, ents: dict) -> set[str]:
+    """The removed entities (D326) that still have a record."""
+    from watchdog.pipeline import hidden
+    return {i for i in hidden.hidden_ids(v) if i in ents}
 
 
 def _verification_summary(v: Path, docs: dict) -> dict:
@@ -406,7 +413,35 @@ def entity(vault: str, id: str) -> dict:
         "role_count": len(rels),
         "contradictions": _contradictions(ent, sections.get("contradictions"), resolved),
         "timeline": _entity_timeline(v, id, ent, docs, ents),
+        "hidden": _hidden_record(v, id),
     }
+
+
+def _hidden_record(v: Path, eid: str) -> dict | None:
+    from watchdog.pipeline import hidden
+    rec = hidden.records(v).get(eid)
+    return None if rec is None else {"at": rec.get("at") or None, "by": rec.get("by") or None}
+
+
+@method("vault.hiddenEntities")
+def hidden_entities(vault: str) -> dict:
+    """The entities removed from the investigation (D326), most recently removed first, each with
+    the name and type it had then and whether its record still exists."""
+    from watchdog.pipeline import hidden
+
+    v = require_vault(vault)
+    ents = vaultio.load_entities(v)
+    out = []
+    for eid, rec in hidden.records(v).items():
+        ent = ents.get(eid) if isinstance(ents.get(eid), dict) else None
+        out.append({"id": eid, "name": (ent or {}).get("name") or rec.get("name") or eid,
+                    "type": vaultio.entity_type((ent or {}).get("type") or rec.get("type")),
+                    "at": rec.get("at") or None, "by": rec.get("by") or None,
+                    "exists": ent is not None,
+                    "doc_count": len((ent or {}).get("appears_in") or [])})
+    out.sort(key=lambda r: r["name"].lower())
+    out.sort(key=lambda r: r["at"] or "", reverse=True)
+    return {"items": out}
 
 
 # ── graph and timeline ───────────────────────────────────────────────────────────
@@ -428,13 +463,17 @@ def graph(vault: str) -> dict:
 
     v = require_vault(vault)
     docs = vaultio.load_documents(v)
-    ents = {k: e for k, e in vaultio.load_entities(v).items() if isinstance(e, dict)}
+    # An entity removed from the investigation (D326) is not drawn, nor any line to it.
+    ents = {k: e for k, e in vaultio.visible_entities(v, vaultio.load_entities(v)).items()
+            if isinstance(e, dict)}
     nodes = [{"id": eid, "name": e.get("name") or eid, "type": vaultio.entity_type(e.get("type")),
               "doc_count": len(e.get("appears_in") or [])} for eid, e in ents.items()]
     nodes.sort(key=lambda n: (-n["doc_count"], n["name"].lower()))
     view = relationships.View(v)
     edges, cited = [], set()
     for e in view.edges():
+        if e["a"] not in ents or e["b"] not in ents:
+            continue
         rels = [{"from": r["from"], "to": r["to"], "label": r["label"], "group": r["group"],
                  "docs": r["docs"], "basis": r["basis"], "date_ranges": r["date_ranges"],
                  "wordings": _wordings(r)} for r in e["relationships"]]

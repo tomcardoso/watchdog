@@ -480,3 +480,36 @@ def test_I16_a_missing_chosen_key_never_falls_back(tmp_path, monkeypatch):
     with pytest.raises(RpcError):
         chat.ChatManager().start(vault, "ask", None, "who")
     assert sent == []
+
+
+# ── I17: removing an entity hides it from views; it never changes a source's record (D326) ──
+
+def test_I17_removing_an_entity_changes_no_record_and_no_model_input(tmp_path):
+    """Removing an entity writes only its listing: every extraction, note, registry record and
+    timeline is byte-for-byte unchanged, and the synthesis and reconcile inputs still carry its
+    facts. Only the views leave it out."""
+    import json as _json
+    from watchdog.gui import vaultio
+    from watchdog.pipeline import hidden, reconcile, synthesis_bundle
+    from watchdog.pipeline.write_vault import run as wv_run
+    from tests.test_write_vault import make_extraction, make_vault
+    vault = make_vault(tmp_path)
+    (vault / "incoming" / "test-doc.pdf").write_text("dummy")
+    wv_run(make_extraction(tmp_path), vault)
+    wv_run(make_extraction(tmp_path, {"document": {"sha256": "def456", "filename": "two.pdf"}}), vault)
+
+    def files():
+        return {p.relative_to(vault).as_posix(): p.read_bytes() for p in vault.rglob("*")
+                if p.is_file() and ".watchdog/history" not in p.as_posix()
+                and p.name not in (hidden.FILE, ".write-lock")}
+
+    def inputs():
+        return (_json.dumps(synthesis_bundle.build_bundle(vault, ["def456"]), sort_keys=True),
+                _json.dumps(reconcile.build_bundle(vault, ["def456"])["entities"], sort_keys=True))
+
+    before, before_inputs = files(), inputs()
+    hidden.run_hide(vault, ["alice-smith"], by="Test Reporter")
+    assert hidden.hidden_ids(vault) == {"alice-smith"}
+    assert files() == before
+    assert inputs() == before_inputs and "Smith is listed as director" in before_inputs[0]
+    assert "alice-smith" not in {r["id"] for r in vaultio.sorted_entity_rows(vault)}
