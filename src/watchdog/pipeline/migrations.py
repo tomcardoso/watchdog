@@ -223,15 +223,13 @@ class Context:
 
 def stages() -> tuple[dict, str | None]:
     """The models the steps run on, resolved from the settings by the code post-processing uses:
-    reconciliation for identity judgements (same-name groups, fact tags, relationship targets),
-    the timeline stage's model for dates and the finalizer for request sources, as there."""
+    every step here is finishing-step housekeeping (D339), so all three keys name that model."""
     from watchdog.ops.ingest import RunOptions, resolve_plan
     plan = resolve_plan(RunOptions())
-    post = plan.post
     o = plan.overrides
-    return ({"reconciliation": (o["reconciliation_backend"], o["reconciliation_model"]),
-             "timeline": (o["timeline_backend"], o["timeline_model"]),
-             "requests": post}, plan.post_effort)
+    housekeeping = (o["housekeeping_backend"], o["housekeeping_model"])
+    return ({"reconciliation": housekeeping, "timeline": housekeeping, "requests": housekeeping},
+            plan.post_effort)
 
 
 def _context(vault: Path, say=print, warn=None) -> Context:

@@ -299,10 +299,8 @@ function useModels() {
 }
 
 const BARK_STAGES: [keyof RunOptions, string, string][] = [
-  ['finalizer_reconciliation_model', 'Reconciliation', 'Merging duplicate entities and flagging contradictions.'],
-  ['finalizer_synthesis_model', 'Synthesis', 'Writing prose for entities named in more than one document.'],
-  ['finalizer_timeline_model', 'Timeline', 'Folding same-date collisions and coarse restatements.'],
-  ['finalizer_briefing_model', 'Briefing', 'The briefing itself.']
+  ['finalizer_writing_model', 'Writing', 'Entity summaries and the briefing.'],
+  ['finalizer_housekeeping_model', 'Housekeeping', 'Entity matching, contradictions, the timeline, dates and other tidying.']
 ]
 
 function BarkCard({ pending, models }: { pending: { docs: number; entities: number } | null; models: ReturnType<typeof useModels> }) {

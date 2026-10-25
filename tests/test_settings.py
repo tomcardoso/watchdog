@@ -112,7 +112,7 @@ def test_display_of_defaults_booleans_and_secrets():
     assert settings.display_value("table_structure", False) == "false"
     assert settings.display_value("ocr_languages", None) == "auto-detect (default)"
     assert settings.display_value("wayback_secret_key", "hunter2") == "•••••••• (set)"
-    assert settings.display_value("finalizer_synthesis_model", None) == "(not set)"
+    assert settings.display_value("finalizer_writing_model", None) == "(not set)"
 
 
 def test_defaults_shown_match_the_runtime_defaults():

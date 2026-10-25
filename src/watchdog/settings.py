@@ -104,6 +104,16 @@ SETTINGS = {
         "default": defaults.EXTRACT_CONCURRENCY,
         "min": 1,
     },
+    "default_spending_limit": {
+        "short": "Spending limit each new investigation starts with, in US dollars (default: none)",
+        "help": (
+            "A new investigation starts with this spending limit; change it on the investigation's\n"
+            "  Overview under Spending limit. Existing investigations keep their own. Leave blank\n"
+            "  for no limit. Calls on a Claude subscription never count towards a limit."
+        ),
+        "type": "string",
+        "default": None,
+    },
     "auto_approve": {
         "short": "Skip the public-records pause when every step runs on your Claude subscription (default: false)",
         "help": (
@@ -375,11 +385,12 @@ SETTINGS = {
         "default": defaults.EXTRACTOR_MODEL,
     },
     "finalizer_model": {
-        "short": "Model for the post-processing step — reconciliation + synthesis + briefing (default: haiku)",
+        "short": "Model for the finishing step: its writing and its housekeeping (default: haiku)",
         "help": (
-            "Model used for the post-processing step: merging duplicate entities, flagging\n"
-            "  contradictions between documents, synthesizing prose for multi-mention entities,\n"
-            "  reconciling timeline collisions, and writing the briefing.\n"
+            "Model used for every call of the finishing step, unless finalizer_writing_model or\n"
+            "  finalizer_housekeeping_model routes one of its two kinds of work elsewhere: writing\n"
+            "  (entity summaries, the briefing) and housekeeping (merging duplicate entities,\n"
+            "  contradictions, the timeline, dates and the other matching and tidying calls).\n"
             "  This step works from compact digests rather than reading raw documents, so the\n"
             "  cheaper Haiku tier is the default; raise it if synthesized prose feels thin, if\n"
             "  duplicate entities slip through, or if contradictions are being missed.\n"
@@ -391,12 +402,12 @@ SETTINGS = {
         "type": "string",
         "default": defaults.FINALIZER_MODEL,
     },
-    "finalizer_reconciliation_model": {
-        "short": "Model override for entity-duplicate reconciliation only (default: unset — uses finalizer_model)",
+    "finalizer_writing_model": {
+        "short": "Model override for the finishing step's writing: entity summaries and the briefing (default: unset — uses finalizer_model)",
         "help": (
-            "Overrides finalizer_model for just the reconciliation stage — merging duplicate\n"
-            "  entities and flagging contradictions between documents. Leave unset to use\n"
-            "  finalizer_model, like every other post-processing stage.\n"
+            "Overrides finalizer_model for the calls that write prose a reporter reads: the summary\n"
+            "  of each entity named in more than one document, and the briefing. A stronger model\n"
+            "  shows most here. Leave unset to use finalizer_model.\n"
             "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset."
@@ -404,38 +415,15 @@ SETTINGS = {
         "type": "string",
         "default": None,
     },
-    "finalizer_synthesis_model": {
-        "short": "Model override for multi-mention entity synthesis only (default: unset — uses finalizer_model)",
+    "finalizer_housekeeping_model": {
+        "short": "Model override for the finishing step's housekeeping: matching, contradictions, timeline, dates (default: unset — uses finalizer_model)",
         "help": (
-            "Overrides finalizer_model for just the synthesis stage — writing prose for entities\n"
-            "  mentioned across more than one document. Leave unset to use finalizer_model, like\n"
-            "  every other post-processing stage.\n"
-            "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: unset."
-        ),
-        "type": "string",
-        "default": None,
-    },
-    "finalizer_timeline_model": {
-        "short": "Model override for timeline reconciliation only (default: unset — uses finalizer_model)",
-        "help": (
-            "Overrides finalizer_model for just the timeline stage — deduplicating same-date\n"
-            "  collisions, folding coarse-precision restatements into their exact date, and settling\n"
-            "  the printed dates code could not read (D330). Leave\n"
-            "  unset to use finalizer_model, like every other post-processing stage.\n"
-            "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
-            "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
-            "  Default: unset."
-        ),
-        "type": "string",
-        "default": None,
-    },
-    "finalizer_briefing_model": {
-        "short": "Model override for writing the briefing only (default: unset — uses finalizer_model)",
-        "help": (
-            "Overrides finalizer_model for just the briefing stage. Leave unset to use\n"
-            "  finalizer_model, like every other post-processing stage.\n"
+            "Overrides finalizer_model for every finishing call that matches, checks or tidies\n"
+            "  rather than writes: merging duplicate entities and flagging contradictions, matching\n"
+            "  fact tags and relationship targets, grouping relationship labels and request sources,\n"
+            "  folding timeline collisions, settling dates code could not read, and the\n"
+            "  contradiction re-check. Short judgement calls, where a cheaper model is often enough.\n"
+            "  Leave unset to use finalizer_model.\n"
             "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"
             "  Default: unset."
@@ -710,13 +698,12 @@ SECTIONS = [
     ("Transcription", "Speech-to-text for audio and video, on this computer.",
      ["transcription_model", "transcription_language"]),
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
+     ["auto_approve", "default_spending_limit", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),
     ("Models", "Which model runs each step, and how hard it thinks.",
      ["classifier_model", "extractor_model", "finalizer_model",
-      "finalizer_reconciliation_model", "finalizer_synthesis_model",
-      "finalizer_timeline_model", "finalizer_briefing_model",
+      "finalizer_writing_model", "finalizer_housekeeping_model",
       "classifier_effort", "extractor_effort", "finalizer_effort", "verifier_effort",
       "local_base_url", "local_context_window", "openrouter_base_url"]),
     ("Deduplication", "Near-duplicate detection.",
@@ -793,6 +780,14 @@ def coerce(cfg: dict, key: str, value: str) -> str:
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
         cfg[key] = langs
         return ", ".join(langs) if langs else "auto-detect"
+    if key == "default_spending_limit":
+        from watchdog import spend
+        try:
+            usd = spend.parse_usd(value)
+        except ValueError as e:
+            raise SettingError(str(e))
+        cfg[key] = usd
+        return f"{usd:.2f}" if usd is not None else "(not set)"
     if key == "projects_dir":
         path = Path(value).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)

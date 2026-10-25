@@ -74,9 +74,15 @@ def effort(flag_val, config_val, *, default=None, backend=None, model=None):
     return default if effort_supported(backend, model, default) else None
 
 
-# Per-stage finalizer overrides (#433): each key pair below routes just that post-ingest stage
-# to a different model than the finalizer as a whole, falling back to it when unset.
-FINALIZER_STAGES = ("reconciliation", "synthesis", "timeline", "briefing")
+# The finishing step's two kinds of work (D339), each with its own optional model setting,
+# `finalizer_<group>_model`, falling back to the finalizer as a whole when unset. Each model call
+# reads the override of the call key it names (`orchestrate`'s `fo.get("<call>_model")`); a new
+# call joins a group by being listed here.
+FINALIZER_GROUPS = {
+    "writing": ("synthesis", "briefing"),
+    "housekeeping": ("reconciliation", "timeline", "relationship", "request_dedup"),
+}
+FINALIZER_STAGES = tuple(FINALIZER_GROUPS)
 
 
 def resolve_stage(flag_val, config_val, default=defaults.EXTRACTOR_MODEL) -> tuple[str | None, str]:
@@ -665,10 +671,8 @@ class RunOptions:
     extractor_model: str | None = None
     classifier_model: str | None = None
     finalizer_model: str | None = None
-    finalizer_reconciliation_model: str | None = None
-    finalizer_synthesis_model: str | None = None
-    finalizer_timeline_model: str | None = None
-    finalizer_briefing_model: str | None = None
+    finalizer_writing_model: str | None = None
+    finalizer_housekeeping_model: str | None = None
     extractor_effort: str | None = None
     classifier_effort: str | None = None
     finalizer_effort: str | None = None
@@ -719,15 +723,17 @@ class Plan:
 
 def resolve_finalizer_overrides(opts: RunOptions, config: dict, post_backend: str | None,
                                 post_model: str) -> dict:
-    """The four per-stage finalizer overrides (#433), each falling back to the finalizer itself:
-    `<stage>_model`/`<stage>_backend` keys, the shape `orchestrate.finalize` takes."""
+    """The finishing step's two group overrides (D339), each falling back to the finalizer itself:
+    `<group>_model`/`<group>_backend`, plus the same pair under every call key of the group, the
+    shape `orchestrate.finalize` takes."""
     default = f"{post_backend}:{post_model}" if post_backend else post_model
     overrides: dict = {}
-    for stage in FINALIZER_STAGES:
-        key = f"finalizer_{stage}_model"
+    for group, calls in FINALIZER_GROUPS.items():
+        key = f"finalizer_{group}_model"
         backend, model = resolve_stage(getattr(opts, key), config.get(key), default=default)
-        overrides[f"{stage}_backend"] = backend
-        overrides[f"{stage}_model"] = model
+        for name in (group, *calls):
+            overrides[f"{name}_backend"] = backend
+            overrides[f"{name}_model"] = model
     return overrides
 
 
@@ -1252,9 +1258,8 @@ def chew(rep, vault: Path, *, paths: list[str] = (), chew_workers: int | None = 
 @op("add", engine="add", secrets=True, exit_code=lambda r: exit_code_for(r))
 def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_warning: bool = False,
         extractor_model: str | None = None, classifier_model: str | None = None,
-        finalizer_model: str | None = None, finalizer_reconciliation_model: str | None = None,
-        finalizer_synthesis_model: str | None = None, finalizer_timeline_model: str | None = None,
-        finalizer_briefing_model: str | None = None, extractor_effort: str | None = None,
+        finalizer_model: str | None = None, finalizer_writing_model: str | None = None,
+        finalizer_housekeeping_model: str | None = None, extractor_effort: str | None = None,
         classifier_effort: str | None = None, finalizer_effort: str | None = None,
         concurrency: int | None = None, classify_pages: int | None = None, skill: str | None = None,
         verify: bool | None = None, wait: bool = False, skip_briefing: bool = False,
@@ -1268,10 +1273,8 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
     require_vault(vault)
     opts = RunOptions(
         extractor_model=extractor_model, classifier_model=classifier_model,
-        finalizer_model=finalizer_model, finalizer_reconciliation_model=finalizer_reconciliation_model,
-        finalizer_synthesis_model=finalizer_synthesis_model,
-        finalizer_timeline_model=finalizer_timeline_model,
-        finalizer_briefing_model=finalizer_briefing_model, extractor_effort=extractor_effort,
+        finalizer_model=finalizer_model, finalizer_writing_model=finalizer_writing_model,
+        finalizer_housekeeping_model=finalizer_housekeeping_model, extractor_effort=extractor_effort,
         classifier_effort=classifier_effort, finalizer_effort=finalizer_effort,
         concurrency=concurrency, classify_pages=classify_pages, skill=skill, verify=verify,
         wait=wait, skip_briefing=skip_briefing, skip_warning=skip_warning, limit=limit)
@@ -1298,16 +1301,13 @@ def dig(rep, vault: Path, *, skip_warning: bool = False, limit: int | None = Non
 
 @op("bark", engine="add", secrets=True, exit_code=lambda r: exit_code_for(r))
 def bark(rep, vault: Path, *, finalizer_model: str | None = None,
-         finalizer_reconciliation_model: str | None = None, finalizer_synthesis_model: str | None = None,
-         finalizer_timeline_model: str | None = None, finalizer_briefing_model: str | None = None,
+         finalizer_writing_model: str | None = None, finalizer_housekeeping_model: str | None = None,
          finalizer_effort: str | None = None, skip_briefing: bool = False) -> dict | None:
     """Post-processing: finish the staged batch."""
     require_vault(vault)
     opts = RunOptions(
-        finalizer_model=finalizer_model, finalizer_reconciliation_model=finalizer_reconciliation_model,
-        finalizer_synthesis_model=finalizer_synthesis_model,
-        finalizer_timeline_model=finalizer_timeline_model,
-        finalizer_briefing_model=finalizer_briefing_model, finalizer_effort=finalizer_effort,
+        finalizer_model=finalizer_model, finalizer_writing_model=finalizer_writing_model,
+        finalizer_housekeeping_model=finalizer_housekeeping_model, finalizer_effort=finalizer_effort,
         skip_briefing=skip_briefing)
     return _clean(finish(vault, opts))
 

@@ -64,7 +64,7 @@ def test_schema_kinds_and_choices(wdg_home):
     assert k["extractor_effort"]["kind"] == "effort"
     assert k["extractor_effort"]["choices"] == ["low", "medium", "high", "xhigh", "max"]
     assert k["extractor_model"]["kind"] == "model" and k["extractor_model"]["choices"] is None
-    assert k["finalizer_briefing_model"]["kind"] == "model"
+    assert k["finalizer_writing_model"]["kind"] == "model"
     assert k["wayback_secret_key"]["kind"] == "secret"
     assert k["chew_workers"]["kind"] == "text" and k["ocr_languages"]["kind"] == "text"
     assert k["embed_model"]["kind"] == "text"       # a Hugging Face id, not a Watchdog model value
@@ -83,7 +83,7 @@ def test_schema_current_default_and_display(wdg_home):
     assert k["garbled_threshold"]["is_set"] is False
     assert k["auto_approve"]["display"] == "true"
     assert k["classifier_model"]["display"] == "haiku"
-    assert k["finalizer_synthesis_model"]["display"] == "(not set)"
+    assert k["finalizer_writing_model"]["display"] == "(not set)"
 
 
 def test_schema_never_returns_a_secret(wdg_home):
@@ -157,6 +157,14 @@ def test_set_projects_dir_creates_the_folder(wdg_home, tmp_path):
     r = call("settings.set", key="projects_dir", value=str(target))
     assert target.is_dir() and r["value"] == str(target.resolve())
     assert call_error("settings.set", key="projects_dir", value="")["code"] == "bad_value"
+
+
+def test_default_spending_limit_is_checked_and_clears_when_blank(wdg_home):
+    r = call("settings.set", key="default_spending_limit", value="$1,000")
+    assert r["value"] == 1000.0 and config(wdg_home)["default_spending_limit"] == 1000.0
+    assert call_error("settings.set", key="default_spending_limit", value="lots")["code"] == "bad_value"
+    call("settings.set", key="default_spending_limit", value="")
+    assert "default_spending_limit" not in config(wdg_home)
 
 
 def test_projects_dir_default_is_a_folder_reset_can_send(wdg_home, tmp_path, monkeypatch):

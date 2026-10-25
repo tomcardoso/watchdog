@@ -210,6 +210,18 @@ def test_new_creates_vault(configured, tmp_path):
     assert vault.is_dir()
 
 
+def test_new_starts_with_the_default_spending_limit(configured, wdg_home):
+    """Settings' default limit (D340) is stored on an investigation the reporter creates, not on
+    one made by `create` alone (the sample, the benchmark harness)."""
+    from watchdog import spend
+    (wdg_home / "config.json").write_text(json.dumps(
+        {"projects_dir": str(configured), "default_spending_limit": 25.0}))
+    _new("Limited", configured)
+    assert spend.limit(configured / "limited")["usd"] == 25.0
+    plain = pops.create("Unlimited", parent=configured)
+    assert spend.limit(plain).get("usd") is None
+
+
 def test_new_vault_structure(configured):
     _new("My Story", configured)
     vault = configured / "my-story"

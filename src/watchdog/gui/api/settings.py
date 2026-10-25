@@ -22,8 +22,7 @@ from watchdog.gui.rpc import RpcError, method
 
 _EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 _MODEL_KEYS = {"classifier_model", "extractor_model", "finalizer_model",
-               "finalizer_reconciliation_model", "finalizer_synthesis_model",
-               "finalizer_timeline_model", "finalizer_briefing_model"}
+               "finalizer_writing_model", "finalizer_housekeeping_model"}
 _KINDS = {"bool": "bool", "int": "int", "float": "float", "path": "path"}
 
 
@@ -57,7 +56,7 @@ def _read_config() -> dict:
     except (OSError, ValueError):
         raise RpcError(f"The settings file is damaged. Fix or remove {path}.",
                        code="config_corrupt")
-    return data if isinstance(data, dict) else {}
+    return config._upgrade(data) if isinstance(data, dict) else {}
 
 
 def _display(key: str, value, config: dict) -> str:

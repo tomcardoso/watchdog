@@ -89,8 +89,7 @@ def _clock(seconds) -> str:
 
 # The model settings an operation's parameters can override, by operation.
 _MODEL_PARAMS = ("extractor_model", "classifier_model", "finalizer_model",
-                 "finalizer_reconciliation_model", "finalizer_synthesis_model",
-                 "finalizer_timeline_model", "finalizer_briefing_model")
+                 "finalizer_writing_model", "finalizer_housekeeping_model")
 
 
 def run_providers_for(op: str, params: dict) -> list[str] | None:

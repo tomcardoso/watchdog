@@ -533,15 +533,13 @@ function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions:
         <div className="add-grid">
           {modelSelect('extractor_model', 'Extraction', 'Reads each document and lists the facts.')}
           {modelSelect('classifier_model', 'Classification', 'Decides what kind of record each document is.')}
-          {modelSelect('finalizer_model', 'Finishing step', 'Entity matching, summaries, timeline and briefing.')}
+          {modelSelect('finalizer_model', 'Finishing step', 'Entity matching, contradictions, timeline, summaries and briefing.')}
         </div>
         <details className="add-more">
-          <summary>Choose a model for each finishing stage</summary>
+          <summary>Choose a model for the finishing step’s writing or housekeeping</summary>
           <div className="add-grid" style={{ marginTop: 10 }}>
-            {modelSelect('finalizer_reconciliation_model', 'Entity matching')}
-            {modelSelect('finalizer_synthesis_model', 'Entity summaries')}
-            {modelSelect('finalizer_timeline_model', 'Timeline')}
-            {modelSelect('finalizer_briefing_model', 'Briefing')}
+            {modelSelect('finalizer_writing_model', 'Writing', 'Entity summaries and the briefing.')}
+            {modelSelect('finalizer_housekeeping_model', 'Housekeeping', 'Entity matching, contradictions, the timeline, dates and other tidying.')}
           </div>
         </details>
       </div>

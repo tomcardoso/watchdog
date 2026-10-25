@@ -103,7 +103,9 @@ On a Claude subscription, **Activity → Usage** shows what the work would have 
 <a id="spending-limit"></a>
 ### A spending limit for one investigation
 
-The **Spending limit** card on each investigation's Overview stops processing when that investigation has spent a dollar amount you choose. Type the amount in US dollars, such as `50`, and press Enter; leave the field blank for no limit, which is the default. The limit is saved inside the investigation's folder, so it travels with it.
+The **Spending limit** card on each investigation's Overview stops processing when that investigation has spent a dollar amount you choose. The card shows the limit and what has been recorded so far; choose **Set a limit** (or **Change**), type the amount in US dollars, such as `50`, and press Enter. Leave the field blank for no limit. The limit is saved inside the investigation's folder, so it travels with it.
+
+A new investigation starts with the **Default spending limit** from Settings → Processing, if you set one; with none set, it starts with no limit. Changing the default does not change existing investigations.
 
 Before each document is sent to the model, between the sections of a long document, and before each finishing step, Watchdog adds up what this investigation's processing has already cost, as recorded in **Activity → Usage**, and compares it with the limit. It never uses an estimate. Once the total reaches the limit, the run stops the way it stops at a rate limit: every document that finished is kept, the rest stay queued, a long document keeps the sections it has finished, and a batch waiting to be finished stays waiting. The Add documents dialog says that the limit stopped the run. To carry on, raise the limit or choose **Reset the count**, then add documents again.
 
@@ -182,6 +184,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Field | Default | What it controls |
 |---|---|---|
 | <a id="auto-approve"></a>Auto-approve | off | Skips the public-records pause when every step of the run uses your Claude subscription, showing a one-line notice instead. A run where any step uses a paid API key always asks. Turn it on only if you already check that what you add is public record. |
+| Default spending limit | *(none)* | The [spending limit](#spending-limit) each new investigation starts with, in US dollars. Existing investigations keep their own. |
 | Extraction concurrency | `20` (`3` on a Claude subscription) | Documents extracted at once. |
 | Extraction token budget | `auto` | A cap on tokens per minute. `auto` uses the limit your provider reports; a Claude subscription reports none, so there it sets no cap. |
 | Classify pages | `5` | Opening pages shown to the classifier. |
@@ -197,7 +200,8 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Classifier model | `haiku` | Reads a document's opening pages and picks its record skill. |
 | Extractor model | `haiku` | Extracts each document. |
 | Finalizer model | `haiku` | The finishing steps. |
-| Finalizer reconciliation / synthesis / timeline / briefing model | *(unset)* | Override the finalizer model for one finishing step: entity matching (including matching relationship targets named only by a label) and contradictions, summaries, the timeline (including settling the dates code could not read), or the briefing. |
+| Finalizer writing model | *(unset)* | Override the finalizer model for the finishing step's writing: entity summaries and the briefing. A stronger model shows most here. |
+| Finalizer housekeeping model | *(unset)* | Override the finalizer model for the finishing step's housekeeping: entity matching and contradictions, filing facts and relationships under the right entity, grouping relationship wordings and request sources, the timeline, settling dates code could not read, and **Re-check contradictions**. Short judgement calls, where a cheaper model is often enough. |
 | Classifier effort | `low` | How hard the classifier thinks. |
 | Extractor effort | `high` | How hard the extractor thinks. |
 | Finalizer effort | *(unset)* | Left unset, the model uses its own default. |

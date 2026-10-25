@@ -468,10 +468,8 @@ export interface RunOptions {
   extractor_model?: string
   classifier_model?: string
   finalizer_model?: string
-  finalizer_reconciliation_model?: string
-  finalizer_synthesis_model?: string
-  finalizer_timeline_model?: string
-  finalizer_briefing_model?: string
+  finalizer_writing_model?: string
+  finalizer_housekeeping_model?: string
   extractor_effort?: Effort
   classifier_effort?: Effort
   finalizer_effort?: Effort
@@ -658,7 +656,7 @@ export interface ActionResult<R = unknown> { code: number; result: R | null; log
 // parameters against the operation's own schema (`jobs.ops`); a shared run option an operation
 // doesn't take is dropped, anything else unknown is refused.
 type IngestModels = Pick<RunOptions, 'extractor_model' | 'classifier_model' | 'extractor_effort' | 'classifier_effort' | 'concurrency' | 'classify_pages' | 'skill' | 'verify' | 'wait'>
-type FinalizerModels = Pick<RunOptions, 'finalizer_model' | 'finalizer_reconciliation_model' | 'finalizer_synthesis_model' | 'finalizer_timeline_model' | 'finalizer_briefing_model' | 'finalizer_effort' | 'skip_briefing'>
+type FinalizerModels = Pick<RunOptions, 'finalizer_model' | 'finalizer_writing_model' | 'finalizer_housekeeping_model' | 'finalizer_effort' | 'skip_briefing'>
 type NoParams = Record<string, never>
 export interface OpParams {
   add: RunOptions & { paths?: string[]; retry?: boolean; skip_warning?: boolean }

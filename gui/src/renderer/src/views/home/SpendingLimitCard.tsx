@@ -2,6 +2,8 @@
 // post-processing and the contradiction re-check stop. It counts the cost already recorded for this
 // investigation's processing (what Activity → Usage shows), never an estimate, from the last Reset.
 // Saved in the investigation's folder beside the choice of key (D290), so it travels with it.
+// Folded to one line until the reporter chooses Change, or the limit is reached (D340); a new
+// investigation starts with Settings' default limit.
 
 import { Gauge } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -18,6 +20,7 @@ export function SpendingLimitCard({ vault }: { vault: string }) {
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [open, setOpen] = useState(false)
   useEffect(() => {
     setText(data?.limit_usd != null ? String(data.limit_usd) : '')
   }, [data?.limit_usd])
@@ -49,8 +52,15 @@ export function SpendingLimitCard({ vault }: { vault: string }) {
         <Gauge />
         Spending limit
       </h3>
-      <p className="home-billing-sub">Processing stops when this investigation has spent this much.</p>
-      <div className="home-billing-row">
+      <p className="home-billing-sub">
+        {data.limit_usd != null ? `Processing stops at ${usd(data.limit_usd)}; ${usd(data.spent_usd)} recorded so far.` : `No limit. ${usd(data.spent_usd)} recorded so far.`}
+      </p>
+      {!open && !data.reached && (
+        <Button size="sm" variant="ghost" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>
+          {data.limit_usd != null ? 'Change' : 'Set a limit'}
+        </Button>
+      )}
+      {(open || data.reached) && <div className="home-billing-row">
         <label className="home-billing-label" htmlFor="spend-limit">Limit (US$)</label>
         <input
           id="spend-limit"
@@ -82,7 +92,7 @@ export function SpendingLimitCard({ vault }: { vault: string }) {
         <Button size="sm" variant="ghost" style={{ alignSelf: 'flex-start' }} disabled={busy} onClick={reset} tip="Count from now; earlier spending no longer counts towards the limit">
           Reset the count
         </Button>
-      </div>
+      </div>}
     </section>
   )
 }

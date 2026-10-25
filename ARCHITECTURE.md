@@ -825,7 +825,8 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 ## 13. Models, backends and skills
 
 - **Stages.** `classifier_model` (haiku), `extractor_model` (haiku, D315), `finalizer_model` (haiku) —
-  the finalizer split into reconciliation, synthesis, timeline and briefing overrides (D137).
+  the finalizer split into a writing override (synthesis, briefing) and a housekeeping override
+  (every other finishing call), `ops.ingest.FINALIZER_GROUPS` (D339, superseding D137's four).
   Efforts: `classifier_effort` (low), `extractor_effort` (high, D140, D315), `finalizer_effort` (unset:
   no effort is sent), `verifier_effort` (low); the classifier and extractor defaults apply only where
   the model supports them. Defaults are in `watchdog/defaults.py`; per-run options override. Haiku 5.5

@@ -41,3 +41,18 @@ def test_default_home_follows_home(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "HOME", None)
     monkeypatch.setenv("HOME", str(tmp_path))
     assert config.path() == tmp_path / ".watchdog" / "config.json"
+
+
+def test_old_finishing_stage_overrides_read_as_their_group(tmp_path, monkeypatch):
+    """D339 replaced four per-stage overrides with writing and housekeeping: an old key reads as
+    its group's (the first set one, in the documented order), unless the group is already set."""
+    monkeypatch.setattr(config, "HOME", tmp_path)
+    config.path().write_text(json.dumps({
+        "finalizer_briefing_model": "sonnet", "finalizer_timeline_model": "openai:gpt-6-luna",
+        "finalizer_reconciliation_model": "haiku", "finalizer_model": "haiku"}))
+    for data in (config.load(), config.read()):
+        assert data == {"finalizer_model": "haiku", "finalizer_writing_model": "sonnet",
+                        "finalizer_housekeeping_model": "haiku"}
+    config.path().write_text(json.dumps({"finalizer_writing_model": "gemini:gemini-3.8-flash",
+                                         "finalizer_synthesis_model": "sonnet"}))
+    assert config.load() == {"finalizer_writing_model": "gemini:gemini-3.8-flash"}

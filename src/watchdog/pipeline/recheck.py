@@ -229,12 +229,12 @@ def _self_contradiction(key: tuple) -> bool:
 # ── running ──────────────────────────────────────────────────────────────────────────
 
 def finalizer_stage() -> tuple[str | None, str, str | None]:
-    """(backend, model, effort) the re-check runs on: the configured reconciliation model, which
-    is the finalizer model unless Settings routes reconciliation elsewhere, at the finalizer
-    effort, resolved by the same code post-processing uses."""
+    """(backend, model, effort) the re-check runs on: the finishing step's housekeeping model,
+    which is the finalizer model unless Settings routes housekeeping elsewhere (D339), at the
+    finalizer effort, resolved by the same code post-processing uses."""
     from watchdog.ops.ingest import RunOptions, resolve_plan
     plan = resolve_plan(RunOptions())
-    return (plan.overrides["reconciliation_backend"], plan.overrides["reconciliation_model"],
+    return (plan.overrides["housekeeping_backend"], plan.overrides["housekeeping_model"],
             plan.post_effort)
 
 
