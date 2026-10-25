@@ -381,6 +381,14 @@ export default function ChatWorkspace(p: Props) {
     setText('')
     void begin(t)
   }
+  // A command at the start of the box ("/watchdog-query …", from a shortcut or a button elsewhere)
+  // is shown as its label beside the box, and only the rest is editable text; what is sent is
+  // unchanged.
+  const lead = useMemo(() => {
+    const m = /^(\/[\w-]+) /.exec(text)
+    const command = m ? SLASH.find((c) => c.name === m[1].toLowerCase()) : undefined
+    return command ? { command, rest: text.slice(m![0].length) } : null
+  }, [text])
   const sugg = useMemo(() => (/^\/[^\s]*$/.test(text) ? SLASH.filter((s) => s.name.startsWith(text.toLowerCase()) && s.name !== '/watchdog-context') : []), [text])
 
   const api: WorkspaceApi = {
@@ -530,7 +538,7 @@ export default function ChatWorkspace(p: Props) {
             {sugg.length > 0 && (
               <div className="chat-sugg">
                 {sugg.map((s) => (
-                  <button key={s.name} onClick={() => api.prefill(s.name + (s.takesInput ? ' ' : ''))}>
+                  <button key={s.name} onClick={() => api.prefill(s.name + ' ')}>
                     <span style={{ fontWeight: 600 }}>{s.label}</span>
                     <span className="muted grow truncate">{s.text}</span>
                     <span className="mono faint">{s.name}</span>
@@ -539,14 +547,26 @@ export default function ChatWorkspace(p: Props) {
               </div>
             )}
             <div className="chat-composer">
+              {lead && (
+                <span className="chat-cmd-chip" title={lead.command.name}>
+                  {lead.command.label}
+                  <button type="button" aria-label={`Remove ${lead.command.label}`} onClick={() => setText(lead.rest)}>×</button>
+                </span>
+              )}
               <textarea
                 ref={composer}
                 rows={1}
-                value={text}
-                placeholder={demo ? 'In the sample, choose one of the prepared questions' : project.sample ? 'Ask Claude is off in the sample investigation' : p.placeholder}
+                value={lead ? lead.rest : text}
+                placeholder={demo ? 'In the sample, choose one of the prepared questions' : project.sample ? 'Ask Claude is off in the sample investigation' : lead ? (lead.command.takesInput ? 'Add your question, or press Enter' : 'Press Enter to run it') : p.placeholder}
                 disabled={project.sample}
-                onChange={(e) => setText(e.target.value)}
+                onChange={(e) => setText(lead ? `${lead.command.name} ${e.target.value}` : e.target.value)}
                 onKeyDown={(e) => {
+                  // Backspace at the very start removes the command label, as it would a character.
+                  if (lead && e.key === 'Backspace' && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
+                    e.preventDefault()
+                    setText(lead.rest)
+                    return
+                  }
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault()
                     send()

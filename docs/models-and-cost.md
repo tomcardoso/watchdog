@@ -235,7 +235,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Field | Default | What it controls |
 |---|---|---|
 | Save to the Wayback Machine | off | Also submits every source from Web research or **Fetch Links** to the Internet Archive's [Wayback Machine](https://web.archive.org), and records the snapshot's address, giving you a citable copy if the original changes. Best-effort; it never blocks a download. |
-| Wayback access key / secret key | *(unset)* | A free pair from [archive.org/account/s3.php](https://archive.org/account/s3.php). Stored encrypted, like your API keys, and used only when Watchdog downloads sources; Ask Claude never sees them. |
+| Wayback access key / secret key | *(unset)* | A free pair from [archive.org/account/s3.php](https://archive.org/account/s3.php). Stored encrypted, like your API keys, and used only by Watchdog itself: when it downloads sources, and when you ask Claude to save a page to the Wayback Machine, which it does through Watchdog without ever seeing the keys. |
 
 ### Verification
 

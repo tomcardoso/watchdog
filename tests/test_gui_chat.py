@@ -609,6 +609,9 @@ def test_permission_request_wording_for_each_kind_of_tool(tmp_path):
     assert c["title"] == "Record a contradiction" and "“Price”" in c["description"] and c["once_only"]
     t = chat.permission_request(vault, "mcp__watchdog__watchlist_add", {"terms": ["A", "B"]})
     assert t["description"] == "Add to watchlist.md: A, B" and t["scope_key"] == "mcp__watchdog__watchlist_add"
+    wb = chat.permission_request(vault, "mcp__watchdog__wayback_archive", {"url": "https://example.org/p"})
+    assert wb["title"] == "Save a page to the Wayback Machine" and "example.org/p" in wb["description"]
+    assert "only the archive link" in wb["description"] and "version history" not in wb["note"]
     s = chat.permission_request(vault, "WebSearch", {"query": "q"})
     assert s["scope_key"] == "WebSearch" and "version history" not in s["note"]
     assert "every use of WebSearch" in s["note"]

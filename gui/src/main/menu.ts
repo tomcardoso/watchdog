@@ -49,13 +49,12 @@ export function buildMenu(getWindow: () => BrowserWindow | null): void {
         { label: 'Command Palette…', accelerator: 'CmdOrCtrl+K', click: send('palette') },
         { label: 'Search', accelerator: 'CmdOrCtrl+F', click: send('search') },
         { type: 'separator' },
-        { label: 'Home', accelerator: 'CmdOrCtrl+1', click: send('go:home') },
+        // One shortcut per Investigation screen, in sidebar order; Ctrl+Tab reaches the rest.
+        { label: 'Overview', accelerator: 'CmdOrCtrl+1', click: send('go:home') },
         { label: 'Documents', accelerator: 'CmdOrCtrl+2', click: send('go:documents') },
         { label: 'Entities', accelerator: 'CmdOrCtrl+3', click: send('go:entities') },
         { label: 'Timeline', accelerator: 'CmdOrCtrl+4', click: send('go:timeline') },
         { label: 'Network', accelerator: 'CmdOrCtrl+5', click: send('go:graph') },
-        { label: 'Review', accelerator: 'CmdOrCtrl+6', click: send('go:review') },
-        { label: 'Ask', accelerator: 'CmdOrCtrl+7', click: send('go:ask') },
         // Shown for discoverability only: the window handles Ctrl+Tab itself (App.tsx useShortcuts).
         { label: 'Next Sidebar Item', accelerator: 'Ctrl+Tab', registerAccelerator: false, click: send('nav-next') },
         { label: 'Previous Sidebar Item', accelerator: 'Ctrl+Shift+Tab', registerAccelerator: false, click: send('nav-prev') },
