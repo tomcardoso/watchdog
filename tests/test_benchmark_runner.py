@@ -3163,3 +3163,123 @@ def test_run_extractor_arm_writes_a_brief_file_into_the_vault_as_context_md(monk
                         {"cancelled": False, "results": []}))
     rb.run_extractor_arm({"id": "a", "extractor_model": "haiku", "brief": str(brief)}, vault)
     assert seen == {"ctx": "I want to understand the filing.\n", "w": False}
+
+
+# ── run lock and zero-document scoring (#656) ─────────────────────────────────
+
+def _lock_main_stubs(tmp_path, monkeypatch, run_arm):
+    """Stub everything `main` does around an extractor arm so only the lock and scoring paths run.
+    Returns (config path, vault root)."""
+    cfg = _matrix_config(tmp_path)
+    root = tmp_path / ".vaults"
+    monkeypatch.setattr(rb, "verify_freeze", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "corpus_documents", lambda d: [Path("a.pdf")])
+    monkeypatch.setattr(rb, "arm_vault", lambda prefix, aid, r: root / f"{prefix}-{aid}")
+    monkeypatch.setattr(rb, "vault_root", lambda *a, **k: root)
+    monkeypatch.setattr(rb, "ensure_master_vault", lambda *a, **k: tmp_path / "master")
+    monkeypatch.setattr(rb, "seed_arm_vault", lambda *a, **k: None)
+    monkeypatch.setattr(rb, "preview_extractor_arm",
+                        lambda *a, **k: {"cost_low": 0.0, "cost_high": 0.0})
+    monkeypatch.setattr(rb, "_ask", lambda *a, **k: True)
+    monkeypatch.setattr(rb, "run_extractor_arm", run_arm)
+    monkeypatch.setattr(br, "write_run", lambda *a, **k: tmp_path / "run")
+    return cfg, root
+
+
+def test_a_second_run_against_the_same_vault_root_is_refused(tmp_path, monkeypatch):
+    root = tmp_path / ".vaults"
+    with rb.run_lock(root):
+        assert (root / rb.LOCK_NAME).exists()
+        with pytest.raises(rb.VaultRootBusy) as exc:
+            with rb.run_lock(root):
+                pytest.fail("a second run must not start")
+        assert str(root) in str(exc.value)
+        assert "--vault-root" in str(exc.value)
+        # The refused run must not have removed the first run's lock.
+        assert (root / rb.LOCK_NAME).exists()
+    assert not (root / rb.LOCK_NAME).exists()
+
+
+def test_main_exits_with_a_clear_message_while_another_run_holds_the_root(tmp_path, monkeypatch):
+    ran = []
+    cfg, root = _lock_main_stubs(tmp_path, monkeypatch,
+                                 lambda arm, vault: ran.append(arm["id"]))
+    with rb.run_lock(root):
+        with pytest.raises(SystemExit) as exc:
+            rb.main(["--config", str(cfg), "--stages", "extractor"])
+    assert "another bench run" in str(exc.value)
+    assert ran == []
+
+
+def test_a_lock_left_by_a_dead_process_is_taken_over(tmp_path):
+    from watchdog.pipeline import locks
+    root = tmp_path / ".vaults"
+    root.mkdir()
+    # A lock this computer wrote for a process that is gone.
+    (root / rb.LOCK_NAME).write_text(locks.lock_contents("bench run").replace(
+        f"pid: {__import__('os').getpid()}", "pid: 2147483646").replace(
+        "pid_start:", "pid_start_was:"))
+    with rb.run_lock(root):
+        assert f"pid: {__import__('os').getpid()}" in (root / rb.LOCK_NAME).read_text()
+    assert not (root / rb.LOCK_NAME).exists()
+
+
+def test_the_lock_is_released_when_the_run_raises_or_is_interrupted(tmp_path):
+    root = tmp_path / ".vaults"
+    for exc in (RuntimeError("boom"), KeyboardInterrupt()):
+        with pytest.raises(type(exc)):
+            with rb.run_lock(root):
+                raise exc
+        assert not (root / rb.LOCK_NAME).exists()
+        with rb.run_lock(root):       # and a later run can take it
+            pass
+
+
+def test_main_releases_the_lock_after_a_run_that_fails(tmp_path, monkeypatch):
+    def boom(arm, vault):
+        raise KeyboardInterrupt
+    cfg, root = _lock_main_stubs(tmp_path, monkeypatch, boom)
+    rb.main(["--config", str(cfg), "--stages", "extractor"])   # interrupt is reported, not raised
+    assert not (root / rb.LOCK_NAME).exists()
+
+
+def test_an_arm_that_extracted_no_documents_is_not_scored(tmp_path, monkeypatch):
+    """#656: a vault holding another invocation's files must not lend its recall to an arm whose
+    own run extracted nothing."""
+    scored = []
+
+    def fake_score(vaults, *a, **k):
+        scored.extend(vaults)
+        return {"vaults": [], "detail": [], "unscorable": [],
+                "totals": {"facts": {}, "must_not_miss": {}}}
+
+    def run_arm(arm, vault):
+        return rb.ArmResult(arm_id=arm["id"], stage="extractor", vault=vault, ok=True,
+                            documents_done=0 if arm["id"] == "haiku" else 1, documents_total=1)
+
+    cfg, root = _lock_main_stubs(tmp_path, monkeypatch, run_arm)
+    import score_arms
+    monkeypatch.setattr(score_arms, "score", fake_score)
+    rb.main(["--config", str(cfg), "--stages", "extractor"])
+    names = {Path(v).name for v in scored}
+    assert "bench-ex3-haiku" not in names
+    assert names, "the arms that did extract are still scored"
+
+
+def test_the_report_never_shows_recall_for_a_zero_document_arm(tmp_path):
+    vault = tmp_path / "bench-ex3-haiku"
+    r = rb.ArmResult(arm_id="haiku", stage="extractor", vault=vault, ok=True,
+                     documents_done=0, documents_total=6)
+    # Scores as a contaminated run would have produced them.
+    scores = {"totals": {"facts": {"bench-ex3-haiku": {"hit": 7, "of": 10}},
+                         "must_not_miss": {"bench-ex3-haiku": {"hit": 3, "of": 4}}}}
+    assert br.not_scored_reason(r)
+    table = br.extractor_table_md([r], scores)
+    assert "70%" not in table and "not scored" in table and "0 documents" in table
+    config = {"corpus": {"sha256": "c"}, "keys": {"sha256": "k"}}
+    arm = br.run_json("rid", [r], scores, config, {}, benchmarks_dir=tmp_path)["arms"][0]
+    assert arm["facts"] is None and arm["must_not_miss"] is None
+    assert "0 documents" in arm["not_scored_reason"]
+    # An arm with an unrecorded count is scored as before.
+    r2 = rb.ArmResult(arm_id="haiku", stage="extractor", vault=vault, ok=True)
+    assert br.not_scored_reason(r2) is None

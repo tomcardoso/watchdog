@@ -148,6 +148,22 @@ def is_partial(r) -> bool:
     return False
 
 
+def not_scored_reason(r) -> str | None:
+    """Why an extractor arm's recall must not be reported, or None when it may be (#656).
+
+    An arm whose own run extracted no documents has nothing of its own to score. Whatever
+    `.watchdog/extracted/` holds for it then came from somewhere else (a second invocation that
+    shared the vault, or files left by an earlier run), and reporting recall over those files
+    would pair this run's counts and cost with another run's results. `documents_done` is `None`
+    for a result that never recorded a count; that is not evidence of zero, so it is scored as
+    before."""
+    if r.stage != "extractor" or not r.ok:
+        return None
+    if r.documents_done == 0:
+        return "not scored — this run extracted 0 documents"
+    return None
+
+
 def _partial_suffix(r) -> str | None:
     if not is_partial(r):
         return None
@@ -173,8 +189,13 @@ def extractor_table_md(results: list, scores: dict) -> str:
         # A partial arm answered a different (smaller) question than a complete one — never show
         # its recall as a bare percentage, which would read as a real, comparable score (#559).
         suffix = _partial_suffix(r)
-        lines.append(f"| `{vb}` | {_backends(r.usage)} | {_pct_cell(facts, vb, partial_suffix=suffix)} | "
-                     f"{_pct_cell(mnm, vb, partial_suffix=suffix)} | {_cost_cell(r.usage)} | "
+        if (reason := not_scored_reason(r)):
+            facts_cell = mnm_cell = reason
+        else:
+            facts_cell = _pct_cell(facts, vb, partial_suffix=suffix)
+            mnm_cell = _pct_cell(mnm, vb, partial_suffix=suffix)
+        lines.append(f"| `{vb}` | {_backends(r.usage)} | {facts_cell} | "
+                     f"{mnm_cell} | {_cost_cell(r.usage)} | "
                      f"{u['latency_s']:.0f}s | "
                      f"{u['retries']} retries, {u['sectioned_calls']} sectioned calls |")
     return "\n".join(lines)
@@ -562,6 +583,7 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
         had_calls, effort = _arm_calls_field(r.usage, "effort")
         effort = effort if had_calls else arm_cfg.get("extractor_effort")
         pages_extracted, coverage_gaps = _extracted_page_stats(r.vault)
+        unscored = not_scored_reason(r)     # #656: never a recall figure from files not its own
         arms.append({
             "arm_id": r.arm_id, "stage": r.stage, "vault": vb,
             "ok": bool(r.ok), "skipped": bool(r.skipped), "cancelled": bool(r.cancelled),
@@ -573,7 +595,9 @@ def run_json(rid: str, results: list, scores: dict, config: dict, prov: dict,
             # every extractor_sweep arm does). `None` for a run from before `end_ts` was recorded.
             "wall_clock_s": round(u["wall_clock_s"], 3) if u["wall_clock_s"] is not None else None,
             "retries": u["retries"], "sectioned_calls": u["sectioned_calls"],
-            "facts": facts.get(vb), "must_not_miss": mnm.get(vb),
+            "facts": None if unscored else facts.get(vb),
+            "must_not_miss": None if unscored else mnm.get(vb),
+            "not_scored_reason": unscored,
             # #559: a rate limit, a Ctrl-C, or per-document failures can all leave an extractor
             # arm short of the whole corpus while `ok` stays True — `partial` is the one flag a
             # consumer needs to know the `facts`/`must_not_miss` figures above answer a smaller
