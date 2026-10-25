@@ -45,6 +45,7 @@ def research_fetch(rep, vault: Path, *, file: str | None = None) -> dict:
     if source_file is None:
         failed_urls = {r.url for r in results if not r.path}
         research.retain_pending(vault, [e for e in entries if e["url"] in failed_urls])
+        research.record_attempts(vault, results)
     n = _report(rep, results, wayback=wayback, failures_kept=source_file is None)
     return {"downloaded": n, "failed": len(results) - n}
 

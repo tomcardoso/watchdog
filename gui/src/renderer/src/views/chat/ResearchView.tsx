@@ -1,10 +1,10 @@
 // Web research: a Claude Code session that queues sources, then a deterministic download into
 // incoming/.
 
-import { Download, ExternalLink, Globe, Inbox } from 'lucide-react'
+import { AlertTriangle, Download, ExternalLink, Globe, Inbox, RotateCw, X } from 'lucide-react'
 import { useState } from 'react'
 import { Badge, Button, Callout } from '@renderer/components/ui'
-import { errorMessage, useRpc } from '@renderer/lib/rpc'
+import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { startJob, waitForJob } from '@renderer/lib/jobs'
 import { investigationName, isElsewhere, switchTo } from '@renderer/lib/investigation'
 import { plural } from '@renderer/lib/format'
@@ -28,6 +28,7 @@ function useDownload() {
       const job = await startJob('research-fetch', {}, `Download ${plural(n, 'source')}`, 'research-fetch', vault)
       toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked and saved with a note of where it came from, ready to add.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
       void waitForJob(job.id).then((j) => {
+        invalidate('research.status')
         if (j.state !== 'done') return
         // The download may finish after the reporter has opened another investigation: say
         // which one the sources went to, and add them there.
@@ -51,34 +52,82 @@ function useDownload() {
   return { busy, go }
 }
 
+/** A download error in plain words: the site refused, it didn't answer in time, or something else. */
+function why(error: string): string {
+  if (/HTTP 40[13]/.test(error)) return 'the site refused the download'
+  if (/HTTP 404|HTTP 410/.test(error)) return 'the page no longer exists'
+  if (/HTTP \d+/.test(error)) return 'the site returned an error'
+  if (/timed out/i.test(error)) return 'the site took too long to answer'
+  if (/only http|public|private|refused: /i.test(error) && !/fetch/i.test(error)) return 'the address can’t be downloaded'
+  return 'it couldn’t be fetched'
+}
+
 function Strip({ api }: { api: WorkspaceApi }) {
   const vault = useApp((s) => s.project!.path)
   const q = useRpc('research.status', { vault }, { refetchInterval: api.live ? 4000 : false })
   const dl = useDownload()
   const [open, setOpen] = useState(false)
-  const n = q.data?.queued.length ?? 0
-  if (!n) return null
+  const [removing, setRemoving] = useState(false)
+  const all = q.data?.queued ?? []
+  const fresh = all.filter((s) => !s.failed)
+  const failed = all.filter((s) => s.failed)
+  if (!all.length) return null
+  // Sources that failed stay queued so they can be tried again (D346); they are shown as failed,
+  // with the reason, never as still waiting to download.
+  const remove = async () => {
+    setRemoving(true)
+    try {
+      await call('research.dismiss', { vault, urls: failed.map((s) => s.url) })
+      invalidate('research.status')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not remove them', body: errorMessage(e) })
+    } finally {
+      setRemoving(false)
+    }
+  }
   return (
     <div className="chat-strip">
-      <div className="row" style={{ gap: 10 }}>
-        <Inbox style={{ width: 16, height: 16, color: 'var(--text-3)' }} />
-        <button className="chat-strip-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {plural(n, 'source')} queued
-        </button>
-        <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>Nothing is downloaded until you say so.</span>
-        <span className="spacer" />
-        <Button size="sm" variant="primary" icon={Download} loading={dl.busy} onClick={() => void dl.go(n)}>
-          Download {plural(n, 'source')}
-        </Button>
-      </div>
+      {fresh.length > 0 && (
+        <div className="row" style={{ gap: 10 }}>
+          <Inbox style={{ width: 16, height: 16, color: 'var(--text-3)' }} />
+          <button className="chat-strip-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {plural(fresh.length, 'source')} queued
+          </button>
+          <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>Nothing is downloaded until you say so.</span>
+          <span className="spacer" />
+          <Button size="sm" variant="primary" icon={Download} loading={dl.busy} onClick={() => void dl.go(all.length)}>
+            Download {plural(fresh.length, 'source')}
+          </Button>
+        </div>
+      )}
+      {failed.length > 0 && (
+        <div className="row" style={{ gap: 10, marginTop: fresh.length ? 8 : 0 }}>
+          <AlertTriangle style={{ width: 16, height: 16, color: 'var(--warning)' }} />
+          <button className="chat-strip-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {failed.length === 1 ? '1 source couldn’t be downloaded' : `${failed.length} sources couldn’t be downloaded`}
+          </button>
+          <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{failed.length === 1 ? why(failed[0].failed!.error) : 'Show them for the reasons.'}</span>
+          <span className="spacer" />
+          {fresh.length === 0 && (
+            <Button size="sm" icon={RotateCw} loading={dl.busy} onClick={() => void dl.go(all.length)}>Try again</Button>
+          )}
+          <Button size="sm" variant="ghost" icon={X} loading={removing} onClick={() => void remove()}>Remove</Button>
+        </div>
+      )}
       {open && (
         <ul className="chat-strip-list">
-          {q.data!.queued.map((s) => (
+          {all.map((s) => (
             <li key={s.url}>
               <div className="grow" style={{ minWidth: 0 }}>
                 <div className="truncate" style={{ fontWeight: 560 }}>{s.title || s.url}</div>
                 <button className="chat-url truncate" onClick={() => void window.watchdog.shell.openExternal(s.url)}>{s.url}<ExternalLink /></button>
-                {s.relevance && <div className="muted clamp-2" style={{ fontSize: 'var(--fs-sm)' }}>{s.relevance}</div>}
+                {s.failed ? (
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--warning)' }} title={s.failed.error}>
+                    Not downloaded: {why(s.failed.error)}{s.failed.attempts > 1 ? ` (tried ${s.failed.attempts} times)` : ''}. You can open it in your browser and save it yourself.
+                  </div>
+                ) : (
+                  s.relevance && <div className="muted clamp-2" style={{ fontSize: 'var(--fs-sm)' }}>{s.relevance}</div>
+                )}
               </div>
               {s.source_type && <Badge>{s.source_type}</Badge>}
             </li>
@@ -94,7 +143,7 @@ function Empty({ api }: { api: WorkspaceApi }) {
   const status = useRpc('research.status', { vault })
   const [q, setQ] = useState('')
   const dl = useDownload()
-  const stale = status.data?.queued.length ?? 0
+  const stale = status.data?.queued.filter((s) => !s.failed).length ?? 0
   return (
     <div className="chat-empty">
       <h2>Research the open questions on the web</h2>

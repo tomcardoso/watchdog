@@ -393,9 +393,13 @@ def read_queue_text(vault: Path) -> str | None:
 
 
 def pending_count(vault: Path) -> int:
-    """Count queued-but-not-downloaded URLs — what the `watchdog`/`chew`/`status` warnings surface."""
+    """Count queued URLs not yet tried, the ones the Overview offers to download. A URL whose
+    download failed stays queued for a retry but is not counted (D346): Web research lists it."""
     text = read_queue_text(vault)
-    return len(parse_worklist(text)) if text else 0
+    if not text:
+        return 0
+    failed = read_failures(vault)
+    return sum(1 for e in parse_worklist(text) if e["url"] not in failed)
 
 
 def serialize_worklist(entries: list[dict]) -> str:
@@ -418,6 +422,51 @@ def retain_pending(vault: Path, keep: list[dict]) -> None:
         return
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(serialize_worklist(keep), encoding="utf-8")
+
+
+# Why a queued URL failed to download, kept beside the queue (D346): `{url: {"error", "attempts",
+# "last"}}`. The queue itself stays the research session's plain TSV; this only lets Web research
+# tell a source never tried from one that failed, so a failure isn't shown as "queued" forever.
+FAILURES_REL = Path(".watchdog") / "research" / "failed.json"
+
+
+def read_failures(vault: Path) -> dict:
+    from watchdog.pipeline.json_io import _read_json_or
+    data = _read_json_or(vault / FAILURES_REL, {})
+    return data if isinstance(data, dict) else {}
+
+
+def record_attempts(vault: Path, results: list) -> None:
+    """After a download pass: count each failure against its URL, and forget URLs that downloaded
+    or are no longer queued."""
+    import datetime
+    queued = {e["url"] for e in parse_worklist(read_queue_text(vault) or "")}
+    data = {u: v for u, v in read_failures(vault).items() if u in queued}
+    now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for r in results:
+        if r.path:
+            data.pop(r.url, None)
+        elif r.url in queued:
+            prev = data.get(r.url) or {}
+            data[r.url] = {"error": r.error or "", "attempts": int(prev.get("attempts") or 0) + 1, "last": now}
+    path = vault / FAILURES_REL
+    if data:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
+        tmp.replace(path)
+    else:
+        path.unlink(missing_ok=True)
+
+
+def dismiss(vault: Path, urls: list[str]) -> int:
+    """Take URLs off the queue (the reporter gave up on them) and forget their failures."""
+    drop = set(urls)
+    entries = parse_worklist(read_queue_text(vault) or "")
+    keep = [e for e in entries if e["url"] not in drop]
+    retain_pending(vault, keep)
+    record_attempts(vault, [])
+    return len(entries) - len(keep)
 
 
 def seen_urls(vault: Path) -> set[str]:

@@ -2975,3 +2975,9 @@ A session tool, `wayback_archive(url)`, submits a public page to Save Page Now (
 
 Tradeoff: like any Wayback submission it tells the Internet Archive which page the reporter cared about, and a session steered by a page could ask to archive addresses; the card shows each one.
 
+### D346 — A research source whose download failed is recorded as failed, not left looking queued
+
+`research-fetch` keeps a failed URL in the queue for a retry, which is right, but Web research and the Overview then counted it as "queued" forever, however often the reporter pressed Download. Each pass now records failures beside the queue (`.watchdog/research/failed.json`: reason, attempts, time; `research.record_attempts`) and forgets a URL once it downloads or leaves the queue. `research.status` marks each failed source, Web research shows them apart as "couldn't be downloaded" with a plain reason, **Try again** and **Remove** (`research.dismiss`), and `pending_count`, which the Overview and the run warnings read, counts only sources not yet tried. The queue file itself is unchanged, since research sessions write it.
+
+Tradeoff: a source that fails once is no longer offered from the Overview; it waits on Web research for the reporter to retry or remove it.
+
