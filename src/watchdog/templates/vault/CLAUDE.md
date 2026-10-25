@@ -70,6 +70,7 @@ Watchdog's tools exist only in the app's Ask Claude. Opened in Claude Code outsi
 | `/watchdog-wiki <angle>` | Create or update investigation thread pages |
 | `/watchdog-entity <id>` | Re-write an entity's summary and timeline from every document it appears in |
 | `/watchdog-health` | Check vault integrity |
+| `/watchdog-request [request]` | Draft a records request (freedom of information, access to information) for an open document request; file the draft to `queries/` |
 | `/watchdog-research` | Research open questions on the web (started from the app's Web research screen) |
 
 ## Compounding — file what you find

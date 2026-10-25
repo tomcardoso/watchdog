@@ -42,3 +42,16 @@ def test_no_skill_references_the_retired_ingest_skill(tmp_path):
     install_skills(tmp_path)
     for skill in tmp_path.glob("watchdog-*.md"):
         assert "/watchdog-ingest" not in skill.read_text(), skill.name
+
+
+def test_request_skill_keeps_jurisdiction_and_filing_with_the_journalist(tmp_path):
+    # D338: the draft names no law, fee or deadline the journalist has not given, never files,
+    # flags non-public detail, and saves to a session-writable folder.
+    install_skills(tmp_path)
+    text = (tmp_path / "watchdog-request.md").read_text()
+    assert "[name of the access law]" in text
+    assert "Never supply from memory" in text
+    assert "Do not file, send or submit anything" in text
+    assert "Mind what a request reveals" in text
+    assert "queries/request-<slug>.md" in text
+    assert "requests.md" in text
