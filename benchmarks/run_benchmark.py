@@ -833,6 +833,42 @@ def _arm_line(i: int, total: int, label: str, result: ArmResult, elapsed: float)
     return f"  {idx} {label:<28} ✓  {dur}"
 
 
+class VaultRootBusy(RuntimeError):
+    """Another `bench run` already holds the vault root."""
+
+
+LOCK_NAME = ".bench-run.lock"
+
+
+@contextlib.contextmanager
+def run_lock(root: Path):
+    """Hold `root` for one `bench run` invocation, refusing a second one against it (#656, D337).
+
+    Arm vaults are keyed by arm id under the root and shared by every invocation, so two
+    overlapping runs write into the same vaults and each scores whatever the other left. The lock
+    is the same file Watchdog's own runs use (`pipeline.locks`): it names the process and
+    computer, a run that died is taken over at once, and a live one is never. It is released on
+    every exit, an exception or Ctrl+C included. Raises `VaultRootBusy` while another holds it."""
+    from watchdog.pipeline import locks
+    lock = root / LOCK_NAME
+    if not locks.acquire_or_take_stale(lock, locks.lock_contents("bench run")):
+        info = locks.inspect(lock)
+        who = "another bench run"
+        if info:
+            who += f" (started {info.get('started_at') or 'at an unknown time'}"
+            who += f" on {info['host']}" if info.get("host") else ""
+            who += ")"
+        raise VaultRootBusy(
+            f"{who} is using the vault root {root}. Two runs sharing it would overwrite each "
+            f"other's arm vaults and score each other's files. Wait for it to finish, or point "
+            f"this run elsewhere with --vault-root. If that run is gone, delete {lock}.")
+    try:
+        with locks.heartbeat(lock):
+            yield
+    finally:
+        locks.release_lock(lock)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=HERE / "benchmark.yaml")
@@ -849,6 +885,17 @@ def main(argv: list[str] | None = None) -> int:
                              "or benchmark.yaml's 'vault_root:' key) — always a shadow tree, "
                              "never the real ~/investigations directory (#475 follow-up)")
     args = parser.parse_args(argv)
+    # Estimates seed vaults too, so they hold the root as well.
+    config = load_config(args.config)
+    root = vault_root(config, args.config.parent, args.vault_root)
+    try:
+        with run_lock(root):
+            return _run(args)
+    except VaultRootBusy as e:
+        sys.exit(f"Error: {e}")
+
+
+def _run(args) -> int:
     stages = set(args.stages.split(","))
     wanted_arms = {a.strip() for a in args.arms.split(",") if a.strip()} if args.arms else None
 
@@ -1085,8 +1132,11 @@ def main(argv: list[str] | None = None) -> int:
         fixture_capture.disable()
 
     import bench_report
+    # An arm whose own run extracted nothing is not scored (#656): its vault holds only files some
+    # other invocation or an earlier run left there, and a recall over them is not this run's.
     vaults_to_score = [str(r.vault) for r in results
-                       if r.stage == "extractor" and r.ok and r.vault]
+                       if r.stage == "extractor" and r.ok and r.vault
+                       and not bench_report.not_scored_reason(r)]
     from score_arms import score as score_vaults
     scores = score_vaults(vaults_to_score) if vaults_to_score else {
         "vaults": [], "detail": [], "totals": {"facts": {}, "must_not_miss": {}}, "unscorable": []}

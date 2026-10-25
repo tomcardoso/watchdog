@@ -136,6 +136,15 @@ Override the location with `--vault-root PATH` or a top-level `vault_root:` key 
 `benchmark.yaml` (relative paths resolve against the config file, like `corpus.dir`). The shadow
 root is gitignored; delete it any time with `bench clean` (below) or `rm -rf benchmarks/.vaults`.
 
+**One run per vault root (D337, #656).** Arm vaults are keyed by arm id under the root, so two
+overlapping `bench run`s sharing it would write into the same vaults and each score the other's
+files. A run (an estimate too, since it seeds vaults) holds `<vault-root>/.bench-run.lock` for its
+whole duration and a second one against the same root exits at once, naming the first. The lock
+is released on any exit, Ctrl+C included, and one left by a crashed run is taken over
+automatically. To run two at once, give the second its own `--vault-root`. Separately, an
+extractor arm whose own run extracted 0 documents is reported as "not scored" instead of with a
+recall read from whatever files its vault holds.
+
 **The `bench` wrapper (dev convenience, not shipped).** `benchmarks/bench` fronts every step of a
 pass — the runner, the scorers and the judge tooling — so you don't have to remember the
 development Python's path or where each script lives. `bench -h` is the full list:

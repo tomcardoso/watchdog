@@ -708,6 +708,14 @@ class Plan:
     def finalizer_backends(self) -> list:
         return [self.post[0], *(self.overrides.get(f"{s}_backend") for s in FINALIZER_STAGES)]
 
+    def backends_in_use(self, *, classifies: bool, finalizes: bool) -> list:
+        """The backends a call will actually reach: the extractor always, the classifier only
+        when some document must be classified, the finalizer's only when post-processing runs
+        (#748). A stage that won't run must not demand its provider's credentials."""
+        return [self.extract[0],
+                *([self.classify[0]] if classifies else []),
+                *(self.finalizer_backends if finalizes else [])]
+
 
 def resolve_finalizer_overrides(opts: RunOptions, config: dict, post_backend: str | None,
                                 post_model: str) -> dict:
@@ -747,7 +755,8 @@ def resolve_plan(opts: RunOptions, config: dict | None = None) -> Plan:
 
 def _require_auth(backends) -> dict:
     """Claude's auth, when some stage is routed to Claude; `{"mode": None}` otherwise. A run
-    configured entirely on another provider needs no Claude auth at all (#325)."""
+    configured entirely on another provider needs no Claude auth at all. Callers pass only the
+    backends of stages that will run (`Plan.backends_in_use`, #748)."""
     from watchdog.auth import resolve_auth
     from watchdog.model_client import CLAUDE_BACKENDS
     if not any(b is None or b in CLAUDE_BACKENDS for b in backends):
@@ -756,6 +765,30 @@ def _require_auth(backends) -> dict:
     if a["mode"] == "none":
         sys.exit(f"Error: {a.get('reason', 'no model provider is set up')}")
     return a
+
+
+def _classifier_needed(vault: Path, opts: RunOptions, config: dict) -> bool:
+    """Whether this call will classify any document (#748): false when a run-wide skill
+    (`opts.skill`/`default_skill`) is pinned, or when every document it would extract carries a
+    sidecar `skill:` pin; true otherwise. Mirrors the per-document resolution in
+    `orchestrate` (sidecar pin first, then the run-wide pin)."""
+    if opts.skill or config.get("default_skill"):
+        return False
+    import json
+    from watchdog.pipeline import orchestrate
+    from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction, scan_queue
+    queue = scan_queue(vault)
+    queue = queue if opts.force else needs_extraction(vault, queue)
+    if opts.limit is not None:
+        queue = limit_queue(vault, queue, opts.limit, force=opts.force)
+    for q in queue:
+        try:
+            pf = json.loads((vault / q["path"]).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return True
+        if not orchestrate._sidecar_skill(pf.get("sidecar"), filename=q["filename"], quiet=True):
+            return True
+    return False
 
 
 def _resolve_pinned_skill(opts: RunOptions, config: dict) -> str | None:
@@ -845,8 +878,10 @@ def _process(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool =
     if in_sample:
         a = {"mode": None}
     else:
-        a = _require_auth(plan.backends)
-        _require_investigation_keys(vault, plan.backends)
+        used = plan.backends_in_use(classifies=_classifier_needed(vault, opts, config),
+                                    finalizes=finalize)
+        a = _require_auth(used)
+        _require_investigation_keys(vault, used)
     try:
         concurrency = int(opts.concurrency or config.get("extract_concurrency")
                           or _DEFAULT_EXTRACT_CONCURRENCY)
