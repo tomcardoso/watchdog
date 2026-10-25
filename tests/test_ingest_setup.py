@@ -664,7 +664,8 @@ def test_finalize_cost_estimate_empty_tmp_returns_zero(tmp_path):
     vault = _make_vault(tmp_path)
     est = finalize_cost_estimate(vault, backend="claude-api")
     assert est == {"docs": 0, "est_tokens": 0, "cost_low": None, "cost_high": None, "runs_used": 0,
-                   "same_name_groups": {"groups": 0, "records": 0, "calls": 0, "est_tokens": 0}}
+                   "same_name_groups": {"groups": 0, "records": 0, "calls": 0, "est_tokens": 0},
+                   "housekeeping": {"items": 0, "calls": 0, "est_tokens": 0}}
 
 
 def test_finalize_cost_estimate_counts_the_same_name_group_calls(tmp_path):

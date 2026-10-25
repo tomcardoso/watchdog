@@ -34,7 +34,7 @@ _KEY_FACT = _obj(
         # Nullable, not bare "string": a gpt-nano sectioned extraction nulled `date` on 21 of 26
         # key_facts in one live document rather than omitting it — the same weak-json_object-mode
         # null-vs-omit gap fixed elsewhere in this schema (#490). Every reader already treats null
-        # and absent the same (postflight._sanitize_dates's `if date and ...`, explode_key_facts's
+        # and absent the same (dates.sanitize's `if not raw`, explode_key_facts's
         # `(fact.get("date") or "").strip()`, merge.py's `f.get("date")` truthiness check).
         "date": _NULLABLE_STR,                                        # set ⇒ also a timeline event
         "entities": {"type": "array", "items": {"type": "string"}},   # entity ids the fact is about

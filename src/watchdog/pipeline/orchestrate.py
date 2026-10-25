@@ -44,7 +44,7 @@ _ADMISSION_MAX_WAIT_S = 300.0
 # Every call a standalone post-processing (`bark`) makes has one of these task names;
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
-                  "relationship-labels"}
+                  "relationship-labels", "date-resolve"}
 
 
 @dataclass
@@ -2215,7 +2215,11 @@ def _select_kept(events: list[dict], groups) -> list[dict]:
         if not _valid_index(ki, n) or ki in survivors:
             continue
         dups = g.get("duplicates")
-        survivors[ki] = [di for di in dups if _valid_index(di, n) and di != ki] if isinstance(dups, list) else []
+        # Two events are the same only when both ends of their dates match (D330): a range and a
+        # single date filed under the same start, or two ranges ending apart, are never folded.
+        end = timeline.event_end(events[ki])
+        survivors[ki] = [di for di in dups if _valid_index(di, n) and di != ki
+                         and timeline.event_end(events[di]) == end] if isinstance(dups, list) else []
     dropped = {di for dups in survivors.values() for di in dups}
 
     kept: list[dict] = []
@@ -2311,6 +2315,56 @@ async def _relationship_labels(vault: Path, batch_shas: list[str], model: str,
         n = len(res["grouped"])
         _say(f"   grouped the wordings of {n} relationship{'s' if n != 1 else ''}")
     return len(res["grouped"])
+
+
+async def _date_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
+                     post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
+    """The date chore (D330), the first housekeeping pass (`housekeeping.run_chore`): the staged
+    facts whose printed date code could not settle (`dates.sanitize`) go to the model with their
+    fact and their document's date, and code checks every answer before writing it into the
+    staged extraction. Runs on the timeline stage's model, after reconciliation and before the
+    commit. No call when nothing is pending, and none at the spending limit; a failed call leaves
+    its dates as code read them (the year of an ambiguous one, else off the timeline) and never
+    holds up the commit."""
+    from watchdog.pipeline import dates, housekeeping
+    items = dates.pending_items(vault, shas)
+    if not items:
+        return {"resolved": 0, "undated": 0}
+    fo = finalizer_overrides or {}
+    model = fo.get("timeline_model", post_model)
+    backend = fo.get("timeline_backend", post_backend)
+    warn = lambda m: (_say(f"   ⚠  {m}"), _log(vault, f"WARN {m}"))  # noqa: E731
+    msg = _spending_stop()
+    if msg:
+        warn(f"dates: {len(items)} not settled — {msg}")
+        return {"resolved": 0, "undated": len(items), "spending_limit": msg}
+    progress.emit("stage", stage="dates", done=None, total=None)
+    _say(f"→  reading {len(items)} date{'s' if len(items) != 1 else ''} code could not settle…")
+
+    async def call(*, task, schema, prompt, detail):
+        return await _call_model(task=task, model=model, backend=backend, schema=schema,
+                                 prompt=prompt, effort=post_effort, detail=detail, vault=vault)
+
+    res = await housekeeping.run_chore(
+        dates.CHORE, items, call=call, stop=_spending_stop, failures=model_client.CALL_FAILURES,
+        halting=(model_client.RateLimitError, model_client.ProviderAuthError))
+    try:
+        applied = dates.apply(vault, items, res)
+    except OSError as e:
+        warn(f"dates not saved — {e}")
+        return {"resolved": 0, "undated": len(items)}
+    left = applied["undated"] + len(res.unanswered)
+    if applied["resolved"]:
+        _say(f"   placed {applied['resolved']} date{'s' if applied['resolved'] != 1 else ''} on the "
+             "timeline, marked as inferred")
+    if res.rejected:
+        _log(vault, f"WARN dates: {res.rejected} answer(s) failed the checks and were not used")
+    if res.error or res.stopped:
+        warn(f"dates: {len(res.unanswered)} not settled this run — {res.stopped or res.error}")
+    if left:
+        _log(vault, f"WARN dates: {left} fact(s) kept without a full date (left off the timeline, or "
+                    "placed at the year only)")
+    return {**applied, "rejected": res.rejected, "unanswered": len(res.unanswered)}
 
 
 def _stage_stop(vault: Path, out: dict) -> bool:
@@ -3147,7 +3201,8 @@ async def finalize(vault: Path, *, post_model: str = defaults.FINALIZER_MODEL, b
                    benchmark_arm_id: str | None = None) -> dict:
     """Resolve, commit and post-process the pending batch.
 
-    Order: exact-name fold → pre-commit reconciliation → commit pass (sorted sha order) →
+    Order: exact-name fold → pre-commit reconciliation → housekeeping (the date pass, D330) →
+    commit pass (sorted sha order) →
     post-ingest (contradictions, entity synthesis, timeline, briefing/log). Used at the end of
     a run, by post-processing on its own, and to resume an interrupted finalize. Consumed inputs are
     cleared only on a clean pass. If reconciliation fails, nothing commits and the batch stays
@@ -3224,6 +3279,8 @@ async def _finalize(vault: Path, *, post_model: str, brief: str | None, results:
             out["usage_path"], out["usage"] = _end_usage_run(vault)
         return out
 
+    # Dates code could not settle (D330), on the staged extractions so the commit writes them.
+    await _date_pass(vault, shas, finalizer_overrides, post_model, post_backend, post_effort)
     commit_summary = _commit_pending(vault, shas)
     progress.emit("stage", stage="commit", done=len(shas), total=len(shas))
     if brief is None:

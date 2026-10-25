@@ -375,7 +375,7 @@ jobs:
       - name: Install the engine
         # The sample investigation runs on canned model answers, so the test suite's light
         # dependency list is enough (.github/actions/run-tests): no docling, no torch.
-        run: pip install --no-deps -e . && pip install pyyaml pypdf numpy jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk
+        run: pip install --no-deps -e . && pip install pyyaml pypdf numpy jsonschema httpx truststore nh3 python-docx python-pptx openpyxl Pillow defusedxml anthropic av claude-agent-sdk dateparser
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         with:

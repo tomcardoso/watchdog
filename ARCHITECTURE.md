@@ -175,7 +175,13 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    in code (`verify.merge_candidates`): sanitized, and suppressed when they near-duplicate an
    existing fact anywhere in the document (D199). Survivors are ordinary facts tagged
    `added_by: "verify"` in the staged JSON. Not available on batch backends.
-5. **Post-flight** — validates the JSON; resolves each `quote_locator` to the full sentence on the
+5. **Post-flight** — validates the JSON; reads each fact's printed date (`pipeline/dates.py`, D329:
+   `dateparser`, all its languages, absolute dates only, a printed year required, only the
+   precision the wording gives; a numeric day/month pair with two real readings keeps its year and
+   both readings; anything else keeps its wording in `date_text` and is marked `date_pending` for
+   finalize's date pass, D330); points a fact tag that is a near miss of a defined id at it, and
+   on a one-page text (a `.txt`, `.csv` or `.md`) cites page 1 for every fact (#757); resolves each
+   `quote_locator` to the full sentence on the
    cited page, correcting `page` when the locator resolves uniquely elsewhere (D75, D177); checks
    each fact's figures against the page text and annotates figures found nowhere or only on
    another page (D112, D200); stamps a source passage on every fact (`pipeline/passages.py`, D270:
@@ -391,7 +397,22 @@ say (the owner's call).
 **Code:** `orchestrate.finalize`, `orchestrate._post_ingest`, `pipeline/timeline.py`,
 `pipeline/requests.py`, `pipeline/leads.py`, `pipeline/watchlist.py`, `pipeline/resolutions.py`.
 
-Order: **tiered fold → reconciliation merges → commit → post-ingest.**
+Order: **tiered fold → reconciliation merges → housekeeping → commit → post-ingest.**
+
+**Housekeeping passes (`pipeline/housekeeping.py`, D330).** Small model chores over items code
+could not settle, run on the staged extractions before the commit. A chore is a task name, a prompt
+showing its items numbered, an answer schema (`{"answers": [{"item": n, …}]}`) and a validator;
+`run_chore` makes no call when there are no items, sends at most `max_items` per call, checks the
+spending limit between calls (D324), records usage under the chore's task name, and drops a
+malformed or rejected answer without failing the rest. One chore per call. A chore's prompts count
+towards the finalize estimate (`ingest_setup.housekeeping_estimate`). The first chore is the
+**date pass** (`dates.CHORE`, task `date-resolve`, the timeline stage's model): each `date_pending`
+fact goes with its printed date, its text and its document's date; `dates.validate` accepts a real
+ISO date, or a start and an end (a range), whose years lie within the printed ones (or within a
+year of the fact's or document's when none is printed), and holds an ambiguous numeric date to its
+two readings. `dates.apply` writes `date`, `date_end` and `date_basis: "inferred"` into the staged
+extraction, rebuilds its entities' timeline events and restages its raw timeline files. A failed
+call leaves what code read (a year, or no date); it never holds up the commit.
 
 **Commit pass (`_commit_pending`, D126, D239).** Every staged extraction not yet in
 `documents.json` (plus any `force_shas`) is replayed through `write_vault.run` in sorted sha order,
@@ -413,7 +434,10 @@ registry, keyed for idempotent replay (D67).
   most 200 events per call, D248); `_select_kept` keeps the originals and unions entity ids onto
   each survivor (D59). A failed call leaves the date untouched for the next run (D65). Months
   mixing month- and day-precision events get a precision pass that can only fold a coarse event
-  into a day (D63). `timeline.rebuild_timeline` is the single renderer of `timeline.md`.
+  into a day (D63). A range (`date_end`, D330) is filed under its start; two events fold only when
+  both ends match, and a range never enters the precision pass. `timeline.rebuild_timeline` is the
+  single renderer of `timeline.md`, which shows a range as "Apr–Jun 2024" and a model-settled date
+  with its printed wording.
 - **Briefing.** One call over compact per-document results (key facts, entity names, near-dup
   alerts, contradiction flags) and the scratchpads, condensed in steps when the batch is large
   (D238). The key facts are read from the stored extractions as citable lines
@@ -781,6 +805,7 @@ same content to the user's own model server; every other backend sends it to tha
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
+| date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
 | request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
@@ -943,8 +968,9 @@ noted as such.
   is not asked to restate as prose what it emitted structurally. Exception: `document.summary`, a
   bounded digest grounded in `key_facts` — a prompt instruction, not a checked postcondition.
   A document's own wording is never rewritten: a relationship's canonical label is a model
-  proposal that code checks and records beside it (D291).
-  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270, D291.*
+  proposal that code checks and records beside it (D291), and so is a date the model settles,
+  which keeps its printed wording and is marked inferred (D330).
+  *History: D2, D18, D24–D26, D29–D31, D33, D34, D75, D77, D78, D170, D270, D291, D330.*
 - **I2 — Local-first preprocessing.** Source documents never leave the machine during chew, and
   chew costs no API tokens. This bounds source-document egress; web research is allowed (§14).
   *History: D1, D45.*
@@ -973,7 +999,9 @@ noted as such.
 - **I8 — Transcribe source values as printed.** Dates, figures, file numbers and names are
   extracted as they appear, even when they look wrong; an inconsistency is noted in the fact, not
   corrected. A prompt instruction with no ground truth to check against. (Correcting a fact's
-  `page` citation, D177, is not covered: a citation is checkable.) *History: D167, D177.*
+  `page` citation, D177, is not covered: a citation is checkable.) A printed date that code
+  rewrites into ISO keeps its wording in `date_text`, and code never supplies a part the wording
+  lacks (D329). *History: D167, D177, D329.*
 - **I9 — Output is plain text.** An operation's output is lines of plain text, structured progress
   events and a result; nothing writes a terminal escape sequence, and warnings go to stderr.
   *History: D174, D300.* Guarded by `tests/test_invariants.py::test_I9_…`.

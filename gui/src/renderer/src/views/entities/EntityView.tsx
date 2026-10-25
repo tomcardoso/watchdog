@@ -9,6 +9,7 @@ import { NotesEditor, cleanNotes } from '@renderer/components/NotesEditor'
 import { Badge, Button, Callout, Dropdown, Empty, ErrorNote, Skeleton } from '@renderer/components/ui'
 import type { EntityDetail, Relationship, TimelineEvent } from '@shared/api'
 import { typeMeta } from '@renderer/lib/entityTypes'
+import { spanLabel } from '@renderer/lib/dateSpan'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useApp, useVault } from '@renderer/lib/store'
@@ -389,7 +390,10 @@ function MiniTimeline({ events }: { events: TimelineEvent[] }) {
       <ol className="ent-tl">
         {shown.map((ev, i) => (
           <li key={i}>
-            <div className="when">{fmtDate(ev.date)}</div>
+            <div className="when" title={ev.date_inferred && ev.date_text ? `Date inferred from “${ev.date_text}”` : undefined}>
+              {ev.end ? spanLabel(ev.date, ev.end) : fmtDate(ev.date)}
+              {ev.date_inferred && <span className="faint"> · inferred</span>}
+            </div>
             <div className="what selectable">{ev.text}{ev.disputed && <> <DisputedBadge /></>}</div>
             {ev.sha && ev.filename && (
               <div className="src">

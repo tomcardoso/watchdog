@@ -364,6 +364,12 @@ def build_timeline_precision_prompt(month: str, coarse: list[dict], precise: lis
             f"DAY-DATED events (specific days in {month}):\n{precise_listed}")
 
 
+def build_date_resolve_prompt(items_text: str) -> str:
+    # The date chore (D330): the numbered items `dates.build_prompt` lays out. Code checks every
+    # answer (`dates.validate`); the model only proposes.
+    return f"{_render('date_resolve')}\n\nDates:\n\n{items_text}"
+
+
 def build_request_dedup_prompt(open_requests: list[dict]) -> str:
     # Document-request dedup (#416): each open request shown by index with the fields a
     # journalist would compare by eye — type, wording, likely source. sources/added/rid stay

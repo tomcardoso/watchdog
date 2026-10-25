@@ -197,7 +197,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Classifier model | `haiku` | Reads a document's opening pages and picks its record skill. |
 | Extractor model | `haiku` | Extracts each document. |
 | Finalizer model | `haiku` | The finishing steps. |
-| Finalizer reconciliation / synthesis / timeline / briefing model | *(unset)* | Override the finalizer model for one finishing step: entity matching and contradictions, summaries, the timeline, or the briefing. |
+| Finalizer reconciliation / synthesis / timeline / briefing model | *(unset)* | Override the finalizer model for one finishing step: entity matching and contradictions, summaries, the timeline (including settling the dates code could not read), or the briefing. |
 | Classifier effort | `low` | How hard the classifier thinks. |
 | Extractor effort | `high` | How hard the extractor thinks. |
 | Finalizer effort | *(unset)* | Left unset, the model uses its own default. |

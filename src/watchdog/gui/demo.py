@@ -493,7 +493,8 @@ class CannedModel:
                     "reconcile": self.reconcile,
                     "entity-synthesis": self.synthesis, "timeline-dedup": self.timeline_dedup,
                     "timeline-precision": self.timeline_precision, "request-dedup": self.request_dedup,
-                    "briefing": self.briefing, "relationship-labels": self.relationship_labels}
+                    "briefing": self.briefing, "relationship-labels": self.relationship_labels,
+                    "date-resolve": lambda text: {"answers": []}}
         handler = handlers.get(task)
         if handler is None:
             raise RuntimeError(f"demo: no canned answer for task {task!r}")

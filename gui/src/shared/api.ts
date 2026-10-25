@@ -235,6 +235,13 @@ export interface TextPositions {
 export interface TimelineEvent {
   date: string
   precision: 'day' | 'month' | 'year' | null
+  /** A range's end (D330); the event is filed under its start `date`. */
+  end?: string | null
+  end_precision?: 'day' | 'month' | 'year' | null
+  /** The date as the document printed it, when code or the model rewrote it (D329, D330). */
+  date_text?: string | null
+  /** The model, not the document's own wording, settled this date (D330). */
+  date_inferred?: boolean
   text: string
   entities: EntityRef[]
   sha: string | null

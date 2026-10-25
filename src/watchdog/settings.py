@@ -419,7 +419,8 @@ SETTINGS = {
         "short": "Model override for timeline reconciliation only (default: unset — uses finalizer_model)",
         "help": (
             "Overrides finalizer_model for just the timeline stage — deduplicating same-date\n"
-            "  collisions and folding coarse-precision restatements into their exact date. Leave\n"
+            "  collisions, folding coarse-precision restatements into their exact date, and settling\n"
+            "  the printed dates code could not read (D330). Leave\n"
             "  unset to use finalizer_model, like every other post-processing stage.\n"
             "  Value: a Claude tier (haiku or sonnet), or a backend:model form to route to\n"
             "  another provider (openai:gpt-6-luna, deepseek:deepseek-flash, gemini:gemini-3.5-flash-lite).\n"

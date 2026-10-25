@@ -66,9 +66,11 @@ def mark_label(mark: dict | None) -> str:
 
 def _fact_line(f: dict, *, with_source: bool, with_passage: bool) -> str:
     from watchdog.pipeline.write_vault import (
-        _defang, _figure_verification_note, _page_link, _quote_verification_note, _render_date,
+        _defang, _figure_verification_note, _page_link, _quote_verification_note,
     )
-    head = f"**{_render_date(f['date'])}** — " if f.get("date") else ""
+    from watchdog.pipeline import dates
+    head = (f"**{dates.render_span(f['date'], f.get('date_end'))}**{dates.inferred_note(f)} — "
+            if f.get("date") else "")
     inferred = "*(inferred)* " if f.get("basis") == "inferred" else ""
     page = _page_link(f.get("morgue") or "", f.get("page"))
     if with_source and f.get("note"):
