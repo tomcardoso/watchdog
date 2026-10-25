@@ -39,7 +39,7 @@ interface Props {
   /** Rendered between the header and the messages (research sources, for example). */
   strip?: (api: WorkspaceApi) => ReactNode
   /** Route to open sessions under. */
-  view: 'ask' | 'research'
+  view: 'ask' | 'research' | 'context'
   session?: string
   prompt?: string
   /** Start a session of this mode as soon as the screen opens (the Overview's “Read it”). */
@@ -381,7 +381,7 @@ export default function ChatWorkspace(p: Props) {
     setText('')
     void begin(t)
   }
-  const sugg = useMemo(() => (/^\/[^\s]*$/.test(text) ? SLASH.filter((s) => s.name.startsWith(text.toLowerCase())) : []), [text])
+  const sugg = useMemo(() => (/^\/[^\s]*$/.test(text) ? SLASH.filter((s) => s.name.startsWith(text.toLowerCase()) && s.name !== '/watchdog-context') : []), [text])
 
   const api: WorkspaceApi = {
     begin,

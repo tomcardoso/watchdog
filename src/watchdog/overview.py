@@ -80,8 +80,17 @@ def summary(vault: Path) -> dict:
         "research_urls": research.pending_count(vault),
         "context_unseeded": bool(ctx_dir.is_dir() and find_files([ctx_dir])
                                  and not (vault / "context.md").exists()),
+        # No brief yet, or an empty one: the Overview asks for it first (D342).
+        "context_missing": not _has_text(vault / "context.md"),
     }
 
+
+
+def _has_text(path: Path) -> bool:
+    try:
+        return bool(path.read_text(encoding="utf-8", errors="replace").strip())
+    except OSError:
+        return False
 
 def has_work(s: dict) -> bool:
     """Whether adding documents has anything to do."""

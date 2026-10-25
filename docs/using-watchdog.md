@@ -6,7 +6,7 @@ This page covers the day-to-day work of an investigation, task by task: adding d
 
 ## Finding your way around
 
-The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
+The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Context**, **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each main screen (⌘1 to ⌘7, or Ctrl+1 to Ctrl+7), and **Ctrl+Tab** and **Ctrl+Shift+Tab** move to the next or previous item in the sidebar, in order, on every computer. **⌘[** and **⌘]** (Ctrl+[ and Ctrl+] on Windows and Linux) go back and forward through the screens you have visited; on Windows and Linux, Alt+← and Alt+→ do too, except while you are typing. **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
@@ -230,6 +230,14 @@ Summaries, briefings and the pages Claude saves cite the facts they rest on, wit
 
 Sentences without a citation are expected: a model connecting facts or summing up. Anything you publish should rest on cited facts you have checked.
 
+## Context
+
+**Context** holds the investigation's brief, `context.md`, and the background material behind it. The brief says what you are investigating, as open questions; it is sent to the model with every document you add and shapes every briefing, so the Overview asks for it until it exists. See [Set the context](getting-started.md#set-the-context) for what to put in it and what to leave out.
+
+- **Add background files…** copies files you choose (published stories, notes, screenshots) into the investigation's `context/` folder. The originals stay where they are, and nothing is added as a document.
+- **Build it with Claude**, or **Update with Claude** once a brief exists, starts a conversation on this screen: Claude reads the background files, interviews you, and writes or updates the brief. Past context conversations are listed here too.
+- **Edit** changes the brief by hand, and **History** shows its earlier versions.
+
 ## Ask Claude
 
 **Ask Claude** is a conversation with Claude about the investigation, using only its documents and citing the page for each claim. Each conversation starts with a short account of where the whole investigation stands, which Watchdog builds from its records, so Claude knows the state of things without re-reading everything. Start a new conversation for each new line of inquiry. **Briefings → Current state** shows that account, and **What Claude is given** shows exactly what Claude receives.
@@ -248,7 +256,6 @@ Start from a question in plain language or one of the shortcuts below, shown as 
 - **Write thread pages** writes thread pages in `wiki/` for findings that have grown into a real angle.
 - **Check the investigation** checks for orphaned notes, broken links and open contradictions.
 - **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
-- **Set the context** (or **Seed investigation context**) reads the background files in `context/`, interviews you, and writes `context.md`, your investigation brief. The brief is sent to the model with every document you add; see [Seed your context](getting-started.md#seed-your-context-optional-but-recommended) for what to leave out of it.
 
 A selector chooses the Claude model for new conversations: Sonnet, the default, or Haiku, which is cheaper and suits simpler questions. Ask Claude always runs on Claude, whatever the other steps use.
 
@@ -260,7 +267,7 @@ Web research never writes to the investigation. It queues the sources it keeps, 
 
 ## Briefings
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved. Pinned at the top are **Current state** (where the whole investigation stands, built from its records), the processing history and the investigation's brief, `context.md`, which you can edit there.
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. The investigation's brief has its own screen, [Context](#context).
 
 ## History and your notes
 

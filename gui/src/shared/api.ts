@@ -129,6 +129,8 @@ export interface Summary {
   failed: number
   research_urls: number
   context_unseeded: boolean
+  /** No context.md yet, or an empty one (D342). */
+  context_missing: boolean
   has_work: boolean
   totals: { documents: number; entities: number; pages: number; events: number }
   recent_documents: DocumentRow[]
@@ -989,6 +991,7 @@ export interface Methods {
   'vault.writeFile': [{ vault: string; path: string; text: string }, { ok: boolean }]
   'vault.requests': [{ vault: string }, { open: DocumentRequest[]; groups: RequestGroup[]; resolved_count: number }]
   'vault.contextFiles': [{ vault: string }, { name: string; size: number; modified: string }[]]
+  'vault.addContextFiles': [{ vault: string; paths: string[] }, { added: string[]; skipped: string[] }]
 
   'history.file': [{ vault: string; path: string }, FileHistory]
   'history.read': [{ vault: string; path: string; version: number }, { path: string; version: number; exists: boolean; text: string }]

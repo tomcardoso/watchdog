@@ -2951,3 +2951,9 @@ The archive.org access and secret keys sat in plain text in `config.json` (0600)
 
 Tradeoff: as with API keys, the keys can't be read on another computer or account, and a copy of `config.json` backed up before the move still holds them in plain text.
 
+### D342 — Context is its own screen under Work, asked for first on the Overview
+
+The brief (`context.md`) is sent with every document and shapes every briefing, yet setting it was a card at the bottom of Ask Claude and an editor pinned in Briefings, and background files reached `context/` only through the file manager. It now has one screen, **Context** (`views/chat/ContextView.tsx`): the brief with Edit and History, the background files with **Add background files…** (`vault.addContextFiles`, which copies, never moves, into `context/` and does not queue anything as a document), and the Claude interview as a chat in `context` mode on the same screen. Ask Claude lists only `ask` sessions and no longer offers the context command; Briefings no longer pins the brief. Until `context.md` has text (`overview.context_missing`), the Overview leads with a banner asking for it, except in the sample.
+
+Tradeoff: background files are copies, so an edited original is not picked up until it is added again; and context conversations from before this move to the Context screen's list, out of Ask Claude's.
+

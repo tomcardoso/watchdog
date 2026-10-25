@@ -3,8 +3,7 @@
 import { Command } from 'cmdk'
 import {
   Activity, BookOpenText, CalendarRange, Compass, FilePlus2, Files, FolderOpen, Globe2, House, Link2, ListChecks,
-  MessageSquareText, Moon, Network, Plus, Search, Settings, Shapes, Sun
-} from 'lucide-react'
+  MessageSquareText, Moon, Network, Plus, Search, Settings, Shapes, Sun, Target } from 'lucide-react'
 import { useState } from 'react'
 import { typeMeta } from '@renderer/lib/entityTypes'
 import { useRpc } from '@renderer/lib/rpc'
@@ -38,6 +37,7 @@ export function CommandPalette() {
         { label: 'Entities', icon: Shapes, route: { view: 'entities' } },
         { label: 'Timeline', icon: CalendarRange, route: { view: 'timeline' } },
         { label: 'Network', icon: Network, route: { view: 'graph' } },
+        { label: 'Context', icon: Target, route: { view: 'context' } },
         { label: 'Review', icon: ListChecks, route: { view: 'review' } },
         { label: 'Briefings', icon: BookOpenText, route: { view: 'briefings' } },
         { label: 'Activity', icon: Activity, route: { view: 'activity' } },

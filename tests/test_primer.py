@@ -133,7 +133,7 @@ def test_current_state_empty_vault(tmp_path):
     from watchdog.gui import current_state
     text = current_state.build(make_vault(tmp_path))
     assert "No documents have been added yet." in text
-    assert "No questions yet. Add them in Investigation context" in text
+    assert "No questions yet. Add them under Context" in text
     assert "`" not in text and "watchdog " not in text
 
 

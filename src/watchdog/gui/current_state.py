@@ -46,7 +46,7 @@ def render(data: dict) -> str:
             lines.append(f"- …and {len(data['questions']) - _QUESTIONS_MAX} more in Investigation context")
         lines.append("")
     elif not data["aim"]:
-        lines += ["No questions yet. Add them in Investigation context; every run and every "
+        lines += ["No questions yet. Add them under Context; every run and every "
                   "conversation with Claude reads them.", ""]
 
     lines += ["## The record", ""]

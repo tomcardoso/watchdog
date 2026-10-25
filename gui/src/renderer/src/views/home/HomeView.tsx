@@ -4,7 +4,7 @@
 import {
   Bell, CalendarRange, Copy, Download, ExternalLink, FilePlus2, FileSearch, Files, FolderOpen, Hourglass,
   Lightbulb, MessageSquareText, Pencil, RefreshCw, Scale, Search, Shapes, TriangleAlert, Upload, ArrowRight, Check, Inbox, Link2, FolderInput, X,
-  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles, FileQuestion, RefreshCcw
+  ShieldAlert, ShieldCheck, GitMerge, ChevronDown, ChevronRight, Sparkles, FileQuestion, RefreshCcw, Target
 } from 'lucide-react'
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { Button, ErrorNote, Skeleton, Stat } from '@renderer/components/ui'
@@ -26,6 +26,27 @@ import { SpendingLimitCard } from './SpendingLimitCard'
 import MigrateModal from '../activity/MigrateModal'
 import './home.css'
 
+/** Until the investigation has a brief, the Overview asks for it first (D342): it is sent with
+ * every document, so it matters most before the first batch. */
+function ContextBanner() {
+  return (
+    <section className="card home-context">
+      <div className="home-context-icon"><Target /></div>
+      <div className="grow">
+        <h3>Start by setting the context</h3>
+        <p>
+          Tell Watchdog what you are investigating, as open questions, and add any background you already hold, such as published stories. The model reads every
+          document with this brief in view, so set it before you add documents.
+        </p>
+      </div>
+      <div className="home-context-actions">
+        <Button variant="primary" onClick={() => navigate({ view: 'context', start: true })}>Build it with Claude</Button>
+        <Button onClick={() => navigate({ view: 'context' })}>Open Context</Button>
+      </div>
+    </section>
+  )
+}
+
 /** A briefing's first screenful: whole paragraphs up to roughly `max` characters. */
 function excerpt(body: string, max = 1500): string {
   const clean = body.replace(/<!--[\s\S]*?-->/g, '').replace(/^\s*# .*\n+/, '').trim()
@@ -41,6 +62,7 @@ function excerpt(body: string, max = 1500): string {
 
 export default function HomeView() {
   const vault = useVault()
+  const project = useApp((s) => s.project)
   const { data: s, error, isLoading, refetch } = useRpc('vault.summary', { vault }, { refetchInterval: 20_000 })
   const running = useJobRunningIn(vault)
   const { data: pipe } = useRpc('vault.pipeline', { vault }, { refetchInterval: running ? 4_000 : 20_000 })
@@ -84,6 +106,7 @@ export default function HomeView() {
           <HomeSkeleton />
         ) : (
           <>
+            {s.context_missing && !project?.sample && <ContextBanner />}
             {s.has_work && <WorkBanner s={s} run={runLockState(pipe?.locks)} stopped={pipe?.stopped_run ?? null} />}
             {!empty && <MigrationBanner />}
             {empty ? (
@@ -478,7 +501,7 @@ function InProgress({ s, failedDocs }: { s: Summary; failedDocs: { sha: string; 
       )
     )
   if (s.context_unseeded)
-    rows.push(row('ctx', <FileSearch />, <>Background folder not yet read</>, <Button size="sm" onClick={() => navigate({ view: 'ask', mode: 'context' })}>Read it</Button>))
+    rows.push(row('ctx', <FileSearch />, <>Background folder not yet read</>, <Button size="sm" onClick={() => navigate({ view: 'context', start: true })}>Read it</Button>))
 
   if (!rows.length) return null
   return (
