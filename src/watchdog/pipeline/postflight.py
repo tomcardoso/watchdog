@@ -11,103 +11,13 @@ the exact-name fold and the reconcile pass (D118, D127)."""
 import json
 import re
 import sys
-from datetime import date as _date
 from pathlib import Path
 
 from watchdog.pipeline.json_io import _read_json
 from watchdog import config as user_config
 
 _VALID_BASIS = {"stated", "inferred"}
-_DATE_RE = re.compile(r"^\d{4}(-\d{2}(-\d{2})?)?$")
-
-# A *precise* non-ISO date — full day-month-year, or (deliberately, per the extraction prompt)
-# month-year when the source itself gave no day — spelled with a named month, so the word order
-# resolves the day/month ambiguity a numeric date (03/04/2020) can't. Also handles a year-first
-# numeric date (2020/07/08) but only when one of the two trailing tokens is calendrically
-# impossible as a month (>12) — that forces which token is the day with no assumption about the
-# source's convention, unlike a bare "03/04/2020" (no year-first anchor) or a two-part "2024/03"
-# (only one trailing token, nothing to disambiguate it against). Guessing at a value the source
-# didn't unambiguously state is exactly what TRANSCRIBE, DON'T CORRECT forbids, so anything short
-# of that proof stays dropped.
-_MONTHS = {
-    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
-    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
-    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
-    "sep": 9, "sept": 9, "oct": 10, "nov": 11, "dec": 12,
-}
-_ORDINAL_SUFFIX = r"(?:\s*(?:st|nd|rd|th))?"
-_MONTH_DAY_YEAR_RE = re.compile(
-    rf"^(?P<month>[A-Za-z]+)\.?\s+(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX},?\s+(?P<year>\d{{4}})$"
-)
-# Day/month separated by a space ("17th day of March, 2021") or a dash ("27-Sep-2012"); the year
-# may be 2 digits ("18-SEP-24") since the source omitting the century is the same "gave less
-# precision than ISO wants" case as the day-less month-year form below, not a stated-but-different
-# value — `_expand_two_digit_year` fills it in with the standard 00-68→20xx / 69-99→19xx pivot.
-_DAY_MONTH_YEAR_RE = re.compile(
-    rf"^(?P<day>\d{{1,2}}){_ORDINAL_SUFFIX}[-\s]+(?:day\s+of\s+)?(?P<month>[A-Za-z]+)\.?,?[-\s]+"
-    rf"(?P<year>\d{{4}}|\d{{2}})$"
-)
-_MONTH_YEAR_RE = re.compile(r"^(?P<month>[A-Za-z]+)\.?,?\s+(?P<year>\d{4})$")
-_YEAR_FIRST_SLASH_RE = re.compile(r"^(?P<year>\d{4})/(?P<a>\d{1,2})/(?P<b>\d{1,2})$")
-
-
-def _expand_two_digit_year(year: int) -> int:
-    """Fill in the century for a 2-digit year using the standard `strptime` `%y` pivot
-    (00-68 -> 2000-2068, 69-99 -> 1969-1999). `year` is already 4 digits if the source gave
-    one; this is a no-op in that case."""
-    if year > 99:
-        return year
-    return year + (2000 if year <= 68 else 1900)
-
-
-def _parse_precise_date(raw: str) -> str | None:
-    """Parse `raw` into ISO shape when — and only when — it is a *precise* date rather than an
-    imprecise one the extractor was always going to hand back with less-than-day granularity
-    (a bare year, a month-year, per extract_instructions.md's `date` field). A fully-qualified
-    date in ordinary prose ("April 30, 2020", "17th day of March, 2021", "2020/07/08" when one
-    trailing token proves the day) is precise, just not ISO-shaped, and converting it loses
-    nothing. A fiscal-year range ("2020-2021"), a quarter ("Q1 2020"), or a bare/genuinely
-    ambiguous numeric date is imprecise or ambiguous and must stay dropped rather than have this
-    guess at what it means — this function returns None for those, and the caller's existing
-    drop+warn behaviour is unchanged. Named-month forms plus the year-first-slash case only (see
-    `_MONTHS`); returns None on no match or an invalid day-of-month (e.g. "February 30")."""
-    # A trailing comma/period is punctuation carried over from the source sentence the date was
-    # lifted out of ("...on February 1, 2021, the applicant..."), not part of the date itself —
-    # stripping it is not a TRANSCRIBE, DON'T CORRECT violation the way guessing a value would be.
-    text = raw.strip().rstrip(",.")
-    for rx, has_day in ((_MONTH_DAY_YEAR_RE, True), (_DAY_MONTH_YEAR_RE, True), (_MONTH_YEAR_RE, False)):
-        m = rx.match(text)
-        if not m:
-            continue
-        month = _MONTHS.get(m.group("month").lower())
-        if month is None:
-            continue
-        year = _expand_two_digit_year(int(m.group("year")))
-        if not has_day:
-            return f"{year:04d}-{month:02d}"
-        day = int(m.group("day"))
-        try:
-            _date(year, month, day)   # validates day-in-month (rejects "February 30, 2020")
-        except ValueError:
-            return None
-        return f"{year:04d}-{month:02d}-{day:02d}"
-
-    m = _YEAR_FIRST_SLASH_RE.match(text)
-    if m:
-        year = int(m.group("year"))
-        a, b = int(m.group("a")), int(m.group("b"))
-        # Neither token can be a month if it's >12. Convert only when that forces exactly one
-        # reading (one token >12, the other <=12) — both <=12 leaves the order genuinely
-        # ambiguous, and both >12 makes neither token a valid month at all.
-        if (a > 12) != (b > 12):
-            day, month = (a, b) if a > 12 else (b, a)
-            try:
-                _date(year, month, day)
-            except ValueError:
-                return None
-            return f"{year:04d}-{month:02d}-{day:02d}"
-
-    return None
+_PATHLIKE = re.compile(r"[/\\]|\.\.")
 
 # Page-coverage heuristic (skim detection). Advisory only — emits a warning, never a failure.
 _COVERAGE_MIN_PAGES = 8         # don't flag short documents
@@ -241,7 +151,8 @@ def _sanitize_entity_ids(extraction: dict) -> list[str]:
     slugifies to empty, and disambiguates any collision this creates between two entities in the
     same extraction (so they don't silently merge). Remaps ``key_facts.entities`` tags and
     ``roles.target_id`` so referential integrity holds after the rewrite. Mutates ``extraction``
-    in place; returns a warning per changed id."""
+    in place; returns a warning per id changed other than by a plain tidy (spaces, case, stray
+    punctuation), which is silent."""
     from watchdog.pipeline.write_vault import slugify
 
     entities = extraction.get("entities", [])
@@ -258,7 +169,11 @@ def _sanitize_entity_ids(extraction: dict) -> list[str]:
             suffix += 1
         seen.add(new_id)
         if new_id != old_id:
-            warnings.append(f"entities[{i}].id {old_id!r} sanitized to {new_id!r}")
+            # A plain tidy ("Acme Corp" → "acme-corp") is routine and silent (#757); a value that
+            # names a path, slugifies to nothing or collides is worth a reader's attention.
+            tidy = bool(old_id) and slugify(old_id) == new_id and not _PATHLIKE.search(old_id)
+            if not tidy:
+                warnings.append(f"entities[{i}].id {old_id!r} sanitized to {new_id!r}")
             if old_id:
                 changes.append((old_id, new_id))
             entity["id"] = new_id
@@ -282,35 +197,98 @@ def _sanitize_entity_ids(extraction: dict) -> list[str]:
     return warnings
 
 
-def _sanitize_dates(extraction: dict) -> list[str]:
-    """Normalize or drop ``key_facts.date`` values that aren't already ISO-shaped (``YYYY``,
-    ``YYYY-MM``, or ``YYYY-MM-DD``) before they can reach timeline.py's ``{date}_{sha7}.ndjson``
-    filename construction — a value like ``"2024/03"`` or free text would otherwise produce a
-    broken or nested file write.
+def _resolve_near_miss_tags(extraction: dict) -> None:
+    """Point a fact's entity tag at the entity the document meant when the tag is a near miss of
+    an id the same extraction defined (#757): the same id but for spacing, case or punctuation
+    ("acme corp" for "acme-corp"), or a shorter or longer form of it ("acme" for "acme-corp",
+    "acme-corp-inc" for "acme-corp") that matches exactly one defined id at its start or end.
+    A tag that matches no id, or several, is left alone, and `explode_key_facts` warns about it.
+    Mutates the tags in place, keeping each fact's original tags in `extracted_entities`."""
+    from watchdog.pipeline.write_vault import slugify
+    ids = [e.get("id") for e in extraction.get("entities") or [] if isinstance(e, dict) and e.get("id")]
+    known = set(ids)
+    split = {i: i.split("-") for i in ids}
 
-    The extraction prompt deliberately transcribes dates as printed rather than reformatting
-    them (TRANSCRIBE, DON'T CORRECT), so a non-ISO value here is routinely a *precise* date the
-    source just didn't print in ISO form ("April 30, 2020") rather than an imprecise one — the
-    prompt already tells the model to omit the day when the source doesn't give one, so a bare
-    "May 2019" is doing that correctly, just not ISO-shaped either (#560). ``_parse_precise_date``
-    converts either shape losslessly; only a value it can't parse as unambiguous — a fiscal-year
-    range, a quarter, free text — is dropped. Mutates ``key_facts`` in place; returns a warning
-    only for an actual drop, so a silent, lossless reformat doesn't add warning noise."""
-    warnings: list[str] = []
-    for i, fact in enumerate(extraction.get("document", {}).get("key_facts", [])):
-        date = fact.get("date")
-        if not date or _DATE_RE.match(date):
+    def near(tag: str) -> str | None:
+        slug = slugify(tag)
+        if slug in known:
+            return slug
+        words = slug.split("-") if slug else []
+        if not words:
+            return None
+        hits = []
+        for eid, parts in split.items():
+            short, long_ = (words, parts) if len(words) < len(parts) else (parts, words)
+            if len(short) == len(long_) or len("-".join(short)) < 4:
+                continue
+            if long_[:len(short)] == short or long_[-len(short):] == short:
+                hits.append(eid)
+        return hits[0] if len(hits) == 1 else None
+
+    for fact in (extraction.get("document") or {}).get("key_facts") or []:
+        tags = fact.get("entities") if isinstance(fact, dict) else None
+        if not isinstance(tags, list) or all(t in known for t in tags):
             continue
-        parsed = _parse_precise_date(date)
-        if parsed is not None:
-            fact["date"] = parsed
+        fixed: list = []
+        for t in tags:
+            r = t if t in known or not isinstance(t, str) else (near(t) or t)
+            if r not in fixed:
+                fixed.append(r)
+        if fixed != tags:
+            fact.setdefault("extracted_entities", list(tags))
+            fact["entities"] = fixed
+
+
+def _single_page_citations(extraction: dict, page_texts: dict[int, str]) -> None:
+    """A document whose text is one page — a plain-text, CSV or Markdown file
+    (`preprocess.process_direct_text`) — has nothing but page 1 to cite. A large one is extracted
+    in sections cut by characters, with no page markers, so the model cites the section's part
+    number or a page the text itself mentions; its quotes were then looked for on a page that does
+    not exist and came back "not found" (#757). Every fact of such a document cites page 1."""
+    if len(page_texts) != 1 or 1 not in page_texts:
+        return
+    for fact in (extraction.get("document") or {}).get("key_facts") or []:
+        if isinstance(fact, dict) and fact.get("page") != 1:
+            fact["page"] = 1
+
+
+# The date fields a dated fact carries onto its timeline events (D329, D330): an optional end for
+# a range, the printed wording when code or the model rewrote it, and `date_basis: "inferred"`
+# when the model settled it.
+DATE_FIELDS = ("date_end", "date_text", "date_basis")
+
+
+def _timeline_event(fact: dict, text: str) -> dict:
+    event = {"date": (fact.get("date") or "").strip(), "event": text}
+    for k in DATE_FIELDS:
+        if fact.get(k):
+            event[k] = fact[k]
+    if fact.get("page") is not None:
+        event["page"] = fact["page"]
+    if fact.get("basis"):
+        event["basis"] = fact["basis"]
+    # The figure annotations ride along too (D215). `leads.py` reads roles and timeline_events —
+    # not evidence_fragments — so without this a derived figure is invisible to the lead sweep no
+    # matter what that sweep looks for.
+    for k in ("figures_unverified", "figures_off_page"):
+        if fact.get(k):
+            event[k] = fact[k]
+    return event
+
+
+def refresh_timeline_events(extraction: dict) -> None:
+    """Rebuild every entity's `timeline_events` from the dated `key_facts` — after the date pass
+    (D330) changed a staged extraction's dates, so the entity views agree with the facts."""
+    by_id = {e["id"]: e for e in extraction.get("entities", []) if isinstance(e, dict) and e.get("id")}
+    for ent in by_id.values():
+        ent.pop("timeline_events", None)
+    for fact in (extraction.get("document") or {}).get("key_facts") or []:
+        text = (fact.get("fact") or "").strip() if isinstance(fact, dict) else ""
+        if not text or not (fact.get("date") or "").strip():
             continue
-        warnings.append(
-            f"document.key_facts[{i}].date '{date}' is not a recognizable ISO or precise "
-            "calendar date — dropped from timeline placement"
-        )
-        fact["date"] = ""
-    return warnings
+        for eid in dict.fromkeys(fact.get("entities") or []):
+            if eid in by_id:
+                by_id[eid].setdefault("timeline_events", []).append(_timeline_event(fact, text))
 
 
 def explode_key_facts(extraction: dict) -> list[str]:
@@ -325,12 +303,9 @@ def explode_key_facts(extraction: dict) -> list[str]:
 
     A tag naming an id absent from ``entities`` is dropped rather than filed anywhere — there is
     nothing to attach it to, and inventing an entity here would bypass the schema's own required
-    fields (name, type). Returns one warning per dropped tag so the loss is visible to the ingest
-    log instead of silent: the schema now declares the top-level ``entities`` array before
-    ``document.key_facts`` (#651, following D208's own decode-order assumption), so the model
-    should have already committed the entity roster by the time it writes a tag — but a model can
-    still drift (naming an id it never added to ``entities``, or misspelling one it did), so this
-    stays a real failure mode worth a warning, not a hypothetical one the reorder fully closes.
+    fields (name, type). A near miss of a defined id is pointed at it first
+    (`_resolve_near_miss_tags`, #757); for the rest this returns one warning per dropped tag, so
+    the loss is visible to the ingest log instead of silent.
     """
     by_id = {e["id"]: e for e in extraction.get("entities", []) if e.get("id")}
     warnings: list[str] = []
@@ -374,19 +349,7 @@ def explode_key_facts(extraction: dict) -> list[str]:
                 frag["figures_off_page"] = figures_off_page
             ent.setdefault("evidence_fragments", []).append(frag)
             if date:
-                event = {"date": date, "event": text}
-                if page is not None:
-                    event["page"] = page
-                if basis:
-                    event["basis"] = basis
-                # The figure annotations ride along too (D215). `leads.py` reads roles and
-                # timeline_events — not evidence_fragments — so without this a derived figure
-                # is invisible to the lead sweep no matter what that sweep looks for.
-                if figures_unverified:
-                    event["figures_unverified"] = figures_unverified
-                if figures_off_page:
-                    event["figures_off_page"] = figures_off_page
-                ent.setdefault("timeline_events", []).append(event)
+                ent.setdefault("timeline_events", []).append(_timeline_event(fact, text))
     return warnings
 
 
@@ -442,11 +405,18 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     for warning in _sanitize_entity_ids(extraction):
         _warn(warning)
 
-    # Drop non-ISO-shaped key_facts dates before they can reach explode_key_facts or
-    # timeline.py's filename construction — a malformed date is a visible warning, not a
-    # silent event loss.
-    for warning in _sanitize_dates(extraction):
+    # Read every printed date before it can reach explode_key_facts or timeline.py's filename
+    # construction (D329): ISO or settled by code, else kept as printed and left for finalize's
+    # date pass (D330), which reports what it could not place.
+    from watchdog.pipeline import dates
+    for warning in dates.sanitize(extraction):
         _warn(warning)
+
+    # A fact tag that is a near miss of an id the document defined is pointed at it (#757).
+    _resolve_near_miss_tags(extraction)
+
+    # A one-page text has only page 1 to cite (#757); set before quotes are looked up.
+    _single_page_citations(extraction, page_texts)
 
     # Deterministic quote resolution against the morgue text (#267/#529): resolves each
     # key_facts.quote_locator (the first several words of a source sentence) against the

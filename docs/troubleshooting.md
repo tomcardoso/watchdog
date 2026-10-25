@@ -152,6 +152,10 @@ While documents are being added, Watchdog keeps a small lock file in the investi
 
 Entity and document notes are rewritten from Watchdog's own records, so nothing is lost. Choose **Activity → Maintenance → Rebuild notes**. It rewrites every entity and document note, including the entity summaries, and calls no AI model. Your own **Notes** sections are kept as they are. A note you deleted comes back without its Notes section: open the note's **History**, select a version from before it was deleted, and choose **Restore my notes**. A page of your own (`context.md`, a briefing, a page Claude saved) can be put back the same way with **Restore this version**. See [History and your notes](using-watchdog.md#history-and-your-notes).
 
+## A dated fact is missing from the timeline, or shows only its year
+
+The fact is still on its document and its entities; only its place on the timeline is missing. Watchdog places a date only when it can read it with confidence: the year must be printed, and a date written in figures that could be read two ways (03/04/2021) is placed at its year until a model settles which reading the document means. If that step could not run (a rate limit, the [spending limit](#a-run-stopped-at-the-spending-limit)) or found no confident answer, the date stays as it was. [How it works](how-it-works.md#dates) explains the rules.
+
 ## A merge joined two different people or companies
 
 Open **Review → Merges**, find the merge under **Recent merges**, and choose **Undo merge**. If the button is unavailable, the reason is shown beside it; see [Merges](using-watchdog.md#merges).

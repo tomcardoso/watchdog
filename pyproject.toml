@@ -61,6 +61,9 @@ dependencies = [
     # (which faster-whisper also needs) are already here through docling, fastembed and gliner.
     "faster-whisper>=1.1",
     "av>=12",
+    # Reads the dates documents print in words in ~200 languages (D329); pure Python, with
+    # regex, pytz and tzlocal, so it installs in the engine's first phase.
+    "dateparser>=1.2",
 ]
 
 [project.optional-dependencies]

@@ -2,12 +2,13 @@ import json
 from pathlib import Path
 
 from watchdog.pipeline import postflight
+from watchdog.pipeline.dates import sanitize as _sanitize_dates
 from watchdog.pipeline.postflight import (
     _find_coverage_gap,
-    _parse_precise_date,
     _render_coverage_warning,
-    _sanitize_dates,
+    _resolve_near_miss_tags,
     _sanitize_entity_ids,
+    _single_page_citations,
     _validate,
     explode_key_facts,
 )
@@ -182,25 +183,17 @@ def test_explode_propagates_quote_verified_false_to_fragments():
     assert frag["quote_verified"] is False
 
 
-# ── _sanitize_dates (#262: non-ISO dates must not reach timeline.py's filenames) ────────────
+# ── dates.sanitize at post-flight (#262 shape guard, D329 reading, D330 hand-off) ───────────
 
-def test_sanitize_dates_drops_non_iso_date_and_warns():
-    extraction = {"document": {"key_facts": [
-        {"fact": "x", "date": "2024/03", "entities": ["a"]},
-    ]}}
-    warnings = _sanitize_dates(extraction)
-    assert extraction["document"]["key_facts"][0]["date"] == ""
-    assert len(warnings) == 1
-    assert "2024/03" in warnings[0]
-
-
-def test_sanitize_dates_drops_free_text_date():
+def test_sanitize_dates_marks_unreadable_date_for_the_pass_without_warning():
     extraction = {"document": {"key_facts": [
         {"fact": "x", "date": "sometime last year", "entities": ["a"]},
     ]}}
-    warnings = _sanitize_dates(extraction)
-    assert extraction["document"]["key_facts"][0]["date"] == ""
-    assert len(warnings) == 1
+    assert _sanitize_dates(extraction) == []
+    f = extraction["document"]["key_facts"][0]
+    assert f["date"] == ""
+    assert f["date_text"] == "sometime last year"
+    assert f["date_pending"] == "unresolved"
 
 
 def test_sanitize_dates_keeps_valid_iso_shapes():
@@ -211,105 +204,41 @@ def test_sanitize_dates_keeps_valid_iso_shapes():
         {"fact": "d", "entities": []},   # no date at all — untouched
     ]}}
     assert _sanitize_dates(extraction) == []
+    facts = extraction["document"]["key_facts"]
+    assert [f.get("date") for f in facts] == ["2021", "2021-03", "2021-03-30", None]
+    assert not any("date_text" in f or "date_pending" in f for f in facts)
 
 
-# ── _parse_precise_date (#560: a precise date printed in prose isn't an imprecise one) ──────
-
-def test_parse_precise_date_full_month_day_year():
-    assert _parse_precise_date("April 30, 2020") == "2020-04-30"
-    assert _parse_precise_date("January 29 2021") == "2021-01-29"   # no comma
-    assert _parse_precise_date("Feb. 1, 2021") == "2021-02-01"      # abbreviated + period
-
-
-def test_parse_precise_date_month_year_stays_month_precision():
-    """The extraction prompt tells the model to omit the day when the source doesn't give one
-    (a genuinely month-precision date) — that must convert to YYYY-MM, not be treated as if a
-    day were missing by mistake."""
-    assert _parse_precise_date("May 2019") == "2019-05"
-    assert _parse_precise_date("December 2020") == "2020-12"
-
-
-def test_parse_precise_date_day_of_month_legal_phrasing():
-    assert _parse_precise_date("17th day of March, 2021") == "2021-03-17"
-    assert _parse_precise_date("17 th day of March, 2021") == "2021-03-17"
-    assert _parse_precise_date("1st day of February, 2021") == "2021-02-01"
-
-
-def test_parse_precise_date_tolerates_trailing_comma_from_source_sentence():
-    """A date lifted out of running prose ("...on February 1, 2021, the applicant...") can carry
-    the sentence's own trailing comma into the field — that's punctuation noise, not part of the
-    date, and shouldn't make an otherwise-precise date unparseable (live-run regression)."""
-    assert _parse_precise_date("February 1, 2021,") == "2021-02-01"
-    assert _parse_precise_date("May 2019.") == "2019-05"
-
-
-def test_parse_precise_date_rejects_ambiguous_or_invalid():
-    assert _parse_precise_date("2020-2021") is None       # fiscal-year range, not a date
-    assert _parse_precise_date("2018-2019") is None
-    assert _parse_precise_date("Q1 2020") is None          # quarter, not a date
-    assert _parse_precise_date("2024/03") is None          # numeric — day/month order ambiguous
-    assert _parse_precise_date("sometime last year") is None
-    assert _parse_precise_date("February 30, 2020") is None   # no such day
-
-
-def test_parse_precise_date_dash_separated_day_month_year():
-    """A named-month day-month-year date separated by dashes rather than spaces — the same
-    precise, unambiguous shape the space form already handles, just a different source
-    punctuation style (live-run regression)."""
-    assert _parse_precise_date("27-Sep-2012") == "2012-09-27"
-    assert _parse_precise_date("06-Nov-2013") == "2013-11-06"
-    assert _parse_precise_date("08-July-2020") == "2020-07-08"
-
-
-def test_parse_precise_date_two_digit_year_expands_via_standard_pivot():
-    """A dash-separated date with a 2-digit year (the source itself omitted the century) fills
-    it in with the standard `strptime` `%y` pivot: 00-68 -> 20xx, 69-99 -> 19xx."""
-    assert _parse_precise_date("18-SEP-24") == "2024-09-18"
-    assert _parse_precise_date("28-OCT-24") == "2024-10-28"
-    assert _parse_precise_date("02-OCT-24") == "2024-10-02"
-    assert _parse_precise_date("15-Mar-70") == "1970-03-15"   # pivot: 69-99 -> 19xx
-
-
-def test_parse_precise_date_year_first_slash_converts_only_when_unambiguous():
-    """A year-first numeric date (YYYY/A/B) converts only when exactly one of the two trailing
-    tokens is >12 — that proves which one is the day with no assumption about the source's
-    day/month convention. When both are <=12 the order is genuinely ambiguous and must stay
-    dropped, even though every date in this batch happens to be day-last (live-run
-    regression — provably-unambiguous-only was the chosen scope)."""
-    assert _parse_precise_date("2019/08/16") == "2019-08-16"   # 16 > 12 -> day
-    assert _parse_precise_date("2007/01/26") == "2007-01-26"   # 26 > 12 -> day
-    assert _parse_precise_date("2022/09/20") == "2022-09-20"
-    assert _parse_precise_date("2024/07/15") == "2024-07-15"
-    # both trailing tokens <=12: genuinely ambiguous, stays dropped
-    assert _parse_precise_date("2020/07/08") is None
-    assert _parse_precise_date("2023/01/11") is None
-
-
-def test_parse_precise_date_non_year_first_slash_date_stays_ambiguous():
-    """A slash date that doesn't lead with a 4-digit year has no anchor to prove which trailing
-    token is the day — stays dropped regardless of token size (live-run regression)."""
-    assert _parse_precise_date("1/12/2010") is None
-
-
-def test_sanitize_dates_normalizes_precise_prose_date_without_warning():
+def test_sanitize_dates_normalizes_precise_prose_date_and_keeps_wording():
     extraction = {"document": {"key_facts": [
         {"fact": "x", "date": "April 30, 2020", "entities": ["a"]},
-        {"fact": "y", "date": "May 2019", "entities": ["a"]},
+        {"fact": "y", "date": "mai 2019", "entities": ["a"]},
     ]}}
-    warnings = _sanitize_dates(extraction)
-    assert warnings == []
-    dates = [f["date"] for f in extraction["document"]["key_facts"]]
-    assert dates == ["2020-04-30", "2019-05"]
+    assert _sanitize_dates(extraction) == []
+    facts = extraction["document"]["key_facts"]
+    assert [f["date"] for f in facts] == ["2020-04-30", "2019-05"]
+    assert [f["date_text"] for f in facts] == ["April 30, 2020", "mai 2019"]
+    assert not any("date_pending" in f for f in facts)
 
 
-def test_sanitize_dates_still_drops_and_warns_on_fiscal_year_range():
+def test_sanitize_dates_keeps_the_year_of_an_ambiguous_numeric_date():
+    extraction = {"document": {"key_facts": [{"fact": "x", "date": "03/04/2021"}]}}
+    _sanitize_dates(extraction)
+    f = extraction["document"]["key_facts"][0]
+    assert f["date"] == "2021"
+    assert f["date_pending"] == "ambiguous"
+    assert f["date_readings"] == ["2021-04-03", "2021-03-04"]
+
+
+def test_sanitize_dates_leaves_fiscal_year_range_for_the_pass():
     extraction = {"document": {"key_facts": [
         {"fact": "x", "date": "2020-2021", "entities": ["a"]},
     ]}}
-    warnings = _sanitize_dates(extraction)
-    assert extraction["document"]["key_facts"][0]["date"] == ""
-    assert len(warnings) == 1
-    assert "2020-2021" in warnings[0]
+    _sanitize_dates(extraction)
+    f = extraction["document"]["key_facts"][0]
+    assert f["date"] == "" and f["date_pending"] == "unresolved"
+
+
 
 
 # ── _sanitize_entity_ids (#303: path-traversal / vault-escape via unslugified entity id) ────
@@ -567,11 +496,12 @@ def test_postflight_builds_entity_analysis_from_tagged_facts(tmp_path):
 
 def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, capsys):
     """A non-ISO-shaped key_facts.date (#262) must not reach timeline.py's
-    {date}_{sha7}.ndjson filename construction — it's dropped with a visible warning instead."""
+    {date}_{sha7}.ndjson filename construction. One code cannot read is kept as printed and left
+    for finalize's date pass (D330), which reports what it could not place."""
     vault = _full_vault(tmp_path)
     (vault / "incoming" / "doc.pdf").write_text("pdf")
     ext = _extraction()
-    ext["document"]["key_facts"][1]["date"] = "2024/03"   # bad shape: contains a slash
+    ext["document"]["key_facts"][1]["date"] = "around 2024/03"   # unreadable, contains a slash
     ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
     ext_path.write_text(json.dumps(ext), encoding="utf-8")
 
@@ -582,8 +512,10 @@ def test_postflight_run_drops_malformed_date_before_timeline_write(tmp_path, cap
     ndjson_files = list(timeline_dir.glob("*.ndjson")) if timeline_dir.exists() else []
     assert not any("2024" in f.name for f in ndjson_files)   # no file written for the bad date
 
-    err = capsys.readouterr().err
-    assert "Warning" in err and "2024/03" in err
+    fact = _staged(vault, "sha777aaa")["document"]["key_facts"][1]
+    assert fact["date"] == "" and fact["date_text"] == "around 2024/03"
+    assert fact["date_pending"] == "unresolved"
+    assert "2024/03" not in capsys.readouterr().err   # reported once, by finalize, not here
 
 
 def test_postflight_does_not_write_morgue_and_leaves_queue_file_in_place(tmp_path):
@@ -870,3 +802,63 @@ def test_postflight_does_not_flag_inferred_figure(tmp_path, capsys):
 
     err = capsys.readouterr().err
     assert "not found on page" not in err
+
+
+# ── trimming the remaining warnings (#757) ───────────────────────────────────
+
+def test_sanitize_entity_ids_tidies_spacing_silently():
+    extraction = {"document": {"key_facts": [{"fact": "x", "entities": ["Harbour Board"]}]},
+                  "entities": [{"id": "Harbour Board", "name": "Harbour Board", "type": "Organization"}]}
+    assert _sanitize_entity_ids(extraction) == []
+    assert extraction["entities"][0]["id"] == "harbour-board"
+    assert extraction["document"]["key_facts"][0]["entities"] == ["harbour-board"]
+
+
+def test_near_miss_tags_resolve_to_the_id_the_document_defined():
+    extraction = {
+        "document": {"key_facts": [
+            {"fact": "a", "entities": ["harbour board"]},          # spacing
+            {"fact": "b", "entities": ["harbour"]},                # shorter form
+            {"fact": "c", "entities": ["harbour-board-inc"]},      # longer form
+            {"fact": "d", "entities": ["ferry"]},                  # two candidates: left alone
+            {"fact": "e", "entities": ["ghost-co"]},               # nothing near: left alone
+            {"fact": "f", "entities": ["harbour-board", "Harbour-Board"]},   # collapses to one tag
+        ]},
+        "entities": [{"id": "harbour-board", "name": "Harbour Board", "type": "Organization"},
+                     {"id": "ferry-north", "name": "Ferry North", "type": "Organization"},
+                     {"id": "ferry-south", "name": "Ferry South", "type": "Organization"}],
+    }
+    _resolve_near_miss_tags(extraction)
+    tags = [f["entities"] for f in extraction["document"]["key_facts"]]
+    assert tags == [["harbour-board"], ["harbour-board"], ["harbour-board"], ["ferry"],
+                    ["ghost-co"], ["harbour-board"]]
+    assert extraction["document"]["key_facts"][0]["extracted_entities"] == ["harbour board"]
+    warnings = explode_key_facts(extraction)
+    assert len(warnings) == 2 and "'ferry'" in warnings[0] and "'ghost-co'" in warnings[1]
+
+
+def test_single_page_text_cites_page_one():
+    """A plain-text file is one page; a sectioned one has no page markers, so the model cited
+    part numbers and every quote on a "page 3" was looked for where there was no text (#757)."""
+    extraction = {"document": {"key_facts": [{"fact": "a", "page": 3}, {"fact": "b"},
+                                             {"fact": "c", "page": 1}]}}
+    _single_page_citations(extraction, {1: "the whole text"})
+    assert [f["page"] for f in extraction["document"]["key_facts"]] == [1, 1, 1]
+    paged = {"document": {"key_facts": [{"fact": "a", "page": 3}]}}
+    _single_page_citations(paged, {1: "x", 2: "y", 3: "z"})
+    assert paged["document"]["key_facts"][0]["page"] == 3
+
+
+def test_postflight_finds_a_plain_text_quote_cited_to_a_section_number(tmp_path, capsys):
+    vault = _full_vault(tmp_path)
+    (vault / ".watchdog" / "queue" / "sha777aaa.json").write_text(json.dumps({
+        "pages": [{"page": 1, "markdown": "Opening remarks.\n\nTransfer ratio set at 65.8%. Closing."}],
+    }))
+    ext = _extraction()
+    ext["document"]["key_facts"][0].update(page=4, quote_locator="Transfer ratio set at 65.8%")
+    ext_path = vault / ".watchdog" / "tmp" / "wdg_ex_sha777aaa.json"
+    ext_path.write_text(json.dumps(ext), encoding="utf-8")
+    assert postflight_run(vault, ext_path).get("ok")
+    fact = _staged(vault, "sha777aaa")["document"]["key_facts"][0]
+    assert fact["page"] == 1 and fact.get("quote_verified") is not False
+    assert "quote_locator not found" not in capsys.readouterr().err

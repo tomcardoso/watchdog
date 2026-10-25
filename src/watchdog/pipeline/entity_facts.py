@@ -197,7 +197,8 @@ class FactIndex:
         rec = self.documents.get(sha) or {}
         page = f.get("page") if isinstance(f.get("page"), int) and not isinstance(f.get("page"), bool) else None
         return {
-            **{k: f.get(k) for k in ("fact", "basis", "date", "quote", "quote_verified",
+            **{k: f.get(k) for k in ("fact", "basis", "date", "date_end", "date_text",
+                                     "date_basis", "quote", "quote_verified",
                                      "quote_found_page", "quote_spans_pages",
                                      "figures_unverified", "figures_off_page", "passage",
                                      "passage_page", "passage_method", "passage_score",

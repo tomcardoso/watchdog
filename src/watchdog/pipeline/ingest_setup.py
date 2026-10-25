@@ -299,6 +299,20 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     return result
 
 
+def housekeeping_estimate(vault: Path, shas: list[str]) -> dict:
+    """The housekeeping passes' share of the next post-processing (D330): for each chore, the
+    prompts it would send for the staged documents `shas`, at chars/4. Returns ``{"items",
+    "calls", "est_tokens"}`` summed over the chores (the date chore, so far)."""
+    from watchdog.pipeline import dates, housekeeping
+    out = {"items": 0, "calls": 0, "est_tokens": 0}
+    for chore, items in ((dates.CHORE, dates.pending_items(vault, shas)),):
+        calls, chars = housekeeping.estimate_chars(chore, items)
+        out["items"] += len(items)
+        out["calls"] += calls
+        out["est_tokens"] += chars // 4
+    return out
+
+
 def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
                            usage_files: list[Path] | None = None) -> dict:
     """Pre-flight cost estimate for post-processing (`bark`): the staged `result_<sha>.json`/`notes_<sha>.md`
@@ -326,9 +340,15 @@ def finalize_cost_estimate(vault: Path, backend: str | None, max_runs: int = 3,
     groups = {"groups": 0, "records": 0, "calls": 0, "est_tokens": 0}
     if docs:
         from watchdog.pipeline import orchestrate, reconcile
-        groups = reconcile.group_estimate(vault, orchestrate._pending_commits(vault))
+        pending = orchestrate._pending_commits(vault)
+        groups = reconcile.group_estimate(vault, pending)
         est_tokens += groups["est_tokens"]
+        chores = housekeeping_estimate(vault, pending)
+        est_tokens += chores["est_tokens"]
+    else:
+        chores = {"items": 0, "calls": 0, "est_tokens": 0}
     result = {"docs": docs, "est_tokens": est_tokens, "same_name_groups": groups,
+              "housekeeping": chores,
               "cost_low": None, "cost_high": None, "runs_used": 0}
     if backend == "claude-agent-sdk" or not docs:
         return result

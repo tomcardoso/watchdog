@@ -353,7 +353,9 @@ def _entity_timeline(v: Path, eid: str, ent: dict, docs: dict, ents: dict) -> li
             continue
         events.append(vaultio.timeline_event(
             {"date": ev.get("date"), "event": ev["event"], "page": ev.get("page"),
-             "source_sha256": ev.get("source_sha256"), "entity_ids": [eid]}, docs, ents, index))
+             "source_sha256": ev.get("source_sha256"), "entity_ids": [eid],
+             **{k: ev[k] for k in ("date_end", "date_text", "date_basis") if ev.get(k)}},
+            docs, ents, index))
         events[-1]["entities"] = [me]
     events.sort(key=lambda e: vaultio.date_sort_key(e["date"]))
     return events

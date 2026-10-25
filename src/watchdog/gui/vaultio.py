@@ -578,12 +578,13 @@ def raw_timeline_events(vault: Path, docs: dict) -> list[dict]:
             return False
 
     committed = {sha for sha in docs if not re_extracted(sha)}
-    seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
+    seen = {(e.get("date"), e.get("date_end") or "", e.get("event"), e.get("source_sha256"))
+            for e in events}
     for rf in sorted(td.glob("*_*.ndjson")):
         for ev in _ndjson(rf):
             if ev.get("source_sha256") not in committed:
                 continue
-            key = (ev.get("date"), ev.get("event"), ev.get("source_sha256"))
+            key = (ev.get("date"), ev.get("date_end") or "", ev.get("event"), ev.get("source_sha256"))
             if key not in seen:
                 seen.add(key)
                 events.append(ev)
@@ -597,10 +598,16 @@ def timeline_event(ev: dict, docs: dict, ents: dict, index=None) -> dict:
     sha = ev.get("source_sha256") or None
     rec = docs.get(sha) if sha else None
     date = (ev.get("date") or "").strip()
+    end = (ev.get("date_end") or "").strip() if isinstance(ev.get("date_end"), str) else ""
     page = ev.get("page")
     return {
         "date": date,
         "precision": precision(date),
+        # A range's end (D330), the date as printed, and whether the model settled it.
+        "end": end if end and precision(end) else None,
+        "end_precision": precision(end) if end else None,
+        "date_text": (ev.get("date_text") or "").strip() or None,
+        "date_inferred": ev.get("date_basis") == "inferred",
         "text": ev.get("event") or "",
         "entities": [entity_ref(ents, eid) for eid in (ev.get("entity_ids") or []) if eid],
         "sha": sha,

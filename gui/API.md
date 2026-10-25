@@ -201,6 +201,9 @@ EntityDetail = EntityRow & {
 
 TimelineEvent = {
   date, precision: "day"|"month"|"year"|null, text,
+  end|null, end_precision|null,   // a range's end (D330); the event is filed under its start
+  date_text|null,                 // the date as printed, when code or the model rewrote it (D329)
+  date_inferred: bool,            // the model settled the date; show it as inferred (D330)
   entities: [{id, name, type}], sha|null, filename|null, page|null, note|null,
   disputed: bool         // the reporter disputes the fact behind the event; show the label (D285)
 }

@@ -11,7 +11,7 @@ Read all of the text you are given, every page, before deciding what to record �
 KEY FACTS — `document.key_facts` is the heart of the extraction. Capture the investigatively material facts a reporter would jot down: who, amounts, dates, identifiers, addresses, ownership, obligations, decisions, occurrences. Each fact is an OBJECT:
 - `fact`: one factual sentence, in your own words.
 - `entities`: the ids of the entities this fact is about (usually one or two — the people, companies, addresses, or cases it concerns). Omit if the fact is about no specific entity.
-- `date`: set ONLY when the fact is itself a datable occurrence (something that happened, was decided, or changed on a specific date) — this is what places it on the timeline. Omit for facts that merely mention a date or have no single date (a ratio, a balance, a structural fact).
+- `date`: set ONLY when the fact is itself a datable occurrence (something that happened, was decided, or changed on a specific date) — this is what places it on the timeline. Omit for facts that merely mention a date or have no single date (a ratio, a balance, a structural fact). An occurrence that spans a stated period ("from April to June 2024", "2019–2021") may give that period, as printed: it is placed on the timeline as a range.
 - `page`, `basis`: as below.
 - `quote_locator`: an optional short locator into the source sentence — the first several words (roughly six to twelve), copied exactly as printed, just enough to locate it on the page. Do NOT retype the whole sentence; the vault expands it from the page text itself. Include ONLY when the exact wording is itself significant or quotable (an admission, a precise figure, distinctive language). Usually omit it.
 

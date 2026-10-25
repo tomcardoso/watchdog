@@ -40,11 +40,18 @@ def _read_ndjson_lines(path: Path) -> list[str]:
     return [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def _stage_dedup_key(date: str, event: str) -> str:
+def _stage_dedup_key(date: str, event: str, end: str = "") -> str:
     """Match write_vault's dedup convention: date + full event text (not a prefix — a
     truncated key can collide on a long fact's shared opening while its divergent, material
-    part lands past the cutoff)."""
-    return f"{date}|{event.lower()}"
+    part lands past the cutoff). A range's end is part of the key (D330): two events are the same
+    only when both ends match."""
+    return f"{date}|{event.lower()}" + (f"|{end}" if end else "")
+
+
+def event_end(ev: dict) -> str:
+    """A timeline record's range end, or "" for a single date."""
+    end = ev.get("date_end")
+    return end.strip() if isinstance(end, str) else ""
 
 
 def remap_entity_ids(vault: Path, mapping: dict[str, str], sha: str | None = None) -> int:
@@ -111,8 +118,8 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
         event_text = (fact.get("fact") or "").strip()
         if not date or not event_text:
             continue
-        tags = [e for e in (fact.get("entities") or []) if e]
-        key = _stage_dedup_key(date, event_text)
+        tags = list(dict.fromkeys(e for e in (fact.get("entities") or []) if e))
+        key = _stage_dedup_key(date, event_text, event_end(fact))
         bucket = by_date.setdefault(date, {})
         if key in bucket:
             for eid in tags:
@@ -127,6 +134,10 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
                 "entity_ids": list(tags),
                 "basis": fact.get("basis", "stated"),
             }
+            # A range's end, the printed wording, and whether the model settled the date (D330).
+            for k in ("date_end", "date_text", "date_basis"):
+                if fact.get(k):
+                    bucket[key][k] = fact[k]
 
     if not by_date:
         return 0
@@ -140,6 +151,29 @@ def stage_timeline_events(vault: Path, extraction: dict) -> int:
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     return len(by_date)
+
+
+def restage_document(vault: Path, extraction: dict) -> int:
+    """Stage a document's raw timeline files again from its extraction, after its dates changed
+    before the commit (the date pass, D330): its earlier raw records are removed first, so an
+    event whose date moved is not left behind under the old one. Returns the dates written."""
+    sha = (extraction.get("document") or {}).get("sha256") or ""
+    td = _timeline_dir(vault)
+    if sha and td.exists():
+        for f in td.glob(f"*_{sha[:7]}.ndjson"):
+            keep = []
+            for line in _read_ndjson_lines(f):
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    rec = None
+                if not (isinstance(rec, dict) and rec.get("source_sha256") == sha):
+                    keep.append(line)
+            if keep:
+                f.write_text("\n".join(keep) + "\n", encoding="utf-8")
+            else:
+                f.unlink(missing_ok=True)
+    return stage_timeline_events(vault, extraction)
 
 
 def collisions(vault: Path) -> list[dict]:
@@ -218,9 +252,12 @@ def month_precision_groups(vault: Path) -> list[dict]:
         recs = []
         for line in _read_ndjson_lines(cf):
             try:
-                recs.append(json.loads(line))
+                rec = json.loads(line)
             except json.JSONDecodeError:
-                pass
+                continue
+            # A range is neither a coarse restatement of one day nor a day of one (D330).
+            if isinstance(rec, dict) and not event_end(rec):
+                recs.append(rec)
         by_month.setdefault(month, {"coarse": [], "precise": []})[bucket].extend(recs)
     return [
         {"month": m, "coarse": g["coarse"], "precise": g["precise"]}
@@ -316,10 +353,12 @@ def _render_event_line(ev: dict, docs_reg: dict, manifest: dict, index=None) -> 
     document attribution — the same shape write_vault's entity-note timeline uses,
     extended to link *every* entity a cross-document-deduped event concerns (#237). With a
     `FactIndex`, an event whose fact the reporter disputes ends in the "disputed" label."""
-    from watchdog.pipeline.write_vault import _defang, _page_link, _render_date
+    from watchdog.pipeline import dates
+    from watchdog.pipeline.write_vault import _defang, _page_link
 
-    rendered_date = _render_date(ev.get("date", ""))
+    rendered_date = dates.render_span(ev.get("date", ""), event_end(ev))
     basis_note = " *(inferred)*" if ev.get("basis") == "inferred" else ""
+    basis_note += dates.inferred_note(ev)
     if event_disputed(ev, index):
         basis_note += DISPUTED_LABEL
 
@@ -399,7 +438,7 @@ def rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
             return False
 
     committed = {sha for sha in docs_reg if not _re_extracted(sha)}
-    seen = {(e.get("date"), e.get("event"), e.get("source_sha256")) for e in events}
+    seen = {(e.get("date"), event_end(e), e.get("event"), e.get("source_sha256")) for e in events}
     raw_files = sorted(f for f in td.glob("*_*.ndjson")) if td.exists() else []
     for rf in raw_files:
         for line in _read_ndjson_lines(rf):
@@ -409,7 +448,7 @@ def rebuild_timeline(vault: Path, quiet: bool = False) -> tuple[int, int]:
                 continue
             if ev.get("source_sha256") not in committed:
                 continue
-            key = (ev.get("date"), ev.get("event"), ev.get("source_sha256"))
+            key = (ev.get("date"), event_end(ev), ev.get("event"), ev.get("source_sha256"))
             if key not in seen:
                 seen.add(key)
                 events.append(ev)
