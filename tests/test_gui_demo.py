@@ -130,6 +130,22 @@ def test_unprofiled_targets_stay_leads_after_the_target_pass(demo_vault):
     assert not any(r.get("target_basis") for e in entities.values() for r in e.get("roles") or [])
 
 
+def test_request_sources_are_grouped_for_review(demo_vault):
+    """The sample names the City's procurement office in two ways; the canned model groups them
+    (D334) and Review shows one group, marked as the model's, while each request keeps its wording."""
+    from watchdog.pipeline import request_sources, requests
+    vault, _, _ = demo_vault
+    assert "request-sources" in _usage_tasks(vault)
+    data = request_sources.load(vault)
+    (group,) = [g for g in data["groups"] if g["status"] == "active"]
+    assert group["label"] == "City Procurement and Real Property" and len(group["keys"]) == 2
+    rows, groups = requests.worklist(requests.open_requests(vault), request_sources.mapping(data))
+    shown = next(g for g in groups if g["key"] == group["id"])
+    assert shown["grouped_by"] == "model" and shown["count"] >= 2
+    assert any(r["likely_source"].startswith("Procurement and Real Property Division")
+               for r in rows if r["source_key"] == group["id"])
+
+
 def test_pipeline_state_left_for_the_app(demo_vault):
     vault, home, stdout = demo_vault
     assert sorted(p.name for p in (vault / "incoming").iterdir()) == [

@@ -496,7 +496,17 @@ registry, keyed for idempotent replay (D67).
   from either, never both (`triage.summary_line`). Document
   requests are content-keyed in `requests.json`; a dedup call (at most 200 per call) folds
   paraphrases, and `requests.md` is re-rendered (D111, D159). Review groups them by the holder their
-  free-text `likely_source` names (`requests.source_group`, deterministic, D328).
+  free-text `likely_source` names (`requests.source_group`, deterministic, D328), then by the
+  mapping in `registry/request_sources.json` (D334): after the dedup, when an open request's source
+  key was never `evaluated`, the request-source chore (`pipeline/request_sources.py`, task
+  `request-sources`, the request-dedup model, ≤150 sources per call) is shown each source as Review
+  would group it now (a key alone, or an active group under its label), new ones first, and answers
+  a short label per item; `validate` takes one plain line of at most 80 characters, and `apply`
+  makes a group of the items whose labels fold to the same text, dropping one that joins two keys of
+  a reporter-split group and superseding an active group it takes in. `worklist(open, mapping)`
+  files a mapped key under the group's `src:` id and label, marked `grouped_by: "model"`; a request's
+  own `likely_source` is never rewritten, and `requests.md` is unchanged. `split` (the app's
+  `vault.requestSourceSplit`, I10) marks a group `split` for good.
 - A session's `contradiction_add` tool promotes a candidate contradiction found by
   `/watchdog-surface`, once the journalist confirms it, through the same deterministic writer (D82).
 
@@ -573,6 +583,7 @@ queries/ wiki/               session-written findings and threads
     verification.json        the reporter's marks on facts (D271); source of truth for verification.md
     merges.json              the merge log and "possible same" candidates (D279); source of merges.md
     relationships.json       relationship-wording groups, split marks and compared wordings (D291)
+    request_sources.json     groups of request sources named in several ways, split marks and keys already compared (D334); Review's grouping reads it
     hidden.json              entities the reporter removed from the investigation, with who, when, name and type (D326); a view overlay
     notes-stale.json         entities (and `doc:<sha>` document notes, D285) whose notes a mark could not refresh, rendered by the next commit flush (D280)
     processing.log           per-document START/OK/WARN/FAILED lines
@@ -840,6 +851,7 @@ same content to the user's own model server; every other backend sends it to tha
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
 | request-dedup | when a run adds a request (≤200 per call) | open request type, wording, likely source | everything else |
+| request-sources | when an open request's likely source was never compared (≤150 per call) | each source's name as Review groups it, up to three wordings, its number of requests | the requests' text; everything else |
 | briefing | once per run | brief, compact per-document results with citable fact lines, alerts, contradiction flags, scratchpads | raw text; full notes |
 
 ---

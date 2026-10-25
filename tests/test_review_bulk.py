@@ -209,7 +209,8 @@ def test_the_requests_rpc_carries_the_groups(rich_vault):
     r = call("vault.requests", vault=str(rich_vault))
     (req,) = r["open"]
     assert req["cite_count"] == 1 and req["source_key"] == "registry"
-    assert r["groups"] == [{"key": "registry", "label": "Registry", "count": 1, "documents": 1}]
+    assert r["groups"] == [{"key": "registry", "label": "Registry", "count": 1, "documents": 1,
+                            "grouped_by": None, "wordings": []}]
 
 
 def test_requests_are_handled_in_bulk_through_the_one_store(rich_vault):

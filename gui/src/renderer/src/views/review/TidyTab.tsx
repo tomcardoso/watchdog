@@ -16,7 +16,7 @@ import { useOpenWikilink } from '@renderer/components/Markdown'
 import { useEngineGate, ENGINE_WAIT_OTHER } from '@renderer/lib/engine'
 import { fmtDate, fmtNum, plural } from '@renderer/lib/format'
 import { startJob, waitForJob } from '@renderer/lib/jobs'
-import { errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
+import { call, errorMessage, invalidate, useRpc } from '@renderer/lib/rpc'
 import { navigate, toast, useVault } from '@renderer/lib/store'
 import { MergeLogSection, SamePairView, TierBadge } from './MergesTab'
 import MergeModal from '../entities/MergeModal'
@@ -339,6 +339,17 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
 
   const allTicked = live.length > 0 && tickedLive.length === live.length
   const cols = kind === 'merges' ? 5 : kind === 'duplicates' ? 4 : 4
+  // A grouping of likely sources an AI model made (D334), shown apart again for good.
+  const splitGroup = async (g: RequestGroup) => {
+    if (!vault) return
+    try {
+      await call('vault.requestSourceSplit', { vault, group: g.key })
+      toast({ kind: 'success', title: 'Sources shown apart', body: 'Later runs will not group them again.' })
+      invalidate('vault.')
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not show them apart', body: errorMessage(e) })
+    }
+  }
   const tickGroup = (key: string) => {
     const rids = live.filter((i) => i.request?.source_key === key).map((i) => i.rid)
     const all = rids.every((r) => ticked.has(r))
@@ -471,6 +482,17 @@ export function TidyTab({ kind, items, triage, loading, error, retry, focusReque
                 · {plural(list.length, 'request')}
                 {g ? ` · cited by ${plural(g.documents, 'document')}` : ''}
               </span>
+              {g?.grouped_by === 'model' && (
+                <>
+                  <span className="faint" data-tip={`An AI model grouped these ways of naming one place: ${(g.wordings ?? []).map((w) => `“${w}”`).join(', ')}`}>
+                    {' '}
+                    · grouped by AI
+                  </span>{' '}
+                  <Button size="sm" variant="ghost" onClick={() => splitGroup(g)}>
+                    Show apart
+                  </Button>
+                </>
+              )}
             </td>
           </tr>
           {list.map(row)}

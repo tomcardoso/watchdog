@@ -21,7 +21,7 @@ STAGE = {
     "reconcile": "finalizer", "entity-synthesis": "finalizer", "timeline-dedup": "finalizer",
     "timeline-precision": "finalizer", "briefing": "finalizer", "request-dedup": "finalizer",
     "relationship-labels": "finalizer", "date-resolve": "finalizer", "role-targets": "finalizer",
-    "fact-tags": "finalizer",
+    "fact-tags": "finalizer", "request-sources": "finalizer",
     # A conversation's turns (D296), recorded per session, never inside a processing run.
     "ask": "ask", "research": "research",
 }

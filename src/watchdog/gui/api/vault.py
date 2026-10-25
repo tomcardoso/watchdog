@@ -533,6 +533,25 @@ def relationship_split(vault: str, group: str) -> dict:
             "at": entry.get("split_at")}
 
 
+@method("vault.requestSourceSplit")
+def request_source_split(vault: str, group: str) -> dict:
+    """Show a grouping of request sources apart again (D334), through `request_sources.split`, the
+    library function that records it (an app-only operation, I10). Later runs never regroup them."""
+    from watchdog.pipeline import request_sources
+
+    v = require_vault(vault)
+    if not isinstance(group, str) or not group.startswith("src:"):
+        raise RpcError("That is not a grouping of request sources.", code="bad_params")
+    try:
+        entry = request_sources.split(v, group)
+    except LookupError:
+        raise RpcError("That grouping is no longer in effect.", code="not_found")
+    except ValueError as e:
+        raise RpcError(str(e), code="log_too_new")
+    return {"group": entry["id"], "status": entry["status"], "by": entry.get("split_by"),
+            "at": entry.get("split_at")}
+
+
 @method("vault.timeline")
 def timeline(vault: str) -> dict:
     return {"events": vaultio.timeline_events(require_vault(vault))}
@@ -1011,11 +1030,13 @@ def write_file(vault: str, path: str, text: str) -> dict:
 def requests_(vault: str) -> dict:
     """The open document requests, most-cited first, each with its source group's key, and the
     groups (`requests.worklist`, D328)."""
+    from watchdog.pipeline import request_sources
     from watchdog.pipeline import requests as _requests
     from watchdog.pipeline import resolutions
 
     v = require_vault(vault)
-    rows, groups = _requests.worklist(_requests.open_requests(v))
+    rows, groups = _requests.worklist(_requests.open_requests(v),
+                                      request_sources.mapping(request_sources.load(v)))
     open_ = [{
         "rid": r["rid"],
         "type": r.get("type") or None,

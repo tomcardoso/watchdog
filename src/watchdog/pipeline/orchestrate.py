@@ -45,7 +45,7 @@ _ADMISSION_MAX_WAIT_S = 300.0
 # `ingest_setup.finalize_cost_estimate` uses this to find finalize-only usage files.
 FINALIZE_TASKS = {"reconcile", "entity-synthesis", "timeline-dedup", "timeline-precision", "briefing",
                   "relationship-labels", "date-resolve", "role-targets",
-                  "fact-tags"}
+                  "fact-tags", "request-sources"}
 
 
 @dataclass
@@ -2442,6 +2442,41 @@ async def _fact_tag_pass(vault: Path, shas: list[str], finalizer_overrides: dict
     return out
 
 
+async def _request_source_pass(vault: Path, out: dict, model: str, backend: str | None,
+                               effort: str | None) -> None:
+    """Group the open requests' likely sources across wordings (D334, `request_sources.CHORE`, on
+    the request-dedup model), recording a source → group mapping beside the ledger. No call when
+    every open source was put to the model before; a failed call leaves its sources ungrouped and
+    unevaluated, for the next post-processing."""
+    from watchdog.pipeline import request_sources
+    try:
+        items = request_sources.items(requests.open_requests(vault), request_sources.load(vault))
+    except OSError as e:
+        _log(vault, f"WARN request sources not grouped — {e}")
+        return
+    if not items:
+        return
+    n = sum(1 for it in items if it["new"])
+    _say(f"→  grouping {n} new likely source{'s' if n != 1 else ''} of document requests…")
+    res = await _run_chore(vault, request_sources.CHORE, items, model=model, backend=backend,
+                           effort=effort, what="request sources", stage="request-sources")
+    if res is None:
+        return
+    try:
+        applied = request_sources.apply(vault, items, res, model=res.model or model, run=_run.run_id)
+    except OSError as e:
+        _log(vault, f"WARN request sources not saved — {e}")
+        return
+    if applied["dropped"]:
+        _log(vault, f"WARN request sources: {applied['dropped']} proposed group(s) joined sources "
+                    "you showed apart and were not used")
+    if applied["grouped"]:
+        g = len(applied["grouped"])
+        out["request_source_groups"] = g
+        _say(f"   grouped the likely sources of document requests into {g} "
+             f"place{'s' if g != 1 else ''} named in several ways")
+
+
 async def _role_target_pass(vault: Path, shas: list[str], finalizer_overrides: dict | None,
                             post_model: str, post_backend: str | None, post_effort: str | None) -> dict:
     """Relationship targets named by an id no entity has (D332), on the staged extractions after
@@ -2845,6 +2880,11 @@ async def _post_ingest(vault: Path, results: list, brief: str | None, post_model
             out["requests_folded"] = n_folded
             _say(f"   consolidated {n_folded} duplicate document request"
                  f"{'s' if n_folded != 1 else ''}")
+
+    # 5c. Where requests can be got, grouped across wordings (D334): only when an open request's
+    # source has never been put to the model. Its mapping is for Review; requests.md is unchanged.
+    if not out.get("spending_limit"):
+        await _request_source_pass(vault, out, request_dedup_model, request_dedup_backend, post_effort)
 
     # 6. Document requests (deterministic Python from here — #365). Re-render requests.md from
     # the ledger write_vault populated per-document at extraction time and 5b's dedup pass just
