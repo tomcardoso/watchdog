@@ -26,7 +26,7 @@ function useDownload() {
     try {
       const vault = useApp.getState().project?.path ?? null
       const job = await startJob('research-fetch', {}, `Download ${plural(n, 'source')}`, 'research-fetch', vault)
-      toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked, saved with a provenance note and placed in incoming.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
+      toast({ kind: 'info', title: 'Downloading sources', body: 'Each is checked and saved with a note of where it came from, ready to add.', action: { label: 'Show output', run: () => navigate({ view: 'activity', job: job.id }) } })
       void waitForJob(job.id).then((j) => {
         if (j.state !== 'done') return
         // The download may finish after the reporter has opened another investigation: say
@@ -34,7 +34,7 @@ function useDownload() {
         const elsewhere = isElsewhere(vault) ? investigationName(vault) : null
         toast({
           kind: 'success',
-          title: elsewhere ? `Sources are in ${elsewhere}’s incoming folder` : 'Sources are in incoming',
+          title: elsewhere ? `Sources downloaded to ${elsewhere}` : 'Sources downloaded',
           body: elsewhere ? `Switch to ${elsewhere} to add them.` : 'Add them to read and extract them.',
           action: {
             label: elsewhere ? `Switch to ${elsewhere} and add them` : 'Add them',
@@ -68,7 +68,7 @@ function Strip({ api }: { api: WorkspaceApi }) {
         <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>Nothing is downloaded until you say so.</span>
         <span className="spacer" />
         <Button size="sm" variant="primary" icon={Download} loading={dl.busy} onClick={() => void dl.go(n)}>
-          Download {n} {n === 1 ? 'source' : 'sources'} into incoming
+          Download {plural(n, 'source')}
         </Button>
       </div>
       {open && (
@@ -99,7 +99,7 @@ function Empty({ api }: { api: WorkspaceApi }) {
     <div className="chat-empty">
       <h2>Research the open questions on the web</h2>
       <p>
-        Seeded by your vault, Claude does bounded web research and queues the sources it finds. When you are ready, Watchdog downloads them into <span className="mono">incoming/</span>, so findings go through the same read-and-extract steps as any document. Claude never writes vault notes directly. In the session it will:
+        Seeded by your vault, Claude does bounded web research and queues the sources it finds. When you are ready, Watchdog downloads them, and you add them like any other document, so findings go through the same reading and extraction. Claude never writes vault notes directly. In the session it will:
       </p>
       <ol className="chat-steps">
         {STEPS.map((s, i) => (

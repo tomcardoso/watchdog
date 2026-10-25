@@ -383,7 +383,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
     }
   }
   const waiting = pf ? [
-    pf.incoming > 0 && `${plural(pf.incoming, 'file')} in incoming`,
+    pf.incoming > 0 && `${plural(pf.incoming, 'file')} waiting to be added`,
     pf.queued - pf.staged > 0 && `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`,
     pf.staged > 0 && `${plural(pf.staged, 'document')} extracted, waiting to be finished`,
     pf.pending_finalization && 'a batch waiting to be finished'

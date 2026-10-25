@@ -114,7 +114,7 @@ export function FetchLinksDialog() {
       const targets = file ? [file] : urls
       await startJob('fetch-links', { targets }, file ? 'Downloading links' : `Downloading ${plural(urls.length, 'link')}`, 'fetch')
       setOpen(false)
-      toast({ kind: 'info', title: 'Downloading links', body: 'Progress is in the corner. Downloaded files wait in incoming until you add them.' })
+      toast({ kind: 'info', title: 'Downloading links', body: 'Progress is in the corner. Downloaded pages wait until you add them.' })
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -127,7 +127,7 @@ export function FetchLinksDialog() {
       open={open}
       onClose={() => setOpen(false)}
       title="Fetch web links"
-      sub="Each link is downloaded into incoming with a small file recording where it came from and when. Downloaded pages still need to be added."
+      sub="Each link is downloaded with a small file recording where it came from and when. Downloaded pages still need to be added."
       footer={
         <>
           <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>

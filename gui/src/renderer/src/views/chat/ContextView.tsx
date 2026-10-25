@@ -77,11 +77,11 @@ function Brief({ api }: { api: WorkspaceApi }) {
   )
 }
 
-function Background() {
+/** Copy files the reporter picks into context/. Shared by the panel and the strip above a
+ * conversation, so the interview can ask for background and the reporter can add it there. */
+function useAddBackground() {
   const project = useApp((s) => s.project!)
-  const files = useRpc('vault.contextFiles', { vault: project.path })
   const [busy, setBusy] = useState(false)
-  const list = files.data ?? []
   const add = async () => {
     const picked = await window.watchdog.dialog.openFiles({ title: 'Add background files', multi: true })
     if (!picked.length) return
@@ -97,6 +97,33 @@ function Background() {
       setBusy(false)
     }
   }
+  return { busy, add }
+}
+
+/** Above a context conversation: how many background files there are, and the way to add more. */
+function BackgroundStrip() {
+  const vault = useApp((s) => s.project!.path)
+  const files = useRpc('vault.contextFiles', { vault })
+  const { busy, add } = useAddBackground()
+  const n = files.data?.length ?? 0
+  return (
+    <div className="chat-strip">
+      <div className="row" style={{ gap: 10 }}>
+        <FileText style={{ width: 16, height: 16, color: 'var(--text-3)' }} />
+        <span style={{ fontWeight: 600 }}>{n ? `${plural(n, 'background file')}` : 'No background files yet'}</span>
+        <span className="faint" style={{ fontSize: 'var(--fs-sm)' }}>Claude reads them when it builds the brief.</span>
+        <span className="spacer" />
+        <Button size="sm" icon={FilePlus2} loading={busy} onClick={() => void add()}>Add background files…</Button>
+      </div>
+    </div>
+  )
+}
+
+function Background() {
+  const project = useApp((s) => s.project!)
+  const files = useRpc('vault.contextFiles', { vault: project.path })
+  const { busy, add } = useAddBackground()
+  const list = files.data ?? []
   return (
     <section className="ctx-section">
       <div className="ctx-section-head">
@@ -154,6 +181,7 @@ export default function ContextView() {
       session={r.session}
       autoStart={r.start ? 'context' : undefined}
       empty={(api) => <ContextHome api={api} />}
+      strip={(api) => (api.live || r.session ? <BackgroundStrip /> : null)}
     />
   )
 }

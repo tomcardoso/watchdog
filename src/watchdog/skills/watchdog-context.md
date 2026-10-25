@@ -38,7 +38,7 @@ If the response is anything other than an explicit confirmation, stop immediatel
 
 List the files in `context/` with the Glob tool (pattern `context/**/*`), ignoring hidden files.
 
-If the folder is empty or missing, skip to step 3 — you'll work from the interview alone.
+If the folder is empty or missing, ask for background material before interviewing, in plain words: published stories (PDFs or saved web pages), the reporter's own notes, screenshots, earlier reporting — anything that describes what they are looking into. Say they can add files with **Add background files…** on this Context screen, above the conversation, and tell you when they are in; then list the folder again. They can't attach files in the chat itself. If they have nothing to add, or would rather not, go to step 3 and work from the interview alone. When the folder already holds files, ask once, after reading them, whether there is anything else worth adding.
 
 Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never add these files as documents: pre-processing moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
 
