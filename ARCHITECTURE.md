@@ -25,7 +25,7 @@ vault/registry layout or an invariant updates this file in the same change (see
   worker process; its single-shot, schema-bound calls go through a provider-agnostic `model_client`, so each stage can
   run on Claude, OpenAI, DeepSeek, Gemini, OpenRouter or a local model (D37, D94, D139). The
   investigation layer (`/watchdog-query`, `-surface`, `-wiki`, `-entity`, `-context`, `-health`,
-  `-research`) runs inside Claude Code as interactive sessions and is not portable: Claude Code is
+  `-request`, `-research`) runs inside Claude Code as interactive sessions and is not portable: Claude Code is
   a hard requirement. "Make it backend-portable" applies to pipeline steps only (D18).
 
 ---
@@ -871,7 +871,7 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 - **Record skills (D21).** Global: the package's `skills/records/` plus `~/.watchdog/skills/records/`
   (user skills override by name). Read directly, never copied into a vault.
 - **Claude Code commands.** `/watchdog-context`, `-entity`, `-query`, `-surface`, `-wiki`, `-health`,
-  `-research`, copied into each vault by `projects-new` and `refresh-claude-setup`
+  `-request`, `-research`, copied into each vault by `projects-new` and `refresh-claude-setup`
   (`vault.install_commands`). `/watchdog-query` can call the
   `search` tool as a semantic lane (D44, D299).
 

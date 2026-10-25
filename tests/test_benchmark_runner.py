@@ -2441,6 +2441,30 @@ def test_qualitative_aggregate_reproduces_the_committed_pass(tmp_path):
         assert f"{m['hit']:>7}/{m['total']:<7}" in out, f"{arm} must_not_miss drifted:\n{out}"
     # Every keyed item was graded in this pass, so nothing should be reported as an ungraded miss.
     assert "had no judgment" not in out
+    assert "(expect 420)" in out and "WARNING: judgment count" not in out
+
+
+def test_qualitative_aggregate_expected_count_follows_the_pass(tmp_path):
+    """The sanity line's expected count is keyed items x packaged arms for this pass, not a
+    literal from one past corpus, and an item judged for fewer arms than were packaged warns."""
+    qual = Path(__file__).resolve().parents[1] / "benchmarks" / "qualitative"
+    keys_v1 = Path(__file__).resolve().parents[1] / "benchmarks" / "keys" / "v1"
+    work = tmp_path / "pass"
+    work.mkdir()
+    for f in qual.glob("*.json"):
+        shutil.copy(f, work / f.name)
+    jpath = work / "judgment-pension-order-2021-03-17.json"
+    judgment = json.loads(jpath.read_text())
+    per_label = next(iter(judgment["judgments"].values()))
+    per_label.pop(next(iter(per_label)))
+    jpath.write_text(json.dumps(judgment))
+    proc = subprocess.run([sys.executable, str(qual / "aggregate.py"), str(work),
+                           f"--keys={keys_v1}"],
+                          capture_output=True, text=True, cwd=qual.parents[1])
+    assert proc.returncode == 0, proc.stderr
+    assert "Total item-arm judgments: 419 (expect 420)" in proc.stdout
+    assert "WARNING: judgment count" in proc.stdout
+    assert "sonnet-high on" not in proc.stdout
 
 
 def test_quote_text_accepts_both_key_shapes():

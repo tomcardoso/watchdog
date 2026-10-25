@@ -20,6 +20,7 @@ export const SLASH: SlashCommand[] = [
   { name: '/watchdog-wiki', hint: '', takesInput: false, text: 'Create or update investigation thread pages in wiki/.' },
   { name: '/watchdog-health', hint: '', takesInput: false, text: 'Check vault integrity: orphaned notes, broken links, registry mismatches, open contradictions.' },
   { name: '/watchdog-context', hint: '', takesInput: false, text: 'Seed context.md from the background files in context/.' },
+  { name: '/watchdog-request', hint: '[request]', takesInput: true, text: 'Draft a records request for a document the investigation needs, saved to queries/.' },
   { name: '/watchdog-research', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources for download into incoming/.' }
 ]
 
