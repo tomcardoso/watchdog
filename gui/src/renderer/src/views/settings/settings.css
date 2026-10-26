@@ -19,6 +19,7 @@
 .set-field-short { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; margin-top: 2px; }
 .set-help { margin-top: 8px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-sm); line-height: 1.55; color: var(--text-2); white-space: pre-wrap; }
 .set-field-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.set-field-control > .segmented { align-self: flex-start; }   /* its own width, not the column's */
 .set-input-row { display: flex; gap: 8px; align-items: center; }
 .set-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-3); }
 .set-reset { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; color: var(--accent-text); font-size: var(--fs-xs); font-weight: 560; cursor: pointer; }
