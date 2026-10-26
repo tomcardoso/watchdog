@@ -3001,3 +3001,9 @@ Ask Claude and Research now keep their own Anthropic key (`credentials.json` `se
 
 Under Keys, a key's badges say what it pays for (adding documents, Ask Claude, the investigations that chose it, or not used) instead of "Default", and its menu no longer makes it the default: Paid with is the one place that choice is made. The first key added for a provider still pays until another is chosen there.
 
+
+### D349 — Reports: the reading list is named for what it holds; leads and alerts stay in Review
+
+The Briefings screen is now Reports, since most of what it lists (research memos, saved answers, thread pages) is not a briefing; the route and the `briefings/` folder keep their names. Lead sweeps and watch-list alerts are no longer listed there: they are worked through in Review, and their files call themselves read-only summaries. Their files are still written, and a link still opens one in the reader. Tradeoff: there is no longer a list of past days' sweeps and alerts in the app, only Review's current state.
+
+The list names an item by what it is about rather than by its date, which the month heading and date line already show: a research memo by a new `title` in its header (the research skill writes it), falling back to its `mission`; a briefing by the counts it records (`files_ingested`, `new_entities`). No migration (I19): both fallbacks read fields every existing memo and briefing already has, and nothing stored changes meaning.
