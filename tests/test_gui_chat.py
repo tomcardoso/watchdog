@@ -1,6 +1,7 @@
 """Chat sessions (`watchdog.gui.chat`) with the Agent SDK client faked: no network, no Claude Code."""
 
 import time
+from pathlib import Path
 
 import pytest
 from claude_agent_sdk import (AssistantMessage, PermissionResultAllow, PermissionResultDeny,
@@ -111,14 +112,41 @@ def test_ask_builds_the_cli_prompt_and_streams(env):
     assert api.get(sid)["title"] == "who owns Acme?"
 
 
-def test_ask_without_skill_or_question(env):
+def test_ask_without_skill_or_question(env, monkeypatch):
     vault, events = env
+    monkeypatch.setattr(chat, "refresh_setup", lambda v: None)       # e.g. no folder access
     (vault / ".claude" / "commands" / "watchdog-query.md").unlink()
     api.start(str(vault), "ask", prompt="Is it real?")
     _wait_state(events)
     assert FakeClient.instances[0].prompts == ["Is it real?"]
     api.start(str(vault), "ask")                                          # no question: nothing sent
     assert len(FakeClient.instances) == 1
+
+
+def test_a_conversation_starts_on_this_versions_claude_setup(env):
+    """D354: starting or resuming a conversation brings `.claude/` up to this version first, so a
+    release's commands and instructions reach an existing investigation unasked."""
+    vault, events = env
+    commands = vault / ".claude" / "commands"
+    (commands / "watchdog-retired.md").write_text("old")
+    (commands / "my-own.md").write_text("mine")
+    api.start(str(vault), "ask", prompt="x")
+    _wait_state(events)
+    shipped = (Path(chat.__file__).parent.parent / "skills" / "watchdog-query.md").read_text()
+    assert (commands / "watchdog-query.md").read_text() == shipped
+    assert not (commands / "watchdog-retired.md").exists() and (commands / "my-own.md").read_text() == "mine"
+    assert "<!-- watchdog:begin" in (vault / ".claude" / "CLAUDE.md").read_text()
+    assert (vault / ".claude" / "settings.json").exists()
+
+
+def test_a_failed_refresh_never_stops_the_conversation(env, monkeypatch):
+    vault, events = env
+    def boom(*a, **k):
+        raise OSError("read-only folder")
+    monkeypatch.setattr("watchdog.vault.refresh_claude_setup", boom)
+    api.start(str(vault), "ask", prompt="x")
+    _wait_state(events)
+    assert FakeClient.instances[0].prompts == ["/watchdog-query x"]
 
 
 def test_research_and_context_prompts(env):

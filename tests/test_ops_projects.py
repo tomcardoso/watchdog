@@ -890,6 +890,19 @@ def test_refresh_leaves_an_up_to_date_claude_md_alone(configured):
     assert path.read_text() == before
 
 
+def test_refresh_writes_only_what_changed(configured):
+    from watchdog.vault import refresh_claude_setup
+    vault, path = _vault_claude_md(configured)
+    assert refresh_claude_setup(vault, "City Hall Probe") == []
+    (vault / ".claude" / "commands" / "watchdog-query.md").write_text("edited")
+    (vault / ".claude" / "commands" / "watchdog-gone.md").write_text("retired")
+    (vault / ".claude" / "commands" / "my-checklist.md").write_text("mine")
+    assert refresh_claude_setup(vault, "City Hall Probe") == ["commands/watchdog-query.md",
+                                                              "commands/watchdog-gone.md"]
+    assert (vault / ".claude" / "commands" / "my-checklist.md").read_text() == "mine"
+    assert not (vault / ".claude" / "commands" / "watchdog-gone.md").exists()
+
+
 def test_refresh_writes_a_missing_claude_md(configured):
     from watchdog.ops.maintenance import refresh_claude_setup
     vault, path = _vault_claude_md(configured)

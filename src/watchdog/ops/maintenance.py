@@ -8,7 +8,6 @@ modules.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from watchdog.ops import op, require_vault
@@ -92,12 +91,8 @@ def refresh_claude_setup(rep, vault: Path) -> dict:
     """Bring the investigation's Claude setup up to this version of Watchdog: the shortcut
     commands, `.claude/settings.json` (written whole from the current rules) and Watchdog's
     section of `.claude/CLAUDE.md`. The reporter's notes below the end marker are kept."""
-    from watchdog import projects
-    from watchdog.vault import claude_settings, install_commands, write_claude_md
+    from watchdog import projects, vault as vault_setup
     require_vault(vault)
-    claude = vault / ".claude"
-    install_commands(claude / "commands")
-    (claude / "settings.json").write_text(json.dumps(claude_settings(), indent=2) + "\n")
-    write_claude_md(vault, projects.name_for(vault))
+    vault_setup.refresh_claude_setup(vault, projects.name_for(vault))
     rep.log("Updated the shortcuts, Claude's instructions and Claude's settings for this investigation.")
     return {"updated": True}
