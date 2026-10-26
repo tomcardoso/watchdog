@@ -62,6 +62,7 @@
 .act-run:hover { background: var(--hover); }
 .act-run.on { background: var(--accent-soft); }
 .act-run-nums { display: flex; flex-direction: column; }
+.act-run > .badge { justify-self: end; }
 .act-bar { height: 12px; border-radius: var(--r-full); background: var(--surface-sunken); overflow: hidden; }
 .act-bar-fill { height: 100%; display: flex; border-radius: var(--r-full); overflow: hidden; }
 .act-bar-fill span { min-width: 2px; }
