@@ -223,11 +223,11 @@ def test_status_unconfigured(wdg_home):
     s = call("auth.status")
     assert s["claude"]["mode"] is None and s["claude"]["logged_in"] is False
     assert "isn't set up" in s["claude"]["reason"]
-    assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "writing", "housekeeping"]
+    assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "housekeeping", "writing"]
     assert s["stages"][1] == {"stage": "extractor", "config_key": "extractor_model", "value": "haiku",
                               "set": False, "provider": "anthropic", "ready": False, "paid_with": None,
                               "billing": None}
-    assert s["stages"][2]["config_key"] == "finalizer_writing_model" and s["stages"][2]["value"] == "haiku"
+    assert s["stages"][2]["config_key"] == "finalizer_housekeeping_model" and s["stages"][2]["value"] == "haiku"
     assert s["keys"] == []
     assert s["base_urls"] == [{"provider": "openrouter", "url": "https://openrouter.ai/api/v1"}]   # its default
     assert {p["provider"] for p in s["providers"]} == {"anthropic", "openai", "deepseek", "gemini",

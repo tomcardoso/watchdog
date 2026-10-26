@@ -203,8 +203,8 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
 const STEP_NAMES: Record<string, [string, string]> = {
   classifier: ['Classify', 'What kind of record each document is'],
   extractor: ['Extract', 'Reads each document and lists the facts'],
-  writing: ['Finish: writing', 'Entity summaries and the briefing'],
-  housekeeping: ['Finish: housekeeping', 'Matching, contradictions, the timeline, dates']
+  housekeeping: ['Finish: housekeeping', 'Matching, contradictions, the timeline, dates'],
+  writing: ['Finish: writing', 'Entity summaries and the briefing']
 }
 
 // Each step's model, chosen here (D347): the picker writes the step's own setting, and "Use the

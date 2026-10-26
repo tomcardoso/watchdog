@@ -763,11 +763,11 @@ INGEST_STAGES = (("classifier_model", defaults.CLASSIFIER_MODEL),
 
 # The steps Settings → Models & keys lists, each with the setting its model picker writes and the
 # settings it falls back to when that is unset (D339, D347): the finishing step shows as its two
-# kinds of work, which both fall back to `finalizer_model`.
+# kinds of work, in the order a run does them, which both fall back to `finalizer_model`.
 STEP_ROWS = (("classifier", "classifier_model", (), defaults.CLASSIFIER_MODEL),
              ("extractor", "extractor_model", (), defaults.EXTRACTOR_MODEL),
-             ("writing", "finalizer_writing_model", ("finalizer_model",), defaults.FINALIZER_MODEL),
-             ("housekeeping", "finalizer_housekeeping_model", ("finalizer_model",), defaults.FINALIZER_MODEL))
+             ("housekeeping", "finalizer_housekeeping_model", ("finalizer_model",), defaults.FINALIZER_MODEL),
+             ("writing", "finalizer_writing_model", ("finalizer_model",), defaults.FINALIZER_MODEL))
 
 
 def step_value(cfg: dict, key: str, fallbacks=(), default: str = "") -> str:

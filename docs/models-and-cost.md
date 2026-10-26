@@ -26,7 +26,7 @@ You can also put both on one or the other. A subscription alone suits trying Wat
 
 ## Choosing models
 
-Each step has its own model, chosen in the **Models** table at the top of **Settings → Models & keys**: classifying, extracting, and the finishing step's writing (entity summaries, the briefing) and housekeeping (matching, contradictions, the timeline, dates). All of them default to Claude Haiku 5.5, Claude's fast, inexpensive model, with extraction set to think hard (the `high` effort level). In Watchdog's own testing, that combination found the most of any setting measured (see [How the defaults were chosen](#how-the-defaults-were-chosen)).
+Each step has its own model, chosen in the **Models** table at the top of **Settings → Models & keys**: classifying, extracting, and the finishing step's housekeeping (matching, contradictions, the timeline, dates) and writing (entity summaries, the briefing). All of them default to Claude Haiku 5.5, Claude's fast, inexpensive model, with extraction set to think hard (the `high` effort level). In Watchdog's own testing, that combination found the most of any setting measured (see [How the defaults were chosen](#how-the-defaults-were-chosen)).
 
 **Effort** sets how much a model thinks before it answers. Thinking is billed as output, so extractor effort is the biggest cost lever after the model itself. Lower it to `medium` or `low` to cut cost, at some loss of what is found; `xhigh` and `max` go further for the hardest documents, on the models that support them.
 
@@ -35,7 +35,7 @@ The main alternatives for extraction:
 - **Claude Sonnet 5.5** (`sonnet`). Several times faster per page than Haiku at `high`, at about five times the cost, and it found less in testing. The choice when speed matters more than recall.
 - **OpenAI's GPT-6 Luna** (`openai:gpt-6-luna`) at `medium` effort. About a fifth of Haiku's cost per page, and it found less than Haiku at `high`. It needs an OpenAI key.
 
-The finishing steps run only a few times per batch, however many documents you add, so raising their model costs far less than raising the extractor's. If the briefing reads thin, or duplicate entities or contradictions keep slipping through, the finishing step's writing or housekeeping row raises just that kind of work.
+The finishing steps run only a few times per batch, however many documents you add, so raising their model costs far less than raising the extractor's. If the briefing reads thin, or duplicate entities or contradictions keep slipping through, the finishing step's housekeeping or writing row raises just that kind of work.
 
 ### Using GPT-6 Luna
 
