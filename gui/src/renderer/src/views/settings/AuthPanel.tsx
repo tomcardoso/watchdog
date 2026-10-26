@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { AuthStatus, KeyStorage, LabelledKey } from '@shared/api'
 import { Badge, Button, Callout, Dropdown, ErrorNote, Skeleton } from '@renderer/components/ui'
 import { plural } from '@renderer/lib/format'
-import { ModelPicker, providerName } from '@renderer/components/ModelPicker'
+import { ModelPicker, modelLabel, providerName } from '@renderer/components/ModelPicker'
 import { ClaudeSignIn } from '@renderer/components/ClaudeSignIn'
 import { call, errorMessage, queryClient, useRpc } from '@renderer/lib/rpc'
 import { toast } from '@renderer/lib/store'
@@ -248,7 +248,8 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
                 <td><div style={{ fontWeight: 560 }}>{title}</div><div className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{sub}</div></td>
                 <td style={{ minWidth: 260 }}>
                   <ModelPicker compact value={st.value} models={models} emptyLabel="Use the default" onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
-                  <div className="faint" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>{providerName(st.provider)}</div>
+                  {/* A catalogued model's name already says whose it is; a typed-in id or the default may not. */}
+                  {!(st.value && modelLabel(st.value, models)) && <div className="faint" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>{providerName(st.provider)}</div>}
                 </td>
                 <td>{st.ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <NotReady s={s} provider={st.provider} />}</td>
               </tr>
