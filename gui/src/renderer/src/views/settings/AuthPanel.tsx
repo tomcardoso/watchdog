@@ -203,6 +203,15 @@ const STEP_NAMES: Record<string, [string, string]> = {
   writing: ['Finish: writing', 'Entity summaries and the briefing']
 }
 
+// A step that can't run yet, as a badge: neutral while nothing has been chosen to pay for its
+// provider (no Claude billing chosen, or no key for another provider), red once a choice was made
+// that can't work (a key that can't be read, a subscription that isn't signed in).
+function NotReady({ s, provider }: { s: Extended; provider: string }) {
+  const unchosen = provider === 'anthropic' ? !s.claude.mode : !(s.key_sets?.[provider]?.length) && !s.keys.some((k) => k.provider === provider)
+  if (unchosen) return <Badge tip="Choose what pays for it under Paid with">{provider === 'anthropic' ? 'Not set up' : 'Needs a key'}</Badge>
+  return <Badge tone="danger" icon={XCircle} tip="What pays for it can’t be used: see Paid with">Not ready</Badge>
+}
+
 // Each step's model, chosen here (D347): the picker writes the step's own setting, and "Use the
 // default" clears it. What pays for each step is under Paid with, below.
 function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => void }) {
@@ -241,7 +250,7 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
                   <ModelPicker compact value={st.value} models={models} emptyLabel="Use the default" onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
                   <div className="faint" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>{providerName(st.provider)}</div>
                 </td>
-                <td>{st.ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <Badge tone="danger" icon={XCircle} tip="Nothing pays for this step yet: see Paid with">Not ready</Badge>}</td>
+                <td>{st.ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <NotReady s={s} provider={st.provider} />}</td>
               </tr>
             )
           })}
@@ -326,7 +335,7 @@ function PaidWithCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) 
         <span className="set-payprov">{providerName(p).replace(/ \(Anthropic\)$/, '')}</span>
         <span className="faint">{covers(p)}</span>
         <span>{control}</span>
-        {ready(p) ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <Badge tone="danger" icon={XCircle}>Not ready</Badge>}
+        {ready(p) ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <NotReady s={s} provider={p} />}
       </div>
     )
   }
@@ -356,7 +365,6 @@ function PaidWithCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) 
           <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />
         </div>
       )}
-      {providers.includes('anthropic') && !s.claude.mode && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>Choose what pays for the steps on Claude.</Callout>}
       {providers.includes('anthropic') && s.claude.mode && s.claude.reason && !signIn && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
       {s.claude.session_reason && !signIn && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.session_reason}</Callout>}
       <div className="set-foot">An investigation can bill a different key from its Overview. A Claude subscription is not metered, but a large batch can reach your plan’s limit; an API key bills per token, with no usage limit.</div>
@@ -459,7 +467,8 @@ export default function AuthPanel() {
             />
           )}
         </div>
-        <StorageNotes st={s.storage} />
+        {/* The storage warning is about keys, so it waits until there is one. */}
+        {listed.length > 0 && <StorageNotes st={s.storage} />}
         <div style={{ padding: '0 18px' }}>
           {listed.length === 0 && <div className="faint" style={{ padding: '6px 0 14px' }}>No keys yet. Add one for each provider your models use.</div>}
           {listed.map((p) => (
