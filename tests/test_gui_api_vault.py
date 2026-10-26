@@ -582,7 +582,20 @@ def test_research_memo_named_by_title_then_mission(rich_vault):
     assert titles["research-2026-02-01"] == "Find who owns the numbered company."
     assert titles["research-2026-02-02"] == "Owners of the numbered company"
     assert titles["research-2026-02-03"] == "Research memo — 2026-02-03"
-    # Only memos read the mission; a briefing keeps its heading.
+    # Only memos read the mission.
+    assert titles["leads-2026-03-03"] == "Investigative leads — 2026-03-03"
+
+
+def test_briefing_named_by_what_its_run_added(rich_vault):
+    brief = rich_vault / "briefings"
+    (brief / "2026-04-01-09-00.md").write_text("---\nfiles_ingested: 4\nnew_entities: 8\n---\n\n# Briefing — 2026-04-01-09-00\n")
+    (brief / "2026-04-02-09-00.md").write_text("---\nfiles_ingested: 1\nnew_entities: 0\n---\n\n# Briefing — 2026-04-02-09-00\n")
+    (brief / "2026-04-03-09-00.md").write_text("---\nfiles_ingested: 2\nnew_entities: 1\n---\n\n# Briefing — 2026-04-03-09-00\n")
+    titles = {b["name"]: b["title"] for b in call("vault.briefings", vault=V(rich_vault))}
+    assert titles["2026-04-01-09-00"] == "4 documents added · 8 new entities"
+    assert titles["2026-04-02-09-00"] == "1 document added"
+    assert titles["2026-04-03-09-00"] == "2 documents added · 1 new entity"
+    # A briefing without the counts keeps its heading.
     assert titles["2026-03-03-08-00"] == "Briefing — 2026-03-03"
 
 

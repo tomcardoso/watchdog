@@ -269,7 +269,7 @@ Web research never writes to the investigation. It queues the sources it keeps, 
 
 ## Reports
 
-**Reports** gathers everything Watchdog and Claude write for you to read. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. Below them, **Saved answers and threads** holds the pages Claude has saved from Ask Claude: answers, records requests and thread pages. Then come the briefing from each run, lead sweeps, watch-list alerts and research memos, grouped by month. A research memo is listed by the subject it researched. The number beside each heading counts its items. The investigation's brief has its own screen, [Context](#context).
+**Reports** gathers everything Watchdog and Claude write for you to read. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. Below them, **Saved answers and threads** holds the pages Claude has saved from Ask Claude: answers, records requests and thread pages. Then come the briefing from each run and the research memos, grouped by month. A briefing is listed by what its run added, such as "4 documents added · 8 new entities", with the date and time below; a research memo is listed by the subject it researched. Leads and watch-list alerts are not listed here: you work through them in [Review](#review). The number beside each heading counts its items. The investigation's brief has its own screen, [Context](#context).
 
 ## History and your notes
 
