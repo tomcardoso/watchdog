@@ -74,6 +74,8 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   word shape, font CMap; two must agree). Pages without a usable text layer are force-OCR'd; the
   rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
   (default 40), converted in parallel subprocesses and spliced back by page number.
+  A forced-OCR conversion renders its pages at the OCR's own scale rather than Docling's 72 DPI
+  default, which OCR would otherwise read enlarged and blurred (D352).
 - **Exact duplicates are skipped before OCR (D27)** — sha256 against the registry, the queue and
   the current batch. A match goes to `incoming/skipped/`.
 - **Near-duplicates (D10).** Word shingles (`shingle_size`) reduced to a MinHash signature,
@@ -699,8 +701,9 @@ Edit, NotebookEdit, WebFetch, WebSearch, TodoWrite, Skill) behind a denylist of 
 runs a command, starts agents, schedules prompts, runs workflows or changes folder
 (`DISALLOWED_TOOLS`); `permission_mode` is `default`, so a call not pre-approved reaches the app's
 permission card, never Claude Code's own judge. What it needs from Watchdog is a tool of the
-in-process MCP server `watchdog` (`watchdog/session_tools.py`): `search`, `leads`, `check_citations`
-and `research_seen` read and are pre-approved; `timeline`, `write_entity`, `watchlist_add` and
+in-process MCP server `watchdog` (`watchdog/session_tools.py`): `search`, `leads`, `check_citations`,
+`research_seen` and `read_background` (a `context/` file converted by pre-processing in a
+subprocess, page by page with its OCR'd pages named, D353) read and are pre-approved; `timeline`, `write_entity`, `watchlist_add` and
 `contradiction_add` write and ask the reporter every time; `wayback_archive` writes nothing but
 submits a page to the Wayback Machine with the archive.org keys, which stay in the backend (D341),
 and asks too (D345). Each tool set is bound to the session's

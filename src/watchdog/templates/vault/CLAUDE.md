@@ -36,6 +36,7 @@ There is no shell in this session. Use the Read, Glob and Grep tools for files, 
 | The lead sweep over the entity graph | `mcp__watchdog__leads` |
 | Check a page's fact citations (changes nothing) | `mcp__watchdog__check_citations` |
 | Sources the investigation already has (web research) | `mcp__watchdog__research_seen` |
+| A background file in `context/` as text (PDF, Word, PowerPoint, Excel, web page) | `mcp__watchdog__read_background` |
 
 These change the investigation's records, so the app asks the journalist first (expect a short wait, and accept a refusal). The journalist may allow one of these for the rest of the conversation, except `contradiction_add`, which is asked about every time:
 

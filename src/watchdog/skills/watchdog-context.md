@@ -40,7 +40,14 @@ List the files in `context/` with the Glob tool (pattern `context/**/*`), ignori
 
 If the folder is empty or missing, ask for background material before interviewing, in plain words: published stories (PDFs or saved web pages), the reporter's own notes, screenshots, earlier reporting — anything that describes what they are looking into. Say they can add files with **Add background files…** on this Context screen, above the conversation, and tell you when they are in; then list the folder again. They can't attach files in the chat itself. If they have nothing to add, or would rather not, go to step 3 and work from the interview alone. When the folder already holds files, ask once, after reading them, whether there is anything else worth adding.
 
-Read each file with the Read tool, which handles plain text, Markdown, PDFs and images directly. Never add these files as documents: pre-processing moves files out of their folder, and background material is not evidence. If a file is in a format the Read tool can't open (a Word document or spreadsheet, for example), list it in your summary and ask the journalist to save a PDF or text copy into `context/`. Do not load all files into context at once — read them one at a time and build a running mental summary. You do not need the full text after processing; keep only the key facts and themes.
+Read each file one at a time, and note its key facts and themes before moving to the next. You do not need the full text afterwards.
+
+- **PDFs, Word, PowerPoint, Excel and saved web pages:** call `mcp__watchdog__read_background` with the file's path (`context/story.pdf`). It converts the file on this computer and returns each page's text, saying whether the page came from the file's own text layer or from OCR. When it returns `next_page`, call it again from that page. The first call on a large file can take a minute.
+- **Images, plain text and Markdown:** use the Read tool.
+- **Never read a whole PDF with the Read tool.** A conversation can hold only so many PDFs and images; past that limit the oldest are swapped for `[media removed: request limit]` with no other warning, so files you already read can vanish from view later. If you ever see that placeholder, the file was dropped from the conversation, not unreadable: read it with `read_background`.
+- **Check OCR before relying on it.** OCR can misread names, figures and dates, and conversion can miss whether a box is ticked or a page is signed. Before a name, figure or date from an OCR'd page goes into `context.md` or the watch list, or when a ticked box or a signature matters, look at that page with the Read tool and `pages` (one page at a time) and note what it shows at once. Page images count toward the same limit.
+
+Never add these files as documents: pre-processing moves files out of their folder, and background material is not evidence. If a file can't be read either way, list it in your summary and ask the journalist to save a PDF or text copy into `context/`.
 
 ---
 

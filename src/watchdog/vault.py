@@ -41,7 +41,8 @@ def _edit_rule(entry: str) -> str:
 # (#186, D45). File-permission checks only match Edit(path) rules, which cover every file-editing
 # tool, Write included.
 SESSION_PERMISSIONS = [
-    *(f"mcp__watchdog__{name}" for name in ("search", "leads", "check_citations", "research_seen")),
+    *(f"mcp__watchdog__{name}" for name in ("search", "leads", "check_citations", "research_seen",
+                                                 "read_background")),
     *(_edit_rule(w) for w in SESSION_WRITABLE),
 ]
 
