@@ -2941,6 +2941,8 @@ Tradeoff: one call can no longer be routed alone, and a reporter who had set two
 
 ### D340 — Settings holds a default spending limit that a new investigation starts with; the Overview card is folded
 
+*The default limit was removed by D347, in favour of a limit on each key; the folded card stands.*
+
 D324's limit is per investigation, which the owner wants to keep. A computer-wide cap across investigations was rejected: every check would sum every registered investigation's usage, moved and shared folders included, and a running total across investigations is what a provider's own monthly limit already enforces. Instead `default_spending_limit` in `config.json` is copied into a new investigation's `.watchdog/settings.json` by the `projects-new` operation, the one a reporter uses; `projects.create` itself does not, so the sample and the benchmark harness, which create through it, never inherit a limit that could stop a run. The Overview card shows the limit and the recorded spend on one line, with the form behind **Set a limit** / **Change**, and opens by itself once the limit is reached.
 
 Tradeoff: changing the default never reaches existing investigations, and a folder created on another computer carries that computer's limit, or none.
@@ -2980,4 +2982,14 @@ Tradeoff: like any Wayback submission it tells the Internet Archive which page t
 `research-fetch` keeps a failed URL in the queue for a retry, which is right, but Web research and the Overview then counted it as "queued" forever, however often the reporter pressed Download. Each pass now records failures beside the queue (`.watchdog/research/failed.json`: reason, attempts, time; `research.record_attempts`) and forgets a URL once it downloads or leaves the queue. `research.status` marks each failed source, Web research shows them apart as "couldn't be downloaded" with a plain reason, **Try again** and **Remove** (`research.dismiss`), and `pending_count`, which the Overview and the run warnings read, counts only sources not yet tried. The queue file itself is unchanged, since research sessions write it.
 
 Tradeoff: a source that fails once is no longer offered from the Overview; it waits on Web research for the reporter to retry or remove it.
+
+### D347 — Spending limits on each stored key; each step's model is chosen on Models & keys; a first key adopts its provider's model
+
+A limit belongs on what gets charged, which is a key, not a provider or only an investigation. Every call a stored key pays for, in processing or a session, appends `{key, ts, usd}` to `~/.watchdog/key_spend.jsonl` (`watchdog/key_spend.py`), where the key is `<provider>:<id>`, so renaming it keeps its total. The telemetry store already holds the same calls, but the reporter can switch it off. A limit (`config.json` `key_limits`) counts from when it was set or reset. A run stops before its first call when a key it would pay with is already over (`ops.ingest`), and at every spending checkpoint for the keys it has paid with (`orchestrate._key_limit_stop`). Ask Claude refuses a conversation or a question on a key over its limit. The per-investigation limit (D324) stays as an optional extra cap, and whichever is reached first stops the run. D340's default limit for new investigations, its stand-in, is removed (a saved value is dropped on read).
+
+Settings → Models & keys now chooses each step's model, in a Models table of four rows: classify, extract, and the finishing step's writing and housekeeping. Each row also shows what pays: the provider's default key, or the Claude subscription. There is no per-step key choice, since an investigation already chooses its key per provider (D290). Settings lists the model settings in a hidden section, so they appear once, and "Models" becomes "Model options" (effort, endpoints). Every key gets its own line, the only one included, with its name (renamable), in-use and encrypted badges, and its limit.
+
+Adding a key now points every step still on its built-in default whose provider can't run at that provider's recommended model (`defaults.PROVIDER_MODELS`: Luna, Gemini 3.8 Flash, DeepSeek Flash, Haiku 5.5). A fresh install with only an OpenAI key therefore works without three settings changed by hand. A step the reporter set is never changed, and the app says when one moved.
+
+Tradeoff: the key log counts only Watchdog on this computer, so the provider's own limit stays the hard ceiling. A call under way can pass a key's limit, as with D324. The recommended models are judgement from one benchmark matrix (D315), not a measurement per step.
 

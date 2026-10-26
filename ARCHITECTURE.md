@@ -1007,6 +1007,11 @@ See D45–D48.
   can't call `secrets.provide`. A process without the key it needs (a key that failed to decrypt, or
   one the app never handed it) raises `KeyLockedError`, a `KeyChoiceError`, so it stops before any call;
   environment variables still override every stored key.
+- **Key limits (D347).** Every call a stored key pays for appends `{key: "<provider>:<id>", ts, usd}`
+  to `~/.watchdog/key_spend.jsonl` (`watchdog/key_spend.py`), independent of telemetry; a key's limit
+  (`config.json` `key_limits`) counts from when it was set or reset. `ops.ingest` refuses to start a run
+  on a key over its limit, `orchestrate._key_limit_stop` stops one at the spending checkpoints, and a
+  chat refuses a question; the per-investigation limit (D324) applies too.
 - **Find in a document (D289).** Every viewer has a visible find box; one matcher
   (`lib/findText.ts`: case, accents, quote style, dashes and white space ignored, matches mapped
   back to the original characters) serves it and the Text tab. A scanned page with saved positions

@@ -100,6 +100,9 @@ def _spending_stop() -> str | None:
     vault = _run.vault
     if vault is None:
         return None
+    key_msg = _key_limit_stop()
+    if key_msg:
+        return key_msg
     from watchdog import spend
     lim = spend.limit(vault)
     if lim["usd"] is None:
@@ -114,6 +117,21 @@ def _spending_stop() -> str | None:
     spent = _run.spend_baseline[1] + spend.sum_records(_run.usage or [], since)
     if spent >= lim["usd"]:
         return spend.stop_message(spent, lim["usd"])
+    return None
+
+
+def _key_limit_stop() -> str | None:
+    """The stop message when a stored key this run has paid with has reached its own limit
+    (D347). Keys are known from the run's own records, so the first call on a key is checked by
+    the run's start (`ops.ingest`), and every later checkpoint here."""
+    from watchdog import key_spend
+    seen = {(model_client.provider_for_backend(r.get("backend")), r.get("key_label"))
+            for r in (_run.usage or []) if r.get("key_label") and r.get("auth_mode") != "subscription"}
+    for provider, label in sorted(seen, key=lambda pl: (pl[0], pl[1] or "")):
+        key = key_spend.ref_for_label(provider, label)
+        msg = key_spend.stop_message(provider, label, key) if key else None
+        if msg:
+            return msg
     return None
 
 
@@ -214,6 +232,9 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     if est_prompt_tokens is not None:
         record["est_prompt_tokens"] = est_prompt_tokens
     _run.usage.append(record)
+    # What the key that paid has spent, for its own limit (D347), whatever the telemetry setting.
+    from watchdog import key_spend
+    key_spend.record(model_client.provider_for_backend(backend), key_label, cost_usd, auth_mode=auth_mode)
     if _run.usage_partial_path is not None:
         # Durable per-call persistence (#407): appended synchronously, so a crash or a hard
         # interrupt between this call and the run's end-of-run `_write_usage` still leaves

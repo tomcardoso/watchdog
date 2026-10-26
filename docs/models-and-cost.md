@@ -22,7 +22,7 @@ You can also put both on one or the other. A subscription alone suits trying Wat
 
 ## Choosing models
 
-Each step has its own model, set under **Settings → Models**. All three default to Claude Haiku 5.5, Claude's fast, inexpensive model, with extraction set to think hard (the `high` effort level). In Watchdog's own testing, that combination found the most of any setting measured (see [How the defaults were chosen](#how-the-defaults-were-chosen)).
+Each step has its own model, chosen in the **Models** table at the top of **Settings → Models & keys**: classifying, extracting, and the finishing step's writing (entity summaries, the briefing) and housekeeping (matching, contradictions, the timeline, dates). All of them default to Claude Haiku 5.5, Claude's fast, inexpensive model, with extraction set to think hard (the `high` effort level). In Watchdog's own testing, that combination found the most of any setting measured (see [How the defaults were chosen](#how-the-defaults-were-chosen)).
 
 **Effort** sets how much a model thinks before it answers. Thinking is billed as output, so extractor effort is the biggest cost lever after the model itself. Lower it to `medium` or `low` to cut cost, at some loss of what is found; `xhigh` and `max` go further for the hardest documents, on the models that support them.
 
@@ -31,18 +31,20 @@ The main alternatives for extraction:
 - **Claude Sonnet 5.5** (`sonnet`). Several times faster per page than Haiku at `high`, at about five times the cost, and it found less in testing. The choice when speed matters more than recall.
 - **OpenAI's GPT-6 Luna** (`openai:gpt-6-luna`) at `medium` effort. About a fifth of Haiku's cost per page, and it found less than Haiku at `high`. It needs an OpenAI key.
 
-The finishing steps run only a few times per batch, however many documents you add, so raising their model costs far less than raising the extractor's. If the briefing reads thin, or duplicate entities or contradictions keep slipping through, the four per-step finalizer fields raise just that step.
+The finishing steps run only a few times per batch, however many documents you add, so raising their model costs far less than raising the extractor's. If the briefing reads thin, or duplicate entities or contradictions keep slipping through, the finishing step's writing or housekeeping row raises just that kind of work.
 
 ### Using GPT-6 Luna
 
 1. Go to [platform.openai.com](https://platform.openai.com), sign in or create an account, and open **API keys**.
 2. Add a payment method under **Settings → Billing**. OpenAI's API has no free tier, so a card must be on file before a key can make paid calls.
 3. Create a secret key and copy it. It is shown only once.
-4. In Watchdog, open **Settings → Models & keys** and paste the key under OpenAI. Then, under **Settings → Models**, set Extractor model to `openai:gpt-6-luna` and Extractor effort to `medium`.
+4. In Watchdog, open **Settings → Models & keys** and add the key under OpenAI. In the **Models** table above it, set **Extract** to GPT-6 Luna; then, under **Settings → Model options**, set Extractor effort to `medium`.
 
 ## Other providers
 
-Any step except Ask Claude and Web research can run on another provider, with that provider's own key. A model field takes a Claude tier (`haiku` or `sonnet`, reached through your Claude billing mode) or a `provider:model` value. The picker lists each provider's current models, grouped by provider with their prices; you can also type a value and press Enter.
+Any step except Ask Claude and Web research can run on another provider, with that provider's own key. Watchdog favours none of them.
+
+When you add your first key for a provider, any step still on its default that has no way to run (for example, a fresh install with no Claude sign-in or Anthropic key) switches to that provider's recommended model: GPT-6 Luna for OpenAI, Gemini 3.8 Flash for Google Gemini, DeepSeek Flash for DeepSeek, Claude Haiku 5.5 for Anthropic. A step you chose yourself is never changed, and the app says when it moved one. A model field takes a Claude tier (`haiku` or `sonnet`, reached through your Claude billing mode) or a `provider:model` value. The picker lists each provider's current models, grouped by provider with their prices; you can also type a value and press Enter.
 
 | Value | Runs on |
 |---|---|
@@ -73,7 +75,7 @@ When every step of a run uses `local` and the address is on this computer (`loca
 
 ## Your keys
 
-**Settings → Models & keys** holds a key for each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model), shown masked. A **Processing stages** table shows, for each step, which model and provider it uses and whether that provider is ready.
+**Settings → Models & keys** holds a key for each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model), shown masked. The **Models** table above them shows, for each step, its model, the key that pays for it (the provider's default key, or your Claude subscription) and whether it is ready.
 
 Keys are kept in a file in Watchdog's settings folder, `credentials.json`, which only your user account can read, and each key is encrypted with your computer's secure storage: your login Keychain on a Mac, Windows' data protection, or your desktop's keyring on Linux. A key encrypted on one computer cannot be read on another; replace it there. On a Linux computer with no keyring, keys stay unencrypted in the private file, and the screen warns you.
 
@@ -81,7 +83,7 @@ Keys are kept in a file in Watchdog's settings folder, `credentials.json`, which
 
 ### More than one key, and billing
 
-You can keep several named keys for one provider, to bill different accounts: a personal OpenAI key and one your newsroom pays for. Use **Add another** beside the provider, and give the key a short name. One key is the **default**; the **⋯** menu beside a key makes it the default, renames it, replaces it or deletes it.
+You can keep several named keys for one provider, to bill different accounts: a personal OpenAI key and one your newsroom pays for. Use **Add key** beside the provider, and give the key a short name. Every key has its own line, showing whether it is in use and whether it is encrypted, and one key is the **default**; the **⋯** menu beside a key makes it the default, renames it, sets its spending limit, replaces it or deletes it.
 
 <a id="billing"></a>With more than one key for a provider, a **Billing** card on each investigation's Overview chooses which one pays for that investigation's model calls, including Ask Claude when Claude is on an API key. Only the key's name is saved, inside the investigation's folder, so it travels with the folder; on another computer Watchdog uses that computer's key of the same name. If there is none, Watchdog stops before sending anything rather than bill another account. **Activity → Usage** shows the cost per key.
 
@@ -101,11 +103,16 @@ The main levers, roughly in order of effect:
 On a Claude subscription, **Activity → Usage** shows what the work would have cost at published rates, marked as not billed.
 
 <a id="spending-limit"></a>
+<a id="key-limits"></a>
+### A spending limit for a key
+
+Each stored key can have its own spending limit, set from its **⋯** menu in **Settings → Models & keys**. It counts everything that key pays for in Watchdog on this computer, across every investigation and in Ask Claude and Web research, from when you set the limit or last chose **Reset the count**. The key's line shows what it has spent against its limit. Once it is reached, processing stops at its next check, the way an investigation's limit stops it, and Ask Claude refuses a new question on that key; raise the limit, reset the count, or have the investigation bill another key. Calls on your Claude subscription have nothing to count. Work on another computer, or outside Watchdog, isn't counted, so keep a limit with the provider too.
+
 ### A spending limit for one investigation
 
 The **Spending limit** card on each investigation's Overview stops processing when that investigation has spent a dollar amount you choose. The card shows the limit and what has been recorded so far; choose **Set a limit** (or **Change**), type the amount in US dollars, such as `50`, and press Enter. Leave the field blank for no limit. The limit is saved inside the investigation's folder, so it travels with it.
 
-A new investigation starts with the **Default spending limit** from Settings → Processing, if you set one; with none set, it starts with no limit. Changing the default does not change existing investigations.
+Both limits apply: a run stops at whichever it reaches first, its investigation's or that of a key it pays with.
 
 Before each document is sent to the model, between the sections of a long document, and before each finishing step, Watchdog adds up what this investigation's processing has already cost, as recorded in **Activity → Usage**, and compares it with the limit. It never uses an estimate. Once the total reaches the limit, the run stops the way it stops at a rate limit: every document that finished is kept, the rest stay queued, a long document keeps the sections it has finished, and a batch waiting to be finished stays waiting. The Add documents dialog says that the limit stopped the run. To carry on, raise the limit or choose **Reset the count**, then add documents again.
 
@@ -184,7 +191,6 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Field | Default | What it controls |
 |---|---|---|
 | <a id="auto-approve"></a>Auto-approve | off | Skips the public-records pause when every step of the run uses your Claude subscription, showing a one-line notice instead. A run where any step uses a paid API key always asks. Turn it on only if you already check that what you add is public record. |
-| Default spending limit | *(none)* | The [spending limit](#spending-limit) each new investigation starts with, in US dollars. Existing investigations keep their own. |
 | Extraction concurrency | `20` (`3` on a Claude subscription) | Documents extracted at once. |
 | Extraction token budget | `auto` | A cap on tokens per minute. `auto` uses the limit your provider reports; a Claude subscription reports none, so there it sets no cap. |
 | Classify pages | `5` | Opening pages shown to the classifier. |
@@ -193,15 +199,12 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Empty-extraction minimum words | `500` | A document with more words than this that comes back with no facts is retried once, then failed, rather than accepted as empty. |
 | <a id="the-verification-pass"></a>Verify extraction | off | The second-read check: re-reads each document straight after extraction and adds material facts the first read missed. It can add restatements or minor details, which is why it is off by default. Not available with batch mode. |
 
-### Models
+### Model options
+
+Each step's model is chosen in the **Models** table under **Models & keys**, not here. The finishing step's housekeeping covers entity matching and contradictions, filing facts and relationships under the right entity, grouping relationship wordings and request sources, the timeline, settling dates code could not read, and **Re-check contradictions**: short judgement calls, where a cheaper model is often enough. Its writing covers entity summaries and the briefing, where a stronger model shows most.
 
 | Field | Default | What it controls |
 |---|---|---|
-| Classifier model | `haiku` | Reads a document's opening pages and picks its record skill. |
-| Extractor model | `haiku` | Extracts each document. |
-| Finalizer model | `haiku` | The finishing steps. |
-| Finalizer writing model | *(unset)* | Override the finalizer model for the finishing step's writing: entity summaries and the briefing. A stronger model shows most here. |
-| Finalizer housekeeping model | *(unset)* | Override the finalizer model for the finishing step's housekeeping: entity matching and contradictions, filing facts and relationships under the right entity, grouping relationship wordings and request sources, the timeline, settling dates code could not read, and **Re-check contradictions**. Short judgement calls, where a cheaper model is often enough. |
 | Classifier effort | `low` | How hard the classifier thinks. |
 | Extractor effort | `high` | How hard the extractor thinks. |
 | Finalizer effort | *(unset)* | Left unset, the model uses its own default. |
@@ -251,7 +254,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 
 ### App panels
 
-- **Models & keys.** Billing: how adding documents and Ask Claude and Research pay for Claude, each provider's keys, and the Processing stages table; see [Claude: subscription or API key](#claude-subscription-or-api-key) and [Your keys](#your-keys).
+- **Models & keys.** The Models table (each step's model, and what pays for it); Billing: how adding documents and Ask Claude and Research pay for Claude; each provider's keys, with their spending limits; see [Claude: subscription or API key](#claude-subscription-or-api-key) and [Your keys](#your-keys).
 - **Folder access.** The folders Watchdog may change; see [Folder access](using-watchdog.md#folder-access).
 - **Version history.** How much history the open investigation keeps, and **Clear history…**; see [History and your notes](using-watchdog.md#history-and-your-notes).
 - **Record skills.** Every skill, to read, and the folder for your own; see [Record skills](how-it-works.md#record-skills).

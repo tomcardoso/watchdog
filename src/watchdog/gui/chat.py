@@ -457,9 +457,21 @@ def _check_session_key(vault: Path) -> None:
     if sample.is_sample_folder(vault):
         raise RpcError(sample.CHAT_REFUSAL, code="sample")
     try:
-        auth.resolve_auth("anthropic", vault, session=True)
+        a = auth.resolve_auth("anthropic", vault, session=True)
     except auth.KeyChoiceError as e:
         raise RpcError(str(e), code="key_missing") from None
+    _check_key_limit(a.get("key") if a.get("mode") == "api-key" else None)
+
+
+def _check_key_limit(key: str | None) -> None:
+    """Refuse a new conversation, or a new question in one, once the Anthropic key that would pay
+    has reached its spending limit (D347)."""
+    if not key:
+        return
+    from watchdog import key_spend
+    msg = key_spend.check_key("anthropic", key)
+    if msg:
+        raise RpcError(msg, code="key_limit")
 
 
 def _run_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -666,6 +678,12 @@ class ChatManager:
         s = self._get(sid)
         if not (text or "").strip():
             raise RpcError("Nothing to send.", code="bad_params")
+        if s.key_label:
+            from watchdog import key_spend
+            key = key_spend.ref_for_label("anthropic", s.key_label)
+            msg = key_spend.stop_message("anthropic", s.key_label, key) if key else None
+            if msg:
+                raise RpcError(msg, code="key_limit")
         self.add_message(s, "user", text)
         self.submit(self._turn(s, text))
 

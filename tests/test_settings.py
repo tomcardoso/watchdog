@@ -67,7 +67,8 @@ def test_projects_dir_is_created(tmp_path):
 
 
 def test_every_key_is_in_one_section():
-    listed = [k for _t, _b, keys in settings.SECTIONS for k in keys]
+    # Each step's model is set on Models & keys instead (D347): every other key is in one section.
+    listed = [k for _t, _b, keys in settings.SECTIONS for k in keys] + list(settings.MODEL_STEP_KEYS)
     assert sorted(listed) == sorted(settings.SETTINGS) and len(listed) == len(set(listed))
 
 

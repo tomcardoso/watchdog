@@ -207,7 +207,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      actions: write   # to start the website's rebuild
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       TAG: ${{ needs.version.outputs.tag }}
@@ -327,14 +326,6 @@ jobs:
           { echo "Always the newest $CHANNEL of the Watchdog app: now $VERSION. This page's files are replaced by each $CHANNEL release, and installed copies check here for updates; [$TAG](https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG) keeps this version's files for good."; echo; tail -n +2 notes.md; } > rolling.md
           gh release edit "$ROLLING" --notes-file rolling.md --latest=false
 
-      - name: Rebuild the website
-        if: env.CHANNEL == 'stable'
-        run: |
-          # The website's download buttons name the latest release's files. A release published
-          # with this job's token starts no other workflow, so pages.yml's `release` trigger never
-          # fires for it; a dispatch is the one event that token can start.
-          gh workflow run pages.yml --ref main
-
   screenshots:
     # After a stable release, the docs' app screenshots (docs/images/app-*.png, which the README
     # and the website show) are taken again from the sample investigation and merged into main,
@@ -400,7 +391,7 @@ jobs:
           retention-days: 5
           if-no-files-found: error
 
-      - name: Merge them into main and rebuild the website
+      - name: Merge them into main
         if: needs.version.outputs.release == 'true'
         run: |
           if git diff --quiet -- docs/images; then
@@ -432,6 +423,13 @@ jobs:
             echo "::error::Couldn't merge $PR; it's open to merge by hand."
             exit 1
           fi
-          # A merge made with this job's token starts no other workflow, so pages.yml's push
-          # trigger doesn't fire; a dispatch is the one event that token can start.
-          gh workflow run pages.yml --ref main
+
+      - name: Rebuild the website
+        # Once per stable release, after the screenshots are merged (or found unchanged, or failed
+        # to merge), so the site is built with both the new release's download buttons and the
+        # new images. The release job used to start a build too, which this one always followed.
+        # A release published or a merge made with this job's token starts no other workflow, so
+        # pages.yml's `release` and `push` triggers never fire for them; a dispatch is the one
+        # event that token can start.
+        if: always() && needs.version.outputs.release == 'true'
+        run: gh workflow run pages.yml --ref main

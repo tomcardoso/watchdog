@@ -539,7 +539,11 @@ export interface Billing {
 }
 
 /** A stored key, masked (`auth.status` key_sets). `users`: investigations here that chose it. */
-export interface LabelledKey { id: string; label: string; masked: string; default: boolean; users?: string[]; encrypted?: boolean; locked?: boolean }
+export interface LabelledKey {
+  id: string; label: string; masked: string; default: boolean; users?: string[]; encrypted?: boolean; locked?: boolean
+  /** The key's own spending limit (D347): `usd` null for none; `spent` since `since`. */
+  limit?: { usd: number | null; since: string | null; spent: number; reached: boolean }
+}
 
 /** Where this computer's keys are kept (D295). `store`: `encrypted` with the operating system's
  * secure storage (`backend`: keychain, dpapi, gnome_libsecret, kwallet…), `plaintext` in a file only
@@ -808,7 +812,8 @@ export interface SettingKey {
   choices: string[] | null
   is_set?: boolean
 }
-export interface SettingsSchema { sections: { title: string; blurb: string; keys: SettingKey[] }[] }
+/** `hidden`: listed for completeness, shown elsewhere (each step's model is set on Models & keys, D347). */
+export interface SettingsSchema { sections: { title: string; blurb: string; keys: SettingKey[]; hidden?: boolean }[] }
 export interface ModelChoice {
   value: string
   label: string
@@ -832,7 +837,9 @@ export interface AuthStatus {
     signed_in?: boolean
     session_reason?: string | null
   }
-  stages: { stage: string; value: string; provider: string; ready: boolean; billing: string | null }[]
+  /** One row per step (D347): `config_key` is the setting its model picker writes, `set` whether
+   * that setting is set (else `value` is the default it falls back to), `paid_with` what pays. */
+  stages: { stage: string; config_key: string; value: string; set: boolean; provider: string; ready: boolean; billing: string | null; paid_with: string | null }[]
   keys: { provider: string; masked: string; in_use: string; source: 'stored' | 'env' }[]
   key_sets?: Record<string, LabelledKey[]>
   storage?: KeyStorage
@@ -1053,6 +1060,8 @@ export interface Methods {
   'auth.deleteKey': [{ provider: string; id?: string }, AuthStatus]
   'auth.addKey': [{ provider: string; label: string; key: string; make_default?: boolean }, AuthStatus & { id: string; warning?: string | null }]
   'auth.renameKey': [{ provider: string; id: string; label: string }, AuthStatus]
+  'auth.setKeyLimit': [{ provider: string; id: string; usd: string | null }, AuthStatus]
+  'auth.resetKeyLimit': [{ provider: string; id: string }, AuthStatus]
   'auth.setDefaultKey': [{ provider: string; id: string }, AuthStatus]
   'auth.investigationKeys': [{ vault: string }, InvestigationKeys]
   'auth.chooseKey': [{ vault: string; provider: string; id: string | null }, InvestigationKeys]
