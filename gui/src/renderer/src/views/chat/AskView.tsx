@@ -11,7 +11,7 @@ function Empty({ api, name }: { api: WorkspaceApi; name: string }) {
     <div className="chat-empty">
       <h2>Ask about {name}</h2>
       <p>
-        Claude works inside this investigation: it reads your notes, the registry and the extracted documents, answers with citations, and files substantial answers to <span className="mono">queries/</span>. Type a question below, or start from one of these.
+        Claude works inside this investigation: it reads your notes, the registry and the extracted documents, answers with citations, and saves substantial answers to <button className="chat-empty-link" onClick={() => navigate({ view: 'briefings' })}>Briefings</button>. Type a question below, or start from one of these.
       </p>
       <div className="chat-chips">
         {SLASH.filter((s) => s.name !== '/watchdog-context').map((s) => (

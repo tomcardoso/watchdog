@@ -252,12 +252,12 @@ With the Wayback Machine keys set up (see [the Settings reference](models-and-co
 
 Start from a question in plain language or one of the shortcuts below, shown as cards on an empty conversation. Typing `/` in the box lists them too:
 
-- **Answer a question** answers a question with a source for every claim, and files substantive answers to `queries/`.
+- **Answer a question** answers a question with a source for every claim, and saves substantive answers to [Briefings](#briefings).
 - **Find connections** looks across the whole investigation for shared addresses, people in unusual roles, recurring names and chronological anomalies.
 - **Refresh an entity** refreshes an entity's summary and timeline from all its documents.
-- **Write thread pages** writes thread pages in `wiki/` for findings that have grown into a real angle.
+- **Write thread pages** writes thread pages, saved to [Briefings](#briefings), for findings that have grown into a real angle.
 - **Check the investigation** checks for orphaned notes, broken links and open contradictions.
-- **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
+- **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to [Briefings](#briefings) with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
 
 A selector chooses the Claude model for new conversations: Sonnet, the default, or Haiku, which is cheaper and suits simpler questions. Ask Claude always runs on Claude, whatever the other steps use.
 
@@ -269,7 +269,7 @@ Web research never writes to the investigation. It queues the sources it keeps, 
 
 ## Briefings
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. The investigation's brief has its own screen, [Context](#context).
+**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved from Ask Claude (answers, records requests and thread pages, under **Saved answers and threads**). Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. The investigation's brief has its own screen, [Context](#context).
 
 ## History and your notes
 
