@@ -2995,7 +2995,7 @@ Tradeoff: the key log counts only Watchdog on this computer, so the provider's o
 
 ### D348 — Models & keys in three parts; Ask Claude can bill its own Anthropic key
 
-Settings → Models & keys is now Models (each step's model), Paid with (what pays), and Keys (adding, naming, limits). Paid with has one line per provider the steps use, which picks that provider's default key, and Claude's lines also offer the subscription; a key's name always carries its provider. Keys are added only under Keys: "Add a key…" opens that provider's form there. Payment stays per provider, not per step: two steps on one provider always share a key, as before, and no one was found who needs otherwise.
+Settings → Models & keys is now Models (each step's model), Keys (adding, naming, limits), and Paid with (what pays). Paid with has one line per provider the steps use, which picks that provider's default key, and Claude's lines also offer the subscription; a key's name always carries its provider. Keys are added only under Keys: "Add a key…" opens that provider's form there. Payment stays per provider, not per step: two steps on one provider always share a key, as before, and no one was found who needs otherwise.
 
 Ask Claude and Research now keep their own Anthropic key (`credentials.json` `session_key`, `auth.session_key_id`) when on an API key, so questions can bill a personal key while processing bills a work key. An investigation's chosen key still wins, and a deleted key falls back to the default. Tradeoff: one more stored choice; with none set, behaviour is unchanged (the default key).
 

@@ -11,7 +11,7 @@ Watchdog is built around Claude and uses it by default. It can reach Claude in t
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
 - **Claude subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
-**Settings → Models & keys** has three parts: **Models** chooses the model for each step of adding documents, **Paid with** chooses what pays, and **Keys** is where keys are added, named and given a spending limit.
+**Settings → Models & keys** has three parts: **Models** chooses the model for each step of adding documents, **Keys** is where keys are added, named and given a spending limit, and **Paid with** chooses what pays.
 
 **Paid with** has a line for each kind of work:
 

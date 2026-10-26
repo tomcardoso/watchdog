@@ -339,7 +339,7 @@ function PaidWithCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) 
       <div className="set-card-head">
         <div>
           <div className="card-title">Paid with</div>
-          <div className="card-sub">Which subscription or key pays for each kind of work. Keys are added, named and limited under Keys, below.</div>
+          <div className="card-sub">Which subscription or key pays for each kind of work. Keys are added, named and limited under Keys, above.</div>
         </div>
       </div>
       <div className="set-paygroup">
@@ -422,7 +422,6 @@ export default function AuthPanel() {
   return (
     <div className="col" style={{ gap: 22 }}>
       <StepsCard s={s} onStatus={setStatus} />
-      <PaidWithCard s={s} onStatus={setStatus} />
       {info.data && !info.data.claude_code.installed && (
         <Callout tone="warning" title="Claude is missing from the engine">
           Ask, Research and context seeding need it. It comes with the engine: repair the engine under Settings → Setup, then sign in.
@@ -443,9 +442,11 @@ export default function AuthPanel() {
           ))}
         </div>
         <div className="set-foot">
-          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. Which key pays for what is chosen under Paid with, above. Each key can have a spending limit, from its menu: Watchdog stops before sending anything more on a key that reaches it, counting what it paid for in every investigation on this computer. Use a key made for Watchdog, with a limit set with the provider too, which is the one it enforces.
+          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. Which key pays for what is chosen under Paid with, below. Each key can have a spending limit, from its menu: Watchdog stops before sending anything more on a key that reaches it, counting what it paid for in every investigation on this computer. Use a key made for Watchdog, with a limit set with the provider too, which is the one it enforces.
         </div>
       </section>
+
+      <PaidWithCard s={s} onStatus={setStatus} />
 
       <section className="card set-card">
         <div className="set-card-head">
