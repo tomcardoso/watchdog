@@ -223,11 +223,11 @@ def test_status_unconfigured(wdg_home):
     s = call("auth.status")
     assert s["claude"]["mode"] is None and s["claude"]["logged_in"] is False
     assert "isn't set up" in s["claude"]["reason"]
-    assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "writing", "housekeeping"]
+    assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "housekeeping", "writing"]
     assert s["stages"][1] == {"stage": "extractor", "config_key": "extractor_model", "value": "haiku",
                               "set": False, "provider": "anthropic", "ready": False, "paid_with": None,
                               "billing": None}
-    assert s["stages"][2]["config_key"] == "finalizer_writing_model" and s["stages"][2]["value"] == "haiku"
+    assert s["stages"][2]["config_key"] == "finalizer_housekeeping_model" and s["stages"][2]["value"] == "haiku"
     assert s["keys"] == []
     assert s["base_urls"] == [{"provider": "openrouter", "url": "https://openrouter.ai/api/v1"}]   # its default
     assert {p["provider"] for p in s["providers"]} == {"anthropic", "openai", "deepseek", "gemini",
@@ -240,7 +240,8 @@ def test_status_subscription(wdg_home):
     assert s["claude"] == {"mode": "subscription", "logged_in": True, "reason": None,
                            "session_mode": "subscription", "session_mode_own": False, "signed_in": True,
                            "session_reason": None, "env_key_set": False,
-                           "key_masked": None, "key_source": None, "key_label": None}
+                           "key_masked": None, "key_source": None, "key_label": None,
+                           "session_key_id": None}
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
 
 
@@ -562,6 +563,32 @@ def test_first_key_moves_unset_steps_off_a_provider_that_cant_run(wdg_home):
     (wdg_home / "config.json").write_text("{}")
     write_creds(wdg_home, "subscription", {"openai": "sk-proj-abcdefghijklmnop"})
     assert call("auth.addKey", provider="openai", label="Work", key="sk-proj-zyxwvutsrqponmlk")["adopted"] == []
+
+
+def test_first_anthropic_key_sets_claude_to_api_key_only_when_unchosen(wdg_home):
+    """D347: the first Anthropic key, before any choice of how Claude bills, makes Claude bill it;
+    a subscription the reporter chose stays."""
+    assert call("auth.status")["claude"]["mode"] is None
+    r = call("auth.setKey", provider="anthropic", key="sk-ant-api03-abcdefghijklmnop")
+    assert r["claude"]["mode"] == "api-key"
+    write_creds(wdg_home, "subscription", {})
+    r = call("auth.addKey", provider="anthropic", label="Globe", key="sk-ant-api03-zyxwvutsrqponmlk")
+    assert r["claude"]["mode"] == "subscription"
+
+
+def test_ask_claude_can_pay_with_its_own_anthropic_key(wdg_home):
+    """D348: Ask Claude and Research can bill a stored Anthropic key other than the default, which
+    the steps keep using; deleting that key sends them back to the default."""
+    from watchdog import auth
+    call("auth.setKey", provider="anthropic", key="sk-ant-api03-defaultdefault1111")
+    pid = call("auth.addKey", provider="anthropic", label="Personal", key="sk-ant-api03-personalperso2222")["id"]
+    r = call("auth.setSessionMode", mode="api-key", id=pid)
+    assert r["claude"]["session_key_id"] == pid
+    assert auth.resolve_auth("anthropic", session=True)["key"] == "sk-ant-api03-personalperso2222"
+    assert auth.resolve_auth("anthropic")["key"] == "sk-ant-api03-defaultdefault1111"
+    assert "No stored Anthropic key" in call_error("auth.setSessionMode", mode="api-key", id="k-nope")["message"]
+    call("auth.deleteKey", provider="anthropic", id=pid)
+    assert auth.resolve_auth("anthropic", session=True)["key"] == "sk-ant-api03-defaultdefault1111"
 
 
 def test_a_keys_spending_limit_counts_what_it_paid_and_stops(wdg_home):

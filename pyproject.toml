@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 # The engine the desktop app bundles and installs; it is not published on its own. ("watchdog" is
 # taken on PyPI by a filesystem-events library, hence "watchdog-intel".)
 name = "watchdog-intel"
-version = "1.0.8"
+version = "1.0.9"
 description = "Investigative journalism document intelligence — drop records, find connections"
 readme = "README.md"
 license = { file = "LICENSE" }

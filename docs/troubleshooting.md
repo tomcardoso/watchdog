@@ -50,7 +50,7 @@ To see or change what is allowed, open **Settings → Folder access**. **Allow a
 
 Document reading, **Ask Claude** and **Web research** each need a way to reach a model. If a run says no model sign-in is set up, or **Ask Claude** says Claude may not be signed in, open **Settings → Models & keys** and sign in again, or paste an API key. The sign-in opens in your browser and the app waits for you to finish; if the browser did not open, the app shows a link to the sign-in page.
 
-**Ask Claude** and **Web research** always use Claude, even if the document-reading step is set to another provider, so they need a Claude sign-in or key either way. They can also be billed differently from document reading: **Ask Claude and Research** in **Settings → Models & keys** shows which they use. Set to **Subscription**, they need you signed in to Claude, and the sign-in button appears there when you are not. The app's sign-in check is approximate, so a question may still work; if one fails to start, this is the usual reason.
+**Ask Claude** and **Web research** always use Claude, even if the document-reading step is set to another provider, so they need a Claude sign-in or key either way. They can also be billed differently from document reading: **Ask Claude and Research** in **Settings → Models & keys** shows which they use. Set to **Claude subscription**, they need you signed in to Claude, and the sign-in button appears there when you are not. The app's sign-in check is approximate, so a question may still work; if one fails to start, this is the usual reason.
 
 ## The provider rejected the key, or the account is out of credit
 
@@ -60,7 +60,7 @@ Check the key in **Settings → Models & keys**, or top up the account on the pr
 
 ## "The key this investigation bills isn't on this computer"
 
-The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](models-and-cost.md#billing).
+The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add a key**, or **Add key** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](models-and-cost.md#billing).
 
 ## macOS asks whether Watchdog may use its "Safe Storage" in your Keychain
 

@@ -19,6 +19,7 @@
 .set-field-short { color: var(--text-2); font-size: var(--fs-sm); line-height: 1.5; margin-top: 2px; }
 .set-help { margin-top: 8px; padding: 10px 12px; border-radius: var(--r-md); background: var(--surface-2); border: 1px solid var(--border); font-size: var(--fs-sm); line-height: 1.55; color: var(--text-2); white-space: pre-wrap; }
 .set-field-control { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.set-field-control > .segmented { align-self: flex-start; }   /* its own width, not the column's */
 .set-input-row { display: flex; gap: 8px; align-items: center; }
 .set-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--text-3); }
 .set-reset { display: inline-flex; align-items: center; gap: 4px; border: none; background: none; padding: 0; color: var(--accent-text); font-size: var(--fs-xs); font-weight: 560; cursor: pointer; }
@@ -47,3 +48,8 @@
 .set-keylimit { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .set-keylimit.reached { color: var(--warning); font-weight: 600; }
 .set-keyname { flex: 0 0 180px; }
+.set-paysel { width: 100%; }
+.set-paygroup { padding: 12px 18px 10px; border-top: 1px solid var(--border); }
+.set-payline { display: grid; grid-template-columns: 110px 1fr 270px 110px; align-items: center; gap: 14px; padding: 7px 0; font-size: var(--fs-sm); }
+.set-payline > .badge { justify-self: start; }
+.set-payprov { font-weight: 560; font-size: var(--fs-md); }

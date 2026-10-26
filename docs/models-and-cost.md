@@ -9,12 +9,16 @@ The defaults are sensible, and most people only ever change a few of these.
 Watchdog is built around Claude and uses it by default. It can reach Claude in two ways:
 
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
-- **Subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
+- **Claude subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
-The **Billing** card in **Settings → Models & keys** sets each separately, for two kinds of work:
+**Settings → Models & keys** has three parts: **Models** chooses the model for each step of adding documents, **Keys** is where keys are added, named and given a spending limit, and **Paid with** chooses what pays.
 
-- **Adding documents**: reading, extracting and the finishing steps. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
-- **Ask Claude and Research**: questions and web research. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+**Paid with** has a line for each kind of work:
+
+- **Adding documents**: one line per provider your steps use, naming the steps it pays for. A line for Claude offers your Claude subscription or any of your Anthropic keys; a line for another provider offers that provider's keys, and shows the key as plain text when you have only one. We recommend an **API key** for Claude here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
+- **Ask Claude and Research**: questions and web research, which always run on Claude. Choose your Claude subscription or an Anthropic key; it can be a different key from the one adding documents uses. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+
+**Add a key…** in any menu takes you to **Keys**, with the form for that provider open. An investigation can bill a different key from its Overview. Until you choose, adding your first Anthropic key sets Claude to use it, and Ask Claude follows the steps' choice until you set it on its own.
 
 You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit, and Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can let a Pro or Max plan continue past it at API rates.
 
@@ -22,7 +26,7 @@ You can also put both on one or the other. A subscription alone suits trying Wat
 
 ## Choosing models
 
-Each step has its own model, chosen in the **Models** table at the top of **Settings → Models & keys**: classifying, extracting, and the finishing step's writing (entity summaries, the briefing) and housekeeping (matching, contradictions, the timeline, dates). All of them default to Claude Haiku 5.5, Claude's fast, inexpensive model, with extraction set to think hard (the `high` effort level). In Watchdog's own testing, that combination found the most of any setting measured (see [How the defaults were chosen](#how-the-defaults-were-chosen)).
+Each step has its own model, chosen in the **Models** table at the top of **Settings → Models & keys**: classifying, extracting, and the finishing step's housekeeping (matching, contradictions, the timeline, dates) and writing (entity summaries, the briefing). All of them default to Claude Haiku 5.5, Claude's fast, inexpensive model, with extraction set to think hard (the `high` effort level). In Watchdog's own testing, that combination found the most of any setting measured (see [How the defaults were chosen](#how-the-defaults-were-chosen)).
 
 **Effort** sets how much a model thinks before it answers. Thinking is billed as output, so extractor effort is the biggest cost lever after the model itself. Lower it to `medium` or `low` to cut cost, at some loss of what is found; `xhigh` and `max` go further for the hardest documents, on the models that support them.
 
@@ -31,7 +35,7 @@ The main alternatives for extraction:
 - **Claude Sonnet 5.5** (`sonnet`). Several times faster per page than Haiku at `high`, at about five times the cost, and it found less in testing. The choice when speed matters more than recall.
 - **OpenAI's GPT-6 Luna** (`openai:gpt-6-luna`) at `medium` effort. About a fifth of Haiku's cost per page, and it found less than Haiku at `high`. It needs an OpenAI key.
 
-The finishing steps run only a few times per batch, however many documents you add, so raising their model costs far less than raising the extractor's. If the briefing reads thin, or duplicate entities or contradictions keep slipping through, the finishing step's writing or housekeeping row raises just that kind of work.
+The finishing steps run only a few times per batch, however many documents you add, so raising their model costs far less than raising the extractor's. If the briefing reads thin, or duplicate entities or contradictions keep slipping through, the finishing step's housekeeping or writing row raises just that kind of work.
 
 ### Using GPT-6 Luna
 
@@ -75,7 +79,7 @@ When every step of a run uses `local` and the address is on this computer (`loca
 
 ## Your keys
 
-**Settings → Models & keys** holds a key for each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model), shown masked. The **Models** table above them shows, for each step, its model, the key that pays for it (the provider's default key, or your Claude subscription) and whether it is ready.
+**Settings → Models & keys** holds a key for each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model), shown masked, under **Keys**. **Paid with**, below them, chooses which key pays for what.
 
 Keys are kept in a file in Watchdog's settings folder, `credentials.json`, which only your user account can read, and each key is encrypted with your computer's secure storage: your login Keychain on a Mac, Windows' data protection, or your desktop's keyring on Linux. A key encrypted on one computer cannot be read on another; replace it there. On a Linux computer with no keyring, keys stay unencrypted in the private file, and the screen warns you.
 
@@ -83,7 +87,7 @@ Keys are kept in a file in Watchdog's settings folder, `credentials.json`, which
 
 ### More than one key, and billing
 
-You can keep several named keys for one provider, to bill different accounts: a personal OpenAI key and one your newsroom pays for. Use **Add key** beside the provider, and give the key a short name. Every key has its own line, showing whether it is in use and whether it is encrypted, and one key is the **default**; the **⋯** menu beside a key makes it the default, renames it, sets its spending limit, replaces it or deletes it.
+You can keep several named keys for one provider, to bill different accounts: a personal OpenAI key and one your newsroom pays for. **Keys** lists only the providers you have added a key for: **Add a key** at the top adds one for a new provider, and **Add key** beside a provider adds another for it, with a short name. Every key has its own line, showing what it pays for (for example **Pays for adding documents** or **Pays for Ask Claude**, or **Not used**) and whether it is encrypted; the **⋯** menu beside a key renames it, sets its spending limit, replaces it or deletes it. The first key you add for a provider pays for its steps until you choose another under **Paid with**.
 
 <a id="billing"></a>With more than one key for a provider, a **Billing** card on each investigation's Overview chooses which one pays for that investigation's model calls, including Ask Claude when Claude is on an API key. Only the key's name is saved, inside the investigation's folder, so it travels with the folder; on another computer Watchdog uses that computer's key of the same name. If there is none, Watchdog stops before sending anything rather than bill another account. **Activity → Usage** shows the cost per key.
 

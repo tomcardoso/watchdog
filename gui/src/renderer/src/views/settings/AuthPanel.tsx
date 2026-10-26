@@ -1,9 +1,9 @@
 // Models & keys: how Watchdog signs in to Claude and to each model provider.
 
-import { CheckCircle2, Gauge, KeyRound, MoreHorizontal, Pencil, Plus, RotateCcw, Star, Trash2, XCircle } from 'lucide-react'
-import { useState } from 'react'
+import { CheckCircle2, Gauge, KeyRound, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, XCircle } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import type { AuthStatus, KeyStorage, LabelledKey } from '@shared/api'
-import { Badge, Button, Callout, Dropdown, ErrorNote, Segmented, Skeleton } from '@renderer/components/ui'
+import { Badge, Button, Callout, Dropdown, ErrorNote, Skeleton } from '@renderer/components/ui'
 import { plural } from '@renderer/lib/format'
 import { ModelPicker, providerName } from '@renderer/components/ModelPicker'
 import { ClaudeSignIn } from '@renderer/components/ClaudeSignIn'
@@ -11,7 +11,7 @@ import { call, errorMessage, queryClient, useRpc } from '@renderer/lib/rpc'
 import { toast } from '@renderer/lib/store'
 
 type Extended = AuthStatus & {
-  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null; key_label?: string | null }
+  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null; key_label?: string | null; key_source?: 'env' | 'stored' | null }
   providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
   base_urls?: { provider: string; url: string }[]
 }
@@ -57,13 +57,22 @@ const usd = (n: number) => `$${n.toFixed(2)}`
 // or not: its name, the masked key, whether it is in use and encrypted, its spending limit and
 // what it has spent, and a menu to make it the default, rename it, set or reset its limit, replace
 // or delete it. "Add key" adds another, with a name.
-function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; onStatus: (s: AuthStatus) => void }) {
+function KeyRow({ provider, label, stored, keys, pays, opening, onClosed, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; pays: (k: LabelledKey) => string[]; opening: number; onClosed: () => void; onStatus: (s: AuthStatus) => void }) {
   const [form, setForm] = useState<KeyForm | null>(null)
   const [key, setKey] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const row = useRef<HTMLDivElement>(null)
+  // "Add a key" (under Keys, or in a Paid with menu) lands here, with the add form open.
+  useEffect(() => {
+    if (!opening) return
+    open({ kind: 'add' })
+    row.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opening])
   const open = (f: KeyForm | null) => {
+    if (!f) onClosed()
     setForm(f)
     setKey('')
     setName(f?.kind === 'rename' ? f.label : f?.kind === 'limit' && f.usd != null ? String(f.usd) : '')
@@ -103,7 +112,7 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
   const ready = form?.kind === 'add' ? !!key.trim() && (!!name.trim() || keys.length === 0) : form?.kind === 'rename' ? !!name.trim() : form?.kind === 'limit' ? true : !!key.trim()
   const env = stored?.source === 'env'
   return (
-    <div className="set-keyrow">
+    <div className="set-keyrow" ref={row}>
       <div className="set-keyrow-main">
         <div className="grow">
           <div style={{ fontWeight: 580 }}>{label}</div>
@@ -116,10 +125,9 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
             <Badge tip="Set in your environment; it takes precedence over every stored key">environment</Badge>
           </>
         )}
-        {!env && keys.length === 0 && <span className="faint">No key</span>}
-        <Button size="sm" variant={keys.length ? 'ghost' : undefined} icon={keys.length ? Plus : KeyRound} tip={keys.length ? 'Add another key for this provider, with a name, to bill a different account' : undefined} onClick={() => open(form?.kind === 'add' ? null : { kind: 'add' })}>
+        {keys.length > 0 && <Button size="sm" variant={keys.length ? 'ghost' : undefined} icon={keys.length ? Plus : KeyRound} tip={keys.length ? 'Add another key for this provider, with a name, to bill a different account' : undefined} onClick={() => open(form?.kind === 'add' ? null : { kind: 'add' })}>
           {keys.length ? 'Add key' : 'Add'}
-        </Button>
+        </Button>}
       </div>
       {keys.length > 0 && (
         <div className="set-keylist">
@@ -129,14 +137,14 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
               <div key={k.id} className="set-keyitem">
                 <span className="set-keyitem-name">{k.label}</span>
                 <span className="mono muted">{k.masked}</span>
-                {k.default && !env && stored && <Badge tone={stored.in_use === 'in use' ? 'success' : undefined} tip="Whether a step, or Ask Claude, uses this provider now">{stored.in_use}</Badge>}
-                {!k.default && <Badge tip="Used only by investigations that chose it on their Overview">{(k.users?.length ?? 0) > 0 ? plural(k.users!.length, 'investigation') : 'unused'}</Badge>}
+                {!env && pays(k).map((w) => <Badge key={w} tone="success" tip="Chosen under Paid with, below">Pays for {w}</Badge>)}
+                {(k.users?.length ?? 0) > 0 && <Badge tip={`Chosen on the Overview of ${k.users!.join(', ')}`}>{plural(k.users!.length, 'investigation')}</Badge>}
+                {!env && !pays(k).length && !(k.users?.length) && <Badge>Not used</Badge>}
                 {k.locked ? (
                   <Badge tone="warning" tip="Encrypted under another user account or computer; replace or delete it">can’t be read</Badge>
                 ) : (
                   <Badge tip={k.encrypted ? 'Stored encrypted with a key kept in your system’s secure storage' : 'Stored in a file only your user account can read'}>{k.encrypted ? 'encrypted' : 'not encrypted'}</Badge>
                 )}
-                {k.default && <Badge tone="accent" tip="Used by every investigation that hasn’t chosen another key">Default</Badge>}
                 <span className="spacer" />
                 {lim?.usd != null ? (
                   <span className={lim.reached ? 'set-keylimit reached' : 'set-keylimit'} title="Counted across every investigation on this computer since the limit was set or reset">
@@ -149,7 +157,6 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
                   align="right"
                   trigger={(o) => <Button size="sm" variant="ghost" icon={MoreHorizontal} tip={`Change the ${k.label} key`} onClick={o} />}
                   items={[
-                    { label: 'Make default', icon: Star, disabled: k.default, onClick: () => void act(() => call('auth.setDefaultKey', { provider, id: k.id }), `${k.label} is now the default`) },
                     { label: 'Rename', icon: Pencil, onClick: () => open({ kind: 'rename', id: k.id, label: k.label }) },
                     { label: lim?.usd != null ? 'Change spending limit' : 'Set a spending limit', icon: Gauge, onClick: () => open({ kind: 'limit', id: k.id, label: k.label, usd: lim?.usd ?? null }) },
                     ...(lim?.usd != null ? [{ label: 'Reset the count', icon: RotateCcw, onClick: () => void act(() => call('auth.resetKeyLimit', { provider, id: k.id }), 'Count reset') }] : []),
@@ -167,7 +174,7 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
         <div className="col" style={{ gap: 6, marginTop: 8 }}>
           <div className="set-input-row">
             {(form.kind === 'add' || form.kind === 'rename') && (
-              <input className="input set-keyname" autoFocus maxLength={40} placeholder={keys.length || form.kind === 'rename' ? 'Name, such as Work' : 'Name (optional), such as Work'} value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && ready && submit()} />
+              <input className="input set-keyname" autoFocus maxLength={40} placeholder={keys.length || form.kind === 'rename' ? 'Name, such as Work' : 'Name (optional)'} value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && ready && submit()} />
             )}
             {form.kind === 'limit' && (
               <input className="input set-keyname" autoFocus inputMode="decimal" placeholder="Limit in US$, such as 50" value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && submit()} />
@@ -192,13 +199,21 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
 const STEP_NAMES: Record<string, [string, string]> = {
   classifier: ['Classify', 'What kind of record each document is'],
   extractor: ['Extract', 'Reads each document and lists the facts'],
-  writing: ['Finish: writing', 'Entity summaries and the briefing'],
-  housekeeping: ['Finish: housekeeping', 'Matching, contradictions, the timeline, dates']
+  housekeeping: ['Finish: housekeeping', 'Matching, contradictions, the timeline, dates'],
+  writing: ['Finish: writing', 'Entity summaries and the briefing']
 }
 
-// Each step's model, chosen here, and what pays for it (D347). The model picker writes the step's
-// own setting; clearing it falls back to the default shown. "Paid with" names the provider's
-// default key (or the Claude subscription); an investigation can bill another on its Overview.
+// A step that can't run yet, as a badge: neutral while nothing has been chosen to pay for its
+// provider (no Claude billing chosen, or no key for another provider), red once a choice was made
+// that can't work (a key that can't be read, a subscription that isn't signed in).
+function NotReady({ s, provider }: { s: Extended; provider: string }) {
+  const unchosen = provider === 'anthropic' ? !s.claude.mode : !(s.key_sets?.[provider]?.length) && !s.keys.some((k) => k.provider === provider)
+  if (unchosen) return <Badge tip="Choose what pays for it under Paid with">{provider === 'anthropic' ? 'Not set up' : 'Needs a key'}</Badge>
+  return <Badge tone="danger" icon={XCircle} tip="What pays for it can’t be used: see Paid with">Not ready</Badge>
+}
+
+// Each step's model, chosen here (D347): the picker writes the step's own setting, and "Use the
+// default" clears it. What pays for each step is under Paid with, below.
 function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => void }) {
   const models = useRpc('settings.models', {}).data?.models ?? []
   const [busy, setBusy] = useState<string | null>(null)
@@ -218,12 +233,12 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
       <div className="set-card-head">
         <div>
           <div className="card-title">Models</div>
-          <div className="card-sub">Each step can use any provider. Pick its model here; it is paid for with that provider’s default key, or your Claude subscription. An investigation can bill another key on its Overview.</div>
+          <div className="card-sub">The model for each step of adding documents. Each step can use any provider.</div>
         </div>
       </div>
       <table className="table">
         <thead>
-          <tr><th>Step</th><th>Model</th><th>Paid with</th><th>Ready</th></tr>
+          <tr><th>Step</th><th>Model</th><th>Ready</th></tr>
         </thead>
         <tbody>
           {s.stages.map((st) => {
@@ -231,17 +246,128 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
             return (
               <tr key={st.stage}>
                 <td><div style={{ fontWeight: 560 }}>{title}</div><div className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{sub}</div></td>
-                <td style={{ minWidth: 220 }}>
-                  <ModelPicker compact value={st.set ? st.value : ''} models={models} emptyLabel={`Default (${st.value})`} onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
+                <td style={{ minWidth: 260 }}>
+                  <ModelPicker compact value={st.value} models={models} emptyLabel="Use the default" onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
                   <div className="faint" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>{providerName(st.provider)}</div>
                 </td>
-                <td>{st.paid_with ? <span>{st.paid_with}{st.paid_with !== 'Claude subscription' && <span className="faint"> · {providerName(st.provider)}</span>}</span> : <span className="faint">No {providerName(st.provider)} key yet</span>}</td>
-                <td>{st.ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <Badge tone="danger" icon={XCircle}>Not ready</Badge>}</td>
+                <td>{st.ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <NotReady s={s} provider={st.provider} />}</td>
               </tr>
             )
           })}
         </tbody>
       </table>
+    </section>
+  )
+}
+
+// A key's name with its provider, so a menu or a line never leaves the account in doubt.
+const keyName = (k: { label: string }, provider: string) => `${k.label} (${provider === 'anthropic' ? 'Anthropic' : providerName(provider)} key)`
+
+// Keys are only added under Keys: "Add a key…" scrolls there and opens that provider's form.
+const goAddKey = (provider: string) => window.dispatchEvent(new CustomEvent('wd-add-key', { detail: provider }))
+
+// What pays for adding documents, one line per provider its steps use, and for Ask Claude and
+// Research (D348). A provider's line picks its default key; Claude's lines also offer the
+// subscription. A provider with one key shows it as text: there is nothing to choose.
+function PaidWithCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => void }) {
+  const [busy, setBusy] = useState<string | null>(null)
+  const run = async (what: string, fn: () => Promise<AuthStatus>) => {
+    setBusy(what)
+    try {
+      onStatus(await fn())
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not change what pays', body: errorMessage(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+  const anthKeys = s.key_sets?.anthropic ?? []
+  const envKey = (p: string) => s.keys.find((k) => k.provider === p)?.source === 'env'
+  const providers = [...new Set(s.stages.map((st) => st.provider))]
+  const covers = (p: string) => s.stages.filter((st) => st.provider === p).map((st) => (STEP_NAMES[st.stage] ?? [st.stage])[0]).join(', ')
+  const ready = (p: string) => s.stages.filter((st) => st.provider === p).every((st) => st.ready)
+
+  // Claude, for the steps: the subscription, or an Anthropic key (the default one).
+  const docClaude = s.claude.mode === 'subscription' ? 'sub' : s.claude.mode === 'api-key' ? (envKey('anthropic') ? 'env' : anthKeys.find((k) => k.default)?.id ?? '') : ''
+  const setDocClaude = (v: string) => {
+    if (v === '+') return goAddKey('anthropic')
+    void run('doc-anthropic', async () => {
+      if (v !== 'sub' && v !== 'env') await call('auth.setDefaultKey', { provider: 'anthropic', id: v })
+      return call('auth.setAnthropicMode', { mode: v === 'sub' ? 'subscription' : 'api-key' })
+    })
+  }
+  // Claude, for Ask Claude and Research: the same choices, kept on their own.
+  const sessionMode = s.claude.session_mode ?? s.claude.mode
+  const askClaude = sessionMode === 'subscription' ? 'sub' : sessionMode === 'api-key' ? (envKey('anthropic') ? 'env' : s.claude.session_key_id ?? '') : ''
+  const setAskClaude = (v: string) => {
+    if (v === '+') return goAddKey('anthropic')
+    void run('ask', () => call('auth.setSessionMode', v === 'sub' ? { mode: 'subscription' } : v === 'env' ? { mode: 'api-key' } : { mode: 'api-key', id: v }))
+  }
+  const claudeMenu = (value: string, onChange: (v: string) => void, what: string, label: string) => (
+    <select className="select set-paysel" value={value} disabled={busy === what} onChange={(e) => onChange(e.target.value)} aria-label={label}>
+      {!value && <option value="" disabled>Choose…</option>}
+      <option value="sub">Claude subscription</option>
+      {envKey('anthropic')
+        ? <option value="env">Environment key (Anthropic)</option>
+        : anthKeys.map((k) => <option key={k.id} value={k.id}>{keyName(k, 'anthropic')}</option>)}
+      <option value="+">Add a key…</option>
+    </select>
+  )
+  const askReady = sessionMode === 'subscription' ? !!s.claude.signed_in && !s.claude.session_reason : sessionMode === 'api-key' && (envKey('anthropic') || anthKeys.length > 0)
+  const signIn = !s.claude.signed_in && ((providers.includes('anthropic') && s.claude.mode === 'subscription') || sessionMode === 'subscription')
+
+  const line = (p: string) => {
+    const keys = s.key_sets?.[p] ?? []
+    let control
+    if (p === 'anthropic') control = claudeMenu(docClaude, setDocClaude, 'doc-anthropic', 'What pays for the steps on Claude')
+    else if (envKey(p)) control = <span>Environment key <span className="faint">({providerName(p)} key)</span></span>
+    else if (keys.length > 1) control = (
+      <select className="select set-paysel" value={keys.find((k) => k.default)?.id ?? keys[0].id} disabled={busy === `doc-${p}`} aria-label={`Which ${providerName(p)} key pays`}
+        onChange={(e) => e.target.value === '+' ? goAddKey(p) : void run(`doc-${p}`, () => call('auth.setDefaultKey', { provider: p, id: e.target.value }))}>
+        {keys.map((k) => <option key={k.id} value={k.id}>{keyName(k, p)}</option>)}
+        <option value="+">Add a key…</option>
+      </select>
+    )
+    else if (keys.length === 1) control = <span>{keyName(keys[0], p)} <span className="faint">· your only one</span></span>
+    else control = <Button size="sm" icon={KeyRound} onClick={() => goAddKey(p)}>Add a {providerName(p)} key</Button>
+    return (
+      <div key={p} className="set-payline">
+        <span className="set-payprov">{providerName(p).replace(/ \(Anthropic\)$/, '')}</span>
+        <span className="faint">{covers(p)}</span>
+        <span>{control}</span>
+        {ready(p) ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <NotReady s={s} provider={p} />}
+      </div>
+    )
+  }
+  return (
+    <section className="card set-card">
+      <div className="set-card-head">
+        <div>
+          <div className="card-title">Paid with</div>
+          <div className="card-sub">Which subscription or key pays for each kind of work. Keys are added, named and limited under Keys, above.</div>
+        </div>
+      </div>
+      <div className="set-paygroup">
+        <div className="set-field-label">Adding documents</div>
+        {providers.map(line)}
+      </div>
+      <div className="set-paygroup">
+        <div className="set-field-label">Ask Claude and Research</div>
+        <div className="set-payline">
+          <span className="set-payprov">Claude</span>
+          <span className="faint">Questions and web research, which always run on Claude</span>
+          <span>{claudeMenu(askClaude, setAskClaude, 'ask', 'What pays for Ask Claude and Research')}</span>
+          {askReady ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : askClaude ? <Badge tone="danger" icon={XCircle}>Not ready</Badge> : <Badge>Not set up</Badge>}
+        </div>
+      </div>
+      {signIn && (
+        <div style={{ margin: '0 18px 16px' }}>
+          <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />
+        </div>
+      )}
+      {providers.includes('anthropic') && s.claude.mode && s.claude.reason && !signIn && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
+      {s.claude.session_reason && !signIn && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.session_reason}</Callout>}
+      <div className="set-foot">An investigation can bill a different key from its Overview. A Claude subscription is not metered, but a large batch can reach your plan’s limit; an API key bills per token, with no usage limit.</div>
     </section>
   )
 }
@@ -287,11 +413,14 @@ function BaseUrl({ provider, url, onStatus }: { provider: 'local' | 'openrouter'
 export default function AuthPanel() {
   const q = useRpc('auth.status', {})
   const info = useRpc('app.info', {})
-  const [apiKey, setApiKey] = useState('')
-  const [asking, setAsking] = useState(false)
-  const [askingSession, setAskingSession] = useState(false)
-  const [sessionKey, setSessionKey] = useState('')
-  const [busy, setBusy] = useState(false)
+  // The provider whose add form is open, counted so asking again reopens it. Keys lists only the
+  // providers with a key, so this one is shown too until the form closes.
+  const [adding, setAdding] = useState<{ provider: string; n: number } | null>(null)
+  useEffect(() => {
+    const onAdd = (e: Event) => setAdding((a) => ({ provider: (e as CustomEvent<string>).detail, n: (a?.n ?? 0) + 1 }))
+    window.addEventListener('wd-add-key', onAdd)
+    return () => window.removeEventListener('wd-add-key', onAdd)
+  }, [])
   const setStatus = (s: AuthStatus) => {
     queryClient.setQueryData(['auth.status', {}], s)
     void queryClient.invalidateQueries({ queryKey: ['settings.schema'] })
@@ -299,144 +428,60 @@ export default function AuthPanel() {
   if (q.isLoading) return <Skeleton h={400} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const s = q.data as Extended
-  const mode = s.claude.mode === 'api-key' ? 'api-key' : 'subscription'
-  const sessionMode = (s.claude.session_mode ?? s.claude.mode) === 'api-key' ? 'api-key' : 'subscription'
-  const needsSignIn = (mode === 'subscription' || sessionMode === 'subscription') && !s.claude.signed_in
-  const ready = s.claude.logged_in && !s.claude.session_reason
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
-
-  const switchMode = async (m: 'subscription' | 'api-key', key?: string) => {
-    setBusy(true)
-    try {
-      setStatus(await call('auth.setAnthropicMode', { mode: m, key }))
-      setAsking(false)
-      setApiKey('')
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
-    } finally {
-      setBusy(false)
-    }
-  }
-  // Ask Claude and Research have their own billing (D318); an API key for them is stored as the
-  // default Anthropic key, the same one processing uses on a key.
-  const switchSessionMode = async (m: 'subscription' | 'api-key', key?: string) => {
-    setBusy(true)
-    try {
-      if (key?.trim()) await call('auth.setKey', { provider: 'anthropic', key: key.trim() })
-      setStatus(await call('auth.setSessionMode', { mode: m }))
-      setAskingSession(false)
-      setSessionKey('')
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
-    } finally {
-      setBusy(false)
-    }
-  }
+  // Keys lists the providers with a key (stored or in the environment), and the one being added.
+  const hasKey = (p: string) => (s.key_sets?.[p]?.length ?? 0) > 0 || s.keys.some((k) => k.provider === p)
+  const listed = providers.filter((p) => hasKey(p.provider) || adding?.provider === p.provider)
+  const unlisted = providers.filter((p) => !listed.includes(p))
+  // What a stored key pays for, from the choices under Paid with: a provider's default key pays
+  // for its steps (Claude's only on an API key), and Ask Claude's own key for questions.
+  const stepProviders = new Set(s.stages.map((st) => st.provider))
+  const sessionMode = s.claude.session_mode ?? s.claude.mode
+  const pays = (p: string, k: LabelledKey) => [
+    ...(k.default && stepProviders.has(p) && (p !== 'anthropic' || s.claude.mode === 'api-key') ? ['adding documents'] : []),
+    ...(p === 'anthropic' && sessionMode === 'api-key' && s.claude.session_key_id === k.id ? ['Ask Claude'] : [])
+  ]
 
   return (
     <div className="col" style={{ gap: 22 }}>
       <StepsCard s={s} onStatus={setStatus} />
-      <section className="card set-card">
-        <div className="set-card-head">
-          <div>
-            <div className="card-title">Billing</div>
-            <div className="card-sub">How adding documents and Ask Claude pay for their models. A step on OpenAI, Gemini, DeepSeek or another provider is billed per token to that provider’s key, under Provider keys below.</div>
-          </div>
-          <span className="spacer" />
-          {/* Claude's readiness: Ask Claude always needs it, and so does any stage set to a Claude model. */}
-          {ready ? <Badge tone="success" icon={CheckCircle2}>Claude ready</Badge> : <Badge tone="warning" icon={XCircle}>Claude not ready</Badge>}
-        </div>
-        <div className="set-field" style={{ borderTop: 'none' }}>
-          <div className="set-field-text">
-            <div className="set-field-label">Adding documents</div>
-            <div className="set-field-short">
-              {s.stages.every((st) => st.provider === 'anthropic')
-                ? 'Every processing stage runs on Claude, which can be paid for two ways.'
-                : s.stages.some((st) => st.provider === 'anthropic')
-                  ? 'Stages on other providers are billed to their own keys. The stages on Claude can be paid for two ways.'
-                  : 'No processing stage runs on Claude at the moment, so this applies only once you set one to a Claude model.'}{' '}
-              An API key bills per token, to your Anthropic account, with no usage limit; recommended. A Claude subscription is not metered, but a large batch can reach your plan’s limit.
-            </div>
-          </div>
-          <div className="set-field-control">
-            <Segmented
-              value={asking ? 'api-key' : mode}
-              onChange={(m) => {
-                if (m === 'subscription') void switchMode('subscription')
-                else if (s.claude.key_masked) void switchMode('api-key')
-                else setAsking(true)
-              }}
-              options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api-key', label: 'API key' }]}
-            />
-            {asking && (
-              <div className="set-input-row">
-                <input className="input" type="password" autoFocus autoComplete="off" placeholder="No Anthropic key is stored yet: paste one" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-                <Button variant="primary" loading={busy} disabled={!apiKey.trim()} onClick={() => void switchMode('api-key', apiKey)}>
-                  Use this key
-                </Button>
-              </div>
-            )}
-            {s.claude.key_masked && mode === 'api-key' && <div className="set-meta">{s.claude.key_label && <span>{s.claude.key_label}, the default key</span>}<span className="mono">{s.claude.key_masked}</span></div>}
-          </div>
-        </div>
-        <div className="set-field">
-          <div className="set-field-text">
-            <div className="set-field-label">Ask Claude and Research</div>
-            <div className="set-field-short">Questions and web research always run on Claude. A Claude subscription covers them with no charge per question; recommended if you have one.</div>
-          </div>
-          <div className="set-field-control">
-            <Segmented
-              value={askingSession ? 'api-key' : sessionMode}
-              onChange={(m) => {
-                if (m === 'subscription') void switchSessionMode('subscription')
-                else if (s.claude.key_masked) void switchSessionMode('api-key')
-                else setAskingSession(true)
-              }}
-              options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api-key', label: 'API key' }]}
-            />
-            {askingSession && (
-              <div className="set-input-row">
-                <input className="input" type="password" autoFocus autoComplete="off" placeholder="No Anthropic key is stored yet: paste one" value={sessionKey} onChange={(e) => setSessionKey(e.target.value)} />
-                <Button variant="primary" loading={busy} disabled={!sessionKey.trim()} onClick={() => void switchSessionMode('api-key', sessionKey)}>
-                  Use this key
-                </Button>
-              </div>
-            )}
-          </div>
-        </div>
-        {needsSignIn && (
-          <div style={{ margin: '0 18px 16px' }}>
-            <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />
-          </div>
-        )}
-        {s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
-        {s.claude.session_reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.session_reason}</Callout>}
-        {info.data && !info.data.claude_code.installed && (
-          <Callout tone="warning" title="Claude is missing from the engine" style={{ margin: '0 18px 16px' }}>
-            Ask, Research and context seeding need it. It comes with the engine: repair the engine under Settings → Setup, then sign in.
-          </Callout>
-        )}
-      </section>
-
+      {info.data && !info.data.claude_code.installed && (
+        <Callout tone="warning" title="Claude is missing from the engine">
+          Ask, Research and context seeding need it. It comes with the engine: repair the engine under Settings → Setup, then sign in.
+        </Callout>
+      )}
 
       <section className="card set-card">
         <div className="set-card-head">
           <div>
-            <div className="card-title">Provider keys</div>
+            <div className="card-title">Keys</div>
             <div className="card-sub set-keystore" data-store={s.storage?.store ?? 'unknown'}>{storageLine(s.storage)}</div>
           </div>
+          <span className="spacer" />
+          {unlisted.length > 0 && (
+            <Dropdown
+              align="right"
+              trigger={(o) => <Button size="sm" icon={Plus} onClick={o}>Add a key</Button>}
+              items={unlisted.map((p) => ({ label: p.label, onClick: () => goAddKey(p.provider) }))}
+            />
+          )}
         </div>
-        <StorageNotes st={s.storage} />
+        {/* The storage warning is about keys, so it waits until there is one. */}
+        {listed.length > 0 && <StorageNotes st={s.storage} />}
         <div style={{ padding: '0 18px' }}>
-          {providers.map((p) => (
-            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} onStatus={setStatus} />
+          {listed.length === 0 && <div className="faint" style={{ padding: '6px 0 14px' }}>No keys yet. Add one for each provider your models use.</div>}
+          {listed.map((p) => (
+            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} pays={(k) => pays(p.provider, k)}
+              opening={adding?.provider === p.provider ? adding.n : 0} onClosed={() => setAdding((a) => (a?.provider === p.provider ? null : a))} onStatus={setStatus} />
           ))}
         </div>
         <div className="set-foot">
-          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. A stored Anthropic key is only used for what is set to API key above. Each key can have a spending limit, from its menu: Watchdog stops before sending anything more on a key that reaches it, counting what it paid for in every investigation on this computer. Use a key made for Watchdog, with a limit set with the provider too, which is the one it enforces.
+          To bill different accounts with the same provider, add another key and give each a name; each investigation can choose which one it bills on its Overview, and otherwise uses the one chosen under Paid with. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. Each key can have a spending limit, from its menu: Watchdog stops before sending anything more on a key that reaches it, counting what it paid for in every investigation on this computer. Use a key made for Watchdog, with a limit set with the provider too, which is the one it enforces.
         </div>
       </section>
+
+      <PaidWithCard s={s} onStatus={setStatus} />
 
       <section className="card set-card">
         <div className="set-card-head">

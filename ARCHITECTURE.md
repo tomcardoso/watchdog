@@ -1012,6 +1012,10 @@ See D45–D48.
   (`config.json` `key_limits`) counts from when it was set or reset. `ops.ingest` refuses to start a run
   on a key over its limit, `orchestrate._key_limit_stop` stops one at the spending checkpoints, and a
   chat refuses a question; the per-investigation limit (D324) applies too.
+- **Which key pays (D290, D348).** Per provider, not per step: the investigation's chosen key, else
+  the provider's default (`auth.resolve_key`). App sessions on an API key prefer their own Anthropic
+  key (`credentials.json` `session_key`, `auth.session_key_id`) over the default; an investigation's
+  choice still wins.
 - **Find in a document (D289).** Every viewer has a visible find box; one matcher
   (`lib/findText.ts`: case, accents, quote style, dashes and white space ignored, matches mapped
   back to the original characters) serves it and the Text tab. A scanned page with saved positions

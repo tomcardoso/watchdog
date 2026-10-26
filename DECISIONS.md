@@ -2989,7 +2989,15 @@ A limit belongs on what gets charged, which is a key, not a provider or only an 
 
 Settings → Models & keys now chooses each step's model, in a Models table of four rows: classify, extract, and the finishing step's writing and housekeeping. Each row also shows what pays: the provider's default key, or the Claude subscription. There is no per-step key choice, since an investigation already chooses its key per provider (D290). Settings lists the model settings in a hidden section, so they appear once, and "Models" becomes "Model options" (effort, endpoints). Every key gets its own line, the only one included, with its name (renamable), in-use and encrypted badges, and its limit.
 
-Adding a key now points every step still on its built-in default whose provider can't run at that provider's recommended model (`defaults.PROVIDER_MODELS`: Luna, Gemini 3.8 Flash, DeepSeek Flash, Haiku 5.5). A fresh install with only an OpenAI key therefore works without three settings changed by hand. A step the reporter set is never changed, and the app says when one moved.
+Adding a key now points every step still on its built-in default whose provider can't run at that provider's recommended model (`defaults.PROVIDER_MODELS`: Luna, Gemini 3.8 Flash, DeepSeek Flash, Haiku 5.5). A fresh install with only an OpenAI key therefore works without three settings changed by hand. A step the reporter set is never changed, and the app says when one moved. The first Anthropic key, stored before any choice between it and a subscription, sets Claude's billing to API key, so the Billing toggle never shows a subscription nobody chose; a chosen subscription stays.
 
 Tradeoff: the key log counts only Watchdog on this computer, so the provider's own limit stays the hard ceiling. A call under way can pass a key's limit, as with D324. The recommended models are judgement from one benchmark matrix (D315), not a measurement per step.
+
+### D348 — Models & keys in three parts; Ask Claude can bill its own Anthropic key
+
+Settings → Models & keys is now Models (each step's model), Keys (adding, naming, limits), and Paid with (what pays). Paid with has one line per provider the steps use, which picks that provider's default key, and Claude's lines also offer the subscription; a key's name always carries its provider. Keys are added only under Keys: "Add a key…" opens that provider's form there. Payment stays per provider, not per step: two steps on one provider always share a key, as before, and no one was found who needs otherwise.
+
+Ask Claude and Research now keep their own Anthropic key (`credentials.json` `session_key`, `auth.session_key_id`) when on an API key, so questions can bill a personal key while processing bills a work key. An investigation's chosen key still wins, and a deleted key falls back to the default. Tradeoff: one more stored choice; with none set, behaviour is unchanged (the default key).
+
+Under Keys, a key's badges say what it pays for (adding documents, Ask Claude, the investigations that chose it, or not used) instead of "Default", and its menu no longer makes it the default: Paid with is the one place that choice is made. The first key added for a provider still pays until another is chosen there.
 

@@ -456,14 +456,15 @@ def _usable(provider: str, item: dict) -> dict:
     return item
 
 
-def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
+def resolve_key(provider: str = "anthropic", vault: Path | None = None, *, prefer: str | None = None) -> dict:
     """The one resolver for which key pays for `provider` in an investigation (D290):
     `{"key", "id", "label", "source"}` with `source` one of `env`, `chosen`, `default`, `none`.
 
     The environment variable overrides everything, as before. Otherwise the investigation's
     choice applies (`vault`, or the process's `use_investigation` scope); a choice this computer
     can't satisfy raises `KeyChoiceError` rather than falling back to another account. With no
-    choice, the provider's default key."""
+    choice, the key `prefer` names when it is stored (Ask Claude's own key), else the provider's
+    default key."""
     meta = PROVIDERS.get(provider)
     if meta and os.environ.get(meta["env"]):
         return {"key": os.environ[meta["env"]], "id": None, "label": _env_label(provider), "source": "env"}
@@ -476,8 +477,9 @@ def resolve_key(provider: str = "anthropic", vault: Path | None = None) -> dict:
             raise KeyChoiceError(missing_key_message(provider, choice.get("label")))
         item = _usable(provider, item)
         return {"key": item["key"], "id": item["id"], "label": item["label"], "source": "chosen"}
+    pick = prefer if prefer in {i["id"] for i in items} else default
     for i in items:
-        if i["id"] == default:
+        if i["id"] == pick:
             i = _usable(provider, i)
             return {"key": i["key"], "id": i["id"], "label": i["label"], "source": "default"}
     return {"key": None, "id": None, "label": None, "source": "none"}
@@ -705,6 +707,15 @@ def provider_ready(provider: str) -> bool:
 SESSION_MODES = ("subscription", "api-key")
 
 
+def session_key_id(state: dict | None = None) -> str | None:
+    """The stored Anthropic key Ask Claude and Research pay with on an API key: their own choice
+    (`session_key`) while that key exists, else the default Anthropic key (D348)."""
+    state = load_state() if state is None else state
+    items, default = key_items(state, "anthropic")
+    own = state.get("session_key")
+    return own if own in {i["id"] for i in items} else default
+
+
 def session_mode(state: dict | None = None) -> str | None:
     """How the app's sessions (Ask Claude, Research, setting the context) reach Claude: their own
     `session_mode` when one is set (D318), else Claude's `mode`."""
@@ -723,13 +734,14 @@ def resolve_auth(provider: str = "anthropic", vault: Path | None = None, *, sess
     """
     state = load_state()
     mode = session_mode(state) if session else state.get("mode")
+    prefer = session_key_id(state) if session else None
 
     if mode is None:
         return {"mode": "none", "reason": "No model provider is set up. Sign in or add a key under Settings → Models & keys."}
     if mode == "subscription":
         return {"mode": "subscription"}
     # api-key — the investigation's chosen Anthropic key, or the default (D290)
-    key = get_api_key(provider, vault)
+    key = resolve_key(provider, vault, prefer=prefer)["key"]
     return {"mode": "api-key", "key": key} if key else {
         "mode": "none", "reason": "Claude is set to use an API key, but no key is stored. Add one under Settings → Models & keys."}
 
@@ -751,11 +763,11 @@ INGEST_STAGES = (("classifier_model", defaults.CLASSIFIER_MODEL),
 
 # The steps Settings → Models & keys lists, each with the setting its model picker writes and the
 # settings it falls back to when that is unset (D339, D347): the finishing step shows as its two
-# kinds of work, which both fall back to `finalizer_model`.
+# kinds of work, in the order a run does them, which both fall back to `finalizer_model`.
 STEP_ROWS = (("classifier", "classifier_model", (), defaults.CLASSIFIER_MODEL),
              ("extractor", "extractor_model", (), defaults.EXTRACTOR_MODEL),
-             ("writing", "finalizer_writing_model", ("finalizer_model",), defaults.FINALIZER_MODEL),
-             ("housekeeping", "finalizer_housekeeping_model", ("finalizer_model",), defaults.FINALIZER_MODEL))
+             ("housekeeping", "finalizer_housekeeping_model", ("finalizer_model",), defaults.FINALIZER_MODEL),
+             ("writing", "finalizer_writing_model", ("finalizer_model",), defaults.FINALIZER_MODEL))
 
 
 def step_value(cfg: dict, key: str, fallbacks=(), default: str = "") -> str:
@@ -795,6 +807,11 @@ def adopt_provider(provider: str) -> list[str]:
         return []
     state = load_state()
     changed = []
+    if provider == "anthropic" and state.get("mode") is None:
+        # The first Anthropic key, before any choice between it and a subscription: Claude bills
+        # it, so the toggle shows the choice the key made rather than none.
+        state["mode"] = "api-key"
+        save_state(state)
     for key, default in INGEST_STAGES:
         if cfg.get(key):
             continue
