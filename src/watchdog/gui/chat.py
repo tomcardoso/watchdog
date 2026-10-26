@@ -249,6 +249,21 @@ def _vault_only_edits(vault: Path):
     return hook
 
 
+def refresh_setup(vault: Path) -> None:
+    """Bring the investigation's `.claude/` up to this version of Watchdog before a conversation
+    starts or resumes, so its commands and instructions are the ones this release ships (D354).
+    Skipped without folder access (D268); a failure never stops the conversation, which then runs
+    on the files already there."""
+    from watchdog import access, projects
+    from watchdog.vault import refresh_claude_setup
+    try:
+        if access.enforced() and not access.is_granted(vault):
+            return
+        refresh_claude_setup(vault, projects.name_for(vault))
+    except Exception:  # noqa: BLE001 — an out-of-date setup is better than no conversation
+        pass
+
+
 def first_prompt(vault: Path, mode: str, text: str | None) -> str | None:
     """The session's opening prompt: for Ask, the query skill on the question (the bare question
     when the vault has no `/watchdog-query`, since an unknown slash command would lose it)."""
@@ -663,6 +678,7 @@ class ChatManager:
         if model not in CHAT_MODELS:
             raise RpcError(f"model must be one of {', '.join(CHAT_MODELS)}.", code="bad_params")
         _check_session_key(vault)
+        refresh_setup(vault)
         opening = first_prompt(vault, mode, prompt)
         s = Session(vault, mode, model, _title(mode, prompt))
         self.sessions[s.id] = s
@@ -754,6 +770,7 @@ class ChatManager:
         if not s.sdk_session_id:
             raise RpcError("That chat never started, so it cannot be resumed.", code="bad_params")
         _check_session_key(s.vault)
+        refresh_setup(s.vault)
         self.sessions[sid] = s
         self.status(s, "idle", None, s.cost)
         return {"session": sid}

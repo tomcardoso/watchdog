@@ -8,6 +8,7 @@ commands in `.claude/commands/`), and the counts of documents at each stage that
 from __future__ import annotations
 
 import importlib.resources
+import json
 import os
 from pathlib import Path
 
@@ -98,19 +99,38 @@ def render_template(filename: str, **values: str) -> str:
     return text
 
 
-def install_commands(commands_dir: Path) -> None:
-    """Copy the session's shortcut commands (`/watchdog-query` and the rest) into the vault.
-    Record skills are not copied: the pipeline reads them from `watchdog.skills_catalog` (D21)."""
-    commands_dir.mkdir(parents=True, exist_ok=True)
+def _write_if_changed(path: Path, data: bytes) -> bool:
+    """Write `data` unless the file already holds it, so an unchanged file keeps its date."""
+    try:
+        if path.read_bytes() == data:
+            return False
+    except OSError:
+        pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+    return True
+
+
+def install_commands(commands_dir: Path) -> list[str]:
+    """Copy the session's shortcut commands (`/watchdog-query` and the rest) into the vault, and
+    remove a `watchdog-*` command this version no longer ships; a command of the reporter's own,
+    under another name, is left alone (D354). Returns the names changed. Record skills are not
+    copied: the pipeline reads them from `watchdog.skills_catalog` (D21)."""
     skills = importlib.resources.files("watchdog") / "skills"
-    for item in skills.iterdir():
-        if item.name.endswith(".md") and not item.name.startswith("_"):
-            (commands_dir / item.name).write_bytes(item.read_bytes())
+    shipped = {item.name: item.read_bytes() for item in skills.iterdir()
+               if item.name.endswith(".md") and not item.name.startswith("_")}
+    changed = [name for name, data in sorted(shipped.items())
+               if _write_if_changed(commands_dir / name, data)]
+    for old in sorted(commands_dir.glob("watchdog-*.md")):
+        if old.name not in shipped:
+            old.unlink()
+            changed.append(old.name)
+    return changed
 
 
-def write_claude_md(vault: Path, name: str) -> None:
+def write_claude_md(vault: Path, name: str) -> bool:
     """Write Watchdog's part of `.claude/CLAUDE.md` from the current template, keeping anything
-    the reporter wrote outside the markers."""
+    the reporter wrote outside the markers. Returns whether the file changed."""
     path = vault / ".claude" / "CLAUDE.md"
     block = render_template("CLAUDE.md", name=name).rstrip("\n")
     current = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -119,8 +139,23 @@ def write_claude_md(vault: Path, name: str) -> None:
         current = current[:begin] + block + current[end + len(CLAUDE_MD_END):]
     else:
         current = block + "\n"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(current, encoding="utf-8")
+    return _write_if_changed(path, current.encode("utf-8"))
+
+
+def refresh_claude_setup(vault: Path, name: str) -> list[str]:
+    """Bring the investigation's `.claude/` up to this version of Watchdog: the shortcut commands,
+    Watchdog's section of `CLAUDE.md` and `settings.json` (written whole from the current rules).
+    Only files that differ are written. Returns the paths changed, relative to `.claude/`. The app
+    runs this before every conversation's first message, so a release's new instructions reach
+    existing investigations without the reporter doing anything (D354)."""
+    claude = vault / ".claude"
+    changed = [f"commands/{n}" for n in install_commands(claude / "commands")]
+    if write_claude_md(vault, name):
+        changed.append("CLAUDE.md")
+    settings = (json.dumps(claude_settings(), indent=2) + "\n").encode("utf-8")
+    if _write_if_changed(claude / "settings.json", settings):
+        changed.append("settings.json")
+    return changed
 
 
 def pkg_version() -> str:

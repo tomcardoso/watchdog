@@ -174,7 +174,9 @@ If updating keeps failing, download the newest installer from the [releases page
 
 ## Skills look outdated after an update
 
-The record skills — the document-type knowledge — update with the app. But each investigation also has its own copy of Claude's setup (the commands and instructions Claude uses in that investigation), and that copy keeps its old version. Open **Activity → Maintenance** and choose **Refresh Claude setup** for the investigation. It rewrites the shortcut commands, Watchdog's part of Claude's instructions and Claude's settings for that investigation. Anything you added to the instructions after Watchdog's part is kept; changes made to Claude's settings file are replaced.
+The record skills — the document-type knowledge — update with the app. Each investigation also has its own copy of Claude's setup (the shortcut commands and instructions Claude uses in that investigation), and Watchdog brings that copy up to date by itself whenever a conversation starts or resumes. It cannot do so in a folder Watchdog hasn't been allowed to work in, and it does not happen if you open the investigation's folder in Claude Code outside the app. In either case, open **Activity → Maintenance** and choose **Refresh Claude setup** for the investigation.
+
+The refresh rewrites the shortcut commands, Watchdog's part of Claude's instructions and Claude's settings. Anything you added to the instructions after Watchdog's part is kept, and so is a shortcut of your own saved under a name that does not start with `watchdog-`. Changes to Watchdog's own shortcuts and to Claude's settings file are replaced.
 
 ## An investigation moved or is missing
 

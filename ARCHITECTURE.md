@@ -717,7 +717,9 @@ with folder access), and a UserPromptSubmit note of documents still waiting. "Al
 tool within one scope (a folder, a web site, an entity, one command), never the whole tool. The
 vault's own `.claude/settings.json` carries the same rules without hooks, for Claude Code opened on
 the folder outside the app, which gets the instructions and rules but no tools and no hooks; the
-`refresh-claude-setup` operation rewrites it with the commands and `CLAUDE.md`. The limit of all
+`refresh-claude-setup` operation rewrites it with the commands and `CLAUDE.md`, and the app runs
+the same refresh (`vault.refresh_claude_setup`, writing only what differs) before a conversation
+starts or resumes, where Watchdog has folder access (D354). The limit of all
 this: the Anthropic key still reaches the Claude Code process as `ANTHROPIC_API_KEY` in API-key mode,
 and nothing the session can start runs a command, so nothing else sees it.
 
@@ -877,8 +879,9 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
 - **Record skills (D21).** Global: the package's `skills/records/` plus `~/.watchdog/skills/records/`
   (user skills override by name). Read directly, never copied into a vault.
 - **Claude Code commands.** `/watchdog-context`, `-entity`, `-query`, `-surface`, `-wiki`, `-health`,
-  `-request`, `-research`, copied into each vault by `projects-new` and `refresh-claude-setup`
-  (`vault.install_commands`). `/watchdog-query` can call the
+  `-request`, `-research`, copied into each vault by `projects-new`, `refresh-claude-setup` and
+  before every conversation (`vault.install_commands`, which also removes a `watchdog-*` command no
+  longer shipped, D354). `/watchdog-query` can call the
   `search` tool as a semantic lane (D44, D299).
 
 **Data sent per call.** Chew makes none of these calls. A stage on the `local` backend sends the
