@@ -48,3 +48,5 @@
 .set-keylimit { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .set-keylimit.reached { color: var(--warning); font-weight: 600; }
 .set-keyname { flex: 0 0 180px; }
+.set-claudekey { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--text-2); }
+.set-claudekey .select { width: auto; min-width: 220px; }

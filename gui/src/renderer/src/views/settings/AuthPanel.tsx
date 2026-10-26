@@ -11,7 +11,7 @@ import { call, errorMessage, queryClient, useRpc } from '@renderer/lib/rpc'
 import { toast } from '@renderer/lib/store'
 
 type Extended = AuthStatus & {
-  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null; key_label?: string | null }
+  claude: AuthStatus['claude'] & { env_key_set?: boolean; key_masked?: string | null; key_label?: string | null; key_source?: 'env' | 'stored' | null }
   providers?: { provider: string; label: string; env: string; requires_key: boolean; base_url_setting: string | null; base_url: string | null; ready: boolean }[]
   base_urls?: { provider: string; url: string }[]
 }
@@ -284,14 +284,80 @@ function BaseUrl({ provider, url, onStatus }: { provider: 'local' | 'openrouter'
   )
 }
 
+// Under a Claude toggle set to API key: which Anthropic key pays, chosen from the stored ones, or
+// a new one added on the spot. Both toggles bill the default Anthropic key, so choosing here makes
+// it the default; an investigation can still choose another on its Overview (D290).
+function ClaudeKeyChoice({ s, adding, onAdding, onAdded, onStatus }: { s: Extended; adding: boolean; onAdding: (on: boolean) => void; onAdded: () => Promise<void>; onStatus: (s: AuthStatus) => void }) {
+  const keys = s.key_sets?.anthropic ?? []
+  const [name, setName] = useState('')
+  const [key, setKey] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+  if (s.claude.key_source === 'env') {
+    return <div className="set-meta"><span>Paid with the key set in your environment</span><span className="mono">{s.claude.key_masked}</span></div>
+  }
+  const add = async () => {
+    setBusy(true)
+    setErr(null)
+    try {
+      const r = await call('auth.addKey', { provider: 'anthropic', label: name.trim() || (keys.length ? '' : 'Default'), key: key.trim(), make_default: true })
+      onStatus(r)
+      await onAdded()
+      setName('')
+      setKey('')
+      onAdding(false)
+      const w = (r as unknown as { warning?: string | null }).warning
+      toast({ kind: w ? 'info' : 'success', title: 'Key added', body: w || undefined })
+    } catch (e) {
+      setErr(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+  const choose = async (id: string) => {
+    if (id === '+') return onAdding(true)
+    setBusy(true)
+    try {
+      onStatus(await call('auth.setDefaultKey', { provider: 'anthropic', id }))
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not change the key', body: errorMessage(e) })
+    } finally {
+      setBusy(false)
+    }
+  }
+  if (adding || !keys.length) {
+    return (
+      <div className="col" style={{ gap: 6 }}>
+        <div className="set-input-row">
+          <input className="input set-keyname" autoFocus maxLength={40} placeholder={keys.length ? 'Name, such as Work' : 'Name (optional)'} value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} />
+          <input className="input" type="password" autoComplete="off" placeholder="Paste your Anthropic API key" value={key} onChange={(e) => { setKey(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && key.trim() && void add()} />
+        </div>
+        <div className="set-input-row">
+          <Button size="sm" variant="primary" loading={busy} disabled={!key.trim() || (keys.length > 0 && !name.trim())} onClick={() => void add()}>Add and use this key</Button>
+          {adding && <Button size="sm" variant="ghost" onClick={() => { setErr(null); onAdding(false) }}>Cancel</Button>}
+        </div>
+        {err && <div className="field-error">{err}</div>}
+      </div>
+    )
+  }
+  const current = keys.find((k) => k.default) ?? keys[0]
+  return (
+    <label className="set-claudekey">
+      <span>Paid with</span>
+      <select className="select" value={current.id} disabled={busy} onChange={(e) => void choose(e.target.value)}>
+        {keys.map((k) => <option key={k.id} value={k.id}>{k.label} · {k.masked}</option>)}
+        <option value="+">Add a key…</option>
+      </select>
+    </label>
+  )
+}
+
 export default function AuthPanel() {
   const q = useRpc('auth.status', {})
   const info = useRpc('app.info', {})
-  const [apiKey, setApiKey] = useState('')
+  // Which toggle is adding an Anthropic key: API key was chosen with none stored, or "Add a key…".
   const [asking, setAsking] = useState(false)
   const [askingSession, setAskingSession] = useState(false)
-  const [sessionKey, setSessionKey] = useState('')
-  const [busy, setBusy] = useState(false)
   const setStatus = (s: AuthStatus) => {
     queryClient.setQueryData(['auth.status', {}], s)
     void queryClient.invalidateQueries({ queryKey: ['settings.schema'] })
@@ -316,31 +382,22 @@ export default function AuthPanel() {
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
 
-  const switchMode = async (m: 'subscription' | 'api-key', key?: string) => {
-    setBusy(true)
+  const switchMode = async (m: 'subscription' | 'api-key') => {
     try {
-      setStatus(await call('auth.setAnthropicMode', { mode: m, key }))
+      setStatus(await call('auth.setAnthropicMode', { mode: m }))
       setAsking(false)
-      setApiKey('')
     } catch (e) {
       toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
-    } finally {
-      setBusy(false)
     }
   }
-  // Ask Claude and Research have their own billing (D318); an API key for them is stored as the
-  // default Anthropic key, the same one processing uses on a key.
-  const switchSessionMode = async (m: 'subscription' | 'api-key', key?: string) => {
-    setBusy(true)
+  // Ask Claude and Research have their own billing (D318); on an API key they use the default
+  // Anthropic key, the same one processing uses on a key.
+  const switchSessionMode = async (m: 'subscription' | 'api-key') => {
     try {
-      if (key?.trim()) await call('auth.setKey', { provider: 'anthropic', key: key.trim() })
       setStatus(await call('auth.setSessionMode', { mode: m }))
       setAskingSession(false)
-      setSessionKey('')
     } catch (e) {
       toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -380,15 +437,9 @@ export default function AuthPanel() {
               }}
               options={[{ value: 'subscription', label: 'Claude subscription' }, { value: 'api-key', label: 'API key' }]}
             />
-            {asking && (
-              <div className="set-input-row">
-                <input className="input" type="password" autoFocus autoComplete="off" placeholder="No Anthropic key is stored yet: paste one" value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
-                <Button variant="primary" loading={busy} disabled={!apiKey.trim()} onClick={() => void switchMode('api-key', apiKey)}>
-                  Use this key
-                </Button>
-              </div>
+            {(asking || mode === 'api-key') && (
+              <ClaudeKeyChoice s={s} adding={asking} onAdding={setAsking} onAdded={() => switchMode('api-key')} onStatus={setStatus} />
             )}
-            {s.claude.key_masked && mode === 'api-key' && <div className="set-meta">{s.claude.key_label && <span>{s.claude.key_label}, the default key</span>}<span className="mono">{s.claude.key_masked}</span></div>}
           </div>
         </div>
         <div className="set-field">
@@ -406,13 +457,8 @@ export default function AuthPanel() {
               }}
               options={[{ value: 'subscription', label: 'Claude subscription' }, { value: 'api-key', label: 'API key' }]}
             />
-            {askingSession && (
-              <div className="set-input-row">
-                <input className="input" type="password" autoFocus autoComplete="off" placeholder="No Anthropic key is stored yet: paste one" value={sessionKey} onChange={(e) => setSessionKey(e.target.value)} />
-                <Button variant="primary" loading={busy} disabled={!sessionKey.trim()} onClick={() => void switchSessionMode('api-key', sessionKey)}>
-                  Use this key
-                </Button>
-              </div>
+            {(askingSession || sessionMode === 'api-key') && (
+              <ClaudeKeyChoice s={s} adding={askingSession} onAdding={setAskingSession} onAdded={() => switchSessionMode('api-key')} onStatus={setStatus} />
             )}
           </div>
         </div>
