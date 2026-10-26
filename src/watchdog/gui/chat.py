@@ -356,6 +356,7 @@ _WATCHDOG_TOOL_TITLES = {
     "leads": "List leads",
     "check_citations": "Check citations",
     "research_seen": "List sources already captured",
+    "read_background": "Read a background file",
     "wayback_archive": "Save a page to the Wayback Machine",
 }
 

@@ -110,6 +110,69 @@ def test_research_seen_lists_addresses_or_says_none(tools):
     assert tools.research_seen() == "No sources captured yet."
 
 
+def _converted(monkeypatch, result: dict) -> list:
+    """Stand in for pre-processing; returns the list of files it was asked to convert."""
+    from watchdog.pipeline import preprocess_batch
+    calls = []
+
+    def fake(path, *a, **kw):
+        calls.append(path)
+        return dict(result)
+    monkeypatch.setattr(preprocess_batch, "preprocess_one", fake)
+    return calls
+
+
+def test_read_background_says_which_pages_were_ocrd_and_converts_once(tools, vault, monkeypatch):
+    (vault / "context").mkdir(exist_ok=True)
+    (vault / "context" / "story.pdf").write_bytes(b"%PDF")
+    calls = _converted(monkeypatch, {"pages": [{"page": 1, "markdown": "Filed"}, {"page": 2, "markdown": "Scan"}],
+                                     "metadata": {"ocr_used": True, "ocr_pages": [2]}})
+    out = json.loads(tools.read_background("context/story.pdf"))
+    assert [(p["page"], p["read_by"], p["text"]) for p in out["pages"]] == [
+        (1, "text layer", "Filed"), (2, "OCR", "Scan")]
+    assert out["page_count"] == 2 and "next_page" not in out and "OCR" in out["note"]
+    tools.read_background("context/story.pdf", first_page=2)
+    assert len(calls) == 1
+
+
+def test_read_background_pages_through_a_long_file(tools, vault, monkeypatch):
+    (vault / "context").mkdir(exist_ok=True)
+    (vault / "context" / "report.docx").write_bytes(b"x")
+    page = "w" * (session_tools.BACKGROUND_CHARS // 2)
+    _converted(monkeypatch, {"pages": [{"page": n, "markdown": page} for n in (1, 2, 3)],
+                             "metadata": {"ocr_used": False}})
+    first = json.loads(tools.read_background("context/report.docx"))
+    assert [p["page"] for p in first["pages"]] == [1, 2] and first["next_page"] == 3
+    rest = json.loads(tools.read_background("context/report.docx", first_page=3))
+    assert [p["page"] for p in rest["pages"]] == [3] and "next_page" not in rest and "note" not in rest
+    with pytest.raises(ToolError, match="no page 4"):
+        tools.read_background("context/report.docx", first_page=4)
+
+
+@pytest.mark.parametrize("file", ["context.md", "queries/x.pdf", "context/../log.md", "context/missing.pdf",
+                                  "context/link.pdf", "context/photo.png", "context/notes.txt"])
+def test_read_background_reads_only_documents_in_context(tools, vault, tmp_path, monkeypatch, file):
+    (vault / "context").mkdir(exist_ok=True)
+    (vault / "queries" / "x.pdf").write_bytes(b"%PDF")
+    outside = tmp_path / "elsewhere.pdf"
+    outside.write_bytes(b"%PDF")
+    (vault / "context" / "link.pdf").symlink_to(outside)
+    for name in ("photo.png", "notes.txt"):
+        (vault / "context" / name).write_bytes(b"x")
+    calls = _converted(monkeypatch, {"pages": [], "metadata": {}})
+    with pytest.raises(ToolError):
+        tools.read_background(file)
+    assert calls == []
+
+
+def test_read_background_reports_a_failed_conversion(tools, vault, monkeypatch):
+    (vault / "context").mkdir(exist_ok=True)
+    (vault / "context" / "broken.pdf").write_bytes(b"x")
+    _converted(monkeypatch, {"error": "Docling conversion failed: bad xref"})
+    with pytest.raises(ToolError, match="couldn't be converted: Docling conversion failed"):
+        tools.read_background("context/broken.pdf")
+
+
 # ── confinement ───────────────────────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("page", ["../elsewhere.md", "/etc/passwd", "{outside}", "queries", "nope.md"])
