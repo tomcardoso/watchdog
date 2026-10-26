@@ -30,6 +30,10 @@ MODES = ("ask", "context", "research")
 # default can be Opus.
 CHAT_MODELS = ("sonnet", "haiku")
 DEFAULT_CHAT_MODEL = "sonnet"
+# The most one message from the Claude process may hold (D349). The SDK's own limit is 1 MB, which
+# one read of a large file or a page image already passes; the session then dies with "JSON message
+# exceeded maximum buffer size".
+MAX_MESSAGE_BYTES = 64 * 1024 * 1024
 _AUTH_HINT = ("Claude is not signed in. Sign in under Settings → Models & keys, then try again.")
 _MISSING_HINT = ("Claude, which comes with Watchdog's engine, could not be started. Repair the "
                  "engine under Settings → Setup, then try again.")
@@ -105,6 +109,7 @@ def build_options(session: "Session", can_use_tool):
                   + (list(RESEARCH_WEB_TOOLS) if session.mode == "research" else []),
                   disallowed_tools=list(DISALLOWED_TOOLS))
     kwargs["env"] = session_auth_env(session)
+    kwargs["max_buffer_size"] = MAX_MESSAGE_BYTES
     from watchdog.gui.engine_setup import bundled_claude_path
     if bundled_claude_path():
         kwargs["cli_path"] = bundled_claude_path()

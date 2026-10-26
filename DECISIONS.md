@@ -3001,3 +3001,9 @@ Ask Claude and Research now keep their own Anthropic key (`credentials.json` `se
 
 Under Keys, a key's badges say what it pays for (adding documents, Ask Claude, the investigations that chose it, or not used) instead of "Default", and its menu no longer makes it the default: Paid with is the one place that choice is made. The first key added for a provider still pays until another is chosen there.
 
+
+### D349 — A session's messages from Claude may be up to 64 MB, not the SDK's 1 MB
+
+Setting the context, which reads the reporter's own files, died with "JSON message exceeded maximum buffer size of 1048576 bytes": the Claude Agent SDK drops a session when one message from the Claude process passes `max_buffer_size`, 1 MB by default, and one large file read or page image does. `build_options` now sets `chat.MAX_MESSAGE_BYTES` (64 MB). Headless processing calls (`model_client._agent_query`) return only text and keep the default.
+
+Tradeoff: a runaway message can now hold 64 MB in memory before the session fails. The failure card still says "check sign-in" whatever the cause.
