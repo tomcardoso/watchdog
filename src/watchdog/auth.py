@@ -795,6 +795,11 @@ def adopt_provider(provider: str) -> list[str]:
         return []
     state = load_state()
     changed = []
+    if provider == "anthropic" and state.get("mode") is None:
+        # The first Anthropic key, before any choice between it and a subscription: Claude bills
+        # it, so the toggle shows the choice the key made rather than none.
+        state["mode"] = "api-key"
+        save_state(state)
     for key, default in INGEST_STAGES:
         if cfg.get(key):
             continue

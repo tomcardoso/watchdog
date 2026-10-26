@@ -9,12 +9,14 @@ The defaults are sensible, and most people only ever change a few of these.
 Watchdog is built around Claude and uses it by default. It can reach Claude in two ways:
 
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
-- **Subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
+- **Claude subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
 The **Billing** card in **Settings → Models & keys** sets each separately, for two kinds of work:
 
 - **Adding documents**: reading, extracting and the finishing steps. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
 - **Ask Claude and Research**: questions and web research. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+
+These two settings cover only steps that run on Claude: a step on OpenAI, Gemini or another provider is always billed to that provider's key, whichever you choose here. Until you choose, adding your first Anthropic key sets Claude to use it.
 
 You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit, and Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can let a Pro or Max plan continue past it at API rates.
 

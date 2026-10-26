@@ -232,7 +232,7 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
               <tr key={st.stage}>
                 <td><div style={{ fontWeight: 560 }}>{title}</div><div className="faint" style={{ fontSize: 'var(--fs-sm)' }}>{sub}</div></td>
                 <td style={{ minWidth: 220 }}>
-                  <ModelPicker compact value={st.set ? st.value : ''} models={models} emptyLabel={`Default (${st.value})`} onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
+                  <ModelPicker compact value={st.value} models={models} emptyLabel="Use the default" onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
                   <div className="faint" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>{providerName(st.provider)}</div>
                 </td>
                 <td>{st.paid_with ? <span>{st.paid_with}{st.paid_with !== 'Claude subscription' && <span className="faint"> · {providerName(st.provider)}</span>}</span> : <span className="faint">No {providerName(st.provider)} key yet</span>}</td>
@@ -299,10 +299,16 @@ export default function AuthPanel() {
   if (q.isLoading) return <Skeleton h={400} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const s = q.data as Extended
-  const mode = s.claude.mode === 'api-key' ? 'api-key' : 'subscription'
-  const sessionMode = (s.claude.session_mode ?? s.claude.mode) === 'api-key' ? 'api-key' : 'subscription'
-  const needsSignIn = (mode === 'subscription' || sessionMode === 'subscription') && !s.claude.signed_in
+  // Neither toggle is pressed until a choice is made: an unset mode is not a subscription.
+  const asMode = (m: string | null | undefined) => (m === 'api-key' || m === 'subscription' ? m : '') as 'subscription' | 'api-key'
+  const mode = asMode(s.claude.mode)
+  const sessionMode = asMode(s.claude.session_mode ?? s.claude.mode)
+  // Whether a processing step runs on Claude now. With none, Claude matters only to Ask Claude and
+  // Research, so an unset Claude is a note rather than a warning.
+  const claudeNeeded = s.stages.some((st) => st.provider === 'anthropic')
+  const needsSignIn = (mode === 'subscription' || sessionMode === 'subscription' || (!mode && claudeNeeded)) && !s.claude.signed_in
   const ready = s.claude.logged_in && !s.claude.session_reason
+  const unset = !s.claude.mode && !s.claude.session_mode
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
 
@@ -345,7 +351,7 @@ export default function AuthPanel() {
           </div>
           <span className="spacer" />
           {/* Claude's readiness: Ask Claude always needs it, and so does any stage set to a Claude model. */}
-          {ready ? <Badge tone="success" icon={CheckCircle2}>Claude ready</Badge> : <Badge tone="warning" icon={XCircle}>Claude not ready</Badge>}
+          {ready ? <Badge tone="success" icon={CheckCircle2}>Claude ready</Badge> : claudeNeeded || !unset ? <Badge tone="warning" icon={XCircle}>Claude not ready</Badge> : <Badge>Claude not set up</Badge>}
         </div>
         <div className="set-field" style={{ borderTop: 'none' }}>
           <div className="set-field-text">
@@ -367,7 +373,7 @@ export default function AuthPanel() {
                 else if (s.claude.key_masked) void switchMode('api-key')
                 else setAsking(true)
               }}
-              options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api-key', label: 'API key' }]}
+              options={[{ value: 'subscription', label: 'Claude subscription' }, { value: 'api-key', label: 'API key' }]}
             />
             {asking && (
               <div className="set-input-row">
@@ -393,7 +399,7 @@ export default function AuthPanel() {
                 else if (s.claude.key_masked) void switchSessionMode('api-key')
                 else setAskingSession(true)
               }}
-              options={[{ value: 'subscription', label: 'Subscription' }, { value: 'api-key', label: 'API key' }]}
+              options={[{ value: 'subscription', label: 'Claude subscription' }, { value: 'api-key', label: 'API key' }]}
             />
             {askingSession && (
               <div className="set-input-row">
@@ -410,7 +416,9 @@ export default function AuthPanel() {
             <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />
           </div>
         )}
-        {s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
+        {unset && !claudeNeeded ? (
+          <div className="faint" style={{ margin: '0 18px 16px', fontSize: 'var(--fs-sm)' }}>Ask Claude and Research run on Claude. To use them, choose how to pay above.</div>
+        ) : s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
         {s.claude.session_reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.session_reason}</Callout>}
         {info.data && !info.data.claude_code.installed && (
           <Callout tone="warning" title="Claude is missing from the engine" style={{ margin: '0 18px 16px' }}>

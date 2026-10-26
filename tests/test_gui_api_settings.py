@@ -564,6 +564,17 @@ def test_first_key_moves_unset_steps_off_a_provider_that_cant_run(wdg_home):
     assert call("auth.addKey", provider="openai", label="Work", key="sk-proj-zyxwvutsrqponmlk")["adopted"] == []
 
 
+def test_first_anthropic_key_sets_claude_to_api_key_only_when_unchosen(wdg_home):
+    """D347: the first Anthropic key, before any choice of how Claude bills, makes Claude bill it;
+    a subscription the reporter chose stays."""
+    assert call("auth.status")["claude"]["mode"] is None
+    r = call("auth.setKey", provider="anthropic", key="sk-ant-api03-abcdefghijklmnop")
+    assert r["claude"]["mode"] == "api-key"
+    write_creds(wdg_home, "subscription", {})
+    r = call("auth.addKey", provider="anthropic", label="Globe", key="sk-ant-api03-zyxwvutsrqponmlk")
+    assert r["claude"]["mode"] == "subscription"
+
+
 def test_a_keys_spending_limit_counts_what_it_paid_and_stops(wdg_home):
     """D347: a limit on one stored key counts what that key paid since the limit was set, in any
     investigation, and says so once reached; deleting the key drops its limit."""
