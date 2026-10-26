@@ -10,6 +10,18 @@ EXTRACTOR_MODEL = "haiku"
 CLASSIFIER_MODEL = "haiku"
 FINALIZER_MODEL = "haiku"
 
+# The model each provider's steps switch to when its first key is added and the default above
+# has no way to run (D347): the provider's recommended model, as `[backend:]model`. Judgement
+# from the October 2026 frontier matrix (D315): Haiku 5.5 led; Luna, Gemini 3.8 Flash and DeepSeek
+# Flash were each their provider's best arm. OpenRouter and a local server have no default: the
+# reporter names the model.
+PROVIDER_MODELS = {
+    "anthropic": "haiku",
+    "openai": "openai:gpt-6-luna",
+    "gemini": "gemini:gemini-3.8-flash",
+    "deepseek": "deepseek:deepseek-flash",
+}
+
 EXTRACTOR_EFFORT = "high"
 CLASSIFIER_EFFORT = "low"
 

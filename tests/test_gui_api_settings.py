@@ -37,7 +37,8 @@ def mode_bits(path):
 
 def test_schema_covers_every_key_once_in_section_order(wdg_home):
     s = call("settings.schema")
-    assert [sec["title"] for sec in s["sections"]] == [t for t, _, _ in settings_mod.SECTIONS]
+    assert [sec["title"] for sec in s["sections"]] == [t for t, _, _ in settings_mod.SECTIONS] + ["Step models"]
+    assert s["sections"][-1]["hidden"] is True
     keys = [k["key"] for sec in s["sections"] for k in sec["keys"]]
     assert sorted(keys) == sorted(settings_mod.SETTINGS) and len(keys) == len(set(keys))
     assert s["sections"][0]["keys"][0]["key"] == "projects_dir"
@@ -159,14 +160,6 @@ def test_set_projects_dir_creates_the_folder(wdg_home, tmp_path):
     assert call_error("settings.set", key="projects_dir", value="")["code"] == "bad_value"
 
 
-def test_default_spending_limit_is_checked_and_clears_when_blank(wdg_home):
-    r = call("settings.set", key="default_spending_limit", value="$1,000")
-    assert r["value"] == 1000.0 and config(wdg_home)["default_spending_limit"] == 1000.0
-    assert call_error("settings.set", key="default_spending_limit", value="lots")["code"] == "bad_value"
-    call("settings.set", key="default_spending_limit", value="")
-    assert "default_spending_limit" not in config(wdg_home)
-
-
 def test_projects_dir_default_is_a_folder_reset_can_send(wdg_home, tmp_path, monkeypatch):
     """"Reset to default" sends the shown default; with none it sent "" and was refused."""
     monkeypatch.setattr("pathlib.Path.home", lambda: tmp_path)
@@ -230,9 +223,11 @@ def test_status_unconfigured(wdg_home):
     s = call("auth.status")
     assert s["claude"]["mode"] is None and s["claude"]["logged_in"] is False
     assert "isn't set up" in s["claude"]["reason"]
-    assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "finalizer"]
+    assert [x["stage"] for x in s["stages"]] == ["classifier", "extractor", "writing", "housekeeping"]
     assert s["stages"][1] == {"stage": "extractor", "config_key": "extractor_model", "value": "haiku",
-                              "provider": "anthropic", "ready": False, "billing": None}
+                              "set": False, "provider": "anthropic", "ready": False, "paid_with": None,
+                              "billing": None}
+    assert s["stages"][2]["config_key"] == "finalizer_writing_model" and s["stages"][2]["value"] == "haiku"
     assert s["keys"] == []
     assert s["base_urls"] == [{"provider": "openrouter", "url": "https://openrouter.ai/api/v1"}]   # its default
     assert {p["provider"] for p in s["providers"]} == {"anthropic", "openai", "deepseek", "gemini",
@@ -550,3 +545,43 @@ def test_investigation_choice_and_delete_warning(wdg_home, rich_vault):
     assert pf["billing"][0]["missing"] is True and "Globe" in pf["billing"][0]["message"]
     k = call("auth.chooseKey", vault=str(rich_vault), provider="anthropic", id=None)
     assert not (rich_vault / ".watchdog" / "settings.json").read_text().count("anthropic\": {")
+
+
+def test_first_key_moves_unset_steps_off_a_provider_that_cant_run(wdg_home):
+    """D347: with no Claude set up, adding an OpenAI key points every step still on its default
+    at OpenAI's recommended model; a step the reporter chose is left alone, and once Claude can
+    run nothing moves."""
+    (wdg_home / "config.json").write_text(json.dumps({"extractor_model": "gemini:gemini-3.8-flash"}))
+    r = call("auth.setKey", provider="openai", key="sk-proj-abcdefghijklmnop")
+    assert sorted(r["adopted"]) == ["classifier_model", "finalizer_model"]
+    cfg = config(wdg_home)
+    assert cfg["classifier_model"] == cfg["finalizer_model"] == "openai:gpt-6-luna"
+    assert cfg["extractor_model"] == "gemini:gemini-3.8-flash"
+    paid = {x["stage"]: x["paid_with"] for x in r["stages"]}
+    assert paid["classifier"] == "Default" and paid["extractor"] is None
+    (wdg_home / "config.json").write_text("{}")
+    write_creds(wdg_home, "subscription", {"openai": "sk-proj-abcdefghijklmnop"})
+    assert call("auth.addKey", provider="openai", label="Work", key="sk-proj-zyxwvutsrqponmlk")["adopted"] == []
+
+
+def test_a_keys_spending_limit_counts_what_it_paid_and_stops(wdg_home):
+    """D347: a limit on one stored key counts what that key paid since the limit was set, in any
+    investigation, and says so once reached; deleting the key drops its limit."""
+    from watchdog import key_spend
+    write_creds(wdg_home, "api-key", {"openai": "sk-proj-abcdefghijklmnop"})
+    kid = creds(wdg_home)["keys"]["openai"]["items"][0]["id"]
+    r = call("auth.setKeyLimit", provider="openai", id=kid, usd="$5")
+    lim = r["key_sets"]["openai"][0]["limit"]
+    assert lim["usd"] == 5.0 and lim["spent"] == 0 and lim["reached"] is False
+    key_spend.record("openai", "Default", 3.0, auth_mode="api-key")
+    key_spend.record("openai", "Default", 9.0, auth_mode="subscription")   # never counted
+    key_spend.record("openai", "Default", 2.5, auth_mode="api-key")
+    lim = call("auth.status")["key_sets"]["openai"][0]["limit"]
+    assert lim["spent"] == 5.5 and lim["reached"] is True
+    assert "reached its spending limit" in key_spend.check_key("openai", "sk-proj-abcdefghijklmnop")
+    assert call_error("auth.setKeyLimit", provider="openai", id=kid, usd="lots")["code"] == "bad_params"
+    call("auth.resetKeyLimit", provider="openai", id=kid)
+    assert call("auth.status")["key_sets"]["openai"][0]["limit"]["spent"] == 0
+    call("auth.deleteKey", provider="openai", id=kid)
+    assert "key_limits" not in config(wdg_home)
+

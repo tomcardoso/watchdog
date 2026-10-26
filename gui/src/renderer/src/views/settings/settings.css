@@ -44,4 +44,6 @@
 .set-keyitem:first-child { border-top: none; }
 .set-keyitem-name { font-weight: 560; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .set-keyitem-users { font-size: var(--fs-xs); }
+.set-keylimit { font-size: var(--fs-sm); color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.set-keylimit.reached { color: var(--warning); font-weight: 600; }
 .set-keyname { flex: 0 0 180px; }

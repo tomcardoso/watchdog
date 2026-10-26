@@ -172,6 +172,8 @@ def record(vault: Path, *, session_id: str, mode: str, title: str, call: dict) -
     out = {"session": {"id": session_id, "mode": mode, "task": call["task"], "title": title},
            "calls": calls, "totals": _usage_totals(calls)}
     _write_atomic(path, json.dumps(out, ensure_ascii=False, indent=2))
+    from watchdog import key_spend
+    key_spend.record("anthropic", call.get("key_label"), call.get("cost_usd"), auth_mode=call.get("auth_mode"))
     try:
         from watchdog import telemetry_db
         if telemetry_db.enabled():

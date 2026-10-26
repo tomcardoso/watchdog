@@ -122,7 +122,7 @@ def help_text(text: str | None) -> str | None:
 
 @method("settings.schema")
 def schema() -> dict:
-    from watchdog.settings import SECTIONS as _CONFIGURE_SECTIONS, SETTINGS as _CONFIGURE_KEYS
+    from watchdog.settings import MODEL_STEP_KEYS, SECTIONS as _CONFIGURE_SECTIONS, SETTINGS as _CONFIGURE_KEYS
 
     config = _read_config()
     shown: set[str] = set()
@@ -131,6 +131,10 @@ def schema() -> dict:
         rows = [_setting(k, _CONFIGURE_KEYS[k], config) for k in keys if k in _CONFIGURE_KEYS]
         shown.update(k for k in keys if k in _CONFIGURE_KEYS)
         sections.append({"title": title, "blurb": blurb, "keys": rows})
+    # Listed for any reader of the schema, but shown on Models & keys rather than as a section.
+    sections.append({"title": "Step models", "blurb": "", "hidden": True,
+                     "keys": [_setting(k, _CONFIGURE_KEYS[k], config) for k in MODEL_STEP_KEYS]})
+    shown.update(MODEL_STEP_KEYS)
     leftovers = [k for k in _CONFIGURE_KEYS if k not in shown]
     if leftovers:
         sections.append({"title": "Other", "blurb": "",
@@ -239,6 +243,7 @@ def _session_reason(claude: dict) -> str | None:
 
 def _auth_status() -> dict:
     from watchdog import auth as auth_cmd
+    from watchdog import key_spend
 
     d = auth_cmd.status_data()
     state = auth_cmd.load_state()
@@ -278,7 +283,10 @@ def _auth_status() -> dict:
         "providers": providers,
         # Every stored key per provider, labelled and masked (#690); `users` names the registered
         # investigations that chose it, for the warning before a delete.
-        "key_sets": {p: [{**k, "users": auth_cmd.key_users(p, k["id"])} for k in auth_cmd.list_keys(p, state)]
+        "key_sets": {p: [{**k, "users": auth_cmd.key_users(p, k["id"]),
+                          # The key's own spending limit and what it has paid for (D347).
+                          "limit": key_spend.status(key_spend.ref(p, k["id"]))}
+                         for k in auth_cmd.list_keys(p, state)]
                      for p in auth_cmd.PROVIDERS},
         "storage": _storage(state),
     }
@@ -376,7 +384,8 @@ def set_key(provider: str, key: str, id: str | None = None, key_enc: dict | None
         state = auth_cmd.load_state()
         _key_op(lambda: auth_cmd.store_default_key(state, provider, key.strip(), enc=key_enc))
         auth_cmd.save_state(state)
-    return {**_auth_status(), "warning": _prefix_warning(meta, key.strip())}
+    adopted = auth_cmd.adopt_provider(provider)
+    return {**_auth_status(), "warning": _prefix_warning(meta, key.strip()), "adopted": adopted}
 
 
 def _key_op(fn):
@@ -391,6 +400,8 @@ def delete_key(provider: str, id: str | None = None) -> dict:
     """Delete one labelled key (`id`), or, without `id`, every stored key for the provider."""
     from watchdog import auth as auth_cmd
 
+    from watchdog import key_spend
+
     _check_provider(provider)
     if id:
         _key_op(lambda: auth_cmd.delete_key(provider, id))
@@ -398,6 +409,10 @@ def delete_key(provider: str, id: str | None = None) -> dict:
         state = auth_cmd.load_state()
         if state["keys"].pop(provider, None) is not None:
             auth_cmd.save_state(state)
+    try:
+        key_spend.forget(provider, id)
+    except ValueError:
+        pass        # the key is deleted either way; a stale limit on a gone key counts nothing
     return {**_auth_status(), "warning": None}
 
 
@@ -411,7 +426,8 @@ def add_key(provider: str, label: str, key: str, make_default: bool = False,
     if not isinstance(key, str) or not key.strip():
         raise RpcError("Paste a key.", code="bad_params")
     kid = _key_op(lambda: auth_cmd.add_key(provider, label, key, make_default=bool(make_default), enc=key_enc))
-    return {**_auth_status(), "id": kid, "warning": _prefix_warning(meta, key.strip())}
+    adopted = auth_cmd.adopt_provider(provider)
+    return {**_auth_status(), "id": kid, "warning": _prefix_warning(meta, key.strip()), "adopted": adopted}
 
 
 @method("auth.renameKey")
@@ -420,6 +436,30 @@ def rename_key(provider: str, id: str, label: str) -> dict:
 
     _check_provider(provider)
     _key_op(lambda: auth_cmd.rename_key(provider, id, label))
+    return {**_auth_status(), "warning": None}
+
+
+@method("auth.setKeyLimit")
+def set_key_limit(provider: str, id: str, usd=None) -> dict:
+    """Set a stored key's spending limit, in US dollars (D347); blank removes it. It counts what
+    the key pays for from now on, in every investigation on this computer."""
+    from watchdog import auth as auth_cmd
+    from watchdog import key_spend
+
+    _check_provider(provider)
+    if not any(k["id"] == id for k in auth_cmd.list_keys(provider)):
+        raise RpcError("That key isn't stored on this computer.", code="not_found")
+    _key_op(lambda: key_spend.set_limit(key_spend.ref(provider, id), usd))
+    return {**_auth_status(), "warning": None}
+
+
+@method("auth.resetKeyLimit")
+def reset_key_limit(provider: str, id: str) -> dict:
+    """Count a key's spending from now (D347); what it spent before stays in Usage."""
+    from watchdog import key_spend
+
+    _check_provider(provider)
+    _key_op(lambda: key_spend.reset(key_spend.ref(provider, id)))
     return {**_auth_status(), "warning": None}
 
 
@@ -441,7 +481,7 @@ def _investigation_keys(v: Path) -> dict:
     state = auth_cmd.load_state()
     choices = auth_cmd.investigation_keys(v)
     config = config_file.load()
-    used = {auth_cmd.stage_provider(config.get(k) or d) for k, d in auth_cmd.INGEST_STAGES}
+    used = {auth_cmd.stage_provider(auth_cmd.step_value(config, k, f, d)) for _n, k, f, d in auth_cmd.STEP_ROWS}
     used.add("anthropic")   # Ask Claude and Research always run on Claude
     rows = []
     for p, meta in auth_cmd.PROVIDERS.items():

@@ -42,6 +42,7 @@ def _upgrade(data: dict) -> dict:
     """Settings saved before D339 read as their replacement: an old per-stage override becomes
     its group's override unless that is already set, and the old key is dropped, so the next save
     writes only the new keys."""
+    data.pop("default_spending_limit", None)     # replaced by per-key limits (D347)
     for new, olds in _LEGACY_FINALIZER_KEYS.items():
         values = [data.pop(old) for old in olds if old in data]
         if new not in data and any(values):

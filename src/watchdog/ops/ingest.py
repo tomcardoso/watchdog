@@ -225,6 +225,19 @@ def _require_investigation_keys(vault: Path, backends) -> None:
         check_run_keys(vault, backends)
     except KeyChoiceError as e:
         sys.exit(f"\n  Error: {e}\n")
+    # A key that has already reached its own spending limit (D347) stops the run before any call;
+    # once running, `orchestrate._spending_stop` checks the keys it has paid with.
+    from watchdog import auth, key_spend
+    for provider in auth.run_providers(backends):
+        try:
+            r = auth.resolve_key(provider, vault)
+        except KeyChoiceError:
+            continue
+        if r.get("id"):
+            key = key_spend.ref(provider, r["id"])
+            msg = key_spend.stop_message(provider, r.get("label"), key)
+            if msg:
+                sys.exit(f"\n  Error: {msg}\n")
 
 
 def _into_incoming(vault: Path, f: Path, quiet: bool = False) -> Path:

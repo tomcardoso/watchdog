@@ -104,16 +104,6 @@ SETTINGS = {
         "default": defaults.EXTRACT_CONCURRENCY,
         "min": 1,
     },
-    "default_spending_limit": {
-        "short": "Spending limit each new investigation starts with, in US dollars (default: none)",
-        "help": (
-            "A new investigation starts with this spending limit; change it on the investigation's\n"
-            "  Overview under Spending limit. Existing investigations keep their own. Leave blank\n"
-            "  for no limit. Calls on a Claude subscription never count towards a limit."
-        ),
-        "type": "string",
-        "default": None,
-    },
     "auto_approve": {
         "short": "Skip the public-records pause when every step runs on your Claude subscription (default: false)",
         "help": (
@@ -685,6 +675,11 @@ SETTINGS = {
 
 
 
+# The settings that choose each step's model. Settings → Models & keys sets them, step by step,
+# beside the key that pays (D347), so the Settings listing doesn't show them a second time.
+MODEL_STEP_KEYS = ("classifier_model", "extractor_model", "finalizer_model",
+                   "finalizer_writing_model", "finalizer_housekeeping_model")
+
 # Display grouping for the Settings listing (presentation only — set/get is
 # unaffected). Each section owns an ordered list of keys; any key missing from every
 # section is still shown, under "Other", so a newly added key never silently disappears.
@@ -698,13 +693,11 @@ SECTIONS = [
     ("Transcription", "Speech-to-text for audio and video, on this computer.",
      ["transcription_model", "transcription_language"]),
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
-     ["auto_approve", "default_spending_limit", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
+     ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
       "empty_extraction_min_words", "verify_extraction"]),
-    ("Models", "Which model runs each step, and how hard it thinks.",
-     ["classifier_model", "extractor_model", "finalizer_model",
-      "finalizer_writing_model", "finalizer_housekeeping_model",
-      "classifier_effort", "extractor_effort", "finalizer_effort", "verifier_effort",
+    ("Model options", "How hard each step's model thinks, and where self-hosted models are. The models themselves are chosen under Models & keys.",
+     ["classifier_effort", "extractor_effort", "finalizer_effort", "verifier_effort",
       "local_base_url", "local_context_window", "openrouter_base_url"]),
     ("Deduplication", "Near-duplicate detection.",
      ["dup_threshold", "shingle_size"]),
@@ -780,14 +773,6 @@ def coerce(cfg: dict, key: str, value: str) -> str:
         langs = [lang.strip() for lang in value.split(",") if lang.strip()]
         cfg[key] = langs
         return ", ".join(langs) if langs else "auto-detect"
-    if key == "default_spending_limit":
-        from watchdog import spend
-        try:
-            usd = spend.parse_usd(value)
-        except ValueError as e:
-            raise SettingError(str(e))
-        cfg[key] = usd
-        return f"{usd:.2f}" if usd is not None else "(not set)"
     if key == "projects_dir":
         path = Path(value).expanduser().resolve()
         path.mkdir(parents=True, exist_ok=True)

@@ -749,6 +749,67 @@ INGEST_STAGES = (("classifier_model", defaults.CLASSIFIER_MODEL),
                   ("extractor_model", defaults.EXTRACTOR_MODEL),
                   ("finalizer_model", defaults.FINALIZER_MODEL))
 
+# The steps Settings → Models & keys lists, each with the setting its model picker writes and the
+# settings it falls back to when that is unset (D339, D347): the finishing step shows as its two
+# kinds of work, which both fall back to `finalizer_model`.
+STEP_ROWS = (("classifier", "classifier_model", (), defaults.CLASSIFIER_MODEL),
+             ("extractor", "extractor_model", (), defaults.EXTRACTOR_MODEL),
+             ("writing", "finalizer_writing_model", ("finalizer_model",), defaults.FINALIZER_MODEL),
+             ("housekeeping", "finalizer_housekeeping_model", ("finalizer_model",), defaults.FINALIZER_MODEL))
+
+
+def step_value(cfg: dict, key: str, fallbacks=(), default: str = "") -> str:
+    """A step's effective `[backend:]model`: its own setting, else its fallbacks, else the default."""
+    for k in (key, *fallbacks):
+        if cfg.get(k):
+            return cfg[k]
+    return default
+
+
+def paid_with(provider: str, state: dict | None = None) -> str | None:
+    """What pays for a step on `provider` by default, in words for Settings: the Claude
+    subscription, a key from the environment, or the default stored key's name."""
+    state = state if state is not None else load_state()
+    if provider == "anthropic" and state.get("mode") == "subscription":
+        return "Claude subscription"
+    meta = PROVIDERS.get(provider)
+    if meta and os.environ.get(meta["env"]):
+        return _env_label(provider)
+    for k in list_keys(provider, state):
+        if k["default"]:
+            return k["label"]
+    return None
+
+
+def adopt_provider(provider: str) -> list[str]:
+    """After a key for `provider` is stored: point every step still on its built-in default at
+    `provider`'s recommended model (`defaults.PROVIDER_MODELS`) when that default has no way to
+    run, so a reporter who only has, say, an OpenAI key isn't left with steps on Claude (D347). A
+    step the reporter set is never changed. Returns the settings changed."""
+    model = defaults.PROVIDER_MODELS.get(provider)
+    if not model:
+        return []
+    try:
+        cfg = config.load()
+    except SystemExit:           # a damaged settings file is never overwritten
+        return []
+    state = load_state()
+    changed = []
+    for key, default in INGEST_STAGES:
+        if cfg.get(key):
+            continue
+        current = stage_provider(default)
+        if current == provider:
+            continue
+        ready = (state.get("mode") == "subscription" or bool(default_key("anthropic", state))) \
+            if current == "anthropic" else provider_ready(current)
+        if not ready:
+            cfg[key] = model
+            changed.append(key)
+    if changed:
+        config.save(cfg)
+    return changed
+
 
 def status_data() -> dict:
     """What Settings → Models & keys shows, as data.
@@ -779,19 +840,20 @@ def status_data() -> dict:
     cfg = config.read()
 
     stages = []
-    for stage_key, default in INGEST_STAGES:
-        value = cfg.get(stage_key) or default
+    for name, stage_key, fallbacks, default in STEP_ROWS:
+        value = step_value(cfg, stage_key, fallbacks, default)
         provider = stage_provider(value)
         ready = (mode == "subscription" or bool(default_key("anthropic", state))) if provider == "anthropic" \
             else provider_ready(provider)
-        stages.append({"stage": stage_key[: -len("_model")], "config_key": stage_key,
-                       "value": value, "provider": provider, "ready": ready})
+        stages.append({"stage": name, "config_key": stage_key, "value": value,
+                       "set": bool(cfg.get(stage_key)), "provider": provider, "ready": ready,
+                       "paid_with": paid_with(provider, state)})
 
     # Every provider with a key available, whether or not a stage is routed to it — the
     # definitive list of what's stored, Anthropic included (#482). A stored Anthropic key is
     # only ever actually used while either Claude mode above is api-key, so it's flagged inactive
     # rather than silently vanishing from the list while on subscription.
-    shown_providers = {stage_provider(cfg.get(k) or d) for k, d in INGEST_STAGES}
+    shown_providers = {stage_provider(step_value(cfg, k, f, d)) for _n, k, f, d in STEP_ROWS}
     keys = []
     for p in PROVIDERS:
         masked = default_masked(p, state)

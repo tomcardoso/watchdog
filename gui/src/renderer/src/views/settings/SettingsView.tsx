@@ -55,7 +55,7 @@ function General({ id }: { id: string }) {
 export default function SettingsView() {
   const route = useApp((s) => s.route)
   const schema = useRpc('settings.schema', {})
-  const sections = schema.data?.sections ?? []
+  const sections = (schema.data?.sections ?? []).filter((s) => !s.hidden)
   const tab = (route.view === 'settings' && route.tab) || (sections[0] ? slug(sections[0].title) : 'auth')
   const go = (t: string) => navigate({ view: 'settings', tab: t }, { replace: true })
   const isOther = OTHER.some((o) => o.id === tab)
