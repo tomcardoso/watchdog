@@ -100,12 +100,13 @@ When the budget is reached or the journalist stops, write a memo to **`briefings
 ```markdown
 ---
 type: ResearchMemo
+title: <what this round researched, as a short headline of under ten words, e.g. "Directors of the numbered company behind the bid"; no date and not "Research memo">
 mission: <the mission, one sentence>
 effort: <quick|standard|deep>
 date: <today>
 ---
 
-# Research memo — <date>
+# <the title above>
 
 ## Mission
 <What gap this round targeted and why.>

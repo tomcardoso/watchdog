@@ -3,7 +3,7 @@
 .bf-side-head { padding: 18px 16px 10px; display: flex; flex-direction: column; gap: 10px; }
 .bf-side-title { font-size: var(--fs-xl); font-weight: 680; letter-spacing: -0.02em; }
 .bf-scroll { overflow: auto; padding: 0 8px 24px; flex: 1; }
-.bf-group-label { font-size: 10.5px; font-weight: 680; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); padding: 16px 8px 5px; }
+.bf-group-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10.5px; font-weight: 680; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); padding: 16px 8px 5px; }
 .bf-month { font-size: var(--fs-xs); font-weight: 600; color: var(--text-3); padding: 8px 8px 3px; }
 .bf-item { display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 7px 8px; border: none; background: none; border-radius: var(--r-md); text-align: left; cursor: pointer; color: var(--text-2); }
 .bf-item svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--text-3); }

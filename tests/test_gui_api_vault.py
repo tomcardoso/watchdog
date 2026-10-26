@@ -571,6 +571,21 @@ def test_briefings_newest_first_with_kinds(rich_vault):
     assert rows[2]["date"] == "2026-03-03"
 
 
+def test_research_memo_named_by_title_then_mission(rich_vault):
+    brief = rich_vault / "briefings"
+    (brief / "research-2026-02-01.md").write_text(
+        "---\ntype: ResearchMemo\nmission: Find who owns the numbered company.\n---\n\n# Research memo — 2026-02-01\n")
+    (brief / "research-2026-02-02.md").write_text(
+        "---\ntype: ResearchMemo\ntitle: Owners of the numbered company\nmission: Find who owns it.\n---\n\n# Owners of the numbered company\n")
+    (brief / "research-2026-02-03.md").write_text("# Research memo — 2026-02-03\n")
+    titles = {b["name"]: b["title"] for b in call("vault.briefings", vault=V(rich_vault))}
+    assert titles["research-2026-02-01"] == "Find who owns the numbered company."
+    assert titles["research-2026-02-02"] == "Owners of the numbered company"
+    assert titles["research-2026-02-03"] == "Research memo — 2026-02-03"
+    # Only memos read the mission; a briefing keeps its heading.
+    assert titles["2026-03-03-08-00"] == "Briefing — 2026-03-03"
+
+
 def test_notes_lists_queries_and_wiki_pages_newest_first(rich_vault):
     import os
     (rich_vault / "queries").mkdir(exist_ok=True)

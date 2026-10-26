@@ -349,7 +349,7 @@ export default function ChatWorkspace(p: Props) {
     const ok = await window.watchdog.dialog.confirm({
       title: 'Delete this conversation?',
       message: `“${row.title || 'Untitled'}” will be removed from this computer.`,
-      detail: 'Pages Claude already saved, such as the answers in Briefings, are not affected.',
+      detail: 'Pages Claude already saved, such as the answers in Reports, are not affected.',
       confirm: 'Delete',
       destructive: true
     })

@@ -40,7 +40,7 @@ export function CommandPalette() {
         { label: 'Context', icon: Target, route: { view: 'context' } },
         { label: 'Watch list', icon: ScanSearch, route: { view: 'watchlist' } },
         { label: 'Review', icon: ListChecks, route: { view: 'review' } },
-        { label: 'Briefings', icon: BookOpenText, route: { view: 'briefings' } },
+        { label: 'Reports', icon: BookOpenText, route: { view: 'briefings' } },
         { label: 'Activity', icon: Activity, route: { view: 'activity' } },
         { label: 'Settings', icon: Settings, route: { view: 'settings' } }
       ]
