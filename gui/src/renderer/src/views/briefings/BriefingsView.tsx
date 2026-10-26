@@ -86,10 +86,10 @@ export default function BriefingsView() {
             <div>
               <div className="bf-group-label">Saved answers and threads<span className="count-pill quiet">{notes.length}</span></div>
               {notes.map((n) => (
-                <button key={n.path} className={cx('bf-item', selected === n.path && 'active')} onClick={() => pick(n.path)}>
+                <button key={n.path} className={cx('bf-item', selected === n.path && 'active')} title={n.title} onClick={() => pick(n.path)}>
                   {n.kind === 'wiki' ? <Network /> : <MessageSquareQuote />}
                   <span className="bf-item-text">
-                    <span className="bf-item-title truncate">{n.title}</span>
+                    <span className="bf-item-title">{n.title}</span>
                     <span className="bf-item-sub">{noteKind(n.kind)} · {fmtDate(n.modified)}</span>
                   </span>
                 </button>
@@ -105,10 +105,10 @@ export default function BriefingsView() {
                 <div key={m}>
                   <div className="bf-month">{monthLabel(m)}</div>
                   {items.map((r) => (
-                    <button key={r.path} className={cx('bf-item', selected === r.path && 'active')} onClick={() => pick(r.path)}>
+                    <button key={r.path} className={cx('bf-item', selected === r.path && 'active')} title={r.title ?? r.name} onClick={() => pick(r.path)}>
                       <g.icon />
                       <span className="bf-item-text">
-                        <span className="bf-item-title truncate">{r.title ?? r.name}</span>
+                        <span className="bf-item-title">{r.title ?? r.name}</span>
                         <span className="bf-item-sub">{fmtDate(r.date) || r.name}</span>
                       </span>
                     </button>
@@ -154,7 +154,7 @@ function Reader({ path, row, note }: { path: string; row?: BriefingRow; note?: {
       <div className="bf-reader-bar">
         <div className="grow">
           <div className="eyebrow">{pinned ? 'Pinned' : note ? noteKind(note.kind) : KINDS.find((k) => k.kind === row?.kind)?.label ?? 'Briefing'}</div>
-          <div className="bf-reader-title truncate">{isPrimer && asClaude ? 'What Claude is given' : pinned?.label ?? row?.title ?? note?.title ?? row?.name ?? path}</div>
+          <div className="bf-reader-title">{isPrimer && asClaude ? 'What Claude is given' : pinned?.label ?? row?.title ?? note?.title ?? row?.name ?? path}</div>
         </div>
         {isPrimer && (
           <Button size="sm" variant="ghost" icon={asClaude ? ArrowLeft : Bot} aria-pressed={asClaude} onClick={() => setAsClaude(!asClaude)}>

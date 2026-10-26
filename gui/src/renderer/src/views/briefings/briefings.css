@@ -11,12 +11,13 @@
 .bf-item.active { background: var(--active); color: var(--text); }
 .bf-item.active svg { color: var(--accent); }
 .bf-item-text { display: flex; flex-direction: column; min-width: 0; }
-.bf-item-title { font-weight: 560; font-size: var(--fs-md); }
+/* Up to two lines, then an ellipsis; the button's tooltip and the reader carry the full title. */
+.bf-item-title { font-weight: 560; font-size: var(--fs-md); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
 .bf-item-sub { font-size: var(--fs-xs); color: var(--text-3); }
 .bf-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .bf-reader { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .bf-reader-bar { display: flex; align-items: center; gap: 8px; padding: 12px 28px; border-bottom: 1px solid var(--border); flex: none; }
-.bf-reader-title { font-weight: 650; font-size: var(--fs-lg); }
+.bf-reader-title { font-weight: 650; font-size: var(--fs-lg); line-height: 1.3; overflow-wrap: anywhere; }
 .bf-reader-scroll { overflow: auto; flex: 1; }
 .bf-measure { max-width: 70ch; margin: 0 auto; }
 .bf-article { padding: 36px 28px 96px; }
