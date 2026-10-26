@@ -57,24 +57,22 @@ const usd = (n: number) => `$${n.toFixed(2)}`
 // or not: its name, the masked key, whether it is in use and encrypted, its spending limit and
 // what it has spent, and a menu to make it the default, rename it, set or reset its limit, replace
 // or delete it. "Add key" adds another, with a name.
-function KeyRow({ provider, label, stored, keys, pays, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; pays: (k: LabelledKey) => string[]; onStatus: (s: AuthStatus) => void }) {
+function KeyRow({ provider, label, stored, keys, pays, opening, onClosed, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; pays: (k: LabelledKey) => string[]; opening: number; onClosed: () => void; onStatus: (s: AuthStatus) => void }) {
   const [form, setForm] = useState<KeyForm | null>(null)
   const [key, setKey] = useState('')
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const row = useRef<HTMLDivElement>(null)
-  // "Add a key…" under Paid with lands here, with the add form open.
+  // "Add a key" (under Keys, or in a Paid with menu) lands here, with the add form open.
   useEffect(() => {
-    const onAdd = (e: Event) => {
-      if ((e as CustomEvent<string>).detail !== provider) return
-      open({ kind: 'add' })
-      row.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-    window.addEventListener('wd-add-key', onAdd)
-    return () => window.removeEventListener('wd-add-key', onAdd)
-  })
+    if (!opening) return
+    open({ kind: 'add' })
+    row.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opening])
   const open = (f: KeyForm | null) => {
+    if (!f) onClosed()
     setForm(f)
     setKey('')
     setName(f?.kind === 'rename' ? f.label : f?.kind === 'limit' && f.usd != null ? String(f.usd) : '')
@@ -127,10 +125,9 @@ function KeyRow({ provider, label, stored, keys, pays, onStatus }: { provider: s
             <Badge tip="Set in your environment; it takes precedence over every stored key">environment</Badge>
           </>
         )}
-        {!env && keys.length === 0 && <span className="faint">No key</span>}
-        <Button size="sm" variant={keys.length ? 'ghost' : undefined} icon={keys.length ? Plus : KeyRound} tip={keys.length ? 'Add another key for this provider, with a name, to bill a different account' : undefined} onClick={() => open(form?.kind === 'add' ? null : { kind: 'add' })}>
+        {keys.length > 0 && <Button size="sm" variant={keys.length ? 'ghost' : undefined} icon={keys.length ? Plus : KeyRound} tip={keys.length ? 'Add another key for this provider, with a name, to bill a different account' : undefined} onClick={() => open(form?.kind === 'add' ? null : { kind: 'add' })}>
           {keys.length ? 'Add key' : 'Add'}
-        </Button>
+        </Button>}
       </div>
       {keys.length > 0 && (
         <div className="set-keylist">
@@ -177,7 +174,7 @@ function KeyRow({ provider, label, stored, keys, pays, onStatus }: { provider: s
         <div className="col" style={{ gap: 6, marginTop: 8 }}>
           <div className="set-input-row">
             {(form.kind === 'add' || form.kind === 'rename') && (
-              <input className="input set-keyname" autoFocus maxLength={40} placeholder={keys.length || form.kind === 'rename' ? 'Name, such as Work' : 'Name (optional), such as Work'} value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && ready && submit()} />
+              <input className="input set-keyname" autoFocus maxLength={40} placeholder={keys.length || form.kind === 'rename' ? 'Name, such as Work' : 'Name (optional)'} value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && ready && submit()} />
             )}
             {form.kind === 'limit' && (
               <input className="input set-keyname" autoFocus inputMode="decimal" placeholder="Limit in US$, such as 50" value={name} onChange={(e) => { setName(e.target.value); setErr(null) }} onKeyDown={(e) => e.key === 'Enter' && submit()} />
@@ -408,6 +405,14 @@ function BaseUrl({ provider, url, onStatus }: { provider: 'local' | 'openrouter'
 export default function AuthPanel() {
   const q = useRpc('auth.status', {})
   const info = useRpc('app.info', {})
+  // The provider whose add form is open, counted so asking again reopens it. Keys lists only the
+  // providers with a key, so this one is shown too until the form closes.
+  const [adding, setAdding] = useState<{ provider: string; n: number } | null>(null)
+  useEffect(() => {
+    const onAdd = (e: Event) => setAdding((a) => ({ provider: (e as CustomEvent<string>).detail, n: (a?.n ?? 0) + 1 }))
+    window.addEventListener('wd-add-key', onAdd)
+    return () => window.removeEventListener('wd-add-key', onAdd)
+  }, [])
   const setStatus = (s: AuthStatus) => {
     queryClient.setQueryData(['auth.status', {}], s)
     void queryClient.invalidateQueries({ queryKey: ['settings.schema'] })
@@ -417,6 +422,10 @@ export default function AuthPanel() {
   const s = q.data as Extended
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
+  // Keys lists the providers with a key (stored or in the environment), and the one being added.
+  const hasKey = (p: string) => (s.key_sets?.[p]?.length ?? 0) > 0 || s.keys.some((k) => k.provider === p)
+  const listed = providers.filter((p) => hasKey(p.provider) || adding?.provider === p.provider)
+  const unlisted = providers.filter((p) => !listed.includes(p))
   // What a stored key pays for, from the choices under Paid with: a provider's default key pays
   // for its steps (Claude's only on an API key), and Ask Claude's own key for questions.
   const stepProviders = new Set(s.stages.map((st) => st.provider))
@@ -441,11 +450,21 @@ export default function AuthPanel() {
             <div className="card-title">Keys</div>
             <div className="card-sub set-keystore" data-store={s.storage?.store ?? 'unknown'}>{storageLine(s.storage)}</div>
           </div>
+          <span className="spacer" />
+          {unlisted.length > 0 && (
+            <Dropdown
+              align="right"
+              trigger={(o) => <Button size="sm" icon={Plus} onClick={o}>Add a key</Button>}
+              items={unlisted.map((p) => ({ label: p.label, onClick: () => goAddKey(p.provider) }))}
+            />
+          )}
         </div>
         <StorageNotes st={s.storage} />
         <div style={{ padding: '0 18px' }}>
-          {providers.map((p) => (
-            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} pays={(k) => pays(p.provider, k)} onStatus={setStatus} />
+          {listed.length === 0 && <div className="faint" style={{ padding: '6px 0 14px' }}>No keys yet. Add one for each provider your models use.</div>}
+          {listed.map((p) => (
+            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} pays={(k) => pays(p.provider, k)}
+              opening={adding?.provider === p.provider ? adding.n : 0} onClosed={() => setAdding((a) => (a?.provider === p.provider ? null : a))} onStatus={setStatus} />
           ))}
         </div>
         <div className="set-foot">
