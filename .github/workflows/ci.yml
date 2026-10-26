@@ -3,6 +3,10 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # App release's screenshots job opens a pull request that changes only these images and merges
+    # it at once. GitHub holds a run on a pull request from github-actions[bot] for approval, and
+    # it expires as a failure once the merge lands; images run no code, so it starts none (D350).
+    paths-ignore: ['docs/images/app-*.png']
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}

@@ -11,7 +11,9 @@ on:
     branches: [main]
     paths: ['docs/**', 'site/**', 'pyproject.toml', '.github/workflows/pages.yml']
   pull_request:
-    paths: ['docs/**', 'site/**', '.github/workflows/pages.yml']
+    # Not for a pull request that changes only the app screenshots: App release's screenshots job
+    # merges one at once, and a run waiting for approval on it expires as a failure (D350).
+    paths: ['docs/**', '!docs/images/app-*.png', 'site/**', '.github/workflows/pages.yml']
   release:
     types: [published]
   workflow_dispatch:
