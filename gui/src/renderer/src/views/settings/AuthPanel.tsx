@@ -1,6 +1,6 @@
 // Models & keys: how Watchdog signs in to Claude and to each model provider.
 
-import { CheckCircle2, Gauge, KeyRound, MoreHorizontal, Pencil, Plus, RotateCcw, Star, Trash2, XCircle } from 'lucide-react'
+import { CheckCircle2, Gauge, KeyRound, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, XCircle } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { AuthStatus, KeyStorage, LabelledKey } from '@shared/api'
 import { Badge, Button, Callout, Dropdown, ErrorNote, Skeleton } from '@renderer/components/ui'
@@ -57,7 +57,7 @@ const usd = (n: number) => `$${n.toFixed(2)}`
 // or not: its name, the masked key, whether it is in use and encrypted, its spending limit and
 // what it has spent, and a menu to make it the default, rename it, set or reset its limit, replace
 // or delete it. "Add key" adds another, with a name.
-function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; onStatus: (s: AuthStatus) => void }) {
+function KeyRow({ provider, label, stored, keys, pays, onStatus }: { provider: string; label: string; stored?: Extended['keys'][number]; keys: LabelledKey[]; pays: (k: LabelledKey) => string[]; onStatus: (s: AuthStatus) => void }) {
   const [form, setForm] = useState<KeyForm | null>(null)
   const [key, setKey] = useState('')
   const [name, setName] = useState('')
@@ -140,14 +140,14 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
               <div key={k.id} className="set-keyitem">
                 <span className="set-keyitem-name">{k.label}</span>
                 <span className="mono muted">{k.masked}</span>
-                {k.default && !env && stored && <Badge tone={stored.in_use === 'in use' ? 'success' : undefined} tip="Whether a step, or Ask Claude, uses this provider now">{stored.in_use}</Badge>}
-                {!k.default && <Badge tip="Used only by investigations that chose it on their Overview">{(k.users?.length ?? 0) > 0 ? plural(k.users!.length, 'investigation') : 'unused'}</Badge>}
+                {!env && pays(k).map((w) => <Badge key={w} tone="success" tip="Chosen under Paid with, below">Pays for {w}</Badge>)}
+                {(k.users?.length ?? 0) > 0 && <Badge tip={`Chosen on the Overview of ${k.users!.join(', ')}`}>{plural(k.users!.length, 'investigation')}</Badge>}
+                {!env && !pays(k).length && !(k.users?.length) && <Badge>Not used</Badge>}
                 {k.locked ? (
                   <Badge tone="warning" tip="Encrypted under another user account or computer; replace or delete it">can’t be read</Badge>
                 ) : (
                   <Badge tip={k.encrypted ? 'Stored encrypted with a key kept in your system’s secure storage' : 'Stored in a file only your user account can read'}>{k.encrypted ? 'encrypted' : 'not encrypted'}</Badge>
                 )}
-                {k.default && <Badge tone="accent" tip="Used by every investigation that hasn’t chosen another key">Default</Badge>}
                 <span className="spacer" />
                 {lim?.usd != null ? (
                   <span className={lim.reached ? 'set-keylimit reached' : 'set-keylimit'} title="Counted across every investigation on this computer since the limit was set or reset">
@@ -160,7 +160,6 @@ function KeyRow({ provider, label, stored, keys, onStatus }: { provider: string;
                   align="right"
                   trigger={(o) => <Button size="sm" variant="ghost" icon={MoreHorizontal} tip={`Change the ${k.label} key`} onClick={o} />}
                   items={[
-                    { label: 'Make default', icon: Star, disabled: k.default, onClick: () => void act(() => call('auth.setDefaultKey', { provider, id: k.id }), `${k.label} is now the default`) },
                     { label: 'Rename', icon: Pencil, onClick: () => open({ kind: 'rename', id: k.id, label: k.label }) },
                     { label: lim?.usd != null ? 'Change spending limit' : 'Set a spending limit', icon: Gauge, onClick: () => open({ kind: 'limit', id: k.id, label: k.label, usd: lim?.usd ?? null }) },
                     ...(lim?.usd != null ? [{ label: 'Reset the count', icon: RotateCcw, onClick: () => void act(() => call('auth.resetKeyLimit', { provider, id: k.id }), 'Count reset') }] : []),
@@ -418,6 +417,14 @@ export default function AuthPanel() {
   const s = q.data as Extended
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
+  // What a stored key pays for, from the choices under Paid with: a provider's default key pays
+  // for its steps (Claude's only on an API key), and Ask Claude's own key for questions.
+  const stepProviders = new Set(s.stages.map((st) => st.provider))
+  const sessionMode = s.claude.session_mode ?? s.claude.mode
+  const pays = (p: string, k: LabelledKey) => [
+    ...(k.default && stepProviders.has(p) && (p !== 'anthropic' || s.claude.mode === 'api-key') ? ['adding documents'] : []),
+    ...(p === 'anthropic' && sessionMode === 'api-key' && s.claude.session_key_id === k.id ? ['Ask Claude'] : [])
+  ]
 
   return (
     <div className="col" style={{ gap: 22 }}>
@@ -438,11 +445,11 @@ export default function AuthPanel() {
         <StorageNotes st={s.storage} />
         <div style={{ padding: '0 18px' }}>
           {providers.map((p) => (
-            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} onStatus={setStatus} />
+            <KeyRow key={p.provider} provider={p.provider} label={p.label} stored={s.keys.find((k) => k.provider === p.provider)} keys={s.key_sets?.[p.provider] ?? []} pays={(k) => pays(p.provider, k)} onStatus={setStatus} />
           ))}
         </div>
         <div className="set-foot">
-          To bill different accounts with the same provider, add another key and give each a name; each investigation then chooses which one it bills on its Overview, and uses the default otherwise. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. Which key pays for what is chosen under Paid with, below. Each key can have a spending limit, from its menu: Watchdog stops before sending anything more on a key that reaches it, counting what it paid for in every investigation on this computer. Use a key made for Watchdog, with a limit set with the provider too, which is the one it enforces.
+          To bill different accounts with the same provider, add another key and give each a name; each investigation can choose which one it bills on its Overview, and otherwise uses the one chosen under Paid with. A key set in your environment (for example <span className="mono">OPENAI_API_KEY</span>) always takes precedence over every stored one, and cannot be removed here. Each key can have a spending limit, from its menu: Watchdog stops before sending anything more on a key that reaches it, counting what it paid for in every investigation on this computer. Use a key made for Watchdog, with a limit set with the provider too, which is the one it enforces.
         </div>
       </section>
 

@@ -2999,3 +2999,5 @@ Settings → Models & keys is now Models (each step's model), Keys (adding, nami
 
 Ask Claude and Research now keep their own Anthropic key (`credentials.json` `session_key`, `auth.session_key_id`) when on an API key, so questions can bill a personal key while processing bills a work key. An investigation's chosen key still wins, and a deleted key falls back to the default. Tradeoff: one more stored choice; with none set, behaviour is unchanged (the default key).
 
+Under Keys, a key's badges say what it pays for (adding documents, Ask Claude, the investigations that chose it, or not used) instead of "Default", and its menu no longer makes it the default: Paid with is the one place that choice is made. The first key added for a provider still pays until another is chosen there.
+

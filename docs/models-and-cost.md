@@ -79,7 +79,7 @@ When every step of a run uses `local` and the address is on this computer (`loca
 
 ## Your keys
 
-**Settings → Models & keys** holds a key for each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model), shown masked. The **Models** table above them shows, for each step, its model, the key that pays for it (the provider's default key, or your Claude subscription) and whether it is ready.
+**Settings → Models & keys** holds a key for each provider (Claude, OpenAI, DeepSeek, Google Gemini, OpenRouter and Local model), shown masked, under **Keys**. **Paid with**, below them, chooses which key pays for what.
 
 Keys are kept in a file in Watchdog's settings folder, `credentials.json`, which only your user account can read, and each key is encrypted with your computer's secure storage: your login Keychain on a Mac, Windows' data protection, or your desktop's keyring on Linux. A key encrypted on one computer cannot be read on another; replace it there. On a Linux computer with no keyring, keys stay unencrypted in the private file, and the screen warns you.
 
@@ -87,7 +87,7 @@ Keys are kept in a file in Watchdog's settings folder, `credentials.json`, which
 
 ### More than one key, and billing
 
-You can keep several named keys for one provider, to bill different accounts: a personal OpenAI key and one your newsroom pays for. Use **Add key** beside the provider, and give the key a short name. Every key has its own line, showing whether it is in use and whether it is encrypted, and one key is the **default**; the **⋯** menu beside a key makes it the default, renames it, sets its spending limit, replaces it or deletes it.
+You can keep several named keys for one provider, to bill different accounts: a personal OpenAI key and one your newsroom pays for. Use **Add key** beside the provider, and give the key a short name. Every key has its own line, showing what it pays for (for example **Pays for adding documents** or **Pays for Ask Claude**, or **Not used**) and whether it is encrypted; the **⋯** menu beside a key renames it, sets its spending limit, replaces it or deletes it. The first key you add for a provider pays for its steps until you choose another under **Paid with**.
 
 <a id="billing"></a>With more than one key for a provider, a **Billing** card on each investigation's Overview chooses which one pays for that investigation's model calls, including Ask Claude when Claude is on an API key. Only the key's name is saved, inside the investigation's folder, so it travels with the folder; on another computer Watchdog uses that computer's key of the same name. If there is none, Watchdog stops before sending anything rather than bill another account. **Activity → Usage** shows the cost per key.
 
