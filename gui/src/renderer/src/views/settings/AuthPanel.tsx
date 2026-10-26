@@ -309,6 +309,10 @@ export default function AuthPanel() {
   const needsSignIn = (mode === 'subscription' || sessionMode === 'subscription' || (!mode && claudeNeeded)) && !s.claude.signed_in
   const ready = s.claude.logged_in && !s.claude.session_reason
   const unset = !s.claude.mode && !s.claude.session_mode
+  // With no step on Claude, processing is paid with each provider's API key, so the processing
+  // toggle shows API key until a choice is saved. Only shown: saving it would also move Ask Claude,
+  // which follows processing until set on its own (D318).
+  const processingShown = mode || (claudeNeeded ? mode : 'api-key')
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
 
@@ -361,14 +365,15 @@ export default function AuthPanel() {
                 ? 'Every processing stage runs on Claude, which can be paid for two ways.'
                 : s.stages.some((st) => st.provider === 'anthropic')
                   ? 'Stages on other providers are billed to their own keys. The stages on Claude can be paid for two ways.'
-                  : 'No processing stage runs on Claude at the moment, so this applies only once you set one to a Claude model.'}{' '}
+                  : 'No step runs on Claude at the moment: each is paid with its provider’s API key, under Models above. This choice applies once you set a step to a Claude model.'}{' '}
               An API key bills per token, to your Anthropic account, with no usage limit; recommended. A Claude subscription is not metered, but a large batch can reach your plan’s limit.
             </div>
           </div>
           <div className="set-field-control">
             <Segmented
-              value={asking ? 'api-key' : mode}
+              value={asking ? 'api-key' : processingShown}
               onChange={(m) => {
+                if (m === processingShown) return
                 if (m === 'subscription') void switchMode('subscription')
                 else if (s.claude.key_masked) void switchMode('api-key')
                 else setAsking(true)
