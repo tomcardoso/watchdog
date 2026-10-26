@@ -454,8 +454,29 @@ def build_converter(force_ocr: bool):
         **_keep_parsed_pages(PdfPipelineOptions),
     )
     return DocumentConverter(
-        format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)}
+        format_options={InputFormat.PDF: PdfFormatOption(
+            pipeline_options=pipeline_options,
+            **(_ocr_render_scale(PdfFormatOption, ocr_opts.scale) if force_ocr else {}))}
     )
+
+
+def _ocr_render_scale(format_option_cls, scale: float) -> dict:
+    """`backend_options` that render each page at the OCR's scale, where this Docling's default PDF
+    backend is the threaded docling-parse one. That backend renders every page once at
+    `render_scale` (72 DPI by default) and enlarges that image when OCR asks for 216 DPI, so the
+    engine reads a blurred page: on full-page screen captures most words came out wrong (D352).
+    Only forced-OCR conversions get it: rendering text pages at 3x costs memory per parallel slice
+    and changed nothing measurable. Another backend renders on request and needs nothing."""
+    try:
+        from docling.backend.docling_parse_backend import ThreadedDoclingParseDocumentBackend
+        from docling.datamodel.backend_options import ThreadedDoclingParseBackendOptions
+        default_backend = format_option_cls.model_fields["backend"].default
+    except Exception:
+        return {}
+    if (default_backend is not ThreadedDoclingParseDocumentBackend
+            or "render_scale" not in ThreadedDoclingParseBackendOptions.model_fields):
+        return {}
+    return {"backend_options": ThreadedDoclingParseBackendOptions(render_scale=scale)}
 
 
 def _keep_parsed_pages(options_cls) -> dict:

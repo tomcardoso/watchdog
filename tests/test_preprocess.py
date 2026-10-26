@@ -756,6 +756,70 @@ def test_build_converter_forces_cpu_accelerator():
             == docling_pipeline_options.AcceleratorDevice.CPU)
 
 
+def test_build_converter_renders_forced_ocr_pages_at_the_ocr_scale():
+    """Docling's threaded backend renders a page at 72 DPI and enlarges it for OCR, so the engine
+    reads a blurred page (D352). A forced-OCR conversion renders at the OCR's own scale; a text
+    conversion keeps Docling's default."""
+    docling_base_models = pytest.importorskip("docling.datamodel.base_models")
+    pytest.importorskip("docling.datamodel.backend_options")
+
+    pdf = docling_base_models.InputFormat.PDF
+    forced = preprocess.build_converter(force_ocr=True).format_to_options[pdf]
+    if not preprocess._ocr_render_scale(type(forced), 3.0):
+        pytest.skip("this Docling's default PDF backend renders on request")
+    assert forced.backend_options.render_scale == forced.pipeline_options.ocr_options.scale
+    assert preprocess.build_converter(force_ocr=False).format_to_options[pdf].backend_options is None
+
+
+def _fake_docling_backend(monkeypatch, options_fields):
+    """Stand-ins for the two Docling modules `_ocr_render_scale` imports, so it runs without
+    Docling installed."""
+    import types
+
+    class Threaded:
+        pass
+
+    class Options:
+        model_fields = options_fields
+
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    backend = types.ModuleType("docling.backend.docling_parse_backend")
+    backend.ThreadedDoclingParseDocumentBackend = Threaded
+    options = types.ModuleType("docling.datamodel.backend_options")
+    options.ThreadedDoclingParseBackendOptions = Options
+    for name in ("docling", "docling.backend", "docling.datamodel"):
+        monkeypatch.setitem(sys.modules, name, types.ModuleType(name))
+    monkeypatch.setitem(sys.modules, "docling.backend.docling_parse_backend", backend)
+    monkeypatch.setitem(sys.modules, "docling.datamodel.backend_options", options)
+    return Threaded
+
+
+def _format_option(default_backend):
+    import types
+    return type("FormatOption", (), {"model_fields": {"backend": types.SimpleNamespace(default=default_backend)}})
+
+
+def test_ocr_render_scale_only_for_the_threaded_backend(monkeypatch):
+    threaded = _fake_docling_backend(monkeypatch, {"render_scale": None})
+
+    out = preprocess._ocr_render_scale(_format_option(threaded), 3.0)
+    assert out["backend_options"].render_scale == 3.0
+    # A backend that renders on request reads a sharp page already.
+    assert preprocess._ocr_render_scale(_format_option(object), 3.0) == {}
+
+
+def test_ocr_render_scale_needs_the_option(monkeypatch):
+    threaded = _fake_docling_backend(monkeypatch, {"render_pages": None})
+    assert preprocess._ocr_render_scale(_format_option(threaded), 3.0) == {}
+
+
+def test_ocr_render_scale_without_docling(monkeypatch):
+    monkeypatch.setitem(sys.modules, "docling.backend.docling_parse_backend", None)
+    assert preprocess._ocr_render_scale(_format_option(object), 3.0) == {}
+
+
 # ── metadata: what the page-scoped decision reports (#605) ────────────────────
 
 def test_metadata_names_the_pages_when_ocr_was_page_scoped(monkeypatch, tmp_path):

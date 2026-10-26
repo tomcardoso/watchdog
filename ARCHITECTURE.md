@@ -74,6 +74,8 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   word shape, font CMap; two must agree). Pages without a usable text layer are force-OCR'd; the
   rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
   (default 40), converted in parallel subprocesses and spliced back by page number.
+  A forced-OCR conversion renders its pages at the OCR's own scale rather than Docling's 72 DPI
+  default, which OCR would otherwise read enlarged and blurred (D352).
 - **Exact duplicates are skipped before OCR (D27)** — sha256 against the registry, the queue and
   the current batch. A match goes to `incoming/skipped/`.
 - **Near-duplicates (D10).** Word shingles (`shingle_size`) reduced to a MinHash signature,
