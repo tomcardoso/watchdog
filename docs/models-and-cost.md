@@ -11,12 +11,12 @@ Watchdog is built around Claude and uses it by default. It can reach Claude in t
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
 - **Claude subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
-The **Billing** card in **Settings → Models & keys** sets each separately, for two kinds of work:
+**Settings → Models & keys** sets this separately for two kinds of work:
 
-- **Adding documents**: reading, extracting and the finishing steps. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
-- **Ask Claude and Research**: questions and web research. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+- **Adding documents**: reading, extracting and the finishing steps. In the **Models** table, a step on Claude has a **Paid with** menu: your Claude subscription, one of your Anthropic keys, or **Add a key…**. Every step on Claude is paid the same way. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into. A step on OpenAI, Gemini or another provider is always paid with that provider's key.
+- **Ask Claude and Research**: questions and web research, which always run on Claude, in a card of their own. Choose **Claude subscription** or **API key**; on an API key, **Key** shows which Anthropic key pays and lets you pick another, or add one. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
 
-These two settings cover only steps that run on Claude: a step on OpenAI, Gemini or another provider is always billed to that provider's key, whichever you choose here. Until you choose, adding your first Anthropic key sets Claude to use it. When either is set to **API key**, **Paid with** under it shows which Anthropic key pays and lets you pick another, or add one on the spot. Both use the same key, your default Anthropic key; an investigation can bill a different one from its Overview.
+Both use the same Anthropic key, your default one; an investigation can bill a different one from its Overview. Until you choose, adding your first Anthropic key sets both to use it, and Ask Claude follows the steps' choice until you set it on its own.
 
 You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit, and Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can let a Pro or Max plan continue past it at API rates.
 

@@ -202,6 +202,25 @@ const STEP_NAMES: Record<string, [string, string]> = {
 function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => void }) {
   const models = useRpc('settings.models', {}).data?.models ?? []
   const [busy, setBusy] = useState<string | null>(null)
+  const [addingKey, setAddingKey] = useState(false)
+  const claudeKeys = s.key_sets?.anthropic ?? []
+  const envKey = s.claude.key_source === 'env'
+  // How the steps on Claude are paid: the subscription, or an Anthropic key (the default one).
+  // One choice for every Claude step; Ask Claude has its own, below.
+  const claudePay = s.claude.mode === 'subscription' ? 'sub' : s.claude.mode === 'api-key' ? (envKey ? 'env' : claudeKeys.find((k) => k.default)?.id ?? '') : ''
+  const payClaude = async (v: string) => {
+    if (v === '+') return setAddingKey(true)
+    setBusy('claude-pay')
+    try {
+      if (v !== 'sub' && v !== 'env') await call('auth.setDefaultKey', { provider: 'anthropic', id: v })
+      onStatus(await call('auth.setAnthropicMode', { mode: v === 'sub' ? 'subscription' : 'api-key' }))
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not change how Claude is paid', body: errorMessage(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+  const claudeSteps = s.stages.filter((st) => st.provider === 'anthropic').length
   const pick = async (key: string, value: string) => {
     setBusy(key)
     try {
@@ -218,7 +237,7 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
       <div className="set-card-head">
         <div>
           <div className="card-title">Models</div>
-          <div className="card-sub">Each step can use any provider. Pick its model here; it is paid for with that provider’s default key, or your Claude subscription. An investigation can bill another key on its Overview.</div>
+          <div className="card-sub">Each step can use any provider. A step is paid with that provider’s default key; a step on Claude, with your Claude subscription or an Anthropic key. An investigation can bill another key on its Overview.</div>
         </div>
       </div>
       <table className="table">
@@ -235,13 +254,30 @@ function StepsCard({ s, onStatus }: { s: Extended; onStatus: (s: AuthStatus) => 
                   <ModelPicker compact value={st.value} models={models} emptyLabel="Use the default" onChange={(v) => void pick(st.config_key, v)} disabled={busy === st.config_key} />
                   <div className="faint" style={{ fontSize: 'var(--fs-sm)', marginTop: 3 }}>{providerName(st.provider)}</div>
                 </td>
-                <td>{st.paid_with ? <span>{st.paid_with}{st.paid_with !== 'Claude subscription' && <span className="faint"> · {providerName(st.provider)}</span>}</span> : <span className="faint">No {providerName(st.provider)} key yet</span>}</td>
+                <td>
+                  {st.provider === 'anthropic' ? (
+                    <select className="select set-paysel" value={claudePay} disabled={busy === 'claude-pay'} onChange={(e) => void payClaude(e.target.value)} aria-label="How the steps on Claude are paid">
+                      {!claudePay && <option value="" disabled>Choose…</option>}
+                      <option value="sub">Claude subscription</option>
+                      {envKey ? <option value="env">Environment key · {s.claude.key_masked}</option> : claudeKeys.map((k) => <option key={k.id} value={k.id}>{k.label} · Anthropic</option>)}
+                      {!envKey && <option value="+">Add a key…</option>}
+                    </select>
+                  ) : st.paid_with ? <span>{st.paid_with}<span className="faint"> · {providerName(st.provider)}</span></span> : <span className="faint">No {providerName(st.provider)} key yet</span>}
+                </td>
                 <td>{st.ready ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : <Badge tone="danger" icon={XCircle}>Not ready</Badge>}</td>
               </tr>
             )
           })}
         </tbody>
       </table>
+      {(addingKey || (claudeSteps > 0 && (!s.claude.signed_in && s.claude.mode === 'subscription' || s.claude.reason))) && (
+        <div className="col" style={{ gap: 10, padding: '12px 18px 16px', borderTop: '1px solid var(--border)' }}>
+          {addingKey && <ClaudeKeyChoice s={s} adding onAdding={setAddingKey} onAdded={async () => onStatus(await call('auth.setAnthropicMode', { mode: 'api-key' }))} onStatus={onStatus} />}
+          {claudeSteps > 0 && s.claude.mode === 'subscription' && !s.claude.signed_in && <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />}
+          {claudeSteps > 0 && s.claude.reason && !(s.claude.mode === 'subscription' && !s.claude.signed_in) && <Callout tone="warning">{s.claude.mode ? s.claude.reason : 'Choose how the steps on Claude are paid, under Paid with.'}</Callout>}
+        </div>
+      )}
+      {claudeSteps > 1 && <div className="set-foot">Every step on Claude is paid the same way: changing one changes them all.</div>}
     </section>
   )
 }
@@ -343,7 +379,7 @@ function ClaudeKeyChoice({ s, adding, onAdding, onAdded, onStatus }: { s: Extend
   const current = keys.find((k) => k.default) ?? keys[0]
   return (
     <label className="set-claudekey">
-      <span>Paid with</span>
+      <span>Key</span>
       <select className="select" value={current.id} disabled={busy} onChange={(e) => void choose(e.target.value)}>
         {keys.map((k) => <option key={k.id} value={k.id}>{k.label} · {k.masked}</option>)}
         <option value="+">Add a key…</option>
@@ -355,8 +391,7 @@ function ClaudeKeyChoice({ s, adding, onAdding, onAdded, onStatus }: { s: Extend
 export default function AuthPanel() {
   const q = useRpc('auth.status', {})
   const info = useRpc('app.info', {})
-  // Which toggle is adding an Anthropic key: API key was chosen with none stored, or "Add a key…".
-  const [asking, setAsking] = useState(false)
+  // Adding an Anthropic key for Ask Claude: API key was chosen with none stored, or "Add a key…".
   const [askingSession, setAskingSession] = useState(false)
   const setStatus = (s: AuthStatus) => {
     queryClient.setQueryData(['auth.status', {}], s)
@@ -365,31 +400,13 @@ export default function AuthPanel() {
   if (q.isLoading) return <Skeleton h={400} />
   if (q.error) return <ErrorNote error={q.error} retry={() => void q.refetch()} />
   const s = q.data as Extended
-  // Neither toggle is pressed until a choice is made: an unset mode is not a subscription.
-  const asMode = (m: string | null | undefined) => (m === 'api-key' || m === 'subscription' ? m : '') as 'subscription' | 'api-key'
-  const mode = asMode(s.claude.mode)
-  const sessionMode = asMode(s.claude.session_mode ?? s.claude.mode)
-  // Whether a processing step runs on Claude now. With none, Claude matters only to Ask Claude and
-  // Research, so an unset Claude is a note rather than a warning.
-  const claudeNeeded = s.stages.some((st) => st.provider === 'anthropic')
-  const needsSignIn = (mode === 'subscription' || sessionMode === 'subscription' || (!mode && claudeNeeded)) && !s.claude.signed_in
-  const ready = s.claude.logged_in && !s.claude.session_reason
-  const unset = !s.claude.mode && !s.claude.session_mode
-  // With no step on Claude, processing is paid with each provider's API key, so the processing
-  // toggle shows API key until a choice is saved. Only shown: saving it would also move Ask Claude,
-  // which follows processing until set on its own (D318).
-  const processingShown = mode || (claudeNeeded ? mode : 'api-key')
+  // Ask Claude and Research follow the steps' Claude billing until set on their own (D318). Neither
+  // option is pressed until something is chosen: an unset mode is not a subscription.
+  const sessionMode = ((m) => (m === 'api-key' || m === 'subscription' ? m : ''))(s.claude.session_mode ?? s.claude.mode) as 'subscription' | 'api-key'
+  const sessionReady = sessionMode === 'subscription' ? !!s.claude.signed_in && !s.claude.session_reason : sessionMode === 'api-key' && !!s.claude.key_masked
   const providers = (s.providers?.map((p) => ({ provider: p.provider, label: p.label })) ?? FALLBACK.map((p) => ({ provider: p, label: providerName(p) })))
   const urls = Object.fromEntries((s.base_urls ?? []).map((b) => [b.provider, b.url]))
 
-  const switchMode = async (m: 'subscription' | 'api-key') => {
-    try {
-      setStatus(await call('auth.setAnthropicMode', { mode: m }))
-      setAsking(false)
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not switch', body: errorMessage(e) })
-    }
-  }
   // Ask Claude and Research have their own billing (D318); on an API key they use the default
   // Anthropic key, the same one processing uses on a key.
   const switchSessionMode = async (m: 'subscription' | 'api-key') => {
@@ -407,45 +424,16 @@ export default function AuthPanel() {
       <section className="card set-card">
         <div className="set-card-head">
           <div>
-            <div className="card-title">Billing</div>
-            <div className="card-sub">How adding documents and Ask Claude pay for their models. A step on OpenAI, Gemini, DeepSeek or another provider is billed per token to that provider’s key, under Provider keys below.</div>
+            <div className="card-title">Ask Claude and Research</div>
+            <div className="card-sub">Questions and web research always run on Claude, whatever the steps above use. A Claude subscription covers them with no charge per question; recommended if you have one.</div>
           </div>
           <span className="spacer" />
-          {/* Claude's readiness: Ask Claude always needs it, and so does any stage set to a Claude model. */}
-          {ready ? <Badge tone="success" icon={CheckCircle2}>Claude ready</Badge> : claudeNeeded || !unset ? <Badge tone="warning" icon={XCircle}>Claude not ready</Badge> : <Badge>Claude not set up</Badge>}
+          {sessionReady ? <Badge tone="success" icon={CheckCircle2}>Ready</Badge> : sessionMode ? <Badge tone="warning" icon={XCircle}>Not ready</Badge> : <Badge>Not set up</Badge>}
         </div>
         <div className="set-field" style={{ borderTop: 'none' }}>
           <div className="set-field-text">
-            <div className="set-field-label">Adding documents</div>
-            <div className="set-field-short">
-              {s.stages.every((st) => st.provider === 'anthropic')
-                ? 'Every processing stage runs on Claude, which can be paid for two ways.'
-                : s.stages.some((st) => st.provider === 'anthropic')
-                  ? 'Stages on other providers are billed to their own keys. The stages on Claude can be paid for two ways.'
-                  : 'No step runs on Claude at the moment: each is paid with its provider’s API key, under Models above. This choice applies once you set a step to a Claude model.'}{' '}
-              An API key bills per token, to your Anthropic account, with no usage limit; recommended. A Claude subscription is not metered, but a large batch can reach your plan’s limit.
-            </div>
-          </div>
-          <div className="set-field-control">
-            <Segmented
-              value={asking ? 'api-key' : processingShown}
-              onChange={(m) => {
-                if (m === processingShown) return
-                if (m === 'subscription') void switchMode('subscription')
-                else if (s.claude.key_masked) void switchMode('api-key')
-                else setAsking(true)
-              }}
-              options={[{ value: 'subscription', label: 'Claude subscription' }, { value: 'api-key', label: 'API key' }]}
-            />
-            {(asking || mode === 'api-key') && (
-              <ClaudeKeyChoice s={s} adding={asking} onAdding={setAsking} onAdded={() => switchMode('api-key')} onStatus={setStatus} />
-            )}
-          </div>
-        </div>
-        <div className="set-field">
-          <div className="set-field-text">
-            <div className="set-field-label">Ask Claude and Research</div>
-            <div className="set-field-short">Questions and web research always run on Claude. A Claude subscription covers them with no charge per question; recommended if you have one.</div>
+            <div className="set-field-label">Paid with</div>
+            <div className="set-field-short">{sessionMode ? 'A Claude subscription, or an Anthropic key billed per token.' : 'Choose one to use Ask Claude and Research.'}</div>
           </div>
           <div className="set-field-control">
             <Segmented
@@ -462,14 +450,11 @@ export default function AuthPanel() {
             )}
           </div>
         </div>
-        {needsSignIn && (
+        {sessionMode === 'subscription' && !s.claude.signed_in && (
           <div style={{ margin: '0 18px 16px' }}>
             <ClaudeSignIn onSignedIn={() => void queryClient.invalidateQueries({ queryKey: ['auth.status', {}] })} />
           </div>
         )}
-        {unset && !claudeNeeded ? (
-          <div className="faint" style={{ margin: '0 18px 16px', fontSize: 'var(--fs-sm)' }}>Ask Claude and Research run on Claude. To use them, choose how to pay above.</div>
-        ) : s.claude.reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.reason}</Callout>}
         {s.claude.session_reason && <Callout tone="warning" style={{ margin: '0 18px 16px' }}>{s.claude.session_reason}</Callout>}
         {info.data && !info.data.claude_code.installed && (
           <Callout tone="warning" title="Claude is missing from the engine" style={{ margin: '0 18px 16px' }}>

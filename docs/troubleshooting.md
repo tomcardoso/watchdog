@@ -60,7 +60,7 @@ Check the key in **Settings → Models & keys**, or top up the account on the pr
 
 ## "The key this investigation bills isn't on this computer"
 
-The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add another** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](models-and-cost.md#billing).
+The investigation was set, under **Billing** on its Overview, to bill a named key (for example "Work") that this computer does not have: it was deleted, or the folder came from a colleague whose keys have different names. Watchdog stops before sending anything rather than bill another account. Either add a key with exactly that name under **Settings → Models & keys** (**Add key** beside the provider), or choose another key, or **Default**, in the Billing card. See [Billing](models-and-cost.md#billing).
 
 ## macOS asks whether Watchdog may use its "Safe Storage" in your Keychain
 
