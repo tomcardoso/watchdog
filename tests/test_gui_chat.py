@@ -669,3 +669,12 @@ def test_a_conversation_always_names_its_model(env):
     assert chat.build_options(s, None).model == "claude-sonnet-5-5"
     s.model = "haiku"
     assert chat.build_options(s, None).model == "claude-haiku-5-5"
+
+
+def test_session_allows_messages_larger_than_the_sdk_default(env):
+    """A context session reads the reporter's files; one large read made a message over the SDK's
+    1 MB default and killed the session (D349)."""
+    from watchdog.gui import chat
+    vault, _ = env
+    opts = chat.build_options(chat.Session(vault, "context", None, "t"), None)
+    assert opts.max_buffer_size == chat.MAX_MESSAGE_BYTES > 1024 * 1024
