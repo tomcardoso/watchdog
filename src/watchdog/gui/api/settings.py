@@ -271,6 +271,8 @@ def _auth_status() -> dict:
                    "signed_in": bool(claude["logged_in"]), "session_reason": _session_reason(claude),
                    "env_key_set": claude["env_key_set"], "key_masked": claude["key_masked"],
                    "key_source": claude["key_source"],
+                   # The stored Anthropic key Ask Claude and Research pay with on an API key (D348).
+                   "session_key_id": auth_cmd.session_key_id(state),
                    # The default Anthropic key's name, when there is more than one to tell apart.
                    "key_label": next((k["label"] for k in auth_cmd.list_keys("anthropic", state) if k["default"]), None)
                    if len(auth_cmd.list_keys("anthropic", state)) > 1 and claude["key_source"] == "stored" else None},
@@ -353,14 +355,19 @@ def set_anthropic_mode(mode: str, key: str | None = None, key_enc: dict | None =
 
 
 @method("auth.setSessionMode")
-def set_session_mode(mode: str | None = None) -> dict:
+def set_session_mode(mode: str | None = None, id: str | None = None) -> dict:
     """Bill Ask Claude, Research and setting the context through the subscription or an API key,
-    independently of processing (D318); None makes them follow processing again."""
+    independently of processing (D318); None makes them follow processing again. On an API key,
+    `id` names the stored Anthropic key that pays for them, which need not be the default (D348)."""
     from watchdog import auth as auth_cmd
 
     if mode is not None and mode not in auth_cmd.SESSION_MODES:
         raise RpcError("mode must be “subscription”, “api-key” or empty.", code="bad_params")
     state = auth_cmd.load_state()
+    if id is not None:
+        if id not in {k["id"] for k in auth_cmd.list_keys("anthropic", state)}:
+            raise RpcError("No stored Anthropic key has that id.", code="bad_params")
+        state["session_key"] = id
     if mode is None:
         state.pop("session_mode", None)
     else:
@@ -405,6 +412,10 @@ def delete_key(provider: str, id: str | None = None) -> dict:
     _check_provider(provider)
     if id:
         _key_op(lambda: auth_cmd.delete_key(provider, id))
+        state = auth_cmd.load_state()
+        if provider == "anthropic" and state.get("session_key") == id:
+            state.pop("session_key")        # Ask Claude falls back to the default key
+            auth_cmd.save_state(state)
     else:
         state = auth_cmd.load_state()
         if state["keys"].pop(provider, None) is not None:

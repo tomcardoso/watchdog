@@ -836,6 +836,8 @@ export interface AuthStatus {
     session_mode_own?: boolean
     signed_in?: boolean
     session_reason?: string | null
+    /** The stored Anthropic key Ask Claude and Research pay with on an API key (D348). */
+    session_key_id?: string | null
   }
   /** One row per step (D347): `config_key` is the setting its model picker writes, `set` whether
    * that setting is set (else `value` is the default it falls back to), `paid_with` what pays. */
@@ -1055,7 +1057,7 @@ export interface Methods {
   'settings.models': [Record<string, never>, { models: ModelChoice[]; efforts: string[] }]
   'auth.status': [Record<string, never>, AuthStatus]
   'auth.setAnthropicMode': [{ mode: 'subscription' | 'api-key'; key?: string }, AuthStatus]
-  'auth.setSessionMode': [{ mode: 'subscription' | 'api-key' | null }, AuthStatus]
+  'auth.setSessionMode': [{ mode: 'subscription' | 'api-key' | null; id?: string | null }, AuthStatus]
   'auth.setKey': [{ provider: string; key: string; id?: string }, AuthStatus]
   'auth.deleteKey': [{ provider: string; id?: string }, AuthStatus]
   'auth.addKey': [{ provider: string; label: string; key: string; make_default?: boolean }, AuthStatus & { id: string; warning?: string | null }]

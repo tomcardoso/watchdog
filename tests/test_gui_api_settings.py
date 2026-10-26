@@ -240,7 +240,8 @@ def test_status_subscription(wdg_home):
     assert s["claude"] == {"mode": "subscription", "logged_in": True, "reason": None,
                            "session_mode": "subscription", "session_mode_own": False, "signed_in": True,
                            "session_reason": None, "env_key_set": False,
-                           "key_masked": None, "key_source": None, "key_label": None}
+                           "key_masked": None, "key_source": None, "key_label": None,
+                           "session_key_id": None}
     assert all(x["ready"] and x["billing"] == "subscription" for x in s["stages"])
 
 
@@ -573,6 +574,21 @@ def test_first_anthropic_key_sets_claude_to_api_key_only_when_unchosen(wdg_home)
     write_creds(wdg_home, "subscription", {})
     r = call("auth.addKey", provider="anthropic", label="Globe", key="sk-ant-api03-zyxwvutsrqponmlk")
     assert r["claude"]["mode"] == "subscription"
+
+
+def test_ask_claude_can_pay_with_its_own_anthropic_key(wdg_home):
+    """D348: Ask Claude and Research can bill a stored Anthropic key other than the default, which
+    the steps keep using; deleting that key sends them back to the default."""
+    from watchdog import auth
+    call("auth.setKey", provider="anthropic", key="sk-ant-api03-defaultdefault1111")
+    pid = call("auth.addKey", provider="anthropic", label="Personal", key="sk-ant-api03-personalperso2222")["id"]
+    r = call("auth.setSessionMode", mode="api-key", id=pid)
+    assert r["claude"]["session_key_id"] == pid
+    assert auth.resolve_auth("anthropic", session=True)["key"] == "sk-ant-api03-personalperso2222"
+    assert auth.resolve_auth("anthropic")["key"] == "sk-ant-api03-defaultdefault1111"
+    assert "No stored Anthropic key" in call_error("auth.setSessionMode", mode="api-key", id="k-nope")["message"]
+    call("auth.deleteKey", provider="anthropic", id=pid)
+    assert auth.resolve_auth("anthropic", session=True)["key"] == "sk-ant-api03-defaultdefault1111"
 
 
 def test_a_keys_spending_limit_counts_what_it_paid_and_stops(wdg_home):

@@ -11,12 +11,14 @@ Watchdog is built around Claude and uses it by default. It can reach Claude in t
 - **API key.** A key from the [Anthropic Console](https://console.anthropic.com), billed per token (the units models read and write, roughly three-quarters of a word each) to your Anthropic account.
 - **Claude subscription.** Your Claude [Pro or Max plan](https://claude.com/pricing), signed in through your browser. It is not metered, but it has a usage limit.
 
-**Settings → Models & keys** sets this separately for two kinds of work:
+**Settings → Models & keys** has three parts: **Models** chooses the model for each step of adding documents, **Paid with** chooses what pays, and **Keys** is where keys are added, named and given a spending limit.
 
-- **Adding documents**: reading, extracting and the finishing steps. In the **Models** table, a step on Claude has a **Paid with** menu: your Claude subscription, one of your Anthropic keys, or **Add a key…**. Every step on Claude is paid the same way. We recommend an **API key** here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into. A step on OpenAI, Gemini or another provider is always paid with that provider's key.
-- **Ask Claude and Research**: questions and web research, which always run on Claude, in a card of their own. Choose **Claude subscription** or **API key**; on an API key, **Key** shows which Anthropic key pays and lets you pick another, or add one. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+**Paid with** has a line for each kind of work:
 
-Both use the same Anthropic key, your default one; an investigation can bill a different one from its Overview. Until you choose, adding your first Anthropic key sets both to use it, and Ask Claude follows the steps' choice until you set it on its own.
+- **Adding documents**: one line per provider your steps use, naming the steps it pays for. A line for Claude offers your Claude subscription or any of your Anthropic keys; a line for another provider offers that provider's keys, and shows the key as plain text when you have only one. We recommend an **API key** for Claude here. With the default model it costs roughly US$1 per 1,000 pages, and it has no usage limit to run into.
+- **Ask Claude and Research**: questions and web research, which always run on Claude. Choose your Claude subscription or an Anthropic key; it can be a different key from the one adding documents uses. We recommend your **subscription** here, if you have one: a conversation costs nothing extra on it, and its limit is rarely a problem for questions.
+
+**Add a key…** in any menu takes you to **Keys**, with the form for that provider open. An investigation can bill a different key from its Overview. Until you choose, adding your first Anthropic key sets Claude to use it, and Ask Claude follows the steps' choice until you set it on its own.
 
 You can also put both on one or the other. A subscription alone suits trying Watchdog and small investigations. Its usage limit is shared with the rest of your Claude use, and a batch of large documents can reach it. When it does, the run stops and keeps every document it finished; switch on **Wait out rate limits** in the Add documents options to have it wait and carry on instead. A Max plan raises the limit, and Anthropic's [usage credits](https://support.claude.com/en/articles/12429409-manage-usage-credits-for-paid-claude-plans) can let a Pro or Max plan continue past it at API rates.
 
