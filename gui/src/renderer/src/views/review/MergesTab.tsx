@@ -128,7 +128,7 @@ export function MergeLogSection() {
         <div className="grow">
           <h2 className="mg-log-title">Recent merges</h2>
           <p className="faint mg-log-sub">
-            Every time two records were treated as one entity, newest first, with who decided and why. The same list is kept in <code>merges.md</code> in the investigation folder.
+            Every time two records were treated as one entity, newest first, with who decided and why.
           </p>
         </div>
         {routine.length > 0 && (

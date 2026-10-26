@@ -717,7 +717,7 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={RefreshCw}
           title="Rebuild the timeline"
-          text="Regenerates timeline.md from the canonical event files. Deterministic, no model call. Useful if the note was deleted or edited by mistake: nothing is lost, because it is generated output."
+          text="Writes the timeline page that Ask Claude reads again from the saved events. No model call. Useful if the page was deleted or edited by mistake: nothing is lost, because the events are stored separately."
           label="Rebuild timeline"
           onRun={() => launch('rebuild-timeline', {}, 'Rebuild timeline')}
         />

@@ -412,9 +412,9 @@ def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
                            f"{inp.get('b', '')} ({inp.get('b_doc', '')}).")
         elif name == "watchlist_add":
             terms = [str(t) for t in inp.get("terms") or []]
-            description = "Add to watchlist.md: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
+            description = "Add to the watch list: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
         elif name == "timeline":
-            description = "Write timeline.md again from the stored events."
+            description = "Write the timeline page again from the stored events."
         elif name == "wayback_archive":
             description = (f"Ask the Internet Archive to save {inp.get('url', '')}. Watchdog sends it "
                            "with your Wayback Machine keys; Claude gets back only the archive link.")

@@ -19,10 +19,10 @@ export const SLASH: SlashCommand[] = [
   { name: '/watchdog-query', label: 'Answer a question', hint: '[question]', takesInput: true, text: 'Answer a question from the investigation, with a source for every claim.' },
   { name: '/watchdog-surface', label: 'Find connections', hint: '', takesInput: false, text: 'Look across the whole investigation for connections and anomalies.' },
   { name: '/watchdog-entity', label: 'Refresh an entity', hint: '[id…]', takesInput: true, text: 'Rewrite an entity’s summary and timeline from all its source documents.' },
-  { name: '/watchdog-wiki', label: 'Write thread pages', hint: '', takesInput: false, text: 'Create or update pages that follow a line of inquiry, saved to Briefings.' },
+  { name: '/watchdog-wiki', label: 'Write thread pages', hint: '', takesInput: false, text: 'Create or update pages that follow a line of inquiry, saved to Reports.' },
   { name: '/watchdog-health', label: 'Check the investigation', hint: '', takesInput: false, text: 'Look for orphaned notes, broken links, record mismatches and open contradictions.' },
-  { name: '/watchdog-context', label: 'Set the context', hint: '', takesInput: false, text: 'Write context.md, your brief, from the files in context/ and a short interview.' },
-  { name: '/watchdog-request', label: 'Draft a records request', hint: '[request]', takesInput: true, text: 'Draft a request for a document the investigation needs, saved to Briefings.' },
+  { name: '/watchdog-context', label: 'Set the context', hint: '', takesInput: false, text: 'Write your brief from the background files you added in Context and a short interview.' },
+  { name: '/watchdog-request', label: 'Draft a records request', hint: '[request]', takesInput: true, text: 'Draft a request for a document the investigation needs, saved to Reports.' },
   { name: '/watchdog-research', label: 'Research on the web', hint: '[question]', takesInput: true, text: 'Research open questions on the web, queuing sources for you to download.' }
 ]
 

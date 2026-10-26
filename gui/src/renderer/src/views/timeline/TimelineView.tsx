@@ -179,7 +179,7 @@ export default function TimelineView() {
               {q.isLoading ? 'Loading…' : filtered.length === events.length ? `${plural(events.length, 'dated event')} across the investigation` : `${fmtNum(filtered.length)} of ${plural(events.length, 'event')}`}
             </div>
           </div>
-          <Dropdown align="right" trigger={(open) => <Button variant="ghost" icon={MoreHorizontal} tip="More" onClick={open} />} items={[{ label: 'Rebuild timeline.md…', icon: RefreshCw, onClick: () => setRebuildOpen(true) }]} />
+          <Dropdown align="right" trigger={(open) => <Button variant="ghost" icon={MoreHorizontal} tip="More" onClick={open} />} items={[{ label: 'Rebuild timeline…', icon: RefreshCw, onClick: () => setRebuildOpen(true) }]} />
         </div>
 
         <div className="tl-filters">
@@ -264,17 +264,17 @@ export default function TimelineView() {
       <Modal
         open={rebuildOpen}
         onClose={() => setRebuildOpen(false)}
-        title="Rebuild timeline.md"
-        sub="Regenerates the readable timeline note from the event files in the vault."
+        title="Rebuild timeline"
+        sub="Writes the timeline page again from the saved events."
         footer={
           <>
             <Button onClick={() => setRebuildOpen(false)}>Cancel</Button>
-            <Button variant="primary" icon={RefreshCw} onClick={() => { setRebuildOpen(false); void startJob('rebuild-timeline', {}, 'Rebuilding timeline.md').catch((e) => toast({ kind: 'error', title: 'Could not start the rebuild', body: errorMessage(e) })) }}>Rebuild</Button>
+            <Button variant="primary" icon={RefreshCw} onClick={() => { setRebuildOpen(false); void startJob('rebuild-timeline', {}, 'Rebuilding the timeline').catch((e) => toast({ kind: 'error', title: 'Could not start the rebuild', body: errorMessage(e) })) }}>Rebuild</Button>
           </>
         }
       >
         <p style={{ margin: 0, lineHeight: 1.55, color: 'var(--text-2)' }}>
-          The timeline note is rebuilt from the saved events. It makes no model call and costs nothing. Use it if timeline.md was deleted or edited by mistake; nothing is lost, because the note is a generated output and the events themselves are stored separately. This screen reads the events directly and is unaffected.
+          Watchdog writes the timeline page that Ask Claude reads again from the saved events. It makes no model call and costs nothing. Use it if that page was deleted or edited by mistake; nothing is lost, because the events themselves are stored separately. This screen reads the events directly and does not change.
         </p>
       </Modal>
     </div>

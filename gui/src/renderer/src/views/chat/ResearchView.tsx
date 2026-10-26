@@ -16,7 +16,7 @@ const STEPS = [
   'Confirms the question, and how wide to cast the net: quick, standard or deep.',
   'Researches in rounds, checking in with you between each.',
   'Queues every source it keeps, with a reliability tag and why it matters.',
-  'Writes a research memo to briefings/.'
+  'Writes a research memo, saved to Reports.'
 ]
 
 function useDownload() {
