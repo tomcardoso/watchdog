@@ -1,17 +1,18 @@
-// Everything Watchdog writes for the journalist, as a reading list: briefings, lead
-// sweeps, watch-list alerts and research memos, plus three living pages pinned above them: the
+// Reports: everything Watchdog and Claude write for the journalist, as a reading list (the route
+// and folder keep the older name, `briefings`). Two living pages are pinned at the top: the
 // current state (built now from the investigation's records, for the reporter; the session primer
-// Claude starts each conversation with, D285, is one click away as "What Claude is given"), the
-// processing history and the investigation context.
+// Claude starts each conversation with, D285, is one click away as "What Claude is given") and the
+// processing history. Below them, the pages Ask Claude saves (`queries/`, `wiki/`), then
+// briefings and research memos by month.
 
-import { Activity, ArrowLeft, Bell, Bot, FileText, History, Lightbulb, MessageSquareQuote, Network, Search } from 'lucide-react'
+import { Activity, ArrowLeft, Bot, FileText, History, MessageSquareQuote, Network, Search } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { BriefingRow } from '@shared/api'
 import { Button, Callout, Empty, ErrorNote, Skeleton, cx } from '@renderer/components/ui'
 import { Markdown } from '@renderer/components/Markdown'
 import { useRpc } from '@renderer/lib/rpc'
-import { fmtDate } from '@renderer/lib/format'
+import { fmtDate, fmtDateTime } from '@renderer/lib/format'
 import { navigate, useApp, useVault } from '@renderer/lib/store'
 import { NoteActions, stripFrontmatter } from './NoteView'
 import './briefings.css'
@@ -25,12 +26,17 @@ const PINNED: { path: string; label: string; sub: string; icon: LucideIcon }[] =
   { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History }
 ]
 
+// Lead sweeps and watch-list alerts are also written to briefings/, but they are worked through in
+// Review (Leads, Alerts), which their files say themselves, so they are not listed here.
 const KINDS: { kind: BriefingRow['kind']; label: string; icon: LucideIcon }[] = [
   { kind: 'briefing', label: 'Briefings', icon: FileText },
-  { kind: 'leads', label: 'Lead sweeps', icon: Lightbulb },
-  { kind: 'alerts', label: 'Watch-list alerts', icon: Bell },
   { kind: 'research', label: 'Research memos', icon: Search }
 ]
+
+// Still opened from a link (Activity → Maintenance), so the reader names them.
+const UNLISTED: Partial<Record<BriefingRow['kind'], string>> = { leads: 'Lead sweep', alerts: 'Watch-list alerts' }
+
+const noteKind = (kind: string) => (kind === 'wiki' ? 'Thread page' : 'Saved answer')
 
 const monthKey = (d: string | null) => (d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : 'undated')
 const monthLabel = (k: string) => (k === 'undated' ? 'Undated' : new Date(Number(k.slice(0, 4)), Number(k.slice(5, 7)) - 1, 1).toLocaleDateString('en-CA', { month: 'long', year: 'numeric' }))
@@ -40,7 +46,8 @@ export default function BriefingsView() {
   const route = useApp((s) => s.route)
   const routePath = route.view === 'briefings' ? route.path : undefined
   const list = useRpc('vault.briefings', vault ? { vault } : null)
-  const rows = list.data ?? []
+  const all = list.data ?? []
+  const rows = all.filter((r) => KINDS.some((k) => k.kind === r.kind))
   const pages = useRpc('vault.notes', vault ? { vault } : null)
   const [filter, setFilter] = useState('')
   const f = filter.trim().toLowerCase()
@@ -65,7 +72,7 @@ export default function BriefingsView() {
     <div className="bf">
       <aside className="bf-side">
         <div className="bf-side-head">
-          <h1 className="bf-side-title">Briefings</h1>
+          <h1 className="bf-side-title">Reports</h1>
           <input className="input" placeholder="Filter" value={filter} onChange={(e) => setFilter(e.target.value)} />
         </div>
         <div className="bf-scroll">
@@ -79,20 +86,34 @@ export default function BriefingsView() {
               </span>
             </button>
           ))}
+          {notes.length > 0 && (
+            <div>
+              <div className="bf-group-label">Saved answers and threads<span className="count-pill quiet">{notes.length}</span></div>
+              {notes.map((n) => (
+                <button key={n.path} className={cx('bf-item', selected === n.path && 'active')} title={n.title} onClick={() => pick(n.path)}>
+                  {n.kind === 'wiki' ? <Network /> : <MessageSquareQuote />}
+                  <span className="bf-item-text">
+                    <span className="bf-item-title">{n.title}</span>
+                    <span className="bf-item-sub">{noteKind(n.kind)} · {fmtDate(n.modified)}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
           {list.isLoading && <div style={{ padding: 12 }}><Skeleton h={14} /><Skeleton h={14} style={{ marginTop: 8 }} /><Skeleton w="70%" h={14} style={{ marginTop: 8 }} /></div>}
           {list.error && <div style={{ padding: 12 }}><ErrorNote error={list.error} retry={() => void list.refetch()} /></div>}
           {groups.map((g) => (
             <div key={g.kind}>
-              <div className="bf-group-label">{g.label} <span className="faint tnum">{g.count}</span></div>
+              <div className="bf-group-label">{g.label}<span className="count-pill quiet">{g.count}</span></div>
               {g.months.map(([m, items]) => (
                 <div key={m}>
                   <div className="bf-month">{monthLabel(m)}</div>
                   {items.map((r) => (
-                    <button key={r.path} className={cx('bf-item', selected === r.path && 'active')} onClick={() => pick(r.path)}>
+                    <button key={r.path} className={cx('bf-item', selected === r.path && 'active')} title={r.title ?? r.name} onClick={() => pick(r.path)}>
                       <g.icon />
                       <span className="bf-item-text">
-                        <span className="bf-item-title truncate">{r.title ?? r.name}</span>
-                        <span className="bf-item-sub">{fmtDate(r.date) || r.name}</span>
+                        <span className="bf-item-title">{r.title ?? r.name}</span>
+                        <span className="bf-item-sub">{(g.kind === 'briefing' && r.date?.includes('T') ? fmtDateTime(r.date) : fmtDate(r.date)) || r.name}</span>
                       </span>
                     </button>
                   ))}
@@ -100,31 +121,17 @@ export default function BriefingsView() {
               ))}
             </div>
           ))}
-          {notes.length > 0 && (
-            <div>
-              <div className="bf-group-label">Saved answers and threads <span className="faint tnum">{notes.length}</span></div>
-              {notes.map((n) => (
-                <button key={n.path} className={cx('bf-item', selected === n.path && 'active')} onClick={() => pick(n.path)}>
-                  {n.kind === 'wiki' ? <Network /> : <MessageSquareQuote />}
-                  <span className="bf-item-text">
-                    <span className="bf-item-title truncate">{n.title}</span>
-                    <span className="bf-item-sub">{n.kind === 'wiki' ? 'Wiki thread' : 'Saved answer'} · {fmtDate(n.modified)}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
           {list.data && !rows.length && <div className="faint" style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)' }}>No briefings yet. The first is written when a run finishes.</div>}
         </div>
       </aside>
       <main className="bf-main">
-        <Reader key={selected} path={selected} row={rows.find((r) => r.path === selected)} />
+        <Reader key={selected} path={selected} row={all.find((r) => r.path === selected)} note={(pages.data ?? []).find((n) => n.path === selected)} />
       </main>
     </div>
   )
 }
 
-function Reader({ path, row }: { path: string; row?: BriefingRow }) {
+function Reader({ path, row, note }: { path: string; row?: BriefingRow; note?: { kind: string; title: string } }) {
   const vault = useVault()
   const isPrimer = path === PRIMER
   const file = useRpc('vault.readFile', vault && !isPrimer ? { vault, path } : null, { staleTime: 5_000 })
@@ -150,8 +157,8 @@ function Reader({ path, row }: { path: string; row?: BriefingRow }) {
     <div className="bf-reader">
       <div className="bf-reader-bar">
         <div className="grow">
-          <div className="eyebrow">{pinned ? 'Pinned' : KINDS.find((k) => k.kind === row?.kind)?.label ?? 'Briefing'}</div>
-          <div className="bf-reader-title truncate">{isPrimer && asClaude ? 'What Claude is given' : pinned?.label ?? row?.title ?? row?.name ?? path}</div>
+          <div className="eyebrow">{pinned ? 'Pinned' : note ? noteKind(note.kind) : KINDS.find((k) => k.kind === row?.kind)?.label ?? (row && UNLISTED[row.kind]) ?? 'Briefing'}</div>
+          <div className="bf-reader-title">{isPrimer && asClaude ? 'What Claude is given' : pinned?.label ?? row?.title ?? note?.title ?? row?.name ?? path}</div>
         </div>
         {isPrimer && (
           <Button size="sm" variant="ghost" icon={asClaude ? ArrowLeft : Bot} aria-pressed={asClaude} onClick={() => setAsClaude(!asClaude)}>

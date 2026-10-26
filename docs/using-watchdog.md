@@ -6,7 +6,7 @@ This page covers the day-to-day work of an investigation, task by task: adding d
 
 ## Finding your way around
 
-The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Context**, **Watch list**, **Review**, **Search**, **Ask Claude**, **Web research** and **Briefings** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
+The sidebar groups the screens. **Overview**, **Documents**, **Entities**, **Timeline** and **Network** are under Investigation; **Context**, **Watch list**, **Review**, **Search**, **Ask Claude**, **Web research** and **Reports** under Work; **Activity** and **Settings** below them. The investigation's name sits at the top: click it to switch to another investigation, see all of them, or create one. The app's version is at the bottom.
 
 Press **⌘K** (Ctrl+K on Windows and Linux) anywhere to jump to an entity, a document or a screen by typing part of its name, or to start a search or a question. **View** has a shortcut for each Investigation screen, from Overview to Network (⌘1 to ⌘5, or Ctrl+1 to Ctrl+5), and **Ctrl+Tab** and **Ctrl+Shift+Tab** move to the next or previous item in the sidebar, in order, on every computer. **⌘[** and **⌘]** (Ctrl+[ and Ctrl+] on Windows and Linux) go back and forward through the screens you have visited; on Windows and Linux, Alt+← and Alt+→ do too, except while you are typing. **Help → Take the Tour** walks through the app one screen at a time, using the [sample investigation](getting-started.md#try-the-sample-investigation).
 
@@ -240,7 +240,7 @@ Sentences without a citation are expected: a model connecting facts or summing u
 
 ## Ask Claude
 
-**Ask Claude** is a conversation with Claude about the investigation, using only its documents and citing the page for each claim. Each conversation starts with a short account of where the whole investigation stands, which Watchdog builds from its records, so Claude knows the state of things without re-reading everything. Start a new conversation for each new line of inquiry. **Briefings → Current state** shows that account, and **What Claude is given** shows exactly what Claude receives.
+**Ask Claude** is a conversation with Claude about the investigation, using only its documents and citing the page for each claim. Each conversation starts with a short account of where the whole investigation stands, which Watchdog builds from its records, so Claude knows the state of things without re-reading everything. Start a new conversation for each new line of inquiry. **Reports → Current state** shows that account, and **What Claude is given** shows exactly what Claude receives.
 
 ![An Ask Claude conversation: a question, the searches Claude ran, and an answer with a page citation for each claim.](images/app-ask.png)
 
@@ -252,24 +252,24 @@ With the Wayback Machine keys set up (see [the Settings reference](models-and-co
 
 Start from a question in plain language or one of the shortcuts below, shown as cards on an empty conversation. Typing `/` in the box lists them too:
 
-- **Answer a question** answers a question with a source for every claim, and files substantive answers to `queries/`.
+- **Answer a question** answers a question with a source for every claim, and saves substantive answers to [Reports](#reports).
 - **Find connections** looks across the whole investigation for shared addresses, people in unusual roles, recurring names and chronological anomalies.
 - **Refresh an entity** refreshes an entity's summary and timeline from all its documents.
-- **Write thread pages** writes thread pages in `wiki/` for findings that have grown into a real angle.
+- **Write thread pages** writes thread pages, saved to [Reports](#reports), for findings that have grown into a real angle.
 - **Check the investigation** checks for orphaned notes, broken links and open contradictions.
-- **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to `queries/` with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
+- **Draft a records request** drafts a records request (freedom of information, access to information or public records) for documents in [Requests](#requests), or for any record you name. It takes the record's title, dates and file numbers from your documents, asks where you will file it, and saves the draft to [Reports](#reports) with a list of what to check before filing. The draft names no law, fee or deadline unless you give it one, since those differ from place to place. A request letter tells the body what you know, so Claude points out any detail that comes from a document that is not public and asks before using it. Claude never files anything.
 
 A selector chooses the Claude model for new conversations: Sonnet, the default, or Haiku, which is cheaper and suits simpler questions. Ask Claude always runs on Claude, whatever the other steps use.
 
 ### Web research
 
-When a question needs more than the investigation's documents, **Web research** can look it up. Enter a question, or leave the box blank for Claude to propose one from the investigation's gaps. Claude proposes a mission, confirms how wide to cast the net (quick, standard or deep), researches in rounds, checking in with you, and writes a memo to Briefings. Here, unlike in Ask Claude, it searches the web and reads pages without asking you each time, since that is the whole job; anything that would change the investigation still asks.
+When a question needs more than the investigation's documents, **Web research** can look it up. Enter a question, or leave the box blank for Claude to propose one from the investigation's gaps. Claude proposes a mission, confirms how wide to cast the net (quick, standard or deep), researches in rounds, checking in with you, and writes a memo to [Reports](#reports). Here, unlike in Ask Claude, it searches the web and reads pages without asking you each time, since that is the whole job; anything that would change the investigation still asks.
 
 Web research never writes to the investigation. It queues the sources it keeps, each with its address, a reliability tag and why it matters, and nothing is downloaded until you choose **Download**. The sources then go through the same reading and extraction as any document, so a blog post is never confused with a primary record. Queued sources survive an interrupted session. A source that can't be downloaded (the site refuses, or takes too long to answer) is listed as not downloaded, with the reason; **Try again** retries it, **Remove** takes it off the list, and you can open it in your browser and save it yourself. With the optional capture browser installed (see [Install](install.md#optional-full-page-snapshots)), pages are saved as full snapshots; [Web archiving](models-and-cost.md#web-archiving) can also save each source to the [Wayback Machine](https://web.archive.org).
 
-## Briefings
+## Reports
 
-**Briefings** gathers everything Watchdog writes for you to read: the briefing from each run, lead sweeps, watch-list alerts, research memos, and the pages Claude has saved. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. The investigation's brief has its own screen, [Context](#context).
+**Reports** gathers everything Watchdog and Claude write for you to read. Pinned at the top are **Current state** (where the whole investigation stands, built from its records) and the processing history. Below them, **Saved answers and threads** holds the pages Claude has saved from Ask Claude: answers, records requests and thread pages. Then come the briefing from each run and the research memos, grouped by month. A briefing is listed by what its run added, such as "4 documents added · 8 new entities", with the date and time below; a research memo is listed by the subject it researched. Leads and watch-list alerts are not listed here: you work through them in [Review](#review). The number beside each heading counts its items. The investigation's brief has its own screen, [Context](#context).
 
 ## History and your notes
 

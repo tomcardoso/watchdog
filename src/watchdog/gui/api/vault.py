@@ -935,6 +935,28 @@ def _briefing_kind(stem: str) -> str:
     return "briefing"
 
 
+def _memo_title(fm: dict) -> str | None:
+    """A research memo's name in the list: its `title`, or for a memo written before it had one
+    (headed "Research memo — <date>"), its mission, so memos are told apart by subject, not date."""
+    for key in ("title", "mission"):
+        v = fm.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _run_title(fm: dict) -> str | None:
+    """A briefing's name in the list: what its run added ("4 documents added · 8 new entities"),
+    read from the counts every briefing records, since its heading only repeats the date."""
+    docs, new = fm.get("files_ingested"), fm.get("new_entities")
+    if not isinstance(docs, int) or isinstance(docs, bool):
+        return None
+    title = f"{docs} document{'' if docs == 1 else 's'} added"
+    if isinstance(new, int) and not isinstance(new, bool) and new > 0:
+        title += f" · {new} new entit{'y' if new == 1 else 'ies'}"
+    return title
+
+
 @method("vault.briefings")
 def briefings(vault: str) -> list[dict]:
     v = require_vault(vault)
@@ -946,8 +968,10 @@ def briefings(vault: str) -> list[dict]:
                 continue
             fm, body = vaultio.split_frontmatter(vaultio.read_text(f))
             date = _briefing_date(f.stem, f)
-            out.append({"path": f"briefings/{f.name}", "name": f.stem, "kind": _briefing_kind(f.stem),
-                        "date": date, "title": vaultio.note_title(fm, body) or f.stem})
+            kind = _briefing_kind(f.stem)
+            own = _memo_title(fm) if kind == "research" else _run_title(fm) if kind == "briefing" else None
+            title = own or vaultio.note_title(fm, body) or f.stem
+            out.append({"path": f"briefings/{f.name}", "name": f.stem, "kind": kind, "date": date, "title": title})
     out.sort(key=lambda b: (b["date"] or "", b["name"]), reverse=True)
     return out
 

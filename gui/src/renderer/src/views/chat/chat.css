@@ -62,6 +62,7 @@
 .chat-empty { display: flex; flex-direction: column; gap: 16px; padding-top: 24px; }
 .chat-empty h2 { margin: 0; font-size: var(--fs-2xl); font-weight: 680; letter-spacing: -0.02em; }
 .chat-empty p { margin: 0; color: var(--text-2); line-height: 1.6; }
+.chat-empty-link { border: none; background: none; padding: 0; color: var(--accent-text); font: inherit; text-decoration: underline; cursor: pointer; }
 .chat-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 10px; }
 .chat-chip { text-align: left; display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); cursor: pointer; color: var(--text); transition: border-color var(--dur), box-shadow var(--dur); }
 .chat-chip:hover { border-color: var(--border-strong); box-shadow: var(--shadow-sm); }

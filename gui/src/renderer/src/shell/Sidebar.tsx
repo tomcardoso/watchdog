@@ -44,7 +44,7 @@ const WORK: NavDef[] = [
   { view: 'search', label: 'Search', icon: Search },
   { view: 'ask', label: 'Ask Claude', icon: MessageSquareText },
   { view: 'research', label: 'Web research', icon: Globe2 },
-  { view: 'briefings', label: 'Briefings', icon: BookOpenText }
+  { view: 'briefings', label: 'Reports', icon: BookOpenText }
 ]
 
 const WATCHDOG: NavDef[] = [
