@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import io
 import json
 import os
@@ -47,6 +48,7 @@ from pathlib import Path
 from typing import Callable
 
 from watchdog import progress
+from watchdog.tls import os_trust_store
 
 # (id, label shown in the app). The order is the download order.
 STEPS: list[tuple[str, str]] = [
@@ -61,8 +63,9 @@ STEPS: list[tuple[str, str]] = [
 # a runner in _RUNNERS; the feature that needs the model runs `models --only <id>` (or calls
 # `download_models([id])`) before first use and reports the same progress lines. The
 # speech-to-text model is 0.5 to 1.6 GB and only some investigations include recordings, so it is
-# fetched the first time a recording is pre-processed or from Settings > Setup (D273).
-ON_DEMAND: list[tuple[str, str]] = [("transcription", "Transcription model")]
+# fetched the first time a recording is pre-processed or from Settings > Setup (D273). The capture
+# browser (Playwright and Chromium, about 150 MB) is added from Settings > Setup only (D357).
+ON_DEMAND: list[tuple[str, str]] = [("transcription", "Transcription model"), ("capture", "Capture browser")]
 
 
 # ── the two install phases ──────────────────────────────────────────────────────────
@@ -134,6 +137,43 @@ def _hf_cache() -> Path:
         return Path(home) / "hub"
 
 
+# Written as a step's record before its download starts and replaced by the fingerprint when it
+# finishes, so a download that stopped part-way (a certificate error on the second repository, the
+# app quit, the connection lost) is never taken for a finished one.
+INCOMPLETE = "incomplete"
+
+
+def _docling_files_present() -> bool:
+    """Docling's models are in the cache a conversion reads, with nothing cut off mid-transfer: the
+    folder DOCLING_ARTIFACTS_PATH names when it is set, else the Hugging Face hub's docling
+    repositories (D358). A file still arriving is a `.incomplete` file."""
+    try:
+        if os.environ.get("DOCLING_ARTIFACTS_PATH"):
+            roots = [_docling_cache()]
+            present = roots[0].is_dir() and any(roots[0].iterdir())
+        else:
+            hub = _hf_cache()
+            roots = [p for p in hub.iterdir() if p.is_dir() and p.name.startswith("models--") and "docling" in p.name.lower()]
+            present = bool(roots)
+        return present and not any(f for r in roots for f in r.rglob("*.incomplete"))
+    except OSError:
+        return False
+
+
+def _docling_complete() -> bool:
+    """Docling's models are all in place. Its models arrive as several repositories, so "something is
+    there" is not enough (D357): a step that began and did not finish leaves the INCOMPLETE record,
+    and a record for another Docling version or OCR setting means this one needs its own models.
+    Folders from before these records (a command-line install's cache) are judged by their files."""
+    recorded = _recorded().get("docling")
+    if recorded == INCOMPLETE:
+        return False
+    current = _docling_fingerprint()
+    if recorded and current and recorded != current:
+        return False
+    return _docling_files_present()
+
+
 def _dir_has(root: Path, needle: str) -> bool:
     try:
         return any(needle.lower() in p.name.lower() for p in root.iterdir() if p.is_dir())
@@ -185,9 +225,8 @@ def check() -> dict:
     reranker = None
     if embed._rerank_enabled():
         reranker = _dir_has(_fastembed_cache(), embed._rerank_model_name().split("/")[-1])
-    docling = _docling_cache()
     return {
-        "docling": docling.is_dir() and any(docling.iterdir()),
+        "docling": _docling_complete(),
         "gliner": _dir_has(_hf_cache(), "gliner_multi-v2.1"),
         "embedding": _dir_has(_fastembed_cache(), embed._MODEL_DEFAULT.split("/")[-1]),
         "reranker": reranker,
@@ -211,24 +250,90 @@ def _transcription_check() -> dict:
             "transcription_size_mb": transcribe.MODELS[name]["size_mb"]}
 
 
+# ── what is already downloaded, and for which version (D356) ───────────────────────
+
+def _version(dist: str) -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return None
+
+
+def fingerprints() -> dict[str, str | None]:
+    """What each downloaded model is, by step: the library version or model name that decides which
+    files the download fetches. A change to one means the model must be fetched again. A step
+    missing here or None always runs (OCR is not a download; the transcription model is guarded by
+    its own cache check)."""
+    from watchdog.pipeline import embed
+    return {
+        "docling": _docling_fingerprint(),
+        "gliner": _GLINER_REPO,
+        "embedding": embed._MODEL_DEFAULT,
+        "reranker": embed._rerank_model_name() if embed._rerank_enabled() else "off",
+    }
+
+
+def _docling_fingerprint() -> str | None:
+    """Docling's version and the settings that choose which of its models a conversion loads."""
+    from watchdog import config
+    docling = _version("docling")
+    if not docling:
+        return None
+    cfg = config.read()
+    return f"docling {docling} ocr={cfg.get('ocr_engine', 'auto')} tables={cfg.get('table_structure', True)}"
+
+
+def _record_path() -> Path:
+    from watchdog import config
+    return config.home() / "models.json"
+
+
+def _recorded() -> dict[str, str]:
+    try:
+        data = json.loads(_record_path().read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _record(step: str, fingerprint: str) -> None:
+    """Remember that `step` finished for this fingerprint. Written only after a download succeeds,
+    so a failed one is attempted again at the next run."""
+    path = _record_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({**_recorded(), step: fingerprint}, indent=2))
+        tmp.replace(path)
+    except OSError:
+        pass  # the next run downloads again; nothing else depends on the record
+
+
+def _up_to_date(step: str, current: dict[str, str | None], on_disk: dict) -> bool:
+    """True when `step` was downloaded for the fingerprint it has now and its files are still on
+    disk (a cleared cache is noticed, and fetched again)."""
+    fp = current.get(step)
+    return fp is not None and _recorded().get(step) == fp and bool(on_disk.get(step))
+
+
 # ── downloads ───────────────────────────────────────────────────────────────────────
 
+_GLINER_REPO = "urchade/gliner_multi-v2.1"
+
+
 def _download_docling() -> str | None:
-    from docling.utils.model_downloader import download_models
-    download_models(progress=False, with_code_formula=False, with_picture_classifier=False)
+    # Load the models the way a conversion does, so they land in the cache a conversion reads: the
+    # Hugging Face hub's, unless the person set DOCLING_ARTIFACTS_PATH (D358). Docling's own
+    # `download_models` writes to a different folder that nothing reads.
+    from watchdog.pipeline import preprocess
+    preprocess.load_pdf_models()
     return None
 
 
 def _download_gliner() -> str | None:
-    # Verify TLS via the OS trust store rather than certifi's bundled list (D122), for this one
-    # load only: `inject_into_ssl` patches the global `ssl` module.
-    import truststore
-    truststore.inject_into_ssl()
-    try:
-        from gliner import GLiNER
-        GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
-    finally:
-        truststore.extract_from_ssl()
+    from gliner import GLiNER
+    GLiNER.from_pretrained(_GLINER_REPO)
     return None
 
 
@@ -256,6 +361,71 @@ def _download_transcription() -> str | None:
     # Byte progress as `model` events, the same ones a job shows when a recording triggers it.
     transcribe.ensure_model(name, progress.emit)
     return name
+
+
+def _node_env() -> dict[str, str]:
+    """The environment for Playwright's downloader, which runs on Node and so ignores the OS trust
+    store that `os_trust_store` gives Python (D226): `NODE_USE_SYSTEM_CA` where Node supports it, and
+    on macOS a bundle of the keychains' certificates in `NODE_EXTRA_CA_CERTS`. Anything the person
+    set themselves is left alone."""
+    env = dict(os.environ)
+    env.setdefault("NODE_USE_SYSTEM_CA", "1")
+    if sys.platform == "darwin" and "NODE_EXTRA_CA_CERTS" not in env:
+        bundle = _macos_ca_bundle()
+        if bundle:
+            env["NODE_EXTRA_CA_CERTS"] = str(bundle)
+    return env
+
+
+def _macos_ca_bundle() -> Path | None:
+    """The System and system-root keychains' certificates as one PEM file, rebuilt on every call so
+    a rotated corporate certificate is picked up. None when `security` fails."""
+    import subprocess
+    from watchdog import config
+    pems = []
+    for keychain in ("/Library/Keychains/System.keychain", "/System/Library/Keychains/SystemRootCertificates.keychain"):
+        try:
+            r = subprocess.run(["security", "find-certificate", "-a", "-p", keychain],
+                               capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if r.returncode == 0 and r.stdout.strip():
+            pems.append(r.stdout)
+    if not pems:
+        return None
+    path = config.home() / "node-ca.pem"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("\n".join(pems))
+    except OSError:
+        return None
+    return path
+
+
+def _run_quietly(cmd: list[str], env: dict[str, str]) -> None:
+    """Run one install command; on failure raise with the end of its output, which is what says why."""
+    import subprocess
+    # On Windows a child of a windowless process opens a console window unless told not to.
+    flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+    r = subprocess.run(cmd, capture_output=True, text=True, env=env, **flags)
+    if r.returncode != 0:
+        tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-6:])
+        raise RuntimeError(f"{' '.join(cmd[2:5])} failed (exit {r.returncode}).\n{tail}")
+
+
+def _install_capture() -> str | None:
+    """Playwright and the Chromium it drives, for full-page snapshots (D357). pip installs the package
+    into this engine; `playwright install chromium` then fetches the browser (about 150 MB)."""
+    from watchdog.pipeline import capture
+    if capture.render_available():
+        return "already installed"
+    env = {**_node_env(), "PIP_DISABLE_PIP_VERSION_CHECK": "1"}
+    _run_quietly([sys.executable, "-m", "pip", "install", "playwright>=1.49"], env)
+    importlib.invalidate_caches()   # this process looks for the package it has just been given
+    _run_quietly([sys.executable, "-m", "playwright", "install", "chromium"], env)
+    if not capture.render_available():
+        raise RuntimeError("the browser installed, but Watchdog could not start it")
+    return None
 
 
 def _ensure_ocr() -> str | None:
@@ -295,27 +465,52 @@ _RUNNERS: dict[str, Callable[[], str | None]] = {
     "reranker": _download_reranker,
     "ocr": _ensure_ocr,
     "transcription": _download_transcription,
+    "capture": _install_capture,
 }
 
 
+# Why each step of the last `download_models` call failed, by step, for an operation to report.
+ERRORS: dict[str, str] = {}
+
+
 def download_models(only: list[str] | None = None) -> dict[str, str]:
-    """Run each step, emitting progress. Returns {step: "ok" | "warn"}."""
+    """Run each step, emitting progress. Returns {step: "ok" | "warn"}; ERRORS says why."""
+    ERRORS.clear()
     os.environ.setdefault("FASTEMBED_CACHE_PATH", str(_fastembed_cache()))
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     results: dict[str, str] = {}
     # Without `only`, the setup steps; an ON_DEMAND model runs only when named.
     steps = [s for s in STEPS + ON_DEMAND if s[0] in only] if only else STEPS
+    current = fingerprints()
+    try:
+        on_disk = check()
+    except Exception:  # noqa: BLE001 — without it every step simply runs
+        on_disk = {}
     for step, label in steps:
         progress.emit("engine", step=step, label=label, state="start", detail=None)
         try:
+            # A model already downloaded for this version is left alone: no network, so an update
+            # that changes no model finishes at once and a blocked connection costs nothing (D356).
+            if _up_to_date(step, current, on_disk):
+                results[step] = "ok"
+                progress.emit("engine", step=step, label=label, state="ok", detail="Already downloaded")
+                continue
+            if current.get(step):
+                _record(step, INCOMPLETE)
             # The libraries print their own download chatter to stderr; the app keeps it in the
             # log disclosure, so it is not discarded here, only kept off the structured stream.
-            detail = _RUNNERS[step]()
+            # Every download verifies TLS against the OS trust store (D122, D355), so a network
+            # that re-signs traffic with its own root fails none of them.
+            with os_trust_store():
+                detail = _RUNNERS[step]()
+            if current.get(step):
+                _record(step, current[step])
             results[step] = "ok"
             progress.emit("engine", step=step, label=label, state="ok", detail=detail)
         except Exception as e:  # noqa: BLE001 — a failed optional download must not stop the rest
             results[step] = "warn"
-            progress.emit("engine", step=step, label=label, state="warn", detail=str(e)[:400] or type(e).__name__)
+            ERRORS[step] = str(e) or type(e).__name__
+            progress.emit("engine", step=step, label=label, state="warn", detail=ERRORS[step][:400])
     return results
 
 

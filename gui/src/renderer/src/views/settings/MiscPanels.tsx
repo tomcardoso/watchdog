@@ -143,9 +143,9 @@ const MODEL_LABELS: [keyof SetupModels, string, string][] = [
   ['reranker', 'Search reranker', 'Orders the best matches. Downloaded on first use if missing.']
 ]
 
-/** The speech-to-text model (D273): fetched the first time a recording is added, or here ahead of
- * time, for example before travelling somewhere without a reliable connection. */
-function TranscriptionModel({ m, onDone }: { m: SetupModels; onDone: () => void }) {
+/** A piece downloaded from here as a job (`setup.downloadModel`, D273, D357): its progress while it
+ * runs, and a toast when it ends. */
+function useDownloadJob(model: 'transcription' | 'capture', say: { done: string; failed: string }, onDone: () => void) {
   const [jobId, setJobId] = useState<string | null>(null)
   const job = useApp((s) => (jobId ? s.jobs[jobId] : undefined))
   const running = !!jobId && (!job || job.state === 'running')
@@ -153,17 +153,28 @@ function TranscriptionModel({ m, onDone }: { m: SetupModels; onDone: () => void 
     if (e.job.id !== jobId) return
     setJobId(null)
     onDone()
-    if (e.job.state === 'done') toast({ kind: 'success', title: 'Transcription model downloaded' })
-    else if (e.job.state === 'failed') toast({ kind: 'error', title: 'The transcription model could not be downloaded', body: 'Check the internet connection and try again. Activity has the details.' })
+    if (e.job.state === 'done') toast({ kind: 'success', title: say.done })
+    else if (e.job.state === 'failed') toast({ kind: 'error', title: say.failed, body: 'Check the internet connection and try again. Activity has the details.' })
   })
   const start = async () => {
     try {
-      const j = await call('setup.downloadModel', { model: 'transcription' })
+      const j = await call('setup.downloadModel', { model })
       setJobId(j.id)
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the download', body: errorMessage(e) })
     }
   }
+  return { job, running, start }
+}
+
+/** The speech-to-text model (D273): fetched the first time a recording is added, or here ahead of
+ * time, for example before travelling somewhere without a reliable connection. */
+function TranscriptionModel({ m, onDone }: { m: SetupModels; onDone: () => void }) {
+  const { job, running, start } = useDownloadJob(
+    'transcription',
+    { done: 'Transcription model downloaded', failed: 'The transcription model could not be downloaded' },
+    onDone
+  )
   const size = m.transcription_size_mb ? `${m.transcription_size_mb.toLocaleString('en-CA')} MB` : ''
   return (
     <div className="set-check">
@@ -191,6 +202,36 @@ function TranscriptionModel({ m, onDone }: { m: SetupModels; onDone: () => void 
   )
 }
 
+/** The capture browser (D357): Playwright and Chromium, installed from here because nothing else
+ * installs them. No byte progress, so a spinner on the button stands for it. */
+function CaptureBrowser({ ok, onDone }: { ok: boolean; onDone: () => void }) {
+  const { running, start } = useDownloadJob(
+    'capture',
+    { done: 'Capture browser installed', failed: 'The capture browser could not be installed' },
+    onDone
+  )
+  return (
+    <div className="set-check">
+      {ok ? <CheckCircle2 style={{ color: 'var(--success)' }} /> : <MinusCircle style={{ color: 'var(--text-3)' }} />}
+      <div className="grow">
+        <div style={{ fontWeight: 560 }}>Capture browser (about 150 MB)</div>
+        {!ok && (
+          <div className="muted" style={{ fontSize: 'var(--fs-sm)', marginTop: 2 }}>
+            {running
+              ? 'Installing. This can take a few minutes.'
+              : 'Lets web pages be saved as full snapshots, with images and client-rendered content. Without it, pages are saved as sanitized text.'}
+          </div>
+        )}
+      </div>
+      {!ok && (
+        <Button size="sm" loading={running} disabled={running} onClick={() => void start()}>
+          Download now
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function SetupPanel() {
   const q = useRpc('setup.check', {})
   const models = useRpc('setup.models', {})
@@ -198,7 +239,10 @@ export function SetupPanel() {
   const eng = install.status
   const run = install.run
   // The background phase (D272), or a run that stopped: shown first, with its steps and log.
-  const unfinished = !!eng && (!eng.complete || run?.state === 'running' || run?.state === 'failed' || run?.state === 'cancelled')
+  // A run that finished with a download warning counts as complete, but keeps its card: the
+  // warning and the log that explains it (a certificate error, say) are shown nowhere else.
+  const warned = run?.state === 'done' && run.steps.some((s) => s.state === 'warning')
+  const unfinished = !!eng && (!eng.complete || run?.state === 'running' || run?.state === 'failed' || run?.state === 'cancelled' || warned)
   useEffect(() => {
     if (run?.state === 'done') void models.refetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,10 +279,11 @@ export function SetupPanel() {
         <section className="card set-card">
           <div className="set-card-head">
             <div>
-              <div className="card-title">{run?.state === 'running' ? 'Finishing setup' : run?.state === 'failed' || run?.state === 'cancelled' ? 'Setup did not finish' : 'Setup is not finished'}</div>
+              <div className="card-title">{run?.state === 'running' ? 'Finishing setup' : run?.state === 'failed' || run?.state === 'cancelled' ? 'Setup did not finish' : warned ? 'Setup finished, with some downloads missing' : 'Setup is not finished'}</div>
               <div className="card-sub">
-                Watchdog downloads its document and search libraries and its local models in the background. Adding documents waits until they are in place; everything
-                else works now. If the app is closed or the connection drops, setup continues the next time Watchdog opens.
+                {warned
+                  ? 'Open the details below to see what went wrong. Each missing piece is downloaded again the first time it is needed.'
+                  : 'Watchdog downloads its document and search libraries and its local models in the background. Adding documents waits until they are in place; everything else works now. If the app is closed or the connection drops, setup continues the next time Watchdog opens.'}
               </div>
             </div>
           </div>
@@ -246,6 +291,7 @@ export function SetupPanel() {
             {run && run.state !== 'idle' && <EngineProgressView eng={install} />}
             <div className="row" style={{ gap: 8 }}>
               <EngineActions eng={install} primary="Finish setup" />
+              {warned && <Button variant="primary" onClick={() => void fetchModels()}>Try the downloads again</Button>}
             </div>
           </div>
         </section>
@@ -265,24 +311,29 @@ export function SetupPanel() {
         </div>
       </section>
       <section className="card set-card">
-        <div className="set-card-head"><div className="card-title">Local models</div></div>
+        <div className="set-card-head"><div className="card-title">Models</div></div>
         <div style={{ padding: '0 18px 10px' }}>
           {MODEL_LABELS.map(([key, label, hint]) => (m ? <Item key={key} ok={m[key] !== false} label={label} hint={hint} optional /> : null))}
           {m && <Item ok={!!m.ocr} label={m.ocr ? `Text recognition for scans (${m.ocr})` : 'Text recognition for scans'} hint="No OCR engine is installed. Repair the engine to add one." />}
-          {m && <Item ok={!!m.claude_cli} label="Claude (for Ask Claude and Research)" hint="Comes with the engine. Repair the engine if it is missing." />}
           {m && m.transcription_model && <TranscriptionModel m={m} onDone={() => void models.refetch()} />}
         </div>
       </section>
       <section className="card set-card">
         <div className="set-card-head"><div className="card-title">Helper tools</div></div>
         <div style={{ padding: '0 18px 10px' }}>
+          {m && <Item ok={!!m.claude_cli} label="Claude (for Ask Claude and Research)" hint="Comes with the engine. Repair the engine if it is missing." />}
           {c.deps.filter((d) => d.label !== 'Claude Code').map((d) => <Item key={d.label} ok={d.ok} label={d.ok ? d.label : `${d.label} is not installed`} hint={HELPER_NOTES[d.label] ?? d.hint} optional />)}
         </div>
       </section>
       <section className="card set-card">
-        <div className="set-card-head"><div className="card-title">Optional and downloaded pieces</div></div>
+        <div className="set-card-head"><div className="card-title">Add-ons</div></div>
         <div style={{ padding: '0 18px 10px' }}>
-          <Item ok={c.playwright} optional label="Capture browser" hint="Optional. Lets web pages be saved as full snapshots, with images and client-rendered content. Without it, pages are saved as sanitized text." />
+          <CaptureBrowser ok={c.playwright} onDone={() => void q.refetch()} />
+        </div>
+      </section>
+      <section className="card set-card">
+        <div className="set-card-head"><div className="card-title">Where things are</div></div>
+        <div style={{ padding: '0 18px 10px' }}>
           <Item ok={!!c.projects_dir} label={c.projects_dir ? `Investigations folder: ${c.projects_dir}` : 'Investigations folder'} hint="Not chosen yet. Set it under General in Settings." />
           <Item ok={c.config_exists} label="Settings file" hint="Created the first time you save a setting." />
         </div>
