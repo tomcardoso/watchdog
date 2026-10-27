@@ -21,6 +21,13 @@ def config(home):
     return json.loads(path.read_text()) if path.exists() else {}
 
 
+@pytest.fixture(autouse=True)
+def _own_home(monkeypatch, tmp_path):
+    """The record of downloaded models lives in Watchdog's folder; keep it off the real one."""
+    from watchdog import config as config_file
+    monkeypatch.setattr(config_file, "HOME", tmp_path / "wdg")
+
+
 @pytest.fixture
 def sink(monkeypatch):
     buf = io.StringIO()
@@ -185,3 +192,56 @@ def test_trust_store_is_released_only_when_the_last_download_ends(monkeypatch):
         with os_trust_store():
             raise RuntimeError("boom")
     assert calls == ["in", "out", "in", "out"]
+
+
+def _fake_models(monkeypatch, on_disk, ran, fail=()):
+    """Four fingerprinted steps whose runners record that they ran."""
+    def runner(step):
+        def go():
+            ran.append(step)
+            if step in fail:
+                raise RuntimeError("no network")
+        return go
+    steps = ("docling", "gliner", "embedding", "reranker")
+    monkeypatch.setattr(engine_setup, "_RUNNERS", {**{s: runner(s) for s in steps}, "ocr": lambda: "x"})
+    monkeypatch.setattr(engine_setup, "fingerprints", lambda: {s: f"{s}-v1" for s in steps})
+    monkeypatch.setattr(engine_setup, "check", lambda: dict(on_disk))
+
+
+def test_a_model_downloaded_for_this_version_is_not_fetched_again(monkeypatch, sink):
+    on_disk = {"docling": False, "gliner": False, "embedding": False, "reranker": False}
+    ran = []
+    _fake_models(monkeypatch, on_disk, ran)
+    engine_setup.download_models()
+    assert ran == ["docling", "gliner", "embedding", "reranker"]
+
+    ran.clear()
+    on_disk.update(docling=True, gliner=True, embedding=True, reranker=True)
+    result = engine_setup.download_models()
+    assert ran == []
+    assert result == {s: "ok" for s in ("docling", "gliner", "embedding", "reranker", "ocr")}
+    assert any(e.get("detail") == "Already downloaded" for e in events(sink))
+
+
+def test_a_changed_fingerprint_or_a_cleared_cache_downloads_again(monkeypatch, sink):
+    on_disk = {"docling": True, "gliner": True, "embedding": True, "reranker": True}
+    ran = []
+    _fake_models(monkeypatch, on_disk, ran)
+    engine_setup.download_models()
+    ran.clear()
+
+    on_disk["gliner"] = False                      # the cache was cleared
+    monkeypatch.setattr(engine_setup, "fingerprints", lambda: {
+        "docling": "docling-v2", "gliner": "gliner-v1", "embedding": "embedding-v1", "reranker": "reranker-v1"})
+    engine_setup.download_models()
+    assert ran == ["docling", "gliner"]
+
+
+def test_a_failed_download_is_not_recorded(monkeypatch, sink):
+    on_disk = {"docling": True, "gliner": True, "embedding": True, "reranker": True}
+    ran = []
+    _fake_models(monkeypatch, on_disk, ran, fail=("docling",))
+    assert engine_setup.download_models()["docling"] == "warn"
+    ran.clear()
+    engine_setup.download_models()
+    assert ran == ["docling"]                      # tried again; the others are settled

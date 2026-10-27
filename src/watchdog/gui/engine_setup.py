@@ -212,17 +212,80 @@ def _transcription_check() -> dict:
             "transcription_size_mb": transcribe.MODELS[name]["size_mb"]}
 
 
+# ── what is already downloaded, and for which version (D356) ───────────────────────
+
+def _version(dist: str) -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+    try:
+        return version(dist)
+    except PackageNotFoundError:
+        return None
+
+
+def fingerprints() -> dict[str, str | None]:
+    """What each downloaded model is, by step: the library version or model name that decides which
+    files the download fetches. A change to one means the model must be fetched again. A step
+    missing here or None always runs (OCR is not a download; the transcription model is guarded by
+    its own cache check)."""
+    from watchdog.pipeline import embed
+    docling = _version("docling")
+    return {
+        "docling": f"docling {docling} {sorted(_DOCLING_ARGS.items())}" if docling else None,
+        "gliner": _GLINER_REPO,
+        "embedding": embed._MODEL_DEFAULT,
+        "reranker": embed._rerank_model_name() if embed._rerank_enabled() else "off",
+    }
+
+
+def _record_path() -> Path:
+    from watchdog import config
+    return config.home() / "models.json"
+
+
+def _recorded() -> dict[str, str]:
+    try:
+        data = json.loads(_record_path().read_text())
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _record(step: str, fingerprint: str) -> None:
+    """Remember that `step` finished for this fingerprint. Written only after a download succeeds,
+    so a failed one is attempted again at the next run."""
+    path = _record_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({**_recorded(), step: fingerprint}, indent=2))
+        tmp.replace(path)
+    except OSError:
+        pass  # the next run downloads again; nothing else depends on the record
+
+
+def _up_to_date(step: str, current: dict[str, str | None], on_disk: dict) -> bool:
+    """True when `step` was downloaded for the fingerprint it has now and its files are still on
+    disk (a cleared cache is noticed, and fetched again)."""
+    fp = current.get(step)
+    return fp is not None and _recorded().get(step) == fp and bool(on_disk.get(step))
+
+
 # ── downloads ───────────────────────────────────────────────────────────────────────
+
+# What the Docling download fetches; part of its fingerprint, so changing it re-downloads.
+_DOCLING_ARGS = {"progress": False, "with_code_formula": False, "with_picture_classifier": False}
+_GLINER_REPO = "urchade/gliner_multi-v2.1"
+
 
 def _download_docling() -> str | None:
     from docling.utils.model_downloader import download_models
-    download_models(progress=False, with_code_formula=False, with_picture_classifier=False)
+    download_models(**_DOCLING_ARGS)
     return None
 
 
 def _download_gliner() -> str | None:
     from gliner import GLiNER
-    GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
+    GLiNER.from_pretrained(_GLINER_REPO)
     return None
 
 
@@ -299,15 +362,28 @@ def download_models(only: list[str] | None = None) -> dict[str, str]:
     results: dict[str, str] = {}
     # Without `only`, the setup steps; an ON_DEMAND model runs only when named.
     steps = [s for s in STEPS + ON_DEMAND if s[0] in only] if only else STEPS
+    current = fingerprints()
+    try:
+        on_disk = check()
+    except Exception:  # noqa: BLE001 — without it every step simply runs
+        on_disk = {}
     for step, label in steps:
         progress.emit("engine", step=step, label=label, state="start", detail=None)
         try:
+            # A model already downloaded for this version is left alone: no network, so an update
+            # that changes no model finishes at once and a blocked connection costs nothing (D356).
+            if _up_to_date(step, current, on_disk):
+                results[step] = "ok"
+                progress.emit("engine", step=step, label=label, state="ok", detail="Already downloaded")
+                continue
             # The libraries print their own download chatter to stderr; the app keeps it in the
             # log disclosure, so it is not discarded here, only kept off the structured stream.
             # Every download verifies TLS against the OS trust store (D122, D355), so a network
             # that re-signs traffic with its own root fails none of them.
             with os_trust_store():
                 detail = _RUNNERS[step]()
+            if current.get(step):
+                _record(step, current[step])
             results[step] = "ok"
             progress.emit("engine", step=step, label=label, state="ok", detail=detail)
         except Exception as e:  # noqa: BLE001 — a failed optional download must not stop the rest
