@@ -11,6 +11,8 @@ const TITLES: Record<string, string> = {
   timeline: 'Timeline',
   search: 'Search',
   review: 'Review',
+  watchlist: 'Watchlist',
+  context: 'Context',
   briefings: 'Reports',
   note: 'Note',
   ask: 'Ask Claude',
