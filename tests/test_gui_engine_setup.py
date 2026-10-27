@@ -348,3 +348,57 @@ def test_the_download_operation_says_why_it_failed(monkeypatch):
     assert "SELF_SIGNED_CERT_IN_CHAIN" in str(e.value)
     with pytest.raises(SystemExit):
         setup_ops.download_model(None, model="nope")
+
+
+# ── where conversion reads Docling's models from (D358) ──────────────────────────────
+
+def test_docling_is_read_from_the_hub_cache_when_no_folder_is_named(monkeypatch, tmp_path):
+    hub = tmp_path / "hub"
+    monkeypatch.delenv("DOCLING_ARTIFACTS_PATH", raising=False)
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub))
+    assert engine_setup._docling_complete() is False                       # no hub folder at all
+    (hub / "models--someone--else").mkdir(parents=True)
+    assert engine_setup._docling_complete() is False                       # nothing of Docling's
+    layout = hub / "models--docling-project--docling-layout-heron"
+    (layout / "snapshots" / "abc").mkdir(parents=True)
+    assert engine_setup._docling_complete() is True                        # a command-line install's cache
+    (layout / "blobs").mkdir()
+    (layout / "blobs" / "deadbeef.incomplete").write_bytes(b"x")
+    assert engine_setup._docling_complete() is False                       # a file still arriving
+
+
+def test_a_record_for_another_docling_version_means_the_models_are_not_in_place(monkeypatch, tmp_path):
+    hub = tmp_path / "hub"
+    (hub / "models--docling-project--docling-models").mkdir(parents=True)
+    monkeypatch.delenv("DOCLING_ARTIFACTS_PATH", raising=False)
+    monkeypatch.setenv("HF_HUB_CACHE", str(hub))
+    monkeypatch.setattr(engine_setup, "_docling_fingerprint", lambda: "docling 3.0")
+    engine_setup._record("docling", "docling 2.9")
+    assert engine_setup._docling_complete() is False
+    engine_setup._record("docling", "docling 3.0")
+    assert engine_setup._docling_complete() is True
+
+
+def test_the_docling_step_loads_the_models_the_way_a_conversion_does(monkeypatch):
+    from watchdog.pipeline import preprocess
+    loaded = []
+    monkeypatch.setattr(preprocess, "load_pdf_models", lambda: loaded.append(True))
+    assert engine_setup._download_docling() is None
+    assert loaded == [True]
+
+
+def test_converter_models_load_inside_the_os_trust_store_and_a_failure_is_left_to_convert(monkeypatch):
+    import truststore
+    from watchdog.pipeline import preprocess
+    state = {"on": False}
+    monkeypatch.setattr(truststore, "inject_into_ssl", lambda: state.update(on=True))
+    monkeypatch.setattr(truststore, "extract_from_ssl", lambda: state.update(on=False))
+    seen = []
+
+    class Converter:
+        def initialize_pipeline(self, fmt):
+            seen.append((fmt, state["on"]))
+            raise RuntimeError("certificate verify failed")
+
+    preprocess._load_models(Converter(), "pdf")        # raises nothing: convert() reports it
+    assert seen == [("pdf", True)] and state["on"] is False

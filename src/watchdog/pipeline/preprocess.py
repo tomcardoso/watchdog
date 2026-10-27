@@ -402,7 +402,21 @@ def _make_tesseract_opts(force_ocr: bool):
         return OcrAutoOptions(force_full_page_ocr=force_ocr)
 
 
-def build_converter(force_ocr: bool):
+def _load_models(converter, fmt) -> None:
+    """Load the pipeline's models now, inside the OS trust store (D358). With no `artifacts_path`
+    Docling fetches them from the Hugging Face hub into its cache the first time a document is
+    converted, and a network that re-signs TLS fails that fetch unless it is verified the way the
+    rest of Watchdog's downloads are. Best effort: a failure is raised again, as the conversion's
+    own error, by `convert()`."""
+    from watchdog.tls import os_trust_store
+    try:
+        with os_trust_store():
+            converter.initialize_pipeline(fmt)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def build_converter(force_ocr: bool, *, load_models: bool = True):
     """Build a Docling DocumentConverter with the configured OCR engine.
 
     Engine selection (auto mode):
@@ -453,11 +467,21 @@ def build_converter(force_ocr: bool):
         accelerator_options=AcceleratorOptions(device=AcceleratorDevice.CPU),
         **_keep_parsed_pages(PdfPipelineOptions),
     )
-    return DocumentConverter(
+    converter = DocumentConverter(
         format_options={InputFormat.PDF: PdfFormatOption(
             pipeline_options=pipeline_options,
             **(_ocr_render_scale(PdfFormatOption, ocr_opts.scale) if force_ocr else {}))}
     )
+    if load_models:
+        _load_models(converter, InputFormat.PDF)
+    return converter
+
+
+def load_pdf_models() -> None:
+    """Build the PDF converter and load its models, raising if they cannot be fetched. Setup's
+    Docling step: the models land in the cache conversion reads (D358)."""
+    from docling.datamodel.base_models import InputFormat
+    build_converter(False, load_models=False).initialize_pipeline(InputFormat.PDF)
 
 
 def _ocr_render_scale(format_option_cls, scale: float) -> dict:
@@ -502,17 +526,20 @@ def build_image_converter():
     """The converter for an image file: Docling's defaults, plus the parsed pages kept so the
     OCR'd lines' positions can be read (D289)."""
     from docling.document_converter import DocumentConverter
+    from docling.datamodel.base_models import InputFormat
+    converter = None
     try:
         from docling.document_converter import ImageFormatOption
         from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.datamodel.base_models import InputFormat
         keep = _keep_parsed_pages(PdfPipelineOptions)
-        if not keep:
-            return DocumentConverter()
-        return DocumentConverter(format_options={
-            InputFormat.IMAGE: ImageFormatOption(pipeline_options=PdfPipelineOptions(**keep))})
+        if keep:
+            converter = DocumentConverter(format_options={
+                InputFormat.IMAGE: ImageFormatOption(pipeline_options=PdfPipelineOptions(**keep))})
     except Exception:
-        return DocumentConverter()
+        converter = None
+    converter = converter or DocumentConverter()
+    _load_models(converter, InputFormat.IMAGE)
+    return converter
 
 
 def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: bool) -> dict:

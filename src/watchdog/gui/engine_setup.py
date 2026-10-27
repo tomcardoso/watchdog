@@ -143,20 +143,35 @@ def _hf_cache() -> Path:
 INCOMPLETE = "incomplete"
 
 
-def _docling_complete() -> bool:
-    """Docling's models are all on disk. Its download fetches several repositories into one folder,
-    so "the folder has something in it" is not enough (D357): a step that began and did not finish
-    leaves the INCOMPLETE record, and Hugging Face's own `.incomplete` files mark a file cut off
-    mid-transfer."""
-    root = _docling_cache()
+def _docling_files_present() -> bool:
+    """Docling's models are in the cache a conversion reads, with nothing cut off mid-transfer: the
+    folder DOCLING_ARTIFACTS_PATH names when it is set, else the Hugging Face hub's docling
+    repositories (D358). A file still arriving is a `.incomplete` file."""
     try:
-        if not root.is_dir() or not any(root.iterdir()):
-            return False
-        if any(root.rglob("*.incomplete")):
-            return False
+        if os.environ.get("DOCLING_ARTIFACTS_PATH"):
+            roots = [_docling_cache()]
+            present = roots[0].is_dir() and any(roots[0].iterdir())
+        else:
+            hub = _hf_cache()
+            roots = [p for p in hub.iterdir() if p.is_dir() and p.name.startswith("models--") and "docling" in p.name.lower()]
+            present = bool(roots)
+        return present and not any(f for r in roots for f in r.rglob("*.incomplete"))
     except OSError:
         return False
-    return _recorded().get("docling") != INCOMPLETE
+
+
+def _docling_complete() -> bool:
+    """Docling's models are all in place. Its models arrive as several repositories, so "something is
+    there" is not enough (D357): a step that began and did not finish leaves the INCOMPLETE record,
+    and a record for another Docling version or OCR setting means this one needs its own models.
+    Folders from before these records (a command-line install's cache) are judged by their files."""
+    recorded = _recorded().get("docling")
+    if recorded == INCOMPLETE:
+        return False
+    current = _docling_fingerprint()
+    if recorded and current and recorded != current:
+        return False
+    return _docling_files_present()
 
 
 def _dir_has(root: Path, needle: str) -> bool:
@@ -251,13 +266,22 @@ def fingerprints() -> dict[str, str | None]:
     missing here or None always runs (OCR is not a download; the transcription model is guarded by
     its own cache check)."""
     from watchdog.pipeline import embed
-    docling = _version("docling")
     return {
-        "docling": f"docling {docling} {sorted(_DOCLING_ARGS.items())}" if docling else None,
+        "docling": _docling_fingerprint(),
         "gliner": _GLINER_REPO,
         "embedding": embed._MODEL_DEFAULT,
         "reranker": embed._rerank_model_name() if embed._rerank_enabled() else "off",
     }
+
+
+def _docling_fingerprint() -> str | None:
+    """Docling's version and the settings that choose which of its models a conversion loads."""
+    from watchdog import config
+    docling = _version("docling")
+    if not docling:
+        return None
+    cfg = config.read()
+    return f"docling {docling} ocr={cfg.get('ocr_engine', 'auto')} tables={cfg.get('table_structure', True)}"
 
 
 def _record_path() -> Path:
@@ -295,14 +319,15 @@ def _up_to_date(step: str, current: dict[str, str | None], on_disk: dict) -> boo
 
 # ── downloads ───────────────────────────────────────────────────────────────────────
 
-# What the Docling download fetches; part of its fingerprint, so changing it re-downloads.
-_DOCLING_ARGS = {"progress": False, "with_code_formula": False, "with_picture_classifier": False}
 _GLINER_REPO = "urchade/gliner_multi-v2.1"
 
 
 def _download_docling() -> str | None:
-    from docling.utils.model_downloader import download_models
-    download_models(**_DOCLING_ARGS)
+    # Load the models the way a conversion does, so they land in the cache a conversion reads: the
+    # Hugging Face hub's, unless the person set DOCLING_ARTIFACTS_PATH (D358). Docling's own
+    # `download_models` writes to a different folder that nothing reads.
+    from watchdog.pipeline import preprocess
+    preprocess.load_pdf_models()
     return None
 
 
@@ -380,7 +405,9 @@ def _macos_ca_bundle() -> Path | None:
 def _run_quietly(cmd: list[str], env: dict[str, str]) -> None:
     """Run one install command; on failure raise with the end of its output, which is what says why."""
     import subprocess
-    r = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    # On Windows a child of a windowless process opens a console window unless told not to.
+    flags = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
+    r = subprocess.run(cmd, capture_output=True, text=True, env=env, **flags)
     if r.returncode != 0:
         tail = "\n".join((r.stdout + r.stderr).strip().splitlines()[-6:])
         raise RuntimeError(f"{' '.join(cmd[2:5])} failed (exit {r.returncode}).\n{tail}")
