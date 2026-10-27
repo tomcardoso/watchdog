@@ -155,3 +155,33 @@ def test_page_count_falls_back_to_pypdf(monkeypatch, tmp_path):
         raise FileNotFoundError("qpdf")
     monkeypatch.setattr(preprocess_batch.subprocess, "run", missing)
     assert preprocess_batch._count_pdf_pages(pdf) == 3
+
+
+def test_every_download_runs_inside_the_os_trust_store(monkeypatch, sink):
+    import truststore
+    state = {"on": False, "calls": []}
+    monkeypatch.setattr(truststore, "inject_into_ssl", lambda: state.update(on=True))
+    monkeypatch.setattr(truststore, "extract_from_ssl", lambda: state.update(on=False))
+    seen = {}
+    monkeypatch.setattr(engine_setup, "_RUNNERS", {
+        s: (lambda s=s: seen.update({s: state["on"]})) for s, _ in engine_setup.STEPS})
+    engine_setup.download_models()
+    assert seen == {s: True for s, _ in engine_setup.STEPS}
+    assert state["on"] is False
+
+
+def test_trust_store_is_released_only_when_the_last_download_ends(monkeypatch):
+    import truststore
+    from watchdog.tls import os_trust_store
+    calls = []
+    monkeypatch.setattr(truststore, "inject_into_ssl", lambda: calls.append("in"))
+    monkeypatch.setattr(truststore, "extract_from_ssl", lambda: calls.append("out"))
+    with os_trust_store():
+        with os_trust_store():
+            pass
+        assert calls == ["in"]
+    assert calls == ["in", "out"]
+    with pytest.raises(RuntimeError):
+        with os_trust_store():
+            raise RuntimeError("boom")
+    assert calls == ["in", "out", "in", "out"]

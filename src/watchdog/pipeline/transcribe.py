@@ -328,6 +328,7 @@ def download_model(name: str, on_progress: Callable[[int, int], None] | None = N
     as it arrives. Progress is read off the cache folder's size rather than the library's
     progress bars, whose hooks change between huggingface_hub versions."""
     from huggingface_hub import snapshot_download
+    from watchdog.tls import os_trust_store
     repo = model_repo(name)
     total = download_size(name)
     cache = _repo_cache_dir(repo)
@@ -336,7 +337,8 @@ def download_model(name: str, on_progress: Callable[[int, int], None] | None = N
 
     def run() -> None:
         try:
-            snapshot_download(repo, allow_patterns=_ALLOW_PATTERNS)
+            with os_trust_store():
+                snapshot_download(repo, allow_patterns=_ALLOW_PATTERNS)
         except BaseException as e:  # noqa: BLE001
             result["error"] = e
 

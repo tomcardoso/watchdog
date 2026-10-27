@@ -17,7 +17,9 @@ Setup, or a repair, shows **The installation did not finish** with the reason. T
 
 Choose **Try again**. Whatever was already downloaded is kept, and installation resumes where it stopped. **Start over** begins from scratch. **Show details** displays the installer's log, which is worth copying into an issue if the problem persists.
 
-If setup finishes with **Some optional pieces could not be downloaded**, Watchdog still works. It fetches each missing piece the first time it is needed. To try again now, open **Settings → Setup** and choose **Download missing models**.
+If setup finishes with **Some optional pieces could not be downloaded**, Watchdog still works. It fetches each missing piece the first time it is needed. To try again now, open **Settings → Setup** and choose **Download missing models**. The card stays on **Settings → Setup**, with **Show details** for the log, until you try again.
+
+On a work network that inspects secure connections, a download can fail with a certificate message such as "self-signed certificate in certificate chain". Watchdog trusts the certificates your computer already trusts, so this usually means the network's certificate is not installed on the computer. Ask whoever manages the network to install it, or try another network.
 
 If the message says the app cannot install the engine because the installer files are missing, download the app again from the [releases page](https://github.com/tomcardoso/watchdog/releases/latest).
 

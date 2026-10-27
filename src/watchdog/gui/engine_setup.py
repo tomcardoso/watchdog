@@ -47,6 +47,7 @@ from pathlib import Path
 from typing import Callable
 
 from watchdog import progress
+from watchdog.tls import os_trust_store
 
 # (id, label shown in the app). The order is the download order.
 STEPS: list[tuple[str, str]] = [
@@ -220,15 +221,8 @@ def _download_docling() -> str | None:
 
 
 def _download_gliner() -> str | None:
-    # Verify TLS via the OS trust store rather than certifi's bundled list (D122), for this one
-    # load only: `inject_into_ssl` patches the global `ssl` module.
-    import truststore
-    truststore.inject_into_ssl()
-    try:
-        from gliner import GLiNER
-        GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
-    finally:
-        truststore.extract_from_ssl()
+    from gliner import GLiNER
+    GLiNER.from_pretrained("urchade/gliner_multi-v2.1")
     return None
 
 
@@ -310,7 +304,10 @@ def download_models(only: list[str] | None = None) -> dict[str, str]:
         try:
             # The libraries print their own download chatter to stderr; the app keeps it in the
             # log disclosure, so it is not discarded here, only kept off the structured stream.
-            detail = _RUNNERS[step]()
+            # Every download verifies TLS against the OS trust store (D122, D355), so a network
+            # that re-signs traffic with its own root fails none of them.
+            with os_trust_store():
+                detail = _RUNNERS[step]()
             results[step] = "ok"
             progress.emit("engine", step=step, label=label, state="ok", detail=detail)
         except Exception as e:  # noqa: BLE001 — a failed optional download must not stop the rest

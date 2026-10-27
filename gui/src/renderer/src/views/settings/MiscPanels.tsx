@@ -198,7 +198,10 @@ export function SetupPanel() {
   const eng = install.status
   const run = install.run
   // The background phase (D272), or a run that stopped: shown first, with its steps and log.
-  const unfinished = !!eng && (!eng.complete || run?.state === 'running' || run?.state === 'failed' || run?.state === 'cancelled')
+  // A run that finished with a download warning counts as complete, but keeps its card: the
+  // warning and the log that explains it (a certificate error, say) are shown nowhere else.
+  const warned = run?.state === 'done' && run.steps.some((s) => s.state === 'warning')
+  const unfinished = !!eng && (!eng.complete || run?.state === 'running' || run?.state === 'failed' || run?.state === 'cancelled' || warned)
   useEffect(() => {
     if (run?.state === 'done') void models.refetch()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,10 +238,11 @@ export function SetupPanel() {
         <section className="card set-card">
           <div className="set-card-head">
             <div>
-              <div className="card-title">{run?.state === 'running' ? 'Finishing setup' : run?.state === 'failed' || run?.state === 'cancelled' ? 'Setup did not finish' : 'Setup is not finished'}</div>
+              <div className="card-title">{run?.state === 'running' ? 'Finishing setup' : run?.state === 'failed' || run?.state === 'cancelled' ? 'Setup did not finish' : warned ? 'Setup finished, with some downloads missing' : 'Setup is not finished'}</div>
               <div className="card-sub">
-                Watchdog downloads its document and search libraries and its local models in the background. Adding documents waits until they are in place; everything
-                else works now. If the app is closed or the connection drops, setup continues the next time Watchdog opens.
+                {warned
+                  ? 'Open the details below to see what went wrong. Each missing piece is downloaded again the first time it is needed.'
+                  : 'Watchdog downloads its document and search libraries and its local models in the background. Adding documents waits until they are in place; everything else works now. If the app is closed or the connection drops, setup continues the next time Watchdog opens.'}
               </div>
             </div>
           </div>
@@ -246,6 +250,7 @@ export function SetupPanel() {
             {run && run.state !== 'idle' && <EngineProgressView eng={install} />}
             <div className="row" style={{ gap: 8 }}>
               <EngineActions eng={install} primary="Finish setup" />
+              {warned && <Button variant="primary" onClick={() => void fetchModels()}>Try the downloads again</Button>}
             </div>
           </div>
         </section>
