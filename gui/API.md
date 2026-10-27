@@ -506,7 +506,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `skills.read` | `{name}` | `{name, text}` |
 | `setup.check` | — | `{deps: [{label, ok, hint\|null, required: false}], playwright: bool, gliner_model: bool, projects_dir\|null, config_exists: bool}` — no dependency blocks the app |
 | `setup.models` | — | `{docling, gliner, embedding: bool, reranker: bool\|null, ocr: string\|null, claude_cli: string\|null, transcription: bool, transcription_model, transcription_size_mb}` — what is on disk, no network |
-| `setup.downloadModel` | `{model: "transcription"}` | `Job` — downloads an on-demand model ahead of time (D273) as a job running the `download-model` operation; progress is the `model` stage |
+| `setup.downloadModel` | `{model: "transcription" \| "capture"}` | `Job` — downloads an on-demand model or add-on ahead of time (D273, D357) as a job running the `download-model` operation; progress is the `model` stage (the capture browser reports none) |
 | `setup.complete` | `{projects_dir?, auto_approve?}` | `{projects_dir, ocr_engine\|null, auto_approve}` — writes the first settings; an existing config file is the "set up" signal |
 | `auth.routeIngestion` | `{provider, model: "provider:id"}` | `auth.status` result — points classifier, extractor and finalizer at one model, as the setup wizard does |
 

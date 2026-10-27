@@ -1075,7 +1075,7 @@ export interface Methods {
   'skills.read': [{ name: string }, { name: string; text: string }]
   'setup.check': [Record<string, never>, SetupCheck]
   'setup.models': [Record<string, never>, SetupModels]
-  'setup.downloadModel': [{ model: 'transcription' }, Job]
+  'setup.downloadModel': [{ model: 'transcription' | 'capture' }, Job]
   'setup.complete': [{ projects_dir?: string; auto_approve?: boolean }, { projects_dir: string; ocr_engine: string | null; auto_approve: boolean }]
   'auth.routeIngestion': [{ provider: string; model: string }, AuthStatus]
 

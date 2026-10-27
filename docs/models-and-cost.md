@@ -264,5 +264,5 @@ Each step's model is chosen in the **Models** table under **Models & keys**, not
 - **Record skills.** Every skill, to read, and the folder for your own; see [Record skills](how-it-works.md#record-skills).
 - **Appearance.** Light, dark or system theme, and details of the engine the app runs.
 - **Check vaults.** Checks every investigation's folder.
-- **Setup.** The state of the engine, local models and optional tools. **Repair or reinstall the engine** reinstalls it without touching your investigations, settings or models. **Download missing models** fetches any that failed to download, and **Download now** fetches the transcription model ahead of time.
+- **Setup.** The state of the engine, the models, the helper tools, the add-ons and the folders Watchdog uses. **Repair or reinstall the engine** reinstalls it without touching your investigations, settings or models. **Download missing models** fetches any that failed to download, and **Download now** fetches the transcription model, or installs the capture browser, ahead of time.
 - **About.** The app's version and the engine's, the one to give when reporting a problem.

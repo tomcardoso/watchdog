@@ -14,7 +14,7 @@ probe of internal network space via an `<img>`, stylesheet, or `fetch()` call th
 issues.
 
 Playwright is an optional dependency (the `web` extra in `pyproject.toml`, plus a one-time
-`playwright install chromium`; the app's managed engine does not install it): `render_available()` and `try_render()` let `research.py` degrade to the plain,
+`playwright install chromium`; the app installs it on request from Settings > Setup, D357): `render_available()` and `try_render()` let `research.py` degrade to the plain,
 nh3-sanitized fetch when Playwright isn't installed, the Chromium binary is missing, or a render
 fails for any reason — a broken or absent browser never blocks a deposit, it only yields a
 less-faithful capture."""
@@ -43,6 +43,8 @@ def render_available() -> bool:
     tip in `ops/research.py`; forgetting `playwright install chromium` is the likelier miss, so
     checking the import alone would silence the tip exactly when it's needed. The capture path
     itself never consults this — it just attempts a render and falls back on any failure."""
+    import importlib
+    importlib.invalidate_caches()   # the package may have been installed since this process started
     try:
         from playwright.sync_api import sync_playwright
     except ImportError:

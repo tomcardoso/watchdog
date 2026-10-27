@@ -1,9 +1,11 @@
 // Holds the app until the Python backend is ready. A computer with no engine (or an outdated one),
 // or one that has not finished first-run setup, gets the onboarding screens instead; a genuine
-// failure offers Retry, Repair the engine and Choose Python.
+// failure offers Retry, Repair the engine and Choose Python. An update after a new version of the app
+// (setup done before) installs the matching engine behind the plain start-up card, without the setup
+// screens; they come back only if the update fails and needs a decision.
 
 import { FolderSearch, RotateCw, Wrench } from 'lucide-react'
-import { ReactNode, useCallback, useEffect, useState } from 'react'
+import { ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Spinner } from '@renderer/components/ui'
 import { LogoMark } from '@renderer/components/Logo'
 import { call, useEvent } from '@renderer/lib/rpc'
@@ -17,6 +19,8 @@ export function BackendGate({ children }: { children: ReactNode }) {
   const [setupDone, setSetupDone] = useState<boolean | null>(null)
   const [busy, setBusy] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  const [runState, setRunState] = useState<string | null>(null) // the engine run's latest state, from its events
+  const updateStarted = useRef(false)
 
   const refresh = useCallback(async () => {
     setEngine(await window.watchdog.engine.status())
@@ -28,6 +32,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
   }, [refresh])
   useEvent('backend.status', setStatus)
   useEvent('engine.progress', (p) => {
+    setRunState(p.state)
     if (p.state !== 'running') void refresh()
   })
   const ready = status?.state === 'ready'
@@ -58,6 +63,16 @@ export function BackendGate({ children }: { children: ReactNode }) {
     mode = 'first-run'
   }
 
+  // An update needs no decision (D272): it installs behind the start-up card. Only a run that
+  // failed or was cancelled brings the screen back, with its log and Try again.
+  const updateRunState = runState ?? engine?.run.state
+  const quietUpdate = mode === 'update' && updateRunState !== 'failed' && updateRunState !== 'cancelled'
+  useEffect(() => {
+    if (!quietUpdate || updateStarted.current || !engine?.canInstall || updateRunState !== 'idle') return
+    updateStarted.current = true
+    void window.watchdog.engine.install()
+  }, [quietUpdate, engine?.canInstall, updateRunState])
+
   const done = async (next?: 'new' | 'sample') => {
     await window.watchdog.prefs.set('onboarding', null)
     setPending(false)
@@ -78,7 +93,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
     }
   }, [mode, pending])
 
-  if (mode && pending !== null && engine) {
+  if (mode && pending !== null && engine && !quietUpdate) {
     return (
       <OnboardingView
         mode={mode}
@@ -102,7 +117,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
             <h1>Watchdog</h1>
             <div className="row" style={{ color: 'var(--text-2)' }}>
               <Spinner />
-              {status?.message ?? 'Starting…'}
+              {quietUpdate ? 'Updating Watchdog…' : (status?.message ?? 'Starting…')}
             </div>
           </>
         ) : (

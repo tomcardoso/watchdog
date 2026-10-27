@@ -245,3 +245,106 @@ def test_a_failed_download_is_not_recorded(monkeypatch, sink):
     ran.clear()
     engine_setup.download_models()
     assert ran == ["docling"]                      # tried again; the others are settled
+
+
+# ── Docling's models: a partial download is not a finished one (D357) ────────────────
+
+@pytest.fixture
+def docling_dir(monkeypatch, tmp_path):
+    root = tmp_path / "docling"
+    monkeypatch.setenv("DOCLING_ARTIFACTS_PATH", str(root))
+    return root
+
+
+def test_docling_is_complete_only_with_files_and_no_unfinished_marker(docling_dir):
+    assert engine_setup._docling_complete() is False            # no folder
+    docling_dir.mkdir()
+    assert engine_setup._docling_complete() is False            # empty folder
+    layout = docling_dir / "layout"
+    layout.mkdir()
+    (layout / "model.safetensors").write_bytes(b"x")
+    assert engine_setup._docling_complete() is True
+    cut = layout / ".cache" / "huggingface" / "download"
+    cut.mkdir(parents=True)
+    (cut / "weights.bin.abc.incomplete").write_bytes(b"x")      # a file cut off mid-transfer
+    assert engine_setup._docling_complete() is False
+    (cut / "weights.bin.abc.incomplete").unlink()
+    assert engine_setup._docling_complete() is True
+    engine_setup._record("docling", engine_setup.INCOMPLETE)    # a download that began, never ended
+    assert engine_setup._docling_complete() is False
+
+
+def test_a_download_that_stops_part_way_leaves_docling_incomplete_until_it_finishes(monkeypatch, sink, docling_dir):
+    def partial():
+        docling_dir.mkdir(parents=True, exist_ok=True)
+        (docling_dir / "layout.bin").write_bytes(b"x")          # the first repository arrived
+        raise RuntimeError("certificate verify failed")
+
+    monkeypatch.setattr(engine_setup, "fingerprints", lambda: {"docling": "docling-v1"})
+    monkeypatch.setattr(engine_setup, "_RUNNERS", {"docling": partial})
+    assert engine_setup.download_models(["docling"]) == {"docling": "warn"}
+    assert "certificate verify failed" in engine_setup.ERRORS["docling"]
+    assert engine_setup._docling_complete() is False            # a file is there, and still not done
+
+    monkeypatch.setitem(engine_setup._RUNNERS, "docling", lambda: None)
+    assert engine_setup.download_models(["docling"]) == {"docling": "ok"}
+    assert engine_setup._docling_complete() is True
+
+
+# ── the capture browser (D357) ──────────────────────────────────────────────────────
+
+def test_capture_browser_installs_the_package_then_the_browser(monkeypatch):
+    from watchdog.pipeline import capture
+    present = {"on": False}
+    monkeypatch.setattr(capture, "render_available", lambda: present["on"])
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append((cmd[2:], kw["env"]))
+        if cmd[2:4] == ["playwright", "install"]:
+            present["on"] = True
+        return type("R", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    monkeypatch.setattr(engine_setup, "_macos_ca_bundle", lambda: None)
+    assert engine_setup._install_capture() is None
+    assert [c[0][:2] for c in calls] == [["pip", "install"], ["playwright", "install"]]
+    assert all(env["NODE_USE_SYSTEM_CA"] == "1" for _, env in calls)
+
+
+def test_capture_browser_is_left_alone_when_installed_and_reports_why_it_failed(monkeypatch):
+    from watchdog.pipeline import capture
+    monkeypatch.setattr(capture, "render_available", lambda: True)
+    monkeypatch.setattr("subprocess.run", lambda *a, **k: pytest.fail("ran an installer"))
+    assert engine_setup._install_capture() == "already installed"
+
+    monkeypatch.setattr(capture, "render_available", lambda: False)
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda cmd, **kw: type("R", (), {"returncode": 1, "stdout": "", "stderr": "SELF_SIGNED_CERT_IN_CHAIN"})())
+    with pytest.raises(RuntimeError, match="SELF_SIGNED_CERT_IN_CHAIN"):
+        engine_setup._install_capture()
+
+
+def test_macos_ca_bundle_is_used_for_node_unless_the_person_set_one(monkeypatch, tmp_path):
+    monkeypatch.setattr(engine_setup.sys, "platform", "darwin")
+    monkeypatch.delenv("NODE_EXTRA_CA_CERTS", raising=False)
+    monkeypatch.setattr(engine_setup, "_macos_ca_bundle", lambda: tmp_path / "ca.pem")
+    assert engine_setup._node_env()["NODE_EXTRA_CA_CERTS"] == str(tmp_path / "ca.pem")
+    monkeypatch.setenv("NODE_EXTRA_CA_CERTS", "/theirs.pem")
+    assert engine_setup._node_env()["NODE_EXTRA_CA_CERTS"] == "/theirs.pem"
+
+
+def test_the_download_operation_says_why_it_failed(monkeypatch):
+    from watchdog.ops import setup as setup_ops
+
+    def fail(only):
+        engine_setup.ERRORS["capture"] = "SELF_SIGNED_CERT_IN_CHAIN"
+        return {"capture": "warn"}
+
+    monkeypatch.setattr(engine_setup, "download_models", fail)
+    with pytest.raises(SystemExit) as e:
+        setup_ops.download_model(None, model="capture")
+    assert "SELF_SIGNED_CERT_IN_CHAIN" in str(e.value)
+    with pytest.raises(SystemExit):
+        setup_ops.download_model(None, model="nope")
