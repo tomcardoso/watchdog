@@ -170,3 +170,33 @@ def test_the_pass_counts_towards_the_finalize_estimate(tmp_path):
     est = ingest_setup.housekeeping_estimate(vault, [SHA])
     assert est["items"] == 3 and est["calls"] == 1 and est["est_tokens"] > 0
     assert "fact-tags" in orchestrate.FINALIZE_TASKS
+
+
+def test_a_document_s_entities_are_listed_once_for_all_its_tags(tmp_path):
+    vault = make_vault(tmp_path)
+    _stage(vault, tmp_path)
+    items = fact_tags.pending_items(vault, [SHA])
+    assert len(items) == 3
+    prompt = fact_tags.build_prompt(items)
+    assert prompt.count("Document — its entities:") == 1
+    assert prompt.count("calder-valley-university —") == 1
+    assert all(it["offered"] == items[0]["offered"] for it in items)
+
+
+def test_a_large_document_offers_each_tag_its_own_nearest_entities(tmp_path):
+    """Past `DOC_ENTITIES_MAX` entities, the shared list keeps what is nearest each tag."""
+    vault = make_vault(tmp_path)
+    filler = [{"id": f"filler-{i:03d}", "name": f"Filler {i:03d}", "type": "organization", "aliases": []}
+              for i in range(fact_tags.DOC_ENTITIES_MAX + 10)]
+    entities = filler + [
+        {"id": "orwell-basin-trust", "name": "Orwell Basin Trust", "type": "organization", "aliases": []},
+        {"id": "pemberly-mills", "name": "Pemberly Mills", "type": "organization", "aliases": []}]
+    _stage_extracted(vault, tmp_path / "x", SHA, "big.pdf", overrides={
+        "entities": entities, "morgue_entity_id": "filler-000", "morgue_document_type": "filing",
+        "document": {"key_facts": [
+            {"fact": "The basin trust sold land.", "page": 1, "entities": ["basin-trust"]},
+            {"fact": "The mills closed.", "page": 2, "entities": ["pemberly"]}]}})
+    items = fact_tags.pending_items(vault, [SHA])
+    assert {"orwell-basin-trust", "pemberly-mills"} <= set(items[0]["offered"])
+    assert len(items[0]["offered"]) < len(entities)
+    assert fact_tags.build_prompt(items).count("Document — its entities:") == 1

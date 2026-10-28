@@ -1,4 +1,4 @@
-Each numbered item below is a tag that a document's facts carry to say which entity they are about, but which names none of the entities the document defines. The item shows the tag, up to three facts that carry it, and the document's entities. For each item, say which of the document's entities the tag means, or that none of them is it.
+Each numbered item below is a tag that a document's facts carry to say which entity they are about, but which names none of the entities the document defines. Items are grouped by document: a document's entities are listed once, above its items, and each item shows the tag and up to three facts that carry it. For each item, say which of the document's entities the tag means, or that none of them is it.
 
 Return `answers`: one `{"item": <number>, "match": "..."}` per item. `match` is the id of the entity the tag means, copied exactly as listed (the part before the dash), or "" when none of them is it.
 

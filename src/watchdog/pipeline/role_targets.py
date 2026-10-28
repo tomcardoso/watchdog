@@ -211,20 +211,38 @@ def pending_items(batch: Batch) -> list[dict]:
                                "relationship": (role.get("relationship") or "").strip()})
         if role.get("target_type") and not it["target_type"]:
             it["target_type"] = role["target_type"]
+    # A document's items share one list of its entities, which the prompt shows once: those most
+    # like any of its targets, together. Registry candidates stay per target, less any now listed.
+    by_sha: dict[str, dict[str, dict]] = {}
+    for it in items.values():
+        shown = by_sha.setdefault(it["sha"], {})
+        for e in it["document"]:
+            shown.setdefault(e["id"], e)
+    for it in items.values():
+        shown = by_sha[it["sha"]]
+        it["document"] = list(shown.values())
+        it["candidates"] = [e for e in it["candidates"] if e["id"] not in shown]
+        it["offered"] = [*shown, *(e["id"] for e in it["candidates"])]
     return [it for it in items.values() if it["offered"]]
 
 
 def build_prompt(items: list[dict]) -> str:
+    """The items numbered from 1, under their document: each document's entities are listed once,
+    ahead of its targets, rather than once per target."""
     from watchdog.pipeline import prompts
-    blocks = []
+    blocks, sha = [], object()
     for n, it in enumerate(items, 1):
+        if it.get("sha") != sha:
+            sha = it.get("sha")
+            if it["document"]:
+                blocks.append("\n".join(["Document — its entities:",
+                                         *(f"  - {_entity_line(e)}" for e in it["document"])]))
+            else:
+                blocks.append("Document — no entities listed.")
         lines = [f"{n}. target id: {json.dumps(it['target'], ensure_ascii=False)}"]
         for m in it["mentions"][:6]:
             lines.append(f"   named by: {json.dumps(m['by'], ensure_ascii=False)} ({m['by_type']}), "
                          f"as {json.dumps(m['relationship'], ensure_ascii=False)}")
-        if it["document"]:
-            lines.append("   entities in this document:")
-            lines += [f"     - {_entity_line(e)}" for e in it["document"]]
         if it["candidates"]:
             lines.append("   elsewhere in the investigation:")
             lines += [f"     - {_entity_line(e)}" for e in it["candidates"]]
