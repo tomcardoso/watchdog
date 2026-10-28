@@ -258,6 +258,19 @@ _CAPTURE_JS = r"""
 
 # ── Render pipeline ────────────────────────────────────────────────────────────
 
+def _require_page_loaded(responses, main_frame, url: str) -> None:
+    """Raise CaptureError unless the page the browser ended on was served with a 2xx status. The
+    last main-frame document counts, not the first: a bot check answers the first request with a
+    challenge, and its script loads the real page. Without this an "Access denied" page would be
+    saved as the source."""
+    statuses = [r.status for r in responses
+                if r.request.resource_type == "document" and r.frame == main_frame
+                and not 300 <= r.status < 400]
+    if not statuses or not 200 <= statuses[-1] < 300:
+        raise CaptureError(f"refused: {url} answered HTTP {statuses[-1] if statuses else 'nothing'} "
+                           "in the capture browser")
+
+
 def _capture_in_browser(browser, url: str, *, max_bytes: int, timeout: int,
                          host_check) -> bytes:
     """The actual per-URL render, against an already-launched `browser` (shared across a batch or
@@ -288,6 +301,7 @@ def _capture_in_browser(browser, url: str, *, max_bytes: int, timeout: int,
             page.wait_for_load_state("networkidle", timeout=5000)
         except Exception:
             pass  # long-polling SPAs never go idle — proceed with what's loaded
+        _require_page_loaded(responses, page.main_frame, url)
 
         assets: dict[str, str] = {}
         css_texts: dict[str, str] = {}

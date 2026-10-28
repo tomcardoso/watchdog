@@ -325,3 +325,33 @@ def test_render_capture_end_to_end_spa():
     # served /blocked.png, and the snapshot carries no reference to the blocked origin.
     assert "/blocked.png" not in _SPAHandler.requested
     assert "127.0.0.2" not in out
+
+
+# ── the page the browser ended on must have loaded ────────────────────────────
+
+class _Req:
+    def __init__(self, kind):
+        self.resource_type = kind
+
+
+class _Resp:
+    def __init__(self, status, frame="main", kind="document"):
+        self.status, self.frame, self.request = status, frame, _Req(kind)
+
+
+@pytest.mark.parametrize("responses,ok", [
+    ([_Resp(200)], True),
+    ([_Resp(202), _Resp(200)], True),                  # a bot check's challenge, then the page
+    ([_Resp(301), _Resp(200)], True),                  # a redirect doesn't count
+    ([_Resp(200), _Resp(403, frame="iframe")], True),  # a frame's error isn't the page's
+    ([_Resp(200), _Resp(404, kind="image")], True),
+    ([_Resp(403)], False),                             # an "Access denied" page is not the source
+    ([_Resp(202), _Resp(404)], False),
+    ([], False),
+])
+def test_require_page_loaded(responses, ok):
+    if ok:
+        capture._require_page_loaded(responses, "main", "https://e.com/x")
+    else:
+        with pytest.raises(capture.CaptureError):
+            capture._require_page_loaded(responses, "main", "https://e.com/x")

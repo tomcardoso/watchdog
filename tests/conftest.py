@@ -30,6 +30,14 @@ def isolate_telemetry_db(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def isolate_job_logs(tmp_path, monkeypatch):
+    """Save finished jobs (`watchdog.gui.jobs`) into `tmp_path`, never the developer's own
+    `~/.watchdog/jobs/`: most job tests run without `wdg_home`."""
+    from watchdog.gui import jobs
+    monkeypatch.setattr(jobs, "log_dir", lambda: tmp_path / "job-logs")
+
+
+@pytest.fixture(autouse=True)
 def no_investigation_key_scope():
     """A run sets the process's key-choice scope to its vault (#690, D290); clear it around every
     test so one test's vault never decides which key another test's lookups resolve."""

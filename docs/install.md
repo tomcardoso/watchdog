@@ -96,6 +96,8 @@ By default, saving a web page from **Web research** or **Fetch web links…** is
 
 An optional capture browser changes that: each page is rendered in a real (invisible) browser, Chromium through [Playwright](https://playwright.dev), and saved as a self-contained snapshot, with images, fonts and stylesheets included and all scripts stripped. It adds about 150 MB. **Settings → Setup**, under **Add-ons**, shows whether it is installed and has a **Download now** button that installs it; it needs an internet connection. Without it, Watchdog falls back to the plain fetch, so nothing breaks either way.
 
+The capture browser also helps with sites that turn away automated downloads. Some sites refuse the plain fetch, or send back an empty page, unless the visitor is a browser that passes a short automatic check. When that happens and the capture browser is installed, Watchdog tries the page again in it. A page that is missing ("not found") is not retried, and neither is a link to a file such as a PDF.
+
 ## Updating
 
 Watchdog checks GitHub for a newer release shortly after it opens, and never downloads anything without being asked. When one is ready, an **Update available** button appears in the top bar. Choose it to download the update, then choose **Restart to update**. You can also check yourself: on a Mac, choose **Check for Updates…** from the Watchdog menu; on Windows and Linux, from the **Help** menu. Watchdog tells you if you already have the latest version.

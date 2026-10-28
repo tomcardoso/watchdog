@@ -883,7 +883,10 @@ def pipeline(vault: str) -> dict:
                  "modified": _iso_mtime(f), "sidecar": f.with_name(f.name + ".yml").exists()}
                 for f in _incoming_files(inc_dir)]
 
-    chew_failed = [{"name": f.name, "path": vaultio.rel_posix(v, f), "size": _size(f)}
+    from watchdog.pipeline.preprocess_batch import read_unreadable
+    why = read_unreadable(v)
+    chew_failed = [{"name": f.name, "path": vaultio.rel_posix(v, f), "size": _size(f),
+                    "reason": (why.get(f.name) or {}).get("reason")}
                    for f in _files(incoming_failed_dir(v))]
 
     queued_shas = {p.stem for p in (v / ".watchdog" / "queue").glob("*.json")} \
