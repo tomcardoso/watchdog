@@ -139,7 +139,7 @@ def fake_cli(monkeypatch):
     monkeypatch.setattr(jobs, "worker_argv", lambda: [sys.executable, "-c", "pass"])
 
 
-@pytest.mark.parametrize("op", ["add", "chew", "dig", "bark", "watch", "requeue", "reindex",
+@pytest.mark.parametrize("op", ["add", "chew", "dig", "bark", "requeue", "unreadable-retry", "reindex",
                                 "merge-entities", "undo-merge", "rebuild-notes",
                                 "recheck-contradictions"])
 def test_pipeline_operations_refused_while_pending(pending, wdg_home, op):

@@ -12,7 +12,7 @@ import { navigate, toast, useApp } from '@renderer/lib/store'
 import ChatWorkspace, { WorkspaceApi } from './ChatWorkspace'
 
 const STEPS = [
-  'Proposes a research mission from the vault’s open gaps and leads.',
+  'Proposes a research mission from the investigation’s open gaps and leads.',
   'Confirms the question, and how wide to cast the net: quick, standard or deep.',
   'Researches in rounds, checking in with you between each.',
   'Queues every source it keeps, with a reliability tag and why it matters.',
@@ -167,7 +167,7 @@ function Empty({ api }: { api: WorkspaceApi }) {
       )}
       <div className="chat-seed">
         <label className="field-label" htmlFor="seed">Research question (optional)</label>
-        <textarea id="seed" className="textarea" rows={2} value={q} placeholder="Leave blank to let Claude propose one from the vault" onChange={(e) => setQ(e.target.value)} />
+        <textarea id="seed" className="textarea" rows={2} value={q} placeholder="Leave blank to let Claude propose one from the investigation" onChange={(e) => setQ(e.target.value)} />
         <div className="row" style={{ gap: 8 }}>
           <Button variant="primary" icon={Globe} loading={api.busy} onClick={() => void api.begin(q.trim() ? `/watchdog-research ${q.trim()}` : '/watchdog-research')}>
             Start research

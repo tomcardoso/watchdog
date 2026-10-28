@@ -16,7 +16,7 @@ export const STAGE_LABELS: Record<string, string> = {
   fold: 'Merging exact duplicates',
   reconcile: 'Reconciling entities',
   dates: 'Reading dates',
-  commit: 'Writing to the vault',
+  commit: 'Adding to the investigation',
   contradictions: 'Flagging contradictions',
   relationships: 'Grouping relationship wordings',
   recheck: 'Re-checking contradictions',
@@ -52,10 +52,6 @@ export function progressText(job: Job): { text: string; done: number | null; tot
   return { text: p.current ?? 'Working…', done: null, total: null }
 }
 
-// Jobs that run until stopped (the incoming-folder watcher) are never shown as a full card: a small
-// chip says they are on, so they never sit over a screen for hours.
-const BACKGROUND_KINDS = new Set(['watch'])
-
 export function JobDock() {
   const jobs = useApp((s) => s.jobs)
   const route = useApp((s) => s.route)
@@ -74,7 +70,7 @@ export function JobDock() {
   }, [runningIds])
 
   const visible = route.view === 'activity' ? [] : running.filter((j) => shown[j.id] !== 'hidden')
-  const cards = visible.filter((j) => !BACKGROUND_KINDS.has(j.kind) && shown[j.id] !== 'min').slice(0, 3)
+  const cards = visible.filter((j) => shown[j.id] !== 'min').slice(0, 3)
   const chips = visible.filter((j) => !cards.includes(j))
 
   // Reserve room under every page for the dock, so the end of a page can always be scrolled clear
@@ -126,23 +122,21 @@ export function JobDock() {
       {chips.length > 0 && (
         <div className="job-chips">
           {chips.map((j) => {
-            const background = BACKGROUND_KINDS.has(j.kind)
             const p = progressText(j)
-            const pct = !background && p.total ? Math.round(((p.done ?? 0) / p.total) * 100) : null
+            const pct = p.total ? Math.round(((p.done ?? 0) / p.total) * 100) : null
             return (
               <div className="job-chip" key={j.id}>
                 <button
                   type="button"
                   className="job-chip-main"
-                  data-tip={background ? `${p.text}. Show output` : 'Show progress'}
+                  data-tip="Show progress"
                   data-tip-pos="top"
-                  onClick={() => (background ? navigate({ view: 'activity', job: j.id }) : set(j.id, null))}
+                  onClick={() => set(j.id, null)}
                 >
-                  {background ? <span className="job-chip-dot" aria-hidden="true" /> : <span className="spinner" />}
+                  <span className="spinner" />
                   <span className="truncate">{j.label}</span>
                   {pct !== null && <span className="job-chip-pct tnum">{pct}%</span>}
                 </button>
-                {background && <Button variant="ghost" size="sm" icon={Square} tip="Stop" onClick={() => stopJob(j.id)} />}
                 <Button variant="ghost" size="sm" icon={X} tip="Hide (it keeps running; Activity lists it)" onClick={() => set(j.id, 'hidden')} />
               </div>
             )

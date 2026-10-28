@@ -18,7 +18,7 @@ To open it, choose **Get started** or **Explore a sample investigation** at the 
 
 The tour then opens one screen at a time and points at a real finding: the briefing, a scanned page you can search, an entity's facts and their sources, a fact you can mark as checked, a contradiction, a near-duplicate, a lead, Search, the timeline and network, what a run costs, adding documents and Ask Claude. Use **Next** and **Back** to move through it, or **Skip tour** to close it. It remembers where you stopped, and **Help → Take the Tour** starts it again from the beginning.
 
-Two files are left waiting in the sample's incoming folder, a change order and the notes of a site meeting. When the tour reaches **Adding documents**, choose **Read documents** to add them and watch a run from start to finish: Watchdog reads the files on your computer, extracts their facts and writes a new briefing, which points to a new contradiction. Prepared answers stand in for the AI model here too, so the run costs nothing, sends nothing anywhere and does not ask you to confirm that the files are public records.
+Two files are left waiting to be added to the sample, a change order and the notes of a site meeting. When the tour reaches **Adding documents**, choose **Read documents** to add them and watch a run from start to finish: Watchdog reads the files on your computer, extracts their facts and writes a new briefing, which points to a new contradiction. Prepared answers stand in for the AI model here too, so the run costs nothing, sends nothing anywhere and does not ask you to confirm that the files are public records.
 
 The sample only processes its own example files. If you add a document of your own to it, Watchdog stops before anything is sent and says so; create your own investigation for your documents. **Re-check contradictions** works in the sample with prepared answers.
 
@@ -36,7 +36,7 @@ The dialog asks for three things:
 - **One-line description.** Optional, and you can change it later from the Overview. It is the first thing Watchdog knows about your investigation, which is useful when you have several open at once.
 - **Where to keep it.** The default is the investigations folder you chose in setup. If you pick a different folder, Watchdog asks permission to work there; see [Folder access](using-watchdog.md#folder-access).
 
-Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up its structure, including the `incoming/` and `context/` folders, the starting notes (`log.md`, `context.md`, `index.md`), and the settings for Claude. [Your files and Obsidian](using-watchdog.md#your-files-and-obsidian) explains what is in it.
+Choose **Create investigation**. Watchdog makes a folder named after the investigation (for example `shell-company-investigation`) and sets up everything it needs inside it. You never need to open the folder, but [Your files and Obsidian](using-watchdog.md#your-files-and-obsidian) explains what is in it.
 
 The investigation opens on its **Overview**. It is empty until you add documents.
 
@@ -54,11 +54,10 @@ The brief noticeably improves the quality of summaries and of connection-finding
 
 ## Add documents
 
-You can add documents three ways:
+You can add documents two ways:
 
 - **Drag them onto the window.** Drop files or whole folders anywhere in the app, and Watchdog adds them to the open investigation.
 - **Choose Add documents.** The button is at the top right, and also under **File → Add Documents…**. On an empty investigation, the Overview shows **Choose files…** and **Choose a folder…** buttons that do the same.
-- **Put files in the `incoming/` folder** inside the investigation, using your file manager. Watchdog lists anything waiting there on the Overview and in the Add documents dialog.
 
 Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, presentations, images, web pages, plain text, and audio and video recordings, which it transcribes on your computer; see [Supported file types](using-watchdog.md#supported-file-types) for the full list.
 
@@ -66,14 +65,14 @@ Watchdog handles PDFs (scanned or not), Word documents, spreadsheets, presentati
 
 **Add a sidecar file for provenance.** To record where a document came from, put a small `.yml` file with the same base name next to it, as in `shell-co-annual-report-2023.pdf` and `shell-co-annual-report-2023.yml`. It can contain a `source`, the date `obtained`, and `notes`; see [Sidecar files](using-watchdog.md#sidecar-files).
 
-**Duplicates are handled automatically.** A document that is byte-identical to one already added, even under a new name, is set aside in `incoming/skipped/` rather than processed twice. A separate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them.
+**Duplicates are handled automatically.** A document that is byte-identical to one already added, even under a new name, is set aside rather than processed twice. A separate check flags similar-but-not-identical files (a redlined revision, say) for your review, but never skips them.
 
 ## Confirm and watch the run
 
 The Add documents dialog takes you through four steps.
 
 1. **Choose.** Pick files or folders. The dialog also shows anything already waiting. **Estimate cost** shows what the run is likely to cost before you commit, and **Options** lets you change the models and other settings for this run only. The defaults are fine for a first run.
-2. **Reading documents.** Watchdog copies the files into `incoming/` (your originals stay where they are) and converts them to text on your computer, using OCR for scans and transcribing recordings. The first recording you add also downloads the transcription model, once. Nothing is sent anywhere during this step.
+2. **Reading documents.** Watchdog copies the files into the investigation (your originals stay where they are) and converts them to text on your computer, using OCR for scans and transcribing recordings. The first recording you add also downloads the transcription model, once. Nothing is sent anywhere during this step.
 3. **Before anything is sent.** This is the public-records confirmation. It shows the exact number of documents about to be sent and which model will receive them. Nothing goes until you choose **Acknowledge and add**. If you set Watchdog to skip this pause for runs that use only your Claude subscription, you see a short notice instead; see [Auto-approve](models-and-cost.md#auto-approve). If every step runs on a model server on this computer, there is nothing to confirm and this step is skipped; see [Local and self-hosted models](models-and-cost.md#local-and-self-hosted-models).
 4. **Adding.** Watchdog extracts entities, facts and timeline events from each document, writes everything to the investigation, and produces a **briefing**.
 

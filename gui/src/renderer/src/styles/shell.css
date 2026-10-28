@@ -531,24 +531,6 @@
   color: var(--text-3);
   font-weight: 500;
 }
-.job-chip-dot {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--success);
-  animation: job-pulse 2.4s ease-in-out infinite;
-}
-@keyframes job-pulse {
-  50% {
-    opacity: 0.35;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .job-chip-dot {
-    animation: none;
-  }
-}
 .job-card {
   background: var(--surface);
   border: 1px solid var(--border);

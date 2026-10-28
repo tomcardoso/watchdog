@@ -74,15 +74,15 @@ If you denied it by mistake, open Keychain Access, find "Watchdog Safe Storage",
 
 The key was encrypted under another user account or on another computer, or the system's secure storage was reset (on Linux, the keyring may not be running or unlocked). **Settings → Models & keys** marks such keys "can't be read". Replace each one with the key itself, or delete it. On Linux, check that your keyring is unlocked, then restart Watchdog.
 
-## A file landed in incoming/failed/
+## A file could not be read
 
-The file could not be read when Watchdog converted it to text. It sits in `incoming/failed/` alongside an explanation of what went wrong. On the **Documents** screen, the strip above the list shows failed files. Common causes:
+Watchdog could not convert the file to text, so it set it aside and carried on with the rest. The **Documents** screen lists it under **Couldn't be read** in the strip above the list, and the run's output under **Activity** gives the reason. Common causes:
 
 - **Password-protected PDF** — remove the password and try again.
 - **Corrupted file** — try re-downloading or re-exporting it.
 - **Unsupported format** — check the [supported file types](using-watchdog.md#supported-file-types).
 
-To retry, fix the problem, move the file from `incoming/failed/` back into `incoming/` (in your file manager; **File → Show in Folder** opens the investigation's folder), then choose **Add documents** again.
+If you fixed the file yourself (removed the password, or downloaded or exported it again), choose **Remove** under **Couldn't be read**, then add the fixed copy with **Add documents**. **Remove** deletes only Watchdog's copy; a file you chose with Add documents is still wherever you keep it. If the cause has passed without any change to the file, such as a download that failed, choose **Try again**: the files go back with those waiting to be added, and the Add documents dialog opens to read them.
 
 ## A recording failed or came out wrong
 
@@ -96,9 +96,9 @@ Recordings are transcribed on your computer during pre-processing. What goes wro
 - **Names or figures are wrong.** Speech recognition mishears uncommon names and numbers; this is the normal failure, not a fault. Click the timestamp beside the passage to hear it, and correct the fact in your own notes. A larger model makes fewer of these mistakes.
 - **The player says the format can't be played.** The transcript is still there. Some formats (`.avi`, and some `.mkv` files) cannot be played inside Watchdog; use **Open original** to play the recording in another app.
 
-## A file landed in incoming/skipped/
+## A file was set aside
 
-Two things send a file here, and neither is an error:
+Two things set a file aside, and neither is an error. The **Documents** screen lists these under **Set aside**:
 
 - **It is an exact duplicate.** Watchdog fingerprints every document by its content, so a file that is byte-identical to one already added, even under a different name, is set aside rather than processed twice. Nothing to do.
 - **No text was found.** Watchdog found nothing readable in the file, even after OCR. Open the original and check it is legible; a very poor scan can produce no text at all. For a recording, it means no speech was heard: check that it plays with sound.

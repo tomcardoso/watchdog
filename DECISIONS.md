@@ -3076,3 +3076,11 @@ Both chores (D332, D333) sent each item with its document's entities, so a docum
 
 Tradeoff: the prompt layout changed, unmeasured, beside the unmeasured prompts both chores already carry (CLAUDE.md, standing follow-ups); a model that misreads which document an item belongs to is still held to that document's ids by the validators.
 
+
+### D360 — The folder watcher is removed; files that could not be read get Try again and Remove
+
+The Maintenance toggle **Watch for new files** pre-processed files as they appeared in `incoming/`. Add documents always pre-processes its own files, and everything that reaches `incoming/` another way (Fetch Links, web research, a file dropped there by hand) is listed as waiting and read by the next Add documents, so the watcher only moved OCR earlier. It also collided with Add documents: both take the pre-processing lock, and a watcher that found it held exited on the busy error, so a long Add documents run switched it off. The app no longer asks reporters to open the investigation's folder, and the watcher made sense only for files put there by hand. The `watch` operation, its card, the job dock's background-job chip and their tests are gone.
+
+The one task that still needed the folder was retrying a file pre-processing could not read: the docs said to move it from `incoming/failed/` back into `incoming/` by hand. Two operations replace that, offered on the Documents screen's **Couldn't be read** list: `unreadable-retry` moves every such file (and its sidecar) back with the files waiting and opens Add documents, suffixing a name already waiting; `unreadable-remove` deletes Watchdog's copies after a confirmation, for a reporter who will add a fixed file. Both act on every listed file at once, like Retry and Requeue beside them.
+
+Tradeoff: a reporter who drops files into `incoming/` by hand waits for OCR until they choose Add documents, and macOS no longer notifies when such files are read. Remove deletes rather than moving to the system trash, so a file that was only ever in `incoming/` (a Fetch Links page, a file moved there by hand) is gone; the confirmation says so. No migration (I19): nothing stored changes.

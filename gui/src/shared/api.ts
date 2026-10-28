@@ -670,7 +670,8 @@ export interface OpParams {
   dig: IngestModels & { skip_warning?: boolean; limit?: number; force?: boolean }
   bark: FinalizerModels
   requeue: NoParams
-  watch: NoParams
+  'unreadable-retry': NoParams
+  'unreadable-remove': NoParams
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
   'troubleshooting-copy': { output: string; originals?: boolean }

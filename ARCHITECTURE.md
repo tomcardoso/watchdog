@@ -227,7 +227,9 @@ GLiNER model, into a per-page checklist the prompt includes.
 
 **Failure.** A document whose extraction or post-flight fails is logged to `processing.log` and moved
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
-The `requeue` operation (Requeue failed documents) puts failed documents back.
+The `requeue` operation (Requeue failed documents) puts failed documents back. A file pre-processing
+could not read sits in `incoming/failed/`; `unreadable-retry` moves it back into `incoming/` and
+`unreadable-remove` deletes it, both from the Documents screen (D360).
 
 ---
 

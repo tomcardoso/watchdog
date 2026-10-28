@@ -165,7 +165,7 @@ def test_cancel_sends_sigint_then_kills(sink, fake_cli):
 
 
 def test_a_stopped_job_that_exits_cleanly_is_cancelled_not_done(sink, fake_cli):
-    """`watchdog watch` stops on Ctrl+C with exit 0; the app must still show it as stopped."""
+    """A job that stops on Ctrl+C with exit 0 must still show as stopped."""
     clean = ("import time\ntry:\n    print('ready', flush=True)\n    time.sleep(30)\n"
              "except KeyboardInterrupt:\n    raise SystemExit(0)")
     started = _run(clean, label="c")
@@ -232,7 +232,7 @@ def test_action_run_runs_a_real_operation(tmp_path, monkeypatch):
 def test_jobs_ops_lists_every_operation_with_typed_parameters():
     schema = api.list_ops()
     assert {"add", "chew", "dig", "bark", "reindex", "merge-entities", "undo-merge", "requeue",
-            "watch", "recheck-contradictions", "export", "projects-rename"} <= set(schema)
+            "unreadable-retry", "unreadable-remove", "recheck-contradictions", "export", "projects-rename"} <= set(schema)
     assert schema["add"]["params"]["paths"]["type"] == "list[str]"
     assert schema["merge-entities"]["params"]["keep"]["required"] is True
     assert schema["add"]["engine"] == "add" and schema["reindex"]["engine"] == "index"

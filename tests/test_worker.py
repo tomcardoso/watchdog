@@ -14,7 +14,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -298,27 +297,6 @@ def test_rebuild_timeline_round_trip(demo_copy):
     code, lines, events, result, err = _subprocess({"op": "rebuild-timeline", "params": {}}, vault, home)
     assert code == 0, err
     assert (vault / "timeline.md").exists() and result["events"] >= 1
-
-
-@pytest.mark.skipif(os.name == "nt", reason="signals differ on Windows")
-def test_stop_is_a_signal_and_the_watcher_stops_cleanly(demo_copy, monkeypatch):
-    from watchdog.gui import jobs, rpc
-    vault, home = demo_copy
-    monkeypatch.setattr(rpc, "_test_sink", [])
-    monkeypatch.setattr(jobs, "_require_granted_cwd", lambda v: None)
-    monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setenv("PYTHONPATH", str(SRC))
-    job = jobs.MANAGER.start(vault, "watch", {}, "Watching incoming")
-    deadline = time.time() + 30
-    while not any("watching" in ln["text"] for ln in job.log) and time.time() < deadline:
-        time.sleep(0.05)
-    assert any("Stop in Activity" in ln["text"] for ln in job.log), list(job.log)
-    jobs.MANAGER.cancel(job.id)
-    deadline = time.time() + 30
-    while job.state == "running" and time.time() < deadline:
-        time.sleep(0.05)
-    assert job.state == "cancelled" and job.exit_code == 0
-    assert any("Stopped watching." in ln["text"] for ln in job.log)
 
 
 # ── no app path builds a `watchdog` command line ──────────────────────────────────────────

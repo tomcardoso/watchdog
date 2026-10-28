@@ -73,7 +73,7 @@ export function TextTab({ pages, jump, hasViewer, media, initialQuery = '' }: { 
   const ranges = useMemo(() => (needle ? pages.map((p) => findRanges(p.text, needle)) : null), [pages, needle])
   const counts = ranges?.map((r) => r.length) ?? null
   const total = counts?.reduce((a, b) => a + b, 0) ?? 0
-  if (!pages.length) return <Empty icon={FileText} title="No extracted text">This document has no full-text file in the vault.</Empty>
+  if (!pages.length) return <Empty icon={FileText} title="No extracted text">Watchdog has no extracted text for this document.</Empty>
   return (
     <>
       <div className="facts-bar">
@@ -216,7 +216,7 @@ export function DetailsTab({ d }: { d: DocumentDetail }) {
 export function NotesTab({ d }: { d: DocumentDetail }) {
   const vault = useVault()
   const saved = useMemo(() => splitNotes(d.body ?? '').notes, [d.body])
-  if (!d.note) return <Empty icon={FileText} title="No note for this document">Notes are kept in the document's own note in the vault, which doesn't exist yet.</Empty>
+  if (!d.note) return <Empty icon={FileText} title="No note for this document">This document's note has not been written yet.</Empty>
   return (
     <div className="notes-editor">
       <NotesEditor key={d.note} vault={vault} path={d.note} saved={saved} label={d.title ?? d.filename} promise="Watchdog never overwrites this section, even when it rebuilds the rest of the note." placeholder="Your own annotations, questions and follow-ups on this document." />

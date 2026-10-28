@@ -18,13 +18,13 @@ A typical loop, once the first batch is in: add documents, read the briefing, wo
 
 ## Adding documents
 
-Drop files or folders onto the window, choose **Add documents** (top right, or **File → Add Documents…**), or put files in the investigation's `incoming/` folder with your file manager. The dialog takes you through four steps:
+Drop files or folders onto the window, or choose **Add documents** (top right, or **File → Add Documents…**). The dialog takes you through four steps:
 
 ![The Add documents dialog, on its first step: files to add, the files already waiting in the investigation, and Estimate cost.](images/app-add.png)
 
-1. **Choose.** Pick files or folders. The dialog also shows anything already waiting in `incoming/`, and offers to retry documents that failed before. **Options** holds every setting for this run only: models, effort, **Documents at once**, **Record skill**, **Second-read check**, **Wait out rate limits** and the rest. **Estimate cost** shows what the run is likely to cost, and **Compare all models** shows the estimate for each model.
-2. **Reading documents.** The files are copied into `incoming/` (the originals stay where they are) and converted to text on your computer, with OCR (optical character recognition) for scanned pages. Recordings are transcribed here, one at a time; the first one also downloads the transcription model, once. Nothing is sent anywhere during this step.
-3. **Before sending documents to a model.** Files that could not be read are listed first, and a file the investigation already has is set aside in `incoming/skipped/`. Then the public-records warning, with the number of documents, which model receives them and, if you keep more than one key, which key pays. Nothing is sent until you choose **Acknowledge and add**. With [Auto-approve](models-and-cost.md#auto-approve) on and every step on your Claude subscription, this step is a short notice instead; when every step runs on a model server on this computer, it is skipped.
+1. **Choose.** Pick files or folders. The dialog also shows anything already waiting to be added, such as pages from **Fetch Links**, and offers to retry documents that failed before. **Options** holds every setting for this run only: models, effort, **Documents at once**, **Record skill**, **Second-read check**, **Wait out rate limits** and the rest. **Estimate cost** shows what the run is likely to cost, and **Compare all models** shows the estimate for each model.
+2. **Reading documents.** The files are copied into the investigation (the originals stay where they are) and converted to text on your computer, with OCR (optical character recognition) for scanned pages. Recordings are transcribed here, one at a time; the first one also downloads the transcription model, once. Nothing is sent anywhere during this step.
+3. **Before sending documents to a model.** Files that could not be read are listed first, and a file the investigation already has is set aside. Then the public-records warning, with the number of documents, which model receives them and, if you keep more than one key, which key pays. Nothing is sent until you choose **Acknowledge and add**. With [Auto-approve](models-and-cost.md#auto-approve) on and every step on your Claude subscription, this step is a short notice instead; when every step runs on a model server on this computer, it is skipped.
 4. **Adding.** Each document is extracted, then the finishing steps write everything to the investigation and produce a briefing. **Hide** closes the dialog while the run continues, with its progress in the corner of the window. **Stop** ends it cleanly, and adding again resumes it.
 
 The run stays with the investigation you started it in. If another investigation is open when the pause or the finished run appears, the window says so, with **Switch to** that investigation.
@@ -35,7 +35,7 @@ The run stays with the investigation you started it in. If another investigation
 
 **Right after installing or updating,** adding documents waits until setup has finished downloading in the background. The buttons say why, and the **Finishing setup…** bar at the bottom of the sidebar shows how far along it is.
 
-**File → Fetch Links…** downloads web pages from a list of addresses into `incoming/`, from where you add them like any other document.
+**File → Fetch Links…** downloads web pages from a list of addresses into the investigation. They wait there until the next time you choose **Add documents**, which reads them along with anything else you add.
 
 ### Supported file types
 
@@ -72,7 +72,7 @@ skill: corporate-filings
 
 ## Reading a document
 
-**Documents** shows every document as a grid of first-page thumbnails or a sortable list. A strip above it shows files not yet in the investigation (waiting, failed or set aside), with **Retry** (put failed documents back and run them again) and **Requeue** (put them back without running them).
+**Documents** shows every document as a grid of first-page thumbnails or a sortable list. A strip above it shows files not yet in the investigation (waiting, failed or set aside), with **Retry** (put failed documents back and run them again) and **Requeue** (put them back without running them). Files that could not be read have **Try again** (read the same files again) and **Remove** (delete Watchdog's copies, for when you will add a fixed file); see [A file could not be read](troubleshooting.md#a-file-could-not-be-read).
 
 ![A scanned document open in Watchdog: the page on the left, the facts taken from it on the right, each with its date, page and source passage.](images/app-document.png)
 
@@ -289,7 +289,6 @@ If an earlier version holds something that should not be kept, such as a source'
 
 | Card | What it does |
 |---|---|
-| **Watch for new files** | Reads files that reach the investigation other than through **Add documents**, such as web pages from **File → Fetch Links**, as they arrive. Nothing is sent to a model. **Add documents** reads its own files and does not need it. |
 | **Pre-processing** | Converts every file waiting to be added to text on your computer. |
 | **Processing** | Extracts facts with a model and stages the result, with **Estimate** first. |
 | **Post-processing** | Finishes a batch: merges entities, flags contradictions, writes summaries, the timeline and the briefing. Safe to run again. |

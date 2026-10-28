@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Cpu,
   Download,
-  Eye,
   FolderOpen,
   Gauge,
   Hammer,
@@ -152,43 +151,6 @@ function useEstimator(stage: 'dig' | 'bark', options: () => RunOptions) {
 }
 
 // ── cards ────────────────────────────────────────────────────────────────────
-
-function WatchCard() {
-  const project = useApp((s) => s.project!)
-  const jobs = useApp((s) => s.jobs)
-  const running = Object.values(jobs).find((j) => j.kind === 'watch' && j.state === 'running' && j.vault === project.path)
-  const [busy, setBusy] = useState(false)
-  const toggle = async (on: boolean) => {
-    setBusy(true)
-    try {
-      if (on) await startJob('watch', {}, 'Watching for new files')
-      else if (running) await call('jobs.cancel', { id: running.id })
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not change watching', body: errorMessage(e) })
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div className="card act-watch">
-      <div className="act-mcard-icon">
-        <Eye />
-      </div>
-      <div className="grow">
-        <div className="card-title">Watch for new files</div>
-        <div className="act-mcard-text" style={{ margin: '2px 0 0' }}>
-          While this is on, files that reach this investigation other than through Add documents, such as web pages from File → Fetch Links, are read and converted to text on this computer as they arrive, starting with any already waiting. Nothing is sent to a model; extracting their facts still waits for you. Add documents reads its files itself, so it does not need this.
-        </div>
-      </div>
-      {running && (
-        <Button size="sm" variant="ghost" onClick={() => navigate({ view: 'activity', job: running.id })}>
-          Show output
-        </Button>
-      )}
-      <Switch checked={!!running} disabled={busy} onChange={(v) => void toggle(v)} label="Watch for new files" />
-    </div>
-  )
-}
 
 function ChewCard({ incoming }: { incoming: number | null }) {
   const [workers, setWorkers] = useState('')
@@ -684,9 +646,6 @@ export default function MaintenancePanel() {
         These are the steps <span className="mono">Add documents</span> runs for you, plus repairs. Reach for them to run one step at a time, to check an extraction before it is added to the investigation, or to fix something that stopped.
       </div>
       <EngineWait />
-      <Gated>
-        <WatchCard />
-      </Gated>
       <div className="act-mgrid">
         <Gated>
           <ChewCard incoming={p?.incoming.length ?? null} />

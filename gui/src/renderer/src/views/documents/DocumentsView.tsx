@@ -57,7 +57,7 @@ function compare(a: DocumentRow, b: DocumentRow, key: SortKey, dir: 1 | -1): num
 
 function DupBadge({ copy }: { copy?: boolean }) {
   return (
-    <span className="docs-card-dup" data-tip={copy ? 'You marked this a copy of another document in Review' : 'Looks like another document in this vault'} data-tip-pos="bottom">
+    <span className="docs-card-dup" data-tip={copy ? 'You marked this a copy of another document in Review' : 'Looks like another document in this investigation'} data-tip-pos="bottom">
       <Copy />
       {copy ? 'Copy' : 'Possible duplicate'}
     </span>
@@ -258,12 +258,12 @@ export default function DocumentsView() {
         ) : docs && docs.length === 0 ? (
           <Empty
             icon={FileText}
-            title="No documents in the vault yet"
+            title="No documents in this investigation yet"
             action={
               <AddDocumentsButton />
             }
           >
-            Documents appear here once they have been read, extracted and written to the vault. Add PDFs, scans, Word files, spreadsheets or web pages, and each one gets a note with its facts and the people and organizations it names.
+            Documents appear here once they have been read and their facts extracted. Add PDFs, scans, Word files, spreadsheets or web pages, and each one gets a note with its facts and the people and organizations it names.
           </Empty>
         ) : (
           <>
@@ -348,7 +348,7 @@ export default function DocumentsView() {
                     </Button>
                   }
                 >
-                  Nothing in the vault matches those filters. The filter box searches titles, file names, document types and record skills.
+                  No document matches those filters. The filter box searches titles, file names, document types and record skills.
                 </Empty>
               </div>
             ) : layout === 'grid' ? (

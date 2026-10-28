@@ -3953,6 +3953,54 @@ def test_requeue_moves_failed_back(tmp_path, monkeypatch):
     assert not (failed / "ddd444.json").exists()
 
 
+def _unreadable(vault, *names):
+    failed = vault / "incoming" / "failed"
+    failed.mkdir(parents=True, exist_ok=True)
+    for n in names:
+        (failed / n).write_text(n)
+    return failed
+
+
+def test_unreadable_retry_puts_files_back_to_wait(tmp_path):
+    """Trying again moves each unreadable file and its sidecar back with the files waiting, and a
+    name already waiting gets a suffix rather than overwriting it."""
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.ingest import unreadable_retry
+    vault = make_vault(tmp_path)
+    failed = _unreadable(vault, "a.pdf", "b.pdf")
+    (failed / "a.pdf.yml").write_text("source: x")
+    (vault / "incoming" / "b.pdf").write_text("fixed copy")
+
+    assert unreadable_retry(CollectingReporter(), vault) == {"retried": 2}
+    incoming = vault / "incoming"
+    assert (incoming / "a.pdf").read_text() == "a.pdf"
+    assert (incoming / "a.pdf.yml").read_text() == "source: x"
+    assert (incoming / "b.pdf").read_text() == "fixed copy"
+    assert (incoming / "b-2.pdf").read_text() == "b.pdf"
+    assert not any(failed.iterdir())
+
+
+def test_unreadable_remove_deletes_the_copies_only(tmp_path):
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.ingest import unreadable_remove
+    vault = make_vault(tmp_path)
+    failed = _unreadable(vault, "a.pdf")
+    (failed / "a.pdf.yml").write_text("source: x")
+    (vault / "incoming" / "waiting.pdf").write_text("w")
+
+    assert unreadable_remove(CollectingReporter(), vault) == {"removed": 1}
+    assert not any(failed.iterdir())
+    assert (vault / "incoming" / "waiting.pdf").exists()
+
+
+def test_unreadable_ops_with_nothing_set_aside(tmp_path):
+    from watchdog.ops import CollectingReporter
+    from watchdog.ops.ingest import unreadable_remove, unreadable_retry
+    vault = make_vault(tmp_path)
+    assert unreadable_retry(CollectingReporter(), vault) == {"retried": 0}
+    assert unreadable_remove(CollectingReporter(), vault) == {"removed": 0}
+
+
 def test_orchestrator_sectioned_path(tmp_path, monkeypatch):
     """Large doc → section.run plans sections → per-section extract → merge → vault."""
     vault = make_vault(tmp_path)
