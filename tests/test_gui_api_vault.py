@@ -525,11 +525,14 @@ def test_resolve_link(rich_vault, target, expected):
 # ── pipeline state ───────────────────────────────────────────────────────────────
 
 def test_pipeline_state(rich_vault):
+    from watchdog.pipeline.preprocess_batch import record_unreadable
+    record_unreadable(rich_vault, "bad.pdf", "Docling conversion failed: encrypted")
     p = call("vault.pipeline", vault=V(rich_vault))
     assert [(f["name"], f["path"], f["sidecar"]) for f in p["incoming"]] == [
         ("new-file.pdf", "incoming/new-file.pdf", True), ("nested.docx", "incoming/sub/nested.docx", False)]
     assert p["incoming"][0]["size"] == 8 and p["incoming"][0]["modified"]
-    assert p["chew_failed"] == [{"name": "bad.pdf", "path": "incoming/failed/bad.pdf", "size": 3}]
+    assert p["chew_failed"] == [{"name": "bad.pdf", "path": "incoming/failed/bad.pdf", "size": 3,
+                                 "reason": "Docling conversion failed: encrypted"}]
     assert [(s["name"], s["reason"]) for s in p["skipped"]] == [("dup.pdf", "already ingested"),
                                                                 ("empty.pdf", None)]
     assert [(q["filename"], q["staged"], q["page_count"]) for q in p["queued"]] == [

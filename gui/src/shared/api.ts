@@ -420,7 +420,7 @@ export interface ResolvedLink { path: string | null; kind: LinkKind; sha: string
 
 export interface PipelineState {
   incoming: { name: string; path: string; size: number; modified: string; sidecar: boolean }[]
-  chew_failed: { name: string; path: string; size: number }[]
+  chew_failed: { name: string; path: string; size: number; reason: string | null }[]
   skipped: { name: string; path: string; size: number; reason: string | null }[]
   queued: { sha: string; filename: string; page_count: number | null; est_tokens: number | null; staged: boolean }[]
   failed: { sha: string; filename: string; reason: string | null }[]

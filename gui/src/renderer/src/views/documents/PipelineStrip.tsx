@@ -159,7 +159,7 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
               <p>
                 These landed in incoming/failed when pre-processing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into incoming.
               </p>
-              <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: fmtBytes(f.size) }))} />
+              <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: f.reason ?? fmtBytes(f.size), err: !!f.reason }))} />
             </div>
           )}
 

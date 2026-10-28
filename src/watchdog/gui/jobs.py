@@ -12,6 +12,10 @@ become `job.progress` events, the final `result` line becomes the job's `result`
 line goes to a ring buffer (the last 5,000) and out as batched `job.log` events (at most ten a
 second).
 
+A finished job is saved, output and all, to `~/.watchdog/jobs/<id>.json` (the newest
+`KEEP_FINISHED`), and read back the first time the app lists its jobs, so the reason a run failed
+outlives the app.
+
 Cancelling sends Ctrl+C (SIGINT, or CTRL_BREAK_EVENT on Windows) so the pipeline's own graceful
 stop runs and finished documents are kept; a second cancel kills the process.
 """
@@ -30,7 +34,7 @@ import time
 import uuid
 from pathlib import Path
 
-from watchdog import ops, progress
+from watchdog import config, ops, progress
 from watchdog.gui import rpc
 from watchdog.gui.vaultio import strip_ansi
 
@@ -166,6 +170,11 @@ def _env(keys: bool) -> dict:
     return env
 
 
+def log_dir() -> Path:
+    """Where finished jobs are saved. A function so tests can move it."""
+    return config.home() / "jobs"
+
+
 class Job:
     def __init__(self, vault: Path | None, op: str, params: dict, label: str, kind: str | None):
         self.id = uuid.uuid4().hex[:12]
@@ -185,7 +194,35 @@ class Job:
         self.pending: list[dict] = []
         self.lock = threading.Lock()
         self.proc: subprocess.Popen | None = None
+        self.supervisor: threading.Thread | None = None
         self.cancel_requests = 0
+
+    @classmethod
+    def from_record(cls, rec: dict) -> "Job":
+        """A finished job read back from its saved record (`save`)."""
+        job = cls(Path(rec["vault"]) if rec.get("vault") else None, rec["op"], rec.get("params") or {},
+                  rec.get("label") or rec["op"], rec.get("kind"))
+        job.id = rec["id"]
+        job.result = rec.get("result")
+        job.state = rec.get("state") or "done"
+        job.exit_code = rec.get("exit_code")
+        job.started = rec.get("started") or _now()
+        job.finished = rec.get("finished")
+        if isinstance(rec.get("progress"), dict):
+            job.progress = {**job.progress, **rec["progress"]}
+        job.log.extend(ln for ln in rec.get("log") or [] if isinstance(ln, dict))
+        return job
+
+    def save(self) -> None:
+        """Write this finished job, with its output, to `log_dir()`, readable only by its owner
+        (the output names the investigation's files). A failed write loses only the record."""
+        from watchdog.pipeline.json_io import write_private_json
+        with self.lock:
+            log = list(self.log)
+        try:
+            write_private_json(log_dir() / f"{self.id}.json", {**self.to_dict(), "log": log})
+        except OSError:
+            pass
 
     def to_dict(self) -> dict:
         with self.lock:
@@ -246,6 +283,32 @@ class JobManager:
     def __init__(self):
         self.jobs: dict[str, Job] = {}
         self.lock = threading.Lock()
+        self.restored = False
+
+    def restore(self) -> None:
+        """Read back the jobs saved by earlier sessions, once, oldest first so pruning drops them
+        first. An unreadable record is skipped."""
+        with self.lock:
+            if self.restored:
+                return
+            self.restored = True
+            records = []
+            for path in log_dir().glob("*.json") if log_dir().is_dir() else []:
+                try:
+                    rec = json.loads(path.read_text(encoding="utf-8"))
+                    if isinstance(rec, dict) and rec.get("id") and rec.get("op"):
+                        records.append(rec)
+                except (OSError, ValueError):
+                    continue
+            restored = {}
+            for rec in sorted(records, key=lambda r: str(r.get("started") or "")):
+                if rec["id"] not in self.jobs:
+                    try:
+                        restored[rec["id"]] = Job.from_record(rec)
+                    except (KeyError, TypeError, ValueError):
+                        continue
+            self.jobs = {**restored, **self.jobs}
+            self._prune()
 
     # ── lifecycle ───────────────────────────────────────────────────────────────────────
     def start(self, vault: Path | None, op: str, params: dict | None, label: str,
@@ -275,13 +338,15 @@ class JobManager:
                    threading.Thread(target=self._read, args=(job, job.proc.stderr, "err"), daemon=True)]
         for t in readers:
             t.start()
-        threading.Thread(target=self._supervise, args=(job, readers), daemon=True).start()
+        job.supervisor = threading.Thread(target=self._supervise, args=(job, readers), daemon=True)
+        job.supervisor.start()
         return job
 
     def _prune(self) -> None:
         finished = [j for j in self.jobs.values() if j.state != "running"]
         for j in finished[:-KEEP_FINISHED] if len(finished) > KEEP_FINISHED else []:
             self.jobs.pop(j.id, None)
+            (log_dir() / f"{j.id}.json").unlink(missing_ok=True)
 
     def _read(self, job: Job, stream, name: str) -> None:
         for raw in iter(stream.readline, b""):
@@ -317,6 +382,7 @@ class JobManager:
         job.finished = _now()
         # A stopped job is "cancelled" however it exits: a graceful Ctrl+C stop often exits 0.
         job.state = "cancelled" if job.cancel_requests else ("done" if code == 0 else "failed")
+        job.save()
         rpc.emit("job.finished", {"job": job.to_dict()})
 
     def cancel(self, job_id: str) -> None:
@@ -336,6 +402,7 @@ class JobManager:
             pass
 
     def get(self, job_id: str) -> Job:
+        self.restore()
         job = self.jobs.get(job_id)
         if job is None:
             raise rpc.RpcError("No such job.", code="not_found")
@@ -356,6 +423,8 @@ class JobManager:
                     job.proc.wait(timeout=5)
                 except Exception:  # noqa: BLE001
                     pass
+            if job.supervisor is not None:
+                job.supervisor.join(timeout=2)   # let it save the stopped job's output
 
 
 MANAGER = JobManager()

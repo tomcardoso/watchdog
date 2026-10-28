@@ -185,6 +185,16 @@ def sanitize_html(text: str) -> str:
     return nh3.clean(text)
 
 
+def _has_content(body: bytes, ext: str) -> bool:
+    """False for a download with nothing to read: an empty body, or HTML whose text, once every
+    tag (and script and style content) is dropped, is blank."""
+    if not body.strip():
+        return False
+    if ext in _HTML_EXTS:
+        return bool(nh3.clean(body.decode("utf-8", "replace"), tags=set()).strip())
+    return True
+
+
 def neutralize(value: str) -> str:
     """Defang wikilink and frontmatter-delimiter injection in a sidecar value.
 
@@ -301,6 +311,11 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
         else:
             body = sanitize_html(body.decode("utf-8", "replace")).encode("utf-8")
             capture_mode = "plain"
+    if not _has_content(body, ext):
+        # A site that turns away automated downloads can answer 200 with an empty body; saved, it
+        # only resurfaced later as a pre-processing skip with no hint of the cause.
+        raise ResearchError(f"refused: {final_url} returned a page with no text "
+                            "(the site may block automated downloads)")
 
     archived = save_to_wayback(final_url, wayback[0], wayback[1]) or "" if wayback else ""
 

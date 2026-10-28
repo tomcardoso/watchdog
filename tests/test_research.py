@@ -218,6 +218,28 @@ def test_deposit_one_size_cap_enforced(tmp_path):
     assert seen["max_bytes"] == 1234
 
 
+@pytest.mark.parametrize("body,content_type", [
+    (b"", "text/html"),                                      # a 200 with no body at all
+    (b"<html><head><script>x()</script></head><body> </body></html>", "text/html"),
+    (b"", "application/pdf"),
+])
+def test_deposit_one_refuses_a_download_with_no_text(tmp_path, body, content_type):
+    # A site that blocks automated downloads can answer 200 with an empty page. Saving it only
+    # resurfaced later as an unexplained pre-processing skip; refuse it here, with a reason, and
+    # write nothing (so the URL stays queued as a failed download).
+    vault = tmp_path / "v"
+    with pytest.raises(ResearchError, match="no text"):
+        research.deposit_one(vault, "https://e.com/x", fetcher=_fake_fetcher(body, content_type))
+    assert not (vault / "incoming").exists() or not any((vault / "incoming").iterdir())
+
+
+def test_deposit_one_refuses_an_empty_rendered_capture(tmp_path, monkeypatch):
+    monkeypatch.setattr(capture, "try_render", lambda *a, **k: b"<!DOCTYPE html><html><body></body></html>")
+    with pytest.raises(ResearchError, match="no text"):
+        research.deposit_one(tmp_path / "v", "https://e.com/x",
+                             fetcher=_fake_fetcher(b"<html>fetched</html>", "text/html"))
+
+
 def test_deposit_name_is_stable_per_url(tmp_path):
     vault = tmp_path / "v"
     f = _fake_fetcher(b"<html>x</html>", "text/html")
