@@ -41,6 +41,15 @@ class ResearchError(Exception):
     """A URL was rejected or a fetch failed — nothing is written when this is raised."""
 
 
+class HttpRefused(ResearchError):
+    """The server answered with an error status, which the capture browser may get past."""
+
+    def __init__(self, status: int, url: str):
+        super().__init__(f"refused: HTTP {status} for {url}")
+        self.status = status
+        self.url = url
+
+
 _ALLOWED_SCHEMES = {"http", "https"}
 _MAX_BYTES_DEFAULT = 20 * 1024 * 1024  # 20 MiB — caps both the network read and the deposited file
 _MAX_REDIRECTS = 5
@@ -151,7 +160,7 @@ def fetch(url: str, *, max_bytes: int = _MAX_BYTES_DEFAULT, timeout: int = _TIME
             if e.code in (301, 302, 303, 307, 308) and location:
                 current = validate_url(urljoin(current, location))
                 continue
-            raise ResearchError(f"refused: HTTP {e.code} for {current}")
+            raise HttpRefused(e.code, current)
         except (urllib.error.URLError, ssl.SSLError, OSError) as e:
             raise ResearchError(f"refused: could not fetch {current}: {e}")
         with resp:
@@ -299,10 +308,23 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
     vs `fetch`). `browser_factory` (from `capture.browser_session()`) lets `deposit_many` share one
     Chromium instance across a batch instead of `capture.try_render` launching its own per call."""
     obtained = obtained or date.today().isoformat()
-    body, content_type, final_url = fetcher(url, max_bytes=max_bytes)
+    try:
+        body, content_type, final_url = fetcher(url, max_bytes=max_bytes)
+    except HttpRefused as refused:
+        body = _render_instead(refused.url, refused, max_bytes, browser_factory, status=refused.status)
+        content_type, final_url = _RENDERED, refused.url
+    else:
+        if not body.strip():
+            # A site that turns away automated downloads can answer 2xx with nothing at all.
+            empty = ResearchError(f"refused: {final_url} returned an empty response "
+                                  "(the site may block automated downloads)")
+            body = _render_instead(final_url, empty, max_bytes, browser_factory)
+            content_type = _RENDERED
     ext = extension_for(content_type, final_url)
     capture_mode = ""
-    if ext in _HTML_EXTS:
+    if content_type == _RENDERED:
+        capture_mode = "rendered"
+    elif ext in _HTML_EXTS:
         from watchdog.pipeline import capture
         rendered = capture.try_render(final_url, max_bytes=max_bytes, browser_factory=browser_factory)
         if rendered is not None:
@@ -312,8 +334,8 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
             body = sanitize_html(body.decode("utf-8", "replace")).encode("utf-8")
             capture_mode = "plain"
     if not _has_content(body, ext):
-        # A site that turns away automated downloads can answer 200 with an empty body; saved, it
-        # only resurfaced later as a pre-processing skip with no hint of the cause.
+        # Saved, a page with no text only resurfaced later as a pre-processing skip with no hint
+        # of the cause.
         raise ResearchError(f"refused: {final_url} returned a page with no text "
                             "(the site may block automated downloads)")
 
@@ -331,6 +353,29 @@ def deposit_one(vault: Path, url: str, *, title: str = "", source_type: str = ""
         encoding="utf-8",
     )
     return doc_path
+
+
+# The content type `deposit_one` gives a page only the capture browser could load.
+_RENDERED = "text/html; rendered"
+# Statuses a browser cannot change: the page is missing, not withheld.
+_GONE = {404, 410}
+
+
+def _render_instead(url: str, failure: ResearchError, max_bytes: int, browser_factory,
+                    status: int | None = None) -> bytes:
+    """The page at `url`, loaded in the capture browser after the plain fetch was refused (a site
+    that turns away non-browsers answers 403, 429 or 503) or came back empty. The browser runs a
+    bot check's script as any browser does. Raises `failure` when that cannot help: a missing
+    page, an address naming a file that is not a web page, or no capture browser or no page from
+    it (`capture` refuses a page whose final status is not 2xx)."""
+    suffix = Path(urlsplit(url).path).suffix.lower()
+    if status in _GONE or (suffix in _SUPPORTED_SUFFIXES and suffix not in _HTML_EXTS):
+        raise failure
+    from watchdog.pipeline import capture
+    rendered = capture.try_render(url, max_bytes=max_bytes, browser_factory=browser_factory)
+    if rendered is None:
+        raise ResearchError(f"{failure}; the capture browser could not load it either, or is not installed")
+    return rendered
 
 
 def parse_worklist(text: str) -> list[dict]:
