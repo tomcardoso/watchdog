@@ -167,7 +167,7 @@ export function tourSteps(open: { add: () => void; closeAdd: () => void }): Tour
       body: (t) =>
         t.incoming.length > 0 ? (
           <>
-            <p>{t.incoming.length === 1 ? 'One file is' : `${t.incoming.length} files are`} waiting in this investigation’s incoming folder. Choose Read documents to add {t.incoming.length === 1 ? 'it' : 'them'} and watch the run: Watchdog converts each file on this computer, extracts its facts, then updates the entities, the timeline and the briefing.</p>
+            <p>{t.incoming.length === 1 ? 'One file is' : `${t.incoming.length} files are`} waiting to be added to this investigation. Choose Read documents to add {t.incoming.length === 1 ? 'it' : 'them'} and watch the run: Watchdog converts each file on this computer, extracts its facts, then updates the entities, the timeline and the briefing.</p>
             <p>In the sample, prepared answers stand in for the AI model, so nothing is sent anywhere and it costs nothing. When the run finishes, the Overview has a new briefing, with a new contradiction to look at. With your own documents, Watchdog first shows what processing will cost and asks you to confirm they are public records.</p>
           </>
         ) : (

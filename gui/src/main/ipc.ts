@@ -9,7 +9,8 @@ import type { EngineStatus } from '@shared/api'
 import { Engine } from './engine'
 import { ClaudeSignIn } from './claude'
 import { setAllowedRoots } from './protocol'
-import { addGrant, coveringGrant, listGrants, requestGrant, revokeGrant } from './access'
+import { addGrant, coveringGrant, isGranted, listGrants, requestGrant, revokeGrant } from './access'
+import { trashUnreadable } from './unreadable'
 import { getThumb, putThumb } from './thumbs'
 import { prepareRequest } from './secrets'
 
@@ -109,6 +110,12 @@ export function registerIpc(backend: PythonBackend, engine: Engine, claude: Clau
   })
 
   ipcMain.handle('shell:openPath', (_e, p: string) => shell.openPath(p))
+  // Only in an investigation the user has allowed Watchdog to change (I11), and only what the
+  // investigation set aside as unreadable: the renderer names the investigation, never a file.
+  ipcMain.handle('files:trashUnreadable', async (_e, vault: string) => {
+    if (typeof vault !== 'string' || !isGranted(vault)) throw new Error('Watchdog is not allowed to change files in this investigation.')
+    return trashUnreadable(vault, (p) => shell.trashItem(p))
+  })
   ipcMain.on('shell:showItemInFolder', (_e, p: string) => shell.showItemInFolder(p))
   ipcMain.handle('shell:openExternal', (_e, url: string) => {
     if (/^(https?|mailto|obsidian):/i.test(url)) return shell.openExternal(url)

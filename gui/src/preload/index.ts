@@ -68,6 +68,7 @@ const bridge: WatchdogBridge = {
   },
   files: {
     pathForFile: (file) => webUtils.getPathForFile(file),
+    trashUnreadable: (vault) => ipcRenderer.invoke('files:trashUnreadable', vault),
     url: (absPath) => 'wdfile://local/' + encodeURIComponent(absPath)
   },
   thumbs: {

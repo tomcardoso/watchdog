@@ -134,7 +134,7 @@ export default function MergeModal({ open, onClose, initialKeep, initialMerge }:
             The duplicate's aliases, documents, roles and timeline now live on {survivorName ?? 'the surviving entity'}. The old note is a redirect stub.
           </Callout>
           <Callout tone="info" title="Next steps">
-            Rebuild the search index so the merged entity's stale entries drop out.{bothSummaries ? ' Both entities had a written summary, so refresh the survivor’s summary from all sources: open it and choose “Refresh summary from all sources”.' : ''} A snapshot of the pre-merge files is kept inside the vault if you need to inspect it.
+            Rebuild the search index so the merged entity's stale entries drop out.{bothSummaries ? ' Both entities had a written summary, so refresh the survivor’s summary from all sources: open it and choose “Refresh summary from all sources”.' : ''} To reverse it, choose Undo merge under Review → Merges.
           </Callout>
         </div>
       )}

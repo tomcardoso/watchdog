@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json && node scripts/check-colours.mjs",
     "test:e2e": "playwright test",
     "screenshots": "playwright test -c playwright.screenshots.config.ts",
-    "test:unit": "node --experimental-strip-types --experimental-default-type=module --no-warnings --test src/renderer/src/lib/findText.test.ts src/renderer/src/lib/dateSpan.test.ts src/renderer/src/lib/exportFolder.test.ts src/main/keystore.test.ts src/main/engine.test.ts src/main/claude.test.ts",
+    "test:unit": "node --experimental-strip-types --experimental-default-type=module --no-warnings --test src/renderer/src/lib/findText.test.ts src/renderer/src/lib/dateSpan.test.ts src/renderer/src/lib/exportFolder.test.ts src/main/keystore.test.ts src/main/engine.test.ts src/main/claude.test.ts src/main/unreadable.test.ts",
     "engine:prepare": "node scripts/prepare-engine.mjs",
     "engine:test": "node scripts/engine-cli.mjs",
     "engine:check": "node scripts/engine-check.mjs",

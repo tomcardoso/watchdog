@@ -1,11 +1,11 @@
-// "Not yet in the vault": everything vault.pipeline reports that hasn't become a document note —
+// "Not yet added": everything vault.pipeline reports that hasn't become a document note —
 // files waiting, queued or staged work, failures, set-aside files, a run in progress here or on another
 // computer, and a run that stopped before it finished. Locks clear themselves (D293): nothing here
 // offers to release one.
 
-import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Laptop, Loader, RotateCw, TriangleAlert, Workflow } from 'lucide-react'
+import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Laptop, Loader, RotateCw, Trash2, TriangleAlert, Workflow } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge, Button } from '@renderer/components/ui'
+import { Badge, Button, Modal } from '@renderer/components/ui'
 import { fmtBytes, plural } from '@renderer/lib/format'
 import { runAction } from '@renderer/lib/jobs'
 import { runLockState } from '@renderer/lib/runlock'
@@ -33,9 +33,11 @@ function FileList({ rows }: { rows: { key: string; name: string; why?: string | 
 
 export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
   const openAdd = useApp((s) => s.openAdd)
+  const vault = useApp((s) => s.project?.path ?? null)
   const engine = useEngineGate()
   const [open, setOpen] = useState<boolean | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
+  const [confirmRemove, setConfirmRemove] = useState(false)
 
   const p = pipeline
   const waiting = p.queued.filter((q) => !q.staged)
@@ -72,8 +74,37 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
     }
   }
 
+  // Files that could not be read: back with the files waiting, then Add documents reads them again.
+  const retryUnreadable = async () => {
+    setBusy('unreadable-retry')
+    try {
+      await runAction('unreadable-retry', {})
+      invalidate('vault.', 'projects.', 'ingest.')
+      openAdd()
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not try them again', body: errorMessage(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const removeUnreadable = async () => {
+    setBusy('unreadable-remove')
+    try {
+      if (!vault) return
+      const removed = await window.watchdog.files.trashUnreadable(vault)
+      toast({ kind: 'success', title: `Moved ${plural(removed, 'file')} to the trash` })
+      invalidate('vault.', 'projects.', 'ingest.')
+      setConfirmRemove(false)
+    } catch (e) {
+      toast({ kind: 'error', title: 'Could not remove them', body: errorMessage(e) })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
-    <section className="pipe" aria-label="Documents not yet in the vault">
+    <section className="pipe" aria-label="Documents not yet added">
       <button className="pipe-head" aria-expanded={expanded} onClick={toggle}>
         <ChevronRight />
         <Workflow style={{ color: 'var(--text-2)' }} />
@@ -131,7 +162,7 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
             <div className="pipe-group">
               <div className="pipe-group-head"><Hourglass style={{ color: 'var(--text-2)' }} />Staged, awaiting finishing <span className="n">{finalizing?.docs ?? staged.length}</span></div>
               <p>
-                Extracted, but not yet written to the vault. The wrap-up reconciles duplicate entities, writes the notes and produces the briefing
+                Extracted, but not yet added to the investigation. The wrap-up reconciles duplicate entities, writes the notes and produces the briefing
                 {finalizing ? ` (${plural(finalizing.docs, 'document')}, ${plural(finalizing.entities, 'entity', 'entities')})` : ''}. It is safe to run more than once, and nothing staged is ever discarded.
               </p>
               {staged.length > 0 && <FileList rows={staged.map((q) => ({ key: q.sha, name: q.filename, why: q.page_count ? plural(q.page_count, 'page') : null }))} />}
@@ -157,9 +188,28 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
             <div className="pipe-group">
               <div className="pipe-group-head"><FileWarning style={{ color: 'var(--warning)' }} />Couldn't be read <span className="n">{p.chew_failed.length}</span></div>
               <p>
-                These landed in incoming/failed when pre-processing failed. Common causes are a password-protected PDF (remove the password), a corrupted file (download or export it again), or an unsupported format. To retry, move the file back into incoming.
+                Watchdog could not convert these to text, so they were set aside. Common causes are a password-protected PDF, a corrupted file or an unsupported format; the run's output in Activity gives the reason. If you fixed the file (removed the password, or downloaded or exported it again), remove these and add the fixed copy. Try again reads the same files again, for a cause that has passed, such as a download that failed.
               </p>
               <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: f.reason ?? fmtBytes(f.size), err: !!f.reason }))} />
+              <div className="pipe-actions">
+                <Button size="sm" variant="primary" icon={RotateCw} loading={busy === 'unreadable-retry'} disabled={!engine.ready} onClick={retryUnreadable}>Try again</Button>
+                <Button size="sm" icon={Trash2} onClick={() => setConfirmRemove(true)}>Remove</Button>
+              </div>
+              <Modal
+                open={confirmRemove}
+                onClose={() => setConfirmRemove(false)}
+                title={`Move ${plural(p.chew_failed.length, 'unreadable file')} to the trash?`}
+                footer={
+                  <>
+                    <Button variant="ghost" onClick={() => setConfirmRemove(false)}>Cancel</Button>
+                    <Button variant="danger" icon={Trash2} loading={busy === 'unreadable-remove'} onClick={removeUnreadable}>Move to trash</Button>
+                  </>
+                }
+              >
+                <p style={{ margin: 0 }}>
+                  Watchdog’s copies of these files go to your computer’s trash, from where you can put them back until it is emptied. A file you chose with Add documents is still wherever you keep it.
+                </p>
+              </Modal>
             </div>
           )}
 

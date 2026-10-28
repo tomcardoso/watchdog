@@ -27,8 +27,8 @@ shapes lives in `gui/src/shared/api.ts`; keep the two in step.
   reads that file (`access.list`); grants are made by the main process (`window.watchdog.access`).
 - **Engine setup (D272).** While the app's engine is still installing its background phase, the
   main process starts the server with `WATCHDOG_ENGINE_PENDING=1`. `jobs.start` and `action.run`
-  then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`, `watch`,
-  `requeue`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
+  then refuse every operation whose `engine` is `add` (`add`, `chew`, `dig`, `bark`,
+  `requeue`, `unreadable-retry`) or `index` (`reindex`, `merge-entities`, `merge-entity-pairs`, `undo-merge`, `rebuild-notes`,
   `recheck-contradictions`, `migrate`) with `RpcError(code="engine_not_ready", data={"op"})`, and `search.query` skips the
   meaning-based lane (`semantic_pending: true`). `engine.setReady` lifts it in place.
 - Errors meant for the user raise `RpcError("plain sentence")`. A `SystemExit` raised by library
@@ -329,7 +329,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `dig` | yes | extractor options, `{limit?, force?, skip_warning?}` | run summary | add |
 | `bark` | yes | finalizer options, `{skip_briefing?}` | post-processing summary | add |
 | `requeue` | yes | — | `{requeued}` | add |
-| `watch` | yes | — | runs until stopped | add |
+| `unreadable-retry` | yes | — | `{retried}` — files in `incoming/failed/` (and sidecars) back into `incoming/`, a taken name suffixed (D363) | add |
 | `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
 | `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
 | `merge-entity-pairs` | yes | `{keep: string[], merge: string[]}` | `{merged, failed, skipped}`, each `[{keep, merge, keep_name, merge_name, error?}]`; exit 1 when any failed. One `merge-entities` merge per pair, in order; a failure does not stop the rest (D328) | index |

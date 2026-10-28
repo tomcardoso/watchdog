@@ -621,14 +621,14 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
         <Callout tone="warning" title="Some files could not be read">
           <ul className="add-issues">
             {issues.map((i) => <li key={i}>{i}</li>)}
-            {failed.map((b) => <li key={b.name}>{b.name} was set aside in incoming/failed{b.reason ? `: ${b.reason}` : ''}</li>)}
-            {empty.map((b) => <li key={b.name}>{b.name} had no readable text and was set aside in incoming/skipped</li>)}
+            {failed.map((b) => <li key={b.name}>{b.name} was set aside{b.reason ? `: ${b.reason}` : ''}. The Documents screen lists it with what you can do.</li>)}
+            {empty.map((b) => <li key={b.name}>{b.name} had no readable text and was set aside</li>)}
           </ul>
         </Callout>
       )}
       {skipped.length > 0 && (
         <Callout tone="info" title="Already in this investigation">
-          These were read, matched a document Watchdog already has, and were set aside in incoming/skipped.
+          These were read, matched a document Watchdog already has, and were set aside.
           <ul className="add-issues">
             {skipped.map((b) => <li key={b.name}>{b.name}: {b.reason}</li>)}
           </ul>

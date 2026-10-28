@@ -26,7 +26,6 @@
 .act-model-row { font-size: var(--fs-sm); padding: 3px 0; }
 /* maintenance */
 .act-intro { color: var(--text-2); max-width: 70ch; line-height: 1.55; }
-.act-watch { display: flex; align-items: center; gap: 14px; padding: 16px 18px; }
 .act-mgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; align-items: start; }
 .act-mcard { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
 .act-mcard-head { display: flex; align-items: center; gap: 12px; }

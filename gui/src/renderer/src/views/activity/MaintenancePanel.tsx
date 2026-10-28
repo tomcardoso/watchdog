@@ -7,7 +7,6 @@ import {
   ChevronRight,
   Cpu,
   Download,
-  Eye,
   FolderOpen,
   Gauge,
   Hammer,
@@ -153,43 +152,6 @@ function useEstimator(stage: 'dig' | 'bark', options: () => RunOptions) {
 
 // ── cards ────────────────────────────────────────────────────────────────────
 
-function WatchCard() {
-  const project = useApp((s) => s.project!)
-  const jobs = useApp((s) => s.jobs)
-  const running = Object.values(jobs).find((j) => j.kind === 'watch' && j.state === 'running' && j.vault === project.path)
-  const [busy, setBusy] = useState(false)
-  const toggle = async (on: boolean) => {
-    setBusy(true)
-    try {
-      if (on) await startJob('watch', {}, 'Watching for new files')
-      else if (running) await call('jobs.cancel', { id: running.id })
-    } catch (e) {
-      toast({ kind: 'error', title: 'Could not change watching', body: errorMessage(e) })
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <div className="card act-watch">
-      <div className="act-mcard-icon">
-        <Eye />
-      </div>
-      <div className="grow">
-        <div className="card-title">Watch for new files</div>
-        <div className="act-mcard-text" style={{ margin: '2px 0 0' }}>
-          While this is on, files you put in the investigation’s <span className="mono">incoming</span> folder (File → Show in Folder) are pre-processed (read and OCR’d, locally) as they arrive, starting with any already waiting. Nothing is sent to a model; extraction still waits for you.
-        </div>
-      </div>
-      {running && (
-        <Button size="sm" variant="ghost" onClick={() => navigate({ view: 'activity', job: running.id })}>
-          Show output
-        </Button>
-      )}
-      <Switch checked={!!running} disabled={busy} onChange={(v) => void toggle(v)} label="Watch for new files" />
-    </div>
-  )
-}
-
 function ChewCard({ incoming }: { incoming: number | null }) {
   const [workers, setWorkers] = useState('')
   const [chunks, setChunks] = useState('')
@@ -219,7 +181,7 @@ function ChewCard({ incoming }: { incoming: number | null }) {
         </Button>
       }
     >
-      Converts every file in <span className="mono">incoming/</span> to text, applying OCR to pages that need it, splitting large PDFs into parallel chunks and checking for duplicates. It happens entirely on this computer: nothing is sent to a model. Press Stop to cancel; unfinished files stay in <span className="mono">incoming/</span>.
+      Converts every file waiting to be added to text, applying OCR to pages that need it, splitting large PDFs into parallel chunks and checking for duplicates. It happens entirely on this computer: nothing is sent to a model. Press Stop to cancel; files it has not finished stay waiting.
     </MCard>
   )
 }
@@ -288,7 +250,7 @@ function DigCard({ queued, models }: { queued: number | null; models: ReturnType
         </div>
       }
     >
-      Reads the queue and extracts facts, entities and dates from each document with a model, then stages the result. It sends the extracted text of every queued document to a cloud model, so it asks you to confirm the documents are public records first. Nothing is written to the vault until post-processing finishes the batch.
+      Reads the queue and extracts facts, entities and dates from each document with a model, then stages the result. It sends the extracted text of every queued document to a cloud model, so it asks you to confirm the documents are public records first. Nothing is added to the investigation until post-processing finishes the batch.
       {gate.modal}
     </MCard>
   )
@@ -358,7 +320,7 @@ function BarkCard({ pending, models }: { pending: { docs: number; entities: numb
         </div>
       }
     >
-      Finishes a batch that processing staged, or one an interruption left half-done: merges duplicate entities, flags contradictions between documents, writes entity summaries, reconciles the timeline and writes the briefing. Documents land in the vault at the start of this step. Safe to run again if it stops partway.
+      Finishes a batch that processing staged, or one an interruption left half-done: merges duplicate entities, flags contradictions between documents, writes entity summaries, reconciles the timeline and writes the briefing. Documents are added to the investigation at the start of this step. Safe to run again if it stops partway.
     </MCard>
   )
 }
@@ -425,7 +387,7 @@ function ExportCard() {
             Choose folder and export
           </Button>
           <Button size="sm" variant="ghost" onClick={() => void go(null)}>
-            Export inside the vault
+            Export into the investigation
           </Button>
           {dir && (
             <Button size="sm" variant="ghost" icon={Download} onClick={() => window.watchdog.shell.showItemInFolder(dir)}>
@@ -681,12 +643,9 @@ export default function MaintenancePanel() {
   return (
     <div className="col" style={{ gap: 16 }}>
       <div className="act-intro">
-        These are the steps <span className="mono">Add documents</span> runs for you, plus repairs. Reach for them to run one step at a time, to check an extraction before it reaches the vault, or to fix something that stopped.
+        These are the steps <span className="mono">Add documents</span> runs for you, plus repairs. Reach for them to run one step at a time, to check an extraction before it is added to the investigation, or to fix something that stopped.
       </div>
       <EngineWait />
-      <Gated>
-        <WatchCard />
-      </Gated>
       <div className="act-mgrid">
         <Gated>
           <ChewCard incoming={p?.incoming.length ?? null} />
@@ -725,7 +684,7 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={ScanText}
           title="Rebuild notes"
-          text="Rewrites every entity and document note from what Watchdog keeps on disk: each document's facts, the entity summaries and the record of merges and contradictions. No model call, no tokens. Use it if a note was deleted or edited by mistake. Your own Notes sections are kept as they are."
+          text="Rewrites every entity and document note from Watchdog’s records: each document's facts, the entity summaries and the record of merges and contradictions. No model call, no tokens. Use it if a note was deleted or edited by mistake. Your own Notes sections are kept as they are."
           label="Rebuild notes"
           onRun={async () => {
             await launch('rebuild-notes', {}, 'Rebuild notes')
@@ -743,7 +702,7 @@ export default function MaintenancePanel() {
         <SimpleCard
           icon={Cpu}
           title="Rebuild the search index"
-          text="Rebuilds the semantic and full-text indexes from what is already on disk: no OCR, no model calls, no tokens. Run it after changing the embedding model in Settings, since vectors from two models cannot be mixed, or after merging entities."
+          text="Rebuilds the semantic and full-text indexes from what Watchdog has already read: no OCR, no model calls, no tokens. Run it after changing the embedding model in Settings, since vectors from two models cannot be mixed, or after merging entities."
           label="Reindex"
           onRun={() => launch('reindex', {}, 'Reindex')}
         />
@@ -753,7 +712,7 @@ export default function MaintenancePanel() {
           title="Usage"
           footer={<Button size="sm" onClick={() => navigate({ view: 'activity', tab: 'usage' })}>Open Usage</Button>}
         >
-          Tokens, cost and timing for each processing run, by stage. It only reads recorded files, so it is free to look.
+          Tokens, cost and timing for each processing run, by stage. It only reads what was recorded, so it is free to look.
         </MCard>
         <ExportCard />
         <TroubleshootingCard />
@@ -762,7 +721,7 @@ export default function MaintenancePanel() {
           title="Refresh Claude setup"
           text={
             <>
-              Updates this investigation’s shortcuts, Claude instructions and Claude settings. Watchdog does this by itself whenever a conversation starts; use it to do it now. Your own notes below the end marker in <span className="mono">.claude/CLAUDE.md</span> are kept. Record skills are global and never need this.
+              Updates this investigation’s shortcuts, Claude instructions and Claude settings. Watchdog does this by itself whenever a conversation starts; use it to do it now. Anything you added to Claude’s instructions yourself is kept. Record skills are global and never need this.
             </>
           }
           label="Refresh now"

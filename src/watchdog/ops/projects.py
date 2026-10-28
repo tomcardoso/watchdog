@@ -1,5 +1,5 @@
 """Investigation management operations (D298): create, register, rename, describe, move,
-archive and remove an investigation, and watch its `incoming/` folder.
+archive and remove an investigation.
 
 They change the list of investigations (`watchdog.projects`) and the investigation's folder; the
 app runs each in the worker like any other operation.
@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import shutil
-import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,10 +17,10 @@ from watchdog import obsidian, projects
 from watchdog.ops import op
 from watchdog.pipeline.write_vault import slugify
 from watchdog.vault import (
-    DASHBOARD_BASE, WATCHLIST_TEMPLATE, claude_settings, count_queued, install_commands,
+    DASHBOARD_BASE, WATCHLIST_TEMPLATE, claude_settings, install_commands,
     pkg_version, render_template,
 )
-from watchdog.vault_paths import CONTEXT_NAME, INCOMING_NAME, incoming_dir, is_vault, processing_log
+from watchdog.vault_paths import CONTEXT_NAME, INCOMING_NAME, is_vault, processing_log
 
 
 def _entry(slug: str) -> dict:
@@ -289,75 +288,3 @@ def _relocate_telemetry(rep, old_resolved: Path, new: Path) -> None:
         telemetry_db.relocate_vault(old_resolved, new)
     except Exception as e:  # noqa: BLE001
         rep.warn(f"Warning: this investigation's usage records could not be updated: {e}")
-
-
-def _poll_stable_files(candidates: set, pending_sizes: dict) -> tuple:
-    """Split newly-seen files into size-stable (safe to chew) vs. still-growing.
-
-    A file mid-copy (Finder, a network share) must not be chewed until its size holds
-    steady across two polls — otherwise chew hashes/OCRs truncated bytes (#261).
-    """
-    ready, new_pending = [], {}
-    for f in candidates:
-        try:
-            size = f.stat().st_size
-        except OSError:
-            continue
-        if pending_sizes.get(f) == size:
-            ready.append(f)          # unchanged since the last poll — copy finished
-        else:
-            new_pending[f] = size    # still growing (or first sighting) — wait
-    return ready, new_pending
-
-
-@op("watch", engine="add")
-def watch(rep, vault: Path) -> None:
-    """Pre-process files as they arrive in `incoming/`, until stopped."""
-    import time
-
-    from watchdog.ops import require_vault
-    from watchdog.pipeline.preprocess_batch import find_files, run_ingest
-    require_vault(vault)
-    name = projects.name_for(vault)
-    incoming = incoming_dir(vault)
-    # Everything after the first log line is inside the try: that line tells the reporter they can
-    # stop, so a stop arriving before the loop starts must still end cleanly.
-    try:
-        rep.log(f"{name}: watching incoming/. Use Stop in Activity to stop.")
-        # Files already waiting are pre-processed on the first stable poll, like any new arrival.
-        known: set = set()
-        waiting = len(find_files([incoming]))
-        if waiting:
-            rep.log(f"{waiting} file{'s' if waiting != 1 else ''} already in incoming/; reading them first.")
-        pending_sizes: dict = {}   # file -> size at the previous poll, until it stops growing (#261)
-        while True:
-            time.sleep(3)
-            current: set = set(find_files([incoming]))
-            ready, pending_sizes = _poll_stable_files(current - known, pending_sizes)
-            if ready:
-                label = f"{len(ready)} file{'s' if len(ready) != 1 else ''}"
-                rep.log(f"{label} arrived; reading them.")
-                queued_before = count_queued(vault)
-                run_ingest(vault, files=ready)
-                new_queued = count_queued(vault) - queued_before
-                if new_queued > 0:
-                    _notify(f"Watchdog — {name}",
-                            f"Read {label}. {new_queued} file{'s' if new_queued != 1 else ''} ready.")
-                known = set()
-            else:
-                known = current - set(pending_sizes)
-    except KeyboardInterrupt:
-        rep.log("Stopped watching.")
-
-
-def _notify(title: str, body: str) -> None:
-    """A macOS notification; nothing elsewhere. Title and body go in as script arguments, never
-    spliced into the AppleScript source, so a quote in a name can't break the script."""
-    if sys.platform != "darwin":
-        return
-    try:
-        subprocess.run(["osascript", "-e", "on run argv", "-e",
-                        "display notification (item 2 of argv) with title (item 1 of argv)",
-                        "-e", "end run", title, body], capture_output=True, timeout=5)
-    except Exception:  # noqa: BLE001
-        pass

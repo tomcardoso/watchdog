@@ -670,7 +670,7 @@ export interface OpParams {
   dig: IngestModels & { skip_warning?: boolean; limit?: number; force?: boolean }
   bark: FinalizerModels
   requeue: NoParams
-  watch: NoParams
+  'unreadable-retry': NoParams
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
   'troubleshooting-copy': { output: string; originals?: boolean }
@@ -1221,6 +1221,8 @@ export interface WatchdogBridge {
   }
   files: {
     pathForFile(file: File): string
+    /** Moves the investigation's unreadable files and their sidecars to the system trash (D363); how many went. */
+    trashUnreadable(vault: string): Promise<number>
     url(absPath: string): string
   }
   thumbs: {

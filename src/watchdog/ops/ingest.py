@@ -23,7 +23,7 @@ from watchdog import defaults
 from watchdog.model_catalog import _MODEL_IDS
 from watchdog.ops import op, require_vault, say
 from watchdog.vault import count_failed, count_queued, render_template
-from watchdog.vault_paths import incoming_dir, is_vault, processing_lock, processing_state
+from watchdog.vault_paths import incoming_dir, incoming_failed_dir, is_vault, processing_lock, processing_state
 
 # Reasoning-effort levels for the per-stage effort knobs (D36). `high` is the model
 # default, so an unset knob behaves as before (the orchestrator sends no effort param).
@@ -1332,3 +1332,36 @@ def requeue(rep, vault: Path) -> dict:
     n = _requeue_failed(vault)
     rep.log(requeue_message(n))
     return {"requeued": n}
+
+
+def _unreadable(vault: Path) -> list[Path]:
+    """The files pre-processing could not read, as they sit set aside (sidecars not counted)."""
+    d = incoming_failed_dir(vault)
+    if not d.is_dir():
+        return []
+    return sorted(f for f in d.iterdir()
+                  if f.is_file() and not f.name.startswith(".") and not f.name.endswith(".yml"))
+
+
+@op("unreadable-retry", engine="add", kind="action")
+def unreadable_retry(rep, vault: Path) -> dict:
+    """Put every file that could not be read back with the files waiting to be added, sidecar
+    and all, so the next Add documents reads it again. A name already waiting gets a suffix."""
+    require_vault(vault)
+    incoming = incoming_dir(vault)
+    files = _unreadable(vault)
+    for f in files:
+        dest = incoming / f.name
+        n = 1
+        while dest.exists():
+            n += 1
+            dest = incoming / f"{f.stem}-{n}{f.suffix}"
+        f.replace(dest)
+        sidecar = f.with_name(f"{f.name}.yml")
+        if sidecar.exists():
+            sidecar.replace(dest.with_name(f"{dest.name}.yml"))
+    n = len(files)
+    rep.log(f"{n} file{'s' if n != 1 else ''} waiting to be read again." if n
+            else "No unreadable files to try again.")
+    return {"retried": n}
+

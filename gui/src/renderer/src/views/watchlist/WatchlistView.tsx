@@ -122,7 +122,7 @@ function WatchlistPanel({ vault }: { vault: string }) {
         <HistoryButton vault={vault} path="watchlist.md" size="md" variant="ghost" />
       </div>
       <Callout tone="info" title="Check every document now" action={<Button icon={Zap} loading={running} disabled={!terms.length} onClick={() => void sweep()}>Check every document now</Button>}>
-        The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with what is already in the vault. This sweeps the whole library against the current list. No model is called. Matches go to Alerts.
+        The scan at the end of each run only sees that run&apos;s new documents, so a term added now is never compared with the documents already in the investigation. This sweeps the whole library against the current list. No model is called. Matches go to Alerts.
       </Callout>
     </div>
   )

@@ -744,67 +744,6 @@ def test_load_projects_with_invalid_utf8_exits_cleanly(wdg_home):
         projects.load()
 
 
-def test_notify_no_op_on_non_darwin(monkeypatch):
-    monkeypatch.setattr("watchdog.ops.projects.sys.platform", "linux")
-    calls = []
-    monkeypatch.setattr("watchdog.ops.projects.subprocess.run", lambda *a, **k: calls.append(a))
-    pops._notify("title", "body")
-    assert calls == []
-
-
-def test_notify_calls_osascript_on_darwin(monkeypatch):
-    monkeypatch.setattr("watchdog.ops.projects.sys.platform", "darwin")
-    calls = []
-    def fake_run(cmd, **kw):
-        calls.append(cmd)
-    monkeypatch.setattr("watchdog.ops.projects.subprocess.run", fake_run)
-    pops._notify('Watchdog — "Quoted" project', "3 files chewed")
-    assert len(calls) == 1
-    assert calls[0][0] == "osascript"
-    # Title and body are passed as arguments, never spliced into the script source.
-    assert calls[0][-2:] == ['Watchdog — "Quoted" project', "3 files chewed"]
-    assert not any("Quoted" in part for part in calls[0][:-2])
-
-
-def test_poll_stable_files_holds_growing_file(tmp_path):
-    f = tmp_path / "big.pdf"
-    f.write_bytes(b"a" * 10)
-    ready, pending = pops._poll_stable_files({f}, {})
-    assert ready == []
-    assert pending == {f: 10}
-
-
-def test_poll_stable_files_releases_file_once_size_holds(tmp_path):
-    f = tmp_path / "big.pdf"
-    f.write_bytes(b"a" * 10)
-    # First poll: no prior size recorded — held.
-    ready, pending = pops._poll_stable_files({f}, {})
-    assert ready == []
-    # Second poll: same size as last time — copy finished.
-    ready, pending = pops._poll_stable_files({f}, pending)
-    assert ready == [f]
-    assert pending == {}
-
-
-def test_poll_stable_files_keeps_holding_a_still_growing_file(tmp_path):
-    f = tmp_path / "big.pdf"
-    f.write_bytes(b"a" * 10)
-    ready, pending = pops._poll_stable_files({f}, {})
-    f.write_bytes(b"a" * 20)   # more bytes copied in between polls
-    ready, pending = pops._poll_stable_files({f}, pending)
-    assert ready == []
-    assert pending == {f: 20}
-
-
-def test_poll_stable_files_skips_file_removed_before_stat(tmp_path):
-    f = tmp_path / "gone.pdf"   # never created — simulates a race with deletion
-    ready, pending = pops._poll_stable_files({f}, {})
-    assert ready == []
-    assert pending == {}
-
-
-
-
 # ── what an investigation has waiting (the Overview and the investigation cards) ───────────────
 
 def _queue_file(vault: Path, sha: str) -> None:

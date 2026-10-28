@@ -68,7 +68,7 @@ export default function NoteView() {
     )
   if (!note.exists)
     return (
-      <div className="page"><div className="page-inner"><Empty icon={NotebookText} title="This note does not exist" action={<Button onClick={() => navigate({ view: 'briefings' })}>Go to Reports</Button>}>{path} is not in the vault. It may have been renamed or removed.</Empty></div></div>
+      <div className="page"><div className="page-inner"><Empty icon={NotebookText} title="This note does not exist" action={<Button onClick={() => navigate({ view: 'briefings' })}>Go to Reports</Button>}>{path} is not in this investigation. It may have been renamed or removed.</Empty></div></div>
     )
   if (note.kind === 'entity' || note.kind === 'document') {
     return <div className="page"><div className="page-inner"><Skeleton h={20} /></div></div>
