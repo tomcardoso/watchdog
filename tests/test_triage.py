@@ -45,14 +45,14 @@ def test_a_watch_list_term_outranks_everything_else():
     names = {"orla-vance": ["Orla Vance", "O. Vance"], "hub": ["Hub Ltd."]}
     ranked = triage.rank(items, terms=[_term("O. Vance")], names=names, degree={"hub": 9})
     assert _rids(ranked) == ["l:plain", "c:hub"]
-    assert ranked[0]["reason"].startswith("On your watch list: “O. Vance”")
+    assert ranked[0]["reason"].startswith("On your watchlist: “O. Vance”")
 
 
 def test_an_alert_is_tied_to_its_term():
     ranked = triage.rank([_c("c:1", "x", 2), _alert("a:1", "Quayside")])
     assert _rids(ranked) == ["a:1", "c:1"]
     assert ranked[0]["title"] == "Quayside: 1 new document"
-    assert ranked[0]["reason"] == "On your watch list"   # the title names the term
+    assert ranked[0]["reason"] == "On your watchlist"   # the title names the term
 
 
 def test_the_most_connected_entities_and_main_subjects_rank_next():

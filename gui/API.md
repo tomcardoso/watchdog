@@ -115,7 +115,7 @@ Summary = {               // overview.summary(), made JSON-safe
 }
 
 StartHereItem = {rid, rids, kind, title, note|null, reason,   // reason: one line on why it is there
-                 term?, documents?}  // an alert item is a whole watch-list term: every hit's id in rids, the documents by name (D328)
+                 term?, documents?}  // an alert item is a whole watchlist term: every hit's id in rids, the documents by name (D328)
 
 DocumentRow = {
   sha, filename, title|null, document_type|null, date_of_document|null,
@@ -215,7 +215,7 @@ TimelineEvent = {
 
 PipelineState = {
   incoming:  [{name, path, size, modified, sidecar: bool}],   // incoming/, excluding failed/skipped
-  chew_failed: [{name, path, size, reason}],                  // incoming/failed/; reason: string | null (D359)
+  chew_failed: [{name, path, size, reason}],                  // incoming/failed/; reason: string | null (D360)
   skipped:   [{name, path, size, reason|null}],               // incoming/skipped/
   queued:    [{sha, filename, page_count|null, est_tokens|null, staged: bool}],  // chewed; staged = extracted awaiting bark
   failed:    [{sha, filename, reason|null}],                  // queue/_failed/
@@ -372,7 +372,7 @@ last line on stderr), 64 (a request it could not read) or 130.
 | `jobs.ops` | — | `{[op]: OpSpec}` — `OpSpec = {params: {[name]: {type, required, default, nullable}}, vault, engine, kind}` |
 | `jobs.start` | `{vault\|null, op, params?, label, kind?}` | `Job` |
 | `jobs.cancel` | `{id}` | `{ok}` — SIGINT (Ctrl+C), so the pipeline's graceful stop runs and finished documents are kept; a second cancel kills |
-| `jobs.list` | — | `Job[]` (running and the last 50 finished, kept across restarts in `~/.watchdog/jobs/`, D359) |
+| `jobs.list` | — | `Job[]` (running and the last 50 finished, kept across restarts in `~/.watchdog/jobs/`, D360) |
 | `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge": the `undo-merge` operation, refused up front when the merge can't be split (D280). Errors: `cannot_undo` with the reason, `not_found` |
 | `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): the `recheck-contradictions` operation (D287), after the checks it would make. Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |
@@ -471,7 +471,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
-| `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watch-list-hit items for the term |
+| `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watchlist-hit items for the term |
 | `review.watchlistAdd` | `{vault, term}` | `{added}` — refuses a blank, multi-line, `#`-leading, invalid `/regex/` or duplicate term (`bad_params`); appends to `watchlist.md`, recorded as a version of the file's history |
 | `review.watchlistRemove` | `{vault, term}` | `{removed}` — drops the matching line only, keeping comments and other terms; `not_found` if absent; recorded in history |
 | `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |

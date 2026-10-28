@@ -153,7 +153,7 @@ export interface Summary {
   summary_line: { kind: 'since' | 'batch'; at: string | null; added: Record<ReviewKind, number> } | null
 }
 
-/** One Start here item (D327). A watch-list term's alerts are one item (D328): `term`, the
+/** One Start here item (D327). A watchlist term's alerts are one item (D328): `term`, the
  * `documents` it was found in, and every hit's id in `rids`. */
 export interface StartHereItem { rid: string; rids: string[]; kind: ReviewKind; title: string; note: string | null; reason: string; term?: string | null; documents?: string[] }
 

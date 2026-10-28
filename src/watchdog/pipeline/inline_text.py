@@ -1,8 +1,8 @@
 """One-line values written into Markdown (D304).
 
 A label, a value or a term that a session or a form supplies ends up inside a line of a note: a
-contradiction callout's line, a watch-list line, a timeline bullet. A line break there would let it
-write lines of its own (a second, forged callout; a heading; extra watch-list terms), so these
+contradiction callout's line, a watchlist line, a timeline bullet. A line break there would let it
+write lines of its own (a second, forged callout; a heading; extra watchlist terms), so these
 values are refused, not cleaned, when they carry any line break or other control character.
 """
 

@@ -479,15 +479,15 @@ registry, keyed for idempotent replay (D67).
   `.watchdog/briefings/<ts>.json` (the ref map, citation counts and the status line the Overview
   shows as its headline). The run's `skip_briefing` option skips the call and those files (D134).
   The session primer (§12) carries the rest of what a session needs.
-- **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
+- **Leads, watchlist alerts and document requests.** Model-free sweeps write dated briefing files;
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
   The app's Review (`watchdog/review.py`) lists the open ones, plus near-duplicate documents
   (`documents.json` `near_duplicate_of`, stamped at extraction from chew's MinHash match), and
   writes to the same store (D252). `watchdog/triage.py` (D327) ranks the judgement items
   (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
-  function of the items and registry-derived inputs (watch-list terms, relationship-graph degree,
+  function of the items and registry-derived inputs (watchlist terms, relationship-graph degree,
   `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
-  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watch-list
+  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watchlist
   term's alerts are one Start here item. The tidy-up queues are tables worked in bulk (D328): ticked
   possible same entities are merged by `merge-entity-pairs`, one `merge-entities` merge per pair; a
   possible duplicate is resolved with the label `copies` or `different`, and `different` hides the
@@ -619,7 +619,7 @@ queries/ wiki/               session-written findings and threads
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
-  unreadable.json            why each file in incoming/failed/ could not be read, by name (D359); the app's own state, read by no model input
+  unreadable.json            why each file in incoming/failed/ could not be read, by name (D360); the app's own state, read by no model input
   .preprocessing-lock        held while files are pre-processed
   registry/
     entities.json documents.json registry.json manifest.json
@@ -896,8 +896,8 @@ same content to the user's own model server; every other backend sends it to tha
 | digest | once per sectioned document | filename, title, type, page count, merged facts, skill, brief, sidecar | raw text |
 | reconcile | once per run (chunked when large), plus up to two rounds for large same-name groups | candidate pairs; same-name groups of at most 30 members; each recurring entity's attributed claims and roles | raw text |
 | entity-synthesis | per 25 recurring entities touched this run | each entity's facts with short citation refs, warnings and marks (not its earlier prose, D280) | timeline, relationships, contradictions |
-| fact-tags | when a staged fact carries a tag its document does not define, after post-flight's near-miss step (≤40 per call) | the tag, up to three facts carrying it, the document's entities (≤60): ids, names, types, aliases | other documents; raw text; everything else |
-| role-targets | when a staged relationship names a target id no entity has and code found no exact match (≤40 per call) | the id, the naming entities and wordings, the document's entities (≤60) and up to 8 similarly named registry entities: ids, names, types, aliases | facts; raw text; everything else |
+| fact-tags | when a staged fact carries a tag its document does not define, after post-flight's near-miss step (≤40 per call) | the tag, up to three facts carrying it, the document's entities (the ≤60 nearest each of its tags, listed once per document, D359): ids, names, types, aliases | other documents; raw text; everything else |
+| role-targets | when a staged relationship names a target id no entity has and code found no exact match (≤40 per call) | the id, the naming entities and wordings, the document's entities (the ≤60 nearest each of its targets, listed once per document, D359) and up to 8 similarly named registry entities: ids, names, types, aliases | facts; raw text; everything else |
 | date-resolve | when staged facts carry a date code could not settle (≤80 per call) | the printed date, the fact's text, the document's date, the two readings of an ambiguous one | everything else |
 | timeline-dedup | per colliding date (≤200 events per call) | event text and page | other dates; entity histories |
 | timeline-precision | per month mixing precisions | that month's events | other months |
@@ -960,7 +960,7 @@ See D45–D48.
   `progress` events (chew files, per-document extraction states, finalize stages), which the
   server turns into `job.progress` events, then the operation's result. A finished job, output
   included, is saved to `~/.watchdog/jobs/<id>.json` (0600, the newest 50) and read back on the
-  next start (D359). An operation never asks a
+  next start (D360). An operation never asks a
   question: the app asks before it starts and passes the answer as a parameter. Stop is SIGINT to the worker. The few in-process writes go
   through library functions (`resolutions`, `settings.coerce` and `config.save`, auth state, a note's
   `## Notes` body), plus the app-only version history (D286).

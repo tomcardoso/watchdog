@@ -3,11 +3,11 @@
 Everything here is derived from the registry and the app's own files, with no model call (I1).
 
 * **Start here** (`rank`, `start_here`): a short ranked slice of the items that need the reporter's
-  judgement (contradictions, leads, watch-list alerts), each with one line on why it is there.
+  judgement (contradictions, leads, watchlist alerts), each with one line on why it is there.
   `rank` is a pure function of the items and a few registry-derived inputs; `start_here` gathers
   those inputs from a vault. Signals, highest first:
 
-    1. the item is tied to a watch-list term (an alert always is; another item when its entity's
+    1. the item is tied to a watchlist term (an alert always is; another item when its entity's
        name or an alias matches a term); a term's alerts are one item (D328);
     2. it involves one of the most connected entities (degree in the relationship graph) or one
        that is the main subject (`morgue_entity_id`) of several documents;
@@ -82,7 +82,7 @@ def _display(eid: str, names: dict[str, list[str]]) -> str:
 
 
 def group_alerts(items: list[dict], hidden: frozenset[str] | set[str] = frozenset()) -> list[dict]:
-    """Pure: `items` with the alerts folded into one item per watch-list term (D328), in the
+    """Pure: `items` with the alerts folded into one item per watchlist term (D328), in the
     place of the term's first alert. Each group is an alert item with `term`, `rids` (every hit,
     one per document), `documents` (their names, sorted), `doc_count`, `related` (the known
     entities the hits matched) and the title "<term>: N new documents"; its `rid` is its first
@@ -124,7 +124,7 @@ def _signals(item: dict, *, terms, names, degree, central, subjects_set, subject
     subject = next((e for e in ids if e in subjects_set), None) if hub is None else None
     reasons: list[str] = []
     if term:   # an alert's title already names its term
-        reasons.append("On your watch list" if kind == "alerts" else f"On your watch list: “{term}”")
+        reasons.append("On your watchlist" if kind == "alerts" else f"On your watchlist: “{term}”")
     if hub:
         reasons.append(f"Involves {_display(hub, names)}, one of the most connected entities")
     elif subject:
@@ -153,7 +153,7 @@ def rank(items: list[dict], *, terms: list[dict] = (), names: dict[str, list[str
 
     Each item may carry `entity` (its own entity's id), `related` (other entity ids it involves),
     `doc_count` (documents it is named or cited in) and, for an alert, `term`. `terms` are the
-    watch list's `{"term", "regex"}` matchers, `names` maps an entity id to its name and aliases,
+    watchlist's `{"term", "regex"}` matchers, `names` maps an entity id to its name and aliases,
     `degree` to its number of neighbours in the relationship graph, and `subjects` to the number of
     documents it is the main subject of.
 
@@ -161,7 +161,7 @@ def rank(items: list[dict], *, terms: list[dict] = (), names: dict[str, list[str
     their entities and their document count; remaining ties go by kind, title and id, so the
     same registry always gives the same slice whatever order the items came in. An item whose own
     entity is removed (`hidden`) is left out, and a removed entity is never a reason. The alerts
-    are first folded into one item per watch-list term (`group_alerts`), so a term takes one place
+    are first folded into one item per watchlist term (`group_alerts`), so a term takes one place
     however many documents it was found in, and no kind takes more than half the slice while items
     of another kind are waiting. Each result is `{rid, rids, kind, title, note, reason}`, and an
     alert also `term` and `documents`."""
@@ -256,7 +256,7 @@ def start_here(vault: Path, items: list[dict] | None = None, limit: int = SLICE)
 
 def groups(counts: dict) -> dict:
     """Pure: the Overview's two totals from its counts (the `overview.summary` keys plus
-    `disputed`). Judgement: contradictions, leads, watch-list alerts, disputed facts. Tidy-up:
+    `disputed`). Judgement: contradictions, leads, watchlist alerts, disputed facts. Tidy-up:
     possible duplicate documents, possible same entities and open document requests (D328)."""
     n = lambda k: int(counts.get(k) or 0)   # noqa: E731
     return {"judgement": n("contradictions") + n("leads") + n("alerts") + n("disputed"),
@@ -306,7 +306,7 @@ def _review_record(vault: Path, briefing: Path) -> dict | None:
 
 
 def record_batch(vault: Path, briefing: str) -> dict | None:
-    """After a run's briefing and its watch-list and lead passes: record the open Review items in
+    """After a run's briefing and its watchlist and lead passes: record the open Review items in
     the briefing's sidecar, and which of them the previous briefing's record did not hold.
 
     The first briefing of an investigation counts everything as added. One whose previous

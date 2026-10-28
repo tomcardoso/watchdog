@@ -1,5 +1,5 @@
-// Review: the five queues (contradictions, leads, watch-list
-// hits, possible duplicates, possible same entities), what has been handled, the watch list
+// Review: the five queues (contradictions, leads, watchlist
+// hits, possible duplicates, possible same entities), what has been handled, the watchlist
 // itself, open document requests and the merge log. Built for triage by keyboard: J/K to move,
 // H to mark handled, O to open, U to undo. The tidy-up queues (possible duplicates, possible same
 // entities, requests) are tables worked in bulk, in TidyTab.tsx (D328).
@@ -64,8 +64,8 @@ const KIND_META: Record<QueueKind, { label: string; icon: typeof Swords; blurb: 
   alerts: {
     label: 'Alerts',
     icon: Bell,
-    blurb: 'Alerts: documents where a term from your watch list appeared. Each hit names the document, the page and the surrounding words.',
-    empty: 'No open alerts. Add terms under Watch list, at the top right; every batch of new documents is scanned for them.'
+    blurb: 'Alerts: documents where a term from your watchlist appeared. Each hit names the document, the page and the surrounding words.',
+    empty: 'No open alerts. Add terms under Watchlist, at the top right; every batch of new documents is scanned for them.'
   },
   duplicates: {
     label: 'Possible duplicates',
@@ -237,7 +237,7 @@ export default function ReviewView() {
     chosen.current = true
     setTab(it.kind)
     setFocusReq((f) => ({ rid: it.rid, n: (f?.n ?? 0) + 1 }))
-    // A watch-list term's item opens Alerts showing that term's hits (D328).
+    // A watchlist term's item opens Alerts showing that term's hits (D328).
     navigate(it.kind === 'alerts' && it.term ? { view: 'review', kind: 'alerts', filter: it.term } : { view: 'review', kind: it.kind }, { replace: true })
   }
   const queueTab = tab !== 'verification' && tab !== 'handled'
@@ -292,7 +292,7 @@ export default function ReviewView() {
             {tab === 'alerts' && (
               <div className="rv-watch-filter">
                 <span>
-                  {termFilter ? <>Showing hits for <code>{termFilter}</code></> : 'Matches for the terms on your watch list.'}
+                  {termFilter ? <>Showing hits for <code>{termFilter}</code></> : 'Matches for the terms on your watchlist.'}
                 </span>
                 <span className="spacer" />
                 {termFilter && (
@@ -301,7 +301,7 @@ export default function ReviewView() {
                   </Button>
                 )}
                 <Button size="sm" variant="ghost" icon={ScanSearch} onClick={() => navigate({ view: 'watchlist' })}>
-                  Edit watch list
+                  Edit watchlist
                 </Button>
               </div>
             )}
@@ -368,7 +368,7 @@ function StartHerePanel({ items, onPick }: { items: StartHereItem[]; onPick: (it
       <button type="button" className="rv-start-head" aria-expanded={open} onClick={toggle}>
         {open ? <ChevronDown /> : <ChevronRight />}
         <span className="grow">Start here</span>
-        <span className="faint">{open ? 'Ranked from the watch list, the most connected entities and how many documents are involved' : plural(items.length, 'item')}</span>
+        <span className="faint">{open ? 'Ranked from the watchlist, the most connected entities and how many documents are involved' : plural(items.length, 'item')}</span>
       </button>
       {open && <StartHereList items={items} onPick={onPick} compact />}
     </section>
@@ -833,7 +833,7 @@ function HandledTab({ vault }: { vault: string }) {
   )
 }
 
-// ── watch list ───────────────────────────────────────────────────────────────────────────────
+// ── watchlist ───────────────────────────────────────────────────────────────────────────────
 /** A friendly label for the note an item links to, instead of its vault path. */
 function noteLabel(path: string): string {
   if (path.startsWith('entities/')) return 'Open entity page'

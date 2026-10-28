@@ -1,4 +1,4 @@
-Each numbered item below is a relationship a document states, whose target the extraction named by an id that no entity in the investigation has. The item shows the id, the entity that names it and how, the entities of the same document, and a few entities from elsewhere in the investigation whose names are like it. For each item, say which listed entity the id means, or that none of them is it.
+Each numbered item below is a relationship a document states, whose target the extraction named by an id that no entity in the investigation has. Items are grouped by document: a document's entities are listed once, above its items, and each item shows the id, the entity that names it and how, and a few entities from elsewhere in the investigation whose names are like it. For each item, say which listed entity the id means, or that none of them is it.
 
 Return `answers`: one `{"item": <number>, "match": "...", "kind": "..."}` per item.
 

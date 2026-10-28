@@ -258,7 +258,7 @@ def test_new_creates_readme(configured):
 def test_new_creates_watchlist(configured):
     _new("City Hall Probe", configured)
     watchlist = (configured / "city-hall-probe" / "watchlist.md").read_text()
-    assert "Watch list" in watchlist
+    assert "Watchlist" in watchlist
     assert "case-insensitive" in watchlist
     # comments/blank-only template parses to zero active terms
     from watchdog.pipeline import watchlist as wl

@@ -4,7 +4,7 @@ Five kinds:
 
   * contradictions — conflicting claims recorded on entity notes
   * leads          — entities named but never profiled, isolated, or with inferred relationships
-  * alerts         — unresolved watch-list hits in `briefings/alerts-*.md`
+  * alerts         — unresolved watchlist hits in `briefings/alerts-*.md`
   * duplicates     — documents pre-processing's MinHash matched to an earlier one
   * merges         — two entity records that may be the same, left unmerged (D279)
 
@@ -116,7 +116,7 @@ def _lead_items(found: dict, docs: dict) -> list[dict]:
 
 
 def _alerts(vault: Path, resolved: frozenset[str]) -> list[dict]:
-    """Watch-list hits from every `alerts-*.md`, newest file first, one item per id."""
+    """Watchlist hits from every `alerts-*.md`, newest file first, one item per id."""
     d = vault / "briefings"
     files = sorted(d.glob("alerts-*.md"), key=lambda p: p.name, reverse=True) if d.is_dir() else []
     seen: dict[str, dict] = {}

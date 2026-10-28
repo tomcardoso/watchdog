@@ -210,3 +210,19 @@ def test_the_pass_counts_towards_the_finalize_estimate(tmp_path):
     # An estimate writes nothing.
     assert _roles(vault, "sha-b", "tamsin-reed")[0]["target_id"] == "Larkspur Dredging Ltd"
     assert "role-targets" in orchestrate.FINALIZE_TASKS
+
+
+def test_a_document_s_entities_are_listed_once_for_all_its_targets(tmp_path):
+    vault = _base(tmp_path)
+    batch = role_targets.Batch(vault, ["sha-b"])
+    role_targets.resolve_exact(batch)
+    items = role_targets.pending_items(batch)
+    assert len(items) >= 2
+    prompt = role_targets.build_prompt(items)
+    assert prompt.count("Document — its entities:") == 1
+    assert prompt.count("tamsin-reed —") == 1
+    doc = [e["id"] for e in items[0]["document"]]
+    for it in items:
+        assert [e["id"] for e in it["document"]] == doc
+        assert not set(doc) & {e["id"] for e in it["candidates"]}
+        assert it["offered"][:len(doc)] == doc

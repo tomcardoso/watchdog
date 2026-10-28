@@ -222,7 +222,7 @@ def count_failed(vault: Path) -> int:
 
 
 WATCHLIST_TEMPLATE = """\
-# Watch list
+# Watchlist
 #
 # One term per line. When a newly-ingested document mentions a term listed here,
 # Watchdog writes an alert to briefings/alerts-<date>.md and lists it in Review.

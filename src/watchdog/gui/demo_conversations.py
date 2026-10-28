@@ -367,7 +367,7 @@ def _watch_tool_id(s: Script) -> str:
 
 def _watch(t: Turn) -> None:
     s = t.script
-    s.say(f"I'll add **{WATCH_TERM}** to the watch list, so Watchdog flags the name in documents you add "
+    s.say(f"I'll add **{WATCH_TERM}** to the watchlist, so Watchdog flags the name in documents you add "
           "later.", after_ms=500)
     s.tool_call("mcp__watchdog__watchlist_add", _WATCH_INPUT, mid=_watch_tool_id(s))
 
@@ -380,8 +380,8 @@ def _watch_after(t: Turn, allow: bool) -> None:
                     "is_error": False}}
     if not allow:
         s.tool_result(msg, "The user declined this action.", is_error=True, after_ms=200)
-        s.say("I haven't changed the watch list. You can add the name yourself at any time under "
-              "**Review → Watch list**.")
+        s.say("I haven't changed the watchlist. You can add the name yourself at any time under "
+              "**Review → Watchlist**.")
         s.idle()
         return
     from watchdog.session_tools import SessionTools, ToolError
@@ -389,18 +389,18 @@ def _watch_after(t: Turn, allow: bool) -> None:
         result = SessionTools(t.vault).watchlist_add(list(_WATCH_INPUT["terms"]))
     except ToolError as e:
         s.tool_result(msg, str(e), is_error=True, after_ms=300)
-        s.say(f"I couldn't change the watch list: {e}")
+        s.say(f"I couldn't change the watchlist: {e}")
         s.idle()
         return
     s.tool_result(msg, result, after_ms=300)
     added = json.loads(result).get("added") or []
     if added:
-        s.say(f"Done: **{WATCH_TERM}** is on the watch list. Watchdog will flag it whenever it appears in a "
-              "document you add from now on, and the hits wait under **Review → Watch list**. The name "
+        s.say(f"Done: **{WATCH_TERM}** is on the watchlist. Watchdog will flag it whenever it appears in a "
+              "document you add from now on, and the hits wait under **Review → Watchlist**. The name "
               "is already in documents here; **Check every document now**, on that tab, finds those too.\n\n"
-              "The change is recorded in the watch list's history, so you can see what was there before.")
+              "The change is recorded in the watchlist's history, so you can see what was there before.")
     else:
-        s.say(f"**{WATCH_TERM}** is already on the watch list, so nothing changed. Watchdog flags it "
+        s.say(f"**{WATCH_TERM}** is already on the watchlist, so nothing changed. Watchdog flags it "
               "whenever it appears in a document you add.")
     s.idle()
 
@@ -412,7 +412,7 @@ CONVERSATIONS: list[Conversation] = [
                  "Brings together a payment, a subcontract and what is missing.", _tideway),
     Conversation("dockside", "Draft a timeline of the 14 Dockside Road purchase.",
                  "A dated timeline with a citation for each line, and what to check.", _dockside),
-    Conversation("watch", f"Add {WATCH_TERM} to my watch list.",
+    Conversation("watch", f"Add {WATCH_TERM} to my watchlist.",
                  "Shows how Claude asks before it changes the investigation.", _watch,
                  asks=("mcp__watchdog__watchlist_add", _WATCH_INPUT), after=_watch_after),
 ]
