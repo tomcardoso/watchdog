@@ -1,15 +1,13 @@
 name: Website
 
 # Builds the website (site/, from the landing page and docs/) and publishes it to GitHub Pages:
-# https://tomcardoso.github.io/watchdog/. It runs when docs/ or site/ change on main, when a
-# release is published (so the download buttons name the new files; App release starts it by hand
-# after a stable release, since a release its own token publishes triggers nothing), and by hand. On a pull
-# request it only builds, so a broken page fails the check before it merges.
+# https://tomcardoso.github.io/watchdog/. It publishes only for a stable release, so the docs
+# online describe the app people can download, not unreleased work on main (D362): App release
+# starts it by hand after a stable release (a release its own token publishes triggers nothing),
+# a stable release published by a person starts it, and it can be run by hand from main. On a
+# pull request it only builds, so a broken page fails the check before it merges.
 
 on:
-  push:
-    branches: [main]
-    paths: ['docs/**', 'site/**', 'pyproject.toml', '.github/workflows/pages.yml']
   pull_request:
     # Not for a pull request that changes only the app screenshots: App release's screenshots job
     # merges one at once, and a run waiting for approval on it expires as a failure (D350).
@@ -27,6 +25,8 @@ concurrency:
 
 jobs:
   build:
+    # A pre-release (the rolling beta) is not what the site's download buttons offer.
+    if: github.event_name != 'release' || !github.event.release.prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
