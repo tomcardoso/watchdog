@@ -1,4 +1,4 @@
-"""`review.*` — what is waiting on the journalist: contradictions, leads, watch-list hits and
+"""`review.*` — what is waiting on the journalist: contradictions, leads, watchlist hits and
 possible duplicates, plus marking them handled.
 
 The items come from `review.open_items` and the lead sweep from `pipeline/leads.scan`, so the
@@ -131,7 +131,7 @@ def _watch_recording(v, what: str):
 
 @method("review.watchlist")
 def watchlist(vault: str) -> dict:
-    """The watch list's terms, each with how many hits are still open for it (the watch-list-hit
+    """The watchlist's terms, each with how many hits are still open for it (the watchlist-hit
     items in Review) and whether it is a `/regex/`."""
     from watchdog.review import open_items
     from watchdog.pipeline import watchlist as _watchlist

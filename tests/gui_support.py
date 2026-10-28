@@ -247,7 +247,7 @@ def make_rich_vault(tmp_path: Path) -> Path:
            json.dumps({"version": 1, "briefing": "briefings/2026-03-03-08-00.md",
                        "status": "Three reports in; one date conflict.", "fact_refs": {}}))
     _write(vault / "hot.md", "# Hot cache\n\n## Investigation status\n\nA stale hot.md line.\n")
-    _write(vault / "watchlist.md", "# Watch list\n#\nGhost Ltd\n/Roe,?\\s+Bob/\n")
+    _write(vault / "watchlist.md", "# Watchlist\n#\nGhost Ltd\n/Roe,?\\s+Bob/\n")
     _write(vault / "context.md", "# Context\n\nAbout Acme.\n")
     _write(vault / "log.md", "# Log\n")
 

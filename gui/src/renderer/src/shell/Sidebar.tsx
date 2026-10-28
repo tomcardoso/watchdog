@@ -39,7 +39,7 @@ const INVESTIGATION: NavDef[] = [
 ]
 const WORK: NavDef[] = [
   { view: 'context', label: 'Context', icon: Target },
-  { view: 'watchlist', label: 'Watch list', icon: ScanSearch },
+  { view: 'watchlist', label: 'Watchlist', icon: ScanSearch },
   { view: 'review', label: 'Review', icon: ListChecks },
   { view: 'search', label: 'Search', icon: Search },
   { view: 'ask', label: 'Ask Claude', icon: MessageSquareText },

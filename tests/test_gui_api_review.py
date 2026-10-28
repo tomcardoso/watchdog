@@ -118,7 +118,7 @@ def test_watchlist_add_and_remove_keep_comments_and_record_history(rich_vault):
     before = path.read_text()
     assert call("review.watchlistAdd", vault=V(rich_vault), term="  Harbour Point  ") == {"added": "Harbour Point"}
     assert path.read_text() == before.rstrip("\n") + "\nHarbour Point\n"
-    assert path.read_text().startswith("# Watch list")
+    assert path.read_text().startswith("# Watchlist")
     for bad in ("", "   ", "harbour point", "ghost ltd", "# note", "/(/", "two\nlines"):
         assert call_error("review.watchlistAdd", vault=V(rich_vault), term=bad)["code"] == "bad_params"
     assert call("review.watchlistRemove", vault=V(rich_vault), term="HARBOUR POINT") == {"removed": "HARBOUR POINT"}

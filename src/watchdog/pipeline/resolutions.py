@@ -1,6 +1,6 @@
 """Resolution / acknowledgment store (#266).
 
-The vault had no memory of what the journalist had already dealt with: the watch list
+The vault had no memory of what the journalist had already dealt with: the watchlist
 re-reported every historical hit, the lead sweep re-listed the same items on every ingest, and
 contradiction callouts piled up append-only with no way to mark one handled short of editing the
 note by hand. This is the one deterministic mechanism serving all three — a small acknowledgment

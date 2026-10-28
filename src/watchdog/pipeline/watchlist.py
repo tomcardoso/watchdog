@@ -63,7 +63,7 @@ def add_terms(vault: Path, terms: list[str]) -> list[str]:
     """
     from watchdog.pipeline.inline_text import require_single_line
     for term in terms:
-        require_single_line(term, "A watch-list term")   # one term per line, nothing more (D304)
+        require_single_line(term, "A watchlist term")   # one term per line, nothing more (D304)
     existing_lower = {t["term"].lower() for t in load_terms(vault)}
     to_add: list[str] = []
     for term in terms:

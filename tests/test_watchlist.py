@@ -313,7 +313,7 @@ def test_watchlist_check_no_watchlist(tmp_path):
              "pages": [(1, "Some text.")]}]
     vault = _build_multi_doc_vault(tmp_path, watchlist_text=None, docs=docs)
     _result, out = _check(vault)
-    assert "watch list is empty" in out
+    assert "watchlist is empty" in out
     assert not (vault / "briefings").exists()
 
 

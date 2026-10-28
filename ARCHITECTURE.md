@@ -479,15 +479,15 @@ registry, keyed for idempotent replay (D67).
   `.watchdog/briefings/<ts>.json` (the ref map, citation counts and the status line the Overview
   shows as its headline). The run's `skip_briefing` option skips the call and those files (D134).
   The session primer (§12) carries the rest of what a session needs.
-- **Leads, watch-list alerts and document requests.** Model-free sweeps write dated briefing files;
+- **Leads, watchlist alerts and document requests.** Model-free sweeps write dated briefing files;
   `resolutions.json` holds acknowledgments so handled items don't resurface (D68).
   The app's Review (`watchdog/review.py`) lists the open ones, plus near-duplicate documents
   (`documents.json` `near_duplicate_of`, stamped at extraction from chew's MinHash match), and
   writes to the same store (D252). `watchdog/triage.py` (D327) ranks the judgement items
   (contradictions, leads, alerts) into the Overview's and Review's **Start here** slice, a pure
-  function of the items and registry-derived inputs (watch-list terms, relationship-graph degree,
+  function of the items and registry-derived inputs (watchlist terms, relationship-graph degree,
   `morgue_entity_id` subjects, documents cited; removed entities left out), and splits the counts
-  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watch-list
+  into judgement and tidy-up (duplicates, possible same, document requests; D328). A watchlist
   term's alerts are one Start here item. The tidy-up queues are tables worked in bulk (D328): ticked
   possible same entities are merged by `merge-entity-pairs`, one `merge-entities` merge per pair; a
   possible duplicate is resolved with the label `copies` or `different`, and `different` hides the

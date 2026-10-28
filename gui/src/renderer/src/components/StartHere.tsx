@@ -1,6 +1,6 @@
 // Start here (D327): the short ranked slice of Review items to look at first, each with the one
 // line on why it is there. The ranking is done by the engine (`triage.rank`); this only shows it.
-// A watch-list term is one item, with the documents it was found in (D328).
+// A watchlist term is one item, with the documents it was found in (D328).
 
 import { ArrowRight, Bell, Lightbulb, Swords } from 'lucide-react'
 import type { ReviewKind, StartHereItem } from '@shared/api'
@@ -13,7 +13,7 @@ const KIND_LABEL: Partial<Record<ReviewKind, string>> = { contradictions: 'Contr
 const WORDS: Record<ReviewKind, [string, string]> = {
   contradictions: ['contradiction', 'contradictions'],
   leads: ['lead', 'leads'],
-  alerts: ['watch-list alert', 'watch-list alerts'],
+  alerts: ['watchlist alert', 'watchlist alerts'],
   duplicates: ['possible duplicate document', 'possible duplicate documents'],
   merges: ['possible same entity', 'possible same entities']
 }
@@ -34,7 +34,7 @@ export function describeAdded(added: Partial<Record<ReviewKind, number>>): strin
   return joinList(judgement) + (tidyText ? `, plus ${tidyText}` : '')
 }
 
-/** A watch-list term's documents, by name: the first few, then how many more. */
+/** A watchlist term's documents, by name: the first few, then how many more. */
 function listDocs(names: string[], shown = 4): string {
   if (names.length <= shown) return joinList(names)
   return `${names.slice(0, shown).join(', ')} and ${names.length - shown} more`

@@ -155,15 +155,15 @@ def test_the_write_stops_at_the_real_permission_card_then_applies_through_the_to
     assert "Tideway Marine Services" in (vault / "watchlist.md").read_text(encoding="utf-8")
     result = json.loads(_messages(r["all"], "tool")[-1]["tool"]["result"])
     assert result == {"added": ["Tideway Marine Services"], "skipped": 0}
-    assert "is on the watch list" in _answer(r["all"])
+    assert "is on the watchlist" in _answer(r["all"])
     # The second part's messages never replace the first part's (the ids differ).
     ids = [m["id"] for m in _messages(r["all"], "user") + _messages(r["all"], "assistant")]
     assert len(ids) == len(set(ids)) == 3
-    # The change is a version of the watch list's history, as a session's would be.
+    # The change is a version of the watchlist's history, as a session's would be.
     hist = call("history.file", vault=str(vault), path="watchlist.md")
     assert any((v.get("cause") or {}).get("tool") == "watchlist_add" for v in hist["versions"])
     # Asked again, nothing changes.
-    assert "already on the watch list" in _answer(played["again"])
+    assert "already on the watchlist" in _answer(played["again"])
 
 
 def test_declining_changes_nothing(played, monkeypatch):
@@ -173,7 +173,7 @@ def test_declining_changes_nothing(played, monkeypatch):
                   request_id="sample-watch-ask", allow=False)["events"]
     tool = _messages(events, "tool")[-1]["tool"]
     assert tool["is_error"] and "declined" in tool["result"]
-    assert "haven't changed the watch list" in _answer(events)
+    assert "haven't changed the watchlist" in _answer(events)
     assert (vault / "watchlist.md").read_text(encoding="utf-8") == before
 
 

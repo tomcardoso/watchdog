@@ -93,7 +93,7 @@ You can keep several named keys for one provider, to bill different accounts: a 
 
 ## Controlling cost
 
-Everything mechanical runs on your computer and costs nothing: OCR, conversion, search, the lead sweep and the watch-list scan. The model is called only for classifying, extracting and the finishing steps, and each document loads only the one record skill that matches it.
+Everything mechanical runs on your computer and costs nothing: OCR, conversion, search, the lead sweep and the watchlist scan. The model is called only for classifying, extracting and the finishing steps, and each document loads only the one record skill that matches it.
 
 **Get a number first.** **Estimate cost** in the Add documents dialog quotes a batch before anything is sent, and **Compare all models** quotes it across every model. On a metered key with earlier runs in the investigation, it gives a dollar range from your own history; on a subscription, a token count.
 

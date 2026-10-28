@@ -26,7 +26,7 @@ const PINNED: { path: string; label: string; sub: string; icon: LucideIcon }[] =
   { path: 'log.md', label: 'Processing history', sub: 'What each run added', icon: History }
 ]
 
-// Lead sweeps and watch-list alerts are also written to briefings/, but they are worked through in
+// Lead sweeps and watchlist alerts are also written to briefings/, but they are worked through in
 // Review (Leads, Alerts), which their files say themselves, so they are not listed here.
 const KINDS: { kind: BriefingRow['kind']; label: string; icon: LucideIcon }[] = [
   { kind: 'briefing', label: 'Briefings', icon: FileText },
@@ -34,7 +34,7 @@ const KINDS: { kind: BriefingRow['kind']; label: string; icon: LucideIcon }[] = 
 ]
 
 // Still opened from a link (Activity → Maintenance), so the reader names them.
-const UNLISTED: Partial<Record<BriefingRow['kind'], string>> = { leads: 'Lead sweep', alerts: 'Watch-list alerts' }
+const UNLISTED: Partial<Record<BriefingRow['kind'], string>> = { leads: 'Lead sweep', alerts: 'Watchlist alerts' }
 
 const noteKind = (kind: string) => (kind === 'wiki' ? 'Thread page' : 'Saved answer')
 

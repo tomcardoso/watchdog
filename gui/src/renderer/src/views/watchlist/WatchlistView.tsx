@@ -1,4 +1,4 @@
-// Watch list: the terms every new batch of documents is scanned for (D343). Its own screen under
+// Watchlist: the terms every new batch of documents is scanned for (D343). Its own screen under
 // Work: a standing instruction, not part of the brief (Context) or a finding (Review). The
 // matches stay in Review's Alerts tab, where they are handled like every other item; each term
 // here links to its open ones.
@@ -53,7 +53,7 @@ function WatchlistPanel({ vault }: { vault: string }) {
   const sweep = async () => {
     setRunning(true)
     try {
-      await startJob('watchlist-check', {}, 'Check every document against the watch list')
+      await startJob('watchlist-check', {}, 'Check every document against the watchlist')
       toast({ kind: 'info', title: 'Checking every document', body: 'Matches appear under Alerts when it finishes. Follow progress in Activity.' })
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the check', body: errorMessage(e) })
@@ -96,7 +96,7 @@ function WatchlistPanel({ vault }: { vault: string }) {
           An empty list scans for nothing. Add a name or company above.
         </Empty>
       ) : (
-        <ul className="rv-watch-list" aria-label="Watch list terms">
+        <ul className="rv-watch-list" aria-label="Watchlist terms">
           {terms.map((t) => (
             <li key={t.term} className="rv-watch-row">
               <span className="rv-watch-term truncate">{t.term}</span>
@@ -136,7 +136,7 @@ export default function WatchlistView() {
       <div className="page-inner rv">
         <div className="page-header" style={{ marginBottom: 14 }}>
           <div>
-            <h1 className="page-title">Watch list</h1>
+            <h1 className="page-title">Watchlist</h1>
             <div className="page-sub">Names and terms every new batch of documents is checked for. Matches appear in Review, under Alerts.</div>
           </div>
         </div>

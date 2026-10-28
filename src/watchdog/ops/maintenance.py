@@ -1,5 +1,5 @@
 """Maintenance operations (D298): the timeline and the notes rebuilt from stored data, the lead
-sweep, the watch-list check, and an investigation's Claude setup refreshed. None calls a model.
+sweep, the watchlist check, and an investigation's Claude setup refreshed. None calls a model.
 
 The search index (`ops.reindex`), the graph export (`ops.export`), the copy for troubleshooting
 (`ops.troubleshoot`) and the entity operations (`ops.merge`, `ops.entities`) live in their own
@@ -64,7 +64,7 @@ def lead_sweep(rep, vault: Path) -> dict:
 
 @op("watchlist-check")
 def watchlist_check(rep, vault: Path) -> dict:
-    """Check every document in the investigation against the watch list, not only the newest."""
+    """Check every document in the investigation against the watchlist, not only the newest."""
     from watchdog.pipeline import watchlist
     from watchdog.pipeline.json_io import _read_json_or
     require_vault(vault)
@@ -73,7 +73,7 @@ def watchlist_check(rep, vault: Path) -> dict:
         rep.log("No documents have been added yet, so there is nothing to check.")
         return {"documents": 0, "hits": 0}
     if not watchlist.load_terms(vault):
-        rep.log("The watch list is empty, so there is nothing to look for.")
+        rep.log("The watchlist is empty, so there is nothing to look for.")
         return {"documents": len(documents), "hits": 0}
     hits = watchlist.scan(vault, [{"sha256": sha, "status": "ok"} for sha in documents])
     alert = watchlist.write_alerts(vault, hits)
@@ -82,7 +82,7 @@ def watchlist_check(rep, vault: Path) -> dict:
         return {"documents": len(documents), "hits": 0}
     relpath, n_terms, n_docs = alert
     rep.log(f"{_plural(len(hits), 'match', 'matches')} ({_plural(n_terms, 'term')}, "
-            f"{_plural(n_docs, 'document')}), listed in Review → Watch-list hits.")
+            f"{_plural(n_docs, 'document')}), listed in Review → Watchlist hits.")
     return {"documents": len(documents), "hits": len(hits), "file": relpath}
 
 
