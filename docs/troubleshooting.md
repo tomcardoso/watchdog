@@ -82,7 +82,7 @@ Watchdog could not convert the file to text, so it set it aside and carried on w
 - **Corrupted file** — try re-downloading or re-exporting it.
 - **Unsupported format** — check the [supported file types](using-watchdog.md#supported-file-types).
 
-If you fixed the file yourself (removed the password, or downloaded or exported it again), choose **Remove** under **Couldn't be read**, then add the fixed copy with **Add documents**. **Remove** deletes only Watchdog's copy; a file you chose with Add documents is still wherever you keep it. If the cause has passed without any change to the file, such as a download that failed, choose **Try again**: the files go back with those waiting to be added, and the Add documents dialog opens to read them.
+If you fixed the file yourself (removed the password, or downloaded or exported it again), choose **Remove** under **Couldn't be read**, then add the fixed copy with **Add documents**. **Remove** moves Watchdog's copy to your computer's trash, from where you can put it back until the trash is emptied; a file you chose with Add documents is still wherever you keep it. If the cause has passed without any change to the file, such as a download that failed, choose **Try again**: the files go back with those waiting to be added, and the Add documents dialog opens to read them.
 
 ## A recording failed or came out wrong
 

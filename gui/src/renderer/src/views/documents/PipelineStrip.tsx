@@ -5,7 +5,7 @@
 
 import { AlertTriangle, ChevronRight, Copy, FileWarning, Hourglass, Inbox, Laptop, Loader, RotateCw, Trash2, TriangleAlert, Workflow } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Badge, Button, Callout, Modal } from '@renderer/components/ui'
+import { Badge, Button, Modal } from '@renderer/components/ui'
 import { fmtBytes, plural } from '@renderer/lib/format'
 import { runAction } from '@renderer/lib/jobs'
 import { runLockState } from '@renderer/lib/runlock'
@@ -33,6 +33,7 @@ function FileList({ rows }: { rows: { key: string; name: string; why?: string | 
 
 export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
   const openAdd = useApp((s) => s.openAdd)
+  const vault = useApp((s) => s.project?.path ?? null)
   const engine = useEngineGate()
   const [open, setOpen] = useState<boolean | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -90,8 +91,9 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
   const removeUnreadable = async () => {
     setBusy('unreadable-remove')
     try {
-      const { removed } = await runAction<{ removed: number }>('unreadable-remove', {})
-      toast({ kind: 'success', title: `Removed ${plural(removed, 'file')}` })
+      if (!vault) return
+      const removed = await window.watchdog.files.trashUnreadable(vault)
+      toast({ kind: 'success', title: `Moved ${plural(removed, 'file')} to the trash` })
       invalidate('vault.', 'projects.', 'ingest.')
       setConfirmRemove(false)
     } catch (e) {
@@ -196,17 +198,17 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
               <Modal
                 open={confirmRemove}
                 onClose={() => setConfirmRemove(false)}
-                title={`Remove ${plural(p.chew_failed.length, 'unreadable file')}?`}
+                title={`Move ${plural(p.chew_failed.length, 'unreadable file')} to the trash?`}
                 footer={
                   <>
                     <Button variant="ghost" onClick={() => setConfirmRemove(false)}>Cancel</Button>
-                    <Button variant="danger" icon={Trash2} loading={busy === 'unreadable-remove'} onClick={removeUnreadable}>Remove</Button>
+                    <Button variant="danger" icon={Trash2} loading={busy === 'unreadable-remove'} onClick={removeUnreadable}>Move to trash</Button>
                   </>
                 }
               >
-                <Callout tone="danger" title="This cannot be undone">
-                  This deletes Watchdog’s copies of these files. A file you chose with Add documents is still wherever you keep it. A web page from Fetch Links, or a file you moved into the investigation yourself, may have no other copy.
-                </Callout>
+                <p style={{ margin: 0 }}>
+                  Watchdog’s copies of these files go to your computer’s trash, from where you can put them back until it is emptied. A file you chose with Add documents is still wherever you keep it.
+                </p>
               </Modal>
             </div>
           )}

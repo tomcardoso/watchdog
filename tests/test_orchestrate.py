@@ -3980,25 +3980,11 @@ def test_unreadable_retry_puts_files_back_to_wait(tmp_path):
     assert not any(failed.iterdir())
 
 
-def test_unreadable_remove_deletes_the_copies_only(tmp_path):
+def test_unreadable_retry_with_nothing_set_aside(tmp_path):
     from watchdog.ops import CollectingReporter
-    from watchdog.ops.ingest import unreadable_remove
-    vault = make_vault(tmp_path)
-    failed = _unreadable(vault, "a.pdf")
-    (failed / "a.pdf.yml").write_text("source: x")
-    (vault / "incoming" / "waiting.pdf").write_text("w")
-
-    assert unreadable_remove(CollectingReporter(), vault) == {"removed": 1}
-    assert not any(failed.iterdir())
-    assert (vault / "incoming" / "waiting.pdf").exists()
-
-
-def test_unreadable_ops_with_nothing_set_aside(tmp_path):
-    from watchdog.ops import CollectingReporter
-    from watchdog.ops.ingest import unreadable_remove, unreadable_retry
+    from watchdog.ops.ingest import unreadable_retry
     vault = make_vault(tmp_path)
     assert unreadable_retry(CollectingReporter(), vault) == {"retried": 0}
-    assert unreadable_remove(CollectingReporter(), vault) == {"removed": 0}
 
 
 def test_orchestrator_sectioned_path(tmp_path, monkeypatch):

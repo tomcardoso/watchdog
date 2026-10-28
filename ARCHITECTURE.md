@@ -229,7 +229,8 @@ GLiNER model, into a per-page checklist the prompt includes.
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
 The `requeue` operation (Requeue failed documents) puts failed documents back. A file pre-processing
 could not read sits in `incoming/failed/`; `unreadable-retry` moves it back into `incoming/` and
-`unreadable-remove` deletes it, both from the Documents screen (D360).
+the app's main process moves it to the system trash (`gui/src/main/unreadable.ts`), both from the
+Documents screen (D360).
 
 ---
 

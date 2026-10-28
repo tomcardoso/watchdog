@@ -232,7 +232,7 @@ def test_action_run_runs_a_real_operation(tmp_path, monkeypatch):
 def test_jobs_ops_lists_every_operation_with_typed_parameters():
     schema = api.list_ops()
     assert {"add", "chew", "dig", "bark", "reindex", "merge-entities", "undo-merge", "requeue",
-            "unreadable-retry", "unreadable-remove", "recheck-contradictions", "export", "projects-rename"} <= set(schema)
+            "unreadable-retry", "recheck-contradictions", "export", "projects-rename"} <= set(schema)
     assert schema["add"]["params"]["paths"]["type"] == "list[str]"
     assert schema["merge-entities"]["params"]["keep"]["required"] is True
     assert schema["add"]["engine"] == "add" and schema["reindex"]["engine"] == "index"

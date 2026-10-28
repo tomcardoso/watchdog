@@ -330,7 +330,6 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `bark` | yes | finalizer options, `{skip_briefing?}` | post-processing summary | add |
 | `requeue` | yes | — | `{requeued}` | add |
 | `unreadable-retry` | yes | — | `{retried}` — files in `incoming/failed/` (and sidecars) back into `incoming/`, a taken name suffixed (D360) | add |
-| `unreadable-remove` | yes | — | `{removed}` — deletes the files in `incoming/failed/` and their sidecars (D360) | |
 | `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
 | `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
 | `merge-entity-pairs` | yes | `{keep: string[], merge: string[]}` | `{merged, failed, skipped}`, each `[{keep, merge, keep_name, merge_name, error?}]`; exit 1 when any failed. One `merge-entities` merge per pair, in order; a failure does not stop the rest (D328) | index |

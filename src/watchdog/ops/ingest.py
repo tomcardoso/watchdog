@@ -1365,16 +1365,3 @@ def unreadable_retry(rep, vault: Path) -> dict:
             else "No unreadable files to try again.")
     return {"retried": n}
 
-
-@op("unreadable-remove", kind="action")
-def unreadable_remove(rep, vault: Path) -> dict:
-    """Delete Watchdog's copies of the files that could not be read, with their sidecars."""
-    require_vault(vault)
-    files = _unreadable(vault)
-    for f in files:
-        f.unlink(missing_ok=True)
-        f.with_name(f"{f.name}.yml").unlink(missing_ok=True)
-    n = len(files)
-    rep.log(f"Removed {n} unreadable file{'s' if n != 1 else ''}." if n
-            else "No unreadable files to remove.")
-    return {"removed": n}

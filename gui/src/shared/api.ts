@@ -671,7 +671,6 @@ export interface OpParams {
   bark: FinalizerModels
   requeue: NoParams
   'unreadable-retry': NoParams
-  'unreadable-remove': NoParams
   reindex: NoParams
   export: { format?: 'csv' | 'cypher'; output?: string | null }
   'troubleshooting-copy': { output: string; originals?: boolean }
@@ -1222,6 +1221,8 @@ export interface WatchdogBridge {
   }
   files: {
     pathForFile(file: File): string
+    /** Moves the investigation's unreadable files and their sidecars to the system trash (D360); how many went. */
+    trashUnreadable(vault: string): Promise<number>
     url(absPath: string): string
   }
   thumbs: {

@@ -72,7 +72,7 @@ skill: corporate-filings
 
 ## Reading a document
 
-**Documents** shows every document as a grid of first-page thumbnails or a sortable list. A strip above it shows files not yet in the investigation (waiting, failed or set aside), with **Retry** (put failed documents back and run them again) and **Requeue** (put them back without running them). Files that could not be read have **Try again** (read the same files again) and **Remove** (delete Watchdog's copies, for when you will add a fixed file); see [A file could not be read](troubleshooting.md#a-file-could-not-be-read).
+**Documents** shows every document as a grid of first-page thumbnails or a sortable list. A strip above it shows files not yet in the investigation (waiting, failed or set aside), with **Retry** (put failed documents back and run them again) and **Requeue** (put them back without running them). Files that could not be read have **Try again** (read the same files again) and **Remove** (move Watchdog's copies to the trash, for when you will add a fixed file); see [A file could not be read](troubleshooting.md#a-file-could-not-be-read).
 
 ![A scanned document open in Watchdog: the page on the left, the facts taken from it on the right, each with its date, page and source passage.](images/app-document.png)
 
