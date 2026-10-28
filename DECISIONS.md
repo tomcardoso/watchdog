@@ -3076,3 +3076,9 @@ Both chores (D332, D333) sent each item with its document's entities, so a docum
 
 Tradeoff: the prompt layout changed, unmeasured, beside the unmeasured prompts both chores already carry (CLAUDE.md, standing follow-ups); a model that misreads which document an item belongs to is still held to that document's ids by the validators.
 
+
+### D362 — The website publishes only for a stable release
+
+The site published on every push to main that touched `docs/` or `site/`, so the docs online described work merged but not yet released: a reporter could read about a control their app did not have. It now publishes only when App release starts it after a stable release (it already did, after the screenshots merge, D320), when a person publishes a stable release, or by hand; a pre-release is skipped, since the site's download buttons offer the stable release. A pull request still builds the site as a check, so a broken page fails before it merges. The app's in-app links into `docs/` on GitHub are unaffected.
+
+Tradeoff: a docs fix, even a typo, waits for the next stable release unless someone runs Website by hand on main, which publishes everything merged since, released or not.

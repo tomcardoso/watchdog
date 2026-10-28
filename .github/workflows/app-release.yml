@@ -429,7 +429,7 @@ jobs:
         # to merge), so the site is built with both the new release's download buttons and the
         # new images. The release job used to start a build too, which this one always followed.
         # A release published or a merge made with this job's token starts no other workflow, so
-        # pages.yml's `release` and `push` triggers never fire for them; a dispatch is the one
+        # pages.yml's `release` trigger never fires for them; a dispatch is the one
         # event that token can start.
         if: always() && needs.version.outputs.release == 'true'
         run: gh workflow run pages.yml --ref main

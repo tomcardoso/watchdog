@@ -83,7 +83,7 @@ must also be added to `PAGES` in `site/build.mjs`, or the website build fails.
 
 The same pages are the website (https://tomcardoso.github.io/watchdog/, D317): `site/build.mjs`
 renders `docs/` and `site/src/index.html` (the landing page) into `site/dist`, and
-`.github/workflows/pages.yml` publishes it on every push to main that touches `docs/` or `site/`.
+`.github/workflows/pages.yml` publishes it only for a stable release (App release starts it), so a docs change merged to main goes online with the next release; run Website by hand on main to publish sooner (D362). A pull request touching `docs/` or `site/` only builds it, as a check.
 Preview with `cd site && npm ci && npm run dev`. Link a tool or service the first time a page
 names it. Screenshots live in `docs/images/`, in a light and a `-dark` version; `npm run
 screenshots` in `gui/` (after `npm run build`, with `WATCHDOG_PYTHON` set, under `xvfb-run` on
