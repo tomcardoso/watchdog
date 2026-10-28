@@ -80,7 +80,9 @@ def stats(vault: Path, shas: list[str]) -> dict:
 
 def pending_items(vault: Path, shas: list[str]) -> list[dict]:
     """One item per staged document and dangling tag: ``{"sha", "tag", "facts": [index…],
-    "examples": [text…], "entities": [entity…], "offered": [ids]}``."""
+    "examples": [text…], "entities": [entity…], "offered": [ids]}``. A document's items share
+    one entity list, which the prompt shows once: the `DOC_ENTITIES_MAX` most like each of its
+    tags, together (all of them when the document defines no more than that)."""
     from watchdog.pipeline.role_targets import similarity
     items = []
     for sha in shas:
@@ -91,26 +93,34 @@ def pending_items(vault: Path, shas: list[str]) -> list[dict]:
         if not defined:
             continue
         facts = _facts(art)
-        for tag, idxs in dangling_tags(art).items():
-            ents = sorted(defined, key=lambda e: -similarity(tag, e))[:DOC_ENTITIES_MAX]
+        dangling = dangling_tags(art)
+        shown: dict[str, dict] = {}
+        for tag in dangling:
+            for e in sorted(defined, key=lambda e: -similarity(tag, e))[:DOC_ENTITIES_MAX]:
+                shown.setdefault(e["id"], e)
+        ents = [{"id": e["id"], "name": e.get("name") or e["id"], "type": e.get("type"),
+                 "aliases": list(e.get("aliases") or [])} for e in shown.values()]
+        for tag, idxs in dangling.items():
             items.append({
                 "sha": sha, "tag": tag, "facts": idxs,
                 "examples": [(facts[i].get("fact") or "").strip() for i in idxs[:EXAMPLE_FACTS]],
-                "entities": [{"id": e["id"], "name": e.get("name") or e["id"], "type": e.get("type"),
-                              "aliases": list(e.get("aliases") or [])} for e in ents],
-                "offered": [e["id"] for e in ents]})
+                "entities": ents, "offered": list(shown)})
     return items
 
 
 def build_prompt(items: list[dict]) -> str:
+    """The items numbered from 1, under their document: each document's entities are listed once,
+    ahead of its tags, rather than once per tag."""
     from watchdog.pipeline import prompts
     from watchdog.pipeline.role_targets import _entity_line
-    blocks = []
+    blocks, sha = [], object()
     for n, it in enumerate(items, 1):
+        if it.get("sha") != sha:
+            sha = it.get("sha")
+            blocks.append("\n".join(["Document — its entities:",
+                                     *(f"  - {_entity_line(e)}" for e in it["entities"])]))
         lines = [f"{n}. tag: {json.dumps(it['tag'], ensure_ascii=False)}"]
         lines += [f"   fact: {json.dumps(t, ensure_ascii=False)}" for t in it["examples"]]
-        lines.append("   entities in this document:")
-        lines += [f"     - {_entity_line(e)}" for e in it["entities"]]
         blocks.append("\n".join(lines))
     return prompts.build_fact_tags_prompt("\n\n".join(blocks))
 
