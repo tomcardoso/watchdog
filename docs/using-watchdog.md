@@ -289,8 +289,8 @@ If an earlier version holds something that should not be kept, such as a source'
 
 | Card | What it does |
 |---|---|
-| **Watch for new files** | Reads files as you put them in the investigation's `incoming` folder. Nothing is sent to a model. |
-| **Pre-processing** | Converts every file in `incoming/` to text on your computer. |
+| **Watch for new files** | Reads files that reach the investigation other than through **Add documents**, such as web pages from **File → Fetch Links**, as they arrive. Nothing is sent to a model. **Add documents** reads its own files and does not need it. |
+| **Pre-processing** | Converts every file waiting to be added to text on your computer. |
 | **Processing** | Extracts facts with a model and stages the result, with **Estimate** first. |
 | **Post-processing** | Finishes a batch: merges entities, flags contradictions, writes summaries, the timeline and the briefing. Safe to run again. |
 | **Requeue failed documents** | Puts failed documents back in the queue. |
@@ -300,7 +300,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Bring this investigation up to date** | Applies [improvements made since its documents were processed](#bringing-an-investigation-up-to-date). |
 | **Rebuild the timeline** | Regenerates the timeline from the records. |
 | **Rebuild notes** | Rewrites every entity and document note from the records, keeping your notes. No model call. |
-| **Rebuild the search index** | Rebuilds search from what is on disk, after changing the search model or merging entities. |
+| **Rebuild the search index** | Rebuilds search from what Watchdog has already read, after changing the search model or merging entities. |
 | **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
 | **Export a copy for troubleshooting** | Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog's records and notes for this investigation, for your own use, never for an issue. The dialog shows the report in full before it is saved. The original documents go in the zip only if you include them. See [sending a copy of the investigation](troubleshooting.md#sending-a-copy-of-the-investigation). |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude. Watchdog does this by itself whenever a conversation starts; use it to do it now, for example before opening the folder in Claude Code. |
