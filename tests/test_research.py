@@ -218,6 +218,79 @@ def test_deposit_one_size_cap_enforced(tmp_path):
     assert seen["max_bytes"] == 1234
 
 
+def test_deposit_one_refuses_html_with_no_text(tmp_path):
+    # Saved, a page with no text only resurfaced later as an unexplained pre-processing skip;
+    # refuse it here, with a reason, and write nothing (the URL stays queued as a failed download).
+    vault = tmp_path / "v"
+    body = b"<html><head><script>x()</script></head><body> </body></html>"
+    with pytest.raises(ResearchError, match="no text"):
+        research.deposit_one(vault, "https://e.com/x", fetcher=_fake_fetcher(body, "text/html"))
+    assert not (vault / "incoming").exists() or not any((vault / "incoming").iterdir())
+
+
+def test_deposit_one_refuses_an_empty_rendered_capture(tmp_path, monkeypatch):
+    monkeypatch.setattr(capture, "try_render", lambda *a, **k: b"<!DOCTYPE html><html><body></body></html>")
+    with pytest.raises(ResearchError, match="no text"):
+        research.deposit_one(tmp_path / "v", "https://e.com/x",
+                             fetcher=_fake_fetcher(b"<html>fetched</html>", "text/html"))
+
+
+# ── capture-browser fallback: a refused or empty plain fetch ──────────────────
+
+PAGE = b"<!DOCTYPE html><html><body>the real page</body></html>"
+
+
+def _refusing(status):
+    def _fetch(url, **kwargs):
+        raise research.HttpRefused(status, url)
+    return _fetch
+
+
+def _render_spy(monkeypatch, result):
+    calls = []
+
+    def _render(url, **kwargs):
+        calls.append(url)
+        return result
+    monkeypatch.setattr(capture, "try_render", _render)
+    return calls
+
+
+@pytest.mark.parametrize("fetcher", [_refusing(403), _fake_fetcher(b"", "text/html"),
+                                     _fake_fetcher(b"", "text/plain")])
+def test_a_refused_or_empty_fetch_falls_back_to_the_capture_browser(tmp_path, monkeypatch, fetcher):
+    calls = _render_spy(monkeypatch, PAGE)
+    path = research.deposit_one(tmp_path / "v", "https://e.com/profile", fetcher=fetcher)
+    assert calls == ["https://e.com/profile"]
+    assert path.suffix == ".html" and path.read_bytes() == PAGE   # the snapshot, not re-cleaned
+    sidecar = yaml.safe_load(path.with_name(path.name + ".yml").read_text())
+    assert sidecar["capture"] == "rendered" and sidecar["source"] == "https://e.com/profile"
+
+
+@pytest.mark.parametrize("fetcher,match", [
+    (_refusing(403), "HTTP 403.*capture browser could not load it"),
+    (_fake_fetcher(b"", "text/html"), "empty response.*capture browser could not load it"),
+])
+def test_the_fallback_failing_too_keeps_the_original_reason(tmp_path, monkeypatch, fetcher, match):
+    _render_spy(monkeypatch, None)
+    with pytest.raises(ResearchError, match=match):
+        research.deposit_one(tmp_path / "v", "https://e.com/x", fetcher=fetcher)
+    assert not (tmp_path / "v" / "incoming").exists()
+
+
+@pytest.mark.parametrize("url,fetcher", [
+    ("https://e.com/gone", _refusing(404)),            # missing, not withheld: a browser can't help
+    ("https://e.com/gone", _refusing(410)),
+    ("https://e.com/report.pdf", _refusing(403)),      # not a web page: a snapshot would be wrong
+    ("https://e.com/report.pdf", _fake_fetcher(b"", "application/pdf")),
+])
+def test_no_fallback_for_a_missing_page_or_a_file(tmp_path, monkeypatch, url, fetcher):
+    calls = _render_spy(monkeypatch, PAGE)
+    with pytest.raises(ResearchError) as e:
+        research.deposit_one(tmp_path / "v", url, fetcher=fetcher)
+    assert calls == [] and "capture browser" not in str(e.value)
+
+
 def test_deposit_name_is_stable_per_url(tmp_path):
     vault = tmp_path / "v"
     f = _fake_fetcher(b"<html>x</html>", "text/html")

@@ -44,6 +44,7 @@ def cancel(id: str) -> dict:
 
 @method("jobs.list")
 def list_jobs() -> list:
+    jobs.MANAGER.restore()
     ordered = sorted(jobs.MANAGER.jobs.values(), key=lambda j: j.started, reverse=True)
     return [j.to_dict() for j in ordered]
 

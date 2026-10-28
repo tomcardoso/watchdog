@@ -1,4 +1,4 @@
-// Unit tests for moving unreadable files to the trash (D360). Run with `npm run test:unit`. The
+// Unit tests for moving unreadable files to the trash (D363). Run with `npm run test:unit`. The
 // trash is a stand-in that records what it was given and removes it.
 
 import { test } from 'node:test'

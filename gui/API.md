@@ -215,7 +215,7 @@ TimelineEvent = {
 
 PipelineState = {
   incoming:  [{name, path, size, modified, sidecar: bool}],   // incoming/, excluding failed/skipped
-  chew_failed: [{name, path, size}],                          // incoming/failed/
+  chew_failed: [{name, path, size, reason}],                  // incoming/failed/; reason: string | null (D360)
   skipped:   [{name, path, size, reason|null}],               // incoming/skipped/
   queued:    [{sha, filename, page_count|null, est_tokens|null, staged: bool}],  // chewed; staged = extracted awaiting bark
   failed:    [{sha, filename, reason|null}],                  // queue/_failed/
@@ -329,7 +329,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `dig` | yes | extractor options, `{limit?, force?, skip_warning?}` | run summary | add |
 | `bark` | yes | finalizer options, `{skip_briefing?}` | post-processing summary | add |
 | `requeue` | yes | — | `{requeued}` | add |
-| `unreadable-retry` | yes | — | `{retried}` — files in `incoming/failed/` (and sidecars) back into `incoming/`, a taken name suffixed (D360) | add |
+| `unreadable-retry` | yes | — | `{retried}` — files in `incoming/failed/` (and sidecars) back into `incoming/`, a taken name suffixed (D363) | add |
 | `reindex` | yes | — | `{documents, passages, notes, skipped}` | index |
 | `merge-entities` | yes | `{keep, merge}` | `{keep_name, merge_name, aliases, …}` | index |
 | `merge-entity-pairs` | yes | `{keep: string[], merge: string[]}` | `{merged, failed, skipped}`, each `[{keep, merge, keep_name, merge_name, error?}]`; exit 1 when any failed. One `merge-entities` merge per pair, in order; a failure does not stop the rest (D328) | index |
@@ -372,7 +372,7 @@ last line on stderr), 64 (a request it could not read) or 130.
 | `jobs.ops` | — | `{[op]: OpSpec}` — `OpSpec = {params: {[name]: {type, required, default, nullable}}, vault, engine, kind}` |
 | `jobs.start` | `{vault\|null, op, params?, label, kind?}` | `Job` |
 | `jobs.cancel` | `{id}` | `{ok}` — SIGINT (Ctrl+C), so the pipeline's graceful stop runs and finished documents are kept; a second cancel kills |
-| `jobs.list` | — | `Job[]` (running and the last 50 finished) |
+| `jobs.list` | — | `Job[]` (running and the last 50 finished, kept across restarts in `~/.watchdog/jobs/`, D360) |
 | `jobs.get` | `{id}` | `Job & {log: LogLine[]}` (last 5,000 lines) |
 | `jobs.undoMerge` | `{vault, id}` | `Job` — Review → Merges "Undo merge": the `undo-merge` operation, refused up front when the merge can't be split (D280). Errors: `cannot_undo` with the reason, `not_found` |
 | `jobs.recheckContradictions` | `{vault, ids?: string[], all?: bool}` | `Job` — "Re-check contradictions" on an entity page (`ids`) or in Maintenance (`all`): the `recheck-contradictions` operation (D287), after the checks it would make. Holds the processing lock while it runs; progress is the `recheck` stage, one step per model call. Errors: `busy` while a run holds the vault, `auth_required` when the model's provider is not set up, `key_missing` when the investigation's chosen key is not on this computer (D290), `engine_not_ready`, `bad_params` with neither `ids` nor `all` |

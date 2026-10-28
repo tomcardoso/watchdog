@@ -76,11 +76,12 @@ The key was encrypted under another user account or on another computer, or the 
 
 ## A file could not be read
 
-Watchdog could not convert the file to text, so it set it aside and carried on with the rest. The **Documents** screen lists it under **Couldn't be read** in the strip above the list, and the run's output under **Activity** gives the reason. Common causes:
+Watchdog could not convert the file to text, so it set it aside and carried on with the rest. The **Documents** screen lists it under **Couldn't be read** in the strip above the list, with the reason it failed. Common causes:
 
 - **Password-protected PDF** — remove the password and try again.
 - **Corrupted file** — try re-downloading or re-exporting it.
 - **Unsupported format** — check the [supported file types](using-watchdog.md#supported-file-types).
+- **"Timed out after 600s"** — the file took more than 10 minutes to convert, usually a very long scanned PDF. Split it into smaller files and add them separately.
 
 If you fixed the file yourself (removed the password, or downloaded or exported it again), choose **Remove** under **Couldn't be read**, then add the fixed copy with **Add documents**. **Remove** moves Watchdog's copy to your computer's trash, from where you can put it back until the trash is emptied; a file you chose with Add documents is still wherever you keep it. If the cause has passed without any change to the file, such as a download that failed, choose **Try again**: the files go back with those waiting to be added, and the Add documents dialog opens to read them.
 
@@ -107,7 +108,7 @@ Two things set a file aside, and neither is an error. The **Documents** screen l
 
 A document whose extraction fails is logged and set aside, and the rest of the batch still completes. On the **Documents** screen, the strip above the list shows the failed documents with two buttons. **Retry** puts them back and runs them again. **Requeue** moves them back into the queue without running them. The Overview also shows failed documents with a **Retry** button, and **Activity → Maintenance → Requeue failed documents** does the same as Requeue.
 
-The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab.
+The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab. Watchdog keeps the output of the last 50 runs, including after you close the app.
 
 ## Hitting rate limits
 

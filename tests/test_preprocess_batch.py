@@ -800,3 +800,33 @@ def test_failed_and_skipped_excluded_only_directly_under_incoming(tmp_path):
     names = sorted(str(f.relative_to(incoming)) for f in find_files([incoming]))
     assert names == ["mine/failed/x.pdf", "ok.pdf"]
     assert [f.name for f in find_files([incoming / "failed"])] == ["x.pdf"]
+
+
+# ── why a file could not be read ──────────────────────────────────────────────
+
+def test_a_failed_file_keeps_its_full_reason(tmp_path, monkeypatch):
+    from watchdog.pipeline import preprocess_batch
+    vault = tmp_path / "v"
+    (vault / ".watchdog").mkdir(parents=True)
+    (vault / "incoming").mkdir()
+    (vault / "incoming" / "locked.pdf").write_bytes(b"%PDF-1.4")
+    reason = "Docling conversion failed: " + "x" * 200   # longer than the run log once showed
+    monkeypatch.setattr(preprocess_batch, "preprocess_one", lambda path, **kw: {"error": reason})
+    preprocess_batch.run_ingest(vault, workers=1)
+    assert (vault / "incoming" / "failed" / "locked.pdf").is_file()
+    assert preprocess_batch.read_unreadable(vault)["locked.pdf"]["reason"] == reason
+
+
+def test_unreadable_reasons_forget_files_no_longer_in_failed(tmp_path):
+    from watchdog.pipeline.preprocess_batch import read_unreadable, record_unreadable
+    failed = tmp_path / "incoming" / "failed"
+    failed.mkdir(parents=True)
+    (failed / "a.pdf").write_bytes(b"x")
+    (failed / "b.pdf").write_bytes(b"x")
+    record_unreadable(tmp_path, "a.pdf", "first")
+    record_unreadable(tmp_path, "b.pdf", "second")
+    (failed / "a.pdf").rename(tmp_path / "incoming" / "a.pdf")   # moved back to retry
+    assert {k: v["reason"] for k, v in read_unreadable(tmp_path).items()} == {"b.pdf": "second"}
+    record_unreadable(tmp_path, "b.pdf", "third")
+    stored = json.loads((tmp_path / ".watchdog" / "unreadable.json").read_text(encoding="utf-8"))
+    assert {k: v["reason"] for k, v in stored.items()} == {"b.pdf": "third"}

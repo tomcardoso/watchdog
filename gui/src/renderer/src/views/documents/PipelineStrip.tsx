@@ -190,7 +190,7 @@ export function PipelineStrip({ pipeline }: { pipeline: PipelineState }) {
               <p>
                 Watchdog could not convert these to text, so they were set aside. Common causes are a password-protected PDF, a corrupted file or an unsupported format; the run's output in Activity gives the reason. If you fixed the file (removed the password, or downloaded or exported it again), remove these and add the fixed copy. Try again reads the same files again, for a cause that has passed, such as a download that failed.
               </p>
-              <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: fmtBytes(f.size) }))} />
+              <FileList rows={p.chew_failed.map((f) => ({ key: f.path, name: f.name, why: f.reason ?? fmtBytes(f.size), err: !!f.reason }))} />
               <div className="pipe-actions">
                 <Button size="sm" variant="primary" icon={RotateCw} loading={busy === 'unreadable-retry'} disabled={!engine.ready} onClick={retryUnreadable}>Try again</Button>
                 <Button size="sm" icon={Trash2} onClick={() => setConfirmRemove(true)}>Remove</Button>

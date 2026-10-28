@@ -107,6 +107,40 @@ def test_failed_job_reports_exit_code(sink, fake_cli):
     assert job.state == "failed" and job.exit_code == 3
 
 
+def test_a_finished_job_is_saved_and_read_back_by_the_next_session(sink, fake_cli):
+    # The run log outlives the app: why a file could not be read is still there after a restart.
+    started = _run("import sys; print('ERR  report.pdf'); sys.exit(3)", label="Add documents")
+    job = _wait(started["id"])
+    job.supervisor.join(5)
+    saved = json.loads((jobs.log_dir() / f"{job.id}.json").read_text(encoding="utf-8"))
+    assert saved["state"] == "failed" and saved["label"] == "Add documents"
+    assert [ln["text"] for ln in saved["log"]] == ["ERR  report.pdf"]
+
+    later = jobs.JobManager()
+    later.restore()
+    back = later.get(job.id)
+    assert (back.state, back.exit_code, back.label, back.proc) == ("failed", 3, "Add documents", None)
+    assert [ln["text"] for ln in back.log] == ["ERR  report.pdf"]
+    later.cancel(job.id)   # nothing to stop: a no-op, not an error
+
+
+def test_restore_skips_unreadable_records_and_prunes_the_oldest(monkeypatch):
+    d = jobs.log_dir()
+    d.mkdir(parents=True)
+    (d / "broken.json").write_text("{not json", encoding="utf-8")
+    (d / "noop.json").write_text(json.dumps({"id": "noop"}), encoding="utf-8")   # no op: skipped
+    for i in range(3):
+        (d / f"j{i}.json").write_text(json.dumps({
+            "id": f"j{i}", "op": "script", "label": f"run {i}", "state": "done", "exit_code": 0,
+            "started": f"2026-10-0{i + 1}T09:00:00", "finished": f"2026-10-0{i + 1}T09:01:00",
+            "log": [{"t": "", "stream": "out", "text": "ok"}]}), encoding="utf-8")
+    monkeypatch.setattr(jobs, "KEEP_FINISHED", 2)
+    m = jobs.JobManager()
+    m.restore()
+    assert sorted(m.jobs) == ["j1", "j2"]
+    assert not (d / "j0.json").exists() and (d / "j2.json").exists()
+
+
 def test_env_and_cwd(sink, fake_cli, tmp_path):
     (tmp_path / ".watchdog" / "registry").mkdir(parents=True)
     script = ("import os,sys; print(os.getcwd()); print(os.environ['NO_COLOR'], "

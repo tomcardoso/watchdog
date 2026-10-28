@@ -32,6 +32,9 @@ const RUN_STEPS = ['Read', 'Extract', 'Write', 'Brief']
 
 const NEW_PATHS_EVENT = 'wd:add'
 
+/** A file pre-processing set aside: in incoming/failed (unreadable) or incoming/skipped. */
+type Blocked = { name: string; reason: string | null; failed: boolean }
+
 export function AddDialog() {
   const vault = useVault()
   const addOpen = useApp((s) => s.addOpen)
@@ -47,7 +50,7 @@ export function AddDialog() {
   const [readState, setReadState] = useState<{ i: number; n: number; job: string | null; label: string } | null>(null)
   const [readIssues, setReadIssues] = useState<string[]>([])
   const [folders, setFolders] = useState<string[]>([])
-  const [gate, setGate] = useState<{ pf: Preflight; blocked: { name: string; reason: string | null }[] } | null>(null)
+  const [gate, setGate] = useState<{ pf: Preflight; blocked: Blocked[] } | null>(null)
   const [addJob, setAddJob] = useState<string | null>(null)
   // Why the public-records pause was not shown (auto-approve, or every stage on this computer).
   const [autoNote, setAutoNote] = useState<string | null>(null)
@@ -159,7 +162,7 @@ export function AddDialog() {
         call('ingest.preflight', { vault, options: cleanOptions(options) }),
         call('vault.pipeline', { vault })
       ])
-      const blocked = [...pipe.chew_failed.map((f) => ({ name: f.name, reason: null as string | null })), ...pipe.skipped.map((f) => ({ name: f.name, reason: f.reason }))]
+      const blocked = [...pipe.chew_failed.map((f) => ({ name: f.name, reason: f.reason, failed: true })), ...pipe.skipped.map((f) => ({ name: f.name, reason: f.reason, failed: false }))]
       setGate({ pf, blocked })
       setBusy(false)
       const ready = pf.auth.ok && !billingBlocked(pf.billing)
@@ -595,11 +598,12 @@ function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions:
 }
 
 // ── Step 3 ───────────────────────────────────────────────────────────────────
-function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflight; blocked: { name: string; reason: string | null }[] }; retry: boolean; folders: string[]; issues: string[]; error: string }) {
+function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflight; blocked: Blocked[] }; retry: boolean; folders: string[]; issues: string[]; error: string }) {
   const { pf, blocked } = gate
-  // A file with a reason is a duplicate pre-processing set aside, not a failure to read it.
-  const failed = blocked.filter((b) => !b.reason)
-  const skipped = blocked.filter((b) => b.reason)
+  // A set-aside file with a reason is a duplicate; one without had no readable text.
+  const failed = blocked.filter((b) => b.failed)
+  const empty = blocked.filter((b) => !b.failed && !b.reason)
+  const skipped = blocked.filter((b) => !b.failed && b.reason)
   const n = countFor(pf, retry, folders.length)
   const finishing = n === 0 && !!(pf.pending_finalization || pf.staged > 0)
   const auto = pf.auto_approve
@@ -613,11 +617,12 @@ function GateStep({ gate, retry, folders, issues, error }: { gate: { pf: Preflig
           </ul>
         </Callout>
       )}
-      {(issues.length > 0 || failed.length > 0) && (
+      {(issues.length > 0 || failed.length > 0 || empty.length > 0) && (
         <Callout tone="warning" title="Some files could not be read">
           <ul className="add-issues">
             {issues.map((i) => <li key={i}>{i}</li>)}
-            {failed.map((b) => <li key={b.name}>{b.name} was set aside; the Documents screen lists it with what you can do</li>)}
+            {failed.map((b) => <li key={b.name}>{b.name} was set aside{b.reason ? `: ${b.reason}` : ''}. The Documents screen lists it with what you can do.</li>)}
+            {empty.map((b) => <li key={b.name}>{b.name} had no readable text and was set aside</li>)}
           </ul>
         </Callout>
       )}

@@ -420,7 +420,7 @@ export interface ResolvedLink { path: string | null; kind: LinkKind; sha: string
 
 export interface PipelineState {
   incoming: { name: string; path: string; size: number; modified: string; sidecar: boolean }[]
-  chew_failed: { name: string; path: string; size: number }[]
+  chew_failed: { name: string; path: string; size: number; reason: string | null }[]
   skipped: { name: string; path: string; size: number; reason: string | null }[]
   queued: { sha: string; filename: string; page_count: number | null; est_tokens: number | null; staged: boolean }[]
   failed: { sha: string; filename: string; reason: string | null }[]
@@ -1221,7 +1221,7 @@ export interface WatchdogBridge {
   }
   files: {
     pathForFile(file: File): string
-    /** Moves the investigation's unreadable files and their sidecars to the system trash (D360); how many went. */
+    /** Moves the investigation's unreadable files and their sidecars to the system trash (D363); how many went. */
     trashUnreadable(vault: string): Promise<number>
     url(absPath: string): string
   }

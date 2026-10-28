@@ -1,4 +1,4 @@
-// Files pre-processing could not read, moved to the system trash (D360). The worker cannot do this:
+// Files pre-processing could not read, moved to the system trash (D363). The worker cannot do this:
 // the trash is outside the investigation, where Python's folder-access guard refuses writes
 // (src/watchdog/access.py), so the main process does it with the operating system's own trash.
 // The folder names match vault_paths.py (`incoming/failed/`).
