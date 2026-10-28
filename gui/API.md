@@ -115,7 +115,7 @@ Summary = {               // overview.summary(), made JSON-safe
 }
 
 StartHereItem = {rid, rids, kind, title, note|null, reason,   // reason: one line on why it is there
-                 term?, documents?}  // an alert item is a whole watch-list term: every hit's id in rids, the documents by name (D328)
+                 term?, documents?}  // an alert item is a whole watchlist term: every hit's id in rids, the documents by name (D328)
 
 DocumentRow = {
   sha, filename, title|null, document_type|null, date_of_document|null,
@@ -471,7 +471,7 @@ afterwards. Merging it is the existing `merge-entities` job (I10), which closes 
 | `review.unresolve` | `{vault, rids}` | `{unresolved: string[]}` |
 | `review.resolved` | `{vault}` | `{items: [{rid, label, resolved_at, kind}]}` — the items marked handled |
 | `review.leads` | `{vault}` | the full lead sweep, `leads.scan` made JSON-safe, plus `total` |
-| `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watch-list-hit items for the term |
+| `review.watchlist` | `{vault}` | `{terms: [{term, regex, hits}]}` — `hits` is the open watchlist-hit items for the term |
 | `review.watchlistAdd` | `{vault, term}` | `{added}` — refuses a blank, multi-line, `#`-leading, invalid `/regex/` or duplicate term (`bad_params`); appends to `watchlist.md`, recorded as a version of the file's history |
 | `review.watchlistRemove` | `{vault, term}` | `{removed}` — drops the matching line only, keeping comments and other terms; `not_found` if absent; recorded in history |
 | `review.mergeLog` | `{vault, limit?}` | `{merges: MergeLogEntry[], total, too_new: bool, undo_available: bool}` — newest first, documents and facts resolved for display; each entry says whether `merge_undo` can split it back now (`undo_available`, `undo_reason`) |

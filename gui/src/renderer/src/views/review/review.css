@@ -112,7 +112,7 @@
 .mg-docs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .mg-row-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 @media (max-width: 760px) { .mg-pair { grid-template-columns: 1fr; } .mg-pair-vs { display: none; } .mg-row-detail { padding-left: 16px; } }
-/* Verification, Handled and Watch list: views about the queues, kept out of the tab row. */
+/* Verification, Handled and Watchlist: views about the queues, kept out of the tab row. */
 .rv-tools { display: flex; flex-wrap: wrap; gap: 2px; flex: none; padding: 2px; border-radius: var(--r-md); background: var(--surface-sunken); border: 1px solid var(--border); }
 .rv-tools button {
   display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
@@ -123,7 +123,7 @@
 .rv-tools button svg { width: 14px; height: 14px; }
 .rv-tools button[aria-pressed='true'] { background: var(--surface); color: var(--text); box-shadow: var(--shadow-sm); }
 
-/* Watch list editor */
+/* Watchlist editor */
 .rv-watch-add { display: flex; gap: 8px; align-items: center; }
 .rv-watch-add .input { flex: 1; min-width: 0; }
 .rv-watch-problem { font-size: var(--fs-sm); color: var(--danger); }

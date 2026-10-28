@@ -15,7 +15,7 @@ The vault is written by Watchdog's pipeline, which the journalist runs from the 
 | `entities/` | One note per real-world entity, filed by type (person, organization, public-body, place, asset, proceeding) |
 | `documents/` | One note per added document |
 | `morgue/` | Original files once processed, each beside a markdown copy of its full text |
-| `briefings/` | A briefing after each batch of documents is processed, plus leads and watch-list alert reports (read-only summaries: the reporter handles their items in the app's Review, so never ask them to tick a box or run a command) |
+| `briefings/` | A briefing after each batch of documents is processed, plus leads and watchlist alert reports (read-only summaries: the reporter handles their items in the app's Review, so never ask them to tick a box or run a command) |
 | `timeline.md` | Chronology across every document |
 | `requests.md` | Documents worth going to get, as cited by the vault's own documents (a read-only summary; the reporter marks requests handled in Review → Requests) |
 | `wiki/` | Investigation thread pages — matured angles that deepen over time |
@@ -44,7 +44,7 @@ These change the investigation's records, so the app asks the journalist first (
 |-----------|-----|
 | Store a refreshed entity summary and timeline | `mcp__watchdog__write_entity` (used by `/watchdog-entity`) |
 | Record a contradiction | `mcp__watchdog__contradiction_add` — only after the journalist confirms a candidate |
-| Add watch-list terms | `mcp__watchdog__watchlist_add` (used by `/watchdog-context`), one term per item, each a single line |
+| Add watchlist terms | `mcp__watchdog__watchlist_add` (used by `/watchdog-context`), one term per item, each a single line |
 | Rebuild `timeline.md` | `mcp__watchdog__timeline` |
 
 No other file in the vault can be written from this session: not the notes, `timeline.md`, `watchlist.md`, `.watchdog/` (apart from `.watchdog/research/`), nor `.claude/`.

@@ -365,7 +365,7 @@ class Session:
 _WATCHDOG_TOOL_TITLES = {
     "timeline": "Rebuild the timeline",
     "write_entity": "Rewrite an entity's summary and timeline",
-    "watchlist_add": "Add to the watch list",
+    "watchlist_add": "Add to the watchlist",
     "contradiction_add": "Record a contradiction",
     "search": "Search the documents",
     "leads": "List leads",
@@ -379,7 +379,7 @@ _WATCHDOG_TOOL_TITLES = {
 # every entity included. `contradiction_add` has no entry: it is asked about every time.
 _WATCHDOG_TOOL_SCOPES = {
     "write_entity": "rewriting any entity's summary and timeline",
-    "watchlist_add": "adding terms to the watch list",
+    "watchlist_add": "adding terms to the watchlist",
     "timeline": "rebuilding the timeline",
     "wayback_archive": "saving pages to the Wayback Machine",
 }
@@ -433,7 +433,7 @@ def permission_request(vault: Path, tool: str, tool_input: dict) -> dict:
                            f"{inp.get('b', '')} ({inp.get('b_doc', '')}).")
         elif name == "watchlist_add":
             terms = [str(t) for t in inp.get("terms") or []]
-            description = "Add to the watch list: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
+            description = "Add to the watchlist: " + ", ".join(terms[:10]) + ("…" if len(terms) > 10 else "")
         elif name == "timeline":
             description = "Write the timeline page again from the stored events."
         elif name == "wayback_archive":

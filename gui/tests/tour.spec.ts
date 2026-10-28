@@ -101,14 +101,14 @@ test('the sample builds from the welcome card and every tour step points at some
     await expect(page.locator('.modal')).toHaveCount(0)
 
     // D309: a prepared conversation plays in the real chat screen. A write stops at the real
-    // permission card; allowing it changes the sample's watch list through the session tool.
+    // permission card; allowing it changes the sample's watchlist through the session tool.
     await page.evaluate(() => (window as any).__watchdogApp.getState().navigate({ view: 'ask' }))
-    await page.getByRole('button', { name: /Add Tideway Marine Services to my watch list/ }).click()
+    await page.getByRole('button', { name: /Add Tideway Marine Services to my watchlist/ }).click()
     const card = page.locator('.chat-perm')
-    await expect(card).toContainText('Claude wants to: add to the watch list', { timeout: 15_000 })
+    await expect(card).toContainText('Claude wants to: add to the watchlist', { timeout: 15_000 })
     await card.getByRole('button', { name: 'Allow once' }).click()
-    await expect(page.locator('.chat-assistant').last()).toContainText('is on the watch list', { timeout: 15_000 })
-    await expect(page.locator('.chat-user-bubble')).toHaveText(['Add Tideway Marine Services to my watch list.'])
+    await expect(page.locator('.chat-assistant').last()).toContainText('is on the watchlist', { timeout: 15_000 })
+    await expect(page.locator('.chat-user-bubble')).toHaveText(['Add Tideway Marine Services to my watchlist.'])
     const samplePath = JSON.parse(readFileSync(join(home, '.watchdog', 'projects.json'), 'utf8'))['port-calder-waterfront-sample'].path
     expect(readFileSync(join(samplePath, 'watchlist.md'), 'utf8')).toContain('Tideway Marine Services')
     // A question: Claude's tool rows, then an answer whose citations resolve and open the document.

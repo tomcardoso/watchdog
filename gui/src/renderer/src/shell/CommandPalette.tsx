@@ -38,7 +38,7 @@ export function CommandPalette() {
         { label: 'Timeline', icon: CalendarRange, route: { view: 'timeline' } },
         { label: 'Network', icon: Network, route: { view: 'graph' } },
         { label: 'Context', icon: Target, route: { view: 'context' } },
-        { label: 'Watch list', icon: ScanSearch, route: { view: 'watchlist' } },
+        { label: 'Watchlist', icon: ScanSearch, route: { view: 'watchlist' } },
         { label: 'Review', icon: ListChecks, route: { view: 'review' } },
         { label: 'Reports', icon: BookOpenText, route: { view: 'briefings' } },
         { label: 'Activity', icon: Activity, route: { view: 'activity' } },
