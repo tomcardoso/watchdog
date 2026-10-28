@@ -19,7 +19,8 @@ from watchdog.pipeline import sidecar, text_positions, transcribe
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
-from watchdog.vault_paths import INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir, incoming_skipped_dir
+from watchdog.vault_paths import (INCOMING_NAME, SET_ASIDE_NAMES, incoming_dir, incoming_failed_dir,
+                                  incoming_skipped_dir, unreadable_reasons)
 
 DEFAULT_FILE_TIMEOUT = 600
 
@@ -264,6 +265,30 @@ def _in_set_aside_folder(root: Path, f: Path) -> bool:
         if part in SET_ASIDE_NAMES and parent == INCOMING_NAME:
             return True
     return False
+
+
+def read_unreadable(vault: Path) -> dict[str, dict]:
+    """`{file name: {"reason", "at"}}` for the files now in `incoming/failed/`; a file moved out
+    since it failed is left out."""
+    data = _read_json_or(unreadable_reasons(vault), {})
+    failed = incoming_failed_dir(vault)
+    return {name: entry for name, entry in data.items()
+            if isinstance(entry, dict) and (failed / name).is_file()} if isinstance(data, dict) else {}
+
+
+def record_unreadable(vault: Path, name: str, reason: str) -> None:
+    """Keep why `name` could not be read, in full, so the Documents screen can say so after the
+    run's output is gone. Entries for files no longer in `incoming/failed/` are dropped."""
+    from datetime import datetime
+    from watchdog.pipeline.write_vault import _write_json_atomic
+    data = read_unreadable(vault)
+    data[name] = {"reason": reason, "at": datetime.now().isoformat(timespec="seconds")}
+    path = unreadable_reasons(vault)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _write_json_atomic(path, data)
+    except OSError:
+        pass   # the reason is still in the run's output
 
 
 def find_files(paths: list[Path]) -> list[Path]:
@@ -566,6 +591,7 @@ def _run_ingest_inner(
                 failed_dir.mkdir(exist_ok=True)
                 try:
                     path.rename(failed_dir / path.name)
+                    record_unreadable(vault, path.name, result["error"])
                 except OSError:
                     pass
                 if sidecar_path.exists():
@@ -573,7 +599,7 @@ def _run_ingest_inner(
                         sidecar_path.rename(failed_dir / sidecar_path.name)
                     except OSError:
                         pass
-                live.note(f"       → incoming/failed/  {result['error'][:80]}")
+                live.note(f"       → incoming/failed/  {result['error']}")
             elif is_empty:
                 skipped += 1
                 skipped_dir = incoming_skipped_dir(vault)

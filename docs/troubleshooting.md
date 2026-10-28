@@ -76,11 +76,12 @@ The key was encrypted under another user account or on another computer, or the 
 
 ## A file landed in incoming/failed/
 
-The file could not be read when Watchdog converted it to text. It sits in `incoming/failed/` alongside an explanation of what went wrong. On the **Documents** screen, the strip above the list shows failed files. Common causes:
+The file could not be read when Watchdog converted it to text, and was moved to `incoming/failed/`. On the **Documents** screen, the strip above the list shows these files under **Couldn't be read**, each with the reason it failed. Common causes:
 
 - **Password-protected PDF** — remove the password and try again.
 - **Corrupted file** — try re-downloading or re-exporting it.
 - **Unsupported format** — check the [supported file types](using-watchdog.md#supported-file-types).
+- **"Timed out after 600s"** — the file took more than 10 minutes to convert, usually a very long scanned PDF. Split it into smaller files and add them separately.
 
 To retry, fix the problem, move the file from `incoming/failed/` back into `incoming/` (in your file manager; **File → Show in Folder** opens the investigation's folder), then choose **Add documents** again.
 
@@ -107,7 +108,7 @@ Two things send a file here, and neither is an error:
 
 A document whose extraction fails is logged and set aside, and the rest of the batch still completes. On the **Documents** screen, the strip above the list shows the failed documents with two buttons. **Retry** puts them back and runs them again. **Requeue** moves them back into the queue without running them. The Overview also shows failed documents with a **Retry** button, and **Activity → Maintenance → Requeue failed documents** does the same as Requeue.
 
-The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab.
+The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab. Watchdog keeps the output of the last 50 runs, including after you close the app.
 
 ## Hitting rate limits
 

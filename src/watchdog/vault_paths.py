@@ -68,6 +68,12 @@ def processing_log(vault: Path) -> Path:
     return Path(vault) / ".watchdog" / "registry" / "processing.log"
 
 
+def unreadable_reasons(vault: Path) -> Path:
+    """Why each file in `incoming/failed/` could not be read, by file name. Kept under `.watchdog/`,
+    not beside the files: anything in `incoming/` is a document to pre-processing."""
+    return Path(vault) / ".watchdog" / "unreadable.json"
+
+
 def is_set_aside(rel_parts) -> bool:
     """True if a path (given as its parts relative to `incoming/`) lies in the failed or skipped
     folder. Only the top level counts: a user's own subfolder called `failed` is still read."""

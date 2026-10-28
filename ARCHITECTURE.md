@@ -619,6 +619,7 @@ queries/ wiki/               session-written findings and threads
   page-notes-pending/        a session edit's Notes snapshot, between its two hooks (D296)
   settings.json              the investigation's own settings: its chosen key per provider, by id and name, never the key (D290), and its spending limit and last reset (D324); absent until one is set
   processing-state.json      present while a run is in progress
+  unreadable.json            why each file in incoming/failed/ could not be read, by name (D360); the app's own state, read by no model input
   .preprocessing-lock        held while files are pre-processed
   registry/
     entities.json documents.json registry.json manifest.json
@@ -957,7 +958,9 @@ See D45–D48.
   (and the keys, for the operations that call a model, D295, or archive to the Wayback Machine, D341), `NO_COLOR=1` (for third-party
   libraries) and `WATCHDOG_PROGRESS=1`. The worker's `Reporter` writes log lines and
   `progress` events (chew files, per-document extraction states, finalize stages), which the
-  server turns into `job.progress` events, then the operation's result. An operation never asks a
+  server turns into `job.progress` events, then the operation's result. A finished job, output
+  included, is saved to `~/.watchdog/jobs/<id>.json` (0600, the newest 50) and read back on the
+  next start (D360). An operation never asks a
   question: the app asks before it starts and passes the answer as a parameter. Stop is SIGINT to the worker. The few in-process writes go
   through library functions (`resolutions`, `settings.coerce` and `config.save`, auth state, a note's
   `## Notes` body), plus the app-only version history (D286).
