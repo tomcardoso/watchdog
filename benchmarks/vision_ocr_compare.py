@@ -32,7 +32,8 @@ pipeline readings share says resolution matters; a gap between correction on and
 correction does.
 
 For each reading it reports whether each `--expect` string appears exactly (spacing aside) and the
-closest thing that does. `--out DIR` writes every reading's full text for diffing. `--langs` sets
+closest thing that does. `--out DIR` writes every reading's full text for diffing, and each image Docling handed Vision.
+Each pipeline reading also names the image size and languages Docling sent. `--langs` sets
 Vision's recognition languages for every reading (`en-US,fr-FR`); without it each reading uses
 what Watchdog would (the `ocr_languages` setting, empty by default, which leaves Vision's own).
 """
@@ -85,6 +86,11 @@ def vision_text(image, *, correction: bool, langs: list[str] | None) -> str:
     return "\n".join(o[0] for o in obs)
 
 
+# What Docling handed Vision in the last pipeline reading: (image size, languages), and the image.
+SEEN: list[tuple[tuple[int, int], object]] = []
+SEEN_IMAGES: list = []
+
+
 def patch_ocrmac(correction: bool, langs: list[str] | None) -> None:
     """Make every `ocrmac` request Docling builds use this correction setting (and these languages,
     when given). Docling's OcrMac model calls `ocrmac.OCR(...).recognize()`, which calls the module's
@@ -93,6 +99,8 @@ def patch_ocrmac(correction: bool, langs: list[str] | None) -> None:
 
     def text_from_image(image, recognition_level="accurate", language_preference=None,
                         confidence_threshold=0.0, detail=True):
+        SEEN.append((image.size, langs or language_preference))
+        SEEN_IMAGES.append(image)
         res = vision_read(image, correction=correction, langs=langs or language_preference,
                           level=recognition_level)
         res = [r for r in res if r[1] >= confidence_threshold]
@@ -190,7 +198,17 @@ def main() -> None:
             for corr in (True, False):
                 name = f"pipeline, correction {'on' if corr else 'off'}"
                 print(f"reading: {name} …", file=sys.stderr)
-                readings.append((name, pipeline_text(page_pdf, correction=corr, langs=langs)))
+                SEEN.clear()
+                SEEN_IMAGES.clear()
+                text = pipeline_text(page_pdf, correction=corr, langs=langs)
+                # What Docling handed Vision: a language list or image unlike the direct readings'
+                # is a difference between the two groups.
+                name += "; Docling sent " + "; ".join(f"{w}x{h} image, languages {lg}" for (w, h), lg in SEEN)
+                readings.append((name, text))
+                if args.out and corr:
+                    args.out.mkdir(parents=True, exist_ok=True)
+                    for i, im in enumerate(SEEN_IMAGES):
+                        im.save(args.out / f"docling-image-{i + 1}.png")
         if args.only != "pipeline":
             pictures = [(f"page rendered at {SCALE:g}x ({SCALE * 72:.0f} DPI)", page_render(page_pdf))]
             embedded = largest_image(page_pdf)
