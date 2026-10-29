@@ -365,6 +365,15 @@ function Stepper({ current }: { current: number }) {
 }
 
 // ── Step 1 ───────────────────────────────────────────────────────────────────
+/** The files behind one "Already waiting" line, scrolling past a handful. */
+function WaitingNames({ names, under }: { names: string[]; under?: 'checkbox' }) {
+  return (
+    <ul className={under ? 'add-waiting-names under-checkbox' : 'add-waiting-names'}>
+      {names.map((n, i) => <li key={`${i}:${n}`} className="truncate" title={n}>{n}</li>)}
+    </ul>
+  )
+}
+
 function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, setOptions, error }: {
   paths: string[]; setPaths: (p: string[]) => void; pf: Preflight | null; loading: boolean; retry: boolean; setRetry: (b: boolean) => void
   options: RunOptions; setOptions: (o: RunOptions) => void; error: string
@@ -386,12 +395,14 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
       setEst({ error: errorMessage(e), all })
     }
   }
-  const waiting = pf ? [
-    pf.incoming > 0 && `${plural(pf.incoming, 'file')} waiting to be added`,
-    pf.queued - pf.staged > 0 && `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`,
-    pf.staged > 0 && `${plural(pf.staged, 'document')} extracted, waiting to be finished`,
-    pf.pending_finalization && 'a batch waiting to be finished'
-  ].filter(Boolean) as string[] : []
+  // The names behind the counts: the same listing the Overview reads.
+  const { data: pipe } = useRpc('vault.pipeline', { vault }, { staleTime: 0 })
+  const waiting = pf ? ([
+    pf.incoming > 0 && { text: `${plural(pf.incoming, 'file')} waiting to be added`, names: pipe?.incoming.map((f) => f.name) },
+    pf.queued - pf.staged > 0 && { text: `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`, names: pipe?.queued.filter((q) => !q.staged).map((q) => q.filename) },
+    pf.staged > 0 && { text: `${plural(pf.staged, 'document')} extracted, waiting to be finished`, names: pipe?.queued.filter((q) => q.staged).map((q) => q.filename) },
+    pf.pending_finalization && { text: 'a batch waiting to be finished' }
+  ].filter(Boolean) as { text: string; names?: string[] }[]) : []
 
   return (
     <div className="col gap-16">
@@ -425,7 +436,14 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         ) : !pf ? (
           <div className="faint">Watchdog could not check this investigation. The reason is below.</div>
         ) : waiting.length ? (
-          <ul className="add-waiting">{waiting.map((w) => <li key={w}>{w}</li>)}</ul>
+          <ul className="add-waiting">
+            {waiting.map((w) => (
+              <li key={w.text}>
+                {w.text}
+                {!!w.names?.length && <WaitingNames names={w.names} />}
+              </li>
+            ))}
+          </ul>
         ) : (
           <div className="faint">Nothing else is waiting.</div>
         )}
@@ -435,6 +453,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
             <span>Retry {plural(pf.failed, 'document')} that failed before</span>
           </label>
         )}
+        {pf && pf.failed > 0 && !!pipe?.failed.length && <WaitingNames names={pipe.failed.map((f) => f.filename)} under="checkbox" />}
       </section>
 
       {pf?.sample && (

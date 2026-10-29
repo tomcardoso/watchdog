@@ -123,6 +123,19 @@
   flex-direction: column;
   gap: 3px;
 }
+.add-waiting-names {
+  list-style: none;
+  margin: 4px 0 6px;
+  padding: 0 0 0 10px;
+  max-height: 120px;
+  overflow: auto;
+  border-left: 2px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.add-waiting-names.under-checkbox {
+  margin-left: 24px;
+}
 .add-disclose {
   display: inline-flex;
   align-items: center;

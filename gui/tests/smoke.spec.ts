@@ -256,6 +256,8 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.drop-overlay')).toHaveCount(0)
     await drag('dragleave')
     await expect(page.locator('.modal .add-hint.over')).toHaveCount(0)
+    // Each "Already waiting" line names its files.
+    await expect(page.locator('.modal .add-waiting li', { hasText: 'waiting to be added' }).locator('.add-waiting-names li').first()).toBeVisible({ timeout: 15_000 })
     await page.getByRole('button', { name: 'Read documents' }).click()
     await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible({ timeout: 60_000 })
     await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
