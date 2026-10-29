@@ -122,9 +122,35 @@ def one_page_pdf(path: Path, page: int, tmp: Path) -> Path:
     return out
 
 
-def pipeline_text(page_pdf: Path, *, correction: bool, langs: list[str] | None) -> str:
+_BUILD_CONVERTER = None
+
+
+def set_ocr_scale(scale: float) -> None:
+    """Make Watchdog's PDF converter OCR at `scale` (and render pages at it, as D352 does at 3x).
+    Docling caches a pipeline under a hash of its options, so options changed before the first
+    conversion build a pipeline at the new scale."""
+    from watchdog.pipeline import preprocess
+    global _BUILD_CONVERTER
+    if _BUILD_CONVERTER is None:
+        _BUILD_CONVERTER = preprocess.build_converter
+
+    def build_converter(force_ocr, *, load_models=True):
+        from docling.datamodel.base_models import InputFormat
+        conv = _BUILD_CONVERTER(force_ocr, load_models=False)
+        fopt = conv.format_to_options[InputFormat.PDF]
+        fopt.pipeline_options.ocr_options.scale = scale
+        if fopt.backend_options is not None and hasattr(fopt.backend_options, "render_scale"):
+            fopt.backend_options.render_scale = scale
+        return conv
+
+    preprocess.build_converter = build_converter
+
+
+def pipeline_text(page_pdf: Path, *, correction: bool, langs: list[str] | None,
+                  scale: float = SCALE) -> str:
     from watchdog.pipeline import preprocess
     patch_ocrmac(correction, langs)
+    set_ocr_scale(scale)
     if langs:
         preprocess._ocr_languages = lambda: langs
     result = preprocess.process_with_docling(page_pdf, force_ocr=True)
@@ -185,22 +211,26 @@ def main() -> None:
                     help="text the page shows; repeat for several")
     ap.add_argument("--langs", help="Vision recognition languages, comma-separated (en-US,fr-FR)")
     ap.add_argument("--only", choices=["pipeline", "image"], help="run one group of readings")
+    ap.add_argument("--scales", default=str(SCALE),
+                    help="OCR scales for the pipeline readings, comma-separated (default 3, "
+                         "Docling's; 4.5 is 324 DPI)")
     ap.add_argument("--out", type=Path, help="folder to write each reading's full text to")
     args = ap.parse_args()
     if sys.platform != "darwin":
         sys.exit("Apple Vision runs only on macOS.")
     langs = [s.strip() for s in args.langs.split(",") if s.strip()] if args.langs else None
+    scales = [float(x) for x in args.scales.split(",") if x.strip()]
 
     readings: list[tuple[str, str]] = []
     with tempfile.TemporaryDirectory() as tmp:
         page_pdf = one_page_pdf(args.pdf, args.page, Path(tmp))
         if args.only != "image":
-            for corr in (True, False):
-                name = f"pipeline, correction {'on' if corr else 'off'}"
+            for scale, corr in ((sc, c) for sc in scales for c in (True, False)):
+                name = f"pipeline at {scale:g}x ({scale * 72:.0f} DPI), correction {'on' if corr else 'off'}"
                 print(f"reading: {name} …", file=sys.stderr)
                 SEEN.clear()
                 SEEN_IMAGES.clear()
-                text = pipeline_text(page_pdf, correction=corr, langs=langs)
+                text = pipeline_text(page_pdf, correction=corr, langs=langs, scale=scale)
                 # What Docling handed Vision: a language list or image unlike the direct readings'
                 # is a difference between the two groups.
                 name += "; Docling sent " + "; ".join(f"{w}x{h} image, languages {lg}" for (w, h), lg in SEEN)
@@ -208,7 +238,7 @@ def main() -> None:
                 if args.out and corr:
                     args.out.mkdir(parents=True, exist_ok=True)
                     for i, im in enumerate(SEEN_IMAGES):
-                        im.save(args.out / f"docling-image-{i + 1}.png")
+                        im.save(args.out / f"docling-image-{scale:g}x-{i + 1}.png")
         if args.only != "pipeline":
             pictures = [(f"page rendered at {SCALE:g}x ({SCALE * 72:.0f} DPI)", page_render(page_pdf))]
             embedded = largest_image(page_pdf)
