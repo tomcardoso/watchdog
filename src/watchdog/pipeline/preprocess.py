@@ -60,6 +60,11 @@ WORD_SHAPE_THRESHOLD = 0.3  # fraction of tokens that must look word-like, below
 PAGE_GARBLE_VOTES_REQUIRED = 2  # of the signals in page_garble_signals(), how many must fire
 CHUNK_SIZE = 40             # pages per chunk when splitting large PDFs
 CHUNK_TIMEOUT = 300         # seconds per chunk subprocess
+# A page Watchdog OCRs is rendered at the resolution of the image on it (D364): never below
+# Docling's own OCR scale (3, 216 DPI, D352), and never above 600 DPI, so one extreme scan cannot
+# exhaust memory with a slice of pages rendered at once.
+OCR_SCALE_MIN = 3.0
+OCR_SCALE_MAX = 600 / 72
 
 
 def _perf_cpu_count() -> int:
@@ -416,8 +421,11 @@ def _load_models(converter, fmt) -> None:
         pass
 
 
-def build_converter(force_ocr: bool, *, load_models: bool = True):
+def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: float | None = None):
     """Build a Docling DocumentConverter with the configured OCR engine.
+
+    `ocr_scale` sets a forced-OCR conversion's OCR (and render) scale, in pixels per point; unset,
+    Docling's default (3) stands.
 
     Engine selection (auto mode):
       1. Apple Vision (macOS only, requires ocrmac) — fast, hardware-accelerated
@@ -454,6 +462,8 @@ def build_converter(force_ocr: bool, *, load_models: bool = True):
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)
         else:  # auto or tesseract
             ocr_opts = _make_tesseract_opts(force_ocr)
+    if force_ocr and ocr_scale:
+        ocr_opts.scale = ocr_scale
 
     # Force CPU: Docling's layout model (RT-DETR-v2) computes a position embedding in
     # float64, which PyTorch's MPS backend cannot handle — on Apple Silicon, where
@@ -482,6 +492,60 @@ def load_pdf_models() -> None:
     Docling step: the models land in the cache conversion reads (D358)."""
     from docling.datamodel.base_models import InputFormat
     build_converter(False, load_models=False).initialize_pipeline(InputFormat.PDF)
+
+
+def pdf_ocr_scale(path: Path) -> float:
+    """The scale a forced-OCR conversion of this PDF renders at (D364): the resolution of the
+    largest image on any of its pages, in pixels per point, within OCR_SCALE_MIN..OCR_SCALE_MAX.
+
+    A screen capture's smallest text sits at the edge of what an OCR engine reads at 216 DPI: one
+    saved as a PDF at 322 DPI had its footer address misread at 3x and read correctly from 3.5x
+    up, by Apple Vision through Docling. Reading the image at its own resolution gives the engine
+    every pixel the document has. One scale serves the whole file, since a conversion has one;
+    a page with no image to measure (text drawn as shapes) leaves the floor."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(str(path))
+        native = max((s for s in map(_page_image_scale, reader.pages) if s), default=0.0)
+    except Exception:  # noqa: BLE001 — an unreadable file is converted at the default
+        native = 0.0
+    return min(max(native, OCR_SCALE_MIN), OCR_SCALE_MAX)
+
+
+def _page_image_scale(page) -> float | None:
+    """Pixels per point of the largest image drawn on a pypdf page (the one covering the most of
+    it), from the transformation in force where it is drawn: rotation and scaling included, and
+    images inside form XObjects. None for a page that draws no image XObject."""
+    import math
+    images: dict[str, tuple[int, int]] = {}
+
+    def collect(resources, depth=0):
+        xobjects = (resources or {}).get("/XObject") if depth < 8 else None
+        for name, ref in (xobjects.get_object().items() if xobjects else ()):
+            obj = ref.get_object()
+            if obj.get("/Subtype") == "/Image":
+                images.setdefault(name, (int(obj["/Width"]), int(obj["/Height"])))
+            elif obj.get("/Subtype") == "/Form":
+                collect(obj.get("/Resources"), depth + 1)
+
+    collect(page.get("/Resources"))
+    if not images:
+        return None
+    best: list[tuple[float, float]] = []
+
+    def visit(op, args, cm, tm):
+        if op != b"Do" or not args or args[0] not in images:
+            return
+        # An image fills the unit square, so its placed width and height are the lengths of the
+        # matrix's two column vectors.
+        a, b, c, d = (float(x) for x in cm[:4])
+        area = math.hypot(a, b) * math.hypot(c, d)
+        if area > 0:
+            w, h = images[args[0]]
+            best.append((area, math.sqrt(w * h / area)))
+
+    page.extract_text(visitor_operand_before=visit)
+    return max(best)[1] if best else None
 
 
 def _ocr_render_scale(format_option_cls, scale: float) -> dict:
@@ -555,9 +619,9 @@ def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: 
     """
     cmd = [sys.executable, "-m", "watchdog.pipeline.preprocess", str(slice_path),
            "--force-ocr" if force_ocr else "--no-force-ocr"]
+    timeout = _slice_timeout(slice_path, force_ocr)
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True,
-                           timeout=_config_get("chunk_timeout", CHUNK_TIMEOUT))
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         if not r.stdout.strip():
             return {"error": f"Empty output from chunk subprocess: {r.stderr[:200]}"}
         result = json.loads(r.stdout)
@@ -579,10 +643,18 @@ def _run_slice_subprocess(slice_path: Path, page_numbers: list[int], force_ocr: 
             page["page"] = page_numbers[index] + 1
         return result
     except subprocess.TimeoutExpired:
-        timeout = _config_get("chunk_timeout", CHUNK_TIMEOUT)
-        return {"error": f"Chunk timed out after {timeout}s"}
+        return {"error": f"Chunk timed out after {timeout:.0f}s"}
     except Exception as e:
         return {"error": str(e)}
+
+
+def _slice_timeout(slice_path: Path, force_ocr: bool) -> float:
+    """`chunk_timeout`, stretched for a forced-OCR slice rendered above Docling's scale (D364): OCR
+    time grows with the pixels, so with the square of the scale."""
+    timeout = _config_get("chunk_timeout", CHUNK_TIMEOUT)
+    if force_ocr:
+        timeout *= (pdf_ocr_scale(slice_path) / OCR_SCALE_MIN) ** 2
+    return timeout
 
 
 def process_pdf_slices(path: Path, slices: list[tuple[list[int], bool]]) -> dict:
@@ -848,7 +920,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
         return {"error": "Docling is not installed. Open Settings → Setup and choose Repair or reinstall the engine."}
     if is_pdf:
         try:
-            converter = build_converter(force_ocr)
+            converter = build_converter(force_ocr, ocr_scale=pdf_ocr_scale(path) if force_ocr else None)
         except Exception as e:
             return {"error": f"Failed to build converter: {e}"}
     elif path.suffix.lower() in IMAGE_SUFFIXES:

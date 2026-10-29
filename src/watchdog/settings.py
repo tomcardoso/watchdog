@@ -185,6 +185,7 @@ SETTINGS = {
         "short": "Seconds before a chunk subprocess is killed (default: 300)",
         "help": (
             "Each chunk subprocess is given this many seconds to complete before being killed.\n"
+            "  A chunk of pages OCR'd above 216 DPI gets proportionally longer (D364).\n"
             "  Increase for very large or complex PDFs on slow machines.\n"
             "  Default: 300 (5 minutes)."
         ),
