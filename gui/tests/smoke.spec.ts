@@ -256,6 +256,10 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.drop-overlay')).toHaveCount(0)
     await drag('dragleave')
     await expect(page.locator('.modal .add-hint.over')).toHaveCount(0)
+    // Each model picker names the model a run uses when it is left on the setting (which model
+    // depends on the keys this computer has).
+    await page.locator('.modal .add-disclose').click()
+    await expect(page.locator('.modal .add-opts .field-hint').first()).toHaveText(/^Runs on \S.*\. Reads each document/, { timeout: 15_000 })
     // Each "Already waiting" line names its files.
     await expect(page.locator('.modal .add-waiting li', { hasText: 'waiting to be added' }).locator('.add-waiting-names li').first()).toBeVisible({ timeout: 15_000 })
     await page.getByRole('button', { name: 'Read documents' }).click()

@@ -1019,6 +1019,10 @@ export interface Methods {
   'verify.facts': [{ vault: string }, { summary: VerificationSummary; facts: LedgerFact[]; orphaned: OrphanMark[]; reporter: string }]
 
   'ingest.preflight': [{ vault: string; options?: RunOptions }, Preflight]
+  'ingest.configured': [{ options?: RunOptions }, {
+    models: Partial<Record<'extractor_model' | 'classifier_model' | 'finalizer_model' | 'finalizer_writing_model' | 'finalizer_housekeeping_model', string | null>>
+    efforts: Partial<Record<'extractor_effort' | 'classifier_effort' | 'finalizer_effort', Effort | 'default' | null>>
+  }]
   'ingest.estimate': [{ vault: string; stage: 'dig' | 'bark'; all_models?: boolean; options?: RunOptions }, Estimate]
 
   'jobs.ops': [Record<string, never>, Record<OpName, OpSpec>]

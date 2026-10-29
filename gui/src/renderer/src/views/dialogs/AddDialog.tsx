@@ -517,28 +517,41 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
 
 const EFFORT_LABEL: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' }
 
+/** The line under an effort picker left on the setting: what that setting runs at. */
+function configuredEffort(e: string | null | undefined): ReactNode {
+  if (!e) return undefined
+  return <b>{e === 'default' ? 'Runs at the model’s own default.' : `Runs at ${(EFFORT_LABEL[e] ?? e).toLowerCase()} effort.`}</b>
+}
+
 function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions: (o: RunOptions) => void }) {
   const { data: models } = useRpc('settings.models', {})
   const { data: skills } = useRpc('skills.list', {})
+  // What "use the configured …" means for this run: it can move with the other fields.
+  const modelOptions = cleanOptions(Object.fromEntries(Object.entries(options).filter(([k]) => /_(model|effort)$/.test(k))) as RunOptions)
+  const { data: configured } = useRpc('ingest.configured', { options: modelOptions }, { staleTime: 0, placeholderData: (prev) => prev })
   const set = <K extends keyof RunOptions>(k: K, v: RunOptions[K] | undefined) => setOptions({ ...options, [k]: v })
   const groups = new Map<string, NonNullable<typeof models>['models']>()
   for (const m of models?.models ?? []) groups.set(m.provider, [...(groups.get(m.provider) ?? []), m])
   const efforts = models?.efforts ?? ['low', 'medium', 'high', 'xhigh', 'max']
 
-  const modelSelect = (k: keyof RunOptions, label: string, hint?: string) => (
-    <Field label={label} hint={hint}>
-      <select className="select" value={(options[k] as string) ?? ''} onChange={(e) => set(k, (e.target.value || undefined) as never)}>
-        <option value="">Use the configured model</option>
-        {[...groups.entries()].map(([prov, ms]) => (
-          <optgroup key={prov} label={prov}>
-            {ms.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </optgroup>
-        ))}
-      </select>
-    </Field>
-  )
+  // Left on the setting, the line under the picker names what that setting runs.
+  const modelSelect = (k: keyof NonNullable<typeof configured>['models'], label: string, hint?: string) => {
+    const now = !options[k] && configured?.models[k]
+    return (
+      <Field label={label} hint={now ? <><b>Runs on {now}.</b>{hint && ` ${hint}`}</> : hint}>
+        <select className="select" value={(options[k] as string) ?? ''} onChange={(e) => set(k, (e.target.value || undefined) as never)}>
+          <option value="">Use the configured model</option>
+          {[...groups.entries()].map(([prov, ms]) => (
+            <optgroup key={prov} label={prov}>
+              {ms.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </Field>
+    )
+  }
   const effortSelect = (k: 'extractor_effort' | 'classifier_effort' | 'finalizer_effort', label: string) => (
-    <Field label={label}>
+    <Field label={label} hint={options[k] ? undefined : configuredEffort(configured?.efforts[k])}>
       <select className="select" value={options[k] ?? ''} onChange={(e) => set(k, (e.target.value || undefined) as Effort | undefined)}>
         <option value="">Use the configured effort</option>
         {efforts.map((e) => <option key={e} value={e}>{EFFORT_LABEL[e] ?? e}</option>)}

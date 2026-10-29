@@ -273,6 +273,7 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 | Method | Params | Result |
 |---|---|---|
 | `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290), and `spending_limit` (`spend.limit`'s status plus `warning`, set once the limit is reached), null without a limit (D324) |
+| `ingest.configured` | `{options?: RunOptions}` | `{models: {[field]: string\|null}, efforts: {[field]: Effort\|"default"\|null}}` — what each model field (`extractor_model`, `classifier_model`, `finalizer_model`, `finalizer_writing_model`, `finalizer_housekeeping_model`) and effort field (`extractor_effort`, `classifier_effort`, `finalizer_effort`) runs when left unset: `resolve_plan` from the settings and the other options, without that one. A model is its display name; `"default"` means no effort is sent (the model's own); null, a setting that does not resolve |
 | `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null, spending_warning?: string\|null}` — `spending_warning` when the estimate's upper end would pass what is left under the spending limit; a warning only (D324) |
 
 ```
