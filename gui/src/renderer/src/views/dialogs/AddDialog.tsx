@@ -804,8 +804,9 @@ function JobPanel({ job, idle }: { job?: Job; idle: string }) {
           {docs.map(([sha, d]) => (
             <li key={sha}>
               <DocState state={d.state} />
-              <span className="grow truncate">{d.filename}</span>
-              <span className="faint truncate" style={{ maxWidth: 220 }}>{d.detail ?? stateLabel(d.state)}</span>
+              <span className="grow truncate" title={d.filename}>{d.filename}</span>
+              {/* The state never gives way to a long name: only the name is shortened. */}
+              <span className="faint truncate" style={{ flex: 'none', maxWidth: 220 }}>{d.detail ?? stateLabel(d.state)}</span>
             </li>
           ))}
         </ul>
