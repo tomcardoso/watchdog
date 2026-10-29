@@ -134,7 +134,8 @@ def set_ocr_scale(scale: float) -> None:
     if _BUILD_CONVERTER is None:
         _BUILD_CONVERTER = preprocess.build_converter
 
-    def build_converter(force_ocr, *, load_models=True):
+    def build_converter(force_ocr, *, load_models=True, **_ignored):
+        # `ocr_scale` (D364) and anything later: this reading's scale replaces it.
         from docling.datamodel.base_models import InputFormat
         conv = _BUILD_CONVERTER(force_ocr, load_models=False)
         fopt = conv.format_to_options[InputFormat.PDF]

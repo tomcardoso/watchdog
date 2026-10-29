@@ -176,9 +176,9 @@ Two settings belong to a single investigation and live on its Overview instead: 
 | Field | Default | What it controls |
 |---|---|---|
 | Pre-processing workers | `auto` | Files read in parallel. `auto` adapts to the batch. |
-| Chunk size | `40` | Pages per chunk when a large PDF is split for parallel reading. |
+| Chunk size | `40` | Pages per chunk when a large PDF is split for parallel reading. Scanned pages read at a higher resolution go in smaller chunks, so each holds about as much as 40 pages at 216 DPI. |
 | Chunk workers | `auto` | Parallel workers for one large PDF's chunks. Workers and chunk workers multiply, so pin both low on a modest computer. |
-| Chunk timeout | `300` | Seconds before a chunk is stopped. A chunk of scanned pages read at a high resolution gets proportionally longer. |
+| Chunk timeout | `300` | Seconds before a chunk is stopped. |
 | Table structure | on | Table detection on PDFs. Turn it off to speed up text-only documents. |
 
 ### Transcription

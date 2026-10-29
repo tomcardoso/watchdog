@@ -75,7 +75,8 @@ export function AddDialog() {
     if (!addOpen) return
     if (phaseRef.current === 'gate' && addOpen.paths.length) {
       setPhase('choose')
-      setPaths(addOpen.paths)
+      // Folders found while reading are passed to the run, not read: they go back on the list.
+      setPaths([...new Set([...folders, ...addOpen.paths])])
       setGate(null)
       setError('')
     } else if ((phaseRef.current === 'reading' || phaseRef.current === 'running') && addOpen.paths.length) {
@@ -178,7 +179,7 @@ export function AddDialog() {
       setReadIssues(issues)
       // Files dropped meanwhile are read before anything is confirmed, so it all goes together.
       if (laterRef.current.length) {
-        setPaths(laterRef.current)
+        setPaths([...new Set([...dirs, ...laterRef.current])])
         setLater([])
         phaseRef.current = 'choose'
         setPhase('choose')
@@ -207,7 +208,9 @@ export function AddDialog() {
       } else {
         setAutoNote(null)
         setPhase('gate')
-        if (!useApp.getState().addOpen) useApp.getState().openAdd(paths) // the gate always needs a person
+        // The gate always needs a person. Reopened with no paths: the flow already holds them, and
+        // paths arriving at the gate are new files that send it back to the first step.
+        if (!useApp.getState().addOpen) useApp.getState().openAdd()
       }
     } catch (e) {
       setError(errorMessage(e))

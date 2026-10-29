@@ -262,15 +262,22 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.modal .add-opts .field-hint').first()).toHaveText(/^Runs on \S.*\. Reads each document/, { timeout: 15_000 })
     // Each "Already waiting" line names its files.
     await expect(page.locator('.modal .add-waiting li', { hasText: 'waiting to be added' }).locator('.add-waiting-names li').first()).toBeVisible({ timeout: 15_000 })
+    // Hidden while reading, the dialog reopens itself on the pause, not back on the first step
+    // with the files it has just read.
+    const extra = join(root, 'late-arrival.txt')
+    writeFileSync(extra, 'A document that arrived after the others were read.')
+    await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), extra)
+    await expect(page.locator('.modal .add-files')).toContainText('late-arrival.txt')
     await page.getByRole('button', { name: 'Read documents' }).click()
+    await page.evaluate(() => (window as any).__watchdogApp.getState().closeAdd())
     await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible({ timeout: 60_000 })
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible()
     // The pause closes like any dialog: Escape, as Cancel does, sends nothing.
     await page.keyboard.press('Escape')
     await expect(page.locator('.modal')).toHaveCount(0)
     // Files dropped while the pause waits go back to the first step to be read; what was already
     // read stays queued, so the next pause covers both.
-    const extra = join(root, 'late-arrival.txt')
-    writeFileSync(extra, 'A document that arrived after the others were read.')
     await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), extra)
     await expect(page.locator('.modal .add-steps li.now')).toContainText('Choose')
     await expect(page.locator('.modal .add-files')).toContainText('late-arrival.txt')

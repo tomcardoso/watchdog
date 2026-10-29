@@ -880,12 +880,91 @@ def test_pdf_ocr_scale_without_an_image_or_a_readable_file_is_the_floor(tmp_path
     assert preprocess.pdf_ocr_scale(broken) == preprocess.OCR_SCALE_MIN
 
 
-def test_a_forced_ocr_slice_gets_time_for_its_extra_pixels(monkeypatch, tmp_path):
-    monkeypatch.setattr(preprocess, "_config_get", lambda key, default=None: 300 if key == "chunk_timeout" else default)
-    scan = _scan_pdf(tmp_path / "scan.pdf", 300)
-    assert preprocess._slice_timeout(scan, force_ocr=True) == pytest.approx(300 * (300 / 72 / 3) ** 2)
-    assert preprocess._slice_timeout(scan, force_ocr=False) == 300
-    assert preprocess._slice_timeout(_scan_pdf(tmp_path / "low.pdf", 100), force_ocr=True) == 300
+def _form_scan_pdf(path, tmp_path, *, page_cm, form_matrix=None):
+    """A 300 DPI letter scan drawn through a form XObject: the page applies `page_cm` and draws
+    the form, which applies `form_matrix` (its /Matrix) and draws the image at its pixel size."""
+    import pypdf
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject, StreamObject
+    scan = pypdf.PdfReader(str(_scan_pdf(tmp_path / "src.pdf", 300)))
+    writer = pypdf.PdfWriter()
+    page = writer.add_blank_page(612, 792)
+    (src_image,) = scan.pages[0]["/Resources"]["/XObject"].values()
+    image = writer._add_object(src_image.get_object().clone(writer))
+    form = StreamObject()
+    form.set_data(b"q 2550 0 0 3300 0 0 cm /Im0 Do Q")
+    form.update({NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Form"),
+                 NameObject("/BBox"): ArrayObject([FloatObject(v) for v in (0, 0, 2550, 3300)]),
+                 NameObject("/Resources"): DictionaryObject({NameObject("/XObject"): DictionaryObject({NameObject("/Im0"): image})})})
+    if form_matrix:
+        form[NameObject("/Matrix")] = ArrayObject([FloatObject(v) for v in form_matrix])
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/XObject"): DictionaryObject({NameObject("/Fm0"): writer._add_object(form)})})
+    content = StreamObject()
+    content.set_data(f"q {page_cm} cm /Fm0 Do Q".encode())
+    page[NameObject("/Contents")] = writer._add_object(content)
+    writer.write(str(path))
+    return path
+
+
+@pytest.mark.parametrize("page_cm, form_matrix", [
+    ("0.24 0 0 0.24 0 0", None),            # scaled by the page around the form
+    ("1 0 0 1 0 0", (0.24, 0, 0, 0.24, 0, 0)),  # scaled by the form's own /Matrix
+])
+def test_pdf_ocr_scale_follows_transforms_into_a_form(tmp_path, page_cm, form_matrix):
+    """A scan drawn inside a form XObject is measured with every transformation above it: here
+    2,550 px across 612 pt, 300 DPI, whichever level scales it."""
+    pdf = _form_scan_pdf(tmp_path / "form.pdf", tmp_path, page_cm=page_cm, form_matrix=form_matrix)
+    assert preprocess.pdf_ocr_scale(pdf) == pytest.approx(300 / 72)
+
+
+def test_one_damaged_page_does_not_lower_the_others(monkeypatch, tmp_path):
+    import pypdf
+    writer = pypdf.PdfWriter()
+    for path in (_scan_pdf(tmp_path / "a.pdf", 300), _scan_pdf(tmp_path / "b.pdf", 300)):
+        writer.append(str(path))
+    pdf = tmp_path / "two.pdf"
+    writer.write(str(pdf))
+    real = preprocess._page_image_scale
+    calls = []
+
+    def first_page_breaks(page, reader):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("damaged content stream")
+        return real(page, reader)
+
+    monkeypatch.setattr(preprocess, "_page_image_scale", first_page_breaks)
+    assert preprocess.pdf_page_ocr_scales(pdf) == pytest.approx([preprocess.OCR_SCALE_MIN, 300 / 72])
+
+
+def test_forced_slices_hold_no_more_pixels_than_chunk_size_pages_at_3x():
+    """Forced pages are cut by pixels, in ascending scale, so a slice of 600 DPI pages holds about
+    as many pixels as one of 216 DPI pages, and a sharp page does not raise a dull slice's scale."""
+    scales = [3.0] * 4 + [6.0] * 4 + [3.0] * 2          # 6x is four pages' worth of 3x pixels
+    slices = preprocess._ocr_slices(10, list(range(10)), 8, force_all=True, scales=scales)
+    assert slices == [([0, 1, 2, 3, 8, 9], True), ([4, 5], True), ([6, 7], True)]
+    # Without scales, and for pages keeping their text layer, slicing is by page count as before.
+    assert preprocess._ocr_slices(10, [], 8) == [(list(range(8)), False), ([8, 9], False)]
+    # A page over the whole budget alone is a slice of its own, never an empty one.
+    assert preprocess._ocr_slices(2, [0, 1], 3, force_all=True, scales=[8.0, 8.0]) == [([0], True), ([1], True)]
+
+
+def test_a_small_scan_over_the_pixel_budget_is_sliced(monkeypatch, tmp_path):
+    """Twenty 600 DPI pages are under chunk_size by count but about 150 pages' worth of 3x pixels,
+    so they are converted in slices rather than at once."""
+    monkeypatch.setattr(preprocess, "pdf_page_count", lambda p: 20)
+    monkeypatch.setattr(preprocess, "pdf_page_ocr_scales", lambda p: [600 / 72] * 20)
+    monkeypatch.setattr(preprocess, "sha256_file", lambda p: "abc")
+    seen = {}
+
+    def slices(path, cut):
+        seen["slices"] = cut
+        return {"pages": [{"page": 1, "markdown": "x"}]}
+
+    monkeypatch.setattr(preprocess, "process_pdf_slices", slices)
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"")
+    preprocess.process_with_docling(pdf, force_ocr=True)
+    assert len(seen["slices"]) == 4 and all(len(p) == 5 for p, _ in seen["slices"])
 
 
 @pytest.mark.parametrize("force_ocr, expected", [(True, 4.5), (False, None)])

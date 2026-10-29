@@ -34,7 +34,9 @@ export function DropOverlay() {
       e.preventDefault()
       depth = 0
       setOver(false)
-      if (!project || !ready) return
+      // Before the engine is ready only an open Add documents takes files: it keeps them listed
+      // until setup finishes.
+      if (!project || (!ready && !useApp.getState().addOpen)) return
       const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.watchdog.files.pathForFile(f)).filter(Boolean)
       if (paths.length) openAdd(paths)
     }
