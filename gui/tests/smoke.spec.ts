@@ -319,6 +319,16 @@ test('every screen renders against the demo investigation', async () => {
     await page.getByRole('button', { name: 'Search the extracted text instead' }).click()
     await expect(page.getByPlaceholder('Search the extracted text')).toHaveValue('no such words anywhere')
 
+    // The document's Entities tab lays its rows out in the panel, even after the Entities screen
+    // (whose own list rows are absolutely placed) has loaded its stylesheet.
+    await page.evaluate((sha) => (window as any).__watchdogApp.getState().navigate({ view: 'document', sha, tab: 'entities' }), foi)
+    const entRow = page.locator('.doc-ent-group .doc-ent-row').first()
+    await expect(entRow).toBeVisible({ timeout: 20_000 })
+    const [rowBox, groupBox] = await Promise.all([entRow.boundingBox(), page.locator('.doc-ent-group').first().boundingBox()])
+    expect(rowBox!.x).toBeGreaterThanOrEqual(groupBox!.x)
+    expect(rowBox!.y).toBeGreaterThan(groupBox!.y)
+    expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(groupBox!.y + groupBox!.height + 1)
+
     // The command palette: a full-height search row (it used to shrink to its text), and the panel
     // inside the window at a small size.
     await page.setViewportSize({ width: 1000, height: 700 })
