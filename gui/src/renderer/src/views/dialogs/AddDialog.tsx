@@ -56,18 +56,34 @@ export function AddDialog() {
   const [autoNote, setAutoNote] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Files dropped while documents are read or a run is under way: they cannot join that step, so
+  // they are held and read next.
+  const [later, setLater] = useState<string[]>([])
+  const laterRef = useRef(later)
+  laterRef.current = later
+  const dragging = useApp((s) => s.dragging)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
   // The investigation this flow belongs to: every step runs there, even if the reporter switches
   // investigation while files are read or the gate waits.
   const flowVault = useRef(vault)
 
-  // Opening: start fresh unless a run is under way (the dialog can be closed and reopened).
+  // Opening: start fresh unless a run is under way (the dialog can be closed and reopened). New
+  // files at the pause go back to the first step: what was read stays queued, listed as already
+  // waiting, and the pause that follows covers it all. During reading or a run they are held.
   useEffect(() => {
     if (!addOpen) return
-    if (phaseRef.current === 'choose' || phaseRef.current === 'done') {
+    if (phaseRef.current === 'gate' && addOpen.paths.length) {
       setPhase('choose')
-      setPaths((prev) => (phaseRef.current === 'choose' ? [...new Set([...prev, ...addOpen.paths])] : addOpen.paths))
+      setPaths(addOpen.paths)
+      setGate(null)
+      setError('')
+    } else if ((phaseRef.current === 'reading' || phaseRef.current === 'running') && addOpen.paths.length) {
+      setLater((prev) => [...new Set([...prev, ...addOpen.paths])])
+    } else if (phaseRef.current === 'choose' || phaseRef.current === 'done') {
+      setPhase('choose')
+      setPaths((prev) => [...new Set([...(phaseRef.current === 'choose' ? prev : laterRef.current), ...addOpen.paths])])
+      setLater([])
       if (phaseRef.current === 'done') {
         setAddJob(null)
         setRetry(false)
@@ -145,6 +161,8 @@ export function AddDialog() {
         setReadState({ i, n: work.length, job: j.id, label })
         const fin = await waitForJob(j.id)
         if (fin.state === 'cancelled') {
+          setPaths((prev) => [...new Set([...prev, ...laterRef.current])])
+          setLater([])
           setPhase('choose')
           setBusy(false)
           return
@@ -158,6 +176,16 @@ export function AddDialog() {
       }
       setFolders(dirs)
       setReadIssues(issues)
+      // Files dropped meanwhile are read before anything is confirmed, so it all goes together.
+      if (laterRef.current.length) {
+        setPaths(laterRef.current)
+        setLater([])
+        phaseRef.current = 'choose'
+        setPhase('choose')
+        setBusy(false)
+        if (!useApp.getState().addOpen) useApp.getState().openAdd()
+        return
+      }
       const [pf, pipe] = await Promise.all([
         call('ingest.preflight', { vault, options: cleanOptions(options) }),
         call('vault.pipeline', { vault })
@@ -316,16 +344,35 @@ export function AddDialog() {
           {job && <Button onClick={() => stopJob(job.id)}>Stop</Button>}
         </>
       ) : (
-        <DoneFooter vault={flowPath} job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths([]); setRetry(false) }} />
+        <DoneFooter vault={flowPath} job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths(later); setLater([]); setRetry(false) }} />
       )
   } else {
     body = <Skeleton h={120} />
     footer = <Button onClick={close}>Close</Button>
   }
 
+  // Off the first step, a drag says where the files will go; files held say so until read.
+  const heldNote = effective === 'running' ? 'They are listed to read when this run finishes.' : 'They are read next, before anything is sent.'
+  const dropNote = effective === 'gate' ? 'Drop to add these files too. They are read first, then everything is confirmed together.'
+    : effective === 'done' ? 'Drop to add these files.'
+    : `Drop to add these files. ${heldNote}`
   return (
     <Modal open={visible} onClose={close} title={title} sub={sub} width="wide" footer={footer}>
       <Stepper current={step} />
+      {dragging && effective !== 'choose' && <div className="add-hint over" style={{ marginBottom: 16 }}>{dropNote}</div>}
+      {later.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Callout tone="info" title={`${plural(later.length, 'more file')} to read`}>
+            {effective === 'done' ? 'Dropped while this run was under way.' : heldNote}
+            <ul className="add-waiting-names">{later.map((n) => <li key={n} className="truncate" title={n}>{basename(n)}</li>)}</ul>
+            {effective === 'done' && (
+              <Button size="sm" variant="soft" style={{ marginTop: 8 }} onClick={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths(later); setLater([]); setRetry(false) }}>
+                Read these files
+              </Button>
+            )}
+          </Callout>
+        </div>
+      )}
       {body}
     </Modal>
   )

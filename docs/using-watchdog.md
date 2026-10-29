@@ -27,6 +27,8 @@ Drop files or folders onto the window, or choose **Add documents** (top right, o
 3. **Before sending documents to a model.** Files that could not be read are listed first, and a file the investigation already has is set aside. Then the public-records warning, with the number of documents, which model receives them and, if you keep more than one key, which key pays. Nothing is sent until you choose **Acknowledge and add**. With [Auto-approve](models-and-cost.md#auto-approve) on and every step on your Claude subscription, this step is a short notice instead; when every step runs on a model server on this computer, it is skipped.
 4. **Adding.** Each document is extracted, then the finishing steps write everything to the investigation and produce a briefing. **Hide** closes the dialog while the run continues, with its progress in the corner of the window. **Stop** ends it cleanly, and adding again resumes it.
 
+You can add more files at any point. Dropped at step 3, they take you back to step 1: the documents already read stay waiting, so the next confirmation covers them and the new ones together. Dropped while documents are being read, they are read next, before anything is sent. Dropped during a run, they are listed in the dialog to read when it finishes.
+
 The run stays with the investigation you started it in. If another investigation is open when the pause or the finished run appears, the window says so, with **Switch to** that investigation.
 
 **Rename files before adding them.** Watchdog labels documents by their filename: `shell-co-annual-report-2023.pdf` is useful; `scan0042.pdf` is not.

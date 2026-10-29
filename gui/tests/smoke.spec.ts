@@ -267,6 +267,14 @@ test('every screen renders against the demo investigation', async () => {
     // The pause closes like any dialog: Escape, as Cancel does, sends nothing.
     await page.keyboard.press('Escape')
     await expect(page.locator('.modal')).toHaveCount(0)
+    // Files dropped while the pause waits go back to the first step to be read; what was already
+    // read stays queued, so the next pause covers both.
+    const extra = join(root, 'late-arrival.txt')
+    writeFileSync(extra, 'A document that arrived after the others were read.')
+    await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), extra)
+    await expect(page.locator('.modal .add-steps li.now')).toContainText('Choose')
+    await expect(page.locator('.modal .add-files')).toContainText('late-arrival.txt')
+    await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
     await page.evaluate(async (s) => {
       const w = window as any
       w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
