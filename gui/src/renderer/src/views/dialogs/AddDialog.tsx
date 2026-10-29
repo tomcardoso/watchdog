@@ -370,6 +370,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
   options: RunOptions; setOptions: (o: RunOptions) => void; error: string
 }) {
   const vault = useVault()
+  const dragging = useApp((s) => s.dragging)
   const [showOpts, setShowOpts] = useState(false)
   const [est, setEst] = useState<{ data?: Estimate; error?: string; loading?: boolean; all?: boolean } | null>(null)
   const pick = async (folders: boolean) => {
@@ -397,7 +398,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
       <section>
         <div className="add-label">Files to add</div>
         {paths.length > 0 ? (
-          <ul className="add-files">
+          <ul className={dragging ? 'add-files over' : 'add-files'}>
             {paths.map((p) => (
               <li key={p}>
                 <span className="n truncate">{basename(p)}</span>
@@ -407,7 +408,9 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
             ))}
           </ul>
         ) : (
-          <div className="add-hint">Drop files anywhere on the window, or choose them here. The originals stay where they are.</div>
+          <div className={dragging ? 'add-hint over' : 'add-hint'}>
+            {dragging ? 'Drop to add these files. The originals stay where they are.' : 'Drop files anywhere on the window, or choose them here. The originals stay where they are.'}
+          </div>
         )}
         <div className="row" style={{ marginTop: 10 }}>
           <Button icon={FilePlus2} onClick={() => void pick(false)}>Choose files…</Button>

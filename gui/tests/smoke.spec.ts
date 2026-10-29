@@ -244,6 +244,18 @@ test('every screen renders against the demo investigation', async () => {
     }, root)
     expect(second).toMatch(/^second-look/)
     await page.evaluate(() => (window as any).__watchdogApp.getState().openAdd())
+    // Files dragged over the open dialog light up its list of files to add, not the window-wide
+    // overlay, which would sit behind the dialog.
+    const drag = (type: 'dragenter' | 'dragleave') => page.evaluate((t) => {
+      const dt = new DataTransfer()
+      dt.items.add(new File(['x'], 'dragged.txt', { type: 'text/plain' }))
+      document.querySelector('.modal')!.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt }))
+    }, type)
+    await drag('dragenter')
+    await expect(page.locator('.modal .add-hint.over')).toHaveText(/^Drop to add these files/)
+    await expect(page.locator('.drop-overlay')).toHaveCount(0)
+    await drag('dragleave')
+    await expect(page.locator('.modal .add-hint.over')).toHaveCount(0)
     await page.getByRole('button', { name: 'Read documents' }).click()
     await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible({ timeout: 60_000 })
     await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()

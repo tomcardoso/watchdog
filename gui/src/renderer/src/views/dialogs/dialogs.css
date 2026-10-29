@@ -75,6 +75,15 @@
   text-align: center;
   font-size: var(--fs-md);
 }
+.add-hint.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.add-files.over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .add-files {
   list-style: none;
   margin: 0;
