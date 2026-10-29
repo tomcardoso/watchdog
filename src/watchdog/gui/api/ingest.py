@@ -8,7 +8,7 @@ Nothing here takes a lock or writes.
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 
 from watchdog.gui.rpc import RpcError, method
 from watchdog.gui.vaultio import require_vault, strip_ansi
@@ -140,6 +140,52 @@ def preflight(vault: str, options: dict | None = None) -> dict:
         "sample": None,
         "spending_limit": _spending(v),
     }
+
+
+# The Add documents form's model and effort fields, by the `Plan` value each one sets.
+_MODEL_FIELDS = {
+    "extractor_model": lambda p: p.extract,
+    "classifier_model": lambda p: p.classify,
+    "finalizer_model": lambda p: p.post,
+    **{f"finalizer_{g}_model": (lambda g: lambda p: (p.overrides[f"{g}_backend"],
+                                                     p.overrides[f"{g}_model"]))(g)
+       for g in FINALIZER_STAGES},
+}
+_EFFORT_FIELDS = {
+    "extractor_effort": lambda p: p.extract_effort,
+    "classifier_effort": lambda p: p.classify_effort,
+    "finalizer_effort": lambda p: p.post_effort,
+}
+
+
+@method("ingest.configured")
+def configured(options: dict | None = None) -> dict:
+    """What each model and effort field of the run form stands for when left on "use the
+    configured …": the plan resolved from the settings and the form's other fields, without that
+    field. An effort default depends on the model it runs on, and the finishing step's writing and
+    housekeeping fall back to the finishing step's model, so the answer can move with the others.
+    A model is its display name; an effort is its level, or "default" when none is sent (the
+    model's own default). A field whose setting cannot be resolved is null; the run reports why."""
+    from watchdog import config as config_mod
+    from watchdog.model_catalog import display_name, resolve_model_id
+    opts = run_options(options)
+    cfg = config_mod.load()
+
+    def plan_without(name):
+        try:
+            return resolve_plan(replace(opts, **{name: None}), cfg)
+        except SystemExit:
+            return None
+
+    models = {}
+    for name, pick in _MODEL_FIELDS.items():
+        plan = plan_without(name)
+        models[name] = display_name(resolve_model_id(pick(plan)[1])) if plan else None
+    efforts = {}
+    for name, pick in _EFFORT_FIELDS.items():
+        plan = plan_without(name)
+        efforts[name] = (pick(plan) or "default") if plan else None
+    return {"models": models, "efforts": efforts}
 
 
 def _spending(v) -> dict | None:

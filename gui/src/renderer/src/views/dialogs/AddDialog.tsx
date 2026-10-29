@@ -56,18 +56,35 @@ export function AddDialog() {
   const [autoNote, setAutoNote] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  // Files dropped while documents are read or a run is under way: they cannot join that step, so
+  // they are held and read next.
+  const [later, setLater] = useState<string[]>([])
+  const laterRef = useRef(later)
+  laterRef.current = later
+  const dragging = useApp((s) => s.dragging)
   const phaseRef = useRef(phase)
   phaseRef.current = phase
   // The investigation this flow belongs to: every step runs there, even if the reporter switches
   // investigation while files are read or the gate waits.
   const flowVault = useRef(vault)
 
-  // Opening: start fresh unless a run is under way (the dialog can be closed and reopened).
+  // Opening: start fresh unless a run is under way (the dialog can be closed and reopened). New
+  // files at the pause go back to the first step: what was read stays queued, listed as already
+  // waiting, and the pause that follows covers it all. During reading or a run they are held.
   useEffect(() => {
     if (!addOpen) return
-    if (phaseRef.current === 'choose' || phaseRef.current === 'done') {
+    if (phaseRef.current === 'gate' && addOpen.paths.length) {
       setPhase('choose')
-      setPaths((prev) => (phaseRef.current === 'choose' ? [...new Set([...prev, ...addOpen.paths])] : addOpen.paths))
+      // Folders found while reading are passed to the run, not read: they go back on the list.
+      setPaths([...new Set([...folders, ...addOpen.paths])])
+      setGate(null)
+      setError('')
+    } else if ((phaseRef.current === 'reading' || phaseRef.current === 'running') && addOpen.paths.length) {
+      setLater((prev) => [...new Set([...prev, ...addOpen.paths])])
+    } else if (phaseRef.current === 'choose' || phaseRef.current === 'done') {
+      setPhase('choose')
+      setPaths((prev) => [...new Set([...(phaseRef.current === 'choose' ? prev : laterRef.current), ...addOpen.paths])])
+      setLater([])
       if (phaseRef.current === 'done') {
         setAddJob(null)
         setRetry(false)
@@ -145,6 +162,8 @@ export function AddDialog() {
         setReadState({ i, n: work.length, job: j.id, label })
         const fin = await waitForJob(j.id)
         if (fin.state === 'cancelled') {
+          setPaths((prev) => [...new Set([...prev, ...laterRef.current])])
+          setLater([])
           setPhase('choose')
           setBusy(false)
           return
@@ -158,6 +177,16 @@ export function AddDialog() {
       }
       setFolders(dirs)
       setReadIssues(issues)
+      // Files dropped meanwhile are read before anything is confirmed, so it all goes together.
+      if (laterRef.current.length) {
+        setPaths([...new Set([...dirs, ...laterRef.current])])
+        setLater([])
+        phaseRef.current = 'choose'
+        setPhase('choose')
+        setBusy(false)
+        if (!useApp.getState().addOpen) useApp.getState().openAdd()
+        return
+      }
       const [pf, pipe] = await Promise.all([
         call('ingest.preflight', { vault, options: cleanOptions(options) }),
         call('vault.pipeline', { vault })
@@ -179,7 +208,9 @@ export function AddDialog() {
       } else {
         setAutoNote(null)
         setPhase('gate')
-        if (!useApp.getState().addOpen) useApp.getState().openAdd(paths) // the gate always needs a person
+        // The gate always needs a person. Reopened with no paths: the flow already holds them, and
+        // paths arriving at the gate are new files that send it back to the first step.
+        if (!useApp.getState().addOpen) useApp.getState().openAdd()
       }
     } catch (e) {
       setError(errorMessage(e))
@@ -316,16 +347,35 @@ export function AddDialog() {
           {job && <Button onClick={() => stopJob(job.id)}>Stop</Button>}
         </>
       ) : (
-        <DoneFooter vault={flowPath} job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths([]); setRetry(false) }} />
+        <DoneFooter vault={flowPath} job={job} onAgain={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths(later); setLater([]); setRetry(false) }} />
       )
   } else {
     body = <Skeleton h={120} />
     footer = <Button onClick={close}>Close</Button>
   }
 
+  // Off the first step, a drag says where the files will go; files held say so until read.
+  const heldNote = effective === 'running' ? 'They are listed to read when this run finishes.' : 'They are read next, before anything is sent.'
+  const dropNote = effective === 'gate' ? 'Drop to add these files too. They are read first, then everything is confirmed together.'
+    : effective === 'done' ? 'Drop to add these files.'
+    : `Drop to add these files. ${heldNote}`
   return (
-    <Modal open={visible} onClose={close} title={title} sub={sub} width="wide" footer={footer} dismissable={effective !== 'gate'}>
+    <Modal open={visible} onClose={close} title={title} sub={sub} width="wide" footer={footer}>
       <Stepper current={step} />
+      {dragging && effective !== 'choose' && <div className="add-hint over" style={{ marginBottom: 16 }}>{dropNote}</div>}
+      {later.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Callout tone="info" title={`${plural(later.length, 'more file')} to read`}>
+            {effective === 'done' ? 'Dropped while this run was under way.' : heldNote}
+            <ul className="add-waiting-names">{later.map((n) => <li key={n} className="truncate" title={n}>{basename(n)}</li>)}</ul>
+            {effective === 'done' && (
+              <Button size="sm" variant="soft" style={{ marginTop: 8 }} onClick={() => { setPhase('choose'); setAddJob(null); setGate(null); setPaths(later); setLater([]); setRetry(false) }}>
+                Read these files
+              </Button>
+            )}
+          </Callout>
+        </div>
+      )}
       {body}
     </Modal>
   )
@@ -365,11 +415,21 @@ function Stepper({ current }: { current: number }) {
 }
 
 // ── Step 1 ───────────────────────────────────────────────────────────────────
+/** The files behind one "Already waiting" line, scrolling past a handful. */
+function WaitingNames({ names, under }: { names: string[]; under?: 'checkbox' }) {
+  return (
+    <ul className={under ? 'add-waiting-names under-checkbox' : 'add-waiting-names'}>
+      {names.map((n, i) => <li key={`${i}:${n}`} className="truncate" title={n}>{n}</li>)}
+    </ul>
+  )
+}
+
 function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, setOptions, error }: {
   paths: string[]; setPaths: (p: string[]) => void; pf: Preflight | null; loading: boolean; retry: boolean; setRetry: (b: boolean) => void
   options: RunOptions; setOptions: (o: RunOptions) => void; error: string
 }) {
   const vault = useVault()
+  const dragging = useApp((s) => s.dragging)
   const [showOpts, setShowOpts] = useState(false)
   const [est, setEst] = useState<{ data?: Estimate; error?: string; loading?: boolean; all?: boolean } | null>(null)
   const pick = async (folders: boolean) => {
@@ -385,19 +445,21 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
       setEst({ error: errorMessage(e), all })
     }
   }
-  const waiting = pf ? [
-    pf.incoming > 0 && `${plural(pf.incoming, 'file')} waiting to be added`,
-    pf.queued - pf.staged > 0 && `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`,
-    pf.staged > 0 && `${plural(pf.staged, 'document')} extracted, waiting to be finished`,
-    pf.pending_finalization && 'a batch waiting to be finished'
-  ].filter(Boolean) as string[] : []
+  // The names behind the counts: the same listing the Overview reads.
+  const { data: pipe } = useRpc('vault.pipeline', { vault }, { staleTime: 0 })
+  const waiting = pf ? ([
+    pf.incoming > 0 && { text: `${plural(pf.incoming, 'file')} waiting to be added`, names: pipe?.incoming.map((f) => f.name) },
+    pf.queued - pf.staged > 0 && { text: `${plural(pf.queued - pf.staged, 'document')} read, waiting for extraction`, names: pipe?.queued.filter((q) => !q.staged).map((q) => q.filename) },
+    pf.staged > 0 && { text: `${plural(pf.staged, 'document')} extracted, waiting to be finished`, names: pipe?.queued.filter((q) => q.staged).map((q) => q.filename) },
+    pf.pending_finalization && { text: 'a batch waiting to be finished' }
+  ].filter(Boolean) as { text: string; names?: string[] }[]) : []
 
   return (
     <div className="col gap-16">
       <section>
         <div className="add-label">Files to add</div>
         {paths.length > 0 ? (
-          <ul className="add-files">
+          <ul className={dragging ? 'add-files over' : 'add-files'}>
             {paths.map((p) => (
               <li key={p}>
                 <span className="n truncate">{basename(p)}</span>
@@ -407,7 +469,9 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
             ))}
           </ul>
         ) : (
-          <div className="add-hint">Drop files anywhere on the window, or choose them here. The originals stay where they are.</div>
+          <div className={dragging ? 'add-hint over' : 'add-hint'}>
+            {dragging ? 'Drop to add these files. The originals stay where they are.' : 'Drop files anywhere on the window, or choose them here. The originals stay where they are.'}
+          </div>
         )}
         <div className="row" style={{ marginTop: 10 }}>
           <Button icon={FilePlus2} onClick={() => void pick(false)}>Choose files…</Button>
@@ -422,7 +486,14 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
         ) : !pf ? (
           <div className="faint">Watchdog could not check this investigation. The reason is below.</div>
         ) : waiting.length ? (
-          <ul className="add-waiting">{waiting.map((w) => <li key={w}>{w}</li>)}</ul>
+          <ul className="add-waiting">
+            {waiting.map((w) => (
+              <li key={w.text}>
+                {w.text}
+                {!!w.names?.length && <WaitingNames names={w.names} />}
+              </li>
+            ))}
+          </ul>
         ) : (
           <div className="faint">Nothing else is waiting.</div>
         )}
@@ -432,6 +503,7 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
             <span>Retry {plural(pf.failed, 'document')} that failed before</span>
           </label>
         )}
+        {pf && pf.failed > 0 && !!pipe?.failed.length && <WaitingNames names={pipe.failed.map((f) => f.filename)} under="checkbox" />}
       </section>
 
       {pf?.sample && (
@@ -495,28 +567,41 @@ function ChooseStep({ paths, setPaths, pf, loading, retry, setRetry, options, se
 
 const EFFORT_LABEL: Record<string, string> = { low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Maximum' }
 
+/** The line under an effort picker left on the setting: what that setting runs at. */
+function configuredEffort(e: string | null | undefined): ReactNode {
+  if (!e) return undefined
+  return <b>{e === 'default' ? 'Runs at the model’s own default.' : `Runs at ${(EFFORT_LABEL[e] ?? e).toLowerCase()} effort.`}</b>
+}
+
 function OptionsForm({ options, setOptions }: { options: RunOptions; setOptions: (o: RunOptions) => void }) {
   const { data: models } = useRpc('settings.models', {})
   const { data: skills } = useRpc('skills.list', {})
+  // What "use the configured …" means for this run: it can move with the other fields.
+  const modelOptions = cleanOptions(Object.fromEntries(Object.entries(options).filter(([k]) => /_(model|effort)$/.test(k))) as RunOptions)
+  const { data: configured } = useRpc('ingest.configured', { options: modelOptions }, { staleTime: 0, placeholderData: (prev) => prev })
   const set = <K extends keyof RunOptions>(k: K, v: RunOptions[K] | undefined) => setOptions({ ...options, [k]: v })
   const groups = new Map<string, NonNullable<typeof models>['models']>()
   for (const m of models?.models ?? []) groups.set(m.provider, [...(groups.get(m.provider) ?? []), m])
   const efforts = models?.efforts ?? ['low', 'medium', 'high', 'xhigh', 'max']
 
-  const modelSelect = (k: keyof RunOptions, label: string, hint?: string) => (
-    <Field label={label} hint={hint}>
-      <select className="select" value={(options[k] as string) ?? ''} onChange={(e) => set(k, (e.target.value || undefined) as never)}>
-        <option value="">Use the configured model</option>
-        {[...groups.entries()].map(([prov, ms]) => (
-          <optgroup key={prov} label={prov}>
-            {ms.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
-          </optgroup>
-        ))}
-      </select>
-    </Field>
-  )
+  // Left on the setting, the line under the picker names what that setting runs.
+  const modelSelect = (k: keyof NonNullable<typeof configured>['models'], label: string, hint?: string) => {
+    const now = !options[k] && configured?.models[k]
+    return (
+      <Field label={label} hint={now ? <><b>Runs on {now}.</b>{hint && ` ${hint}`}</> : hint}>
+        <select className="select" value={(options[k] as string) ?? ''} onChange={(e) => set(k, (e.target.value || undefined) as never)}>
+          <option value="">Use the configured model</option>
+          {[...groups.entries()].map(([prov, ms]) => (
+            <optgroup key={prov} label={prov}>
+              {ms.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+            </optgroup>
+          ))}
+        </select>
+      </Field>
+    )
+  }
   const effortSelect = (k: 'extractor_effort' | 'classifier_effort' | 'finalizer_effort', label: string) => (
-    <Field label={label}>
+    <Field label={label} hint={options[k] ? undefined : configuredEffort(configured?.efforts[k])}>
       <select className="select" value={options[k] ?? ''} onChange={(e) => set(k, (e.target.value || undefined) as Effort | undefined)}>
         <option value="">Use the configured effort</option>
         {efforts.map((e) => <option key={e} value={e}>{EFFORT_LABEL[e] ?? e}</option>)}
@@ -722,8 +807,9 @@ function JobPanel({ job, idle }: { job?: Job; idle: string }) {
           {docs.map(([sha, d]) => (
             <li key={sha}>
               <DocState state={d.state} />
-              <span className="grow truncate">{d.filename}</span>
-              <span className="faint truncate" style={{ maxWidth: 220 }}>{d.detail ?? stateLabel(d.state)}</span>
+              <span className="grow truncate" title={d.filename}>{d.filename}</span>
+              {/* The state never gives way to a long name: only the name is shortened. */}
+              <span className="faint truncate" style={{ flex: 'none', maxWidth: 220 }}>{d.detail ?? stateLabel(d.state)}</span>
             </li>
           ))}
         </ul>

@@ -49,6 +49,8 @@ interface State {
   theme: Theme
   paletteOpen: boolean
   addOpen: { paths: string[] } | null
+  // Files are being dragged over the window (DropOverlay tracks it; Add documents shows it).
+  dragging: boolean
   toasts: Toast[]
   jobs: Record<string, JobView>
 
@@ -60,6 +62,7 @@ interface State {
   setPalette: (open: boolean) => void
   openAdd: (paths?: string[]) => void
   closeAdd: () => void
+  setDragging: (on: boolean) => void
   toast: (t: Omit<Toast, 'id'>) => void
   dismissToast: (id: number) => void
   upsertJob: (j: Job) => void
@@ -78,6 +81,7 @@ export const useApp = create<State>((set, get) => ({
   theme: 'system',
   paletteOpen: false,
   addOpen: null,
+  dragging: false,
   toasts: [],
   jobs: {},
 
@@ -110,6 +114,7 @@ export const useApp = create<State>((set, get) => ({
   setPalette: (open) => set({ paletteOpen: open }),
   openAdd: (paths = []) => set({ addOpen: { paths } }),
   closeAdd: () => set({ addOpen: null }),
+  setDragging: (on) => { if (get().dragging !== on) set({ dragging: on }) },
   toast: (t) => {
     const id = toastId++
     set({ toasts: [...get().toasts.slice(-4), { ...t, id }] })

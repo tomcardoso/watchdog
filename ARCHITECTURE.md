@@ -75,7 +75,9 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
   (default 40), converted in parallel subprocesses and spliced back by page number.
   A forced-OCR conversion renders its pages at the OCR's own scale rather than Docling's 72 DPI
-  default, which OCR would otherwise read enlarged and blurred (D352).
+  default, which OCR would otherwise read enlarged and blurred (D352), and that scale is the
+  resolution of the largest image on its pages, between 216 and 600 DPI; forced pages are sliced
+  by pixels, at most `chunk_size` pages' worth at 216 DPI per slice (D364).
 - **Exact duplicates are skipped before OCR (D27)** — sha256 against the registry, the queue and
   the current batch. A match goes to `incoming/skipped/`.
 - **Near-duplicates (D10).** Word shingles (`shingle_size`) reduced to a MinHash signature,

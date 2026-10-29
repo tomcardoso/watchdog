@@ -1065,10 +1065,12 @@ mark.find-hit.current {
   border-bottom: 1px solid var(--border);
   user-select: text;
 }
-.ent-group {
+/* Named apart from the Entities screen's `.ent-row` (entities.css): every view's stylesheet stays
+   loaded once visited, so a shared name would take that list's absolute positioning. */
+.doc-ent-group {
   margin-bottom: 20px;
 }
-.ent-group-head {
+.doc-ent-group-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1079,38 +1081,38 @@ mark.find-hit.current {
   color: var(--text-3);
   margin-bottom: 6px;
 }
-.ent-group-head svg {
+.doc-ent-group-head svg {
   width: 13px;
   height: 13px;
 }
-.ent-row {
+.doc-ent-row {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 7px 4px;
   border-bottom: 1px solid var(--border);
 }
-.ent-row:last-child {
+.doc-ent-row:last-child {
   border-bottom: none;
 }
-.ent-row .role {
+.doc-ent-row .role {
   margin-left: auto;
   color: var(--text-2);
   font-size: var(--fs-sm);
   text-align: right;
   min-width: 0;
 }
-.ent-row .name {
+.doc-ent-row .name {
   all: unset;
   cursor: pointer;
   font-weight: 580;
   min-width: 0;
 }
-.ent-row .name:hover {
+.doc-ent-row .name:hover {
   color: var(--accent-text);
   text-decoration: underline;
 }
-.ent-row .name:focus-visible {
+.doc-ent-row .name:focus-visible {
   box-shadow: var(--focus-ring);
   border-radius: var(--r-sm);
 }

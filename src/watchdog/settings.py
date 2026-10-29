@@ -162,6 +162,8 @@ SETTINGS = {
             "PDFs with more pages than this value are split into chunks and processed in parallel.\n"
             "  Smaller chunks reduce peak memory per worker but add per-chunk overhead.\n"
             "  Larger chunks are more efficient on fast machines with ample RAM.\n"
+            "  Pages OCR'd above 216 DPI count for their pixels: a chunk holds about as much as\n"
+            "  this many pages at 216 DPI (D364).\n"
             "  Default: 40."
         ),
         "type": "int",
