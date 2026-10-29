@@ -324,7 +324,7 @@ export function AddDialog() {
   }
 
   return (
-    <Modal open={visible} onClose={close} title={title} sub={sub} width="wide" footer={footer} dismissable={effective !== 'gate'}>
+    <Modal open={visible} onClose={close} title={title} sub={sub} width="wide" footer={footer}>
       <Stepper current={step} />
       {body}
     </Modal>

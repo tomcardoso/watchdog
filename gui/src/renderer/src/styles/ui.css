@@ -770,6 +770,11 @@ body:has(.tour-br) .toasts {
   flex: none;
   margin-top: 1px;
 }
+/* The dismiss button is taller than the title's line: let it overhang, centred on that line,
+   instead of setting the row's height and leaving a one-line toast's text above centre. */
+.toast > .btn {
+  margin: -3px -4px -3px 0;
+}
 .toast.success > svg {
   color: var(--success);
 }

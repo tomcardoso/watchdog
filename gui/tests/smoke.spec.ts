@@ -264,7 +264,9 @@ test('every screen renders against the demo investigation', async () => {
     await expect(page.locator('.modal .add-waiting li', { hasText: 'waiting to be added' }).locator('.add-waiting-names li').first()).toBeVisible({ timeout: 15_000 })
     await page.getByRole('button', { name: 'Read documents' }).click()
     await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible({ timeout: 60_000 })
-    await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
+    // The pause closes like any dialog: Escape, as Cancel does, sends nothing.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.modal')).toHaveCount(0)
     await page.evaluate(async (s) => {
       const w = window as any
       w.__watchdogApp.getState().setProject(await w.watchdog.rpc('projects.get', { slug: s }))
