@@ -8,7 +8,7 @@ Every document goes through three stages, in order. **Add documents** runs all t
 
 | Stage | What happens | Who does it |
 |---|---|---|
-| Pre-processing | Convert the file into readable text | Software on your computer: no AI, no cost, nothing sent anywhere |
+| Pre-processing | Convert the file into readable text, and list the names and figures on each page | Software and small models on your computer: no cost, nothing sent anywhere |
 | Processing | Read the text and note the facts | A cloud AI model, one document at a time |
 | Post-processing | Cross-check, merge and write up the investigation | Ordinary software and a cloud AI model, across every document you have |
 
@@ -19,6 +19,8 @@ Before anything can be read, it has to become text a computer can search. This s
 If a PDF already has selectable text, Watchdog reads it directly. If it does not (a scanned court filing, a photographed ledger, a fax), Watchdog runs optical character recognition, or OCR: the same idea as a scanner turning a photo of a page into text you can copy, just automated. It decides page by page, so a 200-page filing with two scanned exhibits gets OCR on those two pages only. The tool doing this is [Docling](https://github.com/docling-project/docling), an open-source document reader that also recognizes tables and page layout, so a financial statement's rows and columns come through as structured text rather than a jumble. OCR reads each scanned page at the resolution of the scan or screenshot on it, so small print keeps every pixel it has. Watchdog keeps where each line of OCR'd text sits on the page, so the app can highlight a word on the scan itself; the scan is never altered.
 
 An audio or video recording is transcribed instead, by [Whisper](https://github.com/openai/whisper), an open-source speech-recognition model from OpenAI, running on your computer through [faster-whisper](https://github.com/SYSTRAN/faster-whisper): the recording is not uploaded anywhere. Speech recognition is good but not faithful. It cannot tell who is speaking, and it mishears names and numbers it has not met before, so the next stage is told it is reading a machine transcript.
+
+A model reading quickly can skim past a figure in a footnote or a table row. So pre-processing also makes a checklist for the next stage. Ordinary code finds the dollar figures, other numbers, percentages, dates and court file numbers on each page by their shape, and a small model on your computer, [GLiNER](https://github.com/urchade/GLiNER), finds the names of people, organizations and places. This is done once per document and kept with it. On a long document it can take several minutes, so reading the document again, or retrying it after a failure, does not pay that time twice. If GLiNER cannot run, the checklist is made without names and the document is still added.
 
 Pre-processing also fingerprints every document, so a file you (or a colleague) already added is set aside rather than processed twice, and a looser check flags documents that are similar but not identical, such as a redlined revision of a contract.
 
@@ -32,7 +34,7 @@ This is where an AI model reads each document and takes notes, the way a reporte
 
 <a id="dates"></a>**Dates.** The model writes a fact's date as the document printed it, in whatever language. Ordinary code then turns it into a calendar date using [dateparser](https://github.com/scrapinghub/dateparser), which knows the month names of every language it supports ("12 septembre 2019", "3 maggio 2020", "15 березня 2021", "2021年3月15日"). It is careful in three ways. It places a date only when the year is printed, so "March" or "le 3" is never assumed to mean this year. It keeps only the precision the wording gives, so "mai 2020" goes on the timeline as May 2020, not a made-up day. And it never guesses the order of a date written in figures: 03/04/2021 could be 3 April or 4 March, so it goes on the timeline at 2021 until the step described [under post-processing](#date-pass) settles it. Relative dates ("the following Tuesday") are never read by code.
 
-A model reading quickly can skim past a figure in a footnote or a table row. As a backup, a small model on your computer, [GLiNER](https://github.com/urchade/GLiNER), scans each page for the shapes of names, dollar figures, dates and case numbers, and hands the model a checklist of what it found.
+The model is also handed the checklist pre-processing made of the names and figures on each page it is reading, as a backup: it is not asked to notice a number in a table on page 52, only whether the number it is shown matters. No model on your computer runs before or during this reading; the only local models used in this stage are the search models described [under Search](#search), which index the document once its facts are written. (A document read by an earlier version of Watchdog, before the checklist was kept, has it made at this point instead.)
 
 The model is asked to mark any fact it **inferred** (reasoned to, rather than read) and Watchdog shows that mark beside the fact. The mark is only the model's own hint, so always follow a fact back to its source before you rely on it. [Checking facts](using-watchdog.md#checking-facts) explains how.
 

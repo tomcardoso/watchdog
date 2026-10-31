@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from watchdog import progress
-from watchdog.pipeline import sidecar, text_positions, transcribe
+from watchdog.pipeline import harvest, sidecar, text_positions, transcribe
 from watchdog.pipeline.json_io import _read_json_or
 from watchdog.pipeline.preprocess import _perf_cpu_count, sha256_file
 from watchdog import config as user_config
@@ -381,6 +381,24 @@ def preprocess_one(
     return result
 
 
+def add_harvest(result: dict, on_start=None) -> None:
+    """Store the document's candidate harvest in its result (D365): the regex spans and the local
+    GLiNER model's names for every page, computed once here so extraction only reads them. Only
+    for a result that will be queued (read without error, with text). Never raises: a GLiNER
+    failure is recorded inside the harvest (`names` is None) and anything else leaves the result
+    without one, which extraction harvests live."""
+    if "error" in result or not result.get("char_count") or not result.get("pages"):
+        return
+    if _cancel_event.is_set():
+        return
+    if on_start is not None:
+        on_start()
+    try:
+        result["harvest"] = harvest.harvest_pages(result["pages"])
+    except Exception:  # noqa: BLE001 — the harvest never fails pre-processing
+        result.pop("harvest", None)
+
+
 def _prefetch_transcription_model(files: list[Path]) -> None:
     """Fetch the transcription model once, before any worker starts, when the drop has a
     recording and the model is not on disk: two recordings would otherwise race to download the
@@ -525,7 +543,7 @@ def _run_ingest_inner(
     from watchdog.ops import sample as _sample
     in_sample = _sample.is_sample_folder(vault)
 
-    def _chew(path: Path) -> dict:
+    def _read(path: Path) -> dict:
         if in_sample:
             prepared = _sample.prepared_conversion(vault, path)
             if prepared is not None:
@@ -536,6 +554,14 @@ def _run_ingest_inner(
                 return preprocess_one(path, timeout=transcribe.media_timeout(path, DEFAULT_FILE_TIMEOUT),
                                       chunk_workers=chunk_workers)
         return preprocess_one(path, timeout=DEFAULT_FILE_TIMEOUT, chunk_workers=chunk_workers)
+
+    def _chew(path: Path) -> dict:
+        result = _read(path)
+        # In this process, not the per-file preprocess subprocess, so GLiNER loads once per run
+        # rather than once per file (D365).
+        add_harvest(result, on_start=lambda: live.update(
+            str(path), f"  →  {_rel(path)}  harvesting candidates…"))
+        return result
 
     results: dict[str, dict] = {}
     _cancel_event.clear()

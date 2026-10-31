@@ -131,13 +131,13 @@
         <span class="stage-num">1</span>
         <span class="where local">On your computer</span>
         <h3>Pre-processing</h3>
-        <p>Each file is turned into text you can search. <a href="https://github.com/docling-project/docling">Docling</a> reads the layout and tables, scanned pages go through OCR one at a time, and <a href="https://github.com/openai/whisper">Whisper</a> transcribes recordings. Nothing is sent anywhere.</p>
+        <p>Each file is turned into text you can search. <a href="https://github.com/docling-project/docling">Docling</a> reads the layout and tables, scanned pages go through OCR one at a time, <a href="https://github.com/openai/whisper">Whisper</a> transcribes recordings, and a small model, <a href="https://github.com/urchade/GLiNER">GLiNER</a>, lists the names on each page alongside the figures and dates, so one buried in a table is less likely to be missed. Nothing is sent anywhere.</p>
       </li>
       <li class="stage reveal">
         <span class="stage-num">2</span>
         <span class="where cloud">The AI model you choose</span>
         <h3>Processing</h3>
-        <p>A model works out what kind of record it is, then reads the whole document with a guide for that kind, noting each fact and its page. A small model on your computer, <a href="https://github.com/urchade/GLiNER">GLiNER</a>, first lists the names and figures on each page, so one buried in a table is less likely to be missed.</p>
+        <p>A model works out what kind of record it is, then reads the whole document with a guide for that kind, noting each fact and its page, with the list of names and figures from pre-processing as a checklist.</p>
       </li>
       <li class="stage reveal">
         <span class="stage-num">3</span>

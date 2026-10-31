@@ -39,8 +39,9 @@ incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watch
  (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
 ```
 
-1. **Chew** — local, no model. Text/OCR, large-PDF chunking, near-duplicate
-   fingerprinting. One queue JSON per document.
+1. **Chew** — local, no cloud model. Text/OCR, large-PDF chunking, near-duplicate
+   fingerprinting, the candidate harvest (regex plus local GLiNER, D365). One queue JSON per
+   document.
 2. **Dig** — the orchestrator (`pipeline/orchestrate.py`) classifies and extracts
    each queued document concurrently and stages the validated result. Touches no vault state.
 3. **Bark** — resolves the staged batch (exact-name fold, entity reconciliation),
@@ -91,8 +92,14 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   read from the original file, normalized to a small allowlist and capped at 200 characters
   (untrusted input, I6). Stored as `file_metadata`, separate from `metadata` (how the pipeline
   read the file).
+- **Candidate harvest (D123, D223, D365).** Once a file's pages exist, `preprocess_batch` (in its
+  own process, so GLiNER loads once per run, not once per file subprocess) calls
+  `harvest.harvest_pages`: per page, the regex candidates and GLiNER's names, each deduplicated
+  within the page, stored as the queue JSON's `harvest` with a stamp per half. Never fails
+  pre-processing: a GLiNER failure stores `names: null`. See §5 for how extraction reads it.
 - **Output.** `.watchdog/queue/<sha>.json` (filename, page count, per-page markdown, near-dup
-  result, signature, sidecar, metadata); the original moves to `.watchdog/staging/<sha>/`.
+  result, signature, sidecar, metadata, candidate harvest); the original moves to
+  `.watchdog/staging/<sha>/`.
 - **OCR text positions (D289, `pipeline/text_positions.py`).** For pages read by a full-page OCR
   pass and for images, the Docling conversion keeps its parsed pages (`generate_parsed_pages`)
   and each OCR'd line's box (`textline_cells` with `from_ocr`, top-left origin, page units) is
@@ -223,9 +230,16 @@ then the skill (with the cache breakpoint), then per-document data. `claude-api`
 as-is; GPT-5.6+ on OpenAI gets explicit cache breakpoints; other OpenAI models get a
 `prompt_cache_key`. Everything else receives flattened text.
 
-**Candidate harvest (D123, D223).** Before the prompt is built, `pipeline/harvest.py` collects
-money, figures, percentages, dates and court file numbers by regex, plus names from the local
-GLiNER model, into a per-page checklist the prompt includes.
+**Candidate harvest (D123, D223, D365).** `pipeline/harvest.py` collects money, figures,
+percentages, dates and court file numbers by regex, plus names from the local GLiNER model, into a
+per-page checklist the prompt includes. Pre-processing harvests every page once and stores it
+(§3); extraction (`harvest.candidates`) reads the pages its text covers, whole document or one
+section, and runs the cross-page repeat cap, the per-page cap and `format_checklist` over just
+those. A page missing from the store, a half whose stamp (`regex_stamp`: a code version;
+`names_stamp`: model id, labels, threshold, window, overlap) no longer matches, or `names: null`
+is harvested live, as before D365. So no local model runs before or during the extraction calls,
+except for documents chewed without a matching store; `write_vault`'s search indexing (§11) still
+runs the embedding model after extraction.
 
 **Failure.** A document whose extraction or post-flight fails is logged to `processing.log` and moved
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
