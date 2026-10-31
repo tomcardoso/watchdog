@@ -64,12 +64,12 @@ entities:
     role: original DIP lender ($25M facility, 8.50% floor)
     page: 46
   - name: Ontario Ministry of Colleges and Universities
-    type: organization
+    type: public-body
     aliases: ["MCU"]
     role: provider of the Replacement DIP Facility and the government support package
     page: 67
   - name: Ontario Superior Court of Justice (Commercial List)
-    type: organization
+    type: public-body
     aliases: ["the CCAA Court", "the Court"]
     role: supervising court
     page: 32
@@ -132,11 +132,6 @@ entities:
     type: organization
     role: became the 12th accredited architecture school in Canada during 2020-21
     page: 7
-  - name: Chief Redevelopment Officer
-    type: role
-    aliases: ["CRO"]
-    role: court-appointed officer assisting LU with strategic initiatives
-    page: 6
 
 relationships:
   - subject: KPMG LLP
