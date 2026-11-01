@@ -110,6 +110,10 @@ A document whose extraction fails is logged and set aside, and the rest of the b
 
 The full output of any run, including the reason a document failed, is under **Activity**: select the run on the **Jobs** tab. Watchdog keeps the output of the last 50 runs, including after you close the app.
 
+## A long document has only one or two facts
+
+A model sometimes stops early and keeps a single fact from a long report. Watchdog adds the document anyway and marks it **Few facts**; open it and choose **Retry extraction**, which shows the cost before anything is sent. See [Few facts and Retry extraction](using-watchdog.md#few-facts-and-retry-extraction). If it keeps happening with the same document, [save the model's reasoning](#sharing-debugging-information) for a retry and send it with your report.
+
 ## Hitting rate limits
 
 A rate limit is a cap on how much work the AI provider lets you do in a window of time. On a metered API key it is counted in tokens per minute, not documents, so a handful of large documents extracted at once can use it up even when the number of documents looks modest: one document can cost ten times the tokens of another. On a Claude subscription it is your plan's usage limit, which is shared with the rest of your Claude use.
@@ -232,6 +236,17 @@ It never contains your API keys or sign-ins, your conversations with Claude, the
 The dialog shows how large the copy will be before it is written. Even without the originals, the notes and extractions quote the documents and name the people and organizations in them, so treat the copy as investigation material.
 
 When you report a problem, attach the diagnostics report to the issue. Never attach the full copy: issues are public.
+
+### Sharing debugging information
+
+Some problems, such as a model returning far fewer facts than it should, can only be explained by what the model wrote while thinking. Watchdog does not keep that unless you ask it to:
+
+1. Turn on **Settings → Troubleshooting → [Save model reasoning](models-and-cost.md#save-model-reasoning)**.
+2. Reproduce the problem: add the documents again, or use **Retry extraction** on the one that went wrong.
+3. Open **Activity → Maintenance → Saved model reasoning**, choose the run and choose **Save a run's reasoning…**. Watchdog writes one zip file to the folder you pick, with that run's reasoning, its usage record and its lines from the processing log. Nothing is uploaded.
+4. Send the zip to whoever is helping you, then turn the setting off again and choose **Clear saved reasoning**.
+
+The reasoning can restate what your documents say, word for word. Treat the zip like the documents themselves: send it only to someone you would show them to, and never attach it to a public issue.
 
 ## Where next
 

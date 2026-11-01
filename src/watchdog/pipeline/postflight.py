@@ -37,9 +37,58 @@ _COVERAGE_GAP_FRACTION = 0.4
 # documents may need a different value.
 _EMPTY_EXTRACTION_MIN_WORDS = 500
 
+# Thin-extraction warning (D367). Advisory only, unlike the empty-extraction guard above: the
+# document is kept as processed, the warning is logged and stored on its record, and the reporter
+# can retry its extraction in one click (no automatic retry, no automatic spend). Same basis as
+# that guard: words of source text (`page_texts`), never page citations, which a quarter of facts
+# lack. A healthy extraction on the benchmark corpus keeps about one fact per 220–280 words; the
+# collapses this was written for kept one fact from a 34-page report, a 70-page report and a
+# 5-page, roughly 1,200-word order. Flag fewer than one fact per this many words: about four times
+# sparser than healthy, and low enough that a 1,200-word document with a single fact is flagged.
+# There is no separate floor: a document under this many words is never flagged, and nor is one
+# with zero facts, which is the guard's case. Configurable (`thin_extraction_words_per_fact`, 0
+# turns the warning off) since it was chosen by judgement on one benchmark run.
+_THIN_WORDS_PER_FACT = 1000
+
 
 def _config_get(key: str, default):
     return user_config.get(key, default)
+
+
+def find_thin_extraction(extraction: dict, page_texts: dict[int, str] | None) -> dict | None:
+    """Whether an extraction kept implausibly few facts for the length of its source (D367):
+    ``{"facts", "words", "expected_min"}`` when it did, None when it did not, when it kept none
+    (the empty-extraction guard's case) or when there is no source text to weigh. `expected_min`
+    is the fewest facts that would not have been flagged."""
+    try:
+        per_fact = int(_config_get("thin_extraction_words_per_fact", _THIN_WORDS_PER_FACT))
+    except (TypeError, ValueError):
+        per_fact = _THIN_WORDS_PER_FACT
+    if per_fact <= 0:
+        return None
+    words = sum(len(t.split()) for t in (page_texts or {}).values())
+    facts = len((extraction.get("document") or {}).get("key_facts") or [])
+    if facts == 0 or facts * per_fact >= words:
+        return None
+    return {"facts": facts, "words": words, "expected_min": -(-words // per_fact)}
+
+
+def render_thin_warning(thin: dict) -> str:
+    """The thin-extraction warning as processing.log and the run's output show it."""
+    return (f"thin extraction: {thin['facts']} fact{'s' if thin['facts'] != 1 else ''} from "
+            f"{thin['words']:,} words of text (at least {thin['expected_min']} expected) — the "
+            f"model may have stopped early; retry this document's extraction")
+
+
+def _fact_page(f: dict) -> int | None:
+    """The page a fact is anchored to: its own `page`, else the page its source passage was found
+    on (`passage_page`, D270). A quarter of facts carry no `page`; without the fallback a
+    document whose few facts all lacked one could not be assessed for a gap at all (D367)."""
+    for key in ("page", "passage_page"):
+        v = f.get(key)
+        if isinstance(v, int) and not isinstance(v, bool):
+            return v
+    return None
 
 
 def _find_coverage_gap(extraction: dict, page_count: int | None) -> dict | None:
@@ -47,15 +96,15 @@ def _find_coverage_gap(extraction: dict, page_count: int | None) -> dict | None:
     leading, interior, or trailing — is cited by no fact, the model likely skipped it (#339).
     A heuristic, deterministic signal for review, not a hard check: a genuinely boilerplate span
     (standard-form clauses, recitals) legitimately goes uncited and trips it too. Facts carry an
-    optional `page`; a doc with no page anchors at all can't be assessed. Returns the flagged
-    span as ``{"start", "end", "pages"}``, or None when there's no qualifying gap."""
+    optional `page`, else a `passage_page`; a doc with neither on any fact can't be assessed.
+    Returns the flagged span as ``{"start", "end", "pages"}``, or None when there's no
+    qualifying gap."""
     if not page_count or page_count < _COVERAGE_MIN_PAGES:
         return None
     facts = extraction.get("document", {}).get("key_facts", [])
-    cited = sorted({f["page"] for f in facts
-                    if isinstance(f, dict) and isinstance(f.get("page"), int)
-                    and not isinstance(f.get("page"), bool)
-                    and 1 <= f["page"] <= page_count})   # ignore out-of-range citations
+    cited = sorted({p for f in facts if isinstance(f, dict)
+                    and (p := _fact_page(f)) is not None
+                    and 1 <= p <= page_count})   # ignore out-of-range citations
     if not cited:
         return None
     # Largest uncited run, including before the first cite and after the last.
@@ -466,6 +515,13 @@ def run(vault: Path, extraction_path: Path, warn=None) -> dict:
     extraction["document"]["coverage_gap"] = gap
     if gap:
         _warn(_render_coverage_warning(gap, page_count))
+
+    # Thin-extraction warning (D367): written explicitly even when None, like `coverage_gap`, so a
+    # retry that comes back healthy clears the flag the earlier extraction left on the record.
+    thin = find_thin_extraction(extraction, page_texts)
+    extraction["document"]["thin_extraction"] = thin
+    if thin:
+        _warn(render_thin_warning(thin))
 
     # Stage the validated (and sanitized) extraction durably (#403 phase 1) — a sibling of
     # .watchdog/queue/ and .watchdog/staging/, deliberately not under .watchdog/tmp/ (swept by

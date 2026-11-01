@@ -1144,6 +1144,10 @@ def _run(args) -> int:
                                      benchmarks_dir=config_dir)
     n_failed = sum(1 for r in results if not r.ok or r.doc_errors)
     tail = f" — {n_failed} arm(s) had failures, see errors.log" if n_failed else ""
+    n_thin = sum(len(bench_report.thin_extractions(r.vault)) for r in results if r.ok and r.vault)
+    if n_thin:
+        tail += (f"{'; ' if tail else ' — '}{n_thin} thin extraction(s), listed in REPORT.md "
+                 f"and errors.log")
     print(f"\nReport written to {out_dir}{tail}")
     if interrupted is not None:
         return 130 if isinstance(interrupted, KeyboardInterrupt) else 1

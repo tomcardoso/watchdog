@@ -73,8 +73,16 @@ Read in this order:
 2. **`REPORT.md`** — the tables, and the code version the run came from. A partial arm's recall
    cell reads `100% (6/6) — partial, 2/6 docs` rather than a bare percentage, and it gets its own
    line under "Failed or incomplete arms" alongside hard failures — its figure answers a smaller
-   question than a complete arm's and is not a quality signal against the full corpus.
-3. **`run.json`** — the same numbers as data, for the composite score index.
+   question than a complete arm's and is not a quality signal against the full corpus. A
+   "Thin extractions" section lists every document an arm kept with implausibly few facts for
+   its length (D367); `errors.log` names them too, and the terminal's last line counts them.
+3. **`run.json`** — the same numbers as data, for the composite score index; each arm's
+   `thin_extractions` lists its flagged documents.
+4. **`artifacts/<arm>/reasoning/`** — every benchmark run saves each model call's reasoning
+   (D368): one JSON file per call with its task, document, model, effort, stop reason, token
+   counts and the model's summarized thinking (Claude, DeepSeek; none for OpenAI or Gemini). The
+   usage record's `reasoning_file` names each call's file. Start here when a flagged document
+   needs explaining.
 
 Checking that each arm extracted every document — comparing `.watchdog/extracted/*.json` against
 the corpus size — used to be a manual step here. `score_arms.py` now does it automatically

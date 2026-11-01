@@ -738,6 +738,16 @@ def troubleshooting_size(vault: str) -> dict:
     return troubleshoot.sizes(require_vault(vault))
 
 
+@method("vault.reasoningRuns")
+def reasoning_runs(vault: str) -> dict:
+    """The runs whose model reasoning was saved (D368), newest first, with whether saving is on.
+    Reads file names and sizes, and each call's file name of its document."""
+    from watchdog.pipeline import reasoning
+    v = require_vault(vault)
+    return {"enabled": reasoning.enabled(), "folder": str(reasoning.root(v)),
+            "runs": reasoning.runs(v)}
+
+
 @method("vault.resolveLink")
 def resolve_link(vault: str, target: str) -> dict:
     """What a wikilink target points at: `documents/x`, `entities/person/y`,

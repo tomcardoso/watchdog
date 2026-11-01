@@ -44,6 +44,11 @@ function General({ id }: { id: string }) {
                 Before documents are sent to a model, Watchdog shows the public-records warning and waits for you. With auto-approve on, that pause is skipped only when you are signed in with your Claude subscription and every step of the run uses it; a one-line notice is shown instead. Any run that uses a paid API key still asks, however small. Turn it on only if you already check that what you add is public record.
               </Callout>
             )}
+            {k.key === 'save_reasoning' && (
+              <Callout tone="warning" title="What saved reasoning holds" style={{ margin: 16 }}>
+                With this on, every model call saves what the model wrote while thinking, in the investigation’s folder. It can restate what your documents say, so share it only with someone you would show the documents to. It also takes disk space with every run. Turn it on to reproduce a problem, save the run’s reasoning from Activity → Maintenance → Saved model reasoning, then turn it off and clear what was saved.
+              </Callout>
+            )}
             <SettingField key={`${k.key}:${k.display}`} setting={k} models={models.data?.models ?? []} efforts={models.data?.efforts ?? ['low', 'medium', 'high', 'xhigh', 'max']} />
           </div>
         ))}

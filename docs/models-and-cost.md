@@ -201,6 +201,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Default skill | *(unset)* | Pins one [record skill](how-it-works.md#record-skills) for every document, skipping classification. |
 | Section token threshold / budget / overlap | `auto` / `auto` / `4000` | How a very large document is split into sections for extraction. `auto` sizes sections from the extractor's context window and keeps each request under any price step. Leave them on `auto`. |
 | Empty-extraction minimum words | `500` | A document with more words than this that comes back with no facts is retried once, then failed, rather than accepted as empty. |
+| <a id="thin-extraction-words-per-fact"></a>Thin-extraction words per fact | `1000` | A document whose extraction keeps fewer than one fact for every this many words of text is added, but marked **Few facts** with a [Retry extraction](using-watchdog.md#few-facts-and-retry-extraction) button. A healthy extraction keeps about one fact per 250 words. Nothing is retried or spent unless you choose to. Raise it to warn less often; `0` turns the warning off. |
 | <a id="the-verification-pass"></a>Verify extraction | off | The second-read check: re-reads each document straight after extraction and adds material facts the first read missed. It can add restatements or minor details, which is why it is off by default. Not available with batch mode. |
 
 ### Model options
@@ -255,6 +256,12 @@ Each step's model is chosen in the **Models** table under **Models & keys**, not
 | Field | Default | What it controls |
 |---|---|---|
 | Telemetry | on | Keeps a local record of every model call (`telemetry.db` in Watchdog's settings folder): model, tokens, cost, time, and the investigation and file each call was about. It never leaves your computer and holds no document text, but it lists your documents' names, so keep it out of shared folders and backups. |
+
+### Troubleshooting
+
+| Field | Default | What it controls |
+|---|---|---|
+| <a id="save-model-reasoning"></a>Save model reasoning | off | Saves what the model wrote while thinking, with each model call, in every investigation from then on: in the investigation's folder under `.watchdog/reasoning/`, with the call's task, file name, model, effort, why it stopped and its token counts. Claude and DeepSeek models return their reasoning; OpenAI and Gemini models return none, so only the call's details are saved for them. It costs nothing extra and changes no result. The reasoning can restate what your documents say, so share it only with someone you would show the documents to, and it takes disk space with every run. Turn it on only to reproduce a problem; see [Sharing debugging information](troubleshooting.md#sharing-debugging-information). |
 
 ### App panels
 

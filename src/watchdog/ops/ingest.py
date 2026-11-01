@@ -695,6 +695,9 @@ class RunOptions:
     limit: int | None = None          # extract only the next N queued documents (#696)
     verify: bool | None = None        # the verification pass (#535); None: the setting
     force: bool = False               # re-extract even where a staged extraction exists
+    # Re-extract exactly these documents (by sha) and no other, even where they are committed:
+    # Retry extraction on a document whose extraction came back thin (D367).
+    reextract: list[str] | None = None
     wait: bool = False                # wait out a rate limit and continue (#271)
     skip_briefing: bool = False       # post-processing without the briefing call (#410)
     skip_warning: bool = False        # the public-records acknowledgement was given (#426)
@@ -796,9 +799,13 @@ def _classifier_needed(vault: Path, opts: RunOptions, config: dict) -> bool:
     import json
     from watchdog.pipeline import orchestrate
     from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction, scan_queue
-    queue = scan_queue(vault)
-    queue = queue if opts.force else needs_extraction(vault, queue)
-    if opts.limit is not None:
+    if opts.reextract:
+        from watchdog.pipeline.ingest_setup import reextract_queue
+        queue = reextract_queue(vault, opts.reextract)
+    else:
+        queue = scan_queue(vault)
+        queue = queue if opts.force else needs_extraction(vault, queue)
+    if opts.limit is not None and not opts.reextract:
         queue = limit_queue(vault, queue, opts.limit, force=opts.force)
     for q in queue:
         try:
@@ -866,9 +873,43 @@ def _warn_pending_research(vault: Path) -> None:
 
 def _sample_opts(opts: RunOptions) -> RunOptions:
     """A run in the sample investigation (D307): the reporter's model settings and options that
-    only a real model needs are set aside; what to process (limit, force, briefing) stays."""
+    only a real model needs are set aside; what to process (limit, force, re-extraction,
+    briefing) stays."""
     return RunOptions(limit=opts.limit, force=opts.force, skip_briefing=opts.skip_briefing,
-                      wait=opts.wait, verify=False)
+                      wait=opts.wait, verify=False, reextract=opts.reextract)
+
+
+def _prepare_reextract(vault: Path, opts: RunOptions) -> tuple[RunOptions, list[str]]:
+    """Retry extraction (D367): put each named document's kept descriptor back in the queue and
+    turn the run into a forced one limited to those documents. Returns the run's options and the
+    shas restored here, which `_process` takes back out of the queue if the run does not
+    re-extract them. Stops with a message when no named document can be re-extracted."""
+    from dataclasses import replace
+    from watchdog.pipeline.ingest_setup import restore_for_reextract
+    restored, missing = restore_for_reextract(vault, opts.reextract)
+    for sha in missing:
+        say(f"Can't retry {sha[:12]}: its text is no longer kept. Add the file again to read it "
+            f"from the start.")
+    keep = [s for s in dict.fromkeys(opts.reextract) if s not in missing]
+    if not keep:
+        sys.exit("Error: none of the documents to retry can be re-extracted.")
+    return replace(opts, reextract=keep, force=True, limit=None), restored
+
+
+def _withdraw_restored(vault: Path, restored: list[str], since: float) -> None:
+    """Take a restored descriptor back out of the queue when this run did not re-extract its
+    document (nothing was sent, or it stopped first): left there, a committed document would
+    show as waiting for extraction. A document re-extracted but not yet committed keeps it, for
+    the commit."""
+    queue_dir = vault / ".watchdog" / "queue"
+    for sha in restored:
+        art = vault / ".watchdog" / "extracted" / f"{sha}.json"
+        try:
+            fresh = art.stat().st_mtime >= since
+        except OSError:
+            fresh = False
+        if not fresh:
+            (queue_dir / f"{sha}.json").unlink(missing_ok=True)
 
 
 def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
@@ -887,6 +928,18 @@ def process(vault: Path, opts: RunOptions, *, finalize: bool) -> dict | None:
 
 
 def _process(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool = False) -> dict | None:
+    if not opts.reextract:
+        return _process_queue(vault, opts, finalize=finalize, in_sample=in_sample)
+    import time
+    since = time.time()
+    opts, restored = _prepare_reextract(vault, opts)
+    try:
+        return _process_queue(vault, opts, finalize=finalize, in_sample=in_sample)
+    finally:
+        _withdraw_restored(vault, restored, since)
+
+
+def _process_queue(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool = False) -> dict | None:
     plan = resolve_plan(opts, {} if in_sample else None)
     config = plan.config
     extract_backend, extract_model = plan.extract
@@ -968,7 +1021,13 @@ def _process(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool =
         return None
 
     only_shas = None
-    if opts.limit is not None:
+    if opts.reextract:
+        keep = set(opts.reextract)
+        result["queue_files"] = [qf for qf in result["queue_files"] if qf["sha256"] in keep]
+        only_shas = [qf["sha256"] for qf in result["queue_files"]]
+        say(f"Retrying the extraction of {len(only_shas)} document{'s' if len(only_shas) != 1 else ''}; "
+            f"anything else waiting stays queued.")
+    elif opts.limit is not None:
         from watchdog.pipeline.ingest_setup import limit_queue
         in_queue = len(result["queue_files"])
         result["queue_files"] = limit_queue(vault, result["queue_files"], opts.limit, force=opts.force)
@@ -1055,7 +1114,7 @@ def _process(vault: Path, opts: RunOptions, *, finalize: bool, in_sample: bool =
     if not log_path.exists():
         log_path.write_text(render_template("log.md"))
 
-    if opts.force:
+    if opts.force and not opts.reextract:
         say("Re-extracting even where a saved extraction or a committed note already exists.")
     if not finalize:
         say("Processing only, stopping after extraction. Finish the batch later under Activity → "
@@ -1277,12 +1336,14 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
         concurrency: int | None = None, classify_pages: int | None = None, skill: str | None = None,
         verify: bool | None = None, wait: bool = False, skip_briefing: bool = False,
         chew_workers: int | None = None, chunk_workers: int | None = None,
-        limit: int | None = None) -> dict | None:
+        limit: int | None = None, reextract: list[str] | None = None) -> dict | None:
     """Adding documents. The app shows the public-records acknowledgement before it starts this
     and passes `skip_warning` once it has; without it nothing is sent, unless every stage runs on
     a model server on this computer (D306). `limit` sends at most that
     many queued documents to the model, as the app's preflight counts and prices them; the rest
-    stay queued for the next run."""
+    stay queued for the next run. `reextract` (Retry extraction, D367) extracts only the named
+    documents (by sha) again, even though they are already added, then finishes the batch; the
+    new extraction replaces the earlier one only once it passes post-flight and is committed."""
     require_vault(vault)
     opts = RunOptions(
         extractor_model=extractor_model, classifier_model=classifier_model,
@@ -1290,7 +1351,8 @@ def add(rep, vault: Path, *, paths: list[str] = (), retry: bool = False, skip_wa
         finalizer_housekeeping_model=finalizer_housekeeping_model, extractor_effort=extractor_effort,
         classifier_effort=classifier_effort, finalizer_effort=finalizer_effort,
         concurrency=concurrency, classify_pages=classify_pages, skill=skill, verify=verify,
-        wait=wait, skip_briefing=skip_briefing, skip_warning=skip_warning, limit=limit)
+        wait=wait, skip_briefing=skip_briefing, skip_warning=skip_warning, limit=limit,
+        reextract=list(reextract) if reextract else None)
     return _clean(add_documents(vault, list(paths), opts, retry=retry, chew_workers=chew_workers,
                                 chunk_workers=chunk_workers))
 

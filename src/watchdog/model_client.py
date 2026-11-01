@@ -28,6 +28,7 @@ schema and get validated structured output back. Deterministic work stays in Pyt
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import hashlib
 import json
 import re
@@ -45,6 +46,7 @@ from watchdog.model_catalog import (
     catalog_cache_breakpoints,
     catalog_context_window,
     catalog_effort_levels,
+    catalog_has_reasoning,
     catalog_is_reasoning,
     catalog_long_context_threshold,
     catalog_max_output_tokens,
@@ -119,6 +121,36 @@ _SYSTEM_PROMPT = (
 # path prefills the truncated partial to resume it — see that function's `prefix is not None`
 # branch, which omits this deliberately.
 _THINKING_ADAPTIVE = {"type": "adaptive", "display": "summarized"}
+
+# Saving model reasoning (D368): set for the duration of one `acomplete_json` call when its caller
+# asked for the reasoning (the `save_reasoning` setting, or a benchmark run). A backend reads it to
+# ask for and return what it can at no extra cost; with it unset, every request is byte-for-byte
+# what it was before. A context variable, not a parameter, so the backends' shared signature (and
+# every test stub of it) is unchanged, and concurrent calls under asyncio each see their own value.
+_CAPTURE_REASONING: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "watchdog_capture_reasoning", default=False)
+
+
+def _capturing() -> bool:
+    return _CAPTURE_REASONING.get()
+
+
+def _claude_thinking_param(model_id: str) -> dict | None:
+    """The `thinking` value a Claude call sends: adaptive with a summarized display on a model
+    whose thinking is off by default (#635), and, only while reasoning is being saved, on a model
+    whose thinking is on by default too. Current Claude models return thinking blocks with empty
+    text unless `display: "summarized"` is asked for; the display changes what comes back, not
+    what the model does or what it is billed (D368)."""
+    if catalog_needs_thinking_param(model_id):
+        return _THINKING_ADAPTIVE
+    if _capturing() and catalog_has_reasoning(model_id):
+        return _THINKING_ADAPTIVE
+    return None
+
+
+def _join_reasoning(parts) -> str | None:
+    text = "\n\n".join(p.strip() for p in parts if isinstance(p, str) and p.strip())
+    return text or None
 
 # Reasoning-effort levels for the per-stage `effort` knob (D36) — an abstract intent the
 # pipeline passes down. `model_catalog.yaml`'s `effort_levels` is the single source of truth for
@@ -272,9 +304,12 @@ class ModelError(RuntimeError):
     def __init__(self, message: str, *, usage: dict | None = None, cost_usd: float | None = None,
                 attempts: int = 0, model: str | None = None, backend: str | None = None,
                 auth_mode: str | None = None, truncated: bool = False, starved: bool = False,
-                key_label: str | None = None):
+                key_label: str | None = None, stop_reason: str | None = None,
+                reasoning: str | None = None):
         super().__init__(message)
         self.key_label = key_label
+        self.stop_reason = stop_reason
+        self.reasoning = reasoning
         self.usage = usage
         self.cost_usd = cost_usd
         self.attempts = attempts
@@ -388,6 +423,10 @@ class ModelResult:
     pruned: list[str] | None = None
     rate_limit: dict | None = None
     key_label: str | None = None    # the labelled key that paid (#690), never the key itself
+    # The provider's own stop reason for the call's last request (`end_turn`, `max_tokens`,
+    # `stop`, `length`, ...), and its reasoning text when it was asked for and returned (D368).
+    stop_reason: str | None = None
+    reasoning: str | None = None
 
 
 # ── JSON handling ─────────────────────────────────────────────────────────────
@@ -664,10 +703,12 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         opts["tools"] = []
     if effort:                  # only set when a level was asked for (D36, D310)
         opts["effort"] = effort
-    if catalog_needs_thinking_param(model) and _agent_supports_thinking():
-        opts["thinking"] = _THINKING_ADAPTIVE
+    thinking = _claude_thinking_param(model)
+    if thinking and _agent_supports_thinking():
+        opts["thinking"] = thinking
     options = ClaudeAgentOptions(**opts)
     out = {"text": "", "cost_usd": None, "usage": None}
+    thoughts: list[str] = []     # thinking blocks, kept only while reasoning is saved (D368)
     api_status = None        # ResultMessage.api_error_status (e.g. 429) since CLI v2.1.110
     is_error = False
     notice = ""              # human-readable limit notice, if the CLI emitted one as text
@@ -697,6 +738,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
                 out["usage"] = usage or None
                 is_error = bool(getattr(message, "is_error", False))
                 api_status = getattr(message, "api_error_status", None)
+                if isinstance(getattr(message, "stop_reason", None), str):
+                    out["stop_reason"] = message.stop_reason   # recorded only: never read as a truncation
             elif name in ("RateLimitEvent", "RateLimitInfo"):
                 info = getattr(message, "rate_limit_info", message)
                 if getattr(info, "status", None) == "rejected":
@@ -705,6 +748,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
             # The session-limit message ("You've hit your session limit · resets …")
             # arrives as a text block; capture it so we can show the real reason.
             for block in getattr(message, "content", None) or []:
+                if _capturing() and isinstance(getattr(block, "thinking", None), str):
+                    thoughts.append(block.thinking)
                 t = getattr(block, "text", "") or ""
                 if t and any(h in t.lower() for h in _RATE_LIMIT_HINTS):
                     notice = t.strip()
@@ -734,6 +779,8 @@ async def _agent_query(prompt: str, model: str, env: dict | None,
         raise RateLimitError(notice or "Claude rate/usage limit reached", resets_at=resets_at)
     if is_error and _looks_like_auth_failure(api_status, out["text"]):
         raise ProviderAuthError(f"Claude could not authenticate: {out['text']}")
+    if _capturing():
+        out["reasoning"] = _join_reasoning(thoughts)
     return out
 
 
@@ -847,8 +894,9 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
         if effort:
             output_config["effort"] = effort
         kwargs["output_config"] = output_config
-        if catalog_needs_thinking_param(model_id):
-            kwargs["thinking"] = _THINKING_ADAPTIVE
+        thinking = _claude_thinking_param(model_id)
+        if thinking:
+            kwargs["thinking"] = thinking
     else:
         # Continuation: prefill the partial (Anthropic rejects a trailing-whitespace assistant
         # turn, so rstrip — JSON ignores inter-token whitespace, so the concatenation is intact).
@@ -888,9 +936,13 @@ async def _api_complete_async(prompt: str | list[dict], model_id: str, schema: d
     usage = resp.usage
     usage_dict = usage.model_dump() if hasattr(usage, "model_dump") else dict(usage)
     usage_dict = _fold_in_anthropic_thinking(usage_dict)
-    return {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
-            "finish_reason": getattr(resp, "stop_reason", None),
-            "rate_limit": _rate_limit_headers(headers, _ANTHROPIC_RATE_LIMIT_HEADERS)}
+    out = {"text": text, "usage": usage_dict, "cost_usd": _api_cost(model_id, usage),
+           "finish_reason": getattr(resp, "stop_reason", None),
+           "rate_limit": _rate_limit_headers(headers, _ANTHROPIC_RATE_LIMIT_HEADERS)}
+    if _capturing():
+        out["reasoning"] = _join_reasoning(getattr(b, "thinking", None) for b in resp.content
+                                           if getattr(b, "type", None) == "thinking")
+    return out
 
 
 # OpenAI-compatible (Chat Completions) pricing: model id → (input, output, cached_input) $/tok,
@@ -1183,8 +1235,15 @@ async def _openai_complete_async(prompt: str | list[dict], model_id: str, schema
     usage = data.get("usage")
     if is_gemini:   # thinking tokens arrive only as a total_tokens gap (#547) — fold them in
         usage = _fold_in_hidden_reasoning(usage)
-    return {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),
-            "finish_reason": finish, "rate_limit": rate_limit}
+    out = {"text": text, "usage": usage, "cost_usd": _openai_cost(model_id, usage),
+           "finish_reason": finish, "rate_limit": rate_limit}
+    if _capturing() and choices:
+        # DeepSeek's thinking mode (and some OpenAI-compatible servers) return the reasoning as
+        # `reasoning_content` beside the answer, unasked and at no extra cost (D368). OpenAI's and
+        # Gemini's Chat Completions return none without a different request, so nothing is
+        # captured for them.
+        out["reasoning"] = _join_reasoning([(choices[0].get("message") or {}).get("reasoning_content")])
+    return out
 
 
 # OpenAI-compatible base URLs (the `/chat/completions` path is appended per request).
@@ -1393,6 +1452,7 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
     text = out.get("text") or ""
     usage = out.get("usage")
     cost = out.get("cost_usd") or 0.0
+    reasoning = [out.get("reasoning")]
     rounds = 0
     while (_is_truncated(out.get("finish_reason")) and _BACKEND_META[backend].supports_continuation
            and rounds < _MAX_CONTINUATIONS):
@@ -1405,16 +1465,33 @@ async def _complete_with_pagination(backend_fn, backend: str, prompt, model_id: 
         text += out.get("text") or ""
         usage = _merge_usage(usage, out.get("usage"))
         cost += out.get("cost_usd") or 0.0
+        reasoning.append(out.get("reasoning"))
     return {"text": text, "usage": usage, "cost_usd": cost,
             "truncated": _is_truncated(out.get("finish_reason")),
-            "rate_limit": out.get("rate_limit")}
+            "rate_limit": out.get("rate_limit"),
+            "stop_reason": out.get("finish_reason") or out.get("stop_reason"),
+            "reasoning": _join_reasoning(reasoning)}
 
 
 # ── public entry point ────────────────────────────────────────────────────────
 
 async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, model: str | None = None,
                          backend: str | None = None, max_retries: int = 1,
-                         effort: str | None = None) -> ModelResult:
+                         effort: str | None = None, capture_reasoning: bool = False) -> ModelResult:
+    """See `_acomplete_json`. `capture_reasoning` (D368) asks the backend for the model's
+    reasoning where it can return it at no extra cost, and puts it on the result (or the error);
+    off, nothing sent changes."""
+    token = _CAPTURE_REASONING.set(bool(capture_reasoning))
+    try:
+        return await _acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
+                                     backend=backend, max_retries=max_retries, effort=effort)
+    finally:
+        _CAPTURE_REASONING.reset(token)
+
+
+async def _acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, model: str | None = None,
+                          backend: str | None = None, max_retries: int = 1,
+                          effort: str | None = None) -> ModelResult:
     """Get schema-valid JSON for a reasoning task (async — the orchestrator awaits this).
 
     `prompt` is normally a string; a caller may instead pass a list of Anthropic content
@@ -1448,6 +1525,8 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
     last_rate_limit: dict | None = None   # #563: freshest snapshot, not accumulated like usage
     was_truncated = False   # #540: whether the final failure was a truncation specifically
     was_starved = False     # #558: narrows was_truncated to the reasoning-starvation shape
+    stop_reason = None      # the last request's own stop reason, recorded per call (D368)
+    thoughts: list = []     # every attempt's reasoning, when asked for (D368)
     for _ in range(max_retries + 1):
         attempts += 1
         try:
@@ -1465,6 +1544,9 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         agg_usage = _merge_usage(agg_usage, out.get("usage"))
         if out.get("rate_limit") is not None:
             last_rate_limit = out["rate_limit"]
+        if out.get("stop_reason") is not None:
+            stop_reason = str(out["stop_reason"])
+        thoughts.append(out.get("reasoning"))
 
         if out.get("truncated"):
             # Authoritatively truncated at the provider's output ceiling and not recoverable by
@@ -1525,6 +1607,7 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
                     cost_usd=round(total_cost, 6) or None,
                     latency_s=round(time.monotonic() - start, 3), attempts=attempts,
                     pruned=pruned_all or None, rate_limit=last_rate_limit, key_label=key_label,
+                    stop_reason=stop_reason, reasoning=_join_reasoning(thoughts),
                 )
             last_err = "; ".join(errors[:3])
             if len(errors) > 3:
@@ -1537,5 +1620,6 @@ async def acomplete_json(*, task: str, prompt: str | list[dict], schema: dict, m
         f"on {chosen}: {last_err}",
         usage=agg_usage, cost_usd=round(total_cost, 6) or None, attempts=attempts,
         model=model_id, backend=chosen, auth_mode=auth_mode, truncated=was_truncated,
-        starved=was_starved, key_label=key_label)
+        starved=was_starved, key_label=key_label, stop_reason=stop_reason,
+        reasoning=_join_reasoning(thoughts))
 
