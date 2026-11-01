@@ -1,4 +1,27 @@
+import os
+from pathlib import Path
+
 import pytest
+
+
+def _share_model_caches() -> None:
+    """Point the model caches at the developer's own, once, before any test moves HOME.
+
+    Many tests (and the demo build, `tests/demo_support.py`) run Watchdog with HOME set to a
+    scratch folder, and the Hugging Face, fastembed and torch caches default to `~/.cache`, so on
+    a machine with the local models installed each such test downloaded them again into its
+    scratch home: about 2.2 GB for GLiNER per demo build, and several GB more in tests that
+    reindex or recheck. Watchdog honours these variables (`gui/engine_setup.py`,
+    `pipeline/embed.py`), so setting them here makes every test and subprocess reuse the models
+    already on disk. A variable the developer already set is kept. In CI, where the models are
+    not installed, nothing is downloaded either way."""
+    cache = Path.home() / ".cache"
+    for var, sub in (("HF_HOME", "huggingface"), ("FASTEMBED_CACHE_PATH", "fastembed"),
+                     ("TORCH_HOME", "torch")):
+        os.environ.setdefault(var, str(cache / sub))
+
+
+_share_model_caches()
 
 
 @pytest.fixture(autouse=True)
@@ -92,3 +115,29 @@ def thinking_off_claude(catalog_entry):
                          cache_write=3.75e-6, cache_read=0.30e-6, context_window=200_000,
                          max_output_tokens=128_000, effort_levels=["low", "medium", "high", "max"],
                          thinking=True)
+
+
+@pytest.fixture(autouse=True)
+def no_real_gliner(monkeypatch):
+    """Never load or run the local GLiNER model in a test. `harvest._load_gliner` raises here, so
+    the harvest takes its "model unavailable" path (regex candidates only), as it does in CI,
+    where GLiNER is not installed. A developer machine has it installed (it is a core dependency,
+    D223), and without this fixture tests that extract a document ran the 1.1 GB model on CPU:
+    test_orchestrate.py took 130 s with it and 22 s without. A test that needs names sets its own
+    fake with `monkeypatch.setattr(harvest, "_load_gliner", ...)`, which replaces this one."""
+    from watchdog.pipeline import harvest
+
+    def _off():
+        raise RuntimeError("GLiNER is not loaded in tests (tests/conftest.py)")
+
+    monkeypatch.setattr(harvest, "_load_gliner", _off)
+
+
+@pytest.fixture(scope="session")
+def demo_build(tmp_path_factory):
+    """The demo investigation, built once for the whole session (`tests/demo_support.py`).
+    Returns (root, stdout): copy it with `demo_support.copy_demo(root, dest)`, never use it in
+    place, since tests change the vault they are given."""
+    from tests.demo_support import build_demo
+    root = tmp_path_factory.mktemp("demo-build")
+    return root, build_demo(root)

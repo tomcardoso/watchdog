@@ -21,8 +21,6 @@ import asyncio
 import base64
 import json
 import secrets
-import subprocess
-import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -32,6 +30,7 @@ import pytest
 from watchdog import keystore
 from watchdog import model_client as mc
 from watchdog import auth
+from tests.demo_support import copy_demo
 
 TOKEN = secrets.token_hex(8).upper()
 KEYS = {
@@ -84,12 +83,9 @@ def provider_server():
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch):
+def world(demo_build, tmp_path, monkeypatch):
     """A temporary home with the demo investigation, as the app would see it."""
-    home = tmp_path / "home"
-    vault = tmp_path / "vault" / "port-calder"
-    subprocess.run([sys.executable, "-m", "watchdog.gui.demo", str(vault), "--home", str(home)],
-                   check=True, capture_output=True, timeout=180)
+    vault, home = copy_demo(demo_build[0], tmp_path / "demo")
     wd = home / ".watchdog"
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr("watchdog.config.HOME", wd)
