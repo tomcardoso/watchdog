@@ -161,22 +161,40 @@ def test_the_migration_reprices_once_and_keeps_what_was_recorded(tmp_path):
 
 # ── estimates ─────────────────────────────────────────────────────────────────────────────
 
-def _queue(est_tokens, pages):
-    return [{"sha256": "x", "filename": "x.pdf", "est_tokens": est_tokens, "page_count": pages}]
+def _queue(vault, pages, sha="x"):
+    """A queue file whose pages hold `pages[i]` est tokens of prose each, and its `scan_queue`
+    entry: the estimate plans from the queue file itself (D370)."""
+    qdir = vault / ".watchdog" / "queue"
+    qdir.mkdir(parents=True, exist_ok=True)
+    body = [{"page": n, "markdown": ("word " * (est * 4 // 5 + 1))[:est * 4]}
+            for n, est in enumerate(pages, start=1)]
+    (qdir / f"{sha}.json").write_text(json.dumps({"filename": f"{sha}.pdf", "page_count": len(pages),
+                                                  "pages": body}))
+    return [{"sha256": sha, "filename": f"{sha}.pdf", "est_tokens": sum(pages),
+             "page_count": len(pages)}]
 
 
-def test_a_document_whose_planned_call_crosses_the_line_is_counted(tmp_path, monkeypatch):
-    """A 70,000-est-token document goes to Haiku 5.5 as one call (under the sectioning threshold),
-    but with its prompt overhead the call is over 100,000 real tokens."""
+def test_a_70_page_document_is_now_planned_under_the_line(tmp_path, monkeypatch):
+    """D366 found a 70,000-est-token document sent to Haiku 5.5 as one call whose whole prompt was
+    over 100,000 real tokens. Planned with its whole prompt counted (D370), it is sectioned and
+    the estimate finds no call over the line, because there is none to find."""
     monkeypatch.setattr(mc, "tokenizer_ratio", lambda *a, **k: 1.21)
-    plan = ingest_setup.long_prompt_plan(_queue(70_000, 70), "haiku", "claude-api", tmp_path)
-    assert plan["calls"] == 1 and plan["documents"] == 1 and plan["share"] == pytest.approx(1.0)
-    small = ingest_setup.long_prompt_plan(_queue(5_000, 5), "haiku", "claude-api", tmp_path)
-    assert small["calls"] == 0 and small["share"] == 0.0
-    flat = ingest_setup.long_prompt_plan(_queue(70_000, 70), "sonnet", "claude-api", tmp_path)
+    queue = _queue(tmp_path, [1_000] * 70)
+    plan = ingest_setup.long_prompt_plan(queue, "haiku", "claude-api", tmp_path)
+    assert plan["calls"] == 0 and plan["share"] == 0.0 and plan["threshold"] == 100_000
+    flat = ingest_setup.long_prompt_plan(queue, "sonnet", "claude-api", tmp_path)
     assert flat == {"share": 0.0, "calls": 0, "documents": 0, "threshold": None}
-    sub = ingest_setup.long_prompt_plan(_queue(70_000, 70), "haiku", "claude-agent-sdk", tmp_path)
+    sub = ingest_setup.long_prompt_plan(queue, "haiku", "claude-agent-sdk", tmp_path)
     assert sub["calls"] == 0
+
+
+def test_a_page_too_large_for_the_line_is_counted(tmp_path, monkeypatch):
+    """A page is never cut, so a page larger than the line on its own goes as its own call, over
+    the line; the estimate counts that call and prices its share at the upper card."""
+    monkeypatch.setattr(mc, "tokenizer_ratio", lambda *a, **k: 1.21)
+    plan = ingest_setup.long_prompt_plan(_queue(tmp_path, [90_000, 1_000]), "haiku", "claude-api",
+                                         tmp_path)
+    assert plan["calls"] == 1 and plan["documents"] == 1 and 0.8 < plan["share"] < 1.0
 
 
 def test_the_history_estimate_scales_the_crossing_share(tmp_path, monkeypatch):
@@ -186,22 +204,26 @@ def test_the_history_estimate_scales_the_crossing_share(tmp_path, monkeypatch):
     (usage / "usage-1.json").write_text(json.dumps({"calls": [], "totals": {
         "input_tokens": 1_000_000, "cache_read_tokens": 0, "cache_write_tokens": 0,
         "output_tokens": 240_000, "cost_usd": 0.22}}))
-    flat = ingest_setup.cost_estimate(tmp_path, _queue(70_000, 70), "claude-api")
-    tiered = ingest_setup.cost_estimate(tmp_path, _queue(70_000, 70), "claude-api", model="haiku")
+    queue = _queue(tmp_path, [90_000, 1_000])
+    share = ingest_setup.long_prompt_plan(queue, "haiku", "claude-api", tmp_path)["share"]
+    flat = ingest_setup.cost_estimate(tmp_path, queue, "claude-api")
+    tiered = ingest_setup.cost_estimate(tmp_path, queue, "claude-api", model="haiku")
     assert tiered["long_prompt_calls"] == 1 and tiered["long_prompt_documents"] == 1
-    assert tiered["cost_low"] == pytest.approx(5 * flat["cost_low"])     # every column 5x on Haiku
+    assert tiered["cost_low"] == pytest.approx(flat["cost_low"] * (1 + 4 * share))   # 5x on the share
 
 
 def test_the_catalog_projection_prices_each_model_at_its_own_card(tmp_path, monkeypatch):
     monkeypatch.setattr(mc, "tokenizer_ratio", lambda *a, **k: 1.21)
-    rows = {r["id"]: r for r in ingest_setup._catalog_cost_projection(
-        100_000, 0.25, _queue(70_000, 70), tmp_path)}
+    queue = _queue(tmp_path, [90_000, 1_000])
+    share = ingest_setup.long_prompt_plan(queue, "claude-haiku-5-5", None, tmp_path)["share"]
+    rows = {r["id"]: r for r in ingest_setup._catalog_cost_projection(100_000, 0.25, queue, tmp_path)}
     haiku = rows["claude-haiku-5-5"]
     assert haiku["long_prompt_calls"] == 1
-    assert haiku["cost"] == pytest.approx(100_000 * 1.21 * (0.50e-6 + 0.25 * 2.50e-6))
+    low = 100_000 * 1.21 * (0.10e-6 + 0.25 * 0.50e-6)
+    assert haiku["cost"] == pytest.approx(low * (1 + 4 * share))
     assert rows["claude-sonnet-5-5"]["long_prompt_calls"] == 0
     no_queue = {r["id"]: r for r in ingest_setup._catalog_cost_projection(100_000, 0.25)}
-    assert no_queue["claude-haiku-5-5"]["cost"] == pytest.approx(100_000 * 1.21 * (0.10e-6 + 0.25 * 0.50e-6))
+    assert no_queue["claude-haiku-5-5"]["cost"] == pytest.approx(low)
 
 
 def test_list_price_and_the_fallback_estimate_take_a_tier_alias(monkeypatch):

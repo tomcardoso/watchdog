@@ -282,48 +282,42 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
     return sum(ratios) / len(ratios) if ratios else None
 
 
-# The part of an extraction prompt that is not the document's own text — instructions, schema,
-# record skill and candidate checklist — in est tokens (chars/4): a fixed part plus a part that
-# grows with the pages the call carries, mostly the checklist. Fitted to the two ends of one
-# benchmark run on 2026-10-31 (about 13,600 real tokens for a 5-page document and 27,800 for a
-# 70-page one, on Claude Haiku 5.5's 1.21 tokenizer ratio), so a judgement, not a measurement of
-# every corpus: see the CLAUDE.md Standing Follow-ups (D366).
-_PROMPT_OVERHEAD_EST = 10_300
-_PROMPT_OVERHEAD_EST_PER_PAGE = 180
-
-
 def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | None,
                      vault: Path | None = None) -> dict:
     """Which of the queue's planned extraction calls will be billed at `model`'s long-prompt card
-    (D366). Each document is planned as `section.run` plans it — one call at or under the
-    sectioning threshold, else even sections of the budget — and each call's prompt is its text
-    plus the fixed overhead above, converted to real tokens with the model's tokenizer ratio.
+    (D366). Each document is planned by `section.plan_document`, the same function the run itself
+    sections with (D370), from its queue file: the whole prompt measured with the real prompt
+    builders, the vault's brief, and the largest record skill (the skill is chosen only when the
+    document is extracted, so the estimate can over-count a call, never under-count it). Planning
+    holds every call under the line, so a call counted here is one that a single page too large
+    for the line forces over it.
 
     Returns ``{"share", "calls", "documents", "threshold"}``: `share` is the fraction of the
-    queue's prompt tokens in calls over the line, which the estimates price at the upper card.
-    All zero for a model that prices flat, an uncatalogued one, or a subscription."""
+    queue's planned prompt tokens in calls over the line, which the estimates price at the upper
+    card. All zero for a model that prices flat, an uncatalogued one, a subscription, or no vault
+    to read the queue from."""
     from watchdog import model_catalog, model_client
-    from watchdog.pipeline import section
+    from watchdog.pipeline import preflight, section
     out = {"share": 0.0, "calls": 0, "documents": 0, "threshold": None}
-    if backend in ("claude-agent-sdk", "local") or not queue_files:
+    if backend in ("claude-agent-sdk", "local") or not queue_files or vault is None:
         return out
     tier = model_catalog.long_context_card(model_client.resolve_model_id(model or model_client.DEFAULT_TIER))
     if tier is None:
         return out
     out["threshold"] = tier[0]
-    default_threshold, default_budget = section.model_defaults(model, backend, vault)
-    threshold = section._resolve_override("section_token_threshold", default_threshold)
-    budget = max(1, section._resolve_override("section_token_budget", default_budget))
-    ratio = model_client.tokenizer_ratio(model, backend, vault)
+    registry = preflight.registry_context(vault)
+    skill_text = section.largest_skill_text()
+    brief_path = vault / "context.md"
+    brief = brief_path.read_text(encoding="utf-8") if brief_path.exists() else None
     total = over = 0.0
     for f in queue_files:
-        text = f.get("est_tokens") or 0
-        pages = f.get("page_count") or 1
-        n = 1 if text <= threshold else -(-text // budget)
+        pf = preflight.run(vault, f.get("sha256") or "", registry)
+        if pf.get("error"):
+            continue
+        plan = section.plan_document(pf, model, backend, vault, skill_text=skill_text, brief=brief)
         crossed = False
-        for _ in range(n):
-            prompt = (text / n + _PROMPT_OVERHEAD_EST
-                      + _PROMPT_OVERHEAD_EST_PER_PAGE * pages / n) * ratio
+        for est in plan["prompts"]:
+            prompt = est * plan["ratio"]
             total += prompt
             if prompt > tier[0]:
                 over += prompt

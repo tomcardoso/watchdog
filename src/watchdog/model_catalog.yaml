@@ -151,9 +151,10 @@
 # crosses a window boundary is billed on both sides of it, which no single-figure estimate can say.
 #
 # `long_context_threshold` (#555, D202) is the real-token prompt length above which a model bills
-# the whole request at its `long_context` card. `pipeline/section.py` clamps BOTH the sectioning threshold and the per-section
-# budget to it (under `_LONG_CONTEXT_HEADROOM`), so no single extraction call is ever planned past
-# the boundary. It exists because D202 deleted the old output-derived clamp that had been holding
+# the whole request at its `long_context` card. `pipeline/section.py` plans every extraction call's
+# WHOLE prompt under it (D370: instructions, record skill, brief, candidate checklist and a
+# carry-forward reserve counted, less `section._WHOLE_PROMPT_HEADROOM`), so no call is planned past
+# the boundary unless a single page is too large for it. It exists because D202 deleted the old output-derived clamp that had been holding
 # these models a factor of five under the line by accident: sizing from the context window alone
 # gives a 1.05M-window OpenAI model a 393,750 est-token budget — about 315,000 real tokens at the
 # 0.80 ratio, comfortably PAST 272K — and a whole-document threshold larger still. The clamp is a
@@ -176,9 +177,11 @@
 # cache write, 1.5x output, and half of each on the Batch tier.
 #
 # `_LONG_CONTEXT_HEADROOM` (10%, the same convention `_OUTPUT_HEADROOM` already uses for
-# `max_output_tokens`) covers the per-call prompt scaffolding that rides on top of the document
-# text `section.py` sizes, which cannot yet be measured directly: `est_prompt_tokens` landed in
-# #617 and no run has happened since, so zero archived records carry it. Add the field to any new
+# `max_output_tokens`) still caps the text-sized defaults and the post-processing chunks
+# (`chunking.prompt_budget_chars`), where it covers the instructions riding on a chunk's data.
+# Extraction no longer leans on it: its scaffolding measured 13,600 to 27,800 real tokens on
+# 2026-10-31, more than 10% of 100,000, so D370 counts it instead, with 5% kept for the estimate's
+# own error. Add the field to any new
 # tiered model — and note the boundary is a property of the model, not the family: Haiku 5.5 is the
 # only Claude model with one.
 #
@@ -223,7 +226,10 @@ models:
   # Every Claude figure below is from platform.claude.com/docs/en/about-claude/models/overview,
   # .../about-claude/pricing and .../build-with-claude/effort, fetched 2026-10-13; every rate
   # re-checked against .../about-claude/pricing on 2026-10-31, unchanged. Both list a 1M
-  # context window, pinned to 200K here (D89), and 128K output. Both have adaptive thinking on by
+  # context window (re-fetched 2026-11-01) and 128K output. Sonnet 5.5's is pinned to 200K here
+  # (D89), which keeps its sections the size they have always been; Haiku 5.5 carries the real 1M
+  # since D370, because its 100,000-token price line, not the window, is what sizes its calls
+  # (`section.plan_calls` holds every whole prompt under it). Both have adaptive thinking on by
   # default, so neither declares `thinking` (D206), and both take all five effort levels. The API's
   # own default effort, used when Watchdog sends none, is `medium` on Haiku 5.5 and `high` on
   # Sonnet 5.5.
@@ -232,7 +238,8 @@ models:
   # prompt length: $0.10 / $0.50 per MTok for a prompt up to 100,000 tokens, $0.50 / $2.50 above
   # (the whole request, cache reads and writes counted in the length); cache reads 0.1x input,
   # 5-minute cache writes 1.25x, 1-hour writes 2x, of whichever input rate applies. Both cards
-  # below; `long_context_threshold` also clamps sectioning toward the lower one (D202, D366).
+  # below; `long_context_threshold` also keeps every planned extraction prompt under the lower
+  # one, whole prompt counted (D202, D366, D370).
   # 300K output on the Message Batches beta (listed in the
   # overview's max-output note, fetched 2026-10-13). `tokenizer_ratio` is DERIVED, not measured:
   # Anthropic says this tokenizer counts the same text as about 30% more tokens than Haiku 4.5's,
@@ -245,7 +252,7 @@ models:
     output: 0.50e-6
     cache_write: 0.125e-6
     cache_read: 0.01e-6
-    context_window: 200_000
+    context_window: 1_000_000   # the vendor figure; the long-prompt line sizes calls (D370)
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
