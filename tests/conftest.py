@@ -119,18 +119,19 @@ def thinking_off_claude(catalog_entry):
 
 @pytest.fixture(autouse=True)
 def no_real_gliner(monkeypatch):
-    """Never load or run the local GLiNER model in a test. `harvest._load_gliner` raises here, so
-    the harvest takes its "model unavailable" path (regex candidates only), as it does in CI,
-    where GLiNER is not installed. A developer machine has it installed (it is a core dependency,
-    D223), and without this fixture tests that extract a document ran the 1.1 GB model on CPU:
-    test_orchestrate.py took 130 s with it and 22 s without. A test that needs names sets its own
-    fake with `monkeypatch.setattr(harvest, "_load_gliner", ...)`, which replaces this one."""
+    """Never load or run the local GLiNER model in a test. The `gliner` package is made
+    unimportable (a `None` entry in `sys.modules` makes `import gliner` raise ImportError) and the
+    loaded-model singleton is cleared, so the harvest takes its "model unavailable" path (regex
+    candidates only), as it does in CI, where GLiNER is not installed. A developer machine has it
+    installed (it is a core dependency, D223), and without this fixture tests that extract a
+    document ran the 1.1 GB model on CPU: test_orchestrate.py took 130 s with it and 22 s without.
+    A test that needs the loader puts its own fake in `sys.modules["gliner"]` (test_harvest.py),
+    and one that needs names replaces `harvest._load_gliner`; either overrides this."""
+    import sys
+
     from watchdog.pipeline import harvest
-
-    def _off():
-        raise RuntimeError("GLiNER is not loaded in tests (tests/conftest.py)")
-
-    monkeypatch.setattr(harvest, "_load_gliner", _off)
+    monkeypatch.setitem(sys.modules, "gliner", None)
+    monkeypatch.setattr(harvest, "_gliner_model", None)
 
 
 @pytest.fixture(scope="session")
