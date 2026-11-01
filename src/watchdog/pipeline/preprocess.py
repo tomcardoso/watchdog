@@ -60,6 +60,11 @@ WORD_SHAPE_THRESHOLD = 0.3  # fraction of tokens that must look word-like, below
 PAGE_GARBLE_VOTES_REQUIRED = 2  # of the signals in page_garble_signals(), how many must fire
 CHUNK_SIZE = 40             # pages per chunk when splitting large PDFs
 CHUNK_TIMEOUT = 300         # seconds per chunk subprocess
+# A page Watchdog OCRs is rendered at the resolution of the image on it (D364): never below
+# Docling's own OCR scale (3, 216 DPI, D352), and never above 600 DPI, so one extreme scan cannot
+# exhaust memory with a slice of pages rendered at once.
+OCR_SCALE_MIN = 3.0
+OCR_SCALE_MAX = 600 / 72
 
 
 def _perf_cpu_count() -> int:
@@ -416,8 +421,11 @@ def _load_models(converter, fmt) -> None:
         pass
 
 
-def build_converter(force_ocr: bool, *, load_models: bool = True):
+def build_converter(force_ocr: bool, *, load_models: bool = True, ocr_scale: float | None = None):
     """Build a Docling DocumentConverter with the configured OCR engine.
+
+    `ocr_scale` sets a forced-OCR conversion's OCR (and render) scale, in pixels per point; unset,
+    Docling's default (3) stands.
 
     Engine selection (auto mode):
       1. Apple Vision (macOS only, requires ocrmac) — fast, hardware-accelerated
@@ -454,6 +462,8 @@ def build_converter(force_ocr: bool, *, load_models: bool = True):
             ocr_opts = RapidOcrOptions(force_full_page_ocr=force_ocr)
         else:  # auto or tesseract
             ocr_opts = _make_tesseract_opts(force_ocr)
+    if force_ocr and ocr_scale:
+        ocr_opts.scale = ocr_scale
 
     # Force CPU: Docling's layout model (RT-DETR-v2) computes a position embedding in
     # float64, which PyTorch's MPS backend cannot handle — on Apple Silicon, where
@@ -482,6 +492,87 @@ def load_pdf_models() -> None:
     Docling step: the models land in the cache conversion reads (D358)."""
     from docling.datamodel.base_models import InputFormat
     build_converter(False, load_models=False).initialize_pipeline(InputFormat.PDF)
+
+
+def pdf_ocr_scale(path: Path) -> float:
+    """The scale a forced-OCR conversion of this PDF renders at (D364): the resolution of the
+    largest image on its sharpest page, within OCR_SCALE_MIN..OCR_SCALE_MAX.
+
+    A screen capture's smallest text sits at the edge of what an OCR engine reads at 216 DPI: one
+    saved as a PDF at 322 DPI had its footer address misread at 3x and read correctly from 3.5x
+    up, by Apple Vision through Docling. Reading the image at its own resolution gives the engine
+    every pixel the document has. One scale serves the whole file, since a conversion has one;
+    the slices are cut so that pages of like resolution share one (`_ocr_slices`)."""
+    return max(pdf_page_ocr_scales(path), default=OCR_SCALE_MIN)
+
+
+def pdf_page_ocr_scales(path: Path) -> list[float]:
+    """Each page's OCR scale (D364): its largest image's pixels per point, within
+    OCR_SCALE_MIN..OCR_SCALE_MAX; the floor for a page with no image to measure (text drawn as
+    shapes) or one that cannot be read. Empty when the file cannot be opened."""
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(str(path))
+        pages = list(reader.pages)
+    except Exception:  # noqa: BLE001 — an unreadable file is converted at the default
+        return []
+    scales = []
+    for page in pages:
+        try:
+            native = _page_image_scale(page, reader) or 0.0
+        except Exception:  # noqa: BLE001 — one damaged page does not lower the others
+            native = 0.0
+        scales.append(min(max(native, OCR_SCALE_MIN), OCR_SCALE_MAX))
+    return scales
+
+
+def _page_image_scale(page, reader) -> float | None:
+    """Pixels per point of the largest image drawn on a pypdf page (the one covering the most of
+    it), from the transformation in force where it is drawn. The drawing operations are walked
+    rather than the text extracted: text extraction starts each form XObject from an identity
+    matrix, and decodes fonts it does not need. Each form applies its own /Matrix and resolves
+    names in its own resources. None for a page that draws no image."""
+    import math
+    from pypdf.generic import ContentStream
+
+    def mul(m, n):   # m then n, PDF's row-vector convention
+        a, b, c, d, e, f = m
+        A, B, C, D, E, F = n
+        return (a * A + b * C, a * B + b * D, c * A + d * C, c * B + d * D,
+                e * A + f * C + E, e * B + f * D + F)
+
+    best: list[tuple[float, float]] = []
+
+    def walk(content, resources, ctm, depth):
+        xobjects = (resources or {}).get("/XObject")
+        xobjects = xobjects.get_object() if xobjects is not None else {}
+        stack = []
+        for operands, op in content.operations:
+            if op == b"q":
+                stack.append(ctm)
+            elif op == b"Q":
+                ctm = stack.pop() if stack else ctm
+            elif op == b"cm" and len(operands) == 6:
+                ctm = mul(tuple(float(x) for x in operands), ctm)
+            elif op == b"Do" and operands and operands[0] in xobjects:
+                obj = xobjects[operands[0]].get_object()
+                if obj.get("/Subtype") == "/Image":
+                    # An image fills the unit square: its placed width and height are the lengths
+                    # of the matrix's two rows.
+                    area = math.hypot(ctm[0], ctm[1]) * math.hypot(ctm[2], ctm[3])
+                    if area > 0:
+                        best.append((area, math.sqrt(int(obj["/Width"]) * int(obj["/Height"]) / area)))
+                elif obj.get("/Subtype") == "/Form" and depth < 8:
+                    matrix = tuple(float(x) for x in obj.get("/Matrix", (1, 0, 0, 1, 0, 0)))
+                    walk(ContentStream(obj, reader), obj.get("/Resources") or resources,
+                         mul(matrix, ctm), depth + 1)
+
+    content = page.get_contents()
+    if content is None:
+        return None
+    walk(content if isinstance(content, ContentStream) else ContentStream(content, reader),
+         page.get("/Resources"), (1.0, 0.0, 0.0, 1.0, 0.0, 0.0), 0)
+    return max(best)[1] if best else None
 
 
 def _ocr_render_scale(format_option_cls, scale: float) -> dict:
@@ -745,7 +836,8 @@ def pdf_ocr_plan(path: Path, total_pages: int) -> tuple[list[int], list[int]]:
 
 
 def _ocr_slices(total_pages: int, force_pages: list[int], chunk_size: int,
-                force_all: bool = False) -> list[tuple[list[int], bool]]:
+                force_all: bool = False,
+                scales: list[float] | None = None) -> list[tuple[list[int], bool]]:
     """Group pages by OCR verdict, then split each group into slices of at most
     chunk_size pages. Returns (0-indexed page numbers, force_ocr) per slice.
 
@@ -757,6 +849,10 @@ def _ocr_slices(total_pages: int, force_pages: list[int], chunk_size: int,
 
     A document whose pages all agree yields one group of contiguous pages, which
     is exactly the chunking that existed before this change.
+
+    With `scales` (each page's OCR scale, D364), forced pages are sorted by scale and cut so a
+    slice holds no more pixels than chunk_size pages at Docling's 3x: a slice renders every page
+    at its sharpest page's scale, and its memory and time grow with the pixels.
     """
     forced = set(force_pages)
     if force_all or not forced:
@@ -767,11 +863,34 @@ def _ocr_slices(total_pages: int, force_pages: list[int], chunk_size: int,
             (sorted(forced), True),
         ]
 
-    return [
-        (pages[i:i + chunk_size], force)
-        for pages, force in groups
-        for i in range(0, len(pages), chunk_size)
-    ]
+    out = []
+    for pages, force in groups:
+        if force and scales:
+            out.extend((cut, True) for cut in _budget_slices(pages, scales, chunk_size))
+        else:
+            out.extend((pages[i:i + chunk_size], force) for i in range(0, len(pages), chunk_size))
+    return out
+
+
+def _ocr_cost(scale: float) -> float:
+    """One page's pixels at `scale`, in pages at Docling's 3x."""
+    return (scale / OCR_SCALE_MIN) ** 2
+
+
+def _budget_slices(pages: list[int], scales: list[float], budget: int) -> list[list[int]]:
+    """Forced pages in ascending scale, cut where one more page would take the slice past
+    `budget` pages' worth of 3x pixels (each page counted at the slice's highest scale, the one
+    its conversion renders at). A page over the budget alone is a slice of its own."""
+    def scale(i):
+        return scales[i] if i < len(scales) else OCR_SCALE_MIN
+
+    cuts: list[list[int]] = []
+    for i in sorted(pages, key=lambda i: (scale(i), i)):
+        if cuts and (len(cuts[-1]) + 1) * _ocr_cost(scale(i)) <= budget:
+            cuts[-1].append(i)
+        else:
+            cuts.append([i])
+    return [sorted(c) for c in cuts]
 
 
 def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = True) -> dict:
@@ -802,8 +921,14 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
     # simply too large for one pass. Split into slices and run them in parallel
     # subprocesses; no docling needed in the parent.
     chunk_size = _config_get("chunk_size", CHUNK_SIZE)
-    if is_pdf and total_pages and (force_pages or total_pages > chunk_size):
-        slices = _ocr_slices(total_pages, force_pages, chunk_size, force_all=force_ocr)
+    # Each page's OCR scale (D364), for cutting slices of OCR'd pages by their pixels. A file
+    # converted whole renders every page at its sharpest page's scale.
+    scales = pdf_page_ocr_scales(path) if is_pdf and (force_ocr or force_pages) else []
+    too_many_pixels = (force_ocr and total_pages > 1 and scales
+                       and total_pages * _ocr_cost(max(scales)) > chunk_size)
+    if is_pdf and total_pages and (force_pages or total_pages > chunk_size or too_many_pixels):
+        slices = _ocr_slices(total_pages, force_pages, chunk_size, force_all=force_ocr,
+                             scales=scales)
         result = process_pdf_slices(path, slices)
         if "error" in result:
             # Fallback: clean the whole file with qpdf/gs and retry, mirroring
@@ -825,7 +950,8 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
                         force_ocr, force_pages = True, []
                 total_pages = cleaned_pages
                 retry_slices = _ocr_slices(total_pages, force_pages, chunk_size,
-                                           force_all=force_ocr)
+                                           force_all=force_ocr,
+                                           scales=pdf_page_ocr_scales(cleaned))
                 result = process_pdf_slices(cleaned, retry_slices)
             finally:
                 cleaned.unlink(missing_ok=True)
@@ -848,7 +974,7 @@ def process_with_docling(path: Path, force_ocr: bool = False, detect: bool = Tru
         return {"error": "Docling is not installed. Open Settings → Setup and choose Repair or reinstall the engine."}
     if is_pdf:
         try:
-            converter = build_converter(force_ocr)
+            converter = build_converter(force_ocr, ocr_scale=pdf_ocr_scale(path) if force_ocr else None)
         except Exception as e:
             return {"error": f"Failed to build converter: {e}"}
     elif path.suffix.lower() in IMAGE_SUFFIXES:

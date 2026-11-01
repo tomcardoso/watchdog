@@ -119,6 +119,35 @@ def test_preflight_reads_configured_models(rich_vault, wdg_home):
     assert by_stage["finalizer"]["label"] == "sonnet"
 
 
+def test_configured_names_what_each_unset_field_runs(wdg_home):
+    config(wdg_home, extractor_model="sonnet-5.5", classifier_effort="medium")
+    c = call("ingest.configured")
+    assert c["models"] == {"extractor_model": "Claude Sonnet 5.5", "classifier_model": "Claude Haiku 5.5",
+                           "finalizer_model": "Claude Haiku 5.5", "finalizer_writing_model": "Claude Haiku 5.5",
+                           "finalizer_housekeeping_model": "Claude Haiku 5.5"}
+    assert c["efforts"] == {"extractor_effort": "high", "classifier_effort": "medium",
+                            "finalizer_effort": "default"}
+
+
+def test_configured_follows_the_forms_other_fields(wdg_home):
+    # The field itself is left out (its own choice shows in the picker); the others still count:
+    # the writing step falls back to this run's finishing model, and an effort default is dropped
+    # on a model without that level.
+    c = call("ingest.configured", options={"finalizer_model": "sonnet", "extractor_model": "deepseek:deepseek-flash",
+                                           "extractor_effort": "low"})
+    assert c["models"]["finalizer_model"] == "Claude Haiku 5.5"
+    assert c["models"]["finalizer_writing_model"] == "Claude Sonnet 5.5"
+    assert c["models"]["extractor_model"] == "Claude Haiku 5.5"
+    assert c["efforts"]["extractor_effort"] == "default"
+
+
+def test_configured_is_null_for_a_setting_that_does_not_resolve(wdg_home):
+    config(wdg_home, classifier_model="nonsense")
+    c = call("ingest.configured")
+    assert c["models"]["classifier_model"] is None and c["efforts"]["classifier_effort"] is None
+    assert c["models"]["extractor_model"] is None   # every plan resolves the classifier too
+
+
 def test_preflight_needs_no_claude_auth_when_every_stage_is_elsewhere(rich_vault, wdg_home):
     config(wdg_home, classifier_model="openai:gpt-5-mini", extractor_model="openai:gpt-5-mini",
            finalizer_model="openai:gpt-5-mini")

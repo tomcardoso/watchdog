@@ -162,6 +162,8 @@ SETTINGS = {
             "PDFs with more pages than this value are split into chunks and processed in parallel.\n"
             "  Smaller chunks reduce peak memory per worker but add per-chunk overhead.\n"
             "  Larger chunks are more efficient on fast machines with ample RAM.\n"
+            "  Pages OCR'd above 216 DPI count for their pixels: a chunk holds about as much as\n"
+            "  this many pages at 216 DPI (D364).\n"
             "  Default: 40."
         ),
         "type": "int",
@@ -248,8 +250,9 @@ SETTINGS = {
             "  it), adjusted for how that model's tokenizer counts — so a 1M-window model like\n"
             "  DeepSeek V4 reads far more of a document in one call than a 200K Claude window\n"
             "  (which resolves to 129032). Set a fixed number to pin it as an advanced override —\n"
-            "  e.g. lower it if extraction quality drops on long documents, or to hold a call under\n"
-            "  a provider's long-context pricing tier.\n"
+            "  e.g. lower it if extraction quality drops on long documents. On a model that charges\n"
+            "  more past a prompt length, each request's whole prompt (instructions, skill, brief,\n"
+            "  candidate list and text) is kept under that line as well, whatever this is set to.\n"
             "  Note: a fixed number does NOT rescale when you change extractor_model — pin it back to\n"
             "  'auto' (or re-check the value) if you switch to a model with a different context window."
         ),
@@ -298,6 +301,21 @@ SETTINGS = {
         ),
         "type": "int",
         "default": 500,
+        "min": 0,
+    },
+    "thin_extraction_words_per_fact": {
+        "short": "Warn when an extraction keeps fewer than one fact per this many words of text (default: 1000)",
+        "help": (
+            "A document whose extraction keeps fewer than one fact for every this many words of\n"
+            "  pre-processed source text is still added, but marked with a warning on its page in\n"
+            "  Documents and in the processing log, with a Retry extraction button. A healthy\n"
+            "  extraction usually keeps about one fact per 250 words, so the warning means the\n"
+            "  model most likely stopped early. Nothing is retried, and nothing spent, unless you\n"
+            "  choose Retry extraction. A document with no facts at all is the setting above's case.\n"
+            "  Raise it to warn less often; 0 turns the warning off. Default: 1000."
+        ),
+        "type": "int",
+        "default": 1000,
         "min": 0,
     },
     "verify_extraction": {
@@ -671,6 +689,24 @@ SETTINGS = {
         "type": "bool",
         "default": True,
     },
+    # ── Troubleshooting ───────────────────────────────────────────────────────
+    "save_reasoning": {
+        "short": "Save what the model wrote while thinking, with each call (default: false)",
+        "help": (
+            "Turn this on to help diagnose a problem: reproduce it, then save the run's reasoning\n"
+            "  from Activity → Maintenance → Saved model reasoning and send the file to whoever is\n"
+            "  helping you. From then on, every model call in every investigation saves the reasoning\n"
+            "  its model returns, in the investigation folder under .watchdog/reasoning/. Claude and\n"
+            "  DeepSeek return it; OpenAI and Gemini models return none, so only the call's details\n"
+            "  are saved for them. The reasoning can restate what your documents say, so share it\n"
+            "  only with someone you would show the documents to. It also takes disk space, more\n"
+            "  with every run: turn this off again when you are done, and clear what was\n"
+            "  saved from the same place. It costs nothing extra and changes no result.\n"
+            "  Default: false."
+        ),
+        "type": "bool",
+        "default": False,
+    },
 }
 
 
@@ -695,7 +731,7 @@ SECTIONS = [
     ("Processing", "Extraction run — parallelism, classification, skill pinning, sectioning.",
      ["auto_approve", "extract_concurrency", "extract_token_budget", "classify_pages", "default_skill",
       "section_token_threshold", "section_token_budget", "section_overlap_tokens",
-      "empty_extraction_min_words", "verify_extraction"]),
+      "empty_extraction_min_words", "thin_extraction_words_per_fact", "verify_extraction"]),
     ("Model options", "How hard each step's model thinks, and where self-hosted models are. The models themselves are chosen under Models & keys.",
      ["classifier_effort", "extractor_effort", "finalizer_effort", "verifier_effort",
       "local_base_url", "local_context_window", "openrouter_base_url"]),
@@ -711,6 +747,8 @@ SECTIONS = [
      ["reporter_name"]),
     ("Privacy", "The local record of model calls across your investigations.",
      ["telemetry"]),
+    ("Troubleshooting", "Information to help diagnose a problem with processing.",
+     ["save_reasoning"]),
 ]
 
 

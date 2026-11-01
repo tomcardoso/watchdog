@@ -52,7 +52,7 @@ When you add your first key for a provider, any step still on its default that h
 
 | Value | Runs on |
 |---|---|
-| `haiku` | Claude Haiku 5.5, the default for every step. US$0.10 in and US$0.50 out per million tokens for requests up to 100,000 tokens, which Watchdog keeps each request under. |
+| `haiku` | Claude Haiku 5.5, the default for every step. US$0.10 in and US$0.50 out per million tokens for requests up to 100,000 tokens, five times that for a longer one ([long prompts](#long-prompts)). |
 | `sonnet` | Claude Sonnet 5.5: US$2 in and US$10 out per million tokens. |
 | `haiku-5.5` / `sonnet-5.5` | The same models pinned by name, in case the bare tier ever moves. |
 | `openai:gpt-6-luna` | GPT-6 Luna, OpenAI's high-volume model: US$0.10 in, US$0.50 out. `openai:gpt-5.6-luna` is the previous generation. |
@@ -105,6 +105,15 @@ The main levers, roughly in order of effect:
 - **Documents at once** does not change total cost, but lowering it is the fix when a run keeps hitting a rate limit. On a subscription it defaults to 3, since every extraction shares one usage limit.
 
 On a Claude subscription, **Activity → Usage** shows what the work would have cost at published rates, marked as not billed.
+
+<a id="long-prompts"></a>
+### Long prompts cost more on some models
+
+A token is a piece of a word, about four characters of English; it is how providers count and bill text. A few models charge by how long each request's prompt is. On Claude Haiku 5.5, a request whose prompt is over 100,000 tokens is billed entirely at US$0.50 in and US$2.50 out per million, five times the usual rate. On GPT-6 Luna and GPT-5.6 Luna the line is 272,000 tokens, above which input costs twice as much and output one and a half times as much. The prompt counts everything sent, including the part the provider had stored from an earlier request. Gemini, DeepSeek and Claude Sonnet 5.5 cost the same at any length.
+
+On these models Watchdog splits a long document into sections so that every request stays under the line, counting the whole prompt: the document text, the instructions, the record skill, your brief and the list of names and figures sent with it. The one exception is a single page so long that it is over the line on its own, since a page is never cut in two; the processing log notes it. If a request goes over anyway, because the count is an estimate, the processing log notes that too. Such a call is recorded in **Activity → Usage** at the higher rate, as the provider bills it. **Estimate cost** prices it the same way and says how many documents it expects to go over; **Compare all models** notes each model's calls over its own line. Calls recorded by earlier versions were priced at the lower rate; [Bring this investigation up to date](using-watchdog.md#bringing-an-investigation-up-to-date) corrects them.
+
+Watchdog works out each call's cost itself, from the token counts the provider returns and the provider's published prices, because providers do not send a price back. If **Activity → Usage** and your provider's bill disagree, the bill is right.
 
 <a id="spending-limit"></a>
 <a id="key-limits"></a>
@@ -176,7 +185,7 @@ Two settings belong to a single investigation and live on its Overview instead: 
 | Field | Default | What it controls |
 |---|---|---|
 | Pre-processing workers | `auto` | Files read in parallel. `auto` adapts to the batch. |
-| Chunk size | `40` | Pages per chunk when a large PDF is split for parallel reading. |
+| Chunk size | `40` | Pages per chunk when a large PDF is split for parallel reading. Scanned pages read at a higher resolution go in smaller chunks, so each holds about as much as 40 pages at 216 DPI. |
 | Chunk workers | `auto` | Parallel workers for one large PDF's chunks. Workers and chunk workers multiply, so pin both low on a modest computer. |
 | Chunk timeout | `300` | Seconds before a chunk is stopped. |
 | Table structure | on | Table detection on PDFs. Turn it off to speed up text-only documents. |
@@ -201,6 +210,7 @@ All the models are close on clear speech. The difference shows on a bad line, a 
 | Default skill | *(unset)* | Pins one [record skill](how-it-works.md#record-skills) for every document, skipping classification. |
 | Section token threshold / budget / overlap | `auto` / `auto` / `4000` | How a very large document is split into sections for extraction. `auto` sizes sections from the extractor's context window and keeps each request under any price step. Leave them on `auto`. |
 | Empty-extraction minimum words | `500` | A document with more words than this that comes back with no facts is retried once, then failed, rather than accepted as empty. |
+| <a id="thin-extraction-words-per-fact"></a>Thin-extraction words per fact | `1000` | A document whose extraction keeps fewer than one fact for every this many words of text is added, but marked **Few facts** with a [Retry extraction](using-watchdog.md#few-facts-and-retry-extraction) button. A healthy extraction keeps about one fact per 250 words. Nothing is retried or spent unless you choose to. Raise it to warn less often; `0` turns the warning off. |
 | <a id="the-verification-pass"></a>Verify extraction | off | The second-read check: re-reads each document straight after extraction and adds material facts the first read missed. It can add restatements or minor details, which is why it is off by default. Not available with batch mode. |
 
 ### Model options
@@ -255,6 +265,12 @@ Each step's model is chosen in the **Models** table under **Models & keys**, not
 | Field | Default | What it controls |
 |---|---|---|
 | Telemetry | on | Keeps a local record of every model call (`telemetry.db` in Watchdog's settings folder): model, tokens, cost, time, and the investigation and file each call was about. It never leaves your computer and holds no document text, but it lists your documents' names, so keep it out of shared folders and backups. |
+
+### Troubleshooting
+
+| Field | Default | What it controls |
+|---|---|---|
+| <a id="save-model-reasoning"></a>Save model reasoning | off | Saves what the model wrote while thinking, with each model call, in every investigation from then on: in the investigation's folder under `.watchdog/reasoning/`, with the call's task, file name, model, effort, why it stopped and its token counts. Claude and DeepSeek models return their reasoning; OpenAI and Gemini models return none, so only the call's details are saved for them. It costs nothing extra and changes no result. The reasoning can restate what your documents say, so share it only with someone you would show the documents to, and it takes disk space with every run. Turn it on only to reproduce a problem; see [Sharing debugging information](troubleshooting.md#sharing-debugging-information). |
 
 ### App panels
 

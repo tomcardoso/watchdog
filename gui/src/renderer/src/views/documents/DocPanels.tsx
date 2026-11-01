@@ -47,13 +47,13 @@ export function EntitiesTab({ entities }: { entities: DocumentDetail['entities']
       {groups.map(([k, list]) => {
         const m = typeMeta(k)
         return (
-          <section className="ent-group" key={k}>
-            <div className="ent-group-head" style={{ color: m.color }}>
+          <section className="doc-ent-group" key={k}>
+            <div className="doc-ent-group-head" style={{ color: m.color }}>
               <m.icon />
               {list.length > 1 ? m.plural : m.label} · {list.length}
             </div>
             {list.map((e) => (
-              <div className="ent-row" key={e.id}>
+              <div className="doc-ent-row" key={e.id}>
                 <EntityChip id={e.id} name={e.name} type={e.type} />
                 {e.role && <span className="role">{e.role}</span>}
               </div>

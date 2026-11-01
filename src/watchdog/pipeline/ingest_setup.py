@@ -41,6 +41,22 @@ def busy_message(holder: dict | None) -> str:
             "that run ends.")
 
 
+def _queue_entry(vault: Path, qf: Path) -> dict | None:
+    """One queue descriptor's metadata as `scan_queue` lists it; None if it can't be read."""
+    try:
+        data = json.loads(qf.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return {
+        "path": str(qf.relative_to(vault)),
+        "sha256": qf.stem,
+        "filename": data.get("filename", qf.stem),
+        "document_type": data.get("document_type"),
+        "page_count": data.get("page_count") or len(data.get("pages", [])),
+        "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
+    }
+
+
 def scan_queue(vault: Path) -> list[dict]:
     """Read every queued file's metadata (filename, type, page count, est_tokens) without
     touching the lock — shared by `run` (which then acquires the lock) and `cost_estimate`'s
@@ -49,19 +65,75 @@ def scan_queue(vault: Path) -> list[dict]:
     queue_files: list[dict] = []
     if queue_dir.exists():
         for qf in sorted(queue_dir.glob("*.json")):
-            try:
-                data = json.loads(qf.read_text(encoding="utf-8"))
-            except Exception:
-                continue
-            queue_files.append({
-                "path": str(qf.relative_to(vault)),
-                "sha256": qf.stem,
-                "filename": data.get("filename", qf.stem),
-                "document_type": data.get("document_type"),
-                "page_count": data.get("page_count") or len(data.get("pages", [])),
-                "est_tokens": _est_tokens_from_pages(data.get("pages", [])),
-            })
+            entry = _queue_entry(vault, qf)
+            if entry is not None:
+                queue_files.append(entry)
     return queue_files
+
+
+# ── documents kept for a retry (D367) ─────────────────────────────────────────────────────────
+#
+# A queue descriptor is removed once its document is committed. One whose extraction came back
+# thin is copied here first, so Retry extraction can send the same text again without reading
+# the original a second time. A later commit that is not thin removes the copy.
+
+def kept_dir(vault: Path) -> Path:
+    return vault / ".watchdog" / "queue" / "_kept"
+
+
+def keep_for_retry(vault: Path, sha: str, thin: bool) -> None:
+    """At commit: keep a copy of the queue descriptor of a thin extraction, or drop the copy of
+    one that is no longer thin. Never fails the commit."""
+    queue_file = vault / ".watchdog" / "queue" / f"{sha}.json"
+    kept = kept_dir(vault) / f"{sha}.json"
+    try:
+        if thin and queue_file.exists():
+            kept.parent.mkdir(parents=True, exist_ok=True)
+            tmp = kept.with_suffix(".json.part")
+            tmp.write_bytes(queue_file.read_bytes())
+            tmp.replace(kept)
+        elif not thin:
+            kept.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def reextract_queue(vault: Path, shas) -> list[dict]:
+    """The queue entries a re-extraction of `shas` would send, read from the queue when the
+    descriptor is still there, else from the copy kept for a retry. Read-only, so the app's
+    estimate and preflight can call it; a sha with neither is left out."""
+    out = []
+    for sha in dict.fromkeys(shas or []):
+        for qf in (vault / ".watchdog" / "queue" / f"{sha}.json", kept_dir(vault) / f"{sha}.json"):
+            if qf.exists():
+                entry = _queue_entry(vault, qf)
+                if entry is not None:
+                    out.append(entry)
+                break
+    return out
+
+
+def restore_for_reextract(vault: Path, shas) -> tuple[list[str], list[str]]:
+    """Put the kept descriptor of each of `shas` back in the queue where it is not already
+    there. Returns `(restored, missing)`: the shas copied back, and those with no descriptor
+    anywhere (their text has to be read again from the file). The kept copy stays until a
+    commit that is not thin removes it, so a re-extraction that fails can be retried again."""
+    queue_dir = vault / ".watchdog" / "queue"
+    restored, missing = [], []
+    for sha in dict.fromkeys(shas or []):
+        target = queue_dir / f"{sha}.json"
+        if target.exists():
+            continue
+        kept = kept_dir(vault) / f"{sha}.json"
+        if not kept.exists():
+            missing.append(sha)
+            continue
+        queue_dir.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f".{sha}.json.part")
+        tmp.write_bytes(kept.read_bytes())
+        tmp.replace(target)
+        restored.append(sha)
+    return restored, missing
 
 
 def limit_queue(vault: Path, queue_files: list[dict], limit: int | None,
@@ -210,7 +282,55 @@ def _output_token_ratio(vault: Path, max_runs: int, finalize_only: bool = False)
     return sum(ratios) / len(ratios) if ratios else None
 
 
-def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> list[dict]:
+def long_prompt_plan(queue_files: list[dict], model: str | None, backend: str | None,
+                     vault: Path | None = None) -> dict:
+    """Which of the queue's planned extraction calls will be billed at `model`'s long-prompt card
+    (D366). Each document is planned by `section.plan_document`, the same function the run itself
+    sections with (D370), from its queue file: the whole prompt measured with the real prompt
+    builders, the vault's brief, and the largest record skill (the skill is chosen only when the
+    document is extracted, so the estimate can over-count a call, never under-count it). Planning
+    holds every call under the line, so a call counted here is one that a single page too large
+    for the line forces over it.
+
+    Returns ``{"share", "calls", "documents", "threshold"}``: `share` is the fraction of the
+    queue's planned prompt tokens in calls over the line, which the estimates price at the upper
+    card. All zero for a model that prices flat, an uncatalogued one, a subscription, or no vault
+    to read the queue from."""
+    from watchdog import model_catalog, model_client
+    from watchdog.pipeline import preflight, section
+    out = {"share": 0.0, "calls": 0, "documents": 0, "threshold": None}
+    if backend in ("claude-agent-sdk", "local") or not queue_files or vault is None:
+        return out
+    tier = model_catalog.long_context_card(model_client.resolve_model_id(model or model_client.DEFAULT_TIER))
+    if tier is None:
+        return out
+    out["threshold"] = tier[0]
+    registry = preflight.registry_context(vault)
+    skill_text = section.largest_skill_text()
+    brief_path = vault / "context.md"
+    brief = brief_path.read_text(encoding="utf-8") if brief_path.exists() else None
+    total = over = 0.0
+    for f in queue_files:
+        pf = preflight.run(vault, f.get("sha256") or "", registry)
+        if pf.get("error"):
+            continue
+        plan = section.plan_document(pf, model, backend, vault, skill_text=skill_text, brief=brief)
+        crossed = False
+        for est in plan["prompts"]:
+            prompt = est * plan["ratio"]
+            total += prompt
+            if prompt > tier[0]:
+                over += prompt
+                out["calls"] += 1
+                crossed = True
+        out["documents"] += crossed
+    out["share"] = over / total if total else 0.0
+    return out
+
+
+def _catalog_cost_projection(est_tokens: int, output_ratio: float | None,
+                             queue_files: list[dict] | None = None,
+                             vault: Path | None = None) -> list[dict]:
     """Price `est_tokens` against every model in `model_catalog.yaml` at that model's own list
     price (#469), scaled by `output_ratio` for the output side — unlike `cost_estimate`'s $/token
     ratio (drawn from this vault's history of a model that actually ran), a model with no run
@@ -220,31 +340,41 @@ def _catalog_cost_projection(est_tokens: int, output_ratio: float | None) -> lis
     projection. Returns `[]` with no usage history to derive `output_ratio` from — no dollar
     figure is invented. Each row's own `tokenizer_ratio` scales `est_tokens` so a new-tokenizer
     model (Sonnet 5.5) prices against its real token count rather than the old-tokenizer
-    figure verbatim (#574, D135)."""
+    figure verbatim (#574, D135).
+
+    With `queue_files` (an extraction queue), each model's planned calls that will cross its
+    long-prompt line are priced at that card (`long_prompt_plan`, D366), and the row says how many
+    calls that is. Post-processing passes no queue: its calls are packed well under the line
+    (`chunking.prompt_budget_chars`)."""
     if output_ratio is None:
         return []
-    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio, price_multiplier
+    from watchdog.model_catalog import all_models, catalog_tokenizer_ratio, list_price, price_multiplier
     rows = []
     for m in all_models():
         model_tokens = est_tokens * (catalog_tokenizer_ratio(m["id"]) or 1.0)
         model_output = model_tokens * output_ratio
+        plan = (long_prompt_plan(queue_files, m["id"], None, vault) if queue_files
+                else {"share": 0.0, "calls": 0})
         # Priced at the rate in force right now (D217): a model with a time-of-day schedule costs
         # what it would cost to start the run at this moment, and carries the multiplier so the
         # caller can say so — a row silently 2x its neighbours' rate reads as a catalog error.
         multiplier = price_multiplier(m["id"])
         rows.append({"id": m["id"], "name": m["name"], "provider": m["provider"],
-                      "price_multiplier": multiplier,
-                      "cost": (model_tokens * m["input"] + model_output * m["output"]) * multiplier})
+                      "price_multiplier": multiplier, "long_prompt_calls": plan["calls"],
+                      "cost": list_price(m["id"], model_tokens, model_output, plan["share"])})
     rows.sort(key=lambda r: r["cost"])
     return rows
 
 
-def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
+def cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3,
+                             queue_files: list[dict] | None = None) -> list[dict]:
     """`cost_estimate`'s queue projection, extended across every catalog model (#469) — a cost
     comparison across providers before committing to one. `est_tokens` should be `cost_estimate`'s
     own already-calibrated figure, so this projection starts from the same 'tokens in' number the
-    single-model estimate already shows."""
-    return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs))
+    single-model estimate already shows. `queue_files` lets each model's row price the calls that
+    will cross its long-prompt line at that card (D366)."""
+    return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs),
+                                    queue_files, vault)
 
 
 def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: int = 3) -> list[dict]:
@@ -255,8 +385,24 @@ def finalize_cost_estimate_all_models(vault: Path, est_tokens: int, max_runs: in
     return _catalog_cost_projection(est_tokens, _output_token_ratio(vault, max_runs, finalize_only=True))
 
 
+def _long_prompt_factor(model: str | None, output_ratio: float | None) -> float:
+    """How many times dearer a call at `model`'s long-prompt card is than the same call at its
+    ordinary card, for a call writing `output_ratio` output tokens per input token (D366): 5 on
+    Claude Haiku 5.5 whatever the mix, between 1.5 and 2 on the OpenAI entries. 1.0 for a model
+    that prices flat."""
+    from watchdog import model_catalog, model_client
+    model_id = model_client.resolve_model_id(model or model_client.DEFAULT_TIER)
+    if model_catalog.long_context_card(model_id) is None:
+        return 1.0
+    r = output_ratio if output_ratio is not None else 0.24
+    low = model_catalog.list_price(model_id, 1.0, r)
+    high = model_catalog.list_price(model_id, 1.0, r, long_share=1.0)
+    return high / low if low else 1.0
+
+
 def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
-                   max_runs: int = 3, usage_files: list[Path] | None = None) -> dict:
+                   max_runs: int = 3, usage_files: list[Path] | None = None,
+                   model: str | None = None) -> dict:
     """Pre-flight token/cost estimate for a queue (#269): the queue's calibrated `est_tokens`
     (`scan_queue`, `_tokens_calibration`, #417) times this vault's own $/token history, read
     fresh from the last `max_runs` usage files rather than averaged, so the result is a range —
@@ -268,7 +414,13 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     ``usage_files``, when given, replaces this vault's own history as the $/token ratio source
     (#478) — for a vault guaranteed to have none yet by design (every benchmark arm is a freshly
     seeded vault, `BENCHMARKING.md`), the caller can supply usage files archived from a prior run
-    of the same model/effort/backend combination elsewhere."""
+    of the same model/effort/backend combination elsewhere.
+
+    ``model``, the extraction model, makes the figure tier-aware (D366): the queue's calls that
+    will cross the model's long-prompt line (`long_prompt_plan`) have their share of the cost
+    scaled by `_long_prompt_factor`, and `long_prompt_calls`/`long_prompt_documents` say how many.
+    The history ratio is taken as the ordinary card's, since sectioning keeps most calls under the
+    line; a history that itself crossed it makes the high end a little high, the safe side."""
     documents = len(queue_files)
     pages = sum(f.get("page_count") or 0 for f in queue_files)
     raw_tokens = sum(f.get("est_tokens") or 0 for f in queue_files)
@@ -276,9 +428,18 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
     est_tokens = round(raw_tokens * calibration) if calibration else raw_tokens
     result = {"documents": documents, "pages": pages, "est_tokens": est_tokens,
               "cost_low": None, "cost_high": None, "runs_used": 0,
-              "subscription": backend == "claude-agent-sdk"}
+              "subscription": backend == "claude-agent-sdk",
+              "long_prompt_calls": 0, "long_prompt_documents": 0}
     if backend == "claude-agent-sdk" or not documents:
         return result
+    plan = (long_prompt_plan(queue_files, model, backend, vault) if model is not None
+            else {"share": 0.0, "calls": 0, "documents": 0})
+    result["long_prompt_calls"] = plan["calls"]
+    result["long_prompt_documents"] = plan["documents"]
+    scale = 1.0
+    if plan["share"]:
+        factor = _long_prompt_factor(model, _output_token_ratio(vault, max_runs))
+        scale = (1 - plan["share"]) + plan["share"] * factor
 
     from watchdog.pipeline import orchestrate
     files = orchestrate.usage_files(vault) if usage_files is None else usage_files
@@ -293,8 +454,8 @@ def cost_estimate(vault: Path, queue_files: list[dict], backend: str | None,
             ratios.append(cost_usd / input_tokens)
 
     if ratios:
-        result["cost_low"] = est_tokens * min(ratios)
-        result["cost_high"] = est_tokens * max(ratios)
+        result["cost_low"] = est_tokens * min(ratios) * scale
+        result["cost_high"] = est_tokens * max(ratios) * scale
         result["runs_used"] = len(ratios)
     return result
 

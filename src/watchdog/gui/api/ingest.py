@@ -8,7 +8,7 @@ Nothing here takes a lock or writes.
 
 from __future__ import annotations
 
-from dataclasses import fields
+from dataclasses import fields, replace
 
 from watchdog.gui.rpc import RpcError, method
 from watchdog.gui.vaultio import require_vault, strip_ansi
@@ -19,7 +19,7 @@ _OPTION_KEYS = (
     "extractor_model", "classifier_model", "finalizer_model", "finalizer_writing_model",
     "finalizer_housekeeping_model",
     "extractor_effort", "classifier_effort", "finalizer_effort", "concurrency", "classify_pages",
-    "skill", "limit", "verify", "force", "wait", "skip_briefing",
+    "skill", "limit", "verify", "force", "wait", "skip_briefing", "reextract",
 )
 
 
@@ -38,13 +38,22 @@ def run_options(options: dict | None) -> RunOptions:
         except (TypeError, ValueError):
             raise RpcError("The limit must be a whole number.", code="bad_params")
     values["force"] = bool(values.get("force"))
+    if "reextract" in values:
+        shas = values["reextract"]
+        if not isinstance(shas, list) or not all(isinstance(x, str) and x for x in shas):
+            raise RpcError("reextract must be a list of document ids.", code="bad_params")
+        values["reextract"] = shas or None
     return RunOptions(**values)
 
 
 def _queue(vault, opts: RunOptions) -> tuple[list, list]:
     """`(queue_files, to_send)` as a run counts them: the queue after the limit, then what is
-    neither staged nor committed (everything, when re-extracting)."""
-    from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction, scan_queue
+    neither staged nor committed (everything, when re-extracting). Retry extraction (D367)
+    counts just the documents it names, from their kept text."""
+    from watchdog.pipeline.ingest_setup import limit_queue, needs_extraction, reextract_queue, scan_queue
+    if opts.reextract:
+        files = reextract_queue(vault, opts.reextract)
+        return files, files
     queue_files = limit_queue(vault, scan_queue(vault), opts.limit, force=opts.force)
     return queue_files, (queue_files if opts.force else needs_extraction(vault, queue_files))
 
@@ -142,6 +151,52 @@ def preflight(vault: str, options: dict | None = None) -> dict:
     }
 
 
+# The Add documents form's model and effort fields, by the `Plan` value each one sets.
+_MODEL_FIELDS = {
+    "extractor_model": lambda p: p.extract,
+    "classifier_model": lambda p: p.classify,
+    "finalizer_model": lambda p: p.post,
+    **{f"finalizer_{g}_model": (lambda g: lambda p: (p.overrides[f"{g}_backend"],
+                                                     p.overrides[f"{g}_model"]))(g)
+       for g in FINALIZER_STAGES},
+}
+_EFFORT_FIELDS = {
+    "extractor_effort": lambda p: p.extract_effort,
+    "classifier_effort": lambda p: p.classify_effort,
+    "finalizer_effort": lambda p: p.post_effort,
+}
+
+
+@method("ingest.configured")
+def configured(options: dict | None = None) -> dict:
+    """What each model and effort field of the run form stands for when left on "use the
+    configured …": the plan resolved from the settings and the form's other fields, without that
+    field. An effort default depends on the model it runs on, and the finishing step's writing and
+    housekeeping fall back to the finishing step's model, so the answer can move with the others.
+    A model is its display name; an effort is its level, or "default" when none is sent (the
+    model's own default). A field whose setting cannot be resolved is null; the run reports why."""
+    from watchdog import config as config_mod
+    from watchdog.model_catalog import display_name, resolve_model_id
+    opts = run_options(options)
+    cfg = config_mod.load()
+
+    def plan_without(name):
+        try:
+            return resolve_plan(replace(opts, **{name: None}), cfg)
+        except SystemExit:
+            return None
+
+    models = {}
+    for name, pick in _MODEL_FIELDS.items():
+        plan = plan_without(name)
+        models[name] = display_name(resolve_model_id(pick(plan)[1])) if plan else None
+    efforts = {}
+    for name, pick in _EFFORT_FIELDS.items():
+        plan = plan_without(name)
+        efforts[name] = (pick(plan) or "default") if plan else None
+    return {"models": models, "efforts": efforts}
+
+
 def _spending(v) -> dict | None:
     """The investigation's spending limit and what is left under it (D324), or None without one.
     `warning` is set once it is reached: the run would stop before sending anything."""
@@ -220,9 +275,12 @@ def estimate(vault: str, stage: str, all_models: bool = False, options: dict | N
                     if failed else "The queue is empty — nothing to estimate.")
             return {"text": text, "estimate": None, "all_models": None}
         mode = resolve_auth()["mode"] if backend is None else None
-        est = ingest_setup.cost_estimate(v, queue_files, _effective_extract_backend(backend, mode))
+        est = ingest_setup.cost_estimate(v, queue_files, _effective_extract_backend(backend, mode),
+                                         model=plan.extract[1])
         text = strip_ansi(_format_cost_estimate(est)).strip()
-        rows_fn = ingest_setup.cost_estimate_all_models
+
+        def rows_fn(vault, est_tokens):
+            return ingest_setup.cost_estimate_all_models(vault, est_tokens, queue_files=queue_files)
     else:
         backend = plan.post[0]
         if not orchestrate.has_pending_finalization(v):

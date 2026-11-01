@@ -734,7 +734,7 @@ def test_no_force_ocr_flag_skips_detection_entirely(monkeypatch, tmp_path):
     monkeypatch.setattr(preprocess_mod, "pdf_page_count", lambda p: 3)
     monkeypatch.setattr(preprocess_mod, "sha256_file", lambda p: "abc")
     monkeypatch.setattr(preprocess_mod, "build_converter",
-                        lambda force: (_ for _ in ()).throw(RuntimeError("stop here")))
+                        lambda force, **kw: (_ for _ in ()).throw(RuntimeError("stop here")))
 
     pdf = tmp_path / "slice.pdf"
     pdf.write_bytes(b"")
@@ -820,6 +820,188 @@ def test_ocr_render_scale_without_docling(monkeypatch):
     assert preprocess._ocr_render_scale(_format_option(object), 3.0) == {}
 
 
+# ── OCR at the image's own resolution (D364) ──────────────────────────────────
+
+def _scan_pdf(path, dpi, size_in=(8.5, 11)):
+    """A one-page PDF holding one image that fills the page at `dpi`."""
+    from PIL import Image
+    Image.new("L", (int(size_in[0] * dpi), int(size_in[1] * dpi)), 255).save(path, resolution=dpi)
+    return path
+
+
+@pytest.mark.parametrize("dpi, expected", [
+    (300, 300 / 72),                         # read at its own resolution
+    (150, preprocess.OCR_SCALE_MIN),         # never below Docling's 216 DPI
+    (1200, preprocess.OCR_SCALE_MAX),        # never above 600 DPI
+])
+def test_pdf_ocr_scale_is_the_images_own_resolution(tmp_path, dpi, expected):
+    assert preprocess.pdf_ocr_scale(_scan_pdf(tmp_path / "scan.pdf", dpi)) == pytest.approx(expected)
+
+
+def test_pdf_ocr_scale_reads_the_placement_not_the_page(tmp_path):
+    """The scale comes from where the image is drawn: the same image drawn at half the size, or
+    turned a quarter, has twice the pixels per point, or the same."""
+    import pypdf
+    from pypdf import Transformation
+    src = _scan_pdf(tmp_path / "scan.pdf", 300)
+    for transform, expected in ((Transformation().scale(0.5), 600 / 72),
+                                (Transformation().rotate(90), 300 / 72)):
+        writer = pypdf.PdfWriter(clone_from=str(src))
+        writer.pages[0].add_transformation(transform)
+        out = tmp_path / "moved.pdf"
+        writer.write(str(out))
+        assert preprocess.pdf_ocr_scale(out) == pytest.approx(expected)
+
+
+def test_pdf_ocr_scale_follows_the_largest_image_on_the_page(tmp_path):
+    """A small, sharp logo on a 300 DPI scan does not set the scale: the image covering the most
+    of the page does."""
+    import pypdf
+    from pypdf import Transformation
+    scan = _scan_pdf(tmp_path / "scan.pdf", 300)
+    logo = _scan_pdf(tmp_path / "logo.pdf", 300, size_in=(1, 1))
+    writer = pypdf.PdfWriter(clone_from=str(scan))
+    writer.pages[0].merge_transformed_page(pypdf.PdfReader(str(logo)).pages[0],
+                                           Transformation().scale(0.1))   # 3,000 DPI as drawn
+    out = tmp_path / "with-logo.pdf"
+    writer.write(str(out))
+    assert preprocess.pdf_ocr_scale(out) == pytest.approx(300 / 72)
+
+
+def test_pdf_ocr_scale_without_an_image_or_a_readable_file_is_the_floor(tmp_path):
+    import pypdf
+    writer = pypdf.PdfWriter()
+    writer.add_blank_page(612, 792)
+    blank = tmp_path / "blank.pdf"
+    writer.write(str(blank))
+    broken = tmp_path / "broken.pdf"
+    broken.write_bytes(b"not a pdf")
+    assert preprocess.pdf_ocr_scale(blank) == preprocess.OCR_SCALE_MIN
+    assert preprocess.pdf_ocr_scale(broken) == preprocess.OCR_SCALE_MIN
+
+
+def _form_scan_pdf(path, tmp_path, *, page_cm, form_matrix=None):
+    """A 300 DPI letter scan drawn through a form XObject: the page applies `page_cm` and draws
+    the form, which applies `form_matrix` (its /Matrix) and draws the image at its pixel size."""
+    import pypdf
+    from pypdf.generic import ArrayObject, DictionaryObject, FloatObject, NameObject, StreamObject
+    scan = pypdf.PdfReader(str(_scan_pdf(tmp_path / "src.pdf", 300)))
+    writer = pypdf.PdfWriter()
+    page = writer.add_blank_page(612, 792)
+    (src_image,) = scan.pages[0]["/Resources"]["/XObject"].values()
+    image = writer._add_object(src_image.get_object().clone(writer))
+    form = StreamObject()
+    form.set_data(b"q 2550 0 0 3300 0 0 cm /Im0 Do Q")
+    form.update({NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Form"),
+                 NameObject("/BBox"): ArrayObject([FloatObject(v) for v in (0, 0, 2550, 3300)]),
+                 NameObject("/Resources"): DictionaryObject({NameObject("/XObject"): DictionaryObject({NameObject("/Im0"): image})})})
+    if form_matrix:
+        form[NameObject("/Matrix")] = ArrayObject([FloatObject(v) for v in form_matrix])
+    page[NameObject("/Resources")] = DictionaryObject({NameObject("/XObject"): DictionaryObject({NameObject("/Fm0"): writer._add_object(form)})})
+    content = StreamObject()
+    content.set_data(f"q {page_cm} cm /Fm0 Do Q".encode())
+    page[NameObject("/Contents")] = writer._add_object(content)
+    writer.write(str(path))
+    return path
+
+
+@pytest.mark.parametrize("page_cm, form_matrix", [
+    ("0.24 0 0 0.24 0 0", None),            # scaled by the page around the form
+    ("1 0 0 1 0 0", (0.24, 0, 0, 0.24, 0, 0)),  # scaled by the form's own /Matrix
+])
+def test_pdf_ocr_scale_follows_transforms_into_a_form(tmp_path, page_cm, form_matrix):
+    """A scan drawn inside a form XObject is measured with every transformation above it: here
+    2,550 px across 612 pt, 300 DPI, whichever level scales it."""
+    pdf = _form_scan_pdf(tmp_path / "form.pdf", tmp_path, page_cm=page_cm, form_matrix=form_matrix)
+    assert preprocess.pdf_ocr_scale(pdf) == pytest.approx(300 / 72)
+
+
+def test_one_damaged_page_does_not_lower_the_others(monkeypatch, tmp_path):
+    import pypdf
+    writer = pypdf.PdfWriter()
+    for path in (_scan_pdf(tmp_path / "a.pdf", 300), _scan_pdf(tmp_path / "b.pdf", 300)):
+        writer.append(str(path))
+    pdf = tmp_path / "two.pdf"
+    writer.write(str(pdf))
+    real = preprocess._page_image_scale
+    calls = []
+
+    def first_page_breaks(page, reader):
+        calls.append(1)
+        if len(calls) == 1:
+            raise ValueError("damaged content stream")
+        return real(page, reader)
+
+    monkeypatch.setattr(preprocess, "_page_image_scale", first_page_breaks)
+    assert preprocess.pdf_page_ocr_scales(pdf) == pytest.approx([preprocess.OCR_SCALE_MIN, 300 / 72])
+
+
+def test_forced_slices_hold_no_more_pixels_than_chunk_size_pages_at_3x():
+    """Forced pages are cut by pixels, in ascending scale, so a slice of 600 DPI pages holds about
+    as many pixels as one of 216 DPI pages, and a sharp page does not raise a dull slice's scale."""
+    scales = [3.0] * 4 + [6.0] * 4 + [3.0] * 2          # 6x is four pages' worth of 3x pixels
+    slices = preprocess._ocr_slices(10, list(range(10)), 8, force_all=True, scales=scales)
+    assert slices == [([0, 1, 2, 3, 8, 9], True), ([4, 5], True), ([6, 7], True)]
+    # Without scales, and for pages keeping their text layer, slicing is by page count as before.
+    assert preprocess._ocr_slices(10, [], 8) == [(list(range(8)), False), ([8, 9], False)]
+    # A page over the whole budget alone is a slice of its own, never an empty one.
+    assert preprocess._ocr_slices(2, [0, 1], 3, force_all=True, scales=[8.0, 8.0]) == [([0], True), ([1], True)]
+
+
+def test_a_small_scan_over_the_pixel_budget_is_sliced(monkeypatch, tmp_path):
+    """Twenty 600 DPI pages are under chunk_size by count but about 150 pages' worth of 3x pixels,
+    so they are converted in slices rather than at once."""
+    monkeypatch.setattr(preprocess, "pdf_page_count", lambda p: 20)
+    monkeypatch.setattr(preprocess, "pdf_page_ocr_scales", lambda p: [600 / 72] * 20)
+    monkeypatch.setattr(preprocess, "sha256_file", lambda p: "abc")
+    seen = {}
+
+    def slices(path, cut):
+        seen["slices"] = cut
+        return {"pages": [{"page": 1, "markdown": "x"}]}
+
+    monkeypatch.setattr(preprocess, "process_pdf_slices", slices)
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"")
+    preprocess.process_with_docling(pdf, force_ocr=True)
+    assert len(seen["slices"]) == 4 and all(len(p) == 5 for p, _ in seen["slices"])
+
+
+@pytest.mark.parametrize("force_ocr, expected", [(True, 4.5), (False, None)])
+def test_a_forced_ocr_conversion_is_built_at_the_files_scale(monkeypatch, tmp_path, force_ocr, expected):
+    """The single conversion (a small PDF, or one slice in its own process) builds its converter
+    at the scale of the file it converts; a text conversion keeps Docling's default."""
+    import types
+    monkeypatch.setitem(sys.modules, "docling.document_converter",
+                        types.SimpleNamespace(DocumentConverter=object))
+    monkeypatch.setattr(preprocess, "pdf_page_count", lambda p: 1)
+    monkeypatch.setattr(preprocess, "pdf_ocr_scale", lambda p: 4.5)
+    seen = {}
+
+    def build(force, **kw):
+        seen.update(kw)
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(preprocess, "build_converter", build)
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"")
+    assert "error" in preprocess.process_with_docling(pdf, force_ocr=force_ocr, detect=False)
+    assert seen["ocr_scale"] == expected
+
+
+def test_build_converter_sets_a_forced_ocr_conversions_scale():
+    """The OCR reads at the scale asked for, and D352 renders the page at that same scale."""
+    docling_base_models = pytest.importorskip("docling.datamodel.base_models")
+    pytest.importorskip("docling.datamodel.backend_options")
+    pdf = docling_base_models.InputFormat.PDF
+    forced = preprocess.build_converter(force_ocr=True, ocr_scale=4.5).format_to_options[pdf]
+    assert forced.pipeline_options.ocr_options.scale == 4.5
+    if preprocess._ocr_render_scale(type(forced), 3.0):
+        assert forced.backend_options.render_scale == 4.5
+    text = preprocess.build_converter(force_ocr=False, ocr_scale=4.5).format_to_options[pdf]
+    assert text.pipeline_options.ocr_options.scale == 3.0
+
+
 # ── metadata: what the page-scoped decision reports (#605) ────────────────────
 
 def test_metadata_names_the_pages_when_ocr_was_page_scoped(monkeypatch, tmp_path):
@@ -863,7 +1045,7 @@ def test_a_clean_small_pdf_never_reaches_the_slicing_path(monkeypatch, tmp_path)
     monkeypatch.setattr(preprocess_mod, "process_pdf_slices",
                         lambda p, slices: pytest.fail("must not slice a uniform small PDF"))
     monkeypatch.setattr(preprocess_mod, "build_converter",
-                        lambda force: (_ for _ in ()).throw(RuntimeError("stop here")))
+                        lambda force, **kw: (_ for _ in ()).throw(RuntimeError("stop here")))
 
     pdf = tmp_path / "doc.pdf"
     pdf.write_bytes(b"")

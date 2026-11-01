@@ -127,7 +127,9 @@ DocumentRow = {
   original: "morgue/…/file.pdf"|null,// registry morgue_path, vault-relative
   fulltext: "morgue/…/file.md"|null, // the full-text sibling, when present
   ext: "pdf"|"docx"|…,               // from filename, lowercase, no dot
-  entity_count, source|null, obtained|null, summary|null
+  entity_count, source|null, obtained|null, summary|null,
+  thin_extraction: {facts, words, expected_min, retry: bool}|null  // implausibly few facts for the
+                                     // text's length (D367); retry: its text is kept for Retry extraction
 }
 
 EntityRow = {
@@ -165,6 +167,7 @@ EntityRow = {
 | `vault.requests` | `{vault}` | `{open: [{rid, type\|null, what, why\|null, likely_source\|null, cited_in: [{sha, filename, note}], added\|null, cite_count, source_key}], groups: [{key, label, count, documents, grouped_by: "model"\|null, wordings: string[]}], resolved_count}` — most-cited first; `groups` by the holder `likely_source` names (`requests.worklist`, D328), `key` "" for none, last; a group the model joined across wordings (`request_sources.mapping`, D334) has a `src:` key, the model's label, `grouped_by: "model"` and the wordings it joined |
 | `vault.requestSourceSplit` | `{vault, group}` | `{group, status: "split", by, at}` — shows a grouping of request sources apart again (`request_sources.split`, D334): recorded in `registry/request_sources.json` and the vault's history; later runs never regroup those sources. Errors `not_found` (no such active grouping), `bad_params`, `log_too_new` |
 | `vault.contextFiles` | `{vault}` | `[{name, size, modified}]` in `context/` |
+| `vault.reasoningRuns` | `{vault}` | `{enabled, folder, runs: [{run_id, calls, with_reasoning, bytes, started\|null, documents: string[]}]}` — the runs whose model reasoning was saved in `.watchdog/reasoning/` (D368), newest first; `enabled` is the `save_reasoning` setting. Read-only |
 
 ```
 DocumentDetail = DocumentRow & {
@@ -273,6 +276,7 @@ DiffLine = {op: " "|"-"|"+", old|null, new|null, segments: [{t: "eq"|"del"|"ins"
 | Method | Params | Result |
 |---|---|---|
 | `ingest.preflight` | `{vault, options?: RunOptions}` | `Preflight` — includes `billing: Billing[]`, one row per provider whose key the run would send (D290), and `spending_limit` (`spend.limit`'s status plus `warning`, set once the limit is reached), null without a limit (D324) |
+| `ingest.configured` | `{options?: RunOptions}` | `{models: {[field]: string\|null}, efforts: {[field]: Effort\|"default"\|null}}` — what each model field (`extractor_model`, `classifier_model`, `finalizer_model`, `finalizer_writing_model`, `finalizer_housekeeping_model`) and effort field (`extractor_effort`, `classifier_effort`, `finalizer_effort`) runs when left unset: `resolve_plan` from the settings and the other options, without that one. A model is its display name; `"default"` means no effort is sent (the model's own); null, a setting that does not resolve |
 | `ingest.estimate` | `{vault, stage: "dig"\|"bark", all_models?: bool, options?: RunOptions}` | `{text, estimate: object\|null, all_models: [{label, provider, cost_usd, note\|null}]\|null, spending_warning?: string\|null}` — `spending_warning` when the estimate's upper end would pass what is left under the spending limit; a warning only (D324) |
 
 ```
@@ -282,7 +286,9 @@ RunOptions = {                       // ops.ingest.RunOptions; unset = configure
   finalizer_timeline_model?, finalizer_briefing_model?,
   extractor_effort?, classifier_effort?, finalizer_effort?,
   concurrency?, classify_pages?, skill?, limit?, verify?: bool|null,
-  force?: bool, wait?: bool, skip_briefing?: bool, chew_workers?, chunk_workers?
+  force?: bool, wait?: bool, skip_briefing?: bool, chew_workers?, chunk_workers?,
+  reextract?: string[]               // Retry extraction (D367): only these shas, though already added;
+                                     // preflight and estimate count just them, from their kept text
 }
 
 Preflight = {
@@ -324,7 +330,7 @@ unknown operation or key, a missing required one or a value of the wrong type is
 
 | Operation | In vault | Params | Result | Engine |
 |---|---|---|---|---|
-| `add` | yes | `RunOptions & {paths?, retry?, skip_warning?}` | run summary (`extracted`, `failed`, `results`, `post_ingest`…) | add |
+| `add` | yes | `RunOptions & {paths?, retry?, skip_warning?}` | run summary (`extracted`, `failed`, `results`, `post_ingest`…). With `reextract`, extracts only those documents again from their kept text, then finishes the batch (D367) | add |
 | `chew` | yes | `{paths?, chew_workers?, chunk_workers?}` | `{queued}` — pre-processing only; never continues into processing | add |
 | `dig` | yes | extractor options, `{limit?, force?, skip_warning?}` | run summary | add |
 | `bark` | yes | finalizer options, `{skip_briefing?}` | post-processing summary | add |
@@ -340,6 +346,8 @@ unknown operation or key, a missing required one or a value of the wrong type is
 | `add-contradiction` | yes | `{entity, label, a, a_doc, a_page?, b, b_doc, b_page?}` | `{added, entity_name, rid}` | |
 | `hide-entities` | yes | `{ids}` | `{hidden, already, names}` — removes entities from the investigation's views (D326): lists their ids in `registry/hidden.json` under the registry lock, with who and when; changes nothing else (I17). An action | |
 | `unhide-entities` | yes | `{ids}` | `{shown, not_listed, names}` — Bring back (D326). An action | |
+| `reasoning-export` | yes | `{output, run}` | `{output, bytes}` — one zip in the folder `output` of a run's saved reasoning, its usage record and the processing-log lines from while it ran (D368). Nothing is uploaded | |
+| `reasoning-clear` | yes | — | `{runs, bytes}` — deletes `.watchdog/reasoning/` (D368). An action | |
 | `rebuild-timeline` | yes | — | `{dates, events}` | |
 | `lead-sweep` | yes | — | counts per lead kind | |
 | `watchlist-check` | yes | — | `{documents, hits, file?}` | |

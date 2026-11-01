@@ -1,14 +1,17 @@
-// Drop files anywhere on the window to add them to the open investigation.
+// Drop files anywhere on the window to add them to the open investigation. While Add documents is
+// open the dialog is the drop target: it shows the drag itself, so this overlay stays hidden.
 
 import { FileDown } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useApp } from '@renderer/lib/store'
 import { ENGINE_WAIT, useEngineGate } from '@renderer/lib/engine'
 
 export function DropOverlay() {
   const project = useApp((s) => s.project)
   const openAdd = useApp((s) => s.openAdd)
-  const [over, setOver] = useState(false)
+  const addOpen = useApp((s) => s.addOpen !== null)
+  const over = useApp((s) => s.dragging)
+  const setOver = useApp((s) => s.setDragging)
   const ready = useEngineGate().ready
   useEffect(() => {
     let depth = 0
@@ -31,7 +34,9 @@ export function DropOverlay() {
       e.preventDefault()
       depth = 0
       setOver(false)
-      if (!project || !ready) return
+      // Before the engine is ready only an open Add documents takes files: it keeps them listed
+      // until setup finishes.
+      if (!project || (!ready && !useApp.getState().addOpen)) return
       const paths = Array.from(e.dataTransfer?.files ?? []).map((f) => window.watchdog.files.pathForFile(f)).filter(Boolean)
       if (paths.length) openAdd(paths)
     }
@@ -45,8 +50,8 @@ export function DropOverlay() {
       window.removeEventListener('dragover', overFn)
       window.removeEventListener('drop', drop)
     }
-  }, [project, openAdd, ready])
-  if (!over || !project) return null
+  }, [project, openAdd, ready, setOver])
+  if (!over || !project || addOpen) return null
   if (!ready) {
     return (
       <div className="drop-overlay">

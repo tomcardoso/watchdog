@@ -484,7 +484,8 @@ def test_claude_catalog_entries_match_the_vendor_figures(model_id, pricing, batc
     assert mc._PRICING[model_id] == pricing
     assert mc._effort_levels("anthropic", model_id) == {"low", "medium", "high", "xhigh", "max"}
     assert mc.catalog_max_output_tokens(model_id) == 128_000
-    assert mc.catalog_context_window(model_id) == 200_000     # 1M listed, pinned per D89
+    # 1M listed for both; Sonnet 5.5 pinned to 200K per D89, Haiku 5.5 the real figure (D370).
+    assert mc.catalog_context_window(model_id) == (1_000_000 if "haiku" in model_id else 200_000)
     assert model_catalog._entry(model_id).get("max_output_tokens_batch") == batch_cap
     assert mc.catalog_needs_thinking_param(model_id) is False  # thinking on by default on all
 
@@ -599,7 +600,7 @@ def test_deepseek_rejects_xhigh(monkeypatch):
 
 @pytest.mark.parametrize("model, window", [
     ("sonnet", 200_000),                        # tier → claude
-    ("haiku", 200_000),
+    ("haiku", 1_000_000),                       # the real window: its price line sizes calls (D370)
     (None, 200_000),                            # default tier (sonnet)
     ("deepseek-flash", 1_000_000),
     ("deepseek-flash-thinking", 1_000_000),  # -thinking marker still matches deepseek-v4
@@ -915,10 +916,10 @@ def earlier_openai(catalog_entry):
 
 
 def test_openai_cost_prices_openai_models():
-    # gpt-6-luna standard: $0.10/1M input, $0.50/1M output.
+    # gpt-6-luna standard: $0.10/1M input, $0.50/1M output, for a prompt under 272K (D366).
     assert mc._openai_cost("gpt-6-luna",
-                           {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(0.10 + 0.50)
+                           {"prompt_tokens": 200_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(0.02 + 0.50)
 
 
 @pytest.mark.parametrize("model_id, price_in, price_out", [
@@ -929,10 +930,11 @@ def test_openai_family_prices_match_the_published_rate_card(model_id, price_in, 
     """Per-model price sentinel (#555). gpt-5.6-terra shipped carrying gpt-5.4's rates (2.50/15.00
     rather than 2.00/12.00), over-stating every Terra cost by 25% — a copy-paste when the row was
     added, invisible because nothing asserted a per-model price. Every row here verified
-    2026-10-13 against developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
-    deliberately, not discover the drift through a cost report."""
-    assert mc._openai_cost(model_id, {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000}) \
-        == pytest.approx(price_in + price_out)
+    2026-10-13, and again 2026-10-31, against developers.openai.com/api/docs/models/<id>. A row whose rate changes should update this table
+    deliberately, not discover the drift through a cost report. The prompt stays under the 272K
+    long-prompt line (D366); `test_long_prompt_cost.py` covers the card above it."""
+    assert mc._openai_cost(model_id, {"prompt_tokens": 200_000, "completion_tokens": 1_000_000}) \
+        == pytest.approx(0.2 * price_in + price_out)
 
 
 def test_openai_cost_deepseek_cache_hit(monkeypatch):
@@ -976,12 +978,12 @@ def test_openai_cost_charges_gpt56_cache_writes_at_the_premium_rate():
     under `prompt_tokens_details.cache_write_tokens`. Reads, writes, and plain input are three
     disjoint slices of `prompt_tokens`."""
     cost = mc._openai_cost("gpt-5.6-luna",
-                           {"prompt_tokens": 1_000_000, "completion_tokens": 0,
-                            "prompt_tokens_details": {"cached_tokens": 300_000,
-                                                      "cache_write_tokens": 200_000}})
-    assert cost == pytest.approx(500_000 * 0.20e-6      # uncached remainder
-                                 + 300_000 * 0.02e-6    # cache reads
-                                 + 200_000 * 0.25e-6)   # cache writes, 1.25x input
+                           {"prompt_tokens": 250_000, "completion_tokens": 0,
+                            "prompt_tokens_details": {"cached_tokens": 75_000,
+                                                      "cache_write_tokens": 50_000}})
+    assert cost == pytest.approx(125_000 * 0.20e-6      # uncached remainder
+                                 + 75_000 * 0.02e-6     # cache reads
+                                 + 50_000 * 0.25e-6)    # cache writes, 1.25x input
 
 
 def test_openai_cost_cache_writes_before_the_gpt56_family_stay_plain_input(earlier_openai):

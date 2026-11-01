@@ -105,11 +105,19 @@
 # The dataset also goes stale in a way a diff won't show: its DeepSeek V4 rows still carried the
 # pre-2026-08-16 prices days after DeepSeek itself published the increase, so a provider's own
 # page is the authority when the two disagree, not the tie-breaker.
-# Speaking of tiers: this catalog prices every model at one flat rate PER LENGTH and does not model
-# context-length pricing tiers. It doesn't have to, because `long_context_threshold` keeps every
-# call below the length where any tier would kick in — see the next paragraph. Two boundaries are
-# known here: every OpenAI entry reprices the whole request above 272K tokens, and Claude Haiku 5.5
-# above 100K.
+# Speaking of tiers: a model whose vendor prices by PROMPT LENGTH carries two rate cards (D366) —
+# the ordinary one in the entry's own `input`/`output`/cache fields, and `long_context`, which
+# replaces ALL of them for the whole request once its prompt is over `long_context_threshold`
+# real tokens. Both are written out as the vendor's table prints them, not as multipliers, so a
+# vendor that stops scaling every column by the same factor needs no code change.
+# `model_catalog.rate_card` picks the card; `model_client`'s cost functions measure the prompt by
+# each provider's own definition (Anthropic: uncached input + cache writes + cache reads; OpenAI:
+# `prompt_tokens`, which already includes cached tokens). Before D366 the catalog priced every
+# call at the lower card and trusted the sectioning clamp below to keep calls under the line; a
+# benchmark run on 2026-10-31 showed the clamp's headroom is smaller than the prompt's fixed
+# overhead, so calls did cross, and were recorded at about half their real cost. Two boundaries
+# are known here: every OpenAI entry reprices the whole request above 272K tokens, and Claude
+# Haiku 5.5 above 100K. Batch prices are half of whichever card applies, for both vendors.
 #
 # `price_periods` (D217) is the one axis this catalog DOES model, because no clamp can dodge it:
 # a rate that varies by the CLOCK. A model that declares it prices at the entry's own `input`/
@@ -135,35 +143,45 @@
 #
 # `model_catalog.price_multiplier()` resolves it against the current UTC time (or an explicit one),
 # and `model_client`'s `_api_cost`/`_openai_cost` apply it to the finished per-call figure — so a
-# call is billed at the rate in force WHEN IT RAN, which is also why nothing recomputes an archived
-# call's cost later (`cmd/usage.py` reads the stored `cost_usd` and never re-prices it). The
+# call is billed at the rate in force WHEN IT RAN, which is also why Usage reads the stored
+# `cost_usd` rather than re-pricing it on read (the one repricing of stored calls, D366's
+# migration, touches only calls over a long-prompt line, none of which is clock-priced). The
 # pre-flight estimates (`--estimate-all`, `benchmarks/cost_reference.fallback_estimate`) apply the
 # same multiplier for the moment they are asked, and mark the affected rows: a long run that
 # crosses a window boundary is billed on both sides of it, which no single-figure estimate can say.
 #
-# `long_context_threshold` (#555, D202) is the real-token input length at/above which a model bills
-# at a higher rate. `pipeline/section.py` clamps BOTH the sectioning threshold and the per-section
-# budget to it (under `_LONG_CONTEXT_HEADROOM`), so no single extraction call is ever planned past
-# the boundary. It exists because D202 deleted the old output-derived clamp that had been holding
+# `long_context_threshold` (#555, D202) is the real-token prompt length above which a model bills
+# the whole request at its `long_context` card. `pipeline/section.py` plans every extraction call's
+# WHOLE prompt under it (D370: instructions, record skill, brief, candidate checklist and a
+# carry-forward reserve counted, less `section._WHOLE_PROMPT_HEADROOM`), so no call is planned past
+# the boundary unless a single page is too large for it. It exists because D202 deleted the old output-derived clamp that had been holding
 # these models a factor of five under the line by accident: sizing from the context window alone
 # gives a 1.05M-window OpenAI model a 393,750 est-token budget — about 315,000 real tokens at the
-# 0.80 ratio, comfortably PAST 272K — and a whole-document threshold larger still. Without the
-# clamp a long document bills at the upper tier while `--estimate-all`, which prices flat, quotes
-# the lower one: a ~2x understatement on the affected calls. Omit the field entirely for a model
-# that prices flat (every Claude entry but Haiku 5.5, every DeepSeek and Gemini entry).
+# 0.80 ratio, comfortably PAST 272K — and a whole-document threshold larger still. The clamp is a
+# cost control, not the pricing: since D366 a call that crosses the line anyway is priced at the
+# upper card, and the estimates price a planned call that will cross it the same way. Omit both
+# fields entirely for a model that prices flat (every Claude entry but Haiku 5.5, every DeepSeek
+# and Gemini entry).
 #
-# **Both boundaries are vendor-cited, fetched 2026-10-13.** OpenAI
+# **Both boundaries are vendor-cited, re-fetched 2026-10-31.** OpenAI
 # (developers.openai.com/api/docs/models/<id>): "Prompts with more than 272K input tokens are
 # priced at 2x input and cache rates and 1.5x output for the full request" — the higher rate
 # applies to the ENTIRE request, not just the tokens past the line. Crossing by one token reprices
 # the whole call, which is why the clamp is strict rather than approximate. Anthropic
-# (platform.claude.com/docs/en/about-claude/pricing#long-context-pricing): "a request whose prompt
-# is over 100,000 tokens pays higher prices" on Haiku 5.5, counting cache reads and writes.
+# (platform.claude.com/docs/en/about-claude/pricing#long-context-pricing): "Claude Haiku 5.5 is
+# priced by prompt length: a request whose prompt is over 100,000 tokens pays higher prices. A
+# request's prompt length counts all of its input tokens, including cache reads and cache writes.
+# Each request is priced on its own: a request over the threshold pays the higher prices even when
+# part of its prompt is a cache hit." OpenAI's pricing page (developers.openai.com/api/docs/pricing,
+# fetched 2026-10-31) prints the long-context column for each model: 2x input, cached input and
+# cache write, 1.5x output, and half of each on the Batch tier.
 #
 # `_LONG_CONTEXT_HEADROOM` (10%, the same convention `_OUTPUT_HEADROOM` already uses for
-# `max_output_tokens`) covers the per-call prompt scaffolding that rides on top of the document
-# text `section.py` sizes, which cannot yet be measured directly: `est_prompt_tokens` landed in
-# #617 and no run has happened since, so zero archived records carry it. Add the field to any new
+# `max_output_tokens`) still caps the text-sized defaults and the post-processing chunks
+# (`chunking.prompt_budget_chars`), where it covers the instructions riding on a chunk's data.
+# Extraction no longer leans on it: its scaffolding measured 13,600 to 27,800 real tokens on
+# 2026-10-31, more than 10% of 100,000, so D370 counts it instead, with 5% kept for the estimate's
+# own error. Add the field to any new
 # tiered model — and note the boundary is a property of the model, not the family: Haiku 5.5 is the
 # only Claude model with one.
 #
@@ -206,17 +224,23 @@ models:
   # Astra and GPT-6.1 Sol are more capable, and more expensive, than Watchdog's stages need.
   # Claude entries come first, in the order the Settings picker lists them: haiku, sonnet.
   # Every Claude figure below is from platform.claude.com/docs/en/about-claude/models/overview,
-  # .../about-claude/pricing and .../build-with-claude/effort, fetched 2026-10-13. Both list a 1M
-  # context window, pinned to 200K here (D89), and 128K output. Both have adaptive thinking on by
+  # .../about-claude/pricing and .../build-with-claude/effort, fetched 2026-10-13; every rate
+  # re-checked against .../about-claude/pricing on 2026-10-31, unchanged. Both list a 1M
+  # context window (re-fetched 2026-11-01) and 128K output. Sonnet 5.5's is pinned to 200K here
+  # (D89), which keeps its sections the size they have always been; Haiku 5.5 carries the real 1M
+  # since D370, because its 100,000-token price line, not the window, is what sizes its calls
+  # (`section.plan_calls` holds every whole prompt under it). Both have adaptive thinking on by
   # default, so neither declares `thinking` (D206), and both take all five effort levels. The API's
   # own default effort, used when Watchdog sends none, is `medium` on Haiku 5.5 and `high` on
   # Sonnet 5.5.
   #
   # Claude Haiku 5.5 — the bare `haiku` default since 2026-10-09 (D277). Two rate cards chosen by
-  # prompt length: $0.10 / $0.50 per MTok up to 100,000 input tokens, $0.50 / $2.50 above (the whole
-  # request, cache reads and writes included); cache reads 0.1x input, 5-minute cache writes 1.25x.
-  # `long_context_threshold` keeps every planned call under 100K so only the lower card applies,
-  # as for the OpenAI entries (D202). 300K output on the Message Batches beta (listed in the
+  # prompt length: $0.10 / $0.50 per MTok for a prompt up to 100,000 tokens, $0.50 / $2.50 above
+  # (the whole request, cache reads and writes counted in the length); cache reads 0.1x input,
+  # 5-minute cache writes 1.25x, 1-hour writes 2x, of whichever input rate applies. Both cards
+  # below; `long_context_threshold` also keeps every planned extraction prompt under the lower
+  # one, whole prompt counted (D202, D366, D370).
+  # 300K output on the Message Batches beta (listed in the
   # overview's max-output note, fetched 2026-10-13). `tokenizer_ratio` is DERIVED, not measured:
   # Anthropic says this tokenizer counts the same text as about 30% more tokens than Haiku 4.5's,
   # so 0.93 x 1.3 = 1.21 — see the CLAUDE.md Standing Follow-ups.
@@ -228,12 +252,17 @@ models:
     output: 0.50e-6
     cache_write: 0.125e-6
     cache_read: 0.01e-6
-    context_window: 200_000
+    context_window: 1_000_000   # the vendor figure; the long-prompt line sizes calls (D370)
     max_output_tokens: 128_000
     max_output_tokens_batch: 300_000
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 1.21     # derived from "about 30% more tokens" than Haiku 4.5; unmeasured
-    long_context_threshold: 100_000   # $0.50 / $2.50 above this, whole request
+    long_context_threshold: 100_000   # prompt over this (input + cache reads + cache writes)...
+    long_context:                     # ...bills the whole request at this card (D366)
+      input: 0.50e-6
+      output: 2.50e-6
+      cache_write: 0.625e-6
+      cache_read: 0.05e-6
   # Claude Sonnet 5.5 — the bare `sonnet` default since 2026-10-01 (D236). $2 / $10 per MTok, 5m
   # cache write $2.50, cache read $0.10: 0.05x input (corrected 2026-10-13 from
   # $0.20, which over-stated every cache read by 2x). `tokenizer_ratio` is COPIED from the new
@@ -253,7 +282,8 @@ models:
     tokenizer_ratio: 1.28     # copied from the new Claude tokenizer (#617), unconfirmed for this id
 
   # DeepSeek (1M-token window; a cache hit costs 1/50 of a miss on Flash, 1/30 on Pro).
-  # Re-verified against api-docs.deepseek.com/quick_start/pricing on 2026-10-13: `deepseek-flash`
+  # Re-verified against api-docs.deepseek.com/quick_start/pricing on 2026-10-13, and every rate
+  # and peak window again on 2026-10-31 (unchanged; no prompt-length tier): `deepseek-flash`
   # serves DeepSeek-V4.1-Flash and `deepseek-v4-pro` serves DeepSeek-V4-Pro-0813; 1M context and
   # 384K maximum output for both; peak hours 01:00-04:00 and 06:00-10:00 UTC, Monday to Friday,
   # with Chinese public holidays off-peak in full.
@@ -304,7 +334,10 @@ models:
     price_periods: *deepseek_peak    # same windows as Flash — one schedule, both models
 
   # OpenAI: GPT-6 Luna and GPT-5.6 Luna, standard tier. Every figure is from
-  # developers.openai.com/api/docs/models/<id> and .../api/docs/pricing, fetched 2026-10-13. Both: 1,050,000-token window (922,000 maximum input), 128,000 output, and the
+  # developers.openai.com/api/docs/models/<id> and .../api/docs/pricing, fetched 2026-10-13; rates,
+  # long-context column and batch column re-checked 2026-10-31, unchanged. The 12-hour cache
+  # lifetime (2.5x input) and regional endpoints (+10%) are not modelled: Watchdog uses neither.
+  # Both: 1,050,000-token window (922,000 maximum input), 128,000 output, and the
   # same whole-request long-context boundary — "Prompts with more than 272K input tokens are
   # priced at 2x input and cache rates and 1.5x output for the full request" — so every entry
   # carries `long_context_threshold: 272_000` (D202). Both are GPT-5.6-or-later, so cache writes
@@ -333,7 +366,12 @@ models:
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 0.80     # copied from the GPT-5.x value (#617), unconfirmed for GPT-6 (D249)
-    long_context_threshold: 272_000   # 2x input and cache / 1.5x output above this, whole request
+    long_context_threshold: 272_000   # prompt over this bills the whole request at (D366):
+    long_context:                     # 2x input and cache, 1.5x output
+      input: 0.20e-6
+      output: 0.75e-6
+      cached_input: 0.02e-6
+      cache_write: 0.25e-6
   # GPT-5.6 Luna — kept, though GPT-6 Luna supersedes it at half the price, because the Settings
   # help and docs/models-and-cost.md recommend it as the alternative extractor and classifier on the
   # strength of archived benchmark figures measured on it (D249, D310). It is still on OpenAI's
@@ -351,10 +389,17 @@ models:
     reasoning: true
     effort_levels: [low, medium, high, xhigh, max]
     tokenizer_ratio: 0.80     # measured #617, corpus-v1 2026-08-15 (shared GPT-5.x tokenizer)
-    long_context_threshold: 272_000   # 2x input and cache / 1.5x output above this, whole request
+    long_context_threshold: 272_000   # prompt over this bills the whole request at (D366):
+    long_context:                     # 2x input and cache, 1.5x output
+      input: 0.40e-6
+      output: 1.80e-6
+      cached_input: 0.04e-6
+      cache_write: 0.50e-6
 
   # Gemini, standard paid tier. Every figure is from ai.google.dev/gemini-api/docs/pricing,
-  # .../docs/models/<id>, .../docs/thinking and .../docs/deprecations, fetched 2026-10-13. Thinking
+  # .../docs/models/<id>, .../docs/thinking and .../docs/deprecations, fetched 2026-10-13; the
+  # pricing page re-checked 2026-10-31 (unchanged, still no prompt-length tier; output "including
+  # thinking tokens"). Thinking
   # cannot be turned off on any of these; each takes the thinking levels low, medium and high
   # (Flash-Lite also `minimal`, which the abstract effort knob has no level for). Gemini 2.5 is
   # deliberately not catalogued (#583, D182). The pricing page lists no prompt-length tier for

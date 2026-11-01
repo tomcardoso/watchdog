@@ -73,14 +73,47 @@ Read in this order:
 2. **`REPORT.md`** — the tables, and the code version the run came from. A partial arm's recall
    cell reads `100% (6/6) — partial, 2/6 docs` rather than a bare percentage, and it gets its own
    line under "Failed or incomplete arms" alongside hard failures — its figure answers a smaller
-   question than a complete arm's and is not a quality signal against the full corpus.
-3. **`run.json`** — the same numbers as data, for the composite score index.
+   question than a complete arm's and is not a quality signal against the full corpus. A
+   "Thin extractions" section lists every document an arm kept with implausibly few facts for
+   its length (D367); `errors.log` names them too, and the terminal's last line counts them.
+3. **`run.json`** — the same numbers as data, for the composite score index; each arm's
+   `thin_extractions` lists its flagged documents.
+4. **`artifacts/<arm>/reasoning/`** — every benchmark run saves each model call's reasoning
+   (D368): one JSON file per call with its task, document, model, effort, stop reason, token
+   counts and the model's summarized thinking (Claude, DeepSeek; none for OpenAI or Gemini). The
+   usage record's `reasoning_file` names each call's file. Start here when a flagged document
+   needs explaining.
 
 Checking that each arm extracted every document — comparing `.watchdog/extracted/*.json` against
 the corpus size — used to be a manual step here. `score_arms.py` now does it automatically
 (#559): scoring is gated on which documents a vault actually extracted, so a document a model
 never opened is excluded from that vault's denominator rather than **credited from its
 siblings** (the old blob-level failure mode) or counted as a miss.
+
+### Check the recorded cost against the bill
+
+Every dollar figure in a run is Watchdog's own: the APIs return token counts, and
+`model_client` prices them from `model_catalog.yaml`. A pricing rule the catalog misses (the
+long-prompt card was one, D366) is invisible until it is compared with what the provider billed.
+Do it for any run whose cost figure a decision leans on.
+
+- **Run benchmarks in their own Anthropic workspace** (Console → Settings → Workspaces, with a key
+  made there). The cost report is daily and organisation-wide; it groups by workspace and by
+  description (model, token type), never by API key, so a workspace is the only way to isolate a
+  run's spend from everything else the organisation did that day. Run one benchmark per workspace
+  per UTC day if the figure matters.
+- **Without an admin key:** read that day's total for the workspace on the Console's Cost page and
+  compare it with the run's recorded total (`REPORT.md`, or `python benchmarks/reconcile_cost.py
+  benchmarks/runs/<run-id> --day <YYYY-MM-DD>`, which sums the Claude calls that ended that day).
+- **With an Admin API key** (`sk-ant-admin...`, made by an organisation admin): set
+  `ANTHROPIC_ADMIN_KEY` and add `--workspace <wrkspc_id>`; the script then reads
+  `GET /v1/organizations/cost_report` for that day and prints the bill by description next to the
+  recorded figure. It sends nothing without the key, and the app never holds one.
+
+A gap of a few per cent is rounding and calls outside the run; a gap that scales with long prompts,
+cache writes or batch calls is a pricing rule to fix in the catalog. Cost data usually appears
+within minutes of a call, occasionally later. OpenAI, Gemini and DeepSeek arms: compare with each
+provider's own usage page the same way.
 
 ## 5. Score
 

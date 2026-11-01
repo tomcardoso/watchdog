@@ -450,7 +450,26 @@ def document_row(vault: Path, sha: str, rec: dict, verdicts: dict[str, str] | No
         "summary": _str_or_none(fields["summary"]),
         "media_kind": (media_info(rec) or {}).get("kind"),
         "duration_seconds": (media_info(rec) or {}).get("duration_seconds"),
+        "thin_extraction": thin_extraction(vault, sha, rec),
     }
+
+
+def thin_extraction(vault: Path, sha: str, rec: dict) -> dict | None:
+    """A document whose extraction kept implausibly few facts for its length (D367), as the app
+    shows it: the counts, and whether Retry extraction can send its text again (its queue
+    descriptor is kept, or still queued). None for a document not flagged."""
+    thin = rec.get("thin_extraction") if isinstance(rec, dict) else None
+    if not isinstance(thin, dict):
+        return None
+
+    def n(key):
+        v = thin.get(key)
+        return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+    queue = vault / ".watchdog" / "queue"
+    retry = (queue / "_kept" / f"{sha}.json").exists() or (queue / f"{sha}.json").exists()
+    return {"facts": n("facts"), "words": n("words"), "expected_min": n("expected_min"),
+            "retry": retry}
 
 
 def media_info(rec: dict) -> dict | None:

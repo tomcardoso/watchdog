@@ -264,7 +264,9 @@ def test_call_model_records_usage_to_telemetry_db(tmp_path, monkeypatch):
     from watchdog import telemetry_db
     import sqlite3
 
-    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None):
+    # A benchmark run saves reasoning (D368), so the call asks for it.
+    async def fake(*, task, prompt, schema, model=None, backend=None, max_retries=1, effort=None,
+                   capture_reasoning=False):
         return model_client.ModelResult(
             parsed={"name": "Acme"}, text="", model="m", backend="claude-api",
             auth_mode="api-key", cost_usd=0.0, usage={"input_tokens": 10, "output_tokens": 2})

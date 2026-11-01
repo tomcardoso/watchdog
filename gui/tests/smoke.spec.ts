@@ -244,8 +244,43 @@ test('every screen renders against the demo investigation', async () => {
     }, root)
     expect(second).toMatch(/^second-look/)
     await page.evaluate(() => (window as any).__watchdogApp.getState().openAdd())
+    // Files dragged over the open dialog light up its list of files to add, not the window-wide
+    // overlay, which would sit behind the dialog.
+    const drag = (type: 'dragenter' | 'dragleave') => page.evaluate((t) => {
+      const dt = new DataTransfer()
+      dt.items.add(new File(['x'], 'dragged.txt', { type: 'text/plain' }))
+      document.querySelector('.modal')!.dispatchEvent(new DragEvent(t, { bubbles: true, cancelable: true, dataTransfer: dt }))
+    }, type)
+    await drag('dragenter')
+    await expect(page.locator('.modal .add-hint.over')).toHaveText(/^Drop to add these files/)
+    await expect(page.locator('.drop-overlay')).toHaveCount(0)
+    await drag('dragleave')
+    await expect(page.locator('.modal .add-hint.over')).toHaveCount(0)
+    // Each model picker names the model a run uses when it is left on the setting (which model
+    // depends on the keys this computer has).
+    await page.locator('.modal .add-disclose').click()
+    await expect(page.locator('.modal .add-opts .field-hint').first()).toHaveText(/^Runs on \S.*\. Reads each document/, { timeout: 15_000 })
+    // Each "Already waiting" line names its files.
+    await expect(page.locator('.modal .add-waiting li', { hasText: 'waiting to be added' }).locator('.add-waiting-names li').first()).toBeVisible({ timeout: 15_000 })
+    // Hidden while reading, the dialog reopens itself on the pause, not back on the first step
+    // with the files it has just read.
+    const extra = join(root, 'late-arrival.txt')
+    writeFileSync(extra, 'A document that arrived after the others were read.')
+    await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), extra)
+    await expect(page.locator('.modal .add-files')).toContainText('late-arrival.txt')
     await page.getByRole('button', { name: 'Read documents' }).click()
+    await page.evaluate(() => (window as any).__watchdogApp.getState().closeAdd())
     await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible({ timeout: 60_000 })
+    await page.waitForTimeout(1000)
+    await expect(page.locator('.modal-title', { hasText: /^Before sending documents from .+ to a model$/ })).toBeVisible()
+    // The pause closes like any dialog: Escape, as Cancel does, sends nothing.
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.modal')).toHaveCount(0)
+    // Files dropped while the pause waits go back to the first step to be read; what was already
+    // read stays queued, so the next pause covers both.
+    await page.evaluate((p) => (window as any).__watchdogApp.getState().openAdd([p]), extra)
+    await expect(page.locator('.modal .add-steps li.now')).toContainText('Choose')
+    await expect(page.locator('.modal .add-files')).toContainText('late-arrival.txt')
     await page.locator('.modal').getByRole('button', { name: 'Cancel' }).click()
     await page.evaluate(async (s) => {
       const w = window as any
@@ -290,6 +325,16 @@ test('every screen renders against the demo investigation', async () => {
     await findBox.fill('no such words anywhere')
     await page.getByRole('button', { name: 'Search the extracted text instead' }).click()
     await expect(page.getByPlaceholder('Search the extracted text')).toHaveValue('no such words anywhere')
+
+    // The document's Entities tab lays its rows out in the panel, even after the Entities screen
+    // (whose own list rows are absolutely placed) has loaded its stylesheet.
+    await page.evaluate((sha) => (window as any).__watchdogApp.getState().navigate({ view: 'document', sha, tab: 'entities' }), foi)
+    const entRow = page.locator('.doc-ent-group .doc-ent-row').first()
+    await expect(entRow).toBeVisible({ timeout: 20_000 })
+    const [rowBox, groupBox] = await Promise.all([entRow.boundingBox(), page.locator('.doc-ent-group').first().boundingBox()])
+    expect(rowBox!.x).toBeGreaterThanOrEqual(groupBox!.x)
+    expect(rowBox!.y).toBeGreaterThan(groupBox!.y)
+    expect(rowBox!.y + rowBox!.height).toBeLessThanOrEqual(groupBox!.y + groupBox!.height + 1)
 
     // The command palette: a full-height search row (it used to shrink to its text), and the panel
     // inside the window at a small size.

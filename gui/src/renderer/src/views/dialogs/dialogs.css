@@ -75,6 +75,15 @@
   text-align: center;
   font-size: var(--fs-md);
 }
+.add-hint.over {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+.add-files.over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 .add-files {
   list-style: none;
   margin: 0;
@@ -113,6 +122,19 @@
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+.add-waiting-names {
+  list-style: none;
+  margin: 4px 0 6px;
+  padding: 0 0 0 10px;
+  max-height: 120px;
+  overflow: auto;
+  border-left: 2px solid var(--border);
+  font-size: var(--fs-sm);
+  color: var(--text-3);
+}
+.add-waiting-names.under-checkbox {
+  margin-left: 24px;
 }
 .add-disclose {
   display: inline-flex;

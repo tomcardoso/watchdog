@@ -82,6 +82,10 @@ class _RunState:
     # run began, keyed by the reset time it was counted from (D324). None outside a run.
     vault: "Path | None" = None
     spend_baseline: "tuple[str | None, float] | None" = None
+    # Saving each call's reasoning (D368): on for the run when the `save_reasoning` setting is on
+    # or a benchmark arm is running; `reasoning_seq` numbers the run's reasoning files.
+    save_reasoning: bool = False
+    reasoning_seq: int = 0
 
 
 _run = _RunState()
@@ -167,7 +171,8 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
                   batch_meta: dict | None = None, rate_limit: dict | None = None,
                   est_input_tokens: int | None = None, est_prompt_tokens: int | None = None,
                   vault: Path | None = None, prompt_hash: str | None = None,
-                  key_label: str | None = None) -> None:
+                  key_label: str | None = None, stop_reason: str | None = None,
+                  reasoning_file: str | None = None) -> None:
     """Append one call's usage record to `_run.usage` (and the run's partial file), if a run is active.
 
     Takes explicit fields rather than a `ModelResult` so batch-collected items can be recorded too.
@@ -214,8 +219,12 @@ def _record_usage(task: str, *, model: str, backend: str, usage: dict | None,
     reasoning_tokens = (u.get("completion_tokens_details") or {}).get("reasoning_tokens")
     if reasoning_tokens:      # truthy, not `is not None`: OpenAI reports 0 here for chat models
         record["reasoning_tokens"] = reasoning_tokens
-    if u.get("stop_reason"):
-        record["stop_reason"] = u["stop_reason"]
+    # The call's own stop reason (D368): from the model client for a live call, from the usage
+    # dict for a batch-collected item (`batch_extract` puts it there).
+    if stop_reason or u.get("stop_reason"):
+        record["stop_reason"] = stop_reason or u["stop_reason"]
+    if reasoning_file:
+        record["reasoning_file"] = reasoning_file
     if pruned:
         record["pruned"] = pruned
     if failed:
@@ -265,26 +274,78 @@ async def _call_model(*, task, prompt, schema, model=None, backend=None,
     prompt_text = prompt if isinstance(prompt, str) else json.dumps(prompt, sort_keys=True)
     prompt_hash = hashlib.sha256(prompt_text.encode("utf-8")).hexdigest()
     est_prompt_tokens = section.est_tokens(prompt_text)
+    # Saving reasoning (D368) is asked for only while it is on: off, the call is made exactly as
+    # before, with no new argument.
+    capture = _run.save_reasoning and _run.vault is not None and _run.run_id is not None
+    extra = {"capture_reasoning": True} if capture else {}
+
+    def save(res, failed: bool = False) -> str | None:
+        if not capture:
+            return None
+        from watchdog.pipeline import reasoning
+        _run.reasoning_seq += 1
+        return reasoning.write_call(
+            _run.vault, _run.run_id, _run.reasoning_seq, task=task,
+            model=getattr(res, "model", None), backend=getattr(res, "backend", None),
+            effort=effort, filename=filename, detail=detail,
+            stop_reason=getattr(res, "stop_reason", None), usage=getattr(res, "usage", None),
+            reasoning=getattr(res, "reasoning", None), failed=failed)
+
     try:
         r = await model_client.acomplete_json(task=task, prompt=prompt, schema=schema, model=model,
-                                              backend=backend, max_retries=max_retries, effort=effort)
+                                              backend=backend, max_retries=max_retries, effort=effort,
+                                              **extra)
     except model_client.ModelError as e:
         if e.usage is not None or e.cost_usd is not None:
             _record_usage(task, model=e.model, backend=e.backend, usage=e.usage, cost_usd=e.cost_usd,
                          attempts=e.attempts, effort=effort, auth_mode=e.auth_mode,
                          filename=filename, detail=detail, failed=True,
                          est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                         vault=vault, prompt_hash=prompt_hash, key_label=getattr(e, "key_label", None))
+                         vault=vault, prompt_hash=prompt_hash, key_label=getattr(e, "key_label", None),
+                         stop_reason=getattr(e, "stop_reason", None),
+                         reasoning_file=save(e, failed=True))
         raise
     _record_usage(task, model=r.model, backend=r.backend, usage=r.usage, cost_usd=r.cost_usd,
                  attempts=r.attempts, latency_s=r.latency_s, effort=effort, auth_mode=r.auth_mode,
                  filename=filename, detail=detail, pruned=r.pruned, rate_limit=r.rate_limit,
                  est_input_tokens=est_input_tokens, est_prompt_tokens=est_prompt_tokens,
-                 vault=vault, prompt_hash=prompt_hash, key_label=getattr(r, "key_label", None))
+                 vault=vault, prompt_hash=prompt_hash, key_label=getattr(r, "key_label", None),
+                 stop_reason=getattr(r, "stop_reason", None), reasoning_file=save(r))
     if r.pruned and vault is not None:
         _log(vault, f"WARN {filename or task}: pruned unexpected JSON key(s) from model "
                     f"output: {', '.join(r.pruned)}")
+    _warn_if_over_line(vault, model_id=r.model, backend=r.backend, usage=r.usage,
+                       attempts=r.attempts, est_prompt_tokens=est_prompt_tokens,
+                       filename=filename or task, detail=detail)
     return r
+
+
+def _warn_if_over_line(vault: Path | None, *, model_id: str, backend: str | None, usage,
+                       attempts: int, est_prompt_tokens: int, filename: str,
+                       detail: str | None) -> None:
+    """After a call, compare the prompt size the provider reported with the model's long-prompt
+    line (D370). A call whose estimate put it under the line but which went over anyway is billed
+    at the dearer card; this says so in processing.log, with both sizes, so a planning error is
+    seen rather than found later in Usage. Nothing is retried. A call planned over the line (a
+    single page too large for it, said when it was planned) is not repeated here, and a
+    subscription call, billed by Claude Code rather than per token, is skipped."""
+    from watchdog import model_catalog
+    if vault is None or not usage or backend in ("claude-agent-sdk", "local"):
+        return
+    tier = model_catalog.long_context_card(model_id)
+    if tier is None:
+        return
+    line = tier[0]
+    prompt = model_client.prompt_tokens(model_id, usage) // max(1, attempts or 1)
+    if prompt <= line:
+        return
+    planned = round(est_prompt_tokens * model_client.tokenizer_ratio(model_id, backend, vault))
+    if planned > line:
+        return
+    where = f" [{detail}]" if detail else ""
+    _log(vault, f"WARN {filename}{where}: prompt was {prompt:,} tokens, over {model_id}'s "
+                f"{line:,}-token long-prompt line, though planned at about {planned:,}; "
+                f"billed at the higher rate")
 
 
 def _recent_token_rate(records: list[dict], window_s: float = 60.0, now: float | None = None) -> int:
@@ -494,6 +555,10 @@ def _begin_usage_run(vault: Path, *, benchmark_arm_id: str | None = None,
     _run.run_id = ts
     _run.benchmark_arm_id = benchmark_arm_id
     _run.config_snapshot = config_snapshot
+    # Every benchmark run keeps its reasoning (D368); otherwise the setting decides.
+    from watchdog.pipeline import reasoning
+    _run.save_reasoning = benchmark_arm_id is not None or reasoning.enabled()
+    _run.reasoning_seq = 0
 
 
 def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[str | None, dict | None]:
@@ -522,6 +587,8 @@ def _end_usage_run(vault: Path, est_input_tokens: int | None = None) -> tuple[st
     _run.run_id = None
     _run.benchmark_arm_id = None
     _run.config_snapshot = None
+    _run.save_reasoning = False
+    _run.reasoning_seq = 0
     return path, totals
 
 
@@ -593,33 +660,34 @@ def _read_brief(vault: Path) -> str | None:
 
 
 def _pages_text(pages: list[dict]) -> str:
-    return "\n\n---\n\n".join(
-        f"<!-- PAGE {pg['page']} -->\n\n{pg.get('markdown', '')}" for pg in pages
-    )
+    return harvest.pages_text(pages)
 
 
-def _candidates_checklist(text: str, *, vault: Path | None = None, sha: str | None = None,
-                          filename: str | None = None, flow: str = "") -> str:
+def _candidates_checklist(text: str, *, stored: dict | None = None, vault: Path | None = None,
+                          sha: str | None = None, filename: str | None = None,
+                          flow: str = "") -> str:
     """Tier 0 candidate harvest (#361/D123): deterministic spans (money, figure, percent,
-    date, docket) plus optional local-NER entities, rendered as the per-page checklist injected
-    into the extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
+    date, docket) plus local-NER names, rendered as the per-page checklist injected into the
+    extraction prompt. `text` carries the same `<!-- PAGE N -->` markers as `_pages_text`
     output (whole-document or one section's), so this works for both extraction paths.
 
-    `vault`/`sha`/`filename`/`flow`, when given, mark this step on the document's live in-flight
-    row before it runs and log its result to ingest.log after (#411) — GLiNER's local model load
-    + inference (`harvest_entities`) is the one step that can silently run for minutes on a long
-    document; without this the row just sat on "extracting…" the whole time, with no sign
-    anything was happening. Callers pass these only from the two hot, per-document extraction
-    paths (`_simple_extract`, `_extract_sectioned`) — the rarer batch-repair/submit paths omit
-    them and get the old silent behaviour, since they have no live per-document row today."""
-    if sha is not None:
+    `stored` is the document's harvest from pre-processing (the queue descriptor's `harvest`,
+    D365): the pages `text` covers are read from it, so no local model runs here. A page it lacks,
+    or a stored half whose stamp no longer matches this code, is harvested live, as before D365.
+
+    `vault`/`sha`/`filename`/`flow`, when given, log the result to processing.log and, only when
+    GLiNER has to run live (#411: it can run for minutes on a long document), mark the step on
+    the document's live in-flight row first. The rarer batch-repair/submit paths omit them."""
+    def before_live_names():
+        if sha is None:
+            return
         tty = f"→  {filename}  {flow}{' · ' if flow else ''}harvesting candidates…"
         plain = f"→  {filename}  harvesting candidates…"
         if _run.board is not None:
             _run.board.update(sha, f"  {tty}", f"  {plain}")
         else:
             _say(plain)
-    candidates = harvest.harvest(text) + harvest.harvest_entities(harvest.split_pages(text))
+    candidates = harvest.candidates(text, stored, before_live_names=before_live_names)
     if sha is not None and vault is not None:
         n = len(candidates)
         _log(vault, f"HARVEST {filename}: {n} candidate{'s' if n != 1 else ''}")
@@ -882,10 +950,11 @@ async def _simple_extract(vault, sha, pf, skill_text, brief, model, skill_label,
     page_count = pf.get("page_count") or len(pf["pages"])
     filename = pf["filename"]
     flow = f"{page_count}p · {skill_label}"
-    # GLiNER inference over every page can take minutes on a long document — run it off the
-    # event loop so it doesn't stall every other concurrent document.
+    # Normally read from pre-processing's stored harvest (D365), but a document without one runs
+    # GLiNER live, which can take minutes on a long document — so off the event loop either way.
     candidates = await asyncio.to_thread(
-        _candidates_checklist, text, vault=vault, sha=sha, filename=filename, flow=flow)
+        _candidates_checklist, text, stored=pf.get("harvest"), vault=vault, sha=sha,
+        filename=filename, flow=flow)
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
     if _run.board is not None:
         _run.board.update(sha, f"  →  {filename}  {flow} · extracting…",
@@ -1028,8 +1097,8 @@ async def _extract_one_section(vault, sha, pf, skill_text, sec, *, is_first, car
     sec_text = (vault / sec["pages_path"]).read_text(encoding="utf-8")
     # Off the event loop — see the comment in `_simple_extract`.
     candidates = await asyncio.to_thread(
-        _candidates_checklist, sec_text, vault=vault, sha=sha, filename=pf["filename"],
-        flow=sec["label"])
+        _candidates_checklist, sec_text, stored=pf.get("harvest"), vault=vault, sha=sha,
+        filename=pf["filename"], flow=sec["label"])
     # Restore the row to "extracting…" now that harvesting is done and the model call is next.
     if _run.board is not None:
         _run.board.update(sha, f"  →  {pf['filename']}  {sec['label']} · extracting…",
@@ -1408,6 +1477,20 @@ async def _resolve_skill(vault: Path, pf: dict, pinned_skill: str | None, classi
     return (text, skill.removesuffix(".md"))
 
 
+def _log_planned_over_line(vault: Path, filename: str, plan: dict) -> None:
+    """Say in processing.log when a planned call cannot stay under the model's long-prompt line
+    (D370): only a single page too large for it on its own does that, since pages are not cut."""
+    line = plan.get("line")
+    if not line:
+        return
+    labels = [s["label"] for s in plan.get("sections") or []] or ["whole document"]
+    for label, est in zip(labels, plan.get("prompts") or []):
+        if est > line:
+            _log(vault, f"WARN {filename} [{label}]: planned prompt of about {est:,} est tokens is "
+                        f"more than fits under the long-prompt line ({line:,} est tokens); a "
+                        f"single page is not split, so this call will be billed at the higher rate")
+
+
 async def _extract_document(vault: Path, sha: str, brief: str | None,
                             extract_model: str, classify_model: str,
                             classify_pages: int = DEFAULT_CLASSIFY_PAGES,
@@ -1486,7 +1569,9 @@ async def _extract_document(vault: Path, sha: str, brief: str | None,
     # The spending limit is checked again between classifying and extracting (D324): another
     # document's calls may have reached it while this one was being classified.
     _check_spend()
-    plan = section.run(vault, sha, model=extract_model, backend=extract_backend)
+    plan = section.run(vault, sha, model=extract_model, backend=extract_backend, pf=pf,
+                       skill_text=skill_text, brief=brief)
+    _log_planned_over_line(vault, filename, plan)
     progress.emit("doc", sha=sha, filename=filename, state="extracting", detail=None)
     if plan.get("sectioned"):
         n_sections = len(plan.get("sections", []))
@@ -1629,7 +1714,7 @@ async def _finish_batch_item(vault: Path, sha: str, item: dict | None, skill_tex
     if not item["ok"]:
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
-        candidates = await asyncio.to_thread(_candidates_checklist, text)
+        candidates = await asyncio.to_thread(_candidates_checklist, text, stored=pf.get("harvest"))
         is_anthropic = model_client.provider_for_backend(backend) == "anthropic"
         repair_backend = "claude-api" if is_anthropic else "openai"
         # The batch's own model and effort — a repair on a different model would also stamp the
@@ -1818,7 +1903,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
             _say(f"–  {pf.get('filename')}  already extracted — pending commit")
             results.append({"sha256": sha, "filename": pf.get("filename"), "status": "skipped"})
             continue
-        if section.run(vault, sha, model=extract_model).get("sectioned"):
+        if section.run(vault, sha, model=extract_model, pf=pf, brief=brief).get("sectioned"):
             sectioned_shas.append(sha)
         else:
             whole_docs.append((sha, pf))
@@ -1840,7 +1925,7 @@ async def _submit_batch(vault: Path, shas: list[str], brief: str | None, extract
     for (sha, pf), (skill_text, skill_label) in zip(whole_docs, resolved):
         text = _pages_text(pf["pages"])
         # Off the event loop — see the comment in `_simple_extract`.
-        candidates = await asyncio.to_thread(_candidates_checklist, text)
+        candidates = await asyncio.to_thread(_candidates_checklist, text, stored=pf.get("harvest"))
         prompt = prompts.build_extract_prompt(
             pages_text=text,
             skill_text=skill_text, sidecar=pf.get("sidecar"), brief=brief,
@@ -3048,13 +3133,26 @@ def stage_identity_log(artifact: dict, entry: dict) -> None:
 def _pending_commits(vault: Path) -> list[str]:
     """Every sha with a durable extraction artifact (`.watchdog/extracted/<sha>.json`) that is
     not yet a key in `registry/documents.json` — sorted, so the commit pass that consumes this
-    runs in a fixed order regardless of which document happened to extract first."""
+    runs in a fixed order regardless of which document happened to extract first.
+
+    A committed document re-extracted since its queue descriptor was put back (`force`, or Retry
+    extraction, D367) is pending again: its descriptor is still queued, and its artifact is newer
+    than it. The commit removes the descriptor, so it is committed once."""
     extracted_dir = vault / ".watchdog" / "extracted"
     if not extracted_dir.exists():
         return []
     documents_path = vault / ".watchdog" / "registry" / "documents.json"
     committed = set(_read_json_or(documents_path, []))
-    return sorted(p.stem for p in extracted_dir.glob("*.json") if p.stem not in committed)
+    queue_dir = vault / ".watchdog" / "queue"
+
+    def re_extracted(p: Path) -> bool:
+        try:
+            return p.stat().st_mtime >= (queue_dir / p.name).stat().st_mtime
+        except OSError:
+            return False
+
+    return sorted(p.stem for p in extracted_dir.glob("*.json")
+                  if p.stem not in committed or re_extracted(p))
 
 
 def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
@@ -3086,6 +3184,11 @@ def _commit_extracted(vault: Path, sha: str, batch=None) -> dict | None:
         _say(f"⚠  commit failed for {sha[:12]}… — {e}")
         _log(vault, f"WARN commit failed for {sha}: {e}")
         return None
+    # A thin extraction keeps its queue descriptor for Retry extraction (D367); one that is not
+    # thin drops any copy an earlier, thin extraction of it left.
+    from watchdog.pipeline.ingest_setup import keep_for_retry
+    staged_doc = _read_json_or(extracted_path, {}).get("document") or {}
+    keep_for_retry(vault, sha, bool(staged_doc.get("thin_extraction")))
     if batch is not None:
         batch.committed(after_flush=lambda: queue_file.unlink(missing_ok=True))
     else:

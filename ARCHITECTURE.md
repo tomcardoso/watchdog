@@ -39,8 +39,9 @@ incoming/ ─▶ chew ─▶ .watchdog/queue/<sha>.json ─▶ dig ─▶ .watch
  (raw docs)  (local)        (page text)          (extract)     (staged extraction)        (commit + finalize)
 ```
 
-1. **Chew** — local, no model. Text/OCR, large-PDF chunking, near-duplicate
-   fingerprinting. One queue JSON per document.
+1. **Chew** — local, no cloud model. Text/OCR, large-PDF chunking, near-duplicate
+   fingerprinting, the candidate harvest (regex plus local GLiNER, D365). One queue JSON per
+   document.
 2. **Dig** — the orchestrator (`pipeline/orchestrate.py`) classifies and extracts
    each queued document concurrently and stages the validated result. Touches no vault state.
 3. **Bark** — resolves the staged batch (exact-name fold, entity reconciliation),
@@ -75,7 +76,9 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   rest keep theirs. Pages are grouped by verdict into at most two classes, split at `chunk_size`
   (default 40), converted in parallel subprocesses and spliced back by page number.
   A forced-OCR conversion renders its pages at the OCR's own scale rather than Docling's 72 DPI
-  default, which OCR would otherwise read enlarged and blurred (D352).
+  default, which OCR would otherwise read enlarged and blurred (D352), and that scale is the
+  resolution of the largest image on its pages, between 216 and 600 DPI; forced pages are sliced
+  by pixels, at most `chunk_size` pages' worth at 216 DPI per slice (D364).
 - **Exact duplicates are skipped before OCR (D27)** — sha256 against the registry, the queue and
   the current batch. A match goes to `incoming/skipped/`.
 - **Near-duplicates (D10).** Word shingles (`shingle_size`) reduced to a MinHash signature,
@@ -89,8 +92,14 @@ process (§14.5); there is no command line (D300). A failed document is set asid
   read from the original file, normalized to a small allowlist and capped at 200 characters
   (untrusted input, I6). Stored as `file_metadata`, separate from `metadata` (how the pipeline
   read the file).
+- **Candidate harvest (D123, D223, D365).** Once a file's pages exist, `preprocess_batch` (in its
+  own process, so GLiNER loads once per run, not once per file subprocess) calls
+  `harvest.harvest_pages`: per page, the regex candidates and GLiNER's names, each deduplicated
+  within the page, stored as the queue JSON's `harvest` with a stamp per half. Never fails
+  pre-processing: a GLiNER failure stores `names: null`. See §5 for how extraction reads it.
 - **Output.** `.watchdog/queue/<sha>.json` (filename, page count, per-page markdown, near-dup
-  result, signature, sidecar, metadata); the original moves to `.watchdog/staging/<sha>/`.
+  result, signature, sidecar, metadata, candidate harvest); the original moves to
+  `.watchdog/staging/<sha>/`.
 - **OCR text positions (D289, `pipeline/text_positions.py`).** For pages read by a full-page OCR
   pass and for images, the Docling conversion keeps its parsed pages (`generate_parsed_pages`)
   and each OCR'd line's box (`textline_cells` with `from_ocr`, top-left origin, page units) is
@@ -124,7 +133,11 @@ Models, efforts, concurrency and classification come from Settings or the run's 
   the queue's token estimate (chars/4, calibrated against this vault's past runs) by this vault's
   recent $/token, as a range; for post-processing it prices the staged batch from
   standalone-finalize history. The all-models view prices every catalogue model at list rates, scaled by each model's `tokenizer_ratio`. Subscription auth
-  gets token counts, never dollars.
+  gets token counts, never dollars. For a model priced by prompt length, each document's planned
+  extraction calls decide what share of the queue is priced at the long-prompt card (D366); they are
+  planned by the same function the run sections with (`section.plan_document`, called from
+  `ingest_setup.long_prompt_plan`, D370), measuring the largest record skill since the skill is
+  chosen only at extraction.
 - **Rate limits (D71, D184).** A `RateLimitError` stops the batch cleanly; unfinished documents
   stay queued and the next `dig` resumes. With `wait` (`RunOptions.wait`) the run sleeps until the
   reported reset and loops, refreshing the lock. The stop message reports the run's observed tokens/min and the provider's
@@ -190,23 +203,47 @@ concurrently under `extract_concurrency`. Run state lives in one `_RunState` obj
    the resolved quote, else the best-matching sentence on the cited page found by code, else
    `unlocated`; no model call); explodes `key_facts` into per-entity fragments and timeline events
    (D26); flags a file-metadata creation date that postdates the document's own date (skipped for
-   OCR'd scans); stages raw timeline NDJSON; and writes the validated extraction to
-   `.watchdog/extracted/<sha>.json` (D126). That artifact is kept as an audit record.
+   OCR'd scans); flags a skim (`coverage_gap`: a long uncited run of pages, a fact anchored by its
+   `page` or else its `passage_page`) and a thin extraction (`thin_extraction`, D367: fewer facts
+   than one per `thin_extraction_words_per_fact` words of source text, default 1,000), both
+   advisory, stored on the record and logged as `WARN` lines; stages raw timeline NDJSON; and
+   writes the validated extraction to `.watchdog/extracted/<sha>.json` (D126). That artifact is
+   kept as an audit record.
 
 **Two "already done" questions (D126).** `already_staged` (an artifact exists: skip
 classify/extract) and `already_extracted` (the sha is committed: nothing to do).
 
 **`force` (D131).** A processing run with `force` re-extracts staged documents, overwriting the
-artifact. A committed document is not regenerated in place (D300).
+artifact. A committed document re-extracted while its queue descriptor is back in the queue is
+committed again by the next finalize (`_pending_commits` treats an artifact newer than its queued
+descriptor as pending, D367); a failed re-extraction of a committed document leaves its stored
+extraction and timeline files alone (`abort.run`).
 
-**Large documents (D89, D196, D202).** A document over `section_token_threshold` is split into
+**Retry extraction (D367).** Zero facts from a substantial text is a post-flight failure (the
+empty-extraction guard, D153); a thin extraction is kept and only flagged. At commit, a thin
+extraction's queue descriptor is copied to `queue/_kept/<sha>.json` (`ingest_setup.keep_for_retry`);
+a later commit that is not thin removes the copy. The `add` operation's `reextract` (RunOptions)
+copies the kept descriptor back into the queue and runs a forced extraction limited to those shas
+(`only_shas`), then finishes the batch; the app's preflight and estimate count the same documents
+from the kept copy (`ingest_setup.reextract_queue`) without writing. A restored descriptor the run
+did not re-extract is taken back out. Nothing is retried automatically.
+
+**Large documents (D89, D196, D202, D370).** A document over `section_token_threshold` is split into
 overlapping page-range sections, packed greedily by per-page token estimates, extracted one at a
 time with a carry-forward block (entity map plus the previous section's observations), and merged
 (`merge.merge_extractions`). Threshold and budget default to 0.6 and 0.3 of the extractor's context
-window, clamped below any long-context pricing tier (`long_context_threshold`, in real tokens),
-then divided by the model's `tokenizer_ratio` (catalogue value, or the vault's own calibration,
-D180, D190, D198). Each section's result is checkpointed (D157) so a retry replays finished
-sections. A sectioned document's `document.summary` is composed afterwards by one small
+window, measured on the document text, then divided by the model's `tokenizer_ratio` (catalogue
+value, or the vault's own calibration, D180, D190, D198). On a model priced by prompt length
+(`long_context_threshold`) the whole prompt is planned under the line, less 5% for estimate error
+(D370): `section.plan_calls` counts the fixed part rendered with the real prompt builders for the
+document's skill and brief (system prompt and schema included), each page's candidate-checklist
+line (regex half counted live, names from the stored harvest or a per-page reserve; GLiNER is not
+run to plan), and a carry-forward reserve on later sections. A document goes whole only if its
+whole prompt fits; otherwise each section's text and checklist fit the line less that overhead,
+evened out over the fewest sections. Only a single page too large for the line is planned over it,
+and logged. After every model call, a prompt the provider reports over the line that was planned
+under it is logged as a WARN (`orchestrate._warn_if_over_line`); nothing is retried. Each
+section's result is checkpointed (D157) so a retry replays finished sections. A sectioned document's `document.summary` is composed afterwards by one small
 extractor-tier call over the merged facts (`_compose_digest`), with a deterministic fallback;
 whole documents write it inline.
 
@@ -221,9 +258,16 @@ then the skill (with the cache breakpoint), then per-document data. `claude-api`
 as-is; GPT-5.6+ on OpenAI gets explicit cache breakpoints; other OpenAI models get a
 `prompt_cache_key`. Everything else receives flattened text.
 
-**Candidate harvest (D123, D223).** Before the prompt is built, `pipeline/harvest.py` collects
-money, figures, percentages, dates and court file numbers by regex, plus names from the local
-GLiNER model, into a per-page checklist the prompt includes.
+**Candidate harvest (D123, D223, D365).** `pipeline/harvest.py` collects money, figures,
+percentages, dates and court file numbers by regex, plus names from the local GLiNER model, into a
+per-page checklist the prompt includes. Pre-processing harvests every page once and stores it
+(§3); extraction (`harvest.candidates`) reads the pages its text covers, whole document or one
+section, and runs the cross-page repeat cap, the per-page cap and `format_checklist` over just
+those. A page missing from the store, a half whose stamp (`regex_stamp`: a code version;
+`names_stamp`: model id, labels, threshold, window, overlap) no longer matches, or `names: null`
+is harvested live, as before D365. So no local model runs before or during the extraction calls,
+except for documents chewed without a matching store; `write_vault`'s search indexing (§11) still
+runs the embedding model after extraction.
 
 **Failure.** A document whose extraction or post-flight fails is logged to `processing.log` and moved
 to `queue/_failed/` by `abort.run`, keeping section checkpoints so a retry resumes.
@@ -607,6 +651,9 @@ queries/ wiki/               session-written findings and threads
 .claude/                     Claude Code settings and /watchdog-* commands (D245)
 .watchdog/
   queue/<sha>.json           chewed documents; removed after commit
+  queue/_failed/<sha>.json   documents whose extraction failed, until requeued
+  queue/_kept/<sha>.json     a committed thin extraction's descriptor, for Retry extraction (D367)
+  reasoning/<run>/NNNN-<task>.json  each model call's saved reasoning, stop reason and tokens, when `save_reasoning` is on or a benchmark runs (D368); named by the usage record's `reasoning_file`
   staging/<sha>/             chewed originals
   extracted/<sha>.json       staged, validated extractions; kept, and the source every entity note is rendered from (D280)
   text-positions/<sha>.json  OCR'd lines' boxes per scanned page or image, written by pre-processing and kept (D289); none for pages with their own text layer
@@ -688,6 +735,18 @@ through `vault_paths.py` helpers.
 
 **Folder names (D266).** `vault_paths.py` is the one place the `incoming/` and `context/` names live, with
 helpers for every path under them.
+
+**Saved reasoning (D368).** With the `save_reasoning` setting on (off by default), or in any
+benchmark run, `orchestrate._call_model` asks `model_client.acomplete_json` for the model's
+reasoning (`capture_reasoning`, a context variable the backends read, so nothing sent changes when
+it is off) and writes one file per call under `.watchdog/reasoning/<run>/` (`pipeline/reasoning.py`).
+Claude (Messages API and Agent SDK) is asked for `thinking.display: "summarized"`, which current
+models otherwise return empty, at no extra cost; DeepSeek's `reasoning_content` is kept as it
+comes; OpenAI and Gemini Chat Completions return none, so their files hold the call's details
+only. Every usage record carries the call's own `stop_reason` whatever the setting. The
+`reasoning-export` operation zips one run's files, its usage record and its processing-log lines
+into a folder the reporter chose; `reasoning-clear` deletes the folder. The troubleshooting copy
+leaves it out.
 
 Every model call, and every Ask Claude or Web research turn (run id `session-<id>`, D296), is also recorded in `~/.watchdog/telemetry.db` (D193): vault path and name,
 filename, model, tokens, cost. Off with the `telemetry` setting; deleting an investigation with its folder removes its rows
@@ -859,6 +918,14 @@ log entry's `undo.hidden`, and `merge_undo` lists the split record again.
   tokenizer ratios and capability flags. It holds each provider's current frontier models: a
   superseded or retired model is removed, with no alias (D300, D310), unless something still needs
   it. A price that changes on a calendar date is changed by hand on the day.
+- **Cost (D217, D366).** Providers return token counts, not prices, so `model_client` prices every
+  call: `_api_cost`/`_batch_cost` (Claude) and `_openai_cost`/`_openai_batch_cost` (every other
+  provider) measure the prompt by the provider's own definition and take the rate card
+  `model_catalog.rate_card` selects — a model with a `long_context` card bills the whole request at
+  it once the prompt is over `long_context_threshold` — then apply `price_multiplier`. The call's
+  `cost_usd` is stored with its usage record and read, never re-priced, by Usage and the spending
+  limit; the one exception is the D366 migration that repriced calls recorded before the card was
+  modelled, keeping the original as `cost_usd_recorded`.
 - **Batch backends (D52, D144, D169).** `claude-batch` and `openai-batch` submit the whole queue to
   the provider's Batch API at half price; `dig` submits and exits, and a later `dig` collects
   (`batch-pending.json`, one batch per vault). Each document resolves its own skill first.

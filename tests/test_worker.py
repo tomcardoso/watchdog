@@ -20,19 +20,16 @@ import pytest
 
 from tests.gui_support import wdg_home  # noqa: F401  (fixture)
 from watchdog import model_client, ops, progress, worker
+from tests.demo_support import copy_demo
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "src"
 
 
 @pytest.fixture(scope="module")
-def demo(tmp_path_factory):
-    root = tmp_path_factory.mktemp("demo-worker")
-    vault, home = root / "vault", root / "home"
-    env = {**os.environ, "PYTHONPATH": str(SRC), "NO_COLOR": "1"}
-    proc = subprocess.run([sys.executable, "-m", "watchdog.gui.demo", str(vault), "--home", str(home)],
-                          env=env, capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 0, proc.stderr
+def demo(demo_build, tmp_path_factory):
+    root, stdout = demo_build
+    vault, home = copy_demo(root, tmp_path_factory.mktemp("demo-worker") / "copy")
     return vault, home
 
 

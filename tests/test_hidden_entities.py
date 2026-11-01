@@ -2,11 +2,7 @@
 never an edit to what a source says."""
 
 import json
-import os
 import shutil
-import subprocess
-import sys
-from pathlib import Path
 
 import pytest
 
@@ -16,18 +12,14 @@ from watchdog.pipeline import entity_facts, hidden, history, leads, merge_entiti
 
 from tests.gui_support import call
 from tests.test_write_vault import make_extraction, make_vault
+from tests.demo_support import copy_demo
 
-SRC = Path(__file__).resolve().parent.parent / "src"
 
 
 @pytest.fixture(scope="module")
-def demo(tmp_path_factory):
-    root = tmp_path_factory.mktemp("demo-hidden")
-    vault = root / "vault"
-    env = {**os.environ, "PYTHONPATH": str(SRC), "NO_COLOR": "1"}
-    proc = subprocess.run([sys.executable, "-m", "watchdog.gui.demo", str(vault), "--home", str(root / "home")],
-                          env=env, capture_output=True, text=True, timeout=120)
-    assert proc.returncode == 0, proc.stderr
+def demo(demo_build, tmp_path_factory):
+    root, stdout = demo_build
+    vault, home = copy_demo(root, tmp_path_factory.mktemp("demo-hidden") / "copy")
     return vault
 
 

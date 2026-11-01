@@ -22,10 +22,12 @@ Drop files or folders onto the window, or choose **Add documents** (top right, o
 
 ![The Add documents dialog, on its first step: files to add, the files already waiting in the investigation, and Estimate cost.](images/app-add.png)
 
-1. **Choose.** Pick files or folders. The dialog also shows anything already waiting to be added, such as pages from **Fetch Links**, and offers to retry documents that failed before. **Options** holds every setting for this run only: models, effort, **Documents at once**, **Record skill**, **Second-read check**, **Wait out rate limits** and the rest. **Estimate cost** shows what the run is likely to cost, and **Compare all models** shows the estimate for each model.
-2. **Reading documents.** The files are copied into the investigation (the originals stay where they are) and converted to text on your computer, with OCR (optical character recognition) for scanned pages. Recordings are transcribed here, one at a time; the first one also downloads the transcription model, once. Nothing is sent anywhere during this step.
+1. **Choose.** Pick files or folders, or drop them onto the open dialog: the list of files to add lights up while you drag, and dropped files join it. The dialog also lists anything already waiting in the investigation, file by file, such as pages from **Fetch Links** or documents read but not yet extracted, and offers to retry documents that failed before. **Options** holds every setting for this run only: models, effort, **Documents at once**, **Record skill**, **Second-read check**, **Wait out rate limits** and the rest. A model or effort left on its setting says under it which model, or which effort, the run will use. **Estimate cost** shows what the run is likely to cost, and **Compare all models** shows the estimate for each model.
+2. **Reading documents.** The files are copied into the investigation (the originals stay where they are) and converted to text on your computer, with OCR (optical character recognition) for scanned pages, and a small model on your computer lists the names and figures on each page for the model that reads them next. Recordings are transcribed here, one at a time; the first one also downloads the transcription model, once. Nothing is sent anywhere during this step.
 3. **Before sending documents to a model.** Files that could not be read are listed first, and a file the investigation already has is set aside. Then the public-records warning, with the number of documents, which model receives them and, if you keep more than one key, which key pays. Nothing is sent until you choose **Acknowledge and add**. With [Auto-approve](models-and-cost.md#auto-approve) on and every step on your Claude subscription, this step is a short notice instead; when every step runs on a model server on this computer, it is skipped.
 4. **Adding.** Each document is extracted, then the finishing steps write everything to the investigation and produce a briefing. **Hide** closes the dialog while the run continues, with its progress in the corner of the window. **Stop** ends it cleanly, and adding again resumes it.
+
+You can add more files at any point. Dropped at step 3, they take you back to step 1: the documents already read stay waiting, so the next confirmation covers them and the new ones together. Dropped while documents are being read, they are read next, before anything is sent. Dropped during a run, they are listed in the dialog to read when it finishes.
 
 The run stays with the investigation you started it in. If another investigation is open when the pause or the finished run appears, the window says so, with **Switch to** that investigation.
 
@@ -81,6 +83,12 @@ Open a document to read it: the original on the left, with page navigation and z
 <a id="finding-words-in-a-document"></a>**Find in document** sits above the original in every kind of viewer; press ⌘F (Ctrl+F) to jump to it. It ignores capitals, accents, the style of quotation marks, dashes and line-break hyphens, so "Renee" finds "Renée". On a scanned page, find highlights the match on the scan itself, and you can select and copy its text; the highlight's position within a line is an estimate. When find turns up nothing, **Search the extracted text instead** opens the Text tab.
 
 A recording opens in a player with its transcript below; the passage being spoken is highlighted as it plays. Some formats (`.avi` and some `.mkv` files) cannot be played inside Watchdog; **Open original** plays them in another app.
+
+### Few facts and Retry extraction
+
+Now and then a model stops early and keeps only one or two facts from a long document, while its summary and entities look normal. Watchdog checks every extraction against the length of the document's text. When there are far fewer facts than usual, about one for every 1,000 words or fewer where one per 250 is typical, the document is still added, but it is marked **Few facts** in the list and its page shows a warning with **Retry extraction**. The [processing log](#activity-and-maintenance) records it too.
+
+**Retry extraction** sends that one document to the extraction model again, with your current models and effort, then runs the finishing step. It shows the estimated cost and, where it applies, the public-records warning first, and nothing is sent until you confirm. Anything else waiting to be added stays where it is. The earlier facts stay until the new extraction has been checked and saved; if the new one still has few facts, the warning stays. A short document with few facts is never flagged, and you can change when the warning appears under [Settings → Processing](models-and-cost.md#thin-extraction-words-per-fact).
 
 ## Checking facts
 
@@ -289,7 +297,7 @@ If an earlier version holds something that should not be kept, such as a source'
 
 | Card | What it does |
 |---|---|
-| **Pre-processing** | Converts every file waiting to be added to text on your computer. |
+| **Pre-processing** | Converts every file waiting to be added to text on your computer, and lists the names and figures on each page. |
 | **Processing** | Extracts facts with a model and stages the result, with **Estimate** first. |
 | **Post-processing** | Finishes a batch: merges entities, flags contradictions, writes summaries, the timeline and the briefing. Safe to run again. |
 | **Requeue failed documents** | Puts failed documents back in the queue. |
@@ -302,6 +310,7 @@ If an earlier version holds something that should not be kept, such as a source'
 | **Rebuild the search index** | Rebuilds search from what Watchdog has already read, after changing the search model or merging entities. |
 | **Export the graph** | Writes entities and relationships as CSV or a Cypher script for tools such as [Neo4j](https://neo4j.com) or [Gephi](https://gephi.org). |
 | **Export a copy for troubleshooting** | Writes either a text report of counts alone, safe to post with a report of a problem, or one zip file of Watchdog's records and notes for this investigation, for your own use, never for an issue. The dialog shows the report in full before it is saved. The original documents go in the zip only if you include them. See [sending a copy of the investigation](troubleshooting.md#sending-a-copy-of-the-investigation). |
+| **Saved model reasoning** | Saves one run's model reasoning to a zip, or clears what was saved, when [Save model reasoning](models-and-cost.md#save-model-reasoning) is on. See [sharing debugging information](troubleshooting.md#sharing-debugging-information). |
 | **Refresh Claude setup** | Updates this investigation's instructions and shortcuts for Claude. Watchdog does this by itself whenever a conversation starts; use it to do it now, for example before opening the folder in Claude Code. |
 
 ### Bringing an investigation up to date
@@ -310,6 +319,7 @@ Watchdog keeps improving how it reads documents, but most improvements apply as 
 
 **Review the steps** lists what would change, how many model calls each step needs and one estimate of the cost, before anything is sent. The steps are:
 
+- **Cost of past long prompts.** Before this version, a model call whose prompt was over the model's [long-prompt line](models-and-cost.md#long-prompts) was recorded at the lower rate, although the provider billed all of it at the higher one. Watchdog prices those calls again from the token counts it stored, so **Activity → Usage** matches your bill (a [key's spending limit](models-and-cost.md#spending-limit) keeps the amount it had already counted); the step's summary gives the total before and after. No AI model is used, and an investigation with no such call skips the step.
 - **Free fixes to saved extractions.** Points a fact's entity tag at the entity its document meant when the tag is a near miss, and moves the citations of a one-page text (a plain-text, CSV or Markdown file) to page 1, with their quotes and passages found again. No AI model is used.
 - **Dates lost by the old date reader.** Before October 2026, a date the date reader could not read was erased. Watchdog reads it back from the fact's own words when they state exactly one full date; the AI model reads the others that name a year, and its dates are marked inferred, as on any fact. A fact whose words name no year stays undated: only processing its document again could recover a date that was printed there.
 - **Records with the same name.** Compares every group of records that share a name and type, as processing now does for the groups a new batch touches. Each merge is recorded under [Merges](#merges) and can be undone; records the model cannot tell apart go to **Possible same entities**.
