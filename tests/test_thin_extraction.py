@@ -58,6 +58,41 @@ def test_healthy_extractions_are_not_flagged(facts, words):
 def test_short_document_is_never_flagged():
     # A cover letter or a nearly blank scan: under 1,000 words, one fact is plenty.
     assert find_thin_extraction(_ext(1), _texts(900)) is None
+
+
+# ── an answer that ended early (D376) ─────────────────────────────────────────────────────
+
+def _with_locators(*locators):
+    return {"document": {"key_facts": [{"fact": f"Fact {i}.", "page": 1, "quote_locator": loc}
+                                       for i, loc in enumerate(locators)]}}
+
+
+@pytest.mark.parametrize("loc", ["x", "[]", "...", "", " ", []])
+def test_a_placeholder_locator_in_a_short_answer_means_it_ended_early(loc):
+    # The #804 collapses ended after a fact or two carrying "x" or "[]" as a locator. A short
+    # document (under the words-per-fact bar) is caught too.
+    thin = find_thin_extraction(_with_locators("The court ordered that", loc), _texts(900))
+    assert thin == {"facts": 2, "words": 900, "expected_min": None, "ended_early": True}
+    assert "ended early" in postflight.render_thin_warning(thin)
+
+
+def test_both_signals_together_keep_the_expected_count():
+    thin = find_thin_extraction(_with_locators("x"), _texts(11_968, pages=34))
+    assert thin == {"facts": 1, "words": 11_968, "expected_min": 12, "ended_early": True}
+    assert "at least 12 expected" in postflight.render_thin_warning(thin)
+
+
+def test_real_locators_and_omitted_ones_are_not_placeholders():
+    ok = _with_locators("The Applicant shall be entitled", "Ernst & Young Inc. is", None, "$2,000,000")
+    assert find_thin_extraction({"document": {"key_facts": ok["document"]["key_facts"][:3]}},
+                                _texts(900)) is None
+    assert find_thin_extraction(_with_locators("$2,000,000"), _texts(900)) is None
+
+
+def test_a_placeholder_in_a_full_answer_is_not_a_collapse():
+    # One stray placeholder among many facts is a bad locator, not an answer that stopped.
+    facts = [f"Sentence {i} of the order" for i in range(3)] + ["x"]
+    assert find_thin_extraction(_with_locators(*facts), _texts(900)) is None
     assert find_thin_extraction(_ext(1), _texts(40)) is None
 
 
@@ -126,7 +161,8 @@ def test_thin_document_is_kept_warned_flagged_and_kept_for_retry(tmp_path, monke
 
     from watchdog.gui import vaultio
     row = vaultio.document_row(vault, SHA, rec)
-    assert row["thin_extraction"] == {"facts": 1, "words": 3_000, "expected_min": 3, "retry": True}
+    assert row["thin_extraction"] == {"facts": 1, "words": 3_000, "expected_min": 3,
+                                      "ended_early": False, "retry": True}
 
 
 def test_healthy_document_is_not_flagged_and_keeps_nothing(tmp_path, monkeypatch):

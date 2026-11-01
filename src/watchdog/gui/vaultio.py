@@ -469,7 +469,7 @@ def thin_extraction(vault: Path, sha: str, rec: dict) -> dict | None:
     queue = vault / ".watchdog" / "queue"
     retry = (queue / "_kept" / f"{sha}.json").exists() or (queue / f"{sha}.json").exists()
     return {"facts": n("facts"), "words": n("words"), "expected_min": n("expected_min"),
-            "retry": retry}
+            "ended_early": thin.get("ended_early") is True, "retry": retry}
 
 
 def media_info(rec: dict) -> dict | None:

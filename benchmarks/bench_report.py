@@ -425,14 +425,18 @@ def thin_extractions(vault) -> list[dict]:
         thin = doc.get("thin_extraction") if isinstance(doc, dict) else None
         if isinstance(thin, dict):
             out.append({"filename": doc.get("filename") or f.stem[:12], "facts": thin.get("facts"),
-                        "words": thin.get("words"), "expected_min": thin.get("expected_min")})
+                        "words": thin.get("words"), "expected_min": thin.get("expected_min"),
+                        "ended_early": thin.get("ended_early") is True})
     return sorted(out, key=lambda t: str(t["filename"]))
 
 
 def _thin_line(t: dict) -> str:
     words = f"{t['words']:,}" if isinstance(t.get("words"), int) else "?"
+    early = "; ended early, with a placeholder quote locator (D376)" if t.get("ended_early") else ""
+    if t.get("expected_min") is None:
+        return f"thin extraction: {t['filename']} — {t.get('facts')} fact(s) from {words} words{early}"
     return (f"thin extraction: {t['filename']} — {t.get('facts')} fact(s) from {words} words "
-            f"(at least {t.get('expected_min')} expected)")
+            f"(at least {t.get('expected_min')} expected){early}")
 
 
 def thin_extractions_md(results: list) -> list[str]:

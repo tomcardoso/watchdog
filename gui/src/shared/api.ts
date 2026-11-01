@@ -100,6 +100,8 @@ export interface ThinExtraction {
   facts: number | null
   words: number | null
   expected_min: number | null
+  /** The answer ended early, a fact carrying a placeholder in place of a quote (D376). */
+  ended_early: boolean
   retry: boolean
 }
 

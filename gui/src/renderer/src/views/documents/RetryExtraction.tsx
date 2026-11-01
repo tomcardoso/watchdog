@@ -1,5 +1,6 @@
-// Retry extraction (D367): a document whose extraction kept implausibly few facts for its length
-// is sent to the extraction model again, alone. The same checks as Add documents come first: the
+// Retry extraction (D367, D376): a document whose extraction kept implausibly few facts for its
+// length, or whose answer ended early, is sent to the extraction model again, alone or with the
+// others flagged (Retry all on the Documents screen). The same checks as Add documents come first: the
 // cost estimate, the key that pays, the spending limit and the public-records acknowledgement.
 // The run is the `add` operation limited to this document (`reextract`); the new extraction
 // replaces the earlier one only once it passes post-flight and is committed.
@@ -19,6 +20,9 @@ import type { ThinExtraction } from '@shared/api'
 /** The warning line a thin extraction shows, wherever it is shown. */
 export function thinText(t: ThinExtraction): string {
   const facts = t.facts !== null ? plural(t.facts, 'fact') : 'Very few facts'
+  if (t.ended_early && t.expected_min === null) {
+    return `${facts} extracted before the model’s answer stopped part-way: its last fact has a placeholder where a quote should be.`
+  }
   const words = t.words !== null ? ` from about ${t.words.toLocaleString('en-CA')} words of text` : ''
   const expected = t.expected_min !== null ? `, where at least ${t.expected_min} would be usual` : ''
   return `${facts} extracted${words}${expected}. The model may have stopped early.`
@@ -31,7 +35,7 @@ export function ThinExtractionNote({ sha, filename, thin }: { sha: string; filen
     <>
       <Callout
         tone="warning"
-        title="Few facts for a document this long"
+        title={thin.ended_early && thin.expected_min === null ? 'The extraction stopped early' : 'Few facts for a document this long'}
         action={thin.retry ? <Button size="sm" icon={RotateCw} disabled={!engine.ready} onClick={() => setOpen(true)}>Retry extraction</Button> : undefined}
       >
         {thinText(thin)}{' '}
@@ -39,15 +43,17 @@ export function ThinExtractionNote({ sha, filename, thin }: { sha: string; filen
           ? 'Retrying sends this document to the extraction model again; if the new extraction is better, it replaces this one.'
           : 'Its text is no longer kept for a retry. To extract it again, add the file again.'}
       </Callout>
-      {thin.retry && <RetryExtractionModal open={open} onClose={() => setOpen(false)} sha={sha} filename={filename} />}
+      {thin.retry && <RetryExtractionModal open={open} onClose={() => setOpen(false)} shas={[sha]} label={filename} />}
     </>
   )
 }
 
-export function RetryExtractionModal({ open, onClose, sha, filename }: { open: boolean; onClose: () => void; sha: string; filename: string }) {
+/** Retry extraction for one document or several, after the same checks as Add documents. */
+export function RetryExtractionModal({ open, onClose, shas, label }: { open: boolean; onClose: () => void; shas: string[]; label: string }) {
   const vault = useVault()
   const engine = useEngineGate()
-  const options = { reextract: [sha] }
+  const options = { reextract: shas }
+  const many = shas.length > 1
   const pf = useRpc('ingest.preflight', open ? { vault, options } : null, { staleTime: 0 })
   const est = useRpc('ingest.estimate', open ? { vault, stage: 'dig' as const, options } : null, { staleTime: 0 })
   const [busy, setBusy] = useState(false)
@@ -61,8 +67,8 @@ export function RetryExtractionModal({ open, onClose, sha, filename }: { open: b
     try {
       // The acknowledgement was given here (or is not needed); the worker checks auto-approve and
       // a run on this computer for itself, as for Add documents.
-      await startJob('add', { reextract: [sha], skip_warning: ack || undefined }, `Retrying extraction of ${filename}`, 'add', vault)
-      toast({ kind: 'info', title: 'Retrying the extraction', body: 'Follow it in Activity. The document updates when the run finishes.' })
+      await startJob('add', { reextract: shas, skip_warning: ack || undefined }, `Retrying extraction of ${label}`, 'add', vault)
+      toast({ kind: 'info', title: many ? 'Retrying the extractions' : 'Retrying the extraction', body: `Follow it in Activity. ${many ? 'The documents update' : 'The document updates'} when the run finishes.` })
       onClose()
     } catch (e) {
       toast({ kind: 'error', title: 'Could not start the retry', body: errorMessage(e) })
@@ -82,7 +88,7 @@ export function RetryExtractionModal({ open, onClose, sha, filename }: { open: b
           Retry extraction
         </span>
       }
-      sub={filename}
+      sub={label}
       footer={
         <>
           <Button autoFocus onClick={onClose}>Cancel</Button>
@@ -94,13 +100,15 @@ export function RetryExtractionModal({ open, onClose, sha, filename }: { open: b
     >
       <div className="col" style={{ gap: 14 }}>
         <p className="muted" style={{ margin: 0 }}>
-          This sends the document’s text to the extraction model again, with the models and effort in Settings, then runs the finishing step. Nothing else waiting is extracted. The earlier facts stay until the new extraction has been checked and saved; if it is still thin, the warning stays.
+          {many
+            ? `This sends these ${shas.length} documents’ text to the extraction model again, with the models and effort in Settings, then runs the finishing step. Nothing else waiting is extracted. Each document’s earlier facts stay until its new extraction has been checked and saved; a document that is still incomplete keeps its warning.`
+            : 'This sends the document’s text to the extraction model again, with the models and effort in Settings, then runs the finishing step. Nothing else waiting is extracted. The earlier facts stay until the new extraction has been checked and saved; if it is still thin, the warning stays.'}
         </p>
         <EngineWait />
         {(pf.isError || est.isError) && <Callout tone="danger" title="Could not prepare the retry">{errorMessage(pf.error ?? est.error)}</Callout>}
         {!p && !pf.isError && <Skeleton w="60%" />}
         {p && p.documents_to_send === 0 && (
-          <Callout tone="warning" title="Nothing to retry">This document’s text is no longer kept. Add the file again to read it from the start.</Callout>
+          <Callout tone="warning" title="Nothing to retry">{many ? 'These documents’ text is' : 'This document’s text is'} no longer kept. Add the {many ? 'files' : 'file'} again to read {many ? 'them' : 'it'} from the start.</Callout>
         )}
         {est.data && p && p.documents_to_send > 0 && (
           <div>

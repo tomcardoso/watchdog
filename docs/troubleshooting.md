@@ -112,7 +112,7 @@ The full output of any run, including the reason a document failed, is under **A
 
 ## A long document has only one or two facts
 
-A model sometimes stops early and keeps a single fact from a long report. Watchdog adds the document anyway and marks it **Few facts**; open it and choose **Retry extraction**, which shows the cost before anything is sent. See [Few facts and Retry extraction](using-watchdog.md#few-facts-and-retry-extraction). If it keeps happening with the same document, [save the model's reasoning](#sharing-debugging-information) for a retry and send it with your report.
+A model sometimes stops early and keeps a single fact from a long report. Watchdog adds the document anyway and marks it **Few facts**; choose **Retry all…** at the top of the Documents screen, or open the document and choose **Retry extraction**. Either shows the cost before anything is sent. See [Few facts and Retry extraction](using-watchdog.md#few-facts-and-retry-extraction). If it keeps happening with the same document, [save the model's reasoning](#sharing-debugging-information) for a retry and send it with your report.
 
 ## Hitting rate limits
 
